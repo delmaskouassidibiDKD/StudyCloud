@@ -48,6 +48,8 @@ import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes, isItemPinned } from './HeaderMenuControls';
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
+import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 import { handleNativeShare } from '../utils/nativeShare';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
 import { applyDashboardWallpaper } from '../utils/wallpaperHelper';
@@ -127,6 +129,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   // Lecteur d'image actif (split à droite - Image 5)
   const [selectedImage, setSelectedImage] = useState<FileItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const viewerExpandLevel = useViewerExpandLevel();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [incompatibleAlertInfo, setIncompatibleAlertInfo] = useState<IncompatibleAlertInfo | null>(null);
 
@@ -303,31 +306,39 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     };
   }, []);
 
+  // Réinitialiser le mode plein écran à la sortie
+  useEffect(() => {
+    return () => {
+      resetViewerExpand();
+    };
+  }, []);
+
   // Fonction universelle de fermeture du lecteur (ou réduction si plein écran/agrandi)
   const handleCloseReader = () => {
-    if (isViewerMaximized) {
-      setIsViewerMaximized(false);
-    } else {
-      setSelectedImage(null);
-      setIsViewerMaximized(false);
-    }
+    setSelectedImage(null);
+    setIsViewerMaximized(false);
+    resetViewerExpand();
   };
 
-  // Gestion de la touche Échap pour réduire ou fermer le lecteur d'image
+  // Gestion de la touche Échap pour réduire ou fermer le lecteur d'image à paliers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isViewerMaximized) {
+        if (viewerExpandLevel > 1) {
+          setViewerExpandLevel((viewerExpandLevel - 1) as any);
+        } else if (isViewerMaximized || viewerExpandLevel === 1) {
           setIsViewerMaximized(false);
+          resetViewerExpand();
         } else if (selectedImage) {
           setSelectedImage(null);
           setIsViewerMaximized(false);
+          resetViewerExpand();
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isViewerMaximized, selectedImage]);
+  }, [viewerExpandLevel, isViewerMaximized, selectedImage]);
 
   // Effacer une image dont l'enregistrement a échoué (Bouton Croix X)
   const handleDismissFailedUpload = (imgId: string) => {
@@ -1827,9 +1838,25 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                 <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
             )}
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(1);
+                }
+              }}
               className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
                 isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               }`}
@@ -1841,7 +1868,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               type="button"
               onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur d'image"}
+              title="Fermer le lecteur d'image"
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>

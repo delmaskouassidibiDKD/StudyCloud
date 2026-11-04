@@ -48,6 +48,8 @@ import { getWorkerApiUrl } from '../services/api';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes, isItemPinned } from './HeaderMenuControls';
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
+import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { handleNativeShare } from '../utils/nativeShare';
 import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
@@ -127,6 +129,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   // Lecteur vidéo actif (split à droite - Image 4)
   const [selectedVideo, setSelectedVideo] = useState<FileItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const viewerExpandLevel = useViewerExpandLevel();
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [incompatibleAlertInfo, setIncompatibleAlertInfo] = useState<IncompatibleAlertInfo | null>(null);
 
@@ -255,31 +258,39 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     };
   }, []);
 
+  // Réinitialiser le mode plein écran à la sortie
+  useEffect(() => {
+    return () => {
+      resetViewerExpand();
+    };
+  }, []);
+
   // Fonction universelle de fermeture du lecteur (ou réduction si plein écran/agrandi)
   const handleCloseReader = () => {
-    if (isViewerMaximized) {
-      setIsViewerMaximized(false);
-    } else {
-      setSelectedVideo(null);
-      setIsViewerMaximized(false);
-    }
+    setSelectedVideo(null);
+    setIsViewerMaximized(false);
+    resetViewerExpand();
   };
 
-  // Gestion de la touche Échap pour réduire ou fermer le lecteur vidéo
+  // Gestion de la touche Échap pour réduire ou fermer le lecteur vidéo à paliers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isViewerMaximized) {
+        if (viewerExpandLevel > 1) {
+          setViewerExpandLevel((viewerExpandLevel - 1) as any);
+        } else if (isViewerMaximized || viewerExpandLevel === 1) {
           setIsViewerMaximized(false);
+          resetViewerExpand();
         } else if (selectedVideo) {
           setSelectedVideo(null);
           setIsViewerMaximized(false);
+          resetViewerExpand();
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isViewerMaximized, selectedVideo]);
+  }, [viewerExpandLevel, isViewerMaximized, selectedVideo]);
 
   // Effacer une vidéo dont l'enregistrement a échoué (Bouton Croix X)
   const handleDismissFailedUpload = (vidId: string) => {
@@ -1835,9 +1846,25 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
                 <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
             )}
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(1);
+                }
+              }}
               className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
                 isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               }`}
@@ -1849,7 +1876,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
               type="button"
               onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur vidéo"}
+              title="Fermer le lecteur vidéo"
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>

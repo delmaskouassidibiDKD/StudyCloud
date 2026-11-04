@@ -28,6 +28,7 @@ import { invalidateCloudQueries } from '../services/queryClient';
 import { getActiveWallpaperReliable, DEFAULT_WALLPAPER_URL } from '../utils/wallpaperHelper';
 import { HeaderMelodyControl } from './HeaderMelodyControl';
 import { useBackHandler } from '../services/backNavigation';
+import { useViewerExpandLevel } from '../utils/viewerExpandManager';
 
 interface FoldersViewProps {
   onOpenUpload: () => void;
@@ -1147,12 +1148,13 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [newGradeValue, setNewGradeValue] = useState('');
   const [newGradeCoeff, setNewGradeCoeff] = useState('');
 
+  const viewerExpandLevel = useViewerExpandLevel();
   const isDedicatedView = viewMode === 'page1-files-menu' || viewMode.startsWith('matiere-') || viewMode === 'red-robot-menu';
 
   return (
     <div className={`flex flex-col ${
       isDedicatedView
-        ? 'w-full h-full min-h-0 flex-1 items-stretch text-left p-0 pt-[64px] md:pt-[68px] pb-0'
+        ? `w-full h-full min-h-0 flex-1 items-stretch text-left p-0 ${viewerExpandLevel >= 2 ? 'pt-0 md:pt-0' : 'pt-[64px] md:pt-[68px]'} pb-0`
         : viewMode === 'home' 
           ? 'items-center justify-start h-full max-h-full overflow-hidden touch-pan-x select-none overscroll-none px-1 sm:px-4 text-center pt-[64px] md:pt-[68px] pb-16 md:pb-24' 
           : 'items-center justify-start min-h-[75vh] overflow-y-auto px-1 sm:px-4 text-center pt-[64px] md:pt-[68px] pb-16 md:pb-24'
@@ -1212,8 +1214,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         </div>
       )}
 
-      {/* Fixed Header bar with action buttons - Transparent sur fond d'écran avec ligne de séparation bien visible */}
-      <div className={`fixed top-0 left-0 right-0 md:left-64 z-40 px-3 md:px-6 py-2 h-[64px] md:h-[68px] flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${
+      {/* Fixed Header bar with action buttons - Masqué en mode super-agrandi (viewerExpandLevel >= 2) */}
+      <div className={`fixed top-0 left-0 right-0 ${viewerExpandLevel === 3 ? 'md:left-0' : 'md:left-64'} z-40 px-3 md:px-6 py-2 h-[64px] md:h-[68px] flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${
+        viewerExpandLevel >= 2 ? '!hidden pointer-events-none' : ''
+      } ${
         dashboardWallpaper && viewMode === 'home'
           ? 'bg-transparent border-b-2 border-white/50 text-white shadow-sm'
           : isDarkMode 

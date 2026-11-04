@@ -153,6 +153,8 @@ import { handleNativeShare } from '../utils/nativeShare';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
 import { applyDashboardWallpaper } from '../utils/wallpaperHelper';
 import { computeSmartMenuStyle } from '../hooks/useContextMenuPosition';
+import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -384,8 +386,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [splitResolvedPdfUrl, setSplitResolvedPdfUrl] = useState<string>('');
   const [splitResolvedAudioUrl, setSplitResolvedAudioUrl] = useState<string>('');
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const viewerExpandLevel = useViewerExpandLevel();
   const [viewerZoom, setViewerZoom] = useState(1);
   const [viewerRotation, setViewerRotation] = useState(0);
+
+  // Nettoyage complet du super agrandissement au dmontage
+  useEffect(() => {
+    return () => {
+      resetViewerExpand();
+    };
+  }, []);
 
   const activeDocReaderTarget = selectedDocFile || selectedClasseurFile || selectedCollectionFile || (selectedDownloadFile as FileItem | null);
   useEffect(() => {
@@ -570,6 +580,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setSelectedClasseurFile(null);
     setSplitSelectedFile(null);
     setIsViewerMaximized(false);
+    resetViewerExpand();
   }, [opened3DFolder]);
 
   // Identifiant du dossier parent en cas de création de sous-dossier (dossier dans dossier)
@@ -1621,22 +1632,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return () => window.removeEventListener('studycloud_download_updated', handleUpdate);
   }, []);
 
-  // Écoute de la touche Échap pour réduire le mode plein écran / agrandi
+  // Écoute de la touche Échap pour réduire le mode plein écran / agrandi progressivement
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isViewerMaximized) {
-        setIsViewerMaximized(false);
+      if (e.key === 'Escape') {
+        if (viewerExpandLevel > 1) {
+          setViewerExpandLevel((viewerExpandLevel - 1) as any);
+        } else if (isViewerMaximized || viewerExpandLevel === 1) {
+          setIsViewerMaximized(false);
+          resetViewerExpand();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isViewerMaximized]);
+  }, [viewerExpandLevel, isViewerMaximized]);
 
   // Réinitialiser le plein écran et agrandi dès que l'espace d'étude s'ouvre pour éviter toute bande noire
   useEffect(() => {
     const handleStudySpaceOpened = () => {
       setIsFullscreen(false);
       setIsViewerMaximized(false);
+      resetViewerExpand();
     };
     window.addEventListener('studycloud_open_study_space', handleStudySpaceOpened);
     return () => window.removeEventListener('studycloud_open_study_space', handleStudySpaceOpened);
@@ -10746,6 +10763,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Fonction universelle de fermeture du lecteur (ou réduction si plein écran)
   const handleCloseReader = () => {
+    resetViewerExpand();
     if (isViewerMaximized) {
       setIsViewerMaximized(false);
     } else {
@@ -10943,9 +10961,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <Share2 className="w-3.5 h-3.5" />
             </button>
 
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(1);
+                }
+              }}
               className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
                 isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               )}
@@ -11147,9 +11181,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(1);
+                }
+              }}
               className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
                 isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               )}
@@ -11665,9 +11715,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             >
               <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(1);
+                }
+              }}
               className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
                 isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               )}
@@ -11775,9 +11841,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             >
               <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(1);
+                }
+              }}
               className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
                 isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               )}

@@ -43,6 +43,8 @@ import { FileItem } from './Page1FilesMenuView';
 import { AudioCardPreview } from './AudioCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { Classeur3DFolderCard, TxtDocumentSVG } from './Folder3DModels';
+import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { ModernImageViewer } from './ModernImageViewer';
@@ -120,6 +122,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   // Lecteur / visualiseur actif sur le panneau droit (split screen comme dans les autres menus)
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const viewerExpandLevel = useViewerExpandLevel();
 
   // UN SEUL menu 3-traits actif à la fois (ferme automatiquement tout autre menu)
   const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
@@ -149,20 +152,32 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     '.studycloud-trash-menu-trigger',
   );
 
-  // Écoute de la touche Échap pour fermer le lecteur ou réduire le plein écran
+  // Réinitialiser le mode plein écran à la sortie
+  useEffect(() => {
+    return () => {
+      resetViewerExpand();
+    };
+  }, []);
+
+  // Écoute de la touche Échap pour fermer le lecteur ou réduire le plein écran à paliers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isViewerMaximized) {
+        if (viewerExpandLevel > 1) {
+          setViewerExpandLevel((viewerExpandLevel - 1) as any);
+        } else if (isViewerMaximized || viewerExpandLevel === 1) {
           setIsViewerMaximized(false);
+          resetViewerExpand();
         } else if (selectedFile) {
           setSelectedFile(null);
+          setIsViewerMaximized(false);
+          resetViewerExpand();
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isViewerMaximized, selectedFile]);
+  }, [viewerExpandLevel, isViewerMaximized, selectedFile]);
 
   // ─── SOURCE PRINCIPALE : CloudDataStore (RAM, 0ms) ─────────────────────────
   // Abonnement direct pour des mises à jour optimistes instantanées
@@ -1302,10 +1317,26 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               <span className="hidden md:inline">Supprimer</span>
             </button>
 
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             {/* Bouton Agrandir / Réduire */}
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(1);
+                }
+              }}
               className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
                 isViewerMaximized ? 'bg-rose-600 text-white border-rose-400' : 'bg-black/60 hover:bg-[#1A2338] text-white border-white/10'
               }`}
@@ -1320,6 +1351,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               onClick={() => {
                 setSelectedFile(null);
                 setIsViewerMaximized(false);
+                resetViewerExpand();
               }}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
               title="Fermer le lecteur"

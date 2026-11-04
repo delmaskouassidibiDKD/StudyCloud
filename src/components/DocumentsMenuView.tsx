@@ -57,6 +57,8 @@ import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFo
 import { handleNativeShare } from '../utils/nativeShare';
 import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
+import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 interface DocumentsMenuViewProps {
   onBack: () => void;
@@ -197,6 +199,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   const [viewerZoom, setViewerZoom] = useState(1);
   const [viewerRotation, setViewerRotation] = useState(0);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const viewerExpandLevel = useViewerExpandLevel();
 
   // État du menu 3 traits dédié à chaque document (Image 2)
   const [activeMenuDocId, setActiveMenuDocId] = useState<string | null>(null);
@@ -346,31 +349,39 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     };
   }, []);
 
+  // Réinitialiser le mode d'agrandissement au démontage du composant
+  useEffect(() => {
+    return () => {
+      resetViewerExpand();
+    };
+  }, []);
+
   // Fonction universelle de fermeture du lecteur (ou réduction si agrandi)
   const handleCloseReader = () => {
-    if (isViewerMaximized) {
-      setIsViewerMaximized(false);
-    } else {
-      setSelectedDoc(null);
-      setIsViewerMaximized(false);
-    }
+    setSelectedDoc(null);
+    setIsViewerMaximized(false);
+    resetViewerExpand();
   };
 
-  // Gestion de la touche Échap pour réduire ou fermer le lecteur de document
+  // Gestion de la touche Échap pour réduire ou fermer le lecteur de document à paliers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isViewerMaximized) {
+        if (viewerExpandLevel > 1) {
+          setViewerExpandLevel((viewerExpandLevel - 1) as any);
+        } else if (isViewerMaximized || viewerExpandLevel === 1) {
           setIsViewerMaximized(false);
+          resetViewerExpand();
         } else if (selectedDoc) {
           setSelectedDoc(null);
           setIsViewerMaximized(false);
+          resetViewerExpand();
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isViewerMaximized, selectedDoc]);
+  }, [viewerExpandLevel, isViewerMaximized, selectedDoc]);
 
   // Effacer un document dont l'enregistrement a échoué (Bouton Croix X)
   const handleDismissFailedUpload = (docId: string) => {
@@ -1962,9 +1973,25 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               </button>
             )}
 
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(1);
+                }
+              }}
               className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
                 }`}
               title={isViewerMaximized ? 'Réduire la vue' : "Agrandir dans l'espace"}
@@ -1976,7 +2003,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               type="button"
               onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur de document"}
+              title="Fermer le lecteur de document"
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>

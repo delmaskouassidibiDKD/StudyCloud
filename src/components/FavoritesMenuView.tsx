@@ -43,6 +43,8 @@ import { VideoCardPreview } from './VideoCardPreview';
 import { Classeur3DFolderCard, TxtDocumentSVG } from './Folder3DModels';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
+import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
@@ -169,6 +171,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   const [activeFilter, setActiveFilter] = useState<'all' | 'documents' | 'images' | 'videos' | 'audio' | 'classeur'>('all');
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const viewerExpandLevel = useViewerExpandLevel();
   const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
@@ -185,20 +188,32 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     '.studycloud-fav-menu-trigger',
   );
 
-  // Écoute de la touche Échap
+  // Réinitialiser le mode plein écran à la sortie
+  useEffect(() => {
+    return () => {
+      resetViewerExpand();
+    };
+  }, []);
+
+  // Écoute de la touche Échap à paliers
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (isViewerMaximized) {
+        if (viewerExpandLevel > 1) {
+          setViewerExpandLevel((viewerExpandLevel - 1) as any);
+        } else if (isViewerMaximized || viewerExpandLevel === 1) {
           setIsViewerMaximized(false);
+          resetViewerExpand();
         } else if (selectedFile) {
           setSelectedFile(null);
+          setIsViewerMaximized(false);
+          resetViewerExpand();
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isViewerMaximized, selectedFile]);
+  }, [viewerExpandLevel, isViewerMaximized, selectedFile]);
 
   // Synchronisation continue avec CloudDataStore
   useEffect(() => {
@@ -890,10 +905,26 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
               <span className="hidden sm:inline">Favori</span>
             </button>
 
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             {/* Plein écran */}
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(1);
+                }
+              }}
               className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
                 isViewerMaximized ? 'bg-amber-500 text-black border-amber-400' : 'bg-black/60 hover:bg-white/10 text-slate-300 border-white/20'
               }`}
@@ -908,6 +939,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
               onClick={() => {
                 setSelectedFile(null);
                 setIsViewerMaximized(false);
+                resetViewerExpand();
               }}
               className="p-1.5 rounded-lg bg-white/10 hover:bg-rose-600 hover:text-white text-slate-300 border border-white/20 transition-colors cursor-pointer"
               title="Fermer le lecteur"

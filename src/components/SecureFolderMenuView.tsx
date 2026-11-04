@@ -48,6 +48,8 @@ import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { Classeur3DFolderCard } from './Folder3DModels';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
+import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
@@ -144,6 +146,34 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
   // Prévisualisation multimédia latérale (comme dans la corbeille)
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const viewerExpandLevel = useViewerExpandLevel();
+
+  // Réinitialiser le mode plein écran à la sortie
+  useEffect(() => {
+    return () => {
+      resetViewerExpand();
+    };
+  }, []);
+
+  // Écoute de la touche Échap à paliers
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (viewerExpandLevel > 1) {
+          setViewerExpandLevel((viewerExpandLevel - 1) as any);
+        } else if (isViewerMaximized || viewerExpandLevel === 1) {
+          setIsViewerMaximized(false);
+          resetViewerExpand();
+        } else if (selectedFile) {
+          setSelectedFile(null);
+          setIsViewerMaximized(false);
+          resetViewerExpand();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewerExpandLevel, isViewerMaximized, selectedFile]);
 
   // Menu d'options 3 traits
   const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
@@ -923,10 +953,26 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               <span className="hidden md:inline">Corbeille</span>
             </button>
 
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             {/* Bouton Agrandir / Réduire */}
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(1);
+                }
+              }}
               className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
                 isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-[#1A2338] text-white border-white/10'
               }`}
@@ -941,6 +987,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               onClick={() => {
                 setSelectedFile(null);
                 setIsViewerMaximized(false);
+                resetViewerExpand();
               }}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-blue-600/80 hover:bg-blue-600 text-white flex items-center justify-center border border-blue-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
               title="Fermer le lecteur"

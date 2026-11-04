@@ -26,6 +26,8 @@ import { invalidateCloudQueries, queryClient, QUERY_KEYS } from '../services/que
 import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
 import { validateFilesForMesFichiersAsync } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
+import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 interface MatiereMenuViewProps {
   matiereName: string;
@@ -77,6 +79,34 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'size'>('recent');
   const [selectedFile, setSelectedFile] = useState<ImportedItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const viewerExpandLevel = useViewerExpandLevel();
+
+  // Réinitialiser le mode plein écran à la sortie
+  useEffect(() => {
+    return () => {
+      resetViewerExpand();
+    };
+  }, []);
+
+  // Écoute de la touche Échap à paliers
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (viewerExpandLevel > 1) {
+          setViewerExpandLevel((viewerExpandLevel - 1) as any);
+        } else if (isViewerMaximized || viewerExpandLevel === 1) {
+          setIsViewerMaximized(false);
+          resetViewerExpand();
+        } else if (selectedFile) {
+          setSelectedFile(null);
+          setIsViewerMaximized(false);
+          resetViewerExpand();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewerExpandLevel, isViewerMaximized, selectedFile]);
 
   // États du lecteur dédié (Lecteur Intégré, Zoom, Lecture Vocale Automatique)
   const [readerPdfViewMode, setReaderPdfViewMode] = useState<'native' | 'continuous'>('native');
@@ -833,10 +863,26 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
               </button>
             )}
 
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             {/* Plein écran */}
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(1);
+                }
+              }}
               className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
                 isViewerMaximized ? 'bg-amber-500 text-black border-amber-400' : 'bg-black/60 hover:bg-white/10 text-slate-300 border-white/20'
               }`}
@@ -851,6 +897,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
               onClick={() => {
                 setSelectedFile(null);
                 setIsViewerMaximized(false);
+                resetViewerExpand();
               }}
               className="p-1.5 rounded-lg bg-white/10 hover:bg-rose-600 hover:text-white text-slate-300 border border-white/20 transition-colors cursor-pointer"
               title="Fermer le lecteur"
