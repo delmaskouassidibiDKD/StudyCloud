@@ -1857,20 +1857,31 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                if (isViewerMaximized) {
-                  setIsViewerMaximized(false);
-                  resetViewerExpand();
+                const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+                if (isMobileScreen) {
+                  if (isViewerMaximized || viewerExpandLevel >= 2) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(3);
+                  }
                 } else {
-                  setIsViewerMaximized(true);
-                  setViewerExpandLevel(1);
+                  if (isViewerMaximized) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(1);
+                  }
                 }
               }}
               className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               }`}
-              title={isViewerMaximized ? 'Réduire la vue' : 'Plein écran'}
+              title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : 'Plein écran'}
             >
-              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+              {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
             <button
               type="button"
@@ -1924,7 +1935,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       {renderTransferFolderModal()}
 
       {/* EN-TÊTE FIXE DU MENU VIDÉOS */}
-      <header className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm ${isViewerMaximized && selectedVideo ? 'hidden' : ''}`}>
+      <header className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm ${(isViewerMaximized && selectedVideo) ? 'hidden' : (selectedVideo ? 'hidden md:block' : '')}`}>
         <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Retour et Titre */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
@@ -2024,10 +2035,10 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES VIDÉOS (IMAGE 1) */}
         <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-          isViewerMaximized && selectedVideo
+          (isViewerMaximized && selectedVideo)
             ? 'hidden'
             : selectedVideo
-              ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
               : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
         }`}>
           <div className="space-y-3 sm:space-y-4">
@@ -2140,10 +2151,10 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR VIDÉO DÉDIÉ (IMAGE 4) */}
         {selectedVideo && (
           <div className={`flex flex-col bg-[#04060A] animate-in fade-in duration-150 ${
-            isViewerMaximized && selectedVideo
+            (isViewerMaximized || selectedVideo)
               ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
               : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-          }`}>
+          } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
             {renderVideoPlayer(selectedVideo)}
           </div>
         )}

@@ -24,6 +24,8 @@ import { invalidateCloudQueries, queryClient, QUERY_KEYS } from '../services/que
 import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
 import { validateFilesForMesFichiersAsync } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
+import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 interface FilesMenuViewProps {
   onBack: () => void;
@@ -487,6 +489,13 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'size'>('recent');
   const [selectedFile, setSelectedFile] = useState<ImportedItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const viewerExpandLevel = useViewerExpandLevel();
+
+  useEffect(() => {
+    if (viewerExpandLevel >= 2) {
+      if (!isViewerMaximized) setIsViewerMaximized(true);
+    }
+  }, [viewerExpandLevel]);
 
   // États du lecteur dédié (Lecteur Intégré, Zoom, Lecture Vocale Automatique)
   const [readerPdfViewMode, setReaderPdfViewMode] = useState<'native' | 'continuous'>('native');
@@ -1252,16 +1261,43 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
               </button>
             )}
 
+            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {(isViewerMaximized || viewerExpandLevel >= 1) && (
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+            )}
+
             {/* Plein écran */}
             <button
               type="button"
-              onClick={() => setIsViewerMaximized(!isViewerMaximized)}
-              className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
-                isViewerMaximized ? 'bg-amber-500 text-black border-amber-400' : 'bg-black/60 hover:bg-white/10 text-slate-300 border-white/20'
+              onClick={() => {
+                const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+                if (isMobileScreen) {
+                  if (isViewerMaximized || viewerExpandLevel >= 2) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(3);
+                  }
+                } else {
+                  if (isViewerMaximized) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(1);
+                  }
+                }
+              }}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               }`}
-              title={isViewerMaximized ? 'Réduire' : 'Plein écran'}
+              title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire' : 'Plein écran'}
             >
-              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+              {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
 
             {/* Fermer */}
@@ -1270,6 +1306,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
               onClick={() => {
                 setSelectedFile(null);
                 setIsViewerMaximized(false);
+                resetViewerExpand();
               }}
               className="p-1.5 rounded-lg bg-white/10 hover:bg-rose-600 hover:text-white text-slate-300 border border-white/20 transition-colors cursor-pointer"
               title="Fermer le lecteur"
@@ -2259,7 +2296,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         onChange={handleFileChange} 
       />
       <div className={`fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2 ${
-        isViewerMaximized && selectedFile ? 'hidden' : ''
+        (isViewerMaximized && selectedFile) ? 'hidden' : (selectedFile ? 'hidden md:flex' : '')
       }`}>
         {/* GAUCHE : Bouton Retour */}
         <div className="flex flex-col items-start gap-1 pointer-events-auto shrink-0">
@@ -2645,10 +2682,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       } flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0 h-full`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FICHIERS */}
         <div className={`overflow-y-auto px-2 sm:px-4 pt-1 pb-24 transition-all duration-200 ${
-          isViewerMaximized && selectedFile
+          (isViewerMaximized && selectedFile)
             ? 'hidden'
             : selectedFile
-            ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 h-full min-h-0 border-b md:border-b-0 md:border-r border-stone-400/40 dark:border-slate-800'
+            ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 h-full min-h-0 border-b md:border-b-0 md:border-r border-stone-400/40 dark:border-slate-800'
             : 'w-full max-w-7xl mx-auto'
         }`}>
           {filteredFiles.length === 0 ? (
@@ -3320,10 +3357,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         {selectedFile && (
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 h-full min-h-0 ${
-              isViewerMaximized
+              (isViewerMaximized || selectedFile)
                 ? 'w-full flex-1 rounded-xl border border-white/10'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-400/40 dark:border-slate-800 rounded-xl'
-            }`}
+            } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>

@@ -913,24 +913,35 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
               />
             )}
 
-            {/* Plein écran */}
+            {/* Bouton Agrandir / Réduire */}
             <button
               type="button"
               onClick={() => {
-                if (isViewerMaximized) {
-                  setIsViewerMaximized(false);
-                  resetViewerExpand();
+                const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+                if (isMobileScreen) {
+                  if (isViewerMaximized || viewerExpandLevel >= 2) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(3);
+                  }
                 } else {
-                  setIsViewerMaximized(true);
-                  setViewerExpandLevel(1);
+                  if (isViewerMaximized) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(1);
+                  }
                 }
               }}
-              className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
-                isViewerMaximized ? 'bg-amber-500 text-black border-amber-400' : 'bg-black/60 hover:bg-white/10 text-slate-300 border-white/20'
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               }`}
-              title={isViewerMaximized ? 'Réduire' : 'Plein écran'}
+              title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : 'Plein écran'}
             >
-              {isViewerMaximized ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+              {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
 
             {/* Fermer */}
@@ -1050,7 +1061,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   return (
     <div className="flex-1 flex flex-col w-full min-h-screen bg-stone-100 dark:bg-[#070A13] text-stone-900 dark:text-slate-100 select-none animate-in fade-in duration-150">
       {/* EN-TÊTE FIXE DU MENU FAVORIS */}
-      <header className={`sticky top-0 z-30 w-full bg-stone-100/95 dark:bg-[#070A13]/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 dark:border-white/10 shadow-sm ${isViewerMaximized && selectedFile ? 'hidden' : ''}`}>
+      <header className={`sticky top-0 z-30 w-full bg-stone-100/95 dark:bg-[#070A13]/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 dark:border-white/10 shadow-sm ${(isViewerMaximized && selectedFile) ? 'hidden' : (selectedFile ? 'hidden md:block' : '')}`}>
         <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour et Titre Favoris */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
@@ -1144,10 +1155,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         {/* PANNEAU DE GAUCHE : LISTE DES FAVORIS */}
         <main
           className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-            isViewerMaximized && selectedFile
+            (isViewerMaximized && selectedFile)
               ? 'hidden'
               : selectedFile
-              ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
               : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
           }`}
         >
@@ -1283,10 +1294,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         {selectedFile && (
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${
-              isViewerMaximized
+              (isViewerMaximized || selectedFile)
                 ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 dark:border-stone-800'
-            }`}
+            } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>

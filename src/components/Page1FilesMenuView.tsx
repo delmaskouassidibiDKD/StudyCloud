@@ -10972,20 +10972,31 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <button
               type="button"
               onClick={() => {
-                if (isViewerMaximized) {
-                  setIsViewerMaximized(false);
-                  resetViewerExpand();
+                const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+                if (isMobileScreen) {
+                  if (isViewerMaximized || viewerExpandLevel >= 2) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(3);
+                  }
                 } else {
-                  setIsViewerMaximized(true);
-                  setViewerExpandLevel(1);
+                  if (isViewerMaximized) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(1);
+                  }
                 }
               }}
               className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
-                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               )}
-              title={isViewerMaximized ? "Réduire la vue" : "Agrandir l'espace d'écriture"}
+              title={(isViewerMaximized || viewerExpandLevel >= 2) ? "Réduire la vue" : "Agrandir l'espace d'écriture"}
             >
-              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+              {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
 
             <button
@@ -11192,20 +11203,31 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <button
               type="button"
               onClick={() => {
-                if (isViewerMaximized) {
-                  setIsViewerMaximized(false);
-                  resetViewerExpand();
+                const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+                if (isMobileScreen) {
+                  if (isViewerMaximized || viewerExpandLevel >= 2) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(3);
+                  }
                 } else {
-                  setIsViewerMaximized(true);
-                  setViewerExpandLevel(1);
+                  if (isViewerMaximized) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(1);
+                  }
                 }
               }}
               className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
-                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               )}
-              title={isViewerMaximized ? "Réduire la vue" : "Agrandir dans l'espace"}
+              title={(isViewerMaximized || viewerExpandLevel >= 2) ? "Réduire la vue" : "Agrandir dans l'espace"}
             >
-              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+              {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
 
             <button
@@ -11726,20 +11748,31 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <button
               type="button"
               onClick={() => {
-                if (isViewerMaximized) {
-                  setIsViewerMaximized(false);
-                  resetViewerExpand();
+                const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+                if (isMobileScreen) {
+                  if (isViewerMaximized || viewerExpandLevel >= 2) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(3);
+                  }
                 } else {
-                  setIsViewerMaximized(true);
-                  setViewerExpandLevel(1);
+                  if (isViewerMaximized) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(1);
+                  }
                 }
               }}
               className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
-                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               )}
-              title={isViewerMaximized ? "Réduire la vue" : "Plein écran"}
+              title={(isViewerMaximized || viewerExpandLevel >= 2) ? "Réduire la vue" : "Plein écran"}
             >
-              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+              {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
             <button
               type="button"
@@ -11852,20 +11885,31 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <button
               type="button"
               onClick={() => {
-                if (isViewerMaximized) {
-                  setIsViewerMaximized(false);
-                  resetViewerExpand();
+                const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+                if (isMobileScreen) {
+                  if (isViewerMaximized || viewerExpandLevel >= 2) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(3);
+                  }
                 } else {
-                  setIsViewerMaximized(true);
-                  setViewerExpandLevel(1);
+                  if (isViewerMaximized) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(1);
+                  }
                 }
               }}
               className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
-                isViewerMaximized ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               )}
-              title={isViewerMaximized ? "Réduire la vue" : "Plein écran"}
+              title={(isViewerMaximized || viewerExpandLevel >= 2) ? "Réduire la vue" : "Plein écran"}
             >
-              {isViewerMaximized ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+              {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
             <button
               type="button"
@@ -12149,7 +12193,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           
           {/* EN-TÊTE DU SOUS-MENU */}
           <div className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-xs ${
-            isViewerMaximized ? 'hidden' : ''
+            isViewerMaximized ? 'hidden' : ((selectedDocFile || selectedVideoFile || selectedImageFile || selectedAudioTrack || selectedDownloadFile || selectedClasseurFile || selectedCollectionFile || splitSelectedFile) ? 'hidden md:block' : '')
           }`}>
             {(opened3DFolder && !isCloudView) ? (
               /* EN-TÊTE DU DOSSIER 3D OUVERT (Conforme à la demande : bande blanche, boutons noirs et champ en noir) */
@@ -12562,7 +12606,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {/* ========================================================================= */}
           {isCloudView && (
             <div className={`w-full bg-[#EAECEF] dark:bg-[#070B14] border-b border-stone-300/80 dark:border-white/10 px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 sm:py-3 select-none ${
-              isViewerMaximized ? 'hidden' : ''
+              isViewerMaximized ? 'hidden' : ((selectedDocFile || selectedVideoFile || selectedImageFile || selectedAudioTrack || selectedDownloadFile || selectedClasseurFile || selectedCollectionFile || splitSelectedFile) ? 'hidden md:block' : '')
             }`}>
               <div className="relative flex items-center">
                 {/* Flèche gauche pour défilement rapide sur grand écran */}
@@ -12709,7 +12753,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedDocFile
-                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-3 sm:space-y-4">
@@ -12765,10 +12809,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* PANNEAU DE DROITE : LECTEUR DOCUMENT INDÉPENDANT (IMAGE 1) */}
               {selectedDocFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  isViewerMaximized 
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  (isViewerMaximized || selectedDocFile)
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                }`}>
+                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderDocumentReader(selectedDocFile)}
                 </div>
               )}
@@ -13041,7 +13085,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedVideoFile
-                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-3 sm:space-y-4">
@@ -13096,10 +13140,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* PANNEAU DE DROITE : LECTEUR VIDÉO INDÉPENDANT (IMAGE 4) */}
               {selectedVideoFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  isViewerMaximized 
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  (isViewerMaximized || selectedVideoFile)
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                }`}>
+                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderVideoPlayer(selectedVideoFile)}
                 </div>
               )}
@@ -13114,7 +13158,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedImageFile
-                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-3 sm:space-y-4">
@@ -13169,10 +13213,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* PANNEAU DE DROITE : LECTEUR IMAGE INDÉPENDANT (IMAGE 5) */}
               {selectedImageFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  isViewerMaximized 
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  (isViewerMaximized || selectedImageFile)
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                }`}>
+                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderImageViewer(selectedImageFile)}
                 </div>
               )}
@@ -13187,7 +13231,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedDownloadFile
-                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-6">
@@ -13302,10 +13346,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* PANNEAU DE DROITE : LECTEUR INDÉPENDANT */}
               {selectedDownloadFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  isViewerMaximized 
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  (isViewerMaximized || selectedDownloadFile)
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                }`}>
+                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderDownloadReader(selectedDownloadFile)}
                 </div>
               )}
@@ -13320,7 +13364,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 isViewerMaximized 
                   ? 'hidden' 
                   : opened3DFolder && selectedClasseurFile 
-                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="w-full">
@@ -13640,10 +13684,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* PANNEAU DE DROITE : LECTEUR LORSQU'UN FICHIER DU DOSSIER EST OUVERT */}
               {opened3DFolder && selectedClasseurFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  isViewerMaximized 
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  (isViewerMaximized || selectedClasseurFile)
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                }`}>
+                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderClasseurFileReader(selectedClasseurFile)}
                 </div>
               )}
@@ -13674,7 +13718,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedCollectionFile
-                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-4">
@@ -13726,10 +13770,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
               {selectedCollectionFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  isViewerMaximized 
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  (isViewerMaximized || selectedCollectionFile)
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                }`}>
+                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderCollectionReader(selectedCollectionFile)}
                 </div>
               )}
@@ -13743,7 +13787,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedCollectionFile
-                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-4 animate-in fade-in duration-200">
@@ -13813,10 +13857,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
               {selectedCollectionFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  isViewerMaximized 
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  (isViewerMaximized || selectedCollectionFile)
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                }`}>
+                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderCollectionReader(selectedCollectionFile)}
                 </div>
               )}
@@ -13830,7 +13874,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedCollectionFile
-                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-4 animate-in fade-in duration-200">
@@ -13929,10 +13973,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
               {selectedCollectionFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  isViewerMaximized 
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
+                  (isViewerMaximized || selectedCollectionFile)
+                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                }`}>
+                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderCollectionReader(selectedCollectionFile)}
                 </div>
               )}

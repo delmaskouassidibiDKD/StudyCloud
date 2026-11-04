@@ -44,7 +44,7 @@ export const ViewerSuperExpandButton: React.FC<ViewerSuperExpandButtonProps> = (
     <button
       type="button"
       onClick={handleNextStep}
-      className={`h-7 sm:h-8 px-2 sm:px-2.5 rounded-full flex items-center gap-1.5 border transition-all cursor-pointer shadow-md active:scale-95 animate-in fade-in zoom-in-95 duration-200 select-none ${
+      className={`hidden md:flex h-7 sm:h-8 px-2 sm:px-2.5 rounded-full items-center gap-1.5 border transition-all cursor-pointer shadow-md active:scale-95 animate-in fade-in zoom-in-95 duration-200 select-none ${
         activeLevel === 3
           ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white border-emerald-400/80 shadow-emerald-500/20 ring-2 ring-emerald-400/30'
           : activeLevel === 2
