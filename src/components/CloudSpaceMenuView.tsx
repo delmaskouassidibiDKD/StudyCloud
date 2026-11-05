@@ -1279,17 +1279,24 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   // =========================================================================
   // CARTE FICHIER DANS UN DOSSIER CLASSEUR (REFLET À L'IDENTIQUE DU CLASSEUR)
   // =========================================================================
-  const renderClasseurCard = (doc: FileItem, _index: number) => {
-    return renderDocumentCard(doc, _index);
+  const renderClasseurCard = (file: FileItem, index: number) => {
+    const ext = (file.extension || (file.name.includes('.') ? file.name.split('.').pop() || '' : '')).toLowerCase();
+    const isImage = file.category === 'images' || (file as any).isImage || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'bmp', 'ico'].includes(ext);
+    const isVideo = !isImage && (file.category === 'videos' || (file as any).isVideo || ['mp4', 'webm', 'mov', 'avi', 'mkv', '3gp'].includes(ext));
+    const isAudio = !isImage && !isVideo && (file.category === 'audio' || (file as any).isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes(ext));
+
+    if (isImage) return renderImageCard(file, index);
+    if (isVideo) return renderVideoCard(file, index);
+    if (isAudio) return renderAudioCard(file, index);
+    return renderDocumentCard(file, index);
   };
 
   // =========================================================================
-  // CARTE DOCUMENT STANDARD
+  // CARTE DOCUMENT STANDARD (IDENTIQUE AU MENU DOCUMENTS)
   // =========================================================================
   const renderDocumentCard = (doc: FileItem, index: number) => {
     const isMenuOpen = activeMenuFileId === doc.id;
     const isSelected = viewerFile?.id === doc.id;
-    const alignRight = (index + 1) % 2 === 0 || (index + 1) % 4 === 0;
     const docExt = doc.extension || (doc.name.includes('.') ? doc.name.split('.').pop() || 'PDF' : 'PDF');
     const theme = getDocumentTheme(docExt);
 
@@ -1297,50 +1304,66 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       <div
         key={doc.id}
         onClick={() => setViewerFile(doc)}
-        className={`aspect-[3/4] rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between transition-all relative group select-none cursor-pointer active:scale-98 shadow-md ${
+        className={`aspect-[3/4] ${theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
           isMenuOpen
             ? 'overflow-visible z-[100] ring-2 ring-amber-400 border-amber-300'
             : isSelected
             ? 'z-40 ring-2 ring-sky-400 border-sky-400 shadow-[0_0_15px_rgba(56,189,248,0.5)] scale-[1.02] overflow-hidden'
-            : `${theme.border} ${theme.shadow} overflow-hidden z-10`
+            : 'hover:scale-[1.01] shadow-md cursor-pointer active:scale-98 overflow-hidden z-10'
         }`}
         style={{
           background: theme.bg
         }}
       >
-        <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} flex items-center justify-between gap-1`}>
-          <div className={`relative studycloud-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
-            <button
-              type="button"
-              id={`cloud-doc3-trigger-${doc.id}`}
-              onClick={(e) => {
-                e.stopPropagation();
-                setActiveMenuFileId(prev => (prev === doc.id ? null : doc.id));
-              }}
-              className="p-1 sm:p-1.5 rounded-lg bg-black/50 hover:bg-black/80 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-sm"
-              title="Options du document (3 traits)"
-            >
-              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-            </button>
-            {renderOptionsMenu(doc, document.getElementById(`cloud-doc3-trigger-${doc.id}`))}
+        {/* Barre supérieure : Bouton 3 traits, Badges & Taille */}
+        <div className="flex items-center justify-between gap-1 z-20 relative">
+          <div className="flex items-center gap-1 sm:gap-1.5">
+            <div className="relative studycloud-menu-trigger">
+              <button
+                type="button"
+                id={`cloud-doc3-trigger-${doc.id}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenuFileId(prev => (prev === doc.id ? null : doc.id));
+                }}
+                className="p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/40 text-white border border-white/20 transition-all flex items-center justify-center shadow-sm hover:bg-black/70 cursor-pointer active:scale-90"
+                title="Options du document (3 traits)"
+              >
+                <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
+              </button>
+              {renderOptionsMenu(doc, document.getElementById(`cloud-doc3-trigger-${doc.id}`))}
+            </div>
+            {doc.isPinned && (
+              <span className="p-0.5 rounded bg-black/60 text-purple-300 border border-purple-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
+                <Pin className="w-2.5 h-2.5 sm:w-3 sm:h-3 rotate-45" />
+              </span>
+            )}
+            {doc.isFavorite && (
+              <span className="p-0.5 rounded bg-black/60 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+                <Star className="w-2.5 h-2.5 sm:w-3 sm:h-3 fill-amber-400 text-amber-400" />
+              </span>
+            )}
           </div>
-          <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/50 text-white border border-white/20 px-1.5 py-0.5 rounded shadow-sm">
+          <span className="text-[7px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1 sm:px-1.5 py-0.5 rounded shadow-sm">
             {doc.size || 'Document'}
           </span>
         </div>
 
-        <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
+        {/* Corps de carte / aperçu réel du document */}
+        <div className="flex-1 w-full my-1 sm:my-1.5 overflow-hidden rounded-lg bg-white relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
           <DocumentCardPreview doc={doc} />
         </div>
 
-        <div className="px-0.5 mb-1 relative z-10">
-          <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={doc.name}>
+        {/* Titre unique : un seul nom en bas */}
+        <div className="px-0.5 mb-0.5 sm:mb-1">
+          <p className="text-[8px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={doc.name}>
             {doc.name}
           </p>
         </div>
 
-        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1 relative z-10">
-          <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
+        {/* Pied de carte : typeBadge et bouton télécharger */}
+        <div className="flex items-center justify-between pt-0.5 sm:pt-1 border-t border-white/20 gap-1 relative z-10">
+          <span className={`text-[6.5px] sm:text-[8px] font-black px-1 sm:px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
             {theme.typeBadge}
           </span>
           <button
@@ -1349,7 +1372,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
               e.stopPropagation();
               handleDownloadFile(doc);
             }}
-            className="p-1 sm:p-1.2 bg-orange-500 hover:bg-orange-600 text-white rounded border border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:scale-95"
+            className="p-0.5 sm:p-1.2 bg-orange-500 hover:bg-orange-600 text-white rounded border border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:scale-95"
             title="Télécharger"
           >
             <Download className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
@@ -2147,21 +2170,21 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                       setViewerFile(null);
                       setIsViewerMaximized(false);
                     }}
-                    className={`group relative flex items-center gap-2.5 px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl transition-all duration-200 cursor-pointer active:scale-95 shrink-0 ${
+                    className={`group relative flex items-center gap-1.5 sm:gap-2.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl transition-all duration-200 cursor-pointer active:scale-95 shrink-0 ${
                       isSelected
                         ? 'bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] text-white border border-orange-300 ring-2 ring-orange-400/60 shadow-[0_4px_22px_rgba(184,72,12,0.65)] scale-[1.02]'
                         : 'bg-[#182032] hover:bg-[#222c44] text-white border border-stone-700/50 hover:border-orange-400/40 opacity-90 hover:opacity-100'
                     }`}
                     title="Classeur d'études"
                   >
-                    <div className="p-1.5 sm:p-2 rounded-xl bg-black/40 border border-white/20 shrink-0">
-                      <FolderArchive className="w-4 h-4 sm:w-5 sm:h-5 text-orange-400 stroke-[2.2]" />
+                    <div className="p-1 sm:p-1.5 rounded-lg sm:rounded-xl bg-black/40 border border-white/20 shrink-0">
+                      <FolderArchive className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-orange-400 stroke-[2.2]" />
                     </div>
                     <div className="text-left">
-                      <span className="text-xs sm:text-sm font-black text-white tracking-wide block leading-tight">
+                      <span className="text-[11px] sm:text-xs font-black text-white tracking-wide block leading-tight">
                         Classeur
                       </span>
-                      <span className="text-[10px] sm:text-[11px] text-orange-200 font-bold block leading-tight">
+                      <span className="text-[9px] sm:text-[10px] text-orange-200 font-bold block leading-tight">
                         {item.countBadge}
                       </span>
                     </div>
@@ -2180,21 +2203,21 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                     setViewerFile(null);
                     setIsViewerMaximized(false);
                   }}
-                  className={`shrink-0 flex items-center gap-2.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 border ${
+                  className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 border ${
                     isSelected
                       ? 'bg-[#0E1726] border-sky-400 text-white ring-2 ring-sky-400/80 shadow-[0_0_15px_rgba(56,189,248,0.35)] scale-[1.02]'
                       : 'bg-[#182032] hover:bg-[#222c44] border-stone-700/50 text-white hover:border-stone-500 shadow-sm'
                   }`}
                   title={item.name}
                 >
-                  <div className={`p-1.5 sm:p-2 rounded-xl bg-black/50 border border-white/10 ${item.color} shrink-0`}>
-                    <Icon className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+                  <div className={`p-1 sm:p-1.5 rounded-lg sm:rounded-xl bg-black/50 border border-white/10 ${item.color} shrink-0`}>
+                    <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                   </div>
                   <div className="text-left">
-                    <span className="text-xs sm:text-sm font-bold text-white tracking-wide block leading-tight">
+                    <span className="text-[11px] sm:text-xs font-bold text-white tracking-wide block leading-tight">
                       {item.name}
                     </span>
-                    <span className="text-[10px] sm:text-[11px] text-slate-300 font-medium block leading-tight">
+                    <span className="text-[9px] sm:text-[10px] text-slate-300 font-medium block leading-tight">
                       {item.countBadge}
                     </span>
                   </div>
@@ -2305,7 +2328,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                     </p>
                   </div>
                 ) : (
-                  <div className={`grid ${gridColsClass} gap-2 sm:gap-4 transition-all duration-200 w-full`}>
+                  <div className={`grid ${gridColsClass} gap-2 sm:gap-3.5 items-start transition-all duration-200 w-full`}>
                     {filteredClasseurFolders.map(folder => renderClasseurFolderCard(folder))}
                   </div>
                 )
@@ -2318,7 +2341,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   {classeurSubFolders.length > 0 && (
                     <div className="space-y-2">
                       <p className="text-[11px] font-bold text-stone-700 uppercase tracking-wider">Sous-dossiers</p>
-                      <div className={`grid ${gridColsClass} gap-2 sm:gap-4 transition-all duration-200 w-full`}>
+                      <div className={`grid ${gridColsClass} gap-2 sm:gap-3.5 items-start transition-all duration-200 w-full`}>
                         {classeurSubFolders.map(f => renderClasseurFolderCard(f))}
                       </div>
                     </div>
@@ -2330,7 +2353,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                       {classeurSubFolders.length > 0 && (
                         <p className="text-[11px] font-bold text-stone-700 uppercase tracking-wider">Documents</p>
                       )}
-                      <div className={`grid ${gridColsClass} gap-2 sm:gap-4 transition-all duration-200 w-full`}>
+                      <div className={`grid ${gridColsClass} gap-2 sm:gap-3.5 items-start transition-all duration-200 w-full`}>
                         {classeurFolderFiles.map((doc, idx) => renderClasseurCard(doc, idx))}
                       </div>
                     </div>
@@ -2361,8 +2384,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold text-stone-800">Aucun fichier téléchargé pour le moment</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
-                  {filteredDownloads.map((doc: any, idx) => renderDocumentCard(doc, idx))}
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-3.5 items-start`}>
+                  {filteredDownloads.map((doc: any, idx) => renderClasseurCard(doc, idx))}
                 </div>
               )}
             </div>
@@ -2383,7 +2406,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold text-stone-800">Aucune image stockée pour le moment</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-3.5 items-start`}>
                   {filteredImages.map((img, idx) => renderImageCard(img, idx))}
                 </div>
               )}
@@ -2405,7 +2428,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold text-stone-800">Aucune vidéo enregistrée pour le moment</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-3.5 items-start`}>
                   {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
                 </div>
               )}
@@ -2427,7 +2450,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold text-stone-800">Aucune piste audio enregistrée pour le moment</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-3.5 items-start`}>
                   {filteredAudio.map((aud, idx) => renderAudioCard(aud, idx))}
                 </div>
               )}
@@ -2449,7 +2472,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold text-stone-800">Aucun document publié pour le moment</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-3.5 items-start`}>
                   {filteredDocuments.map((doc, idx) => renderDocumentCard(doc, idx))}
                 </div>
               )}
@@ -2489,7 +2512,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-xs text-stone-500">Ajoutez des fichiers en favoris avec le menu 3 traits</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-3.5 items-start`}>
                   {filteredFavorites.map((file, idx) => {
                     if (file.category === 'images' || (file as any).isImage) return renderImageCard(file, idx);
                     if (file.category === 'videos' || (file as any).isVideo) return renderVideoCard(file, idx);
@@ -2653,7 +2676,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                       <p className="text-xs text-stone-500">Déplacez des fichiers confidentiels ici avec le menu 3 traits</p>
                     </div>
                   ) : (
-                    <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
+                    <div className={`grid ${gridColsClass} gap-2 sm:gap-3.5 items-start`}>
                       {displayedSecureFiles.map((file, idx) => {
                         const ext = (file.extension || file.name.split('.').pop() || '').toLowerCase();
                         const isAudio = file.category === 'audio' || (file as any).isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes(ext);
@@ -2689,7 +2712,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                   <p className="text-sm font-bold">La corbeille est vide</p>
                 </div>
               ) : (
-                <div className={`grid ${gridColsClass} gap-2 sm:gap-4`}>
+                <div className={`grid ${gridColsClass} gap-2 sm:gap-3.5 items-start`}>
                   {filteredTrash.map((file, idx) => {
                     if (file.category === 'images' || (file as any).isImage) return renderImageCard(file, idx);
                     if (file.category === 'videos' || (file as any).isVideo) return renderVideoCard(file, idx);

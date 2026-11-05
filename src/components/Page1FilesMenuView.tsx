@@ -7307,169 +7307,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 setDragOverFileId(null);
               };
 
-              if (false && isTxtNote) {
-                return (
-                  <div
-                    key={file.id}
-                    draggable={!isSelectionMode && !isSaving && sortedFiles.length > 1}
-                    onDragStart={(e) => {
-                      if (sortedFiles.length <= 1) {
-                        e.preventDefault();
-                        return;
-                      }
-                      e.stopPropagation();
-                      e.dataTransfer.setData('text/plain', file.id);
-                      e.dataTransfer.setData('application/studycloud-file', file.id);
-                      e.dataTransfer.effectAllowed = 'move';
-                      setDraggedFileId(file.id);
-                    }}
-                    onDragOver={(e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (draggedFileId && draggedFileId !== file.id) {
-                        setDragOverFileId(file.id);
-                      }
-                    }}
-                    onDragLeave={() => {
-                      if (dragOverFileId === file.id) setDragOverFileId(null);
-                    }}
-                    onDrop={handleFileDrop}
-                    onDragEnd={() => {
-                      setDraggedFileId(null);
-                      setDragOverFileId(null);
-                    }}
-                    onClick={() => {
-                      if (isSaving) {
-                        showToast("Enregistrement du fichier en cours... Veuillez patienter.");
-                        return;
-                      }
-                      if (isSelectionMode) {
-                        toggleItemSelection(file.id);
-                        return;
-                      }
-                      handleSelectFile(file);
-                    }}
-                    className={`group relative aspect-[3/4] p-2 sm:p-2.5 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none w-full ${
-                      isSaving ? 'cursor-wait' : 'cursor-pointer'
-                    } ${
-                      isBeingDragged
-                        ? 'opacity-30 scale-95 border-dashed border-cyan-400 bg-cyan-500/10 cursor-grabbing'
-                        : isDropTarget
-                        ? 'border-cyan-400 ring-4 ring-cyan-400/50 scale-[1.03]'
-                        : isChecked
-                        ? 'border-amber-400 ring-2 ring-amber-400/50 bg-[#14233C]'
-                        : isSelected
-                        ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-[#14233C]'
-                        : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1'
-                    } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
-                  >
-                    {/* Petit trait en haut collé à la carte qui se remplit pendant l'enregistrement */}
-                    {isSaving && (
-                      <div className="absolute top-0 inset-x-0 h-1.5 bg-black/50 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
-                        <div 
-                          className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
-                          style={{ width: `${progressVal}%` }}
-                        />
-                      </div>
-                    )}
-
-                    {/* Overlay d'enregistrement */}
-                    {isSaving && (
-                      <div className="absolute inset-0 z-30 bg-black/75 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-white pointer-events-none rounded-2xl animate-fadeIn">
-                        <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1.5" />
-                        <span className="text-[10px] font-black text-emerald-300 tracking-wider">
-                          {progressVal}%
-                        </span>
-                        <span className="text-[8px] font-bold text-white/90 text-center leading-tight">
-                          Enregistrement...
-                        </span>
-                      </div>
-                    )}
-                    {/* Haut de carte : Case à cocher, Badge TXT et Bouton 3 traits */}
-                    <div className="flex items-center justify-between w-full mb-1">
-                      <div className="flex items-center gap-1.5">
-                        {isSelectionMode && (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              toggleItemSelection(file.id);
-                            }}
-                            className="p-0.5 text-white hover:scale-110 transition-transform cursor-pointer"
-                            title={isChecked ? "Décocher" : "Cocher"}
-                          >
-                            {isChecked ? (
-                              <CheckSquare className="w-4 h-4 fill-amber-400 text-stone-950" />
-                            ) : (
-                              <Square className="w-4 h-4 text-white/90" />
-                            )}
-                          </button>
-                        )}
-                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                          TXT
-                        </span>
-                        {file.isPinned && (
-                          <span className="p-0.5 rounded bg-black/60 text-blue-300 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
-                            <Pin className="w-3 h-3 rotate-45" />
-                          </span>
-                        )}
-                        {file.isFavorite && (
-                          <span className="p-0.5 rounded bg-black/60 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
-                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                          </span>
-                        )}
-                      </div>
-
-                      <div 
-                        className="relative studycloud-menu-trigger"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        <button
-                          type="button"
-                          id={`p1-file-trigger-${file.id}`}
-                          disabled={isSelectionMode || selectedItemIds.length > 0}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (isSelectionMode || selectedItemIds.length > 0) return;
-                            setActiveMenuFileId(isMenuOpen ? null : file.id);
-                          }}
-                          className={`p-1 sm:p-1.5 rounded-lg bg-black/75 text-white border transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
-                            isSelectionMode || selectedItemIds.length > 0
-                              ? 'opacity-20 cursor-not-allowed pointer-events-none'
-                              : isMenuOpen
-                              ? 'border-cyan-400 ring-2 ring-cyan-400/50 opacity-100 bg-black cursor-pointer active:scale-90'
-                              : 'border-white/30 opacity-90 group-hover:opacity-100 hover:bg-black cursor-pointer active:scale-90'
-                          }`}
-                          title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options de la note (3 traits)"}
-                        >
-                          <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-                        </button>
-
-                        {/* Menu de propositions identique pour les fichiers */}
-                        {!isSelectionMode && selectedItemIds.length === 0 && renderFileOptionsMenu(file, allOpenedFolderItems, 'right', typeof document !== 'undefined' ? document.getElementById(`p1-file-trigger-${file.id}`) : null)}
-                      </div>
-                    </div>
-
-                    {/* Illustration TXT Conforme au format compact Documents */}
-                    <div className="w-full flex-1 flex items-center justify-center py-1 min-h-0">
-                      <div className="w-14 sm:w-16 aspect-[160/215] drop-shadow-md group-hover:scale-105 transition-transform duration-200">
-                        <TxtDocumentSVG />
-                      </div>
-                    </div>
-
-                    {/* Bas de carte : Titre et détails */}
-                    <div className="p-1 sm:p-1.5 flex flex-col justify-between bg-black/30 rounded-xl mt-1">
-                      <p className="text-[10px] sm:text-[11px] font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={file.name}>
-                        {file.name}
-                      </p>
-                      <div className="flex items-center justify-between text-[9px] text-slate-400 mt-0.5">
-                        <span className="truncate">{file.size || '0 o'}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-
               // Autre fichier importé : rendu officiel selon le type (Images, Vidéos, Audio, Documents)
               const ext = (file.name || '').includes('.') ? (file.name || '').split('.').pop()?.toLowerCase() || '' : '';
               const detectedCat = detectFileCategory(file);
@@ -12666,17 +12503,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       setSecurePinInput('');
                       setSecurePinError(null);
                     }}
-                    className={`shrink-0 flex items-center gap-2.5 px-4 sm:px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] hover:from-[#D15C1B] hover:via-[#C55010] hover:to-[#AC430A] text-white border border-orange-500/40 transition-all duration-200 cursor-pointer active:scale-95 shadow-md ${
+                    className={`shrink-0 flex items-center gap-1.5 sm:gap-2.5 px-2.5 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] hover:from-[#D15C1B] hover:via-[#C55010] hover:to-[#AC430A] text-white border border-orange-500/40 transition-all duration-200 cursor-pointer active:scale-95 shadow-md ${
                       cloudActiveTab === 'classeur'
                         ? 'ring-2 ring-orange-300 ring-offset-2 ring-offset-[#070B14] shadow-[0_4px_20px_rgba(194,84,22,0.55)] scale-[1.02]'
                         : 'opacity-85 hover:opacity-100'
                     }`}
                     title="Classeur"
                   >
-                    <div className="p-1.5 sm:p-2 rounded-xl bg-black/40 border border-white/20 shrink-0">
-                      <FolderArchive className="w-4 h-4 sm:w-5 sm:h-5 text-white stroke-[2.2]" />
+                    <div className="p-1 sm:p-1.5 rounded-lg sm:rounded-xl bg-black/40 border border-white/20 shrink-0">
+                      <FolderArchive className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-white stroke-[2.2]" />
                     </div>
-                    <span className="text-xs sm:text-sm font-black text-white tracking-wide">
+                    <span className="text-[11px] sm:text-xs font-black text-white tracking-wide leading-tight">
                       Classeur
                     </span>
                   </button>
@@ -12719,24 +12556,24 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           setSecurePinInput('');
                           setSecurePinError(null);
                         }}
-                        className={`shrink-0 flex items-center gap-2.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 border ${
+                        className={`shrink-0 flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 border ${
                           isSelected
                             ? 'bg-[#0E1726] border-sky-400 text-white ring-2 ring-sky-400/80 shadow-[0_0_15px_rgba(56,189,248,0.35)] scale-[1.02]'
                             : 'bg-[#04060A] hover:bg-[#0A0E18] border-white/10 text-white hover:border-white/25 shadow-sm'
                         }`}
                         title={item.name}
                       >
-                        <div className={`p-1.5 sm:p-2 rounded-xl bg-black border border-white/10 shrink-0 ${item.color}`}>
-                          <Icon className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.2]" />
+                        <div className={`p-1 sm:p-1.5 rounded-lg sm:rounded-xl bg-black border border-white/10 shrink-0 ${item.color}`}>
+                          <Icon className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
                         </div>
                         <div className="text-left min-w-0">
-                          <div className={`text-xs sm:text-sm font-black whitespace-nowrap transition-colors ${
+                          <div className={`text-[11px] sm:text-xs font-black whitespace-nowrap transition-colors leading-tight ${
                             isSelected ? 'text-sky-300' : 'text-white'
                           }`}>
                             {item.name}
                           </div>
                           {item.subtitle && (
-                            <div className="text-[10px] sm:text-[11px] font-bold text-slate-400 whitespace-nowrap mt-0.5">
+                            <div className="text-[9px] sm:text-[10px] font-bold text-slate-400 whitespace-nowrap mt-0.5 leading-tight">
                               {item.subtitle}
                             </div>
                           )}
