@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search, Copy, Plus, Download, Link as LinkIcon, Globe, Eye, EyeOff, Menu, Star, Maximize2, Minimize2, Music, Film, Image as ImageIcon, FileEdit, FileText, BookOpen, Share2, ChevronLeft, ChevronRight, SlidersHorizontal, Mic, Pause, Play, Square, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Edit3, ArrowLeft, ChevronDown, Upload, File, Folder, Check, MoreVertical, X, Search, Copy, Plus, Download, Link as LinkIcon, Globe, Eye, EyeOff, Menu, Star, Maximize2, Minimize2, Music, Film, Image as ImageIcon, FileEdit, FileText, BookOpen, Share2, ChevronLeft, ChevronRight, SlidersHorizontal, Mic, Pause, Play, Square, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import { smartSentenceSplit } from './CenterMenu';
@@ -487,6 +487,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     setSearchQuery('');
   };
   const [showFilesMenuDropdown, setShowFilesMenuDropdown] = useState(false);
+  const [showMobileMatiereDropdown, setShowMobileMatiereDropdown] = useState(false);
+  const [matiereSearchQuery, setMatiereSearchQuery] = useState('');
   const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'size'>('recent');
   const [selectedFile, setSelectedFile] = useState<ImportedItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
@@ -2301,10 +2303,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         multiple 
         onChange={handleFileChange} 
       />
-      <div className={`fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2 ${
+      <div className={`fixed top-[66px] md:top-[70px] left-2 sm:left-4 right-2 sm:right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none gap-1 sm:gap-2 ${
         (isViewerMaximized && selectedFile) ? 'hidden' : (selectedFile ? 'hidden md:flex' : '')
       }`}>
-        {/* GAUCHE : Bouton Retour */}
+        {/* GAUCHE : Bouton Retour (taille réduite et compacte sur mobile) */}
         <div className="flex flex-col items-start gap-1 pointer-events-auto shrink-0">
           <button
             onClick={() => {
@@ -2316,7 +2318,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                 onBack();
               }
             }}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="flex items-center gap-1 px-2 sm:px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[9.5px] sm:text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
             title="Retour"
           >
             <ArrowLeft className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
@@ -2324,12 +2326,12 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           </button>
         </div>
 
-        {/* MILIEU : Barre de recherche compacte OU Liste horizontale des matières */}
+        {/* MILIEU : Recherche active OU (Mobile: bouton dropdown avec popup verticale | Desktop: onglets horizontaux) */}
         {isSearchOpen ? (
-          <div className="flex-1 flex items-center gap-2 bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-stone-600 rounded-xl shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none px-2.5 py-1 pointer-events-auto min-w-0 h-9">
-            <div className="flex items-center gap-1.5 shrink-0">
-              <div className="w-5 h-5 rounded-md bg-amber-400 text-stone-900 flex items-center justify-center border border-stone-800 shadow-xs">
-                <Search className="w-3 h-3 stroke-[2.8]" />
+          <div className="flex-1 flex items-center gap-1.5 sm:gap-2 bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-stone-600 rounded-xl shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none px-2 sm:px-2.5 py-1 pointer-events-auto min-w-0 h-8 sm:h-9">
+            <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+              <div className="w-4 h-4 sm:w-5 sm:h-5 rounded-md bg-amber-400 text-stone-900 flex items-center justify-center border border-stone-800 shadow-xs">
+                <Search className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[2.8]" />
               </div>
               <span className="hidden sm:inline-block text-[11px] font-extrabold text-stone-700 dark:text-stone-300 whitespace-nowrap">
                 « {selectedTab} »
@@ -2347,7 +2349,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                     handleCloseSearch();
                   }
                 }}
-                placeholder={selectedTab === 'Mes fichiers' ? 'Tapez le nom d\'un fichier...' : `Rechercher dans ${selectedTab}...`}
+                placeholder={selectedTab === 'Mes fichiers' ? "Tapez le nom d'un fichier..." : `Rechercher dans ${selectedTab}...`}
                 className="w-full bg-transparent text-xs font-semibold text-stone-900 dark:text-white placeholder:text-stone-400 focus:outline-none pr-5"
                 autoFocus
               />
@@ -2363,94 +2365,277 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
               )}
             </div>
 
-            <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/50 whitespace-nowrap shrink-0">
+            <span className="text-[9.5px] sm:text-[10px] font-extrabold px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700/50 whitespace-nowrap shrink-0">
               {filteredFiles.length} trouvé{filteredFiles.length > 1 ? 's' : ''}
             </span>
 
             <button
               type="button"
               onClick={handleCloseSearch}
-              className="flex items-center gap-1 px-2 py-0.5 bg-stone-800 hover:bg-stone-900 text-white dark:bg-stone-700 dark:hover:bg-stone-600 font-bold text-[11px] rounded-lg transition-colors cursor-pointer shrink-0 shadow-xs active:translate-x-0.5 active:translate-y-0.5"
+              className="flex items-center gap-1 px-1.5 sm:px-2 py-0.5 bg-stone-800 hover:bg-stone-900 text-white dark:bg-stone-700 dark:hover:bg-stone-600 font-bold text-[10px] sm:text-[11px] rounded-lg transition-colors cursor-pointer shrink-0 shadow-xs active:translate-x-0.5 active:translate-y-0.5"
               title="Fermer la recherche et tout réafficher"
             >
-              <X className="w-3.5 h-3.5" />
+              <X className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               <span className="hidden sm:inline">Fermer</span>
             </button>
           </div>
         ) : (
-          <div className="flex-1 flex items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 px-1 pointer-events-auto min-w-0">
-            {/* Bouton premier : Mes fichiers */}
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedTab('Mes fichiers');
-                setSearchQuery('');
-              }}
-              className={`px-3 py-1 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none ${
-                selectedTab === 'Mes fichiers'
-                  ? 'bg-amber-400 dark:bg-amber-500 text-stone-900 font-black border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] scale-[1.02]'
-                  : 'bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-stone-300 font-bold border-2 border-stone-400/40 dark:border-stone-700 shadow-xs'
-              }`}
-              title="Mes fichiers (Tous les fichiers)"
-            >
-              <span>Mes fichiers</span>
-              <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/10 dark:bg-black/30 font-mono font-bold">
-                {importedFiles.length}
-              </span>
-            </button>
+          <>
+            {/* VERSION MOBILE : Bouton déroulant Liste des matières qui prend le nom et l'apparence de la matière */}
+            <div className="flex md:hidden relative pointer-events-auto shrink min-w-0">
+              {(() => {
+                const isMesFichiers = selectedTab === 'Mes fichiers';
+                const activeMatiere = !isMesFichiers ? savedMatieres.find(m => m.name.toLowerCase() === selectedTab.toLowerCase() || m.id === selectedTab) : null;
+                const isHex = activeMatiere?.color && activeMatiere.color.startsWith('#');
+                const colorClass = !isHex && activeMatiere?.color ? activeMatiere.color : (!isHex && activeMatiere ? 'bg-[#1f4e79] text-white' : '');
+                const activeCount = isMesFichiers 
+                  ? importedFiles.length 
+                  : (activeMatiere ? importedFiles.filter(f => isMatchingMatiere(f, activeMatiere)).length : 0);
 
-            {/* Matières créées */}
-            {savedMatieres.map((m) => {
-              const isSelected = selectedTab === m.name;
-              const isHex = m.color && m.color.startsWith('#');
-              const colorClass = !isHex && m.color ? m.color : (!isHex ? 'bg-[#1f4e79] text-white' : '');
-              const count = importedFiles.filter(f => isMatchingMatiere(f, m)).length;
+                return (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowMobileMatiereDropdown(prev => !prev)}
+                      style={isHex ? { backgroundColor: activeMatiere.color, color: '#fff' } : undefined}
+                      className={`px-2.5 py-1 rounded-xl text-[10.5px] font-black border-2 transition-all cursor-pointer flex items-center gap-1 max-w-[140px] sm:max-w-[170px] select-none shadow-xs active:scale-95 ${
+                        isMesFichiers
+                          ? 'bg-amber-400 dark:bg-amber-500 text-stone-900 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917]'
+                          : `border-stone-900 dark:border-white ${colorClass || 'bg-[#1f4e79] text-white'}`
+                      }`}
+                      title={`Matière active : ${selectedTab} (Cliquer pour ouvrir la liste des matières)`}
+                    >
+                      <span className="truncate max-w-[80px] sm:max-w-[100px]">
+                        {selectedTab}
+                      </span>
+                      {activeMatiere?.coefficient && (
+                        <span className="text-[8px] px-1 py-0.2 rounded bg-black/30 text-white font-mono shrink-0">
+                          C:{activeMatiere.coefficient}
+                        </span>
+                      )}
+                      <span className="text-[8px] px-1 py-0.2 rounded bg-black/20 dark:bg-white/20 font-mono font-bold shrink-0">
+                        {activeCount}
+                      </span>
+                      <ChevronDown className={`w-3 h-3 shrink-0 stroke-[2.5] transition-transform ${showMobileMatiereDropdown ? 'rotate-180' : ''}`} />
+                    </button>
 
-              return (
-                <button
-                  key={m.id || m.name}
-                  type="button"
-                  onClick={() => {
-                    setSelectedTab(m.name);
-                    setSearchQuery('');
-                  }}
-                  style={isHex ? { backgroundColor: m.color, color: '#fff' } : undefined}
-                  className={`px-3 py-1 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none border-2 ${colorClass} ${
-                    isSelected
-                      ? 'ring-2 ring-amber-400 dark:ring-amber-400 ring-offset-2 ring-offset-[#C5B0A4] dark:ring-offset-[#0b0f19] border-stone-900 dark:border-white font-black scale-[1.04] shadow-md z-10'
-                      : 'border-stone-700/50 hover:border-stone-900 opacity-85 hover:opacity-100 font-bold hover:scale-[1.02]'
-                  }`}
-                  title={`${m.name} (Coeff: ${m.coefficient || 1})`}
-                >
-                  <span>{m.name}</span>
-                  {m.coefficient && (
-                    <span className="text-[9px] px-1 py-0.2 rounded bg-black/30 text-white font-mono">
-                      C:{m.coefficient}
+                    {showMobileMatiereDropdown && (
+                      <>
+                        <div 
+                          className="fixed inset-0 z-40 bg-black/40 backdrop-blur-xs" 
+                          onClick={() => {
+                            setShowMobileMatiereDropdown(false);
+                            setMatiereSearchQuery('');
+                          }} 
+                        />
+                        <div className="absolute top-10 left-0 z-50 w-64 max-w-[85vw] bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-2xl shadow-2xl p-2.5 text-left animate-in fade-in zoom-in-95 duration-150">
+                          {/* En-tête */}
+                          <div className="flex items-center justify-between pb-2 mb-2 border-b border-stone-200 dark:border-white/10">
+                            <div className="flex items-center gap-1.5">
+                              <Folder className="w-3.5 h-3.5 text-amber-500" />
+                              <span className="text-xs font-black text-stone-900 dark:text-white uppercase tracking-wider">
+                                Liste des matières
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setShowMobileMatiereDropdown(false);
+                                setMatiereSearchQuery('');
+                              }}
+                              className="p-1 rounded-md text-stone-500 hover:text-stone-900 dark:text-stone-400 dark:hover:text-white hover:bg-stone-200 dark:hover:bg-white/10 cursor-pointer"
+                              title="Fermer"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+
+                          {/* Petit champ de recherche */}
+                          <div className="relative mb-2">
+                            <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-stone-400 pointer-events-none stroke-[2.4]" />
+                            <input
+                              type="text"
+                              value={matiereSearchQuery}
+                              onChange={(e) => setMatiereSearchQuery(e.target.value)}
+                              placeholder="Rechercher une matière..."
+                              className="w-full pl-8 pr-7 py-1 bg-white dark:bg-slate-900 text-stone-900 dark:text-white rounded-lg text-xs font-semibold placeholder:text-stone-400 focus:outline-none border border-stone-300 dark:border-stone-700 focus:border-amber-500 shadow-inner"
+                              autoFocus
+                            />
+                            {matiereSearchQuery && (
+                              <button
+                                type="button"
+                                onClick={() => setMatiereSearchQuery('')}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 text-stone-400 hover:text-stone-700 dark:hover:text-white p-0.5 cursor-pointer"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
+
+                          {/* Liste de manière verticale de toutes les matières */}
+                          <div className="max-h-56 overflow-y-auto no-scrollbar space-y-1 py-0.5">
+                            {/* Option 1 : "Mes fichiers" par défaut */}
+                            {(!matiereSearchQuery || 'mes fichiers'.includes(matiereSearchQuery.toLowerCase())) && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedTab('Mes fichiers');
+                                  setShowMobileMatiereDropdown(false);
+                                  setMatiereSearchQuery('');
+                                }}
+                                className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-between border ${
+                                  selectedTab === 'Mes fichiers'
+                                    ? 'bg-amber-400 text-stone-900 border-stone-800 font-black shadow-xs'
+                                    : 'bg-white dark:bg-slate-900 hover:bg-amber-50 dark:hover:bg-slate-800 text-stone-800 dark:text-stone-200 border-stone-200 dark:border-stone-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0" />
+                                  <span className="truncate">Mes fichiers</span>
+                                </div>
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/10 dark:bg-white/10 font-mono font-bold shrink-0">
+                                  {importedFiles.length}
+                                </span>
+                              </button>
+                            )}
+
+                            {/* Matières créées filtrées */}
+                            {savedMatieres
+                              .filter(m => !matiereSearchQuery || m.name.toLowerCase().includes(matiereSearchQuery.toLowerCase()))
+                              .map((m) => {
+                                const isSelected = selectedTab === m.name;
+                                const isMatHex = m.color && m.color.startsWith('#');
+                                const matColor = isMatHex ? m.color : '#1f4e79';
+                                const count = importedFiles.filter(f => isMatchingMatiere(f, m)).length;
+
+                                return (
+                                  <button
+                                    key={m.id || m.name}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedTab(m.name);
+                                      setShowMobileMatiereDropdown(false);
+                                      setMatiereSearchQuery('');
+                                    }}
+                                    className={`w-full px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-between border ${
+                                      isSelected
+                                        ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-500 font-black ring-1 ring-amber-400 shadow-xs'
+                                        : 'bg-white dark:bg-slate-900 hover:bg-stone-50 dark:hover:bg-slate-800 text-stone-800 dark:text-stone-200 border-stone-200 dark:border-stone-700'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span 
+                                        className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs" 
+                                        style={{ backgroundColor: matColor }}
+                                      />
+                                      <span className="truncate">{m.name}</span>
+                                      {m.coefficient && (
+                                        <span className="text-[8.5px] px-1 py-0.2 rounded bg-black/10 dark:bg-white/10 text-stone-500 dark:text-stone-400 font-mono shrink-0">
+                                          C:{m.coefficient}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0">
+                                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-100 dark:bg-slate-800 text-stone-600 dark:text-stone-300 font-mono font-bold">
+                                        {count}
+                                      </span>
+                                      {isSelected && (
+                                        <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 stroke-[2.8]" />
+                                      )}
+                                    </div>
+                                  </button>
+                                );
+                              })}
+
+                            {savedMatieres.filter(m => !matiereSearchQuery || m.name.toLowerCase().includes(matiereSearchQuery.toLowerCase())).length === 0 && Boolean(matiereSearchQuery) && (
+                              <div className="text-center py-3 text-xs text-stone-400 font-medium">
+                                Aucune matière trouvée
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* VERSION DESKTOP : Liste horizontale des matières avec défilement fluide */}
+            <div className="hidden md:flex flex-1 items-center gap-1.5 overflow-x-auto no-scrollbar scroll-smooth py-0.5 px-1 pointer-events-auto min-w-0">
+              {/* Bouton premier : Mes fichiers */}
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedTab('Mes fichiers');
+                  setSearchQuery('');
+                }}
+                className={`px-3 py-1 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none ${
+                  selectedTab === 'Mes fichiers'
+                    ? 'bg-amber-400 dark:bg-amber-500 text-stone-900 font-black border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] scale-[1.02]'
+                    : 'bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-stone-300 font-bold border-2 border-stone-400/40 dark:border-stone-700 shadow-xs'
+                }`}
+                title="Mes fichiers (Tous les fichiers)"
+              >
+                <span>Mes fichiers</span>
+                <span className="text-[10px] px-1.5 py-0.2 rounded bg-black/10 dark:bg-black/30 font-mono font-bold">
+                  {importedFiles.length}
+                </span>
+              </button>
+
+              {/* Matières créées */}
+              {savedMatieres.map((m) => {
+                const isSelected = selectedTab === m.name;
+                const isHex = m.color && m.color.startsWith('#');
+                const colorClass = !isHex && m.color ? m.color : (!isHex ? 'bg-[#1f4e79] text-white' : '');
+                const count = importedFiles.filter(f => isMatchingMatiere(f, m)).length;
+
+                return (
+                  <button
+                    key={m.id || m.name}
+                    type="button"
+                    onClick={() => {
+                      setSelectedTab(m.name);
+                      setSearchQuery('');
+                    }}
+                    style={isHex ? { backgroundColor: m.color, color: '#fff' } : undefined}
+                    className={`px-3 py-1 rounded-xl text-xs whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 shrink-0 select-none border-2 ${colorClass} ${
+                      isSelected
+                        ? 'ring-2 ring-amber-400 dark:ring-amber-400 ring-offset-2 ring-offset-[#C5B0A4] dark:ring-offset-[#0b0f19] border-stone-900 dark:border-white font-black scale-[1.04] shadow-md z-10'
+                        : 'border-stone-700/50 hover:border-stone-900 opacity-85 hover:opacity-100 font-bold hover:scale-[1.02]'
+                    }`}
+                    title={`${m.name} (Coeff: ${m.coefficient || 1})`}
+                  >
+                    <span>{m.name}</span>
+                    {m.coefficient && (
+                      <span className="text-[9px] px-1 py-0.2 rounded bg-black/30 text-white font-mono">
+                        C:{m.coefficient}
+                      </span>
+                    )}
+                    <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-white/20 text-white font-mono">
+                      {count}
                     </span>
-                  )}
-                  <span className="text-[9.5px] px-1.5 py-0.2 rounded bg-white/20 text-white font-mono">
-                    {count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
+                  </button>
+                );
+              })}
+            </div>
+          </>
         )}
 
-        {/* DROITE : Actions sur la même ligne - Bouton Importer blanc à gauche (au niveau du point rouge), puis Recherche, Aperçu, Options */}
-        <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0 pt-0.5">
-          {/* Bouton Importer déplacé à gauche des boutons d'actions et en couleur blanche */}
+        {/* DROITE : Actions sur la même ligne - Bouton Importer blanc, Recherche, Aperçu (desktop), Options */}
+        <div className="flex items-center gap-1 sm:gap-1.5 md:gap-2 pointer-events-auto shrink-0 pt-0.5">
+          {/* Bouton Importer blanc réduit et adapté à la version téléphone */}
           <button
             type="button"
             onClick={handleButtonClick}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 dark:border-stone-700 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[10px] sm:text-xs rounded-lg border-2 border-stone-800 dark:border-stone-700 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 shrink-0"
             title={`Importer des fichiers dans « ${selectedTab} »`}
           >
-            <Upload className="w-3.5 h-3.5 stroke-[2.5] text-stone-900" />
+            <Upload className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5] text-stone-900" />
             <span>Importer</span>
           </button>
 
-          {/* Bouton loupe devant le bouton œil */}
+          {/* Bouton loupe de recherche compact */}
           <button
             type="button"
             onClick={() => {
@@ -2460,24 +2645,24 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                 setIsSearchOpen(true);
               }
             }}
-            className={`p-1.5 rounded-lg border-2 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center relative ${
+            className={`p-1 sm:p-1.5 rounded-lg border-2 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center relative shrink-0 ${
               isSearchOpen || searchQuery
                 ? 'bg-amber-400 text-stone-900 border-stone-800 font-bold'
                 : 'bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white border-[#2D4A3E] dark:border-[#334155]'
             }`}
             title={isSearchOpen ? "Fermer la recherche" : "Rechercher des fichiers"}
           >
-            <Search className="w-3.5 h-3.5 stroke-[2.4]" />
+            <Search className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.4]" />
             {Boolean(searchQuery) && (
               <span className="absolute -top-1 -right-1 w-2.5 h-2.5 bg-rose-500 rounded-full border border-white dark:border-stone-900" />
             )}
           </button>
 
-          {/* Bouton œil pour basculer Mode compact (sans aperçu) / Mode aperçu (style Documents) */}
+          {/* Bouton œil masqué sur mobile (disponible dans le menu 3 traits/points) et visible uniquement sur desktop */}
           <button
             type="button"
             onClick={() => setIsPreviewMode(prev => !prev)}
-            className={`p-1.5 rounded-lg border-2 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center ${
+            className={`hidden md:flex p-1.5 rounded-lg border-2 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 items-center justify-center ${
               isPreviewMode
                 ? 'bg-amber-400 text-stone-900 border-amber-600'
                 : 'bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white border-[#2D4A3E] dark:border-[#334155]'
@@ -2491,13 +2676,13 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
             )}
           </button>
 
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               onClick={() => setShowFilesMenuDropdown(!showFilesMenuDropdown)}
-              className="p-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
+              className="p-1 sm:p-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
               title="Options"
             >
-              <MoreVertical className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
+              <MoreVertical className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-[#2D4A3E] dark:text-white" />
             </button>
 
             {showFilesMenuDropdown && (
@@ -2724,10 +2909,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
               {isPreviewMode ? (
                 /* Grille en mode aperçu (style Documents Image 2) */
-                <div className={`grid gap-3 sm:gap-4 justify-items-stretch w-full ${
+                <div className={`grid gap-2 sm:gap-3.5 justify-items-stretch w-full ${
                   selectedFile
-                    ? 'grid-cols-2 lg:grid-cols-3'
-                    : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    ? 'grid-cols-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                 }`}>
                   {filteredFiles.map((f, idx) => {
                     const ext = f.extension || (f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
@@ -2759,7 +2944,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                             setSelectedFile(f);
                           }
                         }}
-                        className={`aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
+                        className={`aspect-[3/4] ${theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
                           isSaving
                             ? 'border-emerald-500/40 cursor-wait'
                             : isSelected
@@ -3007,7 +3192,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
                         {/* Titre unique en bas */}
                         <div className="px-0.5 mb-1">
-                          <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={f.name}>
+                          <p className="text-[8px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={f.name}>
                             {f.name}
                           </p>
                           {f.matiere && (
@@ -3019,7 +3204,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
                         {/* Pied de carte : typeBadge et bouton télécharger */}
                         <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
-                          <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
+                          <span className={`text-[6.5px] sm:text-[8px] font-black px-1 sm:px-1.5 py-0.2 sm:py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
                             {theme.typeBadge}
                           </span>
                           <button
@@ -3041,13 +3226,13 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                   {/* Carte Importer "+" version aperçu */}
                   <div 
                     onClick={handleButtonClick}
-                    className="group aspect-[3/4] rounded-2xl border-2 border-dashed border-[#2D4A3E]/60 dark:border-slate-500/60 hover:border-[#2D4A3E] dark:hover:border-white bg-[#E8DFD0]/30 dark:bg-white/[0.04] hover:bg-[#E8DFD0]/70 dark:hover:bg-white/[0.08] shadow-[2.5px_2.5px_0px_0px_#1c1917] flex flex-col items-center justify-center p-3 text-[#2D4A3E] dark:text-white cursor-pointer transition-all hover:scale-[1.01] active:scale-98 select-none"
+                    className="group aspect-[3/4] rounded-xl sm:rounded-2xl border-2 border-dashed border-[#2D4A3E]/60 dark:border-slate-500/60 hover:border-[#2D4A3E] dark:hover:border-white bg-[#E8DFD0]/30 dark:bg-white/[0.04] hover:bg-[#E8DFD0]/70 dark:hover:bg-white/[0.08] shadow-[1.5px_1.5px_0px_0px_#1c1917] sm:shadow-[2.5px_2.5px_0px_0px_#1c1917] flex flex-col items-center justify-center p-1.5 sm:p-3 text-[#2D4A3E] dark:text-white cursor-pointer transition-all hover:scale-[1.01] active:scale-98 select-none"
                     title="Importer des fichiers"
                   >
-                    <div className="w-12 h-12 rounded-2xl bg-[#E8DFD0] dark:bg-white/10 border-2 border-[#2D4A3E] dark:border-white/30 flex items-center justify-center text-[#2D4A3E] dark:text-white shadow-[1px_1px_0px_0px_#1c1917] group-hover:scale-110 transition-transform mb-2">
-                      <Plus className="w-7 h-7 stroke-[3]" />
+                    <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-xl sm:rounded-2xl bg-[#E8DFD0] dark:bg-white/10 border-2 border-[#2D4A3E] dark:border-white/30 flex items-center justify-center text-[#2D4A3E] dark:text-white shadow-[1px_1px_0px_0px_#1c1917] group-hover:scale-110 transition-transform mb-1 sm:mb-2">
+                      <Plus className="w-4 h-4 sm:w-7 sm:h-7 stroke-[3]" />
                     </div>
-                    <span className="text-xs font-bold text-center">Ajouter un fichier</span>
+                    <span className="text-[9px] sm:text-xs font-bold text-center">Ajouter un fichier</span>
                     <span className="text-[10px] text-[#5C6B5A] dark:text-slate-400 text-center mt-0.5">Importer</span>
                   </div>
                 </div>
