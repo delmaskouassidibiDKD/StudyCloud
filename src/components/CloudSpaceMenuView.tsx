@@ -2506,23 +2506,23 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           {activeTab === 'secure-folder' && (
             <div className="space-y-4 animate-in fade-in duration-200">
               {!isSecureFolderUnlocked ? (
-                <div className="py-6 sm:py-12 flex items-center justify-center p-2 sm:p-4">
-                  <div className="w-full max-w-md p-6 sm:p-8 rounded-3xl bg-[#090D16] border border-amber-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_40px_rgba(245,158,11,0.15)] flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-500/25 via-amber-600/15 to-transparent border border-amber-500/40 text-amber-400 flex items-center justify-center mb-5 shadow-[0_0_25px_rgba(245,158,11,0.25)]">
-                      <Lock className="w-8 h-8 sm:w-10 sm:h-10 stroke-[2.2]" />
+                <div className="w-full overflow-y-auto flex flex-col items-center justify-start sm:justify-center p-3 sm:p-4 pt-4 sm:pt-8 pb-80 sm:pb-8">
+                  <div className="w-full max-w-md p-5 sm:p-8 rounded-3xl bg-[#090D16] border border-amber-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_40px_rgba(245,158,11,0.15)] flex flex-col items-center text-center animate-in zoom-in-95 duration-200">
+                    <div className="w-14 h-14 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-500/25 via-amber-600/15 to-transparent border border-amber-500/40 text-amber-400 flex items-center justify-center mb-3 sm:mb-5 shadow-[0_0_25px_rgba(245,158,11,0.25)]">
+                      <Lock className="w-7 h-7 sm:w-10 sm:h-10 stroke-[2.2]" />
                     </div>
 
-                    <h3 className="text-lg sm:text-xl font-black text-white tracking-tight">
+                    <h3 className="text-base sm:text-xl font-black text-white tracking-tight">
                       {hasServerPin === false ? "Définir votre code de sécurité" : "Dossier Sécurisé Verrouillé"}
                     </h3>
 
-                    <p className="text-xs sm:text-sm text-slate-400 mt-2 max-w-xs leading-relaxed">
+                    <p className="text-xs sm:text-sm text-slate-400 mt-1.5 sm:mt-2 max-w-xs leading-relaxed">
                       {hasServerPin === false
                         ? "Pour sécuriser vos fichiers, définissez un code secret. Le code doit comporter plus de 4 caractères."
                         : "Veuillez saisir votre code secret pour accéder à vos fichiers protégés."}
                     </p>
 
-                    <form onSubmit={handleUnlockSecureFolder} className="w-full mt-6 space-y-4">
+                    <form onSubmit={handleUnlockSecureFolder} className="w-full mt-4 sm:mt-6 space-y-3 sm:space-y-4">
                       <div className="w-full text-left">
                         <label className="text-[11px] font-bold text-slate-300 block mb-1">
                           {hasServerPin === false ? "Nouveau code (au moins 4 caractères)" : "Code secret"}
@@ -2535,9 +2535,15 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                               setSecurePinInput(e.target.value);
                               setSecurePinError(null);
                             }}
+                            onFocus={(e) => {
+                              const target = e.target;
+                              setTimeout(() => {
+                                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                              }, 200);
+                            }}
                             placeholder={hasServerPin === false ? "Au moins 4 caractères..." : "Entrez votre code..."}
                             autoFocus
-                            className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider pr-10"
+                            className="w-full px-4 py-2.5 sm:py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider pr-10"
                           />
                           <button
                             type="button"
@@ -2563,8 +2569,14 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                                 setSecurePinConfirmInput(e.target.value);
                                 setSecurePinError(null);
                               }}
+                              onFocus={(e) => {
+                                const target = e.target;
+                                setTimeout(() => {
+                                  target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                                }, 200);
+                              }}
                               placeholder="Retapez le code..."
-                              className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider"
+                              className="w-full px-4 py-2.5 sm:py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider"
                             />
                           </div>
                         </div>

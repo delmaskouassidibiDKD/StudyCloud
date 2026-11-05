@@ -1882,18 +1882,18 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
       {/* CONTENU PRINCIPAL */}
       {!isUnlocked ? (
-        /* ÉCRAN DE VERROUILLAGE */
-        <div className="flex-1 flex flex-col items-center justify-center p-4">
-          <div className="w-full max-w-sm rounded-3xl bg-white border border-stone-200 p-6 sm:p-8 shadow-xl text-center space-y-5">
-            <div className="w-16 h-16 rounded-3xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center mx-auto shadow-sm">
-              <KeyRound className="w-8 h-8 stroke-[2]" />
+        /* ÉCRAN DE VERROUILLAGE (Adapté mobile : défilement fluide et placement haut pour ne pas être masqué par le clavier) */
+        <div className="flex-1 w-full overflow-y-auto flex flex-col items-center justify-start sm:justify-center p-3 sm:p-4 pt-4 sm:pt-6 pb-96 sm:pb-8">
+          <div className="w-full max-w-sm rounded-3xl bg-white border border-stone-200 p-5 sm:p-8 shadow-xl text-center space-y-4 sm:space-y-5 transition-transform duration-200">
+            <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl sm:rounded-3xl bg-blue-50 border border-blue-200 text-blue-600 flex items-center justify-center mx-auto shadow-sm">
+              <KeyRound className="w-6 h-6 sm:w-8 sm:h-8 stroke-[2]" />
             </div>
 
             <div>
-              <h2 className="text-lg font-black text-stone-800">
+              <h2 className="text-base sm:text-lg font-black text-stone-800">
                 {hasServerPin === false ? 'Créer votre code secret' : 'Déverrouiller le Dossier Sécurisé'}
               </h2>
-              <p className="text-xs text-stone-500 mt-1 leading-relaxed">
+              <p className="text-[11px] sm:text-xs text-stone-500 mt-1 leading-relaxed">
                 {hasServerPin === false
                   ? 'Définissez un code secret à 4 caractères minimum pour protéger vos fichiers confidentiels.'
                   : 'Saisissez votre code secret pour accéder à votre coffre-fort confidentiel.'}
@@ -1908,6 +1908,12 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                   onChange={(e) => {
                     setSecurePinInput(e.target.value);
                     setPinError(null);
+                  }}
+                  onFocus={(e) => {
+                    const target = e.target;
+                    setTimeout(() => {
+                      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 200);
                   }}
                   placeholder="Code secret (≥ 4 caractères)"
                   className="w-full bg-[#050812] border border-white/10 focus:border-blue-400 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none pr-10"
@@ -1929,6 +1935,12 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                   onChange={(e) => {
                     setSecurePinConfirmInput(e.target.value);
                     setPinError(null);
+                  }}
+                  onFocus={(e) => {
+                    const target = e.target;
+                    setTimeout(() => {
+                      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }, 200);
                   }}
                   placeholder="Confirmez le code secret"
                   className="w-full bg-[#050812] border border-white/10 focus:border-blue-400 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-slate-500 focus:outline-none"
