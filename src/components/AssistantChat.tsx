@@ -317,6 +317,9 @@ async function extractImageBase64FromItem(item: any): Promise<{ base64: string; 
 
   // 4. URL accessible (blob:, http:, /api/cloud/...)
   let targetUrl = item.url || item.fileUrl || item.previewUrl;
+  if (!targetUrl && (item.r2Key || item.r2_key)) {
+    targetUrl = `/api/cloud/file/${encodeURIComponent(item.r2Key || item.r2_key)}`;
+  }
   if (typeof targetUrl === 'string' && targetUrl.trim()) {
     if (targetUrl.startsWith('/')) {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
@@ -3352,7 +3355,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   const [selectedModel, setSelectedModel] = useState<string>(() => {
     const cached = safeGetItem('studycloud_selected_ai_model', 'gemini-2.0-flash');
-    return (cached === 'gemini-3.8-flash' || cached === 'gemini-2.5-flash') ? 'gemini-2.0-flash' : cached;
+    return (cached === 'gemini-3.8-flash' || cached === 'gemini-2.5-flash' || cached === 'gemini-3.6-flash') ? 'gemini-2.0-flash' : cached;
   });
 
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
@@ -3388,7 +3391,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             const cleaned = active.map((m: any) => {
               let id = m.id || m.model_id;
               if (id === '@cf/meta/llama-3.3-70b-instruct') id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-              if (id === 'gemini-3.8-flash' || id === 'gemini-2.5-flash') id = 'gemini-2.0-flash';
+              if (id === 'gemini-3.8-flash' || id === 'gemini-2.5-flash' || id === 'gemini-3.6-flash') {
+                id = 'gemini-2.0-flash';
+                m.name = 'Google Gemini 2.0 Flash';
+              }
 
               // Priorité absolue au surnom personnalisé configuré
               const cleanNick = (m.nickname && typeof m.nickname === 'string') ? stripWorkerAi(m.nickname) : '';
@@ -3405,22 +3411,28 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                 api_token: m.api_token,
               };
             });
-            setAvailableModels(cleaned);
-            safeSetItem('studycloud_active_ai_models_v2', JSON.stringify(cleaned));
+            const dedupedCleaned: any[] = [];
+            for (const item of cleaned) {
+              if (!dedupedCleaned.some((x: any) => x.id === item.id)) {
+                dedupedCleaned.push(item);
+              }
+            }
+            setAvailableModels(dedupedCleaned);
+            safeSetItem('studycloud_active_ai_models_v2', JSON.stringify(dedupedCleaned));
 
-            const currentExists = cleaned.some((m: any) => m.id === selectedModel || m.model_id === selectedModel);
+            const currentExists = dedupedCleaned.some((m: any) => m.id === selectedModel || m.model_id === selectedModel);
             if (!currentExists && res.config?.default_model) {
               let def = res.config.default_model;
               if (def === '@cf/meta/llama-3.3-70b-instruct') def = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-              if (def === 'gemini-3.8-flash' || def === 'gemini-2.5-flash') def = 'gemini-2.0-flash';
-              const defExists = cleaned.some((m: any) => m.id === def || m.model_id === def);
+              if (def === 'gemini-3.8-flash' || def === 'gemini-2.5-flash' || def === 'gemini-3.6-flash') def = 'gemini-2.0-flash';
+              const defExists = dedupedCleaned.some((m: any) => m.id === def || m.model_id === def);
               if (defExists) {
                 setSelectedModel(def);
-              } else if (cleaned[0]) {
-                setSelectedModel(cleaned[0].id);
+              } else if (dedupedCleaned[0]) {
+                setSelectedModel(dedupedCleaned[0].id);
               }
-            } else if (!currentExists && cleaned[0]) {
-              setSelectedModel(cleaned[0].id);
+            } else if (!currentExists && dedupedCleaned[0]) {
+              setSelectedModel(dedupedCleaned[0].id);
             }
           } else {
             setAvailableModels([]);
@@ -4164,7 +4176,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     } | null = params.activeDocumentInfo || null;
 
     if (!activeDocumentInfo && !activeImageInfo) {
-      if (params.resolvedActiveItem) {
+      if (params.resolvedActiveItem && (params.resolvedActiveItem.name || params.resolvedActiveItem.title || params.resolvedActiveItem.fileName)) {
         if (isDocumentItem(params.resolvedActiveItem)) {
           (params.resolvedActiveItem as any)._needsCanvas = true;
           activeDocumentInfo = await extractDocumentDetails(params.resolvedActiveItem);
@@ -4841,13 +4853,17 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
     try {
       // 1. Rassemblement et vérification préalable de tous les documents (Actif en Orange + Pièces jointes en Bleu)
       const allDocs: any[] = [];
-      const currentActive = resolvedActiveItem;
-      if (currentActive && (currentActive.id || currentActive.name || currentActive.title || currentActive.file || currentActive.blob)) {
-        allDocs.push({ ...currentActive, isOrangeActive: true });
+      const hasValidActiveItem = Boolean(
+        resolvedActiveItem &&
+        resolvedActiveName &&
+        resolvedActiveName.trim().length > 0
+      );
+      if (hasValidActiveItem && resolvedActiveItem) {
+        allDocs.push({ ...resolvedActiveItem, isOrangeActive: true });
       }
       if (Array.isArray(attachedResources)) {
         for (const res of attachedResources) {
-          if (res) {
+          if (res && (res.name || res.title || res.fileName)) {
             const alreadyIn = allDocs.some(d =>
               (d.id && res.id && d.id === res.id) ||
               (d.name && res.name && d.name === res.name) ||
@@ -4986,12 +5002,7 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
       const needsMultiDocClarification = hasMultipleDocs && !docChoice.targetedDoc && !docChoice.isAllDocs;
 
       // Détection d'un document actif ou joint dans l'espace de travail
-      const hasRealAttachedDoc = Boolean(
-        allDocs.length > 0 ||
-        Boolean(resolvedActiveItem) ||
-        Boolean(activePreviewItem) ||
-        (Array.isArray(attachedResources) && attachedResources.length > 0)
-      );
+      const hasRealAttachedDoc = allDocs.length > 0;
 
       const hasRealDocContent = Boolean(
         hasRealAttachedDoc && (

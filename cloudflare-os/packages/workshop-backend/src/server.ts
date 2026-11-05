@@ -1048,13 +1048,12 @@ async function executeGemini20Flash(params: {
     parts: [{ text: effectiveSystemPrompt }]
   };
 
-  // Sélection directe et ordonnée des modèles Gemini Flash actifs les plus rapides (sans appel /models lent ni modèles TTS/Image/404)
+  // Sélection directe et ordonnée des modèles Google Gemini actifs sur l'API officielle
   const candidateModels = [
-    "gemini-2.5-flash-lite",
-    "gemini-3-flash-preview",
-    "gemini-3.1-flash-lite-preview",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-3.8-flash",
     "gemini-flash-latest",
-    "gemini-2.0-flash",
   ];
 
   const hasInlineMedia = currentParts.some((p: any) => Boolean(p?.inlineData));
@@ -1093,32 +1092,9 @@ async function executeGemini20Flash(params: {
         const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
         if (txt) return cleanTechnicalMediaJargon(txt);
       } else {
-        // Si le binaire inlineData (ex: PDF brut) cause un 400 mais que le texte extrait est dans systemPrompt, réessayer immédiatement en mode texte
-        if (res.status === 400 && hasInlineMedia) {
-          const retryCtrl = new AbortController();
-          const retryTid = setTimeout(() => retryCtrl.abort(), 20000);
-          try {
-            const retryRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${apiKey}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(textOnlyReqBody),
-              signal: retryCtrl.signal,
-            });
-            if (retryRes.ok) {
-              const retryData: any = await retryRes.json();
-              const retryTxt = retryData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
-              if (retryTxt) return cleanTechnicalMediaJargon(retryTxt);
-            }
-          } catch (_retryErr) {
-          } finally {
-            clearTimeout(retryTid);
-          }
-        }
+        const errBody = await res.text().catch(() => "");
+        logger.warn("Gemini Google API error", { mod, status: res.status, error: errBody });
         modelErrors.push(`${mod}:${res.status}`);
-        if (res.status === 429) {
-          consecutiveRateLimits++;
-          if (consecutiveRateLimits >= 2) break; // Basculer immédiatement sur le moteur de secours sans attendre
-        }
       }
     } catch (e: any) {
       modelErrors.push(`${mod}:EXCEPTION:${e?.message || e}`);
@@ -1514,8 +1490,8 @@ export default {
 
         if (targetModel.includes("llama-3.3") && !targetModel.includes("fp8-fast")) {
           targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-        } else if (targetModel.includes("gemini")) {
-          targetModel = "gemini-3.8-flash";
+        } else if (targetModel.includes("gemini") || targetModel === "gemini-3.8-flash" || targetModel === "gemini-2.5-flash" || targetModel === "gemini-3.6-flash") {
+          targetModel = "gemini-2.0-flash";
         } else if (targetModel.includes("claude-3-5")) {
           targetModel = "claude-sonnet-4-5";
         }
@@ -1656,7 +1632,7 @@ export default {
           const fallbackGeminiKey = ["AIzaSyA", "K6XU4uK5R-wVjH", "gB2Z-p5kM8mK9eXQ"].join("");
           const geminiKeyToUse = cloudflareGeminiSecret || (hasValidUserGeminiKey ? rawApiKey : "") || fallbackGeminiKey;
 
-          const isSelectedGemini = targetModel === "gemini-3.8-flash" || targetModel === "gemini-2.0-flash" || targetModel.includes("gemini");
+          const isSelectedGemini = targetModel === "gemini-2.0-flash" || targetModel.includes("gemini") || targetModel === "gemini-3.8-flash" || targetModel === "gemini-3.6-flash";
 
         // Si un média (vidéo, audio, document PDF/Word avec schémas, ou image) est fourni ET que le modèle sélectionné n'est pas Gemini :
         // Gemini Flash intervient en arrière-plan comme moteur de perception universel.
@@ -1828,11 +1804,11 @@ RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entou
 
         if (docContent) {
           if (!isContinuation) {
-            systemPrompt += `\n\n[DOCUMENTS FOURNIS PAR L'ÉTUDIANT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 45000)}`;
+            systemPrompt += `\n\n[DOCUMENT DE COURS JOINT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 45000)}\nCONSIGNE PÉDAGOGIQUE : Utilise ce document de cours lorsque la demande ou question de l'étudiant y fait référence ou porte dessus. S'il te pose une question générale, te salue ou aborde un sujet différent, réponds naturellement sans forcer la mention du document.`;
           } else {
             systemPrompt += `\n\n[DOCUMENT D'APPUI EN ARCHIVE DE RÉFÉRENCE - NE PAS RÉANALYSER DU DÉBUT] :\n${docContent.slice(0, 4000)}`;
           }
-        } else if (!isContinuation) {
+        } else if (!isContinuation && isAgentCreationTask) {
           systemPrompt += `\n\n[ATTENTION - AUCUN DOCUMENT FOURNI] : L'étudiant n'a joint aucun fichier de cours. Si sa demande porte sur une création (QCM, carte mentale, résumé, devoir, etc.) mais qu'il ne précise aucun sujet ni chapitre précis et que la conversation n'a pas abordé de matière : TU NE DOIS EN AUCUN CAS CRÉER DANS LE VIDE. Demande gentiment dans le chat de préciser la matière/le sujet ou de joindre son document, et termine avec [QUESTIONS_SUGGÉRÉES] proposant 4 exemples concrets sous forme de boutons.`;
         }
 
@@ -1847,25 +1823,25 @@ RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entou
           systemPrompt += `\n\n[CONVERSATION EN COURS] : Cette discussion contient déjà des échanges passés. Maintiens la continuité et la cohérence pédagogique avec les réponses précédentes de cette même session.`;
         }
 
-        if (backgroundPerceptionReport) {
+        if (backgroundPerceptionReport && hasMedia) {
           systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
 [DOSSIER D'OBSERVATION DU FICHIER ANALYSÉ EN ARRIÈRE-PLAN PAR LE MOTEUR MULTIMODAL] :
-Ce document/média (« ${docName || "Document d'étude"} ») a été minutieusement scanné et observé en haute résolution par le moteur de perception multimédia.
-Voici le contenu exact, les schémas, les données et les formules observés :
+Média analysé : « ${docName || "Document d'étude"} »
 
 ${backgroundPerceptionReport}
 
 CONSIGNES STRICTES POUR LE TUTEUR :
-1. Tu as ces informations sous les yeux comme si tu regardais directement le document ou le cahier de l'élève.
-2. Si l'élève te demande si tu as vu son image, sa photo ou son document (ex: "Tu as vu mon image ?", "As-tu vu la photo ?"), réponds IMMÉDIATEMENT ET CHALEUREUSEMENT OUI en citant avec précision les éléments et données visibles dans ce dossier ! Ne dis JAMAIS que tu ne vois pas d'image.
-3. Réponds directement, chaleureusement et pédagogiquement à l'étudiant avec ton propre style et tes capacités de raisonnement.
-4. RÈGLE D'OR : Ne mentionne JAMAIS aucun outil technique externe (ne dis pas "d'après le rapport de perception", "l'outil d'analyse indique", "Gemini a extrait"). Parle naturellement : "Sur votre image...", "Dans l'exercice...", "Le schéma du circuit montre...".
+1. Si l'élève te demande d'analyser son image, photo ou document (ex: "Tu as vu mon image ?", "Résous l'exercice sur l'image"), réponds avec précision en utilisant les données visibles dans ce dossier !
+2. Si sa question est générale ou sans rapport avec ce fichier, réponds naturellement sans imposer ce document.
+3. RÈGLE D'OR : Ne mentionne JAMAIS aucun outil technique externe (ne dis pas "d'après le rapport de perception", "l'outil d'analyse indique"). Parle naturellement : "Sur votre image...", "Dans l'exercice...", "Le schéma du circuit montre...".
 ══════════════════════════════════════════════════════════════════════════════`;
         }
 
         const friendlyNameMap: Record<string, string> = {
-          "gemini-3.8-flash": "Google Gemini Flash",
-          "gemini-2.0-flash": "Google Gemini Flash",
+          "gemini-2.0-flash": "Google Gemini 2.0 Flash",
+          "gemini-3.8-flash": "Google Gemini 2.0 Flash",
+          "gemini-3.6-flash": "Google Gemini 2.0 Flash",
+          "gemini-1.5-flash": "Google Gemini 1.5 Flash",
           "@cf/moonshotai/kimi-k2.7-code": "Kimi K2.7 Code",
           "@cf/zai-org/glm-5.3-flash": "GLM 5.3 Flash",
           "@cf/deepseek-ai/deepseek-v4-pro-0813": "DeepSeek V4 Pro",
@@ -1959,7 +1935,7 @@ CONSIGNES STRICTES DE CONTINUATION :
             });
             if (gText) {
               answerText = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gText));
-              effectiveModelUsed = "Google Gemini Flash";
+              effectiveModelUsed = "Google Gemini 2.0 Flash";
             }
           } catch (g20Err: any) {
             logger.warn("Gemini Flash call exception, falling back to Workers AI", { event: "gemini_flash_error", error: g20Err });
@@ -2401,6 +2377,7 @@ CONSIGNES STRICTES DE CONTINUATION :
             calculatedTokens,
             creditsDeducted,
             remainingCredits,
+            geminiErrorDetail,
           };
         };
 
@@ -2453,7 +2430,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         }
 
         // Mode synchrone classique
-        const { creationRes, answerText, effectiveModelUsed, backgroundPerceptionReport, calculatedTokens, creditsDeducted, remainingCredits } = await executeGenerationAndPersist();
+        const { creationRes, answerText, effectiveModelUsed, backgroundPerceptionReport, calculatedTokens, creditsDeducted, remainingCredits, geminiErrorDetail } = await executeGenerationAndPersist();
 
         return new Response(JSON.stringify({
           success: true,
