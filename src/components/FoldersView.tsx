@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe, Sun, Moon, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, ArrowRight, X, Search, Globe, Sun, Moon, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MenuDrawer } from './MenuDrawer';
 import { DelmasRobot } from './DelmasRobot';
 import { CreationMenuBookIcon } from './CreationMenuBookIcon';
@@ -2039,9 +2039,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           onMouseUp={handleMouseUp}
           onMouseLeave={handleMouseUp}
         >
-          {/* Titre de l'écran actif */}
-          <div className="flex items-center justify-between mb-2 sm:mb-3 px-2 shrink-0">
-            <span className={`text-xs font-black select-none ${
+          {/* Titre de l'écran actif décalé vers la droite sur ordinateur pour ne pas chevaucher le bouton flèche */}
+          <div className="flex items-center justify-between mb-2 sm:mb-3 px-2 md:pl-16 shrink-0">
+            <span className={`text-xs font-black select-none transition-all duration-200 ${
               dashboardWallpaper 
                 ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] bg-black/45 px-3 py-1 rounded-full border border-white/10' 
                 : 'text-stone-500 dark:text-stone-400'
@@ -2328,39 +2328,37 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         </div>
       )}
 
-      {/* Flèches de navigation d'angle : Extrême gauche (sous le menu hamburger) et Extrême droite de l'écran */}
+      {/* Boutons flèches de navigation d'angle (Desktop) pour glisser entre Page 1 et Page 2 */}
       {viewMode === 'home' && (
         <>
-          {/* Flèche gauche (<) - Extrêmement dans l'angle gauche, sous le menu hamburger */}
+          {/* Flèche gauche / changement de page - Extrêmement dans l'angle gauche, sous le menu hamburger */}
           <button
             type="button"
-            onClick={() => handleGoToPage(0)}
-            disabled={activePageIndex === 0}
-            className={`hidden md:flex items-center justify-center fixed top-[74px] md:top-[78px] left-3 md:left-[calc(16rem+1.5rem)] z-30 w-8 h-8 rounded-full border-2 transition-all duration-200 select-none ${
-              activePageIndex === 0
-                ? 'opacity-20 cursor-not-allowed border-stone-400/30 text-stone-400 dark:border-slate-800 dark:text-slate-600'
-                : 'cursor-pointer hover:scale-110 active:scale-95 border-stone-800 dark:border-slate-600 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
-            }`}
-            title={activePageIndex === 0 ? "Début atteint" : "Glisser vers la gauche (Page libre)"}
-            aria-label="Page précédente"
+            onClick={() => handleGoToPage(activePageIndex === 1 ? 0 : 1)}
+            className="hidden md:flex items-center justify-center fixed top-[70px] md:top-[74px] left-3 md:left-[calc(16rem+1.5rem)] z-30 w-10 h-10 rounded-full border-2 border-stone-800 dark:border-slate-500 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5)] cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 select-none"
+            title={activePageIndex === 1 ? "Glisser vers l'espace libre (Page 1)" : "Glisser vers l'écran d'accueil (Page 2)"}
+            aria-label={activePageIndex === 1 ? "Page précédente (Page 1)" : "Page suivante (Page 2)"}
           >
-            <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+            {activePageIndex === 1 ? (
+              <ArrowLeft className="w-5 h-5 stroke-[2.5]" strokeLinecap="round" strokeLinejoin="round" />
+            ) : (
+              <ArrowRight className="w-5 h-5 stroke-[2.5]" strokeLinecap="round" strokeLinejoin="round" />
+            )}
           </button>
 
-          {/* Flèche droite (>) - Extrêmement dans l'angle droit de l'écran */}
+          {/* Flèche droite - Angle droit de l'écran */}
           <button
             type="button"
-            onClick={() => handleGoToPage(1)}
-            disabled={activePageIndex === 1}
-            className={`hidden md:flex items-center justify-center fixed top-[74px] md:top-[78px] right-3 md:right-6 z-30 w-8 h-8 rounded-full border-2 transition-all duration-200 select-none ${
-              activePageIndex === 1
-                ? 'opacity-20 cursor-not-allowed border-stone-400/30 text-stone-400 dark:border-slate-800 dark:text-slate-600'
-                : 'cursor-pointer hover:scale-110 active:scale-95 border-stone-800 dark:border-slate-600 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
-            }`}
-            title={activePageIndex === 1 ? "Fin atteinte" : "Revenir à l'écran d'accueil (droite)"}
-            aria-label="Page suivante"
+            onClick={() => handleGoToPage(activePageIndex === 0 ? 1 : 0)}
+            className="hidden md:flex items-center justify-center fixed top-[70px] md:top-[74px] right-3 md:right-6 z-30 w-10 h-10 rounded-full border-2 border-stone-800 dark:border-slate-500 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5)] cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 select-none"
+            title={activePageIndex === 0 ? "Glisser vers l'écran d'accueil (Page 2)" : "Glisser vers l'espace libre (Page 1)"}
+            aria-label={activePageIndex === 0 ? "Page suivante (Page 2)" : "Page précédente (Page 1)"}
           >
-            <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+            {activePageIndex === 0 ? (
+              <ArrowRight className="w-5 h-5 stroke-[2.5]" strokeLinecap="round" strokeLinejoin="round" />
+            ) : (
+              <ArrowLeft className="w-5 h-5 stroke-[2.5]" strokeLinecap="round" strokeLinejoin="round" />
+            )}
           </button>
         </>
       )}
