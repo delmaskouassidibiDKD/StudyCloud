@@ -45,6 +45,7 @@ import { Classeur3DFolderCard, TxtDocumentSVG } from './Folder3DModels';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { ViewerFitButton } from './ViewerFitButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
@@ -880,6 +881,9 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
               <Star className="w-3.5 h-3.5 fill-amber-400" />
               <span className="hidden sm:inline">Favori</span>
             </button>
+
+            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
+            <ViewerFitButton />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (

@@ -14,6 +14,8 @@ import {
 import { getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
 import { getWorkerApiUrl } from '../services/api';
 
+import { useMediaFitMode } from '../utils/viewerFitManager';
+
 interface ModernImageViewerProps {
   src?: string;
   alt?: string;
@@ -38,6 +40,7 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [position, setPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const fitMode = useMediaFitMode();
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -187,7 +190,7 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
               transformOrigin: 'center center',
               transition: isDragging ? 'none' : 'transform 0.15s ease-out'
             }}
-            className={`max-w-full max-h-full object-contain ${
+            className={`max-w-full max-h-full ${fitMode === 'cover' ? 'object-cover w-full h-full' : fitMode === 'fill' ? 'object-fill w-full h-full' : 'object-contain'} ${
               zoom > 1 ? (isDragging ? 'cursor-grabbing' : 'cursor-grab') : 'cursor-default'
             }`}
           />
@@ -220,21 +223,8 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
         )}
       </div>
 
-      {/* BARRE D'OUTILS FLOTTANTE EN HAUT (Informations) */}
-      <div className="absolute top-3 inset-x-4 flex items-center justify-between pointer-events-none z-10">
-        <div className="flex items-center gap-2 bg-black/70 backdrop-blur-md px-3 py-1.5 rounded-xl border border-white/10 text-white pointer-events-auto">
-          <ImageIcon className="w-4 h-4 text-amber-400 shrink-0" />
-          <span className="text-xs font-bold truncate max-w-[200px] sm:max-w-xs">{fileName}</span>
-          {fileSize && <span className="text-[10px] text-zinc-400 font-mono">({fileSize})</span>}
-        </div>
-
-        <div className="bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10 text-[10px] text-zinc-300 font-bold pointer-events-auto">
-          {Math.round(zoom * 100)}% {rotation !== 0 && `• ${rotation}°`}
-        </div>
-      </div>
-
-      {/* BARRE D'OUTILS FLOTTANTE EN BAS (Contrôles Zoom, Rotation, Téléchargement) */}
-      <div className="absolute bottom-4 inset-x-0 flex items-center justify-center z-10 pointer-events-none">
+      {/* BARRE D'OUTILS FLOTTANTE EN BAS (Contrôles Zoom, Rotation, Téléchargement surélevés sur mobile) */}
+      <div className="absolute bottom-16 sm:bottom-4 inset-x-0 flex items-center justify-center z-10 pointer-events-none">
         <div className="flex items-center gap-1 sm:gap-2 bg-black/80 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl border border-white/15 shadow-2xl text-white pointer-events-auto">
           {/* Zoom Out */}
           <button

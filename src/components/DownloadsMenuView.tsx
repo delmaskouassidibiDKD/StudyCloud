@@ -29,6 +29,7 @@ import { ModernImageViewer } from './ModernImageViewer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { ViewerFitButton } from './ViewerFitButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 interface DownloadsMenuViewProps {
@@ -222,6 +223,10 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
                 <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
             )}
+
+            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
+            <ViewerFitButton />
+
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (
               <ViewerSuperExpandButton

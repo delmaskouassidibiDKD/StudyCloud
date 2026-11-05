@@ -25,6 +25,7 @@ import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
 import { validateFilesForMesFichiersAsync } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { ViewerFitButton } from './ViewerFitButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 interface FilesMenuViewProps {
@@ -1266,6 +1267,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                 <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             )}
+
+            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
+            <ViewerFitButton />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (

@@ -49,6 +49,7 @@ import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { ViewerFitButton } from './ViewerFitButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 import { handleNativeShare } from '../utils/nativeShare';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
@@ -1844,6 +1845,10 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                 <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
             )}
+
+            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
+            <ViewerFitButton />
+
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (
               <ViewerSuperExpandButton

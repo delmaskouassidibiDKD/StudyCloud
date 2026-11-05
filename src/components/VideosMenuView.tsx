@@ -49,6 +49,7 @@ import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes, isItemPinned } from './HeaderMenuControls';
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { ViewerFitButton } from './ViewerFitButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { handleNativeShare } from '../utils/nativeShare';
@@ -1852,6 +1853,10 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
                 <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
             )}
+
+            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
+            <ViewerFitButton />
+
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (
               <ViewerSuperExpandButton

@@ -50,6 +50,7 @@ import { VideoCardPreview } from './VideoCardPreview';
 import { Classeur3DFolderCard } from './Folder3DModels';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { ViewerFitButton } from './ViewerFitButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { ModernImageViewer } from './ModernImageViewer';
@@ -959,6 +960,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               <Trash2 className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Corbeille</span>
             </button>
+
+            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
+            <ViewerFitButton />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (

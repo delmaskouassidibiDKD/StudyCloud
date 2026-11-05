@@ -61,6 +61,7 @@ import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { ViewerFitButton } from './ViewerFitButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 interface CloudSpaceMenuViewProps {
@@ -1927,6 +1928,9 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
                 <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
             )}
+
+            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
+            <ViewerFitButton />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (

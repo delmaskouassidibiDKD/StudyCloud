@@ -46,6 +46,7 @@ import { ImageCardPreview } from './ImageCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { Classeur3DFolderCard, TxtDocumentSVG } from './Folder3DModels';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { ViewerFitButton } from './ViewerFitButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
@@ -1336,6 +1337,9 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               <Trash2 className="w-3.5 h-3.5" />
               <span className="hidden md:inline">Supprimer</span>
             </button>
+
+            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
+            <ViewerFitButton />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (

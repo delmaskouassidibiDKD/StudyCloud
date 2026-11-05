@@ -28,9 +28,10 @@ import {
 } from 'lucide-react';
 import { getWorkerApiUrl } from '../services/api';
 import { getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
+import { useMediaFitMode, setMediaFitMode, type MediaFitMode } from '../utils/viewerFitManager';
 
 export type VideoQuality = 'auto' | '1080p' | '720p' | '480p' | '360p';
-export type VideoFitMode = 'contain' | 'cover' | 'fill';
+export type VideoFitMode = MediaFitMode;
 
 interface ModernVideoPlayerProps {
   src?: string;
@@ -95,28 +96,18 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
 
-  // Qualité et cadrage (remplir tout l'espace noir)
+  // Qualité et cadrage (synchronisé avec le gestionnaire global et le bouton supérieur)
   const [quality, setQuality] = useState<VideoQuality>(() => {
     return (localStorage.getItem('studycloud_video_quality') as VideoQuality) || 'auto';
   });
-  const [fitMode, setFitMode] = useState<VideoFitMode>(() => {
-    return (localStorage.getItem('studycloud_video_fit') as VideoFitMode) || 'contain';
-  });
+  const fitMode = useMediaFitMode();
   const [zoomLevel, setZoomLevel] = useState<number>(1);
-  const [qualityNotification, setQualityNotification] = useState<string | null>(null);
   const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
 
   const controlsTimeoutRef = useRef<any>(null);
-  const notificationTimeoutRef = useRef<any>(null);
 
-  // Afficher un badge temporaire lors du changement de qualité ou de cadrage
-  const showNotification = (msg: string) => {
-    if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
-    setQualityNotification(msg);
-    notificationTimeoutRef.current = setTimeout(() => {
-      setQualityNotification(null);
-    }, 2500);
-  };
+  // Notification HUD désactivée à la demande de l'utilisateur (aucun message intempestif)
+  const showNotification = (_msg: string) => {};
 
   // 1. Résolution de la source vidéo (Blob local instantané, IndexedDB ou stream Cloudflare)
   const resolveVideoSource = useCallback(async () => {
@@ -341,22 +332,13 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
   // Basculement du cadrage pour supprimer les bandes noires
   const toggleFitMode = () => {
     const nextMode: VideoFitMode = fitMode === 'contain' ? 'cover' : fitMode === 'cover' ? 'fill' : 'contain';
-    setFitMode(nextMode);
-    localStorage.setItem('studycloud_video_fit', nextMode);
+    setMediaFitMode(nextMode);
     setZoomLevel(1);
-
-    const labels: Record<VideoFitMode, string> = {
-      contain: '📐 Ajuster (Original avec bandes noires)',
-      cover: '🔲 Remplir tout l\'espace (Sans bandes noires)',
-      fill: '↔️ Plein écran étiré à 100%'
-    };
-    showNotification(labels[nextMode]);
   };
 
   const handleZoom = (delta: number) => {
     setZoomLevel(prev => {
       const next = Math.max(1, Math.min(2.5, Number((prev + delta).toFixed(2))));
-      showNotification(`Zoom : ${Math.round(next * 100)}%`);
       return next;
     });
   };
@@ -560,14 +542,6 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
         </div>
       ) : null}
 
-      {/* 2. NOTIFICATION / BANDEAU HUD TEMPORAIRE (Qualité, Zoom, Cadrage) */}
-      {qualityNotification && (
-        <div className="absolute top-16 z-30 px-4 py-2 rounded-xl bg-black/85 backdrop-blur-md text-white text-xs font-bold border border-white/20 shadow-2xl flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
-          <Sparkles className="w-4 h-4 text-purple-400" />
-          <span>{qualityNotification}</span>
-        </div>
-      )}
-
       {/* 3. SPINNER DE CHARGEMENT / BUFFERING */}
       {isBuffering && !hasError && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 bg-black/40 backdrop-blur-[2px]">
@@ -620,84 +594,9 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
         </button>
       )}
 
-      {/* 6. TITRE, CADRAGE & INFOS EN HAUT (Masquage automatique) */}
+      {/* 6. BARRE DE CONTRÔLE COMPLÈTE EN BAS (Surélevée sur mobile pour ne pas être masquée par la barre de navigation) */}
       <div
-        className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/85 via-black/40 to-transparent flex items-center justify-between text-white transition-opacity duration-300 z-20 ${
-          showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
-      >
-        {/* Nom du fichier et détails */}
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-lg bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0">
-            <Film className="w-4 h-4" />
-          </div>
-          <div className="min-w-0">
-            <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[240px] sm:max-w-md">{fileName}</p>
-            <div className="flex items-center gap-2 text-[10px] text-zinc-400 font-mono">
-              {fileSize && <span>{fileSize}</span>}
-              {videoDimensions && (
-                <>
-                  <span>•</span>
-                  <span>{videoDimensions.width}×{videoDimensions.height}</span>
-                </>
-              )}
-              <span>•</span>
-              <span className="text-purple-400 font-semibold uppercase">{quality}</span>
-            </div>
-          </div>
-        </div>
-
-        {/* Boutons d'action en haut à droite : Agrandir le cadre (supprimer bandes noires) et Zoom */}
-        <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* BOUTON CLÉ : AGGRANDIR POUR PRENDRE TOUT L'ESPACE NOIR */}
-          <button
-            type="button"
-            onClick={toggleFitMode}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all border ${
-              fitMode === 'cover'
-                ? 'bg-purple-600 text-white border-purple-400 shadow-md shadow-purple-600/30'
-                : fitMode === 'fill'
-                ? 'bg-indigo-600 text-white border-indigo-400'
-                : 'bg-black/60 hover:bg-white/20 text-zinc-200 border-white/20'
-            }`}
-            title="Prendre tout l'espace noir à côté (Cliquer pour basculer)"
-          >
-            <Crop className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">
-              {fitMode === 'cover' ? 'Plein cadre (Sans bandes)' : fitMode === 'fill' ? 'Étiré' : 'Ajuster'}
-            </span>
-          </button>
-
-          {/* Boutons Zoom progressif */}
-          <div className="hidden sm:flex items-center bg-black/60 border border-white/20 rounded-xl p-0.5">
-            <button
-              type="button"
-              onClick={() => handleZoom(-0.15)}
-              disabled={zoomLevel <= 1}
-              className="p-1 text-zinc-300 hover:text-white disabled:opacity-30 cursor-pointer"
-              title="Réduire le zoom"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-            <span className="text-[10px] font-mono font-bold px-1.5 text-zinc-200 min-w-[38px] text-center">
-              {Math.round(zoomLevel * 100)}%
-            </span>
-            <button
-              type="button"
-              onClick={() => handleZoom(0.15)}
-              disabled={zoomLevel >= 2.5}
-              className="p-1 text-zinc-300 hover:text-white disabled:opacity-30 cursor-pointer"
-              title="Agrandir le zoom"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* 7. BARRE DE CONTRÔLE COMPLÈTE EN BAS (Style Glassmorphism Premium) */}
-      <div
-        className={`absolute bottom-0 inset-x-0 p-3 sm:p-4 bg-gradient-to-t from-black/95 via-black/80 to-transparent flex flex-col gap-2 transition-opacity duration-300 z-20 ${
+        className={`absolute ${isFullscreen ? 'bottom-0' : 'bottom-16 sm:bottom-0'} inset-x-0 p-2 sm:p-4 bg-gradient-to-t from-black/95 via-black/80 to-transparent flex flex-col gap-1.5 sm:gap-2 transition-opacity duration-300 z-20 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
@@ -738,20 +637,20 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
           )}
         </div>
 
-        {/* RANGÉE DES CONTRÔLES (Boutons, Volume, Précédent, Suivant, Qualité, Plein écran) */}
-        <div className="flex items-center justify-between gap-2 pt-1 text-white">
+        {/* RANGÉE DES CONTRÔLES (Boutons compacts adaptés au mobile) */}
+        <div className="flex items-center justify-between gap-1 sm:gap-2 pt-0.5 sm:pt-1 text-white">
           {/* GAUCHE : Précédent, Play/Pause, Suivant, Recul 10s, Avance 10s, Volume, Temps */}
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex items-center gap-0.5 sm:gap-1.5 min-w-0">
             {/* Vidéo précédente */}
             {onPrev && (
               <button
                 type="button"
                 onClick={onPrev}
                 disabled={!hasPrev}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors active:scale-95"
+                className="p-1 sm:p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors active:scale-95 shrink-0"
                 title="Vidéo précédente (p)"
               >
-                <SkipBack className="w-4 h-4" />
+                <SkipBack className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             )}
 
@@ -759,10 +658,10 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
             <button
               type="button"
               onClick={togglePlay}
-              className="p-1.5 sm:p-2 rounded-xl hover:bg-white/10 text-white cursor-pointer transition-colors active:scale-90"
+              className="p-1 sm:p-2 rounded-xl hover:bg-white/10 text-white cursor-pointer transition-colors active:scale-90 shrink-0"
               title={isPlaying ? "Pause (Espace)" : "Lire (Espace)"}
             >
-              {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
+              {isPlaying ? <Pause className="w-4 h-4 sm:w-5 sm:h-5 fill-current" /> : <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-current" />}
             </button>
 
             {/* Vidéo suivante */}
@@ -771,10 +670,10 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                 type="button"
                 onClick={onNext}
                 disabled={!hasNext}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors active:scale-95"
+                className="p-1 sm:p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors active:scale-95 shrink-0"
                 title="Vidéo suivante (n)"
               >
-                <SkipForward className="w-4 h-4" />
+                <SkipForward className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </button>
             )}
 
@@ -782,36 +681,36 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
             <button
               type="button"
               onClick={() => skip(-10)}
-              className="p-1.5 sm:p-2 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors"
+              className="p-1 sm:p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors shrink-0"
               title="Reculer de 10 secondes (←)"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
             {/* Avance 10s */}
             <button
               type="button"
               onClick={() => skip(10)}
-              className="p-1.5 sm:p-2 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors"
+              className="p-1 sm:p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors shrink-0"
               title="Avancer de 10 secondes (→)"
             >
-              <RotateCw className="w-4 h-4" />
+              <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
-            {/* Volume & Mute */}
-            <div className="flex items-center gap-1 group/vol">
+            {/* Volume & Mute (slider réservé aux grands écrans pour préserver la largeur sur téléphone) */}
+            <div className="flex items-center gap-0.5 sm:gap-1 group/vol shrink-0">
               <button
                 type="button"
                 onClick={toggleMute}
-                className="p-1.5 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors"
+                className="p-1 sm:p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors"
                 title={isMuted ? "Activer le son (m)" : "Couper le son (m)"}
               >
                 {isMuted || volume === 0 ? (
-                  <VolumeX className="w-4 h-4 text-rose-400" />
+                  <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-400" />
                 ) : volume < 0.5 ? (
-                  <Volume1 className="w-4 h-4" />
+                  <Volume1 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 ) : (
-                  <Volume2 className="w-4 h-4" />
+                  <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
                 )}
               </button>
               <input
@@ -821,22 +720,22 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                 step="0.05"
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
-                className="w-12 sm:w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                className="hidden sm:block w-12 sm:w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-purple-500"
                 title="Régler le volume"
               />
             </div>
 
             {/* Compteur temps / durée */}
-            <div className="text-[11px] sm:text-xs font-mono font-medium text-zinc-300 ml-1">
+            <div className="text-[10px] sm:text-xs font-mono font-medium text-zinc-300 ml-0.5 sm:ml-1 shrink-0 whitespace-nowrap">
               <span>{formatTime(currentTime)}</span>
-              <span className="text-zinc-500 mx-1">/</span>
+              <span className="text-zinc-500 mx-0.5 sm:mx-1">/</span>
               <span>{formatTime(duration)}</span>
             </div>
           </div>
 
           {/* DROITE : Qualité, Vitesse, Cadrage, Répétition, PiP, Plein écran */}
-          <div className="flex items-center gap-1 sm:gap-2 relative">
-            {/* SÉLECTEUR DE QUALITÉ VIDÉO ADAPTATIF RÉSEAU (Demandé explicitement) */}
+          <div className="flex items-center gap-1 sm:gap-1.5 relative shrink-0">
+            {/* SÉLECTEUR DE QUALITÉ VIDÉO */}
             <div className="relative">
               <button
                 type="button"
@@ -844,16 +743,21 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                   setShowQualityMenu(!showQualityMenu);
                   setShowSpeedMenu(false);
                 }}
-                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center gap-1.5 ${
+                className={`px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all cursor-pointer border flex items-center gap-1 ${
                   quality !== 'auto'
                     ? 'bg-purple-600/30 text-purple-300 border-purple-500/50 shadow-sm'
                     : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-white/10'
                 }`}
-                title="Régler la qualité vidéo (ou automatique selon la connexion)"
+                title="Régler la qualité vidéo"
               >
-                <Sliders className="w-3 h-3 text-purple-400" />
-                <span className="uppercase font-mono text-[11px]">
-                  {quality === 'auto' ? `Auto (${networkInfo.recommendedQuality})` : quality}
+                <Sliders className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-purple-400" />
+                <span className="uppercase font-mono text-[9px] sm:text-[11px]">
+                  {quality === 'auto' ? (
+                    <>
+                      <span className="hidden sm:inline">Auto ({networkInfo.recommendedQuality})</span>
+                      <span className="sm:hidden">Auto</span>
+                    </>
+                  ) : quality}
                 </span>
               </button>
 
@@ -935,30 +839,30 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
             <button
               type="button"
               onClick={toggleLoop}
-              className={`p-1.5 sm:p-2 rounded-xl transition-colors cursor-pointer ${
+              className={`p-1 sm:p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
                 isLooping ? 'bg-purple-600/30 text-purple-300' : 'hover:bg-white/10 text-zinc-300 hover:text-white'
               }`}
               title={isLooping ? "Boucle activée" : "Lire en boucle"}
             >
-              <Repeat className="w-4 h-4" />
+              <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
             {/* Picture-in-Picture */}
             <button
               type="button"
               onClick={togglePiP}
-              className="p-1.5 sm:p-2 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors"
+              className="p-1 sm:p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors shrink-0"
               title="Mini-lecteur flottant (PiP)"
             >
-              <Tv className="w-4 h-4" />
+              <Tv className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
-            {/* Télécharger la vidéo */}
+            {/* Télécharger la vidéo (affiché sur grand écran ; déjà présent dans la barre du haut sur mobile) */}
             {resolvedSrc && (
               <a
                 href={resolvedSrc}
                 download={fileName || 'video.mp4'}
-                className="p-1.5 sm:p-2 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors"
+                className="hidden sm:flex p-1.5 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors shrink-0"
                 title="Télécharger la vidéo"
               >
                 <Download className="w-4 h-4" />
@@ -969,10 +873,10 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
             <button
               type="button"
               onClick={toggleFullscreen}
-              className="p-1.5 sm:p-2 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors"
+              className="p-1 sm:p-1.5 rounded-lg hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors shrink-0"
               title={isFullscreen ? "Quitter le plein écran (f)" : "Plein écran (f)"}
             >
-              {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+              {isFullscreen ? <Minimize className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Maximize className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             </button>
           </div>
         </div>
