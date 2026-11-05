@@ -49,3 +49,4 @@ export const ViewerFitButton: React.FC<ViewerFitButtonProps> = ({
     </button>
   );
 };
+

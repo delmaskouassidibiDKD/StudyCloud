@@ -64,3 +64,4 @@ export const useMediaFitMode = (): MediaFitMode => {
 
   return mode;
 };
+

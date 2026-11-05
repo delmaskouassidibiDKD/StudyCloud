@@ -1591,7 +1591,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   // Rendu du lecteur indépendant (Image 2)
   const renderAudioPlayer = (track: FileItem) => {
     return (
-      <div className="relative w-full h-full flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none">
+      <div className="relative w-full h-full flex-1 flex flex-col justify-between p-3 pb-24 sm:p-6 sm:pb-8 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none">
         {/* L'élément audio est maintenu actif de façon permanente par GlobalAudioProvider au niveau racine */}
 
         {/* Halo ambré chaleureux */}
@@ -1602,28 +1602,18 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           }}
         />
 
-        {/* Bouton retour mobile */}
-        <div className="md:hidden flex items-center justify-between pb-2 relative z-10 shrink-0">
+        {/* En-tête compact et harmonieux du lecteur audio (sans titre redondant qui prenait de la place) */}
+        <div className="w-full flex items-center justify-between pb-2 sm:pb-3 border-b border-white/10 relative z-10 shrink-0">
+          {/* Bouton retour vers la liste */}
           <button
             type="button"
             onClick={() => setIsMobilePlayerOpen(false)}
-            className="flex items-center gap-1 text-xs text-slate-400 hover:text-white"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/40 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-300 hover:text-white transition-all cursor-pointer active:scale-95"
+            title="Retour à la liste"
           >
-            <ChevronLeft className="w-4 h-4" />
-            <span>Retour à la liste</span>
+            <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
+            <span className="text-[11px] sm:text-xs">Retour</span>
           </button>
-        </div>
-
-        {/* En-tête du lecteur audio */}
-        <div className="w-full flex items-center justify-between pb-3 border-b border-white/10 relative z-10 shrink-0">
-          <div className="min-w-0 pr-2">
-            <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[200px] sm:max-w-xs" title={track.name}>
-              {track.name}
-            </p>
-            <p className="text-[10px] text-amber-400 font-semibold truncate">
-              {track.artist || track.size || 'StudyCloud Audio'}
-            </p>
-          </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
             <button
@@ -1716,6 +1706,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               type="button"
               onClick={() => {
                 setSelectedTrack(null);
+                setIsMobilePlayerOpen(false);
                 pauseAudio();
               }}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
@@ -1726,9 +1717,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           </div>
         </div>
 
-        {/* Centre : Pochette MESSAGE, waveform et détails (Image 2) */}
+        {/* Centre : Pochette MESSAGE, waveform et détails */}
         <div className="relative z-10 w-full flex items-center justify-center max-w-sm mx-auto my-auto pt-2 sm:pt-4">
-          <div className="relative w-44 sm:w-56 md:w-64 aspect-square rounded-2xl overflow-hidden shrink-0 shadow-[0_20px_45px_rgba(0,0,0,0.85)] border border-white/20 bg-black group">
+          <div className="relative w-36 sm:w-52 md:w-64 aspect-square rounded-2xl overflow-hidden shrink-0 shadow-[0_20px_45px_rgba(0,0,0,0.85)] border border-white/20 bg-black group">
             <AudioCardPreview
               track={track}
               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
@@ -1740,7 +1731,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         </div>
 
         <div className="relative z-10 w-full text-center space-y-1 my-2 sm:my-3">
-          <h2 className="text-lg sm:text-2xl md:text-3xl font-black text-white tracking-tight drop-shadow-md truncate px-2">
+          <h2 className="text-base sm:text-2xl md:text-3xl font-black text-white tracking-tight drop-shadow-md truncate px-2">
             {track.name}
           </h2>
           <p className="text-xs sm:text-sm font-semibold text-slate-300 truncate px-2">
@@ -1754,25 +1745,25 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             <button
               type="button"
               onClick={() => handleSeekDelta(-10)}
-              className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
+              className="relative w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
               title="Reculer de 10s"
             >
-              <RotateCcw className="w-5 h-5 stroke-[2]" />
-              <span className="absolute text-[8px] font-black text-white">10</span>
+              <RotateCcw className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
+              <span className="absolute text-[7px] sm:text-[8px] font-black text-white">10</span>
             </button>
 
-            <div className="px-3.5 py-1 rounded-full bg-white text-stone-950 font-black text-xs shadow-md tracking-wider">
+            <div className="px-3 py-0.5 sm:px-3.5 sm:py-1 rounded-full bg-white text-stone-950 font-black text-[11px] sm:text-xs shadow-md tracking-wider">
               {formatAudioTime(currentTime)} / {formatAudioTime(duration)}
             </div>
 
             <button
               type="button"
               onClick={() => handleSeekDelta(10)}
-              className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
+              className="relative w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
               title="Avancer de 10s"
             >
-              <RotateCw className="w-5 h-5 stroke-[2]" />
-              <span className="absolute text-[8px] font-black text-white">10</span>
+              <RotateCw className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2]" />
+              <span className="absolute text-[7px] sm:text-[8px] font-black text-white">10</span>
             </button>
           </div>
 
@@ -1791,62 +1782,62 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           </div>
         </div>
 
-        {/* Contrôles principaux (Image 2) */}
-        <div className="relative z-10 w-full max-w-sm mx-auto flex items-center justify-between px-2 pt-1 pb-2 sm:pb-3">
+        {/* Contrôles principaux (surélevés pour ne pas être cachés par la barre de navigation du bas) */}
+        <div className="relative z-10 w-full max-w-xs sm:max-w-sm mx-auto flex items-center justify-between px-2 pt-1 pb-1">
           <button
             type="button"
             onClick={() => {
               toggleAudioShuffle();
               showToast(!isAudioShuffle ? 'Lecture aléatoire activée' : 'Lecture aléatoire désactivée');
             }}
-            className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${isAudioShuffle ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
+            className={`p-1.5 sm:p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${isAudioShuffle ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
               }`}
             title={isAudioShuffle ? 'Désactiver mode aléatoire' : 'Mode aléatoire'}
           >
-            <Shuffle className="w-5 h-5" />
+            <Shuffle className="w-4 h-4 sm:w-5 sm:h-5" />
           </button>
 
           <button
             type="button"
             onClick={handleAudioPrev}
-            className="p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
+            className="p-1.5 sm:p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
             title="Piste précédente"
           >
-            <SkipBack className="w-6 h-6 fill-current" />
+            <SkipBack className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />
           </button>
 
           <button
             type="button"
             onClick={togglePlayPause}
-            className="w-14 h-14 rounded-full bg-white text-stone-950 flex items-center justify-center hover:scale-105 active:scale-95 shadow-[0_8px_25px_rgba(255,255,255,0.3)] transition-all cursor-pointer"
+            className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-white text-stone-950 flex items-center justify-center hover:scale-105 active:scale-95 shadow-[0_8px_25px_rgba(255,255,255,0.3)] transition-all cursor-pointer shrink-0"
             title={isAudioPlaying ? 'Mettre en pause' : 'Lire'}
           >
             {isAudioPlaying ? (
-              <Pause className="w-7 h-7 fill-current" />
+              <Pause className="w-6 h-6 sm:w-7 sm:h-7 fill-current" />
             ) : (
-              <Play className="w-7 h-7 fill-current ml-1" />
+              <Play className="w-6 h-6 sm:w-7 sm:h-7 fill-current ml-0.5" />
             )}
           </button>
 
           <button
             type="button"
             onClick={handleAudioNext}
-            className="p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
+            className="p-1.5 sm:p-2 text-white hover:text-amber-400 transition-all active:scale-90 cursor-pointer"
             title="Piste suivante"
           >
-            <SkipForward className="w-6 h-6 fill-current" />
+            <SkipForward className="w-5 h-5 sm:w-6 sm:h-6 fill-current" />
           </button>
 
           <button
             type="button"
             onClick={toggleAudioRepeat}
-            className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer relative ${isAudioRepeat !== 'off' ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
+            className={`p-1.5 sm:p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer relative ${isAudioRepeat !== 'off' ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
               }`}
             title={isAudioRepeat === 'one' ? 'Boucle 1 titre' : isAudioRepeat === 'all' ? 'Boucle tous les titres' : 'Boucle désactivée'}
           >
-            <Repeat className="w-5 h-5" />
+            <Repeat className="w-4 h-4 sm:w-5 sm:h-5" />
             {isAudioRepeat === 'one' && (
-              <span className="absolute -top-0.5 -right-0.5 text-[9px] font-black text-amber-400">1</span>
+              <span className="absolute -top-0.5 -right-0.5 text-[8px] sm:text-[9px] font-black text-amber-400">1</span>
             )}
           </button>
         </div>
@@ -2071,12 +2062,12 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           showToast("Enregistrement échoué. Utilisez la croix pour retirer ou le bouton Réessayer.");
                           return;
                         }
-                        if (isSelected) {
-                          togglePlayPause();
-                        } else {
+                        setSelectedTrack(track);
+                        if (!isSelected) {
                           globalPlayTrack(track, filteredAudio);
-                          setIsMobilePlayerOpen(true);
                         }
+                        // Clic sur la carte/le son : ouvre le lecteur complet
+                        setIsMobilePlayerOpen(true);
                       }}
                       className={`group flex items-center justify-between gap-3 p-3 rounded-2xl transition-all select-none border relative overflow-hidden ${isMenuOpen ? 'z-50 overflow-visible' : 'z-10'
                         } ${hasFailed
@@ -2221,16 +2212,17 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           <Star className={`w-4 h-4 ${track.isFavorite ? 'fill-amber-400 text-amber-400' : ''}`} />
                         </button>
 
-                        {/* Bouton lecture rapide */}
+                        {/* Bouton lecture rapide : lance la lecture SANS ouvrir le lecteur plein écran de l'Image 1 */}
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            setSelectedTrack(track);
                             if (isSelected) {
                               togglePlayPause();
                             } else {
                               globalPlayTrack(track, filteredAudio);
-                              setIsMobilePlayerOpen(true);
+                              // Ne pas ouvrir setIsMobilePlayerOpen ici (lecture directe dans la liste)
                             }
                           }}
                           className={`w-8 h-8 rounded-full flex items-center justify-center transition-all cursor-pointer ${isSelected && isAudioPlaying

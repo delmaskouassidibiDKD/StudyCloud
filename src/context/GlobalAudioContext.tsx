@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useRef, useEffect, useCallback } from 'react';
 import { FileItem } from '../services/cloudDataStore';
 import { getFileBlobUrl } from '../services/localFileStorage';
+import { getWorkerApiUrl } from '../services/api';
 
 export interface GlobalAudioContextType {
   currentTrack: FileItem | null;
@@ -41,18 +42,81 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
   const isChangingTrackRef = useRef(false);
   const desiredPlaybackStateRef = useRef(false);
 
-  // Charger la source audio (IndexedDB blob en priorité, sinon URL distante)
-  const resolveTrackUrl = async (track: FileItem): Promise<string> => {
-    if (track.id) {
+  // Synchronous cache for blob URLs and direct URLs to avoid background async drops
+  const blobUrlMapRef = useRef<Map<string, string>>(new Map());
+
+  // Références toujours fraîches pour les gestionnaires d'événements en tâche de fond (écran éteint / verrouillé)
+  const currentTrackRef = useRef<FileItem | null>(null);
+  const playlistRef = useRef<FileItem[]>([]);
+  const isAudioRepeatRef = useRef<'off' | 'all' | 'one'>('off');
+  const isAudioShuffleRef = useRef(false);
+
+  useEffect(() => { currentTrackRef.current = currentTrack; }, [currentTrack]);
+  useEffect(() => { playlistRef.current = playlist; }, [playlist]);
+  useEffect(() => { isAudioRepeatRef.current = isAudioRepeat; }, [isAudioRepeat]);
+  useEffect(() => { isAudioShuffleRef.current = isAudioShuffle; }, [isAudioShuffle]);
+
+  // Synchronisation avec l'API OS MediaSession (Écran de verrouillage Android / iOS / Windows)
+  const updateMediaSession = useCallback((track: FileItem | null, isPlaying: boolean) => {
+    if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
+
+    if (track) {
       try {
-        const localBlob = await getFileBlobUrl(track.id);
-        if (localBlob) return localBlob;
+        const coverArt = track.previewUrl || (track as any).thumbnailUrl || '/icon-192.png';
+        navigator.mediaSession.metadata = new MediaMetadata({
+          title: track.name || 'Piste audio',
+          artist: track.artist || track.source || 'StudyCloud Audio',
+          album: 'StudyCloud Musique',
+          artwork: [
+            { src: coverArt, sizes: '96x96', type: 'image/png' },
+            { src: coverArt, sizes: '128x128', type: 'image/png' },
+            { src: coverArt, sizes: '192x192', type: 'image/png' },
+            { src: coverArt, sizes: '256x256', type: 'image/png' },
+            { src: coverArt, sizes: '384x384', type: 'image/png' },
+            { src: coverArt, sizes: '512x512', type: 'image/png' },
+          ]
+        });
       } catch (e) {}
     }
+
+    try {
+      navigator.mediaSession.playbackState = isPlaying ? 'playing' : 'paused';
+    } catch (e) {}
+  }, []);
+
+  // Pré-chargement des URLs en tâche de fond pour une transition 100% synchrone
+  const prefetchTrackBlob = useCallback(async (track: FileItem) => {
+    if (track.id && !blobUrlMapRef.current.has(track.id)) {
+      try {
+        const localBlob = await getFileBlobUrl(track.id);
+        if (localBlob) {
+          blobUrlMapRef.current.set(track.id, localBlob);
+        }
+      } catch (e) {}
+    }
+  }, []);
+
+  const prefetchPlaylist = useCallback(async (tracks: FileItem[]) => {
+    for (const t of tracks) {
+      prefetchTrackBlob(t);
+    }
+  }, [prefetchTrackBlob]);
+
+  // Résolution synchrone immédiate d'une source audio (garantit zéro délai sous écran verrouillé)
+  const getSyncTrackUrl = useCallback((track: FileItem): string => {
+    if (track.id && blobUrlMapRef.current.has(track.id)) {
+      return blobUrlMapRef.current.get(track.id)!;
+    }
     const direct = track.fileUrl || track.url || track.audioUrl || '';
-    if (direct) return direct;
+    if (direct && !direct.startsWith('data:image/')) {
+      return direct;
+    }
+    if (track.id) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      return `${baseUrl}/api/cloud/stream/${encodeURIComponent(track.id)}`;
+    }
     return '';
-  };
+  }, []);
 
   const playAudio = useCallback(() => {
     const audio = audioRef.current;
@@ -64,6 +128,8 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     desiredPlaybackStateRef.current = true;
     setIsAudioPlaying(true);
     isChangingTrackRef.current = false;
+    updateMediaSession(currentTrackRef.current, true);
+
     const playPromise = audio.play();
     if (playPromise !== undefined) {
       playPromise.catch((err) => {
@@ -72,17 +138,18 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
         }
       });
     }
-  }, []);
+  }, [updateMediaSession]);
 
   const pauseAudio = useCallback(() => {
     const audio = audioRef.current;
     desiredPlaybackStateRef.current = false;
     isChangingTrackRef.current = false;
     setIsAudioPlaying(false);
+    updateMediaSession(currentTrackRef.current, false);
     if (audio) {
       audio.pause();
     }
-  }, []);
+  }, [updateMediaSession]);
 
   const togglePlayPause = useCallback(() => {
     if (!audioRef.current) return;
@@ -99,32 +166,78 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     desiredPlaybackStateRef.current = true;
     setCurrentTime(0);
     setCurrentTrack(track);
+    currentTrackRef.current = track;
 
     if (newPlaylist && Array.isArray(newPlaylist) && newPlaylist.length > 0) {
       setPlaylist(newPlaylist);
+      playlistRef.current = newPlaylist;
+      prefetchPlaylist(newPlaylist);
     }
 
-    const url = await resolveTrackUrl(track);
-    setResolvedAudioUrl(url);
+    // Résolution synchrone prioritaire pour démarrage immédiat
+    const syncUrl = getSyncTrackUrl(track);
+    let finalUrl = syncUrl;
 
-    if (audioRef.current) {
-      if (audioRef.current.src !== url) {
-        audioRef.current.src = url;
-        audioRef.current.load();
+    if (!finalUrl && track.id) {
+      try {
+        const localBlob = await getFileBlobUrl(track.id);
+        if (localBlob) {
+          blobUrlMapRef.current.set(track.id, localBlob);
+          finalUrl = localBlob;
+        }
+      } catch (e) {}
+    }
+
+    if (!finalUrl) {
+      finalUrl = track.fileUrl || track.url || track.audioUrl || '';
+    }
+
+    setResolvedAudioUrl(finalUrl);
+
+    const audio = audioRef.current;
+    if (audio && finalUrl) {
+      if (audio.src !== finalUrl) {
+        audio.src = finalUrl;
       }
-      audioRef.current.currentTime = 0;
-      playAudio();
+      audio.currentTime = 0;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          setIsAudioPlaying(true);
+          isChangingTrackRef.current = false;
+          updateMediaSession(track, true);
+        }).catch((err) => {
+          if (err.name !== 'AbortError') console.warn('[GlobalAudio] play error:', err);
+        });
+      }
     }
-  }, [playAudio]);
+
+    // En tâche de fond, pré-résoudre le blob local si ce n'est pas déjà fait
+    prefetchTrackBlob(track);
+  }, [getSyncTrackUrl, prefetchPlaylist, prefetchTrackBlob, updateMediaSession]);
 
   const handleAudioNext = useCallback(() => {
-    const list = playlist.length > 0 ? playlist : (currentTrack ? [currentTrack] : []);
+    const list = playlistRef.current.length > 0 ? playlistRef.current : (currentTrackRef.current ? [currentTrackRef.current] : []);
     if (list.length === 0) return;
 
-    const curIdx = currentTrack ? list.findIndex(t => t.id === currentTrack.id) : -1;
+    const curTrack = currentTrackRef.current;
+    const curIdx = curTrack ? list.findIndex(t => t.id === curTrack.id) : -1;
 
-    // Si une seule piste ou dernière piste avec répétition désactivée ('off') : arrêt propre
-    if ((list.length <= 1 || curIdx >= list.length - 1) && isAudioRepeat === 'off') {
+    // Si répétition 1 titre activée ('one')
+    if (isAudioRepeatRef.current === 'one') {
+      const audio = audioRef.current;
+      if (audio) {
+        audio.currentTime = 0;
+        audio.play().catch(() => {});
+      }
+      setCurrentTime(0);
+      setIsAudioPlaying(true);
+      updateMediaSession(curTrack, true);
+      return;
+    }
+
+    // Si dernière piste et répétition désactivée ('off') : arrêt propre
+    if ((list.length <= 1 || curIdx >= list.length - 1) && isAudioRepeatRef.current === 'off') {
       setIsAudioPlaying(false);
       desiredPlaybackStateRef.current = false;
       isChangingTrackRef.current = false;
@@ -133,64 +246,105 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
         audioRef.current.currentTime = 0;
       }
       setCurrentTime(0);
+      updateMediaSession(curTrack, false);
       return;
     }
 
-    if (list.length === 1) {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        playAudio();
-      }
-      setCurrentTime(0);
-      setIsAudioPlaying(true);
-      return;
-    }
-
-    if (isAudioShuffle) {
+    let nextTrack: FileItem;
+    if (isAudioShuffleRef.current) {
       const randIdx = Math.floor(Math.random() * list.length);
-      playTrack(list[randIdx]);
-      return;
+      nextTrack = list[randIdx];
+    } else {
+      const nextIdx = (curIdx + 1) % list.length;
+      nextTrack = list[nextIdx];
     }
 
-    const nextIdx = (curIdx + 1) % list.length;
-    playTrack(list[nextIdx]);
-  }, [playlist, currentTrack, isAudioRepeat, isAudioShuffle, playAudio, playTrack]);
+    // Basculement SYNCHRONE du lecteur audio : CRITIQUE quand l'écran est en veille / verrouillé !
+    const audio = audioRef.current;
+    if (audio && nextTrack) {
+      isChangingTrackRef.current = true;
+      desiredPlaybackStateRef.current = true;
+      const nextUrl = getSyncTrackUrl(nextTrack);
+      if (nextUrl) {
+        audio.src = nextUrl;
+      }
+      audio.currentTime = 0;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          isChangingTrackRef.current = false;
+          setIsAudioPlaying(true);
+          updateMediaSession(nextTrack, true);
+        }).catch((err) => {
+          if (err.name !== 'AbortError') console.warn('[BackgroundAudio] play error on next:', err);
+        });
+      }
+    }
+
+    setCurrentTrack(nextTrack);
+    currentTrackRef.current = nextTrack;
+    setResolvedAudioUrl(getSyncTrackUrl(nextTrack));
+    setCurrentTime(0);
+    prefetchTrackBlob(nextTrack);
+  }, [getSyncTrackUrl, prefetchTrackBlob, updateMediaSession]);
 
   const handleAudioPrev = useCallback(() => {
-    const list = playlist.length > 0 ? playlist : (currentTrack ? [currentTrack] : []);
+    const list = playlistRef.current.length > 0 ? playlistRef.current : (currentTrackRef.current ? [currentTrackRef.current] : []);
     if (list.length === 0) return;
 
-    if (list.length === 1) {
-      if (audioRef.current) {
-        audioRef.current.currentTime = 0;
-        playAudio();
-      }
-      setCurrentTime(0);
-      setIsAudioPlaying(true);
-      return;
-    }
+    const curTrack = currentTrackRef.current;
+    const curIdx = curTrack ? list.findIndex(t => t.id === curTrack.id) : 0;
 
-    if (isAudioShuffle) {
+    let prevTrack: FileItem;
+    if (isAudioShuffleRef.current) {
       const randIdx = Math.floor(Math.random() * list.length);
-      playTrack(list[randIdx]);
-      return;
+      prevTrack = list[randIdx];
+    } else {
+      const prevIdx = (curIdx - 1 + list.length) % list.length;
+      prevTrack = list[prevIdx];
     }
 
-    const curIdx = currentTrack ? list.findIndex(t => t.id === currentTrack.id) : 0;
-    const prevIdx = (curIdx - 1 + list.length) % list.length;
-    playTrack(list[prevIdx]);
-  }, [playlist, currentTrack, isAudioShuffle, playAudio, playTrack]);
+    const audio = audioRef.current;
+    if (audio && prevTrack) {
+      isChangingTrackRef.current = true;
+      desiredPlaybackStateRef.current = true;
+      const prevUrl = getSyncTrackUrl(prevTrack);
+      if (prevUrl) {
+        audio.src = prevUrl;
+      }
+      audio.currentTime = 0;
+      const playPromise = audio.play();
+      if (playPromise !== undefined) {
+        playPromise.then(() => {
+          isChangingTrackRef.current = false;
+          setIsAudioPlaying(true);
+          updateMediaSession(prevTrack, true);
+        }).catch((err) => {
+          if (err.name !== 'AbortError') console.warn('[BackgroundAudio] play error on prev:', err);
+        });
+      }
+    }
+
+    setCurrentTrack(prevTrack);
+    currentTrackRef.current = prevTrack;
+    setResolvedAudioUrl(getSyncTrackUrl(prevTrack));
+    setCurrentTime(0);
+    prefetchTrackBlob(prevTrack);
+  }, [getSyncTrackUrl, prefetchTrackBlob, updateMediaSession]);
 
   const toggleAudioRepeat = useCallback(() => {
     setIsAudioRepeat(prev => {
-      if (prev === 'off') return 'all';
-      if (prev === 'all') return 'one';
-      return 'off';
+      const next = prev === 'off' ? 'all' : prev === 'all' ? 'one' : 'off';
+      isAudioRepeatRef.current = next;
+      return next;
     });
   }, []);
 
   const toggleAudioShuffle = useCallback(() => {
-    setIsAudioShuffle(prev => !prev);
+    setIsAudioShuffle(prev => {
+      isAudioShuffleRef.current = !prev;
+      return !prev;
+    });
   }, []);
 
   const seek = useCallback((time: number) => {
@@ -211,6 +365,7 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     desiredPlaybackStateRef.current = false;
     isChangingTrackRef.current = false;
     setIsAudioPlaying(false);
+    updateMediaSession(null, false);
     if (audioRef.current) {
       audioRef.current.pause();
       audioRef.current.currentTime = 0;
@@ -218,23 +373,43 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
     setCurrentTime(0);
     setCurrentTrack(null);
+    currentTrackRef.current = null;
     setResolvedAudioUrl('');
-  }, []);
+  }, [updateMediaSession]);
 
-  // Déclenchement automatique de la lecture quand la source est prête
+  // Initialisation et gestion des actions du MediaSession API (Commandes écran de verrouillage & écouteurs Bluetooth)
   useEffect(() => {
-    if (!currentTrack || !resolvedAudioUrl || !audioRef.current) return;
-    if (desiredPlaybackStateRef.current) {
-      audioRef.current.play().then(() => {
-        isChangingTrackRef.current = false;
-        setIsAudioPlaying(true);
-      }).catch((err) => {
-        if (err.name !== 'AbortError') {
-          console.warn('[GlobalAudio] play on effect:', err);
-        }
+    if (typeof window === 'undefined' || !('mediaSession' in navigator)) return;
+
+    try {
+      navigator.mediaSession.setActionHandler('play', () => {
+        playAudio();
       });
+      navigator.mediaSession.setActionHandler('pause', () => {
+        pauseAudio();
+      });
+      navigator.mediaSession.setActionHandler('previoustrack', () => {
+        handleAudioPrev();
+      });
+      navigator.mediaSession.setActionHandler('nexttrack', () => {
+        handleAudioNext();
+      });
+      navigator.mediaSession.setActionHandler('seekto', (details) => {
+        if (details.seekTime !== undefined) seek(details.seekTime);
+      });
+      navigator.mediaSession.setActionHandler('seekbackward', (details) => {
+        seekDelta(-(details.seekOffset || 10));
+      });
+      navigator.mediaSession.setActionHandler('seekforward', (details) => {
+        seekDelta(details.seekOffset || 10);
+      });
+      navigator.mediaSession.setActionHandler('stop', () => {
+        stopAndClose();
+      });
+    } catch (err) {
+      console.warn('[GlobalAudio] mediaSession setup:', err);
     }
-  }, [currentTrack?.id, resolvedAudioUrl]);
+  }, [playAudio, pauseAudio, handleAudioNext, handleAudioPrev, seek, seekDelta, stopAndClose]);
 
   return (
     <GlobalAudioContext.Provider
@@ -262,11 +437,12 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
       }}
     >
       {children}
-      {/* Élément audio persistant global (ne s'arrête jamais quand on change de menu) */}
+      {/* Élément audio persistant global (ne s'arrête jamais en veille ou lors du changement de menu) */}
       <audio
         ref={audioRef}
         src={resolvedAudioUrl}
         preload="auto"
+        playsInline
         loop={isAudioRepeat === 'one'}
         onLoadedMetadata={() => {
           if (audioRef.current && audioRef.current.duration && !isNaN(audioRef.current.duration)) {
@@ -281,58 +457,17 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
         onPlay={() => {
           isChangingTrackRef.current = false;
           setIsAudioPlaying(true);
+          updateMediaSession(currentTrackRef.current, true);
         }}
         onPause={() => {
-          if (audioRef.current?.ended) {
-            if (isAudioRepeat === 'off') {
-              const list = playlist.length > 0 ? playlist : (currentTrack ? [currentTrack] : []);
-              const curIdx = currentTrack ? list.findIndex(t => t.id === currentTrack.id) : -1;
-              if (curIdx === -1 || curIdx >= list.length - 1) {
-                setIsAudioPlaying(false);
-                desiredPlaybackStateRef.current = false;
-                isChangingTrackRef.current = false;
-                return;
-              }
-            }
-          }
           if (!isChangingTrackRef.current) {
             setIsAudioPlaying(false);
+            updateMediaSession(currentTrackRef.current, false);
           }
         }}
         onEnded={() => {
-          if (isAudioRepeat === 'one') {
-            if (audioRef.current) {
-              audioRef.current.currentTime = 0;
-              playAudio();
-            }
-            setCurrentTime(0);
-          } else if (isAudioRepeat === 'all') {
-            const list = playlist.length > 0 ? playlist : (currentTrack ? [currentTrack] : []);
-            if (list.length <= 1) {
-              if (audioRef.current) {
-                audioRef.current.currentTime = 0;
-                playAudio();
-              }
-              setCurrentTime(0);
-            } else {
-              handleAudioNext();
-            }
-          } else {
-            const list = playlist.length > 0 ? playlist : (currentTrack ? [currentTrack] : []);
-            const curIdx = currentTrack ? list.findIndex(t => t.id === currentTrack.id) : -1;
-            if (curIdx >= 0 && curIdx < list.length - 1) {
-              handleAudioNext();
-            } else {
-              setIsAudioPlaying(false);
-              desiredPlaybackStateRef.current = false;
-              isChangingTrackRef.current = false;
-              setCurrentTime(0);
-              if (audioRef.current) {
-                audioRef.current.pause();
-                audioRef.current.currentTime = 0;
-              }
-            }
-          }
+          // Passage automatique à la piste suivante même si l'écran est noir / verrouillé
+          handleAudioNext();
         }}
         onTimeUpdate={() => {
           if (audioRef.current) {
@@ -341,14 +476,16 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
             if (audioRef.current.duration && !isNaN(audioRef.current.duration) && audioRef.current.duration > 0) {
               const dur = Math.floor(audioRef.current.duration);
               setDuration(dur);
-              if (cur >= dur && isAudioRepeat === 'off') {
-                const list = playlist.length > 0 ? playlist : (currentTrack ? [currentTrack] : []);
-                const curIdx = currentTrack ? list.findIndex(t => t.id === currentTrack.id) : -1;
-                if (curIdx === -1 || curIdx >= list.length - 1) {
-                  setIsAudioPlaying(false);
-                  desiredPlaybackStateRef.current = false;
-                  isChangingTrackRef.current = false;
-                }
+
+              // Mise à jour de la position dans le centre de notifications / écran de verrouillage
+              if (typeof window !== 'undefined' && 'mediaSession' in navigator && 'setPositionState' in navigator.mediaSession) {
+                try {
+                  navigator.mediaSession.setPositionState({
+                    duration: dur,
+                    playbackRate: 1,
+                    position: Math.min(cur, dur)
+                  });
+                } catch (e) {}
               }
             }
           }
