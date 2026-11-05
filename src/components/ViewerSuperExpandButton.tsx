@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronsUp, Maximize, Minimize2 } from 'lucide-react';
+import { Square } from 'lucide-react';
 import { ViewerExpandLevel } from '../utils/viewerExpandManager';
 
 interface ViewerSuperExpandButtonProps {
@@ -13,31 +13,32 @@ export const ViewerSuperExpandButton: React.FC<ViewerSuperExpandButtonProps> = (
   onExpandChange,
   className = '',
 }) => {
-  // Le niveau actif doit être au moins 1 lorsqu'on affiche ce bouton
+  // Ce bouton est STRICTEMENT réservé à la version ordinateur (desktop)
+  // Sur mobile, le super-agrandissement est totalement retiré.
   const activeLevel = expandLevel >= 1 ? expandLevel : 1;
 
   const handleNextStep = (e: React.MouseEvent) => {
     e.stopPropagation();
     if (activeLevel === 1) {
-      // Étape 1 : Masquer la barre du haut
+      // Étape 1 : Agrandir vers le haut en occupant l'espace de la barre du haut
       onExpandChange(2);
     } else if (activeLevel === 2) {
-      // Étape 2 : Masquer le menu latéral gauche (Plein écran total)
+      // Étape 2 : Agrandir vers la gauche en occupant tout l'écran (Plein écran total sans barres)
       onExpandChange(3);
     } else {
-      // Revenir à l'agrandissement initial
+      // Revenir à l'affichage normal
       onExpandChange(1);
     }
   };
 
   const getTooltip = () => {
     if (activeLevel === 1) {
-      return "Agrandir encore (1/2 : Masquer les boutons du haut)";
+      return "Agrandir (1/2 : Étendre vers le haut en masquant les boutons supérieurs)";
     }
     if (activeLevel === 2) {
-      return "Agrandir encore (2/2 : Masquer la barre latérale gauche - Plein écran total)";
+      return "Agrandir (2/2 : Étendre vers la gauche en masquant la barre latérale - Plein écran total)";
     }
-    return "Réduire le plein écran (Rétablir les barres masquées)";
+    return "Restaurer la taille d'affichage d'origine";
   };
 
   return (
@@ -53,15 +54,29 @@ export const ViewerSuperExpandButton: React.FC<ViewerSuperExpandButtonProps> = (
       } ${className}`}
       title={getTooltip()}
     >
+      {/* Icône carrée d'agrandissement conforme à la demande de l'utilisateur ("le truc carré qui ressemble à agrandir") */}
       {activeLevel === 3 ? (
-        <Minimize2 className="w-3.5 h-3.5 stroke-[2.4] text-white" />
+        // Icône de restauration (deux carrés superposés classiques pour restaurer l'écran)
+        <svg
+          className="w-3.5 h-3.5 stroke-[2.2] text-white shrink-0"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="7" y="7" width="13.5" height="13.5" rx="1.5" />
+          <path d="M7 17H4.5a1.5 1.5 0 0 1-1.5-1.5V4.5A1.5 1.5 0 0 1 4.5 3h11A1.5 1.5 0 0 1 17 4.5V7" />
+        </svg>
       ) : activeLevel === 2 ? (
-        <Maximize className="w-3.5 h-3.5 stroke-[2.4] text-white" />
+        // Grand carré d'agrandissement actif (Étape 1/2)
+        <Square className="w-3.5 h-3.5 stroke-[2.4] text-white shrink-0" />
       ) : (
-        <ChevronsUp className="w-3.5 h-3.5 stroke-[2.4] text-cyan-400" />
+        // Carré d'agrandissement standard d'ordinateur (Étape 0/2)
+        <Square className="w-3.5 h-3.5 stroke-[2.2] text-cyan-400 shrink-0" />
       )}
 
-      {/* Indicateur visuel à 2 points (point point) pour marquer les 2 étapes d'agrandissement supplémentaires */}
+      {/* Indicateur visuel à 2 points (point-point) */}
       <div className="flex items-center gap-1 shrink-0" title={`Étape ${activeLevel - 1} / 2`}>
         {/* Point 1 : Masquer la barre du haut */}
         <span
@@ -71,7 +86,7 @@ export const ViewerSuperExpandButton: React.FC<ViewerSuperExpandButtonProps> = (
               : 'bg-cyan-400 shadow-[0_0_4px_rgba(34,211,238,0.9)] animate-pulse'
           }`}
         />
-        {/* Point 2 : Masquer la barre latérale gauche */}
+        {/* Point 2 : Masquer la barre latérale gauche (plein écran total) */}
         <span
           className={`w-1.5 h-1.5 rounded-full transition-all duration-300 ${
             activeLevel === 3
@@ -89,4 +104,3 @@ export const ViewerSuperExpandButton: React.FC<ViewerSuperExpandButtonProps> = (
     </button>
   );
 };
-

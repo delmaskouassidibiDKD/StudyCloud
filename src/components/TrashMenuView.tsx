@@ -1261,7 +1261,13 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     const fileType = getFileType(file);
 
     return (
-      <div className="w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none">
+      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
+        viewerExpandLevel === 3
+          ? 'fixed inset-0 z-[100] w-screen h-screen'
+          : viewerExpandLevel === 2
+          ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+          : ''
+      }`}>
         {/* Barre supérieure du lecteur */}
         <div className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
           {/* Navigation Précédent / Suivant et Titre du fichier */}
@@ -1331,7 +1337,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               <span className="hidden md:inline">Supprimer</span>
             </button>
 
-            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (
               <ViewerSuperExpandButton
                 expandLevel={viewerExpandLevel}
@@ -1345,15 +1351,11 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               onClick={() => {
                 const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
                 if (isMobileScreen) {
-                  if (isViewerMaximized || viewerExpandLevel >= 2) {
-                    setIsViewerMaximized(false);
-                    resetViewerExpand();
-                  } else {
-                    setIsViewerMaximized(true);
-                    setViewerExpandLevel(3);
-                  }
+                  // Sur mobile : basculer entre vue normale et plein écran simple sans super-agrandissement
+                  setIsViewerMaximized(!isViewerMaximized);
+                  resetViewerExpand();
                 } else {
-                  if (isViewerMaximized) {
+                  if (isViewerMaximized || viewerExpandLevel >= 2) {
                     setIsViewerMaximized(false);
                     resetViewerExpand();
                   } else {
@@ -1838,10 +1840,14 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         {selectedFile && (
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl ${
-              (isViewerMaximized || selectedFile)
-                ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
-            } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
+              viewerExpandLevel === 3
+                ? 'fixed inset-0 z-[100] w-screen h-screen'
+                : viewerExpandLevel === 2
+                ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+                : (isViewerMaximized || selectedFile)
+                  ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
+            } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>

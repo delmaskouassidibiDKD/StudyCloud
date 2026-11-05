@@ -614,7 +614,13 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     const showSpeechControls = fileType === 'document' || fileType === 'note';
 
     return (
-      <div className="w-full h-full min-h-0 flex flex-col bg-[#04060A] text-white">
+      <div className={`w-full h-full min-h-0 flex flex-col bg-[#04060A] text-white ${
+        viewerExpandLevel === 3
+          ? 'fixed inset-0 z-[100] w-screen h-screen'
+          : viewerExpandLevel === 2
+          ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+          : ''
+      }`}>
         {/* Barre d'en-tête du lecteur */}
         <div className="px-3 sm:px-4 py-2 bg-[#0A0E1A] border-b border-stone-800 flex items-center justify-between gap-2 sm:gap-3 shrink-0">
           <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
@@ -863,7 +869,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
               </button>
             )}
 
-            {/* Super Agrandissement Progressif (Point-Point 2 étapes : 1. Masquer barre du haut, 2. Masquer barre latérale) */}
+            {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (
               <ViewerSuperExpandButton
                 expandLevel={viewerExpandLevel}
@@ -877,15 +883,11 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
               onClick={() => {
                 const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
                 if (isMobileScreen) {
-                  if (isViewerMaximized || viewerExpandLevel >= 2) {
-                    setIsViewerMaximized(false);
-                    resetViewerExpand();
-                  } else {
-                    setIsViewerMaximized(true);
-                    setViewerExpandLevel(3);
-                  }
+                  // Sur mobile : basculer entre vue normale et plein écran simple sans super-agrandissement
+                  setIsViewerMaximized(!isViewerMaximized);
+                  resetViewerExpand();
                 } else {
-                  if (isViewerMaximized) {
+                  if (isViewerMaximized || viewerExpandLevel >= 2) {
                     setIsViewerMaximized(false);
                     resetViewerExpand();
                   } else {
@@ -2583,10 +2585,14 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         {selectedFile && (
           <aside 
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 h-full min-h-0 ${
-              (isViewerMaximized || selectedFile)
-                ? "w-full flex-1 rounded-xl border border-white/10"
-                : "w-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-400/40 dark:border-slate-800 rounded-xl"
-            } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
+              viewerExpandLevel === 3
+                ? 'fixed inset-0 z-[100] w-screen h-screen'
+                : viewerExpandLevel === 2
+                ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+                : (isViewerMaximized || selectedFile)
+                  ? "w-full flex-1 rounded-xl border border-white/10"
+                  : "w-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-400/40 dark:border-slate-800 rounded-xl"
+            } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>
