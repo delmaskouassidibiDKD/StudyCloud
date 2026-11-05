@@ -443,6 +443,7 @@ async function ensureStorageTables(db) {
     try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN gift_initial REAL DEFAULT 50.0").run(); } catch (e) {}
     try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN gift_type TEXT DEFAULT 'welcome'").run(); } catch (e) {}
     try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN purchased_remaining REAL DEFAULT 0.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN reference_credits REAL DEFAULT 50.0").run(); } catch (e) {}
 
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS ai_usage_logs (
@@ -14199,6 +14200,7 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
       await safeRun(db, `
         UPDATE user_ai_credits
         SET credits_balance = ?,
+
             remaining_credits = ?,
             gift_remaining = ?,
             gift_initial = ?,
@@ -14232,6 +14234,7 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
       success: true,
       credits: {
         balance: Number(userCredits.credits_balance || 0),
+        reference_credits: Number(userCredits.reference_credits || userCredits.credits_balance || 50),
         gift_remaining: giftRem,
         gift_initial: giftInit,
         gift_type: giftType,
@@ -14502,6 +14505,7 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
       await safeRun(db, `
         UPDATE user_ai_credits 
         SET credits_balance = ?,
+
             total_credits_purchased = ?,
             gift_remaining = ?,
             purchased_remaining = ?,

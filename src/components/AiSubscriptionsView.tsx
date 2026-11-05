@@ -90,6 +90,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   // Solde de crédits de l'utilisateur (issu de D1 et mis en cache pour fluidité maximale)
   const [userCredits, setUserCredits] = useState<{
     balance: number;
+    reference_credits?: number;
     tokensUsed: number;
     totalPurchased: number;
     totalConsumed?: number;
@@ -104,6 +105,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     purchased_remaining?: number;
   }>(() => ({
     balance: Number(cachedCredits?.balance || 0),
+    reference_credits: cachedCredits?.reference_credits !== undefined ? Number(cachedCredits.reference_credits) : undefined,
     tokensUsed: Number(cachedCredits?.tokensUsed || 0),
     totalPurchased: Number(cachedCredits?.totalPurchased || 0),
     totalConsumed: Number(cachedCredits?.totalConsumed || 0),
@@ -117,6 +119,23 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     gift_title: cachedCredits?.gift_title,
     purchased_remaining: cachedCredits?.purchased_remaining !== undefined ? Number(cachedCredits.purchased_remaining) : undefined
   }));
+
+  // Référence de consommation de départ (mise à jour automatique dès qu'une recharge est effectuée)
+  const [referenceCredits, setReferenceCredits] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem(`studycloud_credits_reference_${currentUserId}`);
+      if (saved) {
+        const val = parseFloat(saved);
+        if (!isNaN(val) && val > 0 && val < 300) return val;
+      }
+    } catch (_) {}
+    const initialBal = Number(cachedCredits?.balance || 0);
+    const refFromCache = Number(cachedCredits?.reference_credits || 0);
+    if (refFromCache > 0 && refFromCache < 300) return Math.max(refFromCache, initialBal);
+    return initialBal > 0 ? initialBal : Number(cachedCredits?.welcome_credits || 50);
+  });
+
+  const prevBalanceRef = useRef<number>(Number(cachedCredits?.balance || 0));
 
   // Liste globale de toutes les demandes utilisateur
   const [allRequests, setAllRequests] = useState<any[]>(() => {
@@ -156,9 +175,27 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
         const cred = liveRes.value.credits;
         const finalPurchased = Math.max(0, Number(cred.totalPurchased || 0));
         const serverBalance = Number(cred.balance);
+        const serverRef = cred.reference_credits !== undefined ? Number(cred.reference_credits) : undefined;
+
+        // Détection de recharge automatique : le nouveau solde total devient la référence de départ
+        let activeReference = referenceCredits;
+        if (serverBalance > prevBalanceRef.current) {
+          activeReference = serverBalance;
+        } else if (serverRef !== undefined && serverRef >= serverBalance && serverRef < 300) {
+          activeReference = serverRef;
+        } else if (referenceCredits < serverBalance || referenceCredits >= 300) {
+          activeReference = serverBalance;
+        }
+
+        setReferenceCredits(activeReference);
+        try {
+          localStorage.setItem(`studycloud_credits_reference_${currentUserId}`, String(activeReference));
+        } catch (_) {}
+        prevBalanceRef.current = serverBalance;
 
         const updatedCredits = {
           balance: serverBalance,
+          reference_credits: activeReference,
           tokensUsed: Number(cred.tokensUsed || 0),
           totalPurchased: finalPurchased,
           totalConsumed: Number(cred.totalConsumed || 0),
@@ -272,6 +309,17 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     const handleCreditUpdate = (e: any) => {
       const detail = e.detail;
       if (detail && (!detail.userId || detail.userId === currentUserId)) {
+        const newBal = Number(detail.remaining_balance !== undefined ? detail.remaining_balance : undefined);
+        if (newBal !== undefined && newBal > prevBalanceRef.current) {
+          setReferenceCredits(newBal);
+          try {
+            localStorage.setItem(`studycloud_credits_reference_${currentUserId}`, String(newBal));
+          } catch (_) {}
+        }
+        if (newBal !== undefined) {
+          prevBalanceRef.current = newBal;
+        }
+
         setUserCredits(prev => {
           const updated = {
             ...prev,
@@ -386,8 +434,12 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     ? +(giftRemaining + paidRemaining).toFixed(2)
     : (serverBalance > 0 ? serverBalance : Math.max(0, +(welcomeCredits + purchasedCredits - consumedCredits).toFixed(2)));
 
-  // Dotation totale de départ = Cadeau accordé + Total acheté
-  const totalMaxCredits = Math.max(giftInitial + purchasedCredits, +(creditsRemaining + consumedCredits).toFixed(2));
+  // Référence de départ dynamique : lors d'une recharge, le solde total obtenu devient le 100% de référence
+  const totalMaxCredits = Math.max(
+    referenceCredits > 0 ? referenceCredits : creditsRemaining,
+    creditsRemaining,
+    0.01
+  );
 
   // Pourcentage de la jauge (démarre plein au départ, et se vide progressivement vers la gauche)
   const creditsPercentage = totalMaxCredits > 0
@@ -572,7 +624,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                 </p>
                 <p className="text-blue-200/90 text-[10px] mt-1 font-medium">
                   {purchasedCredits > 0
-                    ? (giftRemaining > 0 ? `sur ${purchasedCredits} achetés (Préservé)` : `sur ${purchasedCredits} achetés (En cours)`)
+                    ? (giftRemaining > 0 ? 'Crédits achetés (Préservés)' : 'Crédits achetés (En cours)')
                     : 'Extensions validées'}
                 </p>
               </div>
@@ -1080,7 +1132,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                   </span>
                   {purchasedCredits > 0 && (
                     <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold block">
-                      {giftRemaining > 0 ? `(sur ${purchasedCredits} achetés • Préservé)` : `(sur ${purchasedCredits} achetés • En cours)`}
+                      {giftRemaining > 0 ? '(Crédits achetés • Préservés)' : '(Crédits achetés • En cours)'}
                     </span>
                   )}
                 </div>

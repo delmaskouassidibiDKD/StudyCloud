@@ -1168,6 +1168,7 @@ export default {
           CREATE TABLE IF NOT EXISTS user_ai_credits (
             user_id TEXT PRIMARY KEY,
             credits_balance REAL DEFAULT 50.0,
+            reference_credits REAL DEFAULT 50.0,
             total_tokens_consumed INTEGER DEFAULT 0,
             total_credits_purchased REAL DEFAULT 0.0,
             total_credits_consumed REAL DEFAULT 0.0,
@@ -1179,6 +1180,8 @@ export default {
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
         `).run().catch(() => {});
+
+        await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN reference_credits REAL DEFAULT 50.0").run().catch(() => {});
 
         await db.prepare(`
           CREATE TABLE IF NOT EXISTS ai_usage_logs (
@@ -1248,14 +1251,15 @@ export default {
       if (!userRow) {
         const initialBalance = config.welcome_credits !== undefined ? Number(config.welcome_credits) : 50.0;
         await db.prepare(`
-          INSERT INTO user_ai_credits (user_id, credits_balance, total_tokens_consumed, total_credits_purchased, total_credits_consumed, last_daily_grant_date, created_at, updated_at)
-          VALUES (?, ?, 0, 0, 0, ?, datetime('now'), datetime('now'))
+          INSERT INTO user_ai_credits (user_id, credits_balance, reference_credits, total_tokens_consumed, total_credits_purchased, total_credits_consumed, last_daily_grant_date, created_at, updated_at)
+          VALUES (?, ?, ?, 0, 0, 0, ?, datetime('now'), datetime('now'))
           ON CONFLICT(user_id) DO NOTHING
-        `).bind(userId, initialBalance, todayStr).run().catch(() => {});
+        `).bind(userId, initialBalance, initialBalance, todayStr).run().catch(() => {});
 
         return {
           user_id: userId,
           credits_balance: initialBalance,
+          reference_credits: initialBalance,
           total_tokens_consumed: 0,
           total_credits_purchased: 0,
           total_credits_consumed: 0,
@@ -1271,18 +1275,23 @@ export default {
           const newBal = +(Number(userRow.credits_balance || 0) + addedDaily).toFixed(2);
           await db.prepare(`
             UPDATE user_ai_credits
-            SET credits_balance = ?, last_daily_grant_date = ?, updated_at = datetime('now')
+            SET credits_balance = ?, reference_credits = ?, last_daily_grant_date = ?, updated_at = datetime('now')
             WHERE user_id = ?
-          `).bind(newBal, todayStr, userId).run().catch(() => {});
+          `).bind(newBal, newBal, todayStr, userId).run().catch(() => {});
 
           userRow.credits_balance = newBal;
+          userRow.reference_credits = newBal;
           userRow.last_daily_grant_date = todayStr;
         }
       }
 
+      const bal = Number(userRow.credits_balance) || 0;
+      const ref = Number(userRow.reference_credits || bal || 50);
+
       return {
         user_id: userRow.user_id,
-        credits_balance: Number(userRow.credits_balance) || 0,
+        credits_balance: bal,
+        reference_credits: Math.max(ref, bal),
         total_tokens_consumed: Number(userRow.total_tokens_consumed) || 0,
         total_credits_purchased: Number(userRow.total_credits_purchased) || 0,
         total_credits_consumed: Number(userRow.total_credits_consumed) || 0,
@@ -2987,14 +2996,17 @@ CONSIGNES STRICTES DE CONTINUATION :
           if (amount > 0) purchasedAdd = amount;
         }
 
+        const newRef = (amount > 0 || action === "set") ? newBalance : Math.min(newBalance, Number(currentCredits.reference_credits || newBalance));
+
         await db.prepare(`
           UPDATE user_ai_credits
           SET 
             credits_balance = ?,
+            reference_credits = ?,
             total_credits_purchased = ROUND(total_credits_purchased + ?, 2),
             updated_at = datetime('now')
           WHERE user_id = ?
-        `).bind(newBalance, purchasedAdd, targetUserId).run();
+        `).bind(newBalance, newRef, purchasedAdd, targetUserId).run();
 
         // Enregistrer la transaction dans le journal
         const logId = `tx-admin-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`;
@@ -3046,6 +3058,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         success: true,
         credits: {
           balance: userCredits.credits_balance,
+          reference_credits: userCredits.reference_credits,
           tokensUsed: userCredits.total_tokens_consumed,
           totalPurchased: userCredits.total_credits_purchased,
           totalConsumed: userCredits.total_credits_consumed,

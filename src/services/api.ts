@@ -3451,6 +3451,7 @@ export async function getUserAiCreditsLive(
   success: boolean;
   credits: {
     balance: number;
+    reference_credits?: number;
     tokensUsed: number;
     totalPurchased: number;
     totalConsumed: number;
