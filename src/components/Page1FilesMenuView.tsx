@@ -11003,7 +11003,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 setDocCurrentPage(1);
                 showToast(nextMode === 'horizontal' ? 'Mode défilement horizontal activé' : 'Mode défilement vertical activé');
               }}
-              className={'h-7 sm:h-8 px-2.5 sm:px-3 rounded-full flex items-center gap-1.5 text-xs font-bold border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
+              className={'hidden md:flex h-7 sm:h-8 px-2.5 sm:px-3 rounded-full items-center gap-1.5 text-xs font-bold border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
                 docLayoutMode === 'horizontal'
                   ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 ring-1 ring-amber-400/40'
                   : 'bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30 ring-1 ring-blue-400/40'
@@ -11093,13 +11093,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         <div className="flex-1 w-full h-full flex flex-col overflow-hidden bg-stone-100 dark:bg-stone-900 select-text">
           {isPdf ? (
             isMobileScreen ? (
-              <MobilePdfViewer
+              <PdfHorizontalViewer
                 fileId={file.id}
                 file={file}
                 url={splitResolvedPdfUrl || file.url}
                 docZoom={Math.round(viewerZoom * 100)}
-                onZoomChange={(z) => setViewerZoom(z / 100)}
-                layoutMode={docLayoutMode}
+                layoutMode="horizontal"
                 currentPage={docCurrentPage}
                 onPageChange={setDocCurrentPage}
                 isFullscreen={isViewerMaximized}

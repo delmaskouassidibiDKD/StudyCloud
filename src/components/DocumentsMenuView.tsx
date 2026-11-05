@@ -195,7 +195,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   // Lecteur de document actif (split à droite)
   const [selectedDoc, setSelectedDoc] = useState<FileItem | null>(null);
   const [splitResolvedPdfUrl, setSplitResolvedPdfUrl] = useState<string>('');
-  const [docLayoutMode, setDocLayoutMode] = useState<'vertical' | 'horizontal'>('vertical');
+  const [docLayoutMode, setDocLayoutMode] = useState<'vertical' | 'horizontal'>('horizontal');
   const [docCurrentPage, setDocCurrentPage] = useState(1);
   const [viewerZoom, setViewerZoom] = useState(1);
   const [viewerRotation, setViewerRotation] = useState(0);
@@ -1850,6 +1850,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     const pdfUrl = splitResolvedPdfUrl || file.url || '';
     const cleanPdfBase = pdfUrl.split('#')[0];
     const nativePdfUrl = cleanPdfBase ? cleanPdfBase + '#toolbar=1&navpanes=0&view=FitH' : '';
+    const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
@@ -1893,10 +1894,11 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           <div className="flex items-center gap-1.5 shrink-0">
             {isPdf && (
               <>
+                {/* Bouton de bascule défilement masqué sur mobile (pas besoin de bascule sur téléphone, lecture directe avec PdfHorizontalViewer) */}
                 <button
                   type="button"
                   onClick={() => setDocLayoutMode(m => m === 'vertical' ? 'horizontal' : 'vertical')}
-                  className={`flex items-center gap-1 px-2.5 py-1 rounded-full border transition-all cursor-pointer shadow-sm active:scale-95 ${docLayoutMode === 'vertical'
+                  className={`hidden md:flex items-center gap-1 px-2.5 py-1 rounded-full border transition-all cursor-pointer shadow-sm active:scale-95 ${docLayoutMode === 'vertical'
                     ? 'bg-blue-600/30 text-blue-300 border-blue-400/50 hover:bg-blue-600/40'
                     : 'bg-amber-500/20 text-amber-300 border-amber-400/50 hover:bg-amber-500/30'
                     }`}
@@ -2030,7 +2032,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
         {/* Corps du Document (Image 3) */}
         <div className="flex-1 w-full h-full flex flex-col overflow-hidden bg-stone-100 dark:bg-stone-900 select-text">
           {isPdf ? (
-            docLayoutMode === 'horizontal' ? (
+            (isMobileScreen || docLayoutMode === 'horizontal') ? (
               <PdfHorizontalViewer
                 fileId={file.id}
                 file={file}
@@ -2041,7 +2043,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 onPageChange={setDocCurrentPage}
                 isFullscreen={isViewerMaximized}
               />
-            ) : nativePdfUrl ? (
+            ) : !isMobileScreen && nativePdfUrl ? (
               <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
                 <object
                   key={`pdf-native-${file.id || cleanPdfBase}`}
@@ -2063,7 +2065,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               <PdfHorizontalViewer
                 fileId={file.id}
                 file={file}
-                url={file.url}
+                url={splitResolvedPdfUrl || file.url}
                 docZoom={Math.round(viewerZoom * 100)}
                 layoutMode="vertical"
                 currentPage={docCurrentPage}

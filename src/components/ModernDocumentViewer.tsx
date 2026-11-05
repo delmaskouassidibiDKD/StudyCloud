@@ -613,12 +613,12 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
               </button>
             )}
 
-            {/* Bascule mode Lecteur Navigateur / Défilement continu pour PDF */}
-            {isPdf && nativePdfUrl && (
+            {/* Bascule mode Lecteur Navigateur / Défilement continu pour PDF (Desktop uniquement) */}
+            {isPdf && !isMobile && nativePdfUrl && (
               <button
                 type="button"
                 onClick={() => setPdfViewMode((m: any) => m === 'native' ? 'continuous' : 'native')}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${activePdfViewMode === 'native'
+                className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${activePdfViewMode === 'native'
                     ? 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
                     : 'bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-200'
                   }`}
