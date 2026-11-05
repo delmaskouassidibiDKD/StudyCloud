@@ -129,7 +129,7 @@ export const FolderDetailModal: React.FC<FolderDetailModalProps> = ({ folder, on
                 className="bg-[#2A2B2E] border-2 border-stone-800 rounded-xl p-2 flex flex-col justify-between shadow-sm hover:shadow-md transition-all relative group cursor-pointer select-none"
               >
                 <div className="flex-1 w-full h-full flex items-center justify-center overflow-hidden rounded-lg bg-[#1E1F22] relative mb-1.5 aspect-square">
-                  {file.isImage && file.url ? (
+                  {((file as any).isImage || /\.(jpe?g|png|webp|gif|svg)$/i.test(file.name)) && file.url ? (
                     <img src={file.url} alt={file.name} className="w-full h-full object-cover" />
                   ) : (
                     <div className="flex flex-col items-center justify-center text-stone-300">

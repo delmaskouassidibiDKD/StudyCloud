@@ -1037,7 +1037,8 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                 <div className="space-y-2">
                   {aiPlans.map((plan) => {
                     const hasBadge = !!(plan.badge && plan.badge.trim());
-                    const creditAmount = plan.words_amount || (plan.ai_tokens ? `${Number(plan.ai_tokens).toLocaleString('fr-FR')} tokens` : 'Pack Crédits');
+                    const planAny = plan as any;
+                    const creditAmount = planAny.words_amount || plan.credits_or_words || (planAny.ai_tokens ? `${Number(planAny.ai_tokens).toLocaleString('fr-FR')} tokens` : (plan.credits_count ? `${plan.credits_count} Crédits` : 'Pack Crédits'));
 
                     return (
                       <div

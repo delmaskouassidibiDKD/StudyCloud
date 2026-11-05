@@ -2132,10 +2132,14 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                               {track.name}
                             </h4>
                             {track.isFavorite && (
-                              <Star className="w-3.5 h-3.5 shrink-0 fill-amber-400 text-amber-400 drop-shadow-sm" title="Favori" />
+                              <span title="Favori" className="inline-flex">
+                                <Star className="w-3.5 h-3.5 shrink-0 fill-amber-400 text-amber-400 drop-shadow-sm" />
+                              </span>
                             )}
                             {(track.isPinned || isItemPinned(track)) && (
-                              <Pin className="w-3 h-3 shrink-0 rotate-45 text-purple-400" title="Épinglé" />
+                              <span title="Épinglé" className="inline-flex">
+                                <Pin className="w-3 h-3 shrink-0 rotate-45 text-purple-400" />
+                              </span>
                             )}
                           </div>
                           <p className="text-[11px] sm:text-xs text-stone-500 dark:text-slate-400 font-medium truncate mt-0.5">

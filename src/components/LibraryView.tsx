@@ -2029,7 +2029,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             ) : docsError ? (
               <div className="bg-red-50 border-2 border-red-400 rounded-2xl p-6 text-center">
                 <p className="text-xs font-bold text-red-700">⚠️ {docsError}</p>
-                <button onClick={loadPublishedDocs} className="mt-3 px-4 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-red-700">Réessayer</button>
+                <button onClick={() => { loadPublishedDocs(); }} className="mt-3 px-4 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-red-700">Réessayer</button>
               </div>
             ) : publishedDocs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 px-4 text-center">

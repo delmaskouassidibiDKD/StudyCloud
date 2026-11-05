@@ -206,6 +206,7 @@ export interface FileItem {
   isFolder?: boolean;
   isAudio?: boolean;
   isVideo?: boolean;
+  isDocument?: boolean;
   isTrash?: boolean;
   thumbnailUrl?: string;
   coverUrl?: string;

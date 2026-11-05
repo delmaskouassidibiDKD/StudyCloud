@@ -184,7 +184,7 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
         whatsappNumber: whatsappNumber.trim(),
         storageDisplay: plan.storageDisplay,
         priceDisplay: plan.priceDisplay,
-        billingCycle: plan.billingCycle,
+        billingCycle: plan.billingCycle as any,
         pricePaid: plan.priceFcfa || plan.price,
         currency: 'FCFA',
         paymentMethod: 'Mobile Money (Wave / Orange / MTN / Moov)',

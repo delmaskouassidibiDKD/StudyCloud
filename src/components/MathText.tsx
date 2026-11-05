@@ -53,7 +53,7 @@ function containsNaturalLanguageProse(line: string): boolean {
   const words = stripped.match(/[a-zA-ZÀ-ÿ]{3,}/g) || [];
   // Mots mathématiques valides de 3 lettres
   const mathKeywords = new Set(['max', 'min', 'cos', 'sin', 'tan', 'log', 'exp', 'sup', 'inf', 'lim', 'det']);
-  const proseWords = words.filter(w => !mathKeywords.has(w.toLowerCase()));
+  const proseWords = (words as string[]).filter(w => !mathKeywords.has(w.toLowerCase()));
   // S'il y a 2 mots ou plus de langage courant (ex: "Transfer function", "Multiply numerator", "This is", "En déduire", "Dans le circuit"), c'est de la prose !
   return proseWords.length >= 2;
 }

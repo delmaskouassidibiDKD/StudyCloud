@@ -843,7 +843,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         transition={{ type: 'spring', stiffness: 350, damping: 25 }}
         data-note-id={note.id}
         onPointerDown={(e) => handlePointerDownCard(e, note)}
-        style={{ backgroundColor: cardBg }}
+        style={{ backgroundColor: cardBg } as any}
         className={`group relative rounded-2xl p-4 border-2 border-stone-900 shadow-[3px_3px_0px_0px_#1c1917] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex flex-col justify-between overflow-hidden select-none touch-pan-y ${
           isBeingDragged ? 'opacity-20 scale-95 border-dashed border-stone-600 cursor-grabbing' : ''
         }`}

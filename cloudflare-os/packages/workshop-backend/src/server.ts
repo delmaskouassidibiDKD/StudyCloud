@@ -1158,12 +1158,12 @@ export default {
             min_deduction_credit REAL DEFAULT 0.01,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
-        `).run().catch(() => {});
+        `).run().catch(() => { });
 
         await db.prepare(`
           INSERT OR IGNORE INTO ai_billing_config (id, tokens_per_credit, welcome_credits, daily_free_credits, is_daily_renewal_active)
           VALUES ('default', 1000, 50.0, 0.0, 0)
-        `).run().catch(() => {});
+        `).run().catch(() => { });
 
         await db.prepare(`
           CREATE TABLE IF NOT EXISTS user_ai_credits (
@@ -1180,9 +1180,9 @@ export default {
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
-        `).run().catch(() => {});
+        `).run().catch(() => { });
 
-        await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN reference_credits REAL DEFAULT 50.0").run().catch(() => {});
+        await db.prepare("ALTER TABLE user_ai_credits ADD COLUMN reference_credits REAL DEFAULT 50.0").run().catch(() => { });
 
         await db.prepare(`
           CREATE TABLE IF NOT EXISTS ai_usage_logs (
@@ -1197,7 +1197,7 @@ export default {
             model_used TEXT DEFAULT '',
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
-        `).run().catch(() => {});
+        `).run().catch(() => { });
       } catch (e) {
         logger.warn("Erreur création tables facturation IA D1", { event: "ai.billing.tables_error", error: e });
       }
@@ -1222,7 +1222,7 @@ export default {
             is_daily_renewal_active: row.is_daily_renewal_active ? 1 : 0
           };
         }
-      } catch {}
+      } catch { }
       return {
         tokens_per_credit: 1000,
         welcome_credits: 50.0,
@@ -1255,7 +1255,7 @@ export default {
           INSERT INTO user_ai_credits (user_id, credits_balance, reference_credits, total_tokens_consumed, total_credits_purchased, total_credits_consumed, last_daily_grant_date, created_at, updated_at)
           VALUES (?, ?, ?, 0, 0, 0, ?, datetime('now'), datetime('now'))
           ON CONFLICT(user_id) DO NOTHING
-        `).bind(userId, initialBalance, initialBalance, todayStr).run().catch(() => {});
+        `).bind(userId, initialBalance, initialBalance, todayStr).run().catch(() => { });
 
         return {
           user_id: userId,
@@ -1278,7 +1278,7 @@ export default {
             UPDATE user_ai_credits
             SET credits_balance = ?, reference_credits = ?, last_daily_grant_date = ?, updated_at = datetime('now')
             WHERE user_id = ?
-          `).bind(newBal, newBal, todayStr, userId).run().catch(() => {});
+          `).bind(newBal, newBal, todayStr, userId).run().catch(() => { });
 
           userRow.credits_balance = newBal;
           userRow.reference_credits = newBal;
@@ -1552,8 +1552,8 @@ export default {
                     docName || null,
                     Date.now(),
                     Date.now()
-                  ).run().catch(() => {});
-                } catch {}
+                  ).run().catch(() => { });
+                } catch { }
               }
               return new Response(JSON.stringify({
                 success: false,
@@ -1585,7 +1585,7 @@ export default {
                 created_at INTEGER NOT NULL,
                 updated_at INTEGER NOT NULL
               )
-            `).run().catch(() => {});
+            `).run().catch(() => { });
 
             await db.prepare(`
               INSERT INTO ai_generated_contents (
@@ -1606,7 +1606,7 @@ export default {
               docName || null,
               Date.now(),
               Date.now()
-            ).run().catch(() => {});
+            ).run().catch(() => { });
           } catch (initD1Err) {
             logger.warn("Pré-enregistrement D1 création async échoué", { event: "ai.creation.d1_init_error", error: initD1Err });
           }
@@ -1644,23 +1644,23 @@ export default {
 
           const isSelectedGemini = targetModel === "gemini-2.0-flash" || targetModel.includes("gemini") || targetModel === "gemini-3.8-flash" || targetModel === "gemini-3.6-flash";
 
-        // Si un média (vidéo, audio, document PDF/Word avec schémas, ou image) est fourni ET que le modèle sélectionné n'est pas Gemini :
-        // Gemini Flash intervient en arrière-plan comme moteur de perception universel.
-        // Il produit un dossier d'observation haute fidélité qui est transmis au modèle enseignant choisi (Agent Delmas, DeepSeek, Claude...).
-        let backgroundPerceptionReport = String(body.perceptionReport || "").trim();
-        const needsVisualOrAudioPerception = Boolean(
-          (imageBase64 && imageBase64.length > 50) ||
-          (videoBase64 && videoBase64.length > 50) ||
-          (audioBase64 && audioBase64.length > 50) ||
-          documentImages.length > 0 ||
-          videoFrames.length > 0 ||
-          (documentBase64 && documentBase64.length > 50 && (!docContent || docContent.trim().length < 120))
-        );
-        if (!backgroundPerceptionReport && needsVisualOrAudioPerception && !isSelectedGemini) {
-          // 1. D'abord tenter Google Gemini Flash si une clé Gemini semble présente
-          if (geminiKeyToUse && !geminiKeyToUse.startsWith("AIzaSyDKct") && geminiKeyToUse.length > 25) {
-            try {
-              const perceptionSystemPrompt = `Tu es l'Expert de Perception Multimodale de l'équipe pédagogique StudyCloud.
+          // Si un média (vidéo, audio, document PDF/Word avec schémas, ou image) est fourni ET que le modèle sélectionné n'est pas Gemini :
+          // Gemini Flash intervient en arrière-plan comme moteur de perception universel.
+          // Il produit un dossier d'observation haute fidélité qui est transmis au modèle enseignant choisi (Agent Delmas, DeepSeek, Claude...).
+          let backgroundPerceptionReport = String(body.perceptionReport || "").trim();
+          const needsVisualOrAudioPerception = Boolean(
+            (imageBase64 && imageBase64.length > 50) ||
+            (videoBase64 && videoBase64.length > 50) ||
+            (audioBase64 && audioBase64.length > 50) ||
+            documentImages.length > 0 ||
+            videoFrames.length > 0 ||
+            (documentBase64 && documentBase64.length > 50 && (!docContent || docContent.trim().length < 120))
+          );
+          if (!backgroundPerceptionReport && needsVisualOrAudioPerception && !isSelectedGemini) {
+            // 1. D'abord tenter Google Gemini Flash si une clé Gemini semble présente
+            if (geminiKeyToUse && !geminiKeyToUse.startsWith("AIzaSyDKct") && geminiKeyToUse.length > 25) {
+              try {
+                const perceptionSystemPrompt = `Tu es l'Expert de Perception Multimodale de l'équipe pédagogique StudyCloud.
 Ton rôle est d'analyser méticuleusement ce fichier (vidéo, audio, document PDF/Word avec schémas, ou image) pour fournir un dossier d'observation complet, rigoureux et fidèle au modèle enseignant principal.
 
 DIRECTIVES D'OBSERVATION STRICTES :
@@ -1677,164 +1677,164 @@ DIRECTIVES D'OBSERVATION STRICTES :
 4. OBJECTIVITÉ ET EXHAUSTIVITÉ :
    - Ne résous pas l'exercice toi-même : donne TOUTES les observations pour que le modèle enseignant principal puisse résoudre et répondre avec exactitude.`;
 
-              const gPerception = await executeGemini20Flash({
-                apiKey: geminiKeyToUse,
-                systemPrompt: perceptionSystemPrompt,
-                messages: [{ role: "user", content: `Analyse détaillée de ce fichier joint : ${(userPrompt || "Analyse ce document").trim()}` }],
-                effectivePrompt: `Analyse détaillée du fichier joint : ${(userPrompt || "Analyse ce document").trim()}`,
-                imageBase64,
-                mimeType,
-                videoBase64,
-                videoFrames,
-                videoMimeType,
-                audioBase64,
-                audioMimeType,
-                documentBase64,
-                documentMimeType,
-                documentImages,
-                mediaType,
-              });
+                const gPerception = await executeGemini20Flash({
+                  apiKey: geminiKeyToUse,
+                  systemPrompt: perceptionSystemPrompt,
+                  messages: [{ role: "user", content: `Analyse détaillée de ce fichier joint : ${(userPrompt || "Analyse ce document").trim()}` }],
+                  effectivePrompt: `Analyse détaillée du fichier joint : ${(userPrompt || "Analyse ce document").trim()}`,
+                  imageBase64,
+                  mimeType,
+                  videoBase64,
+                  videoFrames,
+                  videoMimeType,
+                  audioBase64,
+                  audioMimeType,
+                  documentBase64,
+                  documentMimeType,
+                  documentImages,
+                  mediaType,
+                });
 
-              if (gPerception && gPerception.trim().length > 20) {
-                backgroundPerceptionReport = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gPerception.trim()));
+                if (gPerception && gPerception.trim().length > 20) {
+                  backgroundPerceptionReport = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gPerception.trim()));
+                }
+              } catch (pErr) {
+                logger.warn("Background Gemini perception analysis failed", { event: "gemini_perception_error", error: pErr });
               }
-            } catch (pErr) {
-              logger.warn("Background Gemini perception analysis failed", { event: "gemini_perception_error", error: pErr });
-            }
-          }
-
-          // 2. Fallback universel Cloudflare Workers AI Vision si Gemini n'a pas répondu ou clé indisponible
-          if (!backgroundPerceptionReport) {
-            let targetImage = imageBase64;
-            if (!targetImage && Array.isArray(videoFrames) && videoFrames.length > 0) {
-              targetImage = videoFrames[0]?.base64 || "";
-            }
-            if (!targetImage && Array.isArray(documentImages) && documentImages.length > 0) {
-              targetImage = (typeof documentImages[0] === 'string' ? documentImages[0] : documentImages[0]?.base64) || "";
             }
 
-            if (targetImage && targetImage.length > 50) {
-              try {
-                const cfVisionPrompt = `Tu es le moteur de perception visuelle officiel de StudyCloud.
+            // 2. Fallback universel Cloudflare Workers AI Vision si Gemini n'a pas répondu ou clé indisponible
+            if (!backgroundPerceptionReport) {
+              let targetImage = imageBase64;
+              if (!targetImage && Array.isArray(videoFrames) && videoFrames.length > 0) {
+                targetImage = videoFrames[0]?.base64 || "";
+              }
+              if (!targetImage && Array.isArray(documentImages) && documentImages.length > 0) {
+                targetImage = (typeof documentImages[0] === 'string' ? documentImages[0] : documentImages[0]?.base64) || "";
+              }
+
+              if (targetImage && targetImage.length > 50) {
+                try {
+                  const cfVisionPrompt = `Tu es le moteur de perception visuelle officiel de StudyCloud.
 Analyse minutieusement cette image/document (« ${docName || "Image d'étude"} »).
 1. TEXTE ET ÉNONCÉ : Retranscris fidèlement l'intégralité du texte, chaque question, consigne et donnée numérique avec son unité.
 2. FORMULES : Écris toutes les formules mathématiques et physiques en KaTeX ($...$).
 3. SCHÉMAS / CIRCUITS / FIGURES : Décris précisément les composants, graphes, repères, courbes et liaisons.
 Donne une description exhaustive pour que le tuteur puisse résoudre et enseigner.`;
 
-                const cleanB64 = targetImage.replace(/^data:[^;]+;base64,/i, "").trim();
-                const binary = Uint8Array.from(atob(cleanB64), c => c.charCodeAt(0));
-                const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
-                let runRes = await fetch(runUrl, {
-                  method: "POST",
-                  headers: {
-                    "Authorization": `Bearer ${cfToken}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    prompt: cfVisionPrompt,
-                    image: Array.from(binary),
-                    max_tokens: 4096,
-                  }),
-                });
+                  const cleanB64 = targetImage.replace(/^data:[^;]+;base64,/i, "").trim();
+                  const binary = Uint8Array.from(atob(cleanB64), c => c.charCodeAt(0));
+                  const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
+                  let runRes = await fetch(runUrl, {
+                    method: "POST",
+                    headers: {
+                      "Authorization": `Bearer ${cfToken}`,
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      prompt: cfVisionPrompt,
+                      image: Array.from(binary),
+                      max_tokens: 4096,
+                    }),
+                  });
 
-                if (runRes.status === 403) {
-                  const errText = await runRes.text().catch(() => "");
-                  if (errText.includes("agree")) {
-                    await fetch(runUrl, {
-                      method: "POST",
-                      headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
-                      body: JSON.stringify({ prompt: "agree" }),
-                    }).catch(() => {});
+                  if (runRes.status === 403) {
+                    const errText = await runRes.text().catch(() => "");
+                    if (errText.includes("agree")) {
+                      await fetch(runUrl, {
+                        method: "POST",
+                        headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ prompt: "agree" }),
+                      }).catch(() => { });
 
-                    runRes = await fetch(runUrl, {
-                      method: "POST",
-                      headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
-                      body: JSON.stringify({
-                        prompt: cfVisionPrompt,
-                        image: Array.from(binary),
-                        max_tokens: 4096,
-                      }),
-                    });
+                      runRes = await fetch(runUrl, {
+                        method: "POST",
+                        headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          prompt: cfVisionPrompt,
+                          image: Array.from(binary),
+                          max_tokens: 4096,
+                        }),
+                      });
+                    }
                   }
-                }
 
-                if (runRes.ok) {
-                  const runData: any = await runRes.json();
-                  const vContent = runData?.result?.response || runData?.response || "";
-                  if (vContent && vContent.trim().length > 15) {
-                    backgroundPerceptionReport = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(vContent.trim()));
+                  if (runRes.ok) {
+                    const runData: any = await runRes.json();
+                    const vContent = runData?.result?.response || runData?.response || "";
+                    if (vContent && vContent.trim().length > 15) {
+                      backgroundPerceptionReport = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(vContent.trim()));
+                    }
                   }
+                } catch (cfvErr) {
+                  logger.warn("Cloudflare Vision fallback failed", { event: "cloudflare_vision_error", error: cfvErr });
                 }
-              } catch (cfvErr) {
-                logger.warn("Cloudflare Vision fallback failed", { event: "cloudflare_vision_error", error: cfvErr });
               }
+            }
+
+            if (!backgroundPerceptionReport && docContent && docContent.trim().length > 10) {
+              backgroundPerceptionReport = docContent.trim();
             }
           }
 
-          if (!backgroundPerceptionReport && docContent && docContent.trim().length > 10) {
-            backgroundPerceptionReport = docContent.trim();
-          }
-        }
+          const effectivePrompt = (userPrompt || "Bonjour !").trim();
+          const isContinuation = Boolean(
+            body.isContinuation ||
+            body.is_continuation ||
+            /^(?:oui\s*,?\s*)?(?:continue|la suite|poursuis|poursuivre|encha[îi]ne|suite\s+s'il\s+te\s+pla[îi]t)/i.test(effectivePrompt)
+          );
 
-        const effectivePrompt = (userPrompt || "Bonjour !").trim();
-        const isContinuation = Boolean(
-          body.isContinuation ||
-          body.is_continuation ||
-          /^(?:oui\s*,?\s*)?(?:continue|la suite|poursuis|poursuivre|encha[îi]ne|suite\s+s'il\s+te\s+pla[îi]t)/i.test(effectivePrompt)
-        );
+          // Construction du system prompt : distinction stricte entre Agent de Création (JSON) et IA sélectionnée de Chat (Discussion & Orchestration)
+          const clientSystemMsg = Array.isArray(history)
+            ? (history.find((h: any) => h && h.role === "system")?.content || "")
+            : "";
 
-        // Construction du system prompt : distinction stricte entre Agent de Création (JSON) et IA sélectionnée de Chat (Discussion & Orchestration)
-        const clientSystemMsg = Array.isArray(history)
-          ? (history.find((h: any) => h && h.role === "system")?.content || "")
-          : "";
-
-        let systemPrompt = "";
-        if (isAgentCreationTask) {
-          systemPrompt = getBasePedagogicalRules();
-          if (clientSystemMsg) {
-            systemPrompt += "\n\n" + String(clientSystemMsg).trim();
-          }
-          systemPrompt += "\n\n" + getCommonDeepCreationDirective(docName);
-          if (body.requested_type) {
-            systemPrompt += "\n\n" + getCreationSpecificRule(body.requested_type);
-          }
-          systemPrompt += `\n\n[MISSION AGENT SPÉCIALISÉ DE CRÉATION STUDYCLOUD] :
+          let systemPrompt = "";
+          if (isAgentCreationTask) {
+            systemPrompt = getBasePedagogicalRules();
+            if (clientSystemMsg) {
+              systemPrompt += "\n\n" + String(clientSystemMsg).trim();
+            }
+            systemPrompt += "\n\n" + getCommonDeepCreationDirective(docName);
+            if (body.requested_type) {
+              systemPrompt += "\n\n" + getCreationSpecificRule(body.requested_type);
+            }
+            systemPrompt += `\n\n[MISSION AGENT SPÉCIALISÉ DE CRÉATION STUDYCLOUD] :
 Tu es l'un des 3 Agents de Création spécialisés travaillant en arrière-plan pour concevoir le support « ${body.requested_type || requestedType} » (${creationTitle}).
 Exploite 100 % du document joint (toutes les sections, toutes les formules avec \\dfrac{}{}, toutes les démonstrations, la logique profonde et toutes les zones d'ombre / subtilités d'examen).
 RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entouré de \`\`\`json et \`\`\` contenant "decision": "creation", "mode": "creation", "creation_type": "${body.requested_type || requestedType}", "creation_title": "${creationTitle}", "chat_response": "Création terminée", et "creation_data": { ... } avec l'intégralité des données pédagogiques. N'écris AUCUN texte avant ou après le bloc JSON.`;
-        } else {
-          systemPrompt = clientSystemMsg
-            ? String(clientSystemMsg).trim()
-            : getBasePedagogicalRules();
-          if (orchestratorInstruction) {
-            systemPrompt += "\n\n" + orchestratorInstruction;
-          }
-        }
-
-        if (docContent) {
-          if (!isContinuation) {
-            systemPrompt += `\n\n[DOCUMENT DE COURS JOINT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 45000)}\nCONSIGNE PÉDAGOGIQUE : Utilise ce document de cours lorsque la demande ou question de l'étudiant y fait référence ou porte dessus. S'il te pose une question générale, te salue ou aborde un sujet différent, réponds naturellement sans forcer la mention du document.`;
           } else {
-            systemPrompt += `\n\n[DOCUMENT D'APPUI EN ARCHIVE DE RÉFÉRENCE - NE PAS RÉANALYSER DU DÉBUT] :\n${docContent.slice(0, 4000)}`;
+            systemPrompt = clientSystemMsg
+              ? String(clientSystemMsg).trim()
+              : getBasePedagogicalRules();
+            if (orchestratorInstruction) {
+              systemPrompt += "\n\n" + orchestratorInstruction;
+            }
           }
-        } else if (!isContinuation && isAgentCreationTask) {
-          systemPrompt += `\n\n[ATTENTION - AUCUN DOCUMENT FOURNI] : L'étudiant n'a joint aucun fichier de cours. Si sa demande porte sur une création (QCM, carte mentale, résumé, devoir, etc.) mais qu'il ne précise aucun sujet ni chapitre précis et que la conversation n'a pas abordé de matière : TU NE DOIS EN AUCUN CAS CRÉER DANS LE VIDE. Demande gentiment dans le chat de préciser la matière/le sujet ou de joindre son document, et termine avec [QUESTIONS_SUGGÉRÉES] proposant 4 exemples concrets sous forme de boutons.`;
-        }
 
-        if (isAgentCreationTask && body.requested_type) {
-          systemPrompt += `\n\n[ORIENTATION PARTICULIÈRE] : L'étudiant a orienté son souhait vers un module de type "${body.requested_type}". Adapte ta création en conséquence.`;
-        }
+          if (docContent) {
+            if (!isContinuation) {
+              systemPrompt += `\n\n[DOCUMENT DE COURS JOINT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 45000)}\nCONSIGNE PÉDAGOGIQUE : Utilise ce document de cours lorsque la demande ou question de l'étudiant y fait référence ou porte dessus. S'il te pose une question générale, te salue ou aborde un sujet différent, réponds naturellement sans forcer la mention du document.`;
+            } else {
+              systemPrompt += `\n\n[DOCUMENT D'APPUI EN ARCHIVE DE RÉFÉRENCE - NE PAS RÉANALYSER DU DÉBUT] :\n${docContent.slice(0, 4000)}`;
+            }
+          } else if (!isContinuation && isAgentCreationTask) {
+            systemPrompt += `\n\n[ATTENTION - AUCUN DOCUMENT FOURNI] : L'étudiant n'a joint aucun fichier de cours. Si sa demande porte sur une création (QCM, carte mentale, résumé, devoir, etc.) mais qu'il ne précise aucun sujet ni chapitre précis et que la conversation n'a pas abordé de matière : TU NE DOIS EN AUCUN CAS CRÉER DANS LE VIDE. Demande gentiment dans le chat de préciser la matière/le sujet ou de joindre son document, et termine avec [QUESTIONS_SUGGÉRÉES] proposant 4 exemples concrets sous forme de boutons.`;
+          }
 
-        const isNewConversation = (!history || history.length === 0);
-        if (isNewConversation) {
-          systemPrompt += `\n\n[NOUVELLE CONVERSATION] : L'étudiant démarre une nouvelle discussion thématique. Accueille-le chaleureusement et concentre-toi sur son nouveau sujet d'étude ou sa nouvelle question sans préjuger des sujets passés.`;
-        } else {
-          systemPrompt += `\n\n[CONVERSATION EN COURS] : Cette discussion contient déjà des échanges passés. Maintiens la continuité et la cohérence pédagogique avec les réponses précédentes de cette même session.`;
-        }
+          if (isAgentCreationTask && body.requested_type) {
+            systemPrompt += `\n\n[ORIENTATION PARTICULIÈRE] : L'étudiant a orienté son souhait vers un module de type "${body.requested_type}". Adapte ta création en conséquence.`;
+          }
 
-        if (backgroundPerceptionReport && hasMedia) {
-          systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+          const isNewConversation = (!history || history.length === 0);
+          if (isNewConversation) {
+            systemPrompt += `\n\n[NOUVELLE CONVERSATION] : L'étudiant démarre une nouvelle discussion thématique. Accueille-le chaleureusement et concentre-toi sur son nouveau sujet d'étude ou sa nouvelle question sans préjuger des sujets passés.`;
+          } else {
+            systemPrompt += `\n\n[CONVERSATION EN COURS] : Cette discussion contient déjà des échanges passés. Maintiens la continuité et la cohérence pédagogique avec les réponses précédentes de cette même session.`;
+          }
+
+          if (backgroundPerceptionReport && hasMedia) {
+            systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
 [DOSSIER D'OBSERVATION DU FICHIER ANALYSÉ EN ARRIÈRE-PLAN PAR LE MOTEUR MULTIMODAL] :
 Média analysé : « ${docName || "Document d'étude"} »
 
@@ -1845,42 +1845,42 @@ CONSIGNES STRICTES POUR LE TUTEUR :
 2. Si sa question est générale ou sans rapport avec ce fichier, réponds naturellement sans imposer ce document.
 3. RÈGLE D'OR : Ne mentionne JAMAIS aucun outil technique externe (ne dis pas "d'après le rapport de perception", "l'outil d'analyse indique"). Parle naturellement : "Sur votre image...", "Dans l'exercice...", "Le schéma du circuit montre...".
 ══════════════════════════════════════════════════════════════════════════════`;
-        }
-
-        const friendlyNameMap: Record<string, string> = {
-          "gemini-2.0-flash": "Google Gemini 2.0 Flash",
-          "gemini-3.8-flash": "Google Gemini 2.0 Flash",
-          "gemini-3.6-flash": "Google Gemini 2.0 Flash",
-          "gemini-1.5-flash": "Google Gemini 1.5 Flash",
-          "@cf/moonshotai/kimi-k2.7-code": "Kimi K2.7 Code",
-          "@cf/zai-org/glm-5.3-flash": "GLM 5.3 Flash",
-          "@cf/deepseek-ai/deepseek-v4-pro-0813": "DeepSeek V4 Pro",
-          "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": "DeepSeek R1 32B",
-          "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Agent Delmas (Chef Multi-IA)",
-          "@cf/meta/llama-3.3-70b-instruct": "Agent Delmas (Chef Multi-IA)",
-          "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet",
-          "claude-sonnet-4-5": "Claude Sonnet 4.5",
-          "gpt-4o-mini": "OpenAI GPT-4o Mini",
-        };
-
-        const rawHistory: Array<{ role: "user" | "assistant", content: string }> = [];
-        for (const h of history.slice(-20)) {
-          if (h && (h.content || h.text)) {
-            if (h.role === "system") continue;
-            const role = (h.role === "assistant" || h.sender === "ai") ? "assistant" : "user";
-            rawHistory.push({ role, content: String(h.content || h.text).trim() });
           }
-        }
 
-        if (rawHistory.length === 0 || rawHistory[rawHistory.length - 1].content !== effectivePrompt) {
-          rawHistory.push({ role: "user", content: effectivePrompt });
-        }
+          const friendlyNameMap: Record<string, string> = {
+            "gemini-2.0-flash": "Google Gemini 2.0 Flash",
+            "gemini-3.8-flash": "Google Gemini 2.0 Flash",
+            "gemini-3.6-flash": "Google Gemini 2.0 Flash",
+            "gemini-1.5-flash": "Google Gemini 1.5 Flash",
+            "@cf/moonshotai/kimi-k2.7-code": "Kimi K2.7 Code",
+            "@cf/zai-org/glm-5.3-flash": "GLM 5.3 Flash",
+            "@cf/deepseek-ai/deepseek-v4-pro-0813": "DeepSeek V4 Pro",
+            "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": "DeepSeek R1 32B",
+            "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Agent Delmas (Chef Multi-IA)",
+            "@cf/meta/llama-3.3-70b-instruct": "Agent Delmas (Chef Multi-IA)",
+            "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet",
+            "claude-sonnet-4-5": "Claude Sonnet 4.5",
+            "gpt-4o-mini": "OpenAI GPT-4o Mini",
+          };
 
-        if (isContinuation) {
-          const lastAssistant = rawHistory.slice().reverse().find(m => m.role === "assistant");
-          const stopExcerpt = lastAssistant ? lastAssistant.content.slice(-400) : "";
+          const rawHistory: Array<{ role: "user" | "assistant", content: string }> = [];
+          for (const h of history.slice(-20)) {
+            if (h && (h.content || h.text)) {
+              if (h.role === "system") continue;
+              const role = (h.role === "assistant" || h.sender === "ai") ? "assistant" : "user";
+              rawHistory.push({ role, content: String(h.content || h.text).trim() });
+            }
+          }
 
-          systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+          if (rawHistory.length === 0 || rawHistory[rawHistory.length - 1].content !== effectivePrompt) {
+            rawHistory.push({ role: "user", content: effectivePrompt });
+          }
+
+          if (isContinuation) {
+            const lastAssistant = rawHistory.slice().reverse().find(m => m.role === "assistant");
+            const stopExcerpt = lastAssistant ? lastAssistant.content.slice(-400) : "";
+
+            systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
 [ORDRE DE CONTINUATION DIRECTE - STRICT ET NON NÉGOCIABLE] :
 L'étudiant a cliqué sur "Poursuivre la suite" pour continuer ta réponse précédente.
 Tu as DÉJÀ rédigé la première partie dans le message précédent (fin du message précédent : "...${stopExcerpt.replace(/\n+/g, ' ')}").
@@ -1898,272 +1898,272 @@ CONSIGNES STRICTES DE CONTINUATION :
 4. COHÉRENCE TOTALE :
    - Utilise les mêmes notations, les mêmes variables et les résultats déjà établis précédemment sans les recalculer.
 ══════════════════════════════════════════════════════════════════════════════`;
-        }
+          }
 
-        // Consolidation pour garantir l'alternance stricte user <-> assistant
-        const simpleMessages: Array<{ role: "user" | "assistant", content: string }> = [];
-        for (const item of rawHistory) {
-          if (!item.content) continue;
-          const prev = simpleMessages[simpleMessages.length - 1];
-          if (prev && prev.role === item.role) {
-            if (item.role === "user") {
-              prev.content = `${item.content}`;
+          // Consolidation pour garantir l'alternance stricte user <-> assistant
+          const simpleMessages: Array<{ role: "user" | "assistant", content: string }> = [];
+          for (const item of rawHistory) {
+            if (!item.content) continue;
+            const prev = simpleMessages[simpleMessages.length - 1];
+            if (prev && prev.role === item.role) {
+              if (item.role === "user") {
+                prev.content = `${item.content}`;
+              } else {
+                prev.content = `${prev.content}\n\n${item.content}`;
+              }
             } else {
-              prev.content = `${prev.content}\n\n${item.content}`;
+              simpleMessages.push({ role: item.role, content: item.content });
             }
-          } else {
-            simpleMessages.push({ role: item.role, content: item.content });
           }
-        }
 
-        let answerText = "";
-        let effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+          let answerText = "";
+          let effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
 
-        // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 1 : GOOGLE GEMINI FLASH MULTIMODAL (SI SÉLECTIONNÉ PAR L'UTILISATEUR)
-        // ══════════════════════════════════════════════════════════════════════════════
-        // Implémentation conforme au Google Cookbook officiel
-        let geminiErrorDetail = "";
-        if (isSelectedGemini && geminiKeyToUse) {
-          try {
-            const gText = await executeGemini20Flash({
-              apiKey: geminiKeyToUse,
-              systemPrompt,
-              messages: simpleMessages,
-              effectivePrompt,
-              imageBase64,
-              mimeType,
-              videoBase64,
-              videoFrames,
-              videoMimeType,
-              audioBase64,
-              audioMimeType,
-              documentBase64,
-              documentMimeType,
-              documentImages,
-              mediaType,
-            });
-            if (gText) {
-              answerText = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gText));
-              effectiveModelUsed = "Google Gemini 2.0 Flash";
-            }
-          } catch (g20Err: any) {
-            logger.warn("Gemini Flash call exception, falling back to Workers AI", { event: "gemini_flash_error", error: g20Err });
-            geminiErrorDetail = g20Err?.message || String(g20Err);
-          }
-        }
-
-        // Si Gemini a atteint un quota temporaire (429) ou n'a pas répondu, on laisse basculer automatiquement sur la Branche 3.e (Llama 3.3 70B rapide) sans afficher de message d'erreur bloquant.
-
-        // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 2 : AGENT DELMAS (CHEF D'ÉQUIPE MULTI-IA LLAMA 3.3 - CHAT UNIQUEMENT)
-        // ══════════════════════════════════════════════════════════════════════════════
-        if (!answerText && isChefModel(targetModel) && !isAgentCreationTask) {
-          try {
-            const orchResult = await orchestrateMultiAgentTeam({
-              targetModel,
-              userPrompt: effectivePrompt,
-              messages: simpleMessages,
-              systemPrompt,
-              docContent,
-              docName,
-              imageBase64,
-              audioBase64,
-              videoBase64,
-              videoUrl,
-              cfToken,
-              accountId,
-              geminiKey: geminiKeyToUse,
-              requestedType: body.requested_type,
-              perceptionReport: backgroundPerceptionReport,
-              documentBase64,
-              documentImages,
-            });
-
-            if (orchResult.isOrchestrated && orchResult.finalAnswer) {
-              answerText = stripAiReasoningScratchpad(orchResult.finalAnswer);
-              effectiveModelUsed = orchResult.effectiveModelUsed;
-            }
-          } catch (orchErr) {
-            logger.warn("Multi-agent team orchestrator exception, will fallback to direct Llama call", { event: "orchestrator_error", error: orchErr });
-          }
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════════
-        // BRANCHE 3 : MODÈLES WORKERS SPECIFIQUES (KIMI, GLM, DEEPSEEK...)
-        // ══════════════════════════════════════════════════════════════════════════════
-        if (!answerText) {
-          // 3.a Modèles Cloudflare Workers AI spécifiques
-          if (targetModel.startsWith("@cf/")) {
+          // ══════════════════════════════════════════════════════════════════════════════
+          // BRANCHE 1 : GOOGLE GEMINI FLASH MULTIMODAL (SI SÉLECTIONNÉ PAR L'UTILISATEUR)
+          // ══════════════════════════════════════════════════════════════════════════════
+          // Implémentation conforme au Google Cookbook officiel
+          let geminiErrorDetail = "";
+          if (isSelectedGemini && geminiKeyToUse) {
             try {
-              const cfMessages: any[] = [];
-              if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
-              const activeDocInfo = backgroundPerceptionReport || docContent;
-              for (let i = 0; i < simpleMessages.length; i++) {
-                const m = simpleMessages[i];
-                if (i === simpleMessages.length - 1 && m.role === "user") {
-                  if (activeDocInfo || docName) {
-                    cfMessages.push({
-                      role: "user",
-                      content: isAgentCreationTask
-                        ? `[DOCUMENT / COURS ACTIF DE L'ÉTUDIANT : « ${docName || "Document d'étude"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Document d'étude joint par l'étudiant."}\n\n[MISSION STRICTE DE L'AGENT DE CRÉATION] :\n${m.content}`
-                        : `[DOCUMENT / COURS ACTIF DE L'ÉTUDIANT : « ${docName || "Document d'étude"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Document d'étude joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ce document (« ${docName || "Document d'étude"} ») et pose la question : « ${m.content} ».\nRéponds directement, chaleureusement et précisément à sa question en t'appuyant sur ce document.\nNe fais aucune référence aux éventuels anciens fichiers ou anciennes images de la discussion et ne demande jamais de renvoyer le fichier car tu as déjà tout ce qu'il faut sous les yeux.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
-                    });
+              const gText = await executeGemini20Flash({
+                apiKey: geminiKeyToUse,
+                systemPrompt,
+                messages: simpleMessages,
+                effectivePrompt,
+                imageBase64,
+                mimeType,
+                videoBase64,
+                videoFrames,
+                videoMimeType,
+                audioBase64,
+                audioMimeType,
+                documentBase64,
+                documentMimeType,
+                documentImages,
+                mediaType,
+              });
+              if (gText) {
+                answerText = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gText));
+                effectiveModelUsed = "Google Gemini 2.0 Flash";
+              }
+            } catch (g20Err: any) {
+              logger.warn("Gemini Flash call exception, falling back to Workers AI", { event: "gemini_flash_error", error: g20Err });
+              geminiErrorDetail = g20Err?.message || String(g20Err);
+            }
+          }
+
+          // Si Gemini a atteint un quota temporaire (429) ou n'a pas répondu, on laisse basculer automatiquement sur la Branche 3.e (Llama 3.3 70B rapide) sans afficher de message d'erreur bloquant.
+
+          // ══════════════════════════════════════════════════════════════════════════════
+          // BRANCHE 2 : AGENT DELMAS (CHEF D'ÉQUIPE MULTI-IA LLAMA 3.3 - CHAT UNIQUEMENT)
+          // ══════════════════════════════════════════════════════════════════════════════
+          if (!answerText && isChefModel(targetModel) && !isAgentCreationTask) {
+            try {
+              const orchResult = await orchestrateMultiAgentTeam({
+                targetModel,
+                userPrompt: effectivePrompt,
+                messages: simpleMessages,
+                systemPrompt,
+                docContent,
+                docName,
+                imageBase64,
+                audioBase64,
+                videoBase64,
+                videoUrl,
+                cfToken,
+                accountId,
+                geminiKey: geminiKeyToUse,
+                requestedType: body.requested_type,
+                perceptionReport: backgroundPerceptionReport,
+                documentBase64,
+                documentImages,
+              });
+
+              if (orchResult.isOrchestrated && orchResult.finalAnswer) {
+                answerText = stripAiReasoningScratchpad(orchResult.finalAnswer);
+                effectiveModelUsed = orchResult.effectiveModelUsed;
+              }
+            } catch (orchErr) {
+              logger.warn("Multi-agent team orchestrator exception, will fallback to direct Llama call", { event: "orchestrator_error", error: orchErr });
+            }
+          }
+
+          // ══════════════════════════════════════════════════════════════════════════════
+          // BRANCHE 3 : MODÈLES WORKERS SPECIFIQUES (KIMI, GLM, DEEPSEEK...)
+          // ══════════════════════════════════════════════════════════════════════════════
+          if (!answerText) {
+            // 3.a Modèles Cloudflare Workers AI spécifiques
+            if (targetModel.startsWith("@cf/")) {
+              try {
+                const cfMessages: any[] = [];
+                if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
+                const activeDocInfo = backgroundPerceptionReport || docContent;
+                for (let i = 0; i < simpleMessages.length; i++) {
+                  const m = simpleMessages[i];
+                  if (i === simpleMessages.length - 1 && m.role === "user") {
+                    if (activeDocInfo || docName) {
+                      cfMessages.push({
+                        role: "user",
+                        content: isAgentCreationTask
+                          ? `[DOCUMENT / COURS ACTIF DE L'ÉTUDIANT : « ${docName || "Document d'étude"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Document d'étude joint par l'étudiant."}\n\n[MISSION STRICTE DE L'AGENT DE CRÉATION] :\n${m.content}`
+                          : `[DOCUMENT / COURS ACTIF DE L'ÉTUDIANT : « ${docName || "Document d'étude"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Document d'étude joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ce document (« ${docName || "Document d'étude"} ») et pose la question : « ${m.content} ».\nRéponds directement, chaleureusement et précisément à sa question en t'appuyant sur ce document.\nNe fais aucune référence aux éventuels anciens fichiers ou anciennes images de la discussion et ne demande jamais de renvoyer le fichier car tu as déjà tout ce qu'il faut sous les yeux.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
+                      });
+                    } else {
+                      cfMessages.push({ role: m.role, content: m.content });
+                    }
                   } else {
                     cfMessages.push({ role: m.role, content: m.content });
                   }
-                } else {
-                  cfMessages.push({ role: m.role, content: m.content });
                 }
+
+                const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
+                  method: "POST",
+                  headers: {
+                    "Authorization": `Bearer ${cfToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    model: targetModel,
+                    messages: cfMessages,
+                    max_tokens: 8192,
+                  }),
+                });
+
+                if (cfRes.ok) {
+                  const cfData: any = await cfRes.json();
+                  const msg = cfData?.choices?.[0]?.message;
+                  const rawAns = msg?.content || msg?.reasoning_content || "";
+                  if (rawAns) {
+                    answerText = stripAiReasoningScratchpad(rawAns);
+                    effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+                  }
+                }
+              } catch (cfErr) {
+                logger.warn("Cloudflare Workers AI specific model exception", { event: "workers_ai_error", modelId: targetModel, error: cfErr });
               }
+            }
 
-              const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
-                method: "POST",
-                headers: {
-                  "Authorization": `Bearer ${cfToken}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  model: targetModel,
-                  messages: cfMessages,
-                  max_tokens: 8192,
-                }),
-              });
+            // 2.c Modèles Anthropic Claude individuels
+            if (!answerText && (targetModel.includes("claude") || targetModel.includes("anthropic")) && rawApiKey.startsWith("sk-ant-")) {
+              try {
+                const antMessages = simpleMessages.map(m => ({ role: m.role, content: m.content }));
+                const antRes = await fetch("https://api.anthropic.com/v1/messages", {
+                  method: "POST",
+                  headers: {
+                    "x-api-key": rawApiKey,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    model: targetModel.includes("3-5") ? "claude-3-5-sonnet-20241022" : "claude-3-5-haiku-20241022",
+                    max_tokens: 8192,
+                    system: systemPrompt,
+                    messages: antMessages,
+                  }),
+                });
+                if (antRes.ok) {
+                  const antData: any = await antRes.json();
+                  answerText = antData?.content?.[0]?.text || "";
+                  effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+                }
+              } catch (antErr) {
+                logger.warn("Anthropic call exception", { event: "anthropic_error", error: antErr });
+              }
+            }
 
-              if (cfRes.ok) {
-                const cfData: any = await cfRes.json();
-                const msg = cfData?.choices?.[0]?.message;
-                const rawAns = msg?.content || msg?.reasoning_content || "";
-                if (rawAns) {
+            // 2.d Modèles OpenAI individuels
+            if (!answerText && (targetModel.includes("gpt") || targetModel.includes("openai")) && rawApiKey.startsWith("sk-")) {
+              try {
+                const oaiMessages: any[] = [];
+                if (systemPrompt) oaiMessages.push({ role: "system", content: systemPrompt });
+                for (const m of simpleMessages) oaiMessages.push({ role: m.role, content: m.content });
+
+                const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+                  method: "POST",
+                  headers: {
+                    "Authorization": `Bearer ${rawApiKey}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    model: targetModel.includes("4o") ? targetModel : "gpt-4o-mini",
+                    messages: oaiMessages,
+                    max_tokens: 8192,
+                  }),
+                });
+                if (oaiRes.ok) {
+                  const oaiData: any = await oaiRes.json();
+                  answerText = oaiData?.choices?.[0]?.message?.content || "";
+                  effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+                }
+              } catch (oaiErr) {
+                logger.warn("OpenAI call exception", { event: "openai_error", error: oaiErr });
+              }
+            }
+
+            // 2.e Secours universel automatique sur Cloudflare Workers AI Llama 3.3
+            if (!answerText) {
+              try {
+                const cfMessages: any[] = [];
+                if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
+                for (const m of simpleMessages) cfMessages.push({ role: m.role, content: m.content });
+
+                const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
+                  method: "POST",
+                  headers: {
+                    "Authorization": `Bearer ${cfToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify({
+                    model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+                    messages: cfMessages,
+                    max_tokens: 8192,
+                  }),
+                });
+
+                if (cfRes.ok) {
+                  const cfData: any = await cfRes.json();
+                  const msg = cfData?.choices?.[0]?.message;
+                  const rawAns = msg?.content || msg?.reasoning_content || "";
                   answerText = stripAiReasoningScratchpad(rawAns);
                   effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
                 }
+              } catch (cfErr) {
+                logger.error("Cloudflare Workers AI fallback exception", { event: "cloudflare_fallback_error", error: cfErr });
               }
-            } catch (cfErr) {
-              logger.warn("Cloudflare Workers AI specific model exception", { event: "workers_ai_error", modelId: targetModel, error: cfErr });
             }
           }
 
-          // 2.c Modèles Anthropic Claude individuels
-          if (!answerText && (targetModel.includes("claude") || targetModel.includes("anthropic")) && rawApiKey.startsWith("sk-ant-")) {
+          // Secours résilient Google Gemini 2.0 Flash Multimodal (uniquement si pas déjà tenté en Branche 1)
+          if (!answerText && geminiKeyToUse && !isSelectedGemini) {
             try {
-              const antMessages = simpleMessages.map(m => ({ role: m.role, content: m.content }));
-              const antRes = await fetch("https://api.anthropic.com/v1/messages", {
-                method: "POST",
-                headers: {
-                  "x-api-key": rawApiKey,
-                  "anthropic-version": "2023-06-01",
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  model: targetModel.includes("3-5") ? "claude-3-5-sonnet-20241022" : "claude-3-5-haiku-20241022",
-                  max_tokens: 8192,
-                  system: systemPrompt,
-                  messages: antMessages,
-                }),
+              const fallbackGText = await executeGemini20Flash({
+                apiKey: geminiKeyToUse,
+                systemPrompt,
+                messages: simpleMessages,
+                effectivePrompt,
+                imageBase64,
+                mimeType,
               });
-              if (antRes.ok) {
-                const antData: any = await antRes.json();
-                answerText = antData?.content?.[0]?.text || "";
-                effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
+              if (fallbackGText) {
+                answerText = stripAiReasoningScratchpad(fallbackGText);
+                effectiveModelUsed = "Google Gemini 2.0 Flash (Secours)";
               }
-            } catch (antErr) {
-              logger.warn("Anthropic call exception", { event: "anthropic_error", error: antErr });
-            }
+            } catch (_eFallbackG) { }
           }
 
-          // 2.d Modèles OpenAI individuels
-          if (!answerText && (targetModel.includes("gpt") || targetModel.includes("openai")) && rawApiKey.startsWith("sk-")) {
-            try {
-              const oaiMessages: any[] = [];
-              if (systemPrompt) oaiMessages.push({ role: "system", content: systemPrompt });
-              for (const m of simpleMessages) oaiMessages.push({ role: m.role, content: m.content });
-
-              const oaiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                  "Authorization": `Bearer ${rawApiKey}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  model: targetModel.includes("4o") ? targetModel : "gpt-4o-mini",
-                  messages: oaiMessages,
-                  max_tokens: 8192,
-                }),
-              });
-              if (oaiRes.ok) {
-                const oaiData: any = await oaiRes.json();
-                answerText = oaiData?.choices?.[0]?.message?.content || "";
-                effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
-              }
-            } catch (oaiErr) {
-              logger.warn("OpenAI call exception", { event: "openai_error", error: oaiErr });
-            }
-          }
-
-          // 2.e Secours universel automatique sur Cloudflare Workers AI Llama 3.3
+          // Secours final gracieux
           if (!answerText) {
-            try {
-              const cfMessages: any[] = [];
-              if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
-              for (const m of simpleMessages) cfMessages.push({ role: m.role, content: m.content });
-
-              const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
-                method: "POST",
-                headers: {
-                  "Authorization": `Bearer ${cfToken}`,
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-                  messages: cfMessages,
-                  max_tokens: 8192,
-                }),
-              });
-
-              if (cfRes.ok) {
-                const cfData: any = await cfRes.json();
-                const msg = cfData?.choices?.[0]?.message;
-                const rawAns = msg?.content || msg?.reasoning_content || "";
-                answerText = stripAiReasoningScratchpad(rawAns);
-                effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
-              }
-            } catch (cfErr) {
-              logger.error("Cloudflare Workers AI fallback exception", { event: "cloudflare_fallback_error", error: cfErr });
-            }
+            answerText = "Bonjour ! Je suis Delmas IA, votre assistant d'étude StudyCloud. Les services d'IA distants sont momentanément indisponibles. N'hésitez pas à relancer votre question dans un instant.";
+            effectiveModelUsed = "Delmas IA (Mode de secours)";
           }
-        }
 
-        // Secours résilient Google Gemini 2.0 Flash Multimodal (uniquement si pas déjà tenté en Branche 1)
-        if (!answerText && geminiKeyToUse && !isSelectedGemini) {
-          try {
-            const fallbackGText = await executeGemini20Flash({
-              apiKey: geminiKeyToUse,
-              systemPrompt,
-              messages: simpleMessages,
-              effectivePrompt,
-              imageBase64,
-              mimeType,
-            });
-            if (fallbackGText) {
-              answerText = stripAiReasoningScratchpad(fallbackGText);
-              effectiveModelUsed = "Google Gemini 2.0 Flash (Secours)";
-            }
-          } catch (_eFallbackG) {}
-        }
-
-        // Secours final gracieux
-        if (!answerText) {
-          answerText = "Bonjour ! Je suis Delmas IA, votre assistant d'étude StudyCloud. Les services d'IA distants sont momentanément indisponibles. N'hésitez pas à relancer votre question dans un instant.";
-          effectiveModelUsed = "Delmas IA (Mode de secours)";
-        }
-
-        // ══════════════════════════════════════════════════════════════════════════════
-        // VALIDATION & NORMALISATION DES 12 CRÉATIONS (MODULE DÉDIÉ)
-        // ══════════════════════════════════════════════════════════════════════════════
-        const creationRes = isAgentCreationTask
-          ? validateAndFormatCreation(answerText, body.requested_type, docName)
-          : {
+          // ══════════════════════════════════════════════════════════════════════════════
+          // VALIDATION & NORMALISATION DES 12 CRÉATIONS (MODULE DÉDIÉ)
+          // ══════════════════════════════════════════════════════════════════════════════
+          const creationRes = isAgentCreationTask
+            ? validateAndFormatCreation(answerText, body.requested_type, docName)
+            : {
               is_creation: false,
               mode: "chat" as const,
               decision: "chat" as const,
@@ -2173,30 +2173,30 @@ CONSIGNES STRICTES DE CONTINUATION :
               creation_data: undefined,
             };
 
-        // ══════════════════════════════════════════════════════════════════════════════
-        // SAUVEGARDE AUTOMATIQUE EN ARRIÈRE-PLAN DANS CLOUDFLARE D1
-        // Même si l'utilisateur quitte l'écran, recharge la page ou ouvre une nouvelle conversation,
-        // la réponse et la création sont automatiquement enregistrées et persistées côté serveur.
-        // ══════════════════════════════════════════════════════════════════════════════
-        const convId = String(body.conversationId || body.conversation_id || body.sessionId || "").trim();
-        const userId = String(body.userId || req.headers.get("x-user-id") || "default-user").trim();
-        const userMsgId = String(body.userMsgId || body.userMessageId || "").trim();
-        const aiMsgId = String(body.aiMsgId || body.aiMessageId || `ai-msg-${Date.now()}`).trim();
-        const creationId = String(body.creationId || `crea-${Date.now()}`).trim();
+          // ══════════════════════════════════════════════════════════════════════════════
+          // SAUVEGARDE AUTOMATIQUE EN ARRIÈRE-PLAN DANS CLOUDFLARE D1
+          // Même si l'utilisateur quitte l'écran, recharge la page ou ouvre une nouvelle conversation,
+          // la réponse et la création sont automatiquement enregistrées et persistées côté serveur.
+          // ══════════════════════════════════════════════════════════════════════════════
+          const convId = String(body.conversationId || body.conversation_id || body.sessionId || "").trim();
+          const userId = String(body.userId || req.headers.get("x-user-id") || "default-user").trim();
+          const userMsgId = String(body.userMsgId || body.userMessageId || "").trim();
+          const aiMsgId = String(body.aiMsgId || body.aiMessageId || `ai-msg-${Date.now()}`).trim();
+          const creationId = String(body.creationId || `crea-${Date.now()}`).trim();
 
-        // Calcul précis des jetons / crédits consommés
-        const totalChars = (userPrompt || '').length + (answerText || '').length + (backgroundPerceptionReport || '').length + (docContent || '').slice(0, 4000).length;
-        const calculatedTokens = Math.max(90, Math.ceil(totalChars / 3.8));
+          // Calcul précis des jetons / crédits consommés
+          const totalChars = (userPrompt || '').length + (answerText || '').length + (backgroundPerceptionReport || '').length + (docContent || '').slice(0, 4000).length;
+          const calculatedTokens = Math.max(90, Math.ceil(totalChars / 3.8));
 
-        // Déduction proportionnelle aux tokens (Formule 2 demandée par l'administrateur)
-        const tokensPerCredit = Math.max(1, billingConfig?.tokens_per_credit || 1000);
-        const rawCreditsDeducted = calculatedTokens / tokensPerCredit;
-        const creditsDeducted = Math.max(0.01, +(rawCreditsDeducted).toFixed(2));
-        let remainingCredits = Math.max(0, +((userBilling?.credits_balance || 50) - creditsDeducted).toFixed(2));
+          // Déduction proportionnelle aux tokens (Formule 2 demandée par l'administrateur)
+          const tokensPerCredit = Math.max(1, billingConfig?.tokens_per_credit || 1000);
+          const rawCreditsDeducted = calculatedTokens / tokensPerCredit;
+          const creditsDeducted = Math.max(0.01, +(rawCreditsDeducted).toFixed(2));
+          let remainingCredits = Math.max(0, +((userBilling?.credits_balance || 50) - creditsDeducted).toFixed(2));
 
-        if (db && userId && userId !== "default-user") {
-          try {
-            await db.prepare(`
+          if (db && userId && userId !== "default-user") {
+            try {
+              await db.prepare(`
               UPDATE user_ai_credits
               SET
                 credits_balance = ?,
@@ -2205,36 +2205,36 @@ CONSIGNES STRICTES DE CONTINUATION :
                 last_usage_at = datetime('now'),
                 updated_at = datetime('now')
               WHERE user_id = ?
-            `).bind(remainingCredits, calculatedTokens, creditsDeducted, userId).run().catch(() => {});
+            `).bind(remainingCredits, calculatedTokens, creditsDeducted, userId).run().catch(() => { });
 
-            const logId = `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-            await db.prepare(`
+              const logId = `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+              await db.prepare(`
               INSERT INTO ai_usage_logs (
                 id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at
               )
               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
             `).bind(
-              logId,
-              userId,
-              creationRes.creation_type || requestedType || 'chat',
-              Math.max(10, Math.ceil((userPrompt || '').length / 3.8)),
-              Math.max(10, Math.ceil((answerText || '').length / 3.8)),
-              calculatedTokens,
-              creditsDeducted,
-              remainingCredits,
-              effectiveModelUsed
-            ).run().catch(() => {});
-          } catch (deductErr) {
-            logger.warn("Erreur mise à jour crédits D1", { event: "ai.billing.deduct_error", error: deductErr });
+                logId,
+                userId,
+                creationRes.creation_type || requestedType || 'chat',
+                Math.max(10, Math.ceil((userPrompt || '').length / 3.8)),
+                Math.max(10, Math.ceil((answerText || '').length / 3.8)),
+                calculatedTokens,
+                creditsDeducted,
+                remainingCredits,
+                effectiveModelUsed
+              ).run().catch(() => { });
+            } catch (deductErr) {
+              logger.warn("Erreur mise à jour crédits D1", { event: "ai.billing.deduct_error", error: deductErr });
+            }
           }
-        }
 
-        if (convId) {
-          const db = getD1Database();
-          if (db) {
-            try {
-              // 1. Initialiser la conversation si besoin
-              await db.prepare(`
+          if (convId) {
+            const db = getD1Database();
+            if (db) {
+              try {
+                // 1. Initialiser la conversation si besoin
+                await db.prepare(`
                 CREATE TABLE IF NOT EXISTS conversations (
                   id TEXT PRIMARY KEY,
                   user_id TEXT NOT NULL,
@@ -2242,15 +2242,15 @@ CONSIGNES STRICTES DE CONTINUATION :
                   created_at TEXT DEFAULT CURRENT_TIMESTAMP,
                   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
-              `).run().catch(() => {});
+              `).run().catch(() => { });
 
-              await db.prepare(`
+                await db.prepare(`
                 INSERT OR IGNORE INTO conversations (id, user_id, title, created_at, updated_at)
                 VALUES (?, ?, ?, datetime('now'), datetime('now'))
-              `).bind(convId, userId, docName ? `Étude : ${docName}` : 'Discussion IA').run().catch(() => {});
+              `).bind(convId, userId, docName ? `Étude : ${docName}` : 'Discussion IA').run().catch(() => { });
 
-              // 2. Table messages
-              await db.prepare(`
+                // 2. Table messages
+                await db.prepare(`
                 CREATE TABLE IF NOT EXISTS messages (
                   id TEXT PRIMARY KEY,
                   conversation_id TEXT NOT NULL,
@@ -2259,54 +2259,54 @@ CONSIGNES STRICTES DE CONTINUATION :
                   metadata TEXT,
                   created_at TEXT DEFAULT CURRENT_TIMESTAMP
                 )
-              `).run().catch(() => {});
+              `).run().catch(() => { });
 
-              // Si message utilisateur fourni (uniquement pour le chat principal, jamais pour les agents de création en arrière-plan)
-              if (!isAgentCreationTask && userMsgId && userPrompt) {
-                await db.prepare(`
+                // Si message utilisateur fourni (uniquement pour le chat principal, jamais pour les agents de création en arrière-plan)
+                if (!isAgentCreationTask && userMsgId && userPrompt) {
+                  await db.prepare(`
                   INSERT OR IGNORE INTO messages (id, conversation_id, role, content, metadata, created_at)
                   VALUES (?, ?, 'user', ?, ?, ?)
                 `).bind(
-                  userMsgId,
-                  convId,
-                  userPrompt,
-                  JSON.stringify({ attachedFileName: docName || undefined }),
-                  new Date(Date.now() - 50).toISOString()
-                ).run().catch(() => {});
-              }
+                    userMsgId,
+                    convId,
+                    userPrompt,
+                    JSON.stringify({ attachedFileName: docName || undefined }),
+                    new Date(Date.now() - 50).toISOString()
+                  ).run().catch(() => { });
+                }
 
-              // Insérer le message assistant complété avec les crédits consommés (uniquement pour le chat principal)
-              const assistantContent = creationRes.chat_response || answerText;
-              if (!isAgentCreationTask) {
-                await db.prepare(`
+                // Insérer le message assistant complété avec les crédits consommés (uniquement pour le chat principal)
+                const assistantContent = creationRes.chat_response || answerText;
+                if (!isAgentCreationTask) {
+                  await db.prepare(`
                   INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
                   VALUES (?, ?, 'assistant', ?, ?, ?)
                   ON CONFLICT(id) DO UPDATE SET content = excluded.content, metadata = excluded.metadata
                 `).bind(
-                aiMsgId,
-                convId,
-                assistantContent,
-                JSON.stringify({
-                  model: effectiveModelUsed,
-                  creation_type: creationRes.creation_type,
-                  creation_title: creationRes.creation_title,
-                  creation_id: creationRes.creation_data ? creationId : undefined,
-                  attachedFileName: docName || undefined,
-                  tokens: calculatedTokens,
-                  credits: creditsDeducted,
-                }),
-                new Date().toISOString()
-                ).run().catch(() => {});
-              }
+                    aiMsgId,
+                    convId,
+                    assistantContent,
+                    JSON.stringify({
+                      model: effectiveModelUsed,
+                      creation_type: creationRes.creation_type,
+                      creation_title: creationRes.creation_title,
+                      creation_id: creationRes.creation_data ? creationId : undefined,
+                      attachedFileName: docName || undefined,
+                      tokens: calculatedTokens,
+                      credits: creditsDeducted,
+                    }),
+                    new Date().toISOString()
+                  ).run().catch(() => { });
+                }
 
-              // Mettre à jour l'horodatage de la conversation parente
-              await db.prepare(`
-                UPDATE conversations SET updated_at = datetime('now') WHERE id = ?
-              `).bind(convId).run().catch(() => {});
-
-              // 3. Si une création a été générée, l'enregistrer dans ai_creations et ai_generated_contents
-              if (creationRes.creation_data) {
+                // Mettre à jour l'horodatage de la conversation parente
                 await db.prepare(`
+                UPDATE conversations SET updated_at = datetime('now') WHERE id = ?
+              `).bind(convId).run().catch(() => { });
+
+                // 3. Si une création a été générée, l'enregistrer dans ai_creations et ai_generated_contents
+                if (creationRes.creation_data) {
+                  await db.prepare(`
                   CREATE TABLE IF NOT EXISTS ai_creations (
                     id TEXT PRIMARY KEY,
                     conversation_id TEXT NOT NULL,
@@ -2316,23 +2316,23 @@ CONSIGNES STRICTES DE CONTINUATION :
                     content TEXT NOT NULL,
                     created_at TEXT DEFAULT CURRENT_TIMESTAMP
                   )
-                `).run().catch(() => {});
+                `).run().catch(() => { });
 
-                await db.prepare(`
+                  await db.prepare(`
                   INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)
                   VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
                   ON CONFLICT(id) DO UPDATE SET content = excluded.content, title = excluded.title
                 `).bind(
-                  creationId,
-                  convId,
-                  aiMsgId,
-                  creationRes.creation_type || body.requested_type || 'creation',
-                  creationRes.creation_title || 'Création Studio',
-                  JSON.stringify(creationRes.creation_data)
-                ).run().catch(() => {});
+                    creationId,
+                    convId,
+                    aiMsgId,
+                    creationRes.creation_type || body.requested_type || 'creation',
+                    creationRes.creation_title || 'Création Studio',
+                    JSON.stringify(creationRes.creation_data)
+                  ).run().catch(() => { });
 
-                // Table globale ai_generated_contents avec crédits / tokens inclus
-                await db.prepare(`
+                  // Table globale ai_generated_contents avec crédits / tokens inclus
+                  await db.prepare(`
                   CREATE TABLE IF NOT EXISTS ai_generated_contents (
                     id TEXT PRIMARY KEY,
                     user_id TEXT NOT NULL,
@@ -2346,38 +2346,38 @@ CONSIGNES STRICTES DE CONTINUATION :
                     created_at INTEGER NOT NULL,
                     updated_at INTEGER NOT NULL
                   )
-                `).run().catch(() => {});
+                `).run().catch(() => { });
 
-                const creationPayload = {
-                  status: 'ready',
-                  data: creationRes.creation_data || creationRes,
-                  tokens: calculatedTokens,
-                  credits: creditsDeducted,
-                };
+                  const creationPayload = {
+                    status: 'ready',
+                    data: creationRes.creation_data || creationRes,
+                    tokens: calculatedTokens,
+                    credits: creditsDeducted,
+                  };
 
-                await db.prepare(`
+                  await db.prepare(`
                   INSERT INTO ai_generated_contents (
                     id, user_id, conversation_id, tool_type, title, content_json, source_file_name, is_pinned, created_at, updated_at
                   )
                   VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
                   ON CONFLICT(id) DO UPDATE SET content_json = excluded.content_json, title = excluded.title, updated_at = excluded.updated_at
                 `).bind(
-                  creationId,
-                  userId,
-                  convId,
-                  creationRes.creation_type || body.requested_type || 'creation',
-                  creationRes.creation_title || creationTitle || 'Création Studio',
-                  JSON.stringify(creationPayload),
-                  docName || null,
-                  Date.now(),
-                  Date.now()
-                ).run().catch(() => {});
+                    creationId,
+                    userId,
+                    convId,
+                    creationRes.creation_type || body.requested_type || 'creation',
+                    creationRes.creation_title || creationTitle || 'Création Studio',
+                    JSON.stringify(creationPayload),
+                    docName || null,
+                    Date.now(),
+                    Date.now()
+                  ).run().catch(() => { });
+                }
+              } catch (autoSaveErr) {
+                logger.warn("Erreur auto-save D1 chat", { event: "d1_autosave_warning", error: autoSaveErr });
               }
-            } catch (autoSaveErr) {
-              logger.warn("Erreur auto-save D1 chat", { event: "d1_autosave_warning", error: autoSaveErr });
             }
           }
-        }
 
           return {
             creationRes,
@@ -2405,14 +2405,14 @@ CONSIGNES STRICTES DE CONTINUATION :
                 JSON.stringify({ status: isInsufficient ? "insufficient_credits" : "failed", error: isInsufficient ? "Crédit insuffisant" : (bgErr?.message || "Erreur de génération"), title: creationTitle, toolType: requestedType }),
                 Date.now(),
                 creationId
-              ).run().catch(() => {});
+              ).run().catch(() => { });
             }
           });
 
           if (ctx && typeof (ctx as any).waitUntil === "function") {
             ctx.waitUntil(bgPromise);
           } else {
-            bgPromise.catch(() => {});
+            bgPromise.catch(() => { });
           }
 
           return new Response(JSON.stringify({
@@ -2512,7 +2512,7 @@ CONSIGNES STRICTES DE CONTINUATION :
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
-        `).run().catch(() => {});
+        `).run().catch(() => { });
 
         const { results } = await db.prepare(
           "SELECT id, user_id, title, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC, created_at DESC"
@@ -2552,7 +2552,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               created_at TEXT DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
-          `).run().catch(() => {});
+          `).run().catch(() => { });
 
           await db.prepare(`
             INSERT INTO conversations (id, user_id, title, created_at, updated_at)
@@ -2591,9 +2591,9 @@ CONSIGNES STRICTES DE CONTINUATION :
         const db = getD1Database();
         if (db) {
           await Promise.all([
-            db.prepare("DELETE FROM messages WHERE conversation_id = ?").bind(id).run().catch(() => {}),
-            db.prepare("DELETE FROM ai_creations WHERE conversation_id = ?").bind(id).run().catch(() => {}),
-            db.prepare("DELETE FROM conversations WHERE id = ?").bind(id).run().catch(() => {}),
+            db.prepare("DELETE FROM messages WHERE conversation_id = ?").bind(id).run().catch(() => { }),
+            db.prepare("DELETE FROM ai_creations WHERE conversation_id = ?").bind(id).run().catch(() => { }),
+            db.prepare("DELETE FROM conversations WHERE id = ?").bind(id).run().catch(() => { }),
           ]);
         }
 
@@ -2641,7 +2641,7 @@ CONSIGNES STRICTES DE CONTINUATION :
             metadata TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
-        `).run().catch(() => {});
+        `).run().catch(() => { });
 
         const { results } = await db.prepare(
           "SELECT id, conversation_id, role, content, metadata, created_at FROM messages WHERE conversation_id = ? AND id NOT LIKE 'ai-bg-%' AND id NOT LIKE 'agent-%' ORDER BY REPLACE(created_at, ' ', 'T') ASC, rowid ASC"
@@ -2692,7 +2692,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               metadata TEXT,
               created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
-          `).run().catch(() => {});
+          `).run().catch(() => { });
 
           await db.prepare(`
             INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
@@ -2703,7 +2703,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           // Met à jour l'horodatage de la conversation parente
           await db.prepare(
             "UPDATE conversations SET updated_at = datetime('now') WHERE id = ?"
-          ).bind(conversationId).run().catch(() => {});
+          ).bind(conversationId).run().catch(() => { });
         }
 
         return new Response(JSON.stringify({
@@ -2751,7 +2751,7 @@ CONSIGNES STRICTES DE CONTINUATION :
             content TEXT NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
-        `).run().catch(() => {});
+        `).run().catch(() => { });
 
         const { results } = await db.prepare(
           "SELECT id, conversation_id, message_id, type, title, content, created_at FROM ai_creations WHERE conversation_id = ? ORDER BY created_at DESC"
@@ -2802,7 +2802,7 @@ CONSIGNES STRICTES DE CONTINUATION :
               content TEXT NOT NULL,
               created_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
-          `).run().catch(() => {});
+          `).run().catch(() => { });
 
           await db.prepare(`
             INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)
@@ -3014,7 +3014,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         await db.prepare(`
           INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
           VALUES (?, ?, ?, 0, 0, 0, ?, ?, 'admin', datetime('now'))
-        `).bind(logId, targetUserId, `admin_${action}: ${reason}`, -amount, newBalance).run().catch(() => {});
+        `).bind(logId, targetUserId, `admin_${action}: ${reason}`, -amount, newBalance).run().catch(() => { });
 
         return new Response(JSON.stringify({
           success: true,

@@ -184,7 +184,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
 
             {uploadedItems.length > 0 && (
               <button
-                onClick={onOpenCreateShareLink}
+                onClick={() => onOpenCreateShareLink(uploadedItems)}
                 className="flex-1 md:flex-initial flex items-center justify-center gap-1 sm:gap-1.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-[10.5px] sm:text-xs px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl border-2 border-stone-800 dark:border-orange-400/40 shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0"
               >
                 <Share2 className="w-3.5 h-3.5 shrink-0" />

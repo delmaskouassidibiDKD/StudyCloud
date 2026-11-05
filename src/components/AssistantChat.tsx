@@ -4008,7 +4008,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             userId: currentUserId,
             fileId: activeCreation.fileId || null,
             conversationId: currentConversationId,
-            toolType: activeCreation.toolType || activeCreation.type || 'creation',
+            toolType: activeCreation.toolType || (activeCreation as any).type || 'creation',
             title: activeCreation.title || 'Création Studio',
             contentJson: e.detail.updatedContent,
             sourceFileName: activeCreation.sourceFileName || undefined,
@@ -5526,7 +5526,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
 
       // 5. Appel au moteur d'IA officiel StudyCloud (Multimodal Gemini 2.0 Flash conforme Google Cookbook)
       const selectedModelObj = availableModels.find(m => m.id === selectedModel || m.model_id === selectedModel);
-      const rawConfiguredToken = selectedModelObj?.api_token;
+      const rawConfiguredToken = (selectedModelObj as any)?.api_token;
       // Pour les modèles Worker Cloudflare (Gemini 2.0 Flash) ou clés compromises, ne pas envoyer de token obsolète
       const isWorkerModel = selectedModel === 'gemini-2.0-flash' || selectedModelObj?.provider === 'cloudflare';
       const isDeadKey = Boolean(rawConfiguredToken && (rawConfiguredToken.startsWith('AIzaSyDKct') || rawConfiguredToken.length < 25));
@@ -7135,7 +7135,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                   /* Pendant que l'IA réfléchit, répond ou analyse : SEUL le bouton Arrêter est affiché */
                   <button
                     type="button"
-                    onClick={handleCancelTask}
+                    onClick={() => handleCancelTask()}
                     className="px-3 py-2 font-bold rounded-full flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs shrink-0"
                     title={tStudy("stop_button_title", "Arrêter la réponse en cours")}
                   >
