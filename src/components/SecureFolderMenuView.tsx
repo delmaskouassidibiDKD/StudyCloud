@@ -1656,18 +1656,13 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : selectedFile ? "Fermer" : "Retour"}</span>
             </button>
 
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <div className={`p-1.5 sm:p-2 rounded-lg sm:rounded-xl border ${isUnlocked ? 'bg-emerald-950/40 border-emerald-500/40 text-emerald-400' : 'bg-[#182032] border-stone-700/50 text-blue-400'}`}>
-                {isUnlocked ? <Unlock className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" /> : <Lock className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />}
-              </div>
-              <div className="hidden sm:block">
-                <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
-                  Dossier sécurisé
-                </h1>
-                <p className={`text-[10px] sm:text-[11px] font-semibold leading-tight ${isUnlocked ? 'text-emerald-600' : 'text-blue-600'}`}>
-                  {isUnlocked ? `${secureFiles.length} fichier(s) protégé(s) • ${formattedSecureSize}` : 'Coffre-fort verrouillé'}
-                </p>
-              </div>
+            <div className="hidden sm:block">
+              <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
+                Dossier sécurisé
+              </h1>
+              <p className={`text-[10px] sm:text-[11px] font-semibold leading-tight ${isUnlocked ? 'text-emerald-600' : 'text-blue-600'}`}>
+                {isUnlocked ? `${secureFiles.length} fichier(s) protégé(s) • ${formattedSecureSize}` : 'Coffre-fort verrouillé'}
+              </p>
             </div>
           </div>
 

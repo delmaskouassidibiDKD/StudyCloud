@@ -1965,18 +1965,13 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
               <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : "Retour"}</span>
             </button>
 
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-black border border-white/10 text-purple-400">
-                <Film className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
-              </div>
-              <div className="hidden sm:block">
-                <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
-                  Vidéos
-                </h1>
-                <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 leading-tight">
-                  {videosList.length} vidéo{videosList.length > 1 ? 's' : ''} • {formattedVideosSize}
-                </p>
-              </div>
+            <div className="hidden sm:block">
+              <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 leading-tight">
+                Vidéos
+              </h1>
+              <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 leading-tight">
+                {videosList.length} vidéo{videosList.length > 1 ? 's' : ''} • {formattedVideosSize}
+              </p>
             </div>
           </div>
 

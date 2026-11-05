@@ -1050,18 +1050,13 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
               <span className="hidden xs:inline">Retour</span>
             </button>
 
-            <div className="flex items-center gap-1.5 sm:gap-2">
-              <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-[#182032] border border-stone-700/50 text-amber-400 shadow-sm">
-                <Star className="w-3.5 h-3.5 sm:w-5 sm:h-5 fill-amber-400 stroke-[2.2]" />
-              </div>
-              <div className="hidden sm:block">
-                <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 dark:text-white leading-tight">
-                  Favoris
-                </h1>
-                <p className="text-[10px] sm:text-[11px] font-semibold text-amber-600 dark:text-amber-400 leading-tight">
-                  {favoritesList.length} élément{favoritesList.length > 1 ? 's' : ''} en favori • {formattedFavoritesSize}
-                </p>
-              </div>
+            <div className="hidden sm:block">
+              <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 dark:text-white leading-tight">
+                Favoris
+              </h1>
+              <p className="text-[10px] sm:text-[11px] font-semibold text-amber-600 dark:text-amber-400 leading-tight">
+                {favoritesList.length} élément{favoritesList.length > 1 ? 's' : ''} en favori • {formattedFavoritesSize}
+              </p>
             </div>
           </div>
 

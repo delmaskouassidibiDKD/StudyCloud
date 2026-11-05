@@ -1523,18 +1523,13 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               <ArrowLeft className="w-3.5 h-3.5 sm:w-5 sm:h-5 stroke-[2.2]" />
             </button>
 
-            <div className="flex items-center gap-1 sm:gap-2.5">
-              <div className="p-1 sm:p-2.5 rounded-lg sm:rounded-2xl bg-[#182032] border border-stone-700/50 text-rose-400 shadow-md">
-                <Trash2 className="w-3.5 h-3.5 sm:w-6 sm:h-6 stroke-[2.2]" />
-              </div>
-              <div className="hidden sm:block">
-                <h1 className="text-sm sm:text-base md:text-lg font-black text-stone-900 leading-tight">
-                  Corbeille
-                </h1>
-                <p className="text-[11px] font-semibold text-stone-500 leading-tight">
-                  {trashList.length} élément{trashList.length > 1 ? 's' : ''} • {formattedTrashSize}
-                </p>
-              </div>
+            <div className="hidden sm:block">
+              <h1 className="text-sm sm:text-base md:text-lg font-black text-stone-900 leading-tight">
+                Corbeille
+              </h1>
+              <p className="text-[11px] font-semibold text-stone-500 leading-tight">
+                {trashList.length} élément{trashList.length > 1 ? 's' : ''} • {formattedTrashSize}
+              </p>
             </div>
           </div>
 
