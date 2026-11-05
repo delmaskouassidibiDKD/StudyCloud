@@ -96,10 +96,10 @@ export function cleanExerciseContext(ctx?: string, fallbackTheme?: string): stri
 function sanitizeQuestionText(rawText: string, index: number, fallbackTheme?: string): string {
   let t = (rawText || "").trim();
   if (/^theory\s*:\s*/i.test(t)) {
-    return "Définir la fonction de transfert harmonique $\\underline{H}(j\\omega)$, rappeler la définition de la bande passante à $-3\\text{ dB}$ et expliciter le principe fondamental de fonctionnement de ce filtre.";
+    return "Définir les principes fondamentaux régissant ce problème et préciser leur cadre d'application.";
   }
   if (/^types\s*:\s*passive\s+vs\s+active/i.test(t) || /^types\s*:\s*/i.test(t)) {
-    return "Distinguer rigoureusement les filtres passifs et les filtres actifs en précisant les avantages, les limitations et l'intérêt d'utiliser un amplificateur opérationnel.";
+    return "Distinguer rigoureusement les différentes catégories ou cas d'application en précisant leurs propriétés respectives.";
   }
   return t;
 }
@@ -155,7 +155,7 @@ const EMPTY_TEMPLATE_EXERCISE: NormalizedExercise = {
       id: 'q_7',
       number: 7,
       points: 2.5,
-      text: "Tracer l'allure du diagramme de Bode (gain en décibels et phase) ou le graphe de réponse temporelle.",
+      text: "Tracer ou représenter l'allure de la courbe caractéristique ou le graphe d'évolution de la grandeur étudiée.",
       sampleAnswer: "Construction des asymptotes, positionnement de la pulsation caractéristique et tracé de la courbe réelle."
     },
     {
@@ -310,7 +310,7 @@ function normalizeWrittenExercise(input: any, fallbackTitle?: string): Normalize
       {
         id: 'q_7',
         number: 7,
-        text: `Tracer ou décrire qualitativement les courbes représentatives (diagramme de Bode, réponse indicielle).`,
+        text: `Tracer ou décrire qualitativement les courbes représentatives ou le profil caractéristique de la grandeur.`,
         points: 2.5,
         sampleAnswer: "Description des asymptotes, des pentes en dB/décade et du point remarquable à la fréquence caractéristique."
       },

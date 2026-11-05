@@ -662,7 +662,7 @@ export function RightMenu({
       ),
       toolType: 'resume',
       getPrompt: (doc) => doc
-        ? `Extrais l'ensemble des 4 paliers thématiques, concepts, figures, circuits et formules mathématiques en KaTeX du document « ${doc} » pour rédiger une Fiche de Résumé et Synthèse complète, explicative et approfondie (style masterclass du chat), avec le thème bien encadré, grands piliers développés, définitions clés, formulaire exhaustif avec fractions verticales, tableau comparatif, pièges d'examen et exemple d'application pas-à-pas.`
+        ? `Extrais l'ensemble des 4 paliers thématiques, concepts, figures, schémas, illustrations et formules mathématiques en KaTeX du document « ${doc} » pour rédiger une Fiche de Résumé et Synthèse complète, explicative et approfondie (style masterclass du chat), avec le thème bien encadré, grands piliers développés, définitions clés, formulaire exhaustif avec fractions verticales, tableau comparatif, pièges d'examen et exemple d'application pas-à-pas.`
         : "Extrais et structure l'ensemble des 4 paliers thématiques, concepts et formules mathématiques en KaTeX pour rédiger une Fiche de Résumé et Synthèse complète, explicative et approfondie (style masterclass du chat), avec le thème bien encadré, grands piliers développés, définitions clés, formulaire exhaustif avec fractions verticales, tableau comparatif, pièges d'examen et exemple d'application pas-à-pas."
     },
     {
@@ -679,7 +679,7 @@ export function RightMenu({
       ),
       toolType: 'exercices-ecrits',
       getPrompt: (doc) => doc
-        ? `Extrais l'ensemble des piliers thématiques, concepts, figures, circuits et formules mathématiques en KaTeX du document « ${doc} » pour concevoir une épreuve d'Exercices Écrits complète de 8 à 10 questions progressives, avec barème sur 20 points, énoncés rigoureux et corrigé pas-à-pas détaillé.`
+        ? `Extrais l'ensemble des piliers thématiques, concepts, figures, schémas, illustrations et formules mathématiques en KaTeX du document « ${doc} » pour concevoir une épreuve d'Exercices Écrits complète de 8 à 10 questions progressives, avec barème sur 20 points, énoncés rigoureux et corrigé pas-à-pas détaillé.`
         : "Extrais et structure l'ensemble des piliers thématiques, concepts et formules mathématiques en KaTeX pour concevoir une épreuve d'Exercices Écrits complète de 8 à 10 questions progressives, avec barème sur 20 points, énoncés rigoureux et corrigé pas-à-pas détaillé."
     },
     {
@@ -697,7 +697,7 @@ export function RightMenu({
       ),
       toolType: 'devoir-complet',
       getPrompt: (doc) => doc
-        ? `Extrais l'ensemble des piliers thématiques, concepts, figures, circuits et formules mathématiques en KaTeX du document « ${doc} » pour concevoir une Épreuve Complète de Devoir d'Examen sur 20 points découpée en 3 Exercices officiels (Problème analytique 8 pts, QCM 6 pts, Vrai ou Faux 6 pts) avec barème strict et corrigé pas-à-pas détaillé.`
+        ? `Extrais l'ensemble des piliers thématiques, concepts, figures, schémas, illustrations et formules mathématiques en KaTeX du document « ${doc} » pour concevoir une Épreuve Complète de Devoir d'Examen sur 20 points découpée en 3 Exercices officiels (Problème analytique 8 pts, QCM 6 pts, Vrai ou Faux 6 pts) avec barème strict et corrigé pas-à-pas détaillé.`
         : "Extrais et structure l'ensemble des piliers thématiques, concepts et formules mathématiques en KaTeX pour concevoir une Épreuve Complète de Devoir d'Examen sur 20 points découpée en 3 Exercices officiels (Problème analytique 8 pts, QCM 6 pts, Vrai ou Faux 6 pts) avec barème strict et corrigé pas-à-pas détaillé."
     }
   ], []);

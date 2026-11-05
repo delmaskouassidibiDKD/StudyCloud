@@ -749,6 +749,23 @@ async function extractAudioContentFromItem(item: any): Promise<{
 /**
  * Détecte si un élément est un document d'étude (PDF, Word DOCX/DOC, PPTX, Excel, Texte, etc.)
  */
+function isImageItem(item: any): boolean {
+  if (!item) return false;
+  const name = String(item.name || item.title || item.fileName || '').toLowerCase();
+  const type = String(item.type || item.mimeType || '').toLowerCase();
+  const ext = String(item.extension || '').toLowerCase();
+  const category = String(item.category || item.fileType || item.file_category || '').toLowerCase();
+  return (
+    type.startsWith('image/') ||
+    category === 'image' ||
+    category === 'images' ||
+    category === 'photo' ||
+    category === 'photos' ||
+    /\.(png|jpe?g|webp|gif|bmp|svg|tiff?|ico)$/i.test(name) ||
+    ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)
+  );
+}
+
 function isDocumentItem(item: any): boolean {
   if (!item) return false;
   const name = String(item.name || item.title || item.fileName || '').toLowerCase();
@@ -1257,7 +1274,7 @@ function getSuggestedPromptsForFormat(formatType: string): string[] {
     return [
       'Vrai ou Faux sur les Nombres Complexes et Géométrie dans le Plan',
       'Vrai ou Faux sur la Génétique et les Lois de Mendel en SVT',
-      'Vrai ou Faux sur les Circuits Électriques et Théorème de Millman',
+      'Vrai ou Faux sur les Notions Fondamentales et Définitions du Cours',
       'Vrai ou Faux sur la Programmation et Complexité Algorithmique'
     ];
   }
@@ -1704,7 +1721,7 @@ RÈGLES CRUCIALES POUR LES CARTES MÉMOIRES :
   "creation_title": "${title}",
   "chat_response": "Fiche de synthèse et révision prête !",
   "creation_data": {
-    "title": "Titre thématique valorisant du cours (ex: Filtres Analogiques - ne JAMAIS mettre de nom de fichier avec .pdf)",
+    "title": "Titre thématique valorisant du cours (ex: Mécanique du Point, Géodynamique Terrestre - ne JAMAIS mettre de nom de fichier avec .pdf)",
     "theme": "Discipline ou Thème précis (ex: Électronique Analogique)",
     "overview": "Synthèse globale approfondie (2 à 3 paragraphes denses) expliquant l'objectif fondamental du cours, le contexte scientifique et les compétences clés ciblées (INTERDICTION FORMELLE de mentionner des phrases méta comme 'L'étudiant a dit...' ou 'Le système me demande...').",
     "key_definitions": [
@@ -1725,7 +1742,7 @@ RÈGLES CRUCIALES POUR LES CARTES MÉMOIRES :
         "target_goal": "Ce que cette formule permet de calculer et sa signification physique",
         "variables": "Détail de chaque variable et son unité SI",
         "when_to_use": "Conditions exactes de validité (zones d'ombre éclaircies)",
-        "how_to_derive": "Logique physique et théorème utilisé pour l'établir (ex: pont diviseur, Millman...)",
+        "how_to_derive": "Logique, méthode ou théorème utilisé pour l'établir",
         "demonstration_steps": ["Étape 1 : ...", "Étape 2 : ...", "Étape 3 : mise sous forme canonique"],
         "exam_trap": "Piège classique d'examen sur cette formule et comment l'éviter"
       }
@@ -3284,6 +3301,11 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const analyzedMediaPerConvRef = useRef<Record<string, string>>({});
   const cachedDocumentTextRef = useRef<Record<string, string>>({});
   const cachedPerceptionReportsRef = useRef<Record<string, string>>({});
+  const activeMediaSigCacheReset = resolvedActiveItem ? getMediaItemSignature(resolvedActiveItem) : '';
+  useEffect(() => {
+    cachedPerceptionReportsRef.current = {};
+    cachedDocumentTextRef.current = {};
+  }, [activeMediaSigCacheReset]);
   // Barre de propositions collée au clavier
   const [showProposalBar, setShowProposalBar] = useState(true);
 
@@ -4337,7 +4359,7 @@ LANGUE OBLIGATOIRE DE RÉDACTION : ${activeCreationLang.name} (${activeCreationL
 Exploite l'intégralité du contenu (tous les chapitres, toutes les formules en LaTeX avec \\dfrac{}{}, la logique profonde, les démonstrations, toutes les zones d'ombre/pièges d'examen et les TD).
 ${studentInstructionPrompt}
 CONSIGNES STRICTES DE RÉDACTION :
-1. LE TITRE ('title') ET LE THÈME ('theme') DOIVENT ÊTRE LE VRAI THÈME DU COURS (ex: "Filtres Analogiques", "Diagrammes de Bode"), JAMAIS un nom de fichier brut avec extension .pdf ou parenthèses (1).
+1. LE TITRE ('title') ET LE THÈME ('theme') DOIVENT ÊTRE LE VRAI THÈME DU COURS (ex: "Structure et Dynamique de la Terre", "Mécanique Newtonienne"), JAMAIS un nom de fichier brut avec extension .pdf ou parenthèses (1).
 2. INTERDICTION FORMELLE DE RÉDIGER DU TEXTE MÉTA : Ne commence JAMAIS l'overview ou le context par des phrases comme "L'étudiant a dit...", "Le système me demande...", "The user wants me to...", "J'ai conçu...". Rédige DIRECTEMENT le sujet pédagogique pour l'étudiant.
 ${specificCreationInstructions}
 Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normTypeEarly}" entouré de \`\`\`json et \`\`\`.`;
@@ -4915,8 +4937,26 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
         } catch { }
       }
 
-      // Le média est considéré comme déjà analysé UNIQUEMENT si on possède déjà son dossier de perception
-      const isMediaAlreadyAnalyzed = Boolean(!requiresFreshAnalysis && currentMediaSignature && (sessionMediaSig === currentMediaSignature || existingPerception) && existingPerception);
+      // Détection formelle d'un fichier image (les images doivent toujours être analysées visuellement)
+      const isImageFile = allDocs.some(d => isImageItem(d) || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(d?.name || d?.title || d?.fileName || ''));
+
+      // Nettoyage impératif de toute perception corrompue ou obsolète (anti-hallucination filtre analogique)
+      const currentMainDocName = (resolvedActiveName || '').trim();
+      const isElectronicsDoc = /filtre|aop|millman|bode|ampli|rlc|électronique/i.test(currentMainDocName);
+      const isCorruptedPerception = Boolean(
+        existingPerception &&
+        !isElectronicsDoc &&
+        /filtre|aop|millman|bode|amplificateur opérationnel/i.test(existingPerception)
+      );
+      if (isCorruptedPerception) {
+        existingPerception = '';
+        if (currentMediaSignature) {
+          delete cachedPerceptionReportsRef.current[currentMediaSignature];
+        }
+      }
+
+      // Le média est considéré comme déjà analysé UNIQUEMENT pour les documents texte/PDF non-images si signature strictement identique
+      const isMediaAlreadyAnalyzed = Boolean(!requiresFreshAnalysis && !isImageFile && currentMediaSignature && sessionMediaSig === currentMediaSignature && existingPerception);
 
       const hasAttachedDoc = allDocs.length > 0;
 
@@ -5287,12 +5327,14 @@ CONSIGNES STRICTES POUR TA RÉPONSE DE CHAT :
      * La barre horizontale nette au milieu,
      * Le dénominateur en bas.
    - Exemples obligatoires :
-     * JAMAIS : w0 = 1/√(LC)  --> TOUJOURS : $$ \\omega_0 = \\dfrac{1}{\\sqrt{LC}} $$
-     * JAMAIS : f0 = 1/(2π√(LC)) --> TOUJOURS : $$ f_0 = \\dfrac{1}{2\\pi \\sqrt{LC}} $$
-     * JAMAIS : Q0 = Lw0/R1 --> TOUJOURS : $$ Q_0 = \\dfrac{L\\omega_0}{R_1} = \\dfrac{1}{R_1 C \\omega_0} = \\dfrac{1}{R_1}\\sqrt{\\dfrac{L}{C}} $$
-     * JAMAIS : A0 = -R2/R1 --> TOUJOURS : $$ A_0 = -\\dfrac{R_2}{R_1} $$
-     * JAMAIS : T(p) = -R2 C p / [...] --> TOUJOURS : $$ T(p) = \\dfrac{-R_2 C p}{1 + \\dfrac{1}{Q_0}\\dfrac{p}{\\omega_0} + \\left(\\dfrac{p}{\\omega_0}\\right)^2} $$
-   - Utilise TOUJOURS les symboles scientifiques corrects : \\omega_0 (jamais w0), \\pi (jamais pi), \\tau, \\alpha, \\beta, \\Omega.
+      * JAMAIS : Delta = b^2 - 4ac --> TOUJOURS : $$ \\Delta = b^2 - 4ac $$
+      * JAMAIS : x = (-b +/- sqrt(Delta)) / (2a) --> TOUJOURS : $$ x = \\dfrac{-b \\pm \\sqrt{\\Delta}}{2a} $$
+      * JAMAIS : Ec = 1/2 m v^2 --> TOUJOURS : $$ E_c = \\dfrac{1}{2} m v^2 $$
+      * JAMAIS : a/b --> TOUJOURS : $$ \\dfrac{a}{b} $$
+    - Utilise TOUJOURS les symboles scientifiques corrects : \\omega_0, \\pi, \\tau, \\alpha, \\beta, \\Omega.
+    - INTERDICTION FORMELLE DE PLAQUER DES SUJETS INEXISTANTS OU DES FILTRES ELECTRONIQUES :
+      * Analyse STRICTEMENT et EXCLUSIVEMENT le sujet visible sur l image ou le document de l élève.
+      * N invente JAMAIS d AOP, de filtres analogiques, de Millman ou de Bode si le fichier traite d un autre thème (géographie, histoire, littérature, etc.).
 
 2. STRUCTURE AÉRÉE, GRANDS TITRES ET MISE EN VALEUR :
    - Structure TOUJOURS ta réponse avec des grands titres clairs (# Grand Titre pour le sujet, ## Titre pour chaque question ou étape majeure, ### Sous-titre).
@@ -5427,6 +5469,7 @@ CONSIGNES STRICTES :
 1. RUPTURE NETTE AVEC LES ANCIENS SUJETS OU ANCIENNES IMAGES :
    - Concentre-toi EXCLUSIVEMENT sur ce nouveau document (« ${mainDocName} »).
    - Ne mentionne plus aucune ancienne image ou ancien sujet évoqué plus haut dans l'historique.
+   - Si ce document est une IMAGE, PHOTO ou SCAN : Observe DIRECTEMENT et EXCLUSIVEMENT l'image fournie dans la requête. Décris fidèlement ce qui s'y trouve (objet réel, planète Terre, document, personne, etc.). INTERDICTION FORMELLE d'inventer des filtres analogiques, AOP ou Millman si l'image ne montre pas un montage électronique.
 2. RÉPONSE DIRECTE ET IMMÉDIATE :
    - Réponds directement et précisément à la question de l'élève à propos de ce document « ${mainDocName} ».
    - Ne dis JAMAIS que tu ne vois pas d'image ou de document. Le document est actif à l'écran.
@@ -5573,7 +5616,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         orchestratorInstruction: orchestratorInstruction || undefined,
         attachedFileName: hasAttachedDoc ? mainDocName : undefined,
         attachedFileContent: hasAttachedDoc ? resolvedAttachedText : undefined,
-        perceptionReport: hasAttachedDoc ? (existingPerception || undefined) : undefined,
+        perceptionReport: (hasAttachedDoc && !isImageFile) ? (existingPerception || undefined) : undefined,
         imageBase64: hasAttachedDoc ? activeImageInfo?.base64 : undefined,
         mimeType: hasAttachedDoc ? activeImageInfo?.mimeType : undefined,
         videoBase64: hasAttachedDoc ? activeVideoInfo?.videoBase64 : undefined,

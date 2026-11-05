@@ -1043,6 +1043,11 @@ async function executeGemini20Flash(params: {
    - Pour une vidéo : Décris le contenu visuel (personnes, actions, décor, tenues, textes et incrustations à l'écran) ET intègre naturellement l'ambiance et la piste sonore (musique, paroles, voix, ce qui est dit).
    - Pour un audio : Retranscris et synthétise ce qui est dit, les intervenants, le ton et les notions clés.
    - Pour un document (PDF, Word) : Intègre à la fois le texte du cours et l'analyse visuelle de TOUS les schémas, graphiques, illustrations ou figures présents. Si un schéma ou un dessin est présent (par exemple un circuit électrique, une cellule biologique, un graphique, un polygone, une courbe), décris-le précisément et intègre-le dans ton explication ou la résolution des exercices !
+══════════════════════════════════════════════════════════════════════════════
+[INTERDICTION STRICTE DE PLAQUER DES SUJETS INEXISTANTS OU DES FORMULES DE FILTRES] :
+- Analyse STRICTEMENT et FIDÈLEMENT le contenu réel du fichier fourni (image, photo, schéma ou document).
+- N'invente JAMAIS de texte, de schéma ou de formule qui ne figure pas sur l'image ou le document.
+- INTERDICTION FORMELLE de parler de filtres analogiques, de montages AOP, de théorème de Millman, de diagrammes de Bode ou de facteurs de qualité Q0 sauf si le document joint est EXPLICITEMENT et UNIQUEMENT un cours d'électronique portant sur ce sujet.
 ══════════════════════════════════════════════════════════════════════════════`;
 
   reqBody.systemInstruction = {
@@ -1051,8 +1056,8 @@ async function executeGemini20Flash(params: {
 
   // Sélection directe et ordonnée des modèles Google Gemini actifs sur l'API officielle
   const candidateModels = [
+    "gemini-2.5-flash",
     "gemini-3.5-flash",
-    "gemini-3.6-flash",
     "gemini-3.8-flash",
     "gemini-flash-latest",
   ];
@@ -1096,13 +1101,34 @@ async function executeGemini20Flash(params: {
         const errBody = await res.text().catch(() => "");
         logger.warn("Gemini Google API error", { event: "ai.gemini.error", error: `${mod}:${res.status}:${errBody}` });
         modelErrors.push(`${mod}:${res.status}`);
+
+        // Repli rapide si 400 (ex: inlineData non supporté pour ce format)
+        if (res.status === 400 && hasInlineMedia) {
+          try {
+            const fallbackRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${apiKey}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(textOnlyReqBody),
+            });
+            if (fallbackRes.ok) {
+              const fbData: any = await fallbackRes.json();
+              const fbTxt = fbData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
+              if (fbTxt) return cleanTechnicalMediaJargon(fbTxt);
+            }
+          } catch {}
+        }
+
+        if (res.status === 429) {
+          consecutiveRateLimits++;
+          if (consecutiveRateLimits >= 2) break;
+        }
       }
     } catch (e: any) {
       modelErrors.push(`${mod}:EXCEPTION:${e?.message || e}`);
     }
   }
 
-  throw new Error(`Modèles testés: ${candidateModels.slice(0, 4).join(", ")} (${modelErrors.join(", ")})`);
+  throw new Error(`Modèles Gemini indisponibles: ${modelErrors.join(", ")}`);
 }
 
 export default {
@@ -1648,6 +1674,18 @@ export default {
           // Gemini Flash intervient en arrière-plan comme moteur de perception universel.
           // Il produit un dossier d'observation haute fidélité qui est transmis au modèle enseignant choisi (Agent Delmas, DeepSeek, Claude...).
           let backgroundPerceptionReport = String(body.perceptionReport || "").trim();
+          const isDocImage = Boolean(
+            (imageBase64 && imageBase64.length > 50) ||
+            /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(docName || "")
+          );
+          const isElectronicsTheme = /filtre|aop|millman|bode|ampli|rlc|électronique/i.test(docName || "");
+          if (backgroundPerceptionReport && !isElectronicsTheme && /filtre|aop|millman|bode|amplificateur opérationnel/i.test(backgroundPerceptionReport)) {
+            backgroundPerceptionReport = "";
+          }
+          if (isDocImage) {
+            // Pour les images, la vision multimodale directe de Gemini prévaut formellement sur tout vieux rapport textuel
+            backgroundPerceptionReport = "";
+          }
           const needsVisualOrAudioPerception = Boolean(
             (imageBase64 && imageBase64.length > 50) ||
             (videoBase64 && videoBase64.length > 50) ||

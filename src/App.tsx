@@ -1661,7 +1661,9 @@ export default function App() {
           files: folderFiles,
           totalSize: 0,
           downloadsCount: 0,
-          isPublic: false
+          isPublic: false,
+          isPasswordProtected: false,
+          viewsCount: 0
         });
       }
 
@@ -1870,7 +1872,9 @@ export default function App() {
                     files,
                     totalSize: 0,
                     downloadsCount: 0,
-                    isPublic: false
+                    isPublic: false,
+                    isPasswordProtected: false,
+                    viewsCount: 0
                   });
                   try {
                     localStorage.setItem(`unifolder_matiere_files_${folderName}`, JSON.stringify(files));
@@ -2596,7 +2600,6 @@ export default function App() {
       <StudyTimerModal
         isOpen={showStudyTimer}
         onClose={() => setShowStudyTimer(false)}
-        userId={user?.id || localStorage.getItem('unifolder_user_id') || undefined}
         timerLeft={timerLeft}
         setTimerLeft={setTimerLeft}
         timerDuration={timerDuration}
