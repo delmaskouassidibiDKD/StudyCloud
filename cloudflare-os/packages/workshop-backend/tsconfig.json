@@ -5,12 +5,12 @@
     "lib": ["ESNext"],
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "types": ["./worker-configuration.d.ts"],
+    "skipLibCheck": true,
     "paths": {
       "@gadgets/typed-storage": ["../typed-storage/src/index.ts"],
       "@gadgets/workshop-shared/*": ["../workshop-shared/src/*"]
     }
   },
-  "include": ["src"],
+  "include": ["src", "worker-configuration.d.ts"],
   "exclude": ["dist", "node_modules"]
 }

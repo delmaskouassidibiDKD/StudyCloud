@@ -186,7 +186,8 @@ interface Page1FilesMenuViewProps {
 export interface FileItem {
   id: string;
   name: string;
-  category: 'images' | 'videos' | 'audio' | 'documents' | 'downloads' | 'apps' | 'classeur' | 'folder' | string;
+  category?: 'images' | 'videos' | 'audio' | 'documents' | 'downloads' | 'apps' | 'classeur' | 'folder' | string;
+  timestamp?: number;
   source?: string;
   sourceCategory?: string;
   size: string;
@@ -1760,7 +1761,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (viewId === 'studycloud-category-videos' && (isVid || selectedVideoFile?.id === splitSelectedFile.id)) return;
       if (viewId === 'studycloud-category-audio' && (isAud || selectedAudioTrack?.id === splitSelectedFile.id)) return;
       if (viewId === 'studycloud-category-downloads') return;
-      if (viewId.startsWith('studycloud-classeur-') || currentSubView.type === 'classeur' || currentSubView.type === 'folder') return;
+      if (viewId.startsWith('studycloud-classeur-') || currentSubView.type === 'classeur' || (currentSubView.type as any) === 'folder') return;
     }
 
     preserveSelectionFileIdRef.current = null;
@@ -2074,7 +2075,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     } else if (file.category === 'audio' || !!file.audioUrl || (file as any).isAudio) {
       setAudioList(prev => prev.some(f => f.id === file.id) ? prev : [file, ...prev]);
     } else if (file.category === 'downloads') {
-      setDownloadedItems(prev => prev.some(f => f.id === file.id) ? prev : [file, ...prev]);
+      setDownloadedItems(prev => prev.some(f => f.id === file.id) ? prev : [file as any, ...prev]);
     } else {
       setDocumentsList(prev => prev.some(f => f.id === file.id) ? prev : [file, ...prev]);
     }
@@ -2125,7 +2126,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       } else if (file.category === 'audio' || !!file.audioUrl || (file as any).isAudio) {
         setAudioList(prev => prev.some(f => f.id === file.id) ? prev : [file, ...prev]);
       } else if (file.category === 'downloads') {
-        setDownloadedItems(prev => prev.some(f => f.id === file.id) ? prev : [file, ...prev]);
+        setDownloadedItems(prev => prev.some(f => f.id === file.id) ? prev : [file as any, ...prev]);
       } else {
         setDocumentsList(prev => prev.some(f => f.id === file.id) ? prev : [file, ...prev]);
       }
@@ -3210,14 +3211,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           (Object.values(folderFilesMap).flat() as FileItem[]).find(f => f.id === id);
 
         if (item) {
-          const origCat = (item as any).originalCategory || item.category || 'documents';
+          const itm = item as any;
+          const origCat = itm.originalCategory || itm.category || 'documents';
           const isAud = origCat === 'audio';
-          const cachedCover = isAud ? getCachedMediaThumbnail(item.id || (item as any).audioUrl || item.url || '') : null;
+          const cachedCover = isAud ? getCachedMediaThumbnail(itm.id || itm.audioUrl || itm.url || '') : null;
           const validCover = isAud ? (
-            (item.coverUrl && isRealEmbeddedArtwork(item.coverUrl, item) ? item.coverUrl : null) ||
-            (item.thumbnailUrl && isRealEmbeddedArtwork(item.thumbnailUrl, item) ? item.thumbnailUrl : null) ||
+            (itm.coverUrl && isRealEmbeddedArtwork(itm.coverUrl, item) ? itm.coverUrl : null) ||
+            (itm.thumbnailUrl && isRealEmbeddedArtwork(itm.thumbnailUrl, item) ? itm.thumbnailUrl : null) ||
             (cachedCover && isRealEmbeddedArtwork(cachedCover, item) ? cachedCover : null) ||
-            (item.previewUrl && isRealEmbeddedArtwork(item.previewUrl, item) ? item.previewUrl : null) ||
+            (itm.previewUrl && isRealEmbeddedArtwork(itm.previewUrl, item) ? itm.previewUrl : null) ||
             undefined
           ) : undefined;
 
@@ -3225,14 +3227,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             ...item,
             isSecure: true,
             originalCategory: origCat,
-            originalSource: (item as any).originalSource || item.source,
+            originalSource: itm.originalSource || itm.source,
             source: 'Dossier Sécurisé',
-            coverUrl: validCover || item.coverUrl,
-            thumbnailUrl: validCover || item.thumbnailUrl,
-            previewUrl: isAud ? (validCover || item.previewUrl) : item.previewUrl
+            coverUrl: validCover || itm.coverUrl,
+            thumbnailUrl: validCover || itm.thumbnailUrl,
+            previewUrl: isAud ? (validCover || itm.previewUrl) : itm.previewUrl
           };
           lockedItems.push(locked);
-          CloudStorageAPI.moveToSecureFolder(locked, origCat, (item as any).folderId || opened3DFolder?.id).catch(console.error);
+          CloudStorageAPI.moveToSecureFolder(locked, origCat, itm.folderId || opened3DFolder?.id).catch(console.error);
         }
       }
     });
@@ -3327,7 +3329,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         else if (origCat === 'images') setImagesList(prev => [restored, ...prev]);
         else if (origCat === 'videos') setVideosList(prev => [restored, ...prev]);
         else if (origCat === 'audio') setAudioList(prev => [restored, ...prev]);
-        else if (origCat === 'downloads') setDownloadedItems(prev => [restored, ...prev]);
+        else if (origCat === 'downloads') setDownloadedItems(prev => [restored as any, ...prev]);
         else if (origCat === 'classeur' && (file as any).originalFolderId) {
           const fId = (file as any).originalFolderId;
           setFolderFilesMap(prev => ({
@@ -3686,7 +3688,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         } else if (origCat === 'images') setImagesList(prev => [restoredFile, ...prev]);
         else if (origCat === 'videos') setVideosList(prev => [restoredFile, ...prev]);
         else if (origCat === 'audio') setAudioList(prev => [restoredFile, ...prev]);
-        else if (origCat === 'downloads') setDownloadedItems(prev => [restoredFile, ...prev]);
+        else if (origCat === 'downloads') setDownloadedItems(prev => [restoredFile as any, ...prev]);
         else {
           setDocumentsList(prev => [restoredFile, ...prev]);
         }
@@ -3943,7 +3945,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const subFolders = classeur3DFolders.filter(f => f.parentId === folderId);
       const directFiles = (folderFilesMap[folderId] || []).map(f => ({ ...f, originalFolderId: folderId, isTrash: true }));
       let allFolderIds = [folderId, ...subFolders.map(s => s.id)];
-      let allFiles = [...directFiles];
+      let allFiles: FileItem[] = [...directFiles];
       subFolders.forEach(sub => {
         const desc = getDescendants(sub.id);
         allFolderIds = [...allFolderIds, ...desc.folderIds];
@@ -3999,11 +4001,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         if (found) {
           deletedItems.push({
             ...found,
-            originalFolderId: opened3DFolder?.id || found.originalFolderId,
+            originalFolderId: opened3DFolder?.id || (found as any).originalFolderId,
             isTrash: true
           });
 
-          if (opened3DFolder || found.originalFolderId || (found as any).folderId) {
+          if (opened3DFolder || (found as any).originalFolderId || (found as any).folderId) {
             CloudStorageAPI.deleteClasseurFile(found.id).catch(console.error);
           } else if (found.category === 'images' || found.isImage) {
             CloudStorageAPI.deleteImage(found.id).catch(console.error);
@@ -5005,7 +5007,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           return { ...prev, [folder.id]: [file, ...list] };
         });
         setOpened3DFolder(folder);
-        setSelectedClasseurFolder(folder);
+        setSelectedClasseurFolder(folder.id);
         setCurrentSubView({
           id: 'studycloud-classeur-classeur',
           type: 'classeur',
@@ -5595,7 +5597,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     ).map(item => ({
       ...toFileItem(item),
       category: 'audio' as const,
-      artist: item.artist || (item as any).author || 'Fichier Audio'
+      artist: (item as any).artist || (item as any).author || 'Fichier Audio'
     }));
     return applySorting(list);
   }, [filteredDownloads, sortOption]);
@@ -5638,7 +5640,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     ).map(item => ({
       ...item,
       category: 'audio' as const,
-      artist: item.artist || (item as any).author || 'Fichier Audio'
+      artist: (item as any).artist || (item as any).author || 'Fichier Audio'
     }));
     return applySorting(list);
   }, [filteredTrashFiles, sortOption]);

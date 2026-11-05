@@ -4,7 +4,12 @@
 interface __BaseEnv_Env {
 	BLUEPRINTS: KVNamespace;
 	AVATARS: KVNamespace;
+	ADMINS: KVNamespace;
 	BLUEPRINT_CONTENT: R2Bucket;
+	BUCKET: R2Bucket;
+	MON_R2_STUDYCLOUD: R2Bucket;
+	DB: D1Database;
+	MON_D1_STUDYCLOUD: D1Database;
 	LOADER: WorkerLoader;
 	BROWSER: BrowserRun;
 }

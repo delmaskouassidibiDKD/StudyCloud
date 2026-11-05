@@ -1,3 +1,4 @@
+/// <reference path="../worker-configuration.d.ts" />
 import { RpcStub, RpcTarget, newHttpBatchRpcResponse, newWebSocketRpcSession, RpcSessionOptions } from "capnweb";
 import { validateRpc } from "capnweb-validate";
 import type { JWTPayload } from "jose";
@@ -1093,7 +1094,7 @@ async function executeGemini20Flash(params: {
         if (txt) return cleanTechnicalMediaJargon(txt);
       } else {
         const errBody = await res.text().catch(() => "");
-        logger.warn("Gemini Google API error", { mod, status: res.status, error: errBody });
+        logger.warn("Gemini Google API error", { event: "ai.gemini.error", error: `${mod}:${res.status}:${errBody}` });
         modelErrors.push(`${mod}:${res.status}`);
       }
     } catch (e: any) {
