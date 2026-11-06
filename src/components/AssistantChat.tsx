@@ -3555,6 +3555,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   const activeControllersByConvRef = useRef<Record<string, AbortController>>({});
   const activeRequestIdsByConvRef = useRef<Record<string, number>>({});
+  const lastSendTimestampRef = useRef<number>(0);
   const messagesRef = useRef<Message[]>(messages);
   useEffect(() => {
     messagesRef.current = messages;
@@ -3599,6 +3600,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const handleCancelTask = (convIdToCancel?: string | boolean, switchingToNewTask = false) => {
     const isSwitching = typeof convIdToCancel === 'boolean' ? convIdToCancel : switchingToNewTask;
     const targetId = typeof convIdToCancel === 'string' ? convIdToCancel : currentConversationIdRef.current;
+
+    // Protection anti-clic fantôme : si l'envoi a eu lieu il y a moins de 800ms, ignorer l'annulation
+    if (!isSwitching && Date.now() - lastSendTimestampRef.current < 800) {
+      console.warn("[AssistantChat] handleCancelTask ignoré car déclenché trop vite après l'envoi (clic fantôme).");
+      return;
+    }
 
     if (activeControllersByConvRef.current[targetId]) {
       try {
@@ -4772,6 +4779,7 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
     }
     lastSendTimeRef.current = now;
     lastSendTextRef.current = userText;
+    lastSendTimestampRef.current = now;
     isChatRequestInFlightRef.current = true;
 
     // Fixer la conversation cible de manière immuable pour cette requête
@@ -4808,6 +4816,7 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
     let abortSignal: AbortSignal;
     const controller = new AbortController();
     abortSignal = controller.signal;
+    activeControllersByConvRef.current[targetConvId] = controller;
 
     // Réinitialise le défilement pour suivre le nouveau prompt
     isUserScrolledUpRef.current = false;
@@ -6050,7 +6059,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             window.dispatchEvent(new CustomEvent('studycloud-creation-status-changed', { detail: { creationId: newCreation.id, status: 'ready', creation: newCreation } }));
             window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
             window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false } }));
-            window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
+            // Sur mobile, ne basculer automatiquement vers le Studio (tab 2) QUE si la création a été initiée depuis les cartes du Studio
+            if (options?.source === 'right-menu-cards') {
+              window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
+            }
           }
 
           // Nettoyage radical du texte pour la discussion : JAMAIS de JSON brut !
@@ -6197,8 +6209,6 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
             setIsTyping(false);
             setIsWaitingServer(false);
             setRetryingMessageId(null);
-            window.dispatchEvent(new CustomEvent('open-assistant-chat'));
-            window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
             if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
               scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
             }
@@ -6311,6 +6321,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         };
         setMessages(prev => [...prev.filter(m => m.id !== aiMsgId), errorMsg]);
       }
+    } finally {
+      if (activeControllersByConvRef.current[targetConvId] === controller) {
+        delete activeControllersByConvRef.current[targetConvId];
+      }
     }
   };
 
@@ -6321,7 +6335,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       const promptSource = e.detail?.source;
       if (promptText) {
         window.dispatchEvent(new CustomEvent('open-assistant-chat'));
-        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
+        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 0 } }));
         sendMessage(promptText, reqType, { source: promptSource });
       }
     };
@@ -7178,7 +7192,14 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                   /* Pendant que l'IA réfléchit, répond ou analyse : SEUL le bouton Arrêter est affiché */
                   <button
                     type="button"
-                    onClick={() => handleCancelTask()}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (Date.now() - lastSendTimestampRef.current < 800) {
+                        return;
+                      }
+                      handleCancelTask();
+                    }}
                     className="px-3 py-2 font-bold rounded-full flex items-center gap-1.5 transition-all shadow-md active:scale-95 cursor-pointer bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs shrink-0"
                     title={tStudy("stop_button_title", "Arrêter la réponse en cours")}
                   >
@@ -7190,7 +7211,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                   <button
                     type="submit"
                     disabled={!inputValue.trim()}
-                    onPointerDown={(e) => {
+                    onClick={(e) => {
                       if (inputValue.trim()) {
                         e.preventDefault();
                         handleSend();

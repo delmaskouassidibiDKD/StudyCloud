@@ -1044,7 +1044,7 @@ export default function App() {
   useEffect(() => {
     const handleOpenChat = () => {
       setIsAssistantOpen(true);
-      setMobilePreviewTab(1);
+      setMobilePreviewTab(0);
     };
     window.addEventListener('open-assistant-chat', handleOpenChat);
     window.addEventListener('studycloud-trigger-creation', handleOpenChat);

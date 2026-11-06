@@ -716,7 +716,7 @@ export function RightMenu({
 
     // Ouvrir immédiatement le menu de chat pour montrer en temps réel ce qui se passe
     window.dispatchEvent(new CustomEvent('open-assistant-chat'));
-    window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 1 } }));
+    window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 0 } }));
 
     // Cas spécial 'pdf' :
     // On bascule dans le chat pour que l'IA engage la proposition interactive avec [QUESTIONS_SUGGÉRÉES]
