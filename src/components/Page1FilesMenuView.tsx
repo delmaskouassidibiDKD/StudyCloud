@@ -10808,9 +10808,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <Share2 className="w-3.5 h-3.5" />
             </button>
 
-            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
-            <ViewerFitButton />
-
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (
               <ViewerSuperExpandButton
@@ -11043,9 +11040,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             >
               <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-
-            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
-            <ViewerFitButton />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (
@@ -11593,7 +11587,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
+            {/* Bouton de cadrage (agrandissement de cadre vidéo) */}
             <ViewerFitButton />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
@@ -11736,9 +11730,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             >
               <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
-
-            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
-            <ViewerFitButton />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (

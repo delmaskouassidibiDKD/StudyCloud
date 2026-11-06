@@ -870,8 +870,8 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
               </button>
             )}
 
-            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
-            <ViewerFitButton />
+            {/* Bouton d'agrandissement de cadre (uniquement pour vidéo) */}
+            {fileType === 'video' && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (

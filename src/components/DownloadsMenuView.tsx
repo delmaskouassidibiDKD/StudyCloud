@@ -224,8 +224,8 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
               </button>
             )}
 
-            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
-            <ViewerFitButton />
+            {/* Bouton d'agrandissement de cadre (uniquement pour vidéo) */}
+            {isVid && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (

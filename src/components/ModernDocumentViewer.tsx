@@ -525,8 +525,9 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
     <div className={`w-full h-full min-h-0 flex flex-col bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-hidden ${className}`}>
       {/* 1. EN-TÊTE DU DOCUMENT AVEC ACTIONS & CONTRÔLES (Masqué quand hideHeader={true} ou pour Word/Excel/PPTX qui ont leur propre barre intégrée) */}
       {!hideHeader && !isWord && !isExcel && !isPptx && (
-        <div className="flex items-center justify-between px-3 sm:px-4 py-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0 z-10 shadow-xs">
-          <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center justify-between px-2 sm:px-4 py-1 sm:py-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0 z-10 shadow-xs">
+          {/* Masqué sur mobile pour éviter la redondance et libérer l'espace vertical */}
+          <div className="hidden sm:flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-orange-500/10 border border-orange-500/30 flex items-center justify-center text-orange-500 shrink-0">
               {isPdf ? (
                 <FileText className="w-4 h-4 text-red-500" />
@@ -559,8 +560,18 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
             </div>
           </div>
 
+          {/* Indicateur mobile compact si texte modifié */}
+          {isTextOrCode && isTextDirty && (
+            <div className="sm:hidden flex items-center gap-1 min-w-0">
+              <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 animate-pulse">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                <span>Modifié</span>
+              </span>
+            </div>
+          )}
+
           {/* Barre d'outils droite */}
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 ml-auto">
             {/* Abandonner pour texte/code */}
             {isTextOrCode && isTextDirty && (
               <button

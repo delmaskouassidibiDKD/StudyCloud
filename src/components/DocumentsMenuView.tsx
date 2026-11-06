@@ -58,7 +58,6 @@ import { handleNativeShare } from '../utils/nativeShare';
 import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
-import { ViewerFitButton } from './ViewerFitButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 interface DocumentsMenuViewProps {
@@ -1981,9 +1980,6 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
                 <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
             )}
-
-            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
-            <ViewerFitButton />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (

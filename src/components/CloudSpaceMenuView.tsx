@@ -1952,8 +1952,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
               </button>
             )}
 
-            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
-            <ViewerFitButton />
+            {/* Bouton d'agrandissement de cadre (uniquement pour vidéo) */}
+            {isVideo && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (

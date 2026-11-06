@@ -882,8 +882,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
               <span className="hidden sm:inline">Favori</span>
             </button>
 
-            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
-            <ViewerFitButton />
+            {/* Bouton d'agrandissement de cadre (uniquement pour vidéo) */}
+            {fileType === 'video' && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (

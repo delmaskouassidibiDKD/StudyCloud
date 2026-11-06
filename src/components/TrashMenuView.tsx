@@ -1338,8 +1338,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               <span className="hidden md:inline">Supprimer</span>
             </button>
 
-            {/* Bouton d'agrandissement de cadre (déplacé dans la barre supérieure) */}
-            <ViewerFitButton />
+            {/* Bouton d'agrandissement de cadre (uniquement pour vidéo) */}
+            {fileType === 'video' && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             {(isViewerMaximized || viewerExpandLevel >= 1) && (
