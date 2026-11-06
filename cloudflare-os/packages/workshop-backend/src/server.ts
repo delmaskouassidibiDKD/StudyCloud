@@ -869,6 +869,55 @@ function cleanTechnicalMediaJargon(text: string): string {
     .trim();
 }
 
+function stripAiReasoningScratchpad(text: string): string {
+  if (!text || typeof text !== "string") return "";
+  let cleaned = text;
+
+  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
+  cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, "").trim();
+  cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "").trim();
+  cleaned = cleaned.replace(/<think>[\s\S]*$/gi, "").trim();
+  cleaned = cleaned.replace(/<thought>[\s\S]*$/gi, "").trim();
+  cleaned = cleaned.replace(/<reasoning>[\s\S]*$/gi, "").trim();
+
+  const reasoningMonologuePatterns = [
+    /^(?:[\s\S]*?\b(?:Let['’]s think|Waitcheck|The figure caption|doesn['’]t indicate|We need infer|retire la self['’]? ambiguous|Thisisaband-stop|Actually in the original circuit)\b[\s\S]*?\n\n)/i,
+    /^(?:(?:out and feedback branches|Standard active first-order|The figure caption text)[\s\S]*?\n\n)/i,
+  ];
+
+  for (const pat of reasoningMonologuePatterns) {
+    if (pat.test(cleaned)) {
+      cleaned = cleaned.replace(pat, "").trim();
+    }
+  }
+
+  const frenchOrHeadingIdx = cleaned.search(/(?:\n\s*|^)(?:#{1,3}\s+|(?:\*\*|__)?(?:Question|Exercice|[EÉ]tape|Partie|Démonstration|Calcul|Analyse|Pour|Dans|Soit|On|Le|La|Les|D'après|Notons|Considérons)\b)/i);
+  if (frenchOrHeadingIdx > 0 && frenchOrHeadingIdx < 1500) {
+    const preamble = cleaned.slice(0, frenchOrHeadingIdx);
+    if (/\b(?:think|wait|circuit|maybe|suggests|removes|removing|leaving|replaces|sistor|op-amp|inverting|feedback|series|parallel|branch|figure|caption|infer)\b/i.test(preamble) &&
+      !/\b(?:bonjour|voici|étudiant|question|résolution|exercice)\b/i.test(preamble)) {
+      cleaned = cleaned.slice(frenchOrHeadingIdx).trim();
+    }
+  }
+
+  // Nettoyage impératif de toute fuite d'outils internes (outil de vision, expert vision, rapport OCR, etc.)
+  cleaned = cleaned
+    .replace(/(?:grâce à|via|selon|d'après|avec)\s+l'outil\s+de\s+vision/gi, "d'après votre document")
+    .replace(/l'outil\s+de\s+vision\s+(?:a\s+extrait|montre|indique|permet\s+de)/gi, "l'image montre")
+    .replace(/vous\s+pouvez\s+utiliser\s+l'outil\s+de\s+vision\s*(?:pour[^.\n]*)?[.]?/gi, "")
+    .replace(/l'outil\s+de\s+vision/gi, "l'image")
+    .replace(/(?:grâce à|via|selon|d'après|avec)\s+l'expert\s+de\s+vision/gi, "d'après vos schémas")
+    .replace(/l'expert\s+de\s+vision\s+(?:a\s+extrait|montre|indique|fournit|confirme)/gi, "les éléments visuels montrent")
+    .replace(/dossier\s+d'observation\s+(?:haute\s+fidélité|visuelle?)/gi, "analyse de vos figures")
+    .replace(/dossier\s+de\s+perception/gi, "schémas et figures")
+    .replace(/rapport\s+(?:de\s+perception|d'observation|ocr)/gi, "schémas observés")
+    .replace(/l'expert\s+de\s+perception/gi, "l'analyse visuelle")
+    .replace(/l'orchestrateur\s+multi-ia/gi, "StudyCloud")
+    .replace(/l'équipe\s+pédagogique\s+multi-ia/gi, "StudyCloud");
+
+  return cleaned.trim();
+}
+
 /**
  * Exécute l'appel multimodal vers Google Gemini Flash selon le Google Cookbook officiel
  * Supporte nativement vidéos (avec audio), fichiers audios, images et documents.
@@ -908,7 +957,7 @@ async function executeGemini20Flash(params: {
 
   // 1. Flux vidéo direct inline (contient automatiquement la vidéo et la piste sonore synchronisée)
   if (videoBase64 && videoBase64.length > 50) {
-    const cleanVideoBase64 = videoBase64.replace(/^data:[^;]+;base64,/i, "").trim();
+    const cleanVideoBase64 = videoBase64.includes("base64,") ? videoBase64.split("base64,")[1].trim() : videoBase64.trim();
     let effectiveVideoMime = videoMimeType || "video/mp4";
     if (videoBase64.includes("video/webm")) effectiveVideoMime = "video/webm";
     else if (videoBase64.includes("video/quicktime")) effectiveVideoMime = "video/quicktime";
@@ -927,7 +976,7 @@ async function executeGemini20Flash(params: {
 
   // 2. Flux audio direct inline (fichiers audio, notes vocales, podcast, cours oral)
   if (audioBase64 && audioBase64.length > 50) {
-    const cleanAudioBase64 = audioBase64.replace(/^data:[^;]+;base64,/i, "").trim();
+    const cleanAudioBase64 = audioBase64.includes("base64,") ? audioBase64.split("base64,")[1].trim() : audioBase64.trim();
     let effectiveAudioMime = audioMimeType || "audio/mp3";
     if (audioBase64.includes("audio/wav")) effectiveAudioMime = "audio/wav";
     else if (audioBase64.includes("audio/ogg") || audioBase64.includes("audio/opus")) effectiveAudioMime = "audio/ogg";
@@ -947,7 +996,7 @@ async function executeGemini20Flash(params: {
 
   // 3. Document PDF direct inline (Vision et OCR natif multimodale de chaque page, graphiques, figures, schémas, tableaux)
   if (documentBase64 && documentBase64.length > 50) {
-    const cleanDocBase64 = documentBase64.replace(/^data:[^;]+;base64,/i, "").trim();
+    const cleanDocBase64 = documentBase64.includes("base64,") ? documentBase64.split("base64,")[1].trim() : documentBase64.trim();
     let effectiveDocMime = documentMimeType || "application/pdf";
     if (documentBase64.includes("application/pdf")) effectiveDocMime = "application/pdf";
     if (cleanDocBase64.length < 28 * 1024 * 1024) {
@@ -964,7 +1013,7 @@ async function executeGemini20Flash(params: {
   if (Array.isArray(documentImages) && documentImages.length > 0) {
     for (const dImg of documentImages) {
       const rawImg = typeof dImg === 'string' ? dImg : (dImg.base64 || "");
-      const cleanImg = rawImg.replace(/^data:[^;]+;base64,/i, "").trim();
+      const cleanImg = rawImg.includes("base64,") ? rawImg.split("base64,")[1].trim() : rawImg.trim();
       const mime = (typeof dImg === 'object' && dImg.mimeType) ? dImg.mimeType : "image/jpeg";
       if (cleanImg && cleanImg.length < 28 * 1024 * 1024) {
         currentParts.push({
@@ -979,7 +1028,7 @@ async function executeGemini20Flash(params: {
 
   // 5. Image directe inline
   if (imageBase64 && imageBase64.length > 50) {
-    const cleanBase64 = imageBase64.replace(/^data:[^;]+;base64,/i, "").trim();
+    const cleanBase64 = imageBase64.includes("base64,") ? imageBase64.split("base64,")[1].trim() : imageBase64.trim();
     let effectiveMime = mimeType || "image/jpeg";
     if (imageBase64.includes("image/png")) effectiveMime = "image/png";
     else if (imageBase64.includes("image/webp")) effectiveMime = "image/webp";
@@ -999,7 +1048,8 @@ async function executeGemini20Flash(params: {
   // 6. Frames vidéo (SEULEMENT si aucun flux videoBase64 direct n'a pu être fourni)
   if ((!videoBase64 || videoBase64.length <= 50) && Array.isArray(videoFrames) && videoFrames.length > 0) {
     for (const f of videoFrames) {
-      const fBase64 = String(f.base64 || "").replace(/^data:[^;]+;base64,/i, "").trim();
+      const rawF = String(f.base64 || "");
+      const fBase64 = rawF.includes("base64,") ? rawF.split("base64,")[1].trim() : rawF.trim();
       if (fBase64) {
         currentParts.push({
           inlineData: {
@@ -1037,12 +1087,13 @@ async function executeGemini20Flash(params: {
 
 2. STYLE NATUREL ET HUMAIN (STYLE OFFICIEL GOOGLE GEMINI) :
    - INTERDICTION STRICTE DE JARGON TECHNIQUE : Ne mentionne JAMAIS de termes internes de traitement ou d'ingénierie (interdiction absolue de dire "j'ai reçu X images clés", "clichés capturés", "frames", "échantillons", "rapport ocr", ou de découper artificiellement la réponse par "Scène à X.Xs").
-   - Parle directement et naturellement comme le fait l'assistant Google Gemini officiel (ex: "Ce document présente...", "Dans ce document PDF, on observe...", "Cette vidéo montre...", "Cet enregistrement audio présente...").
+   - Parle directement et naturellement comme le fait l'assistant Google Gemini officiel (ex: "Cette image montre...", "Dans cette image, on observe...", "Cette vidéo montre...", "Cet enregistrement audio présente...", "Dans ce document PDF...").
 
 3. ANALYSE GLOBALE HARMONIEUSE :
    - Pour une vidéo : Décris le contenu visuel (personnes, actions, décor, tenues, textes et incrustations à l'écran) ET intègre naturellement l'ambiance et la piste sonore (musique, paroles, voix, ce qui est dit).
    - Pour un audio : Retranscris et synthétise ce qui est dit, les intervenants, le ton et les notions clés.
-   - Pour un document (PDF, Word) : Intègre à la fois le texte du cours et l'analyse visuelle de TOUS les schémas, graphiques, illustrations ou figures présents. Si un schéma ou un dessin est présent (par exemple un circuit électrique, une cellule biologique, un graphique, un polygone, une courbe), décris-le précisément et intègre-le dans ton explication ou la résolution des exercices !
+   - Pour une image : Décris fidèlement et exhaustivement ce qui est visible sur l'image (schémas, personnes, objets du monde réel, paysage, formules réelles) SANS inventer de formules ou de circuits inexistants.
+   - Pour un document (PDF, Word) : Intègre à la fois le texte du cours et l'analyse visuelle de TOUS les schémas, graphiques, illustrations ou figures présents.
 ══════════════════════════════════════════════════════════════════════════════
 [INTERDICTION STRICTE DE PLAQUER DES SUJETS INEXISTANTS OU DES FORMULES DE FILTRES] :
 - Analyse STRICTEMENT et FIDÈLEMENT le contenu réel du fichier fourni (image, photo, schéma ou document).
@@ -1056,10 +1107,10 @@ async function executeGemini20Flash(params: {
 
   // Sélection directe et ordonnée des modèles Google Gemini actifs sur l'API officielle
   const candidateModels = [
-    "gemini-2.5-flash",
-    "gemini-3.5-flash",
-    "gemini-3.8-flash",
-    "gemini-flash-latest",
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-latest",
+    "gemini-2.0-flash-exp",
   ];
 
   const hasInlineMedia = currentParts.some((p: any) => Boolean(p?.inlineData));
@@ -1129,6 +1180,98 @@ async function executeGemini20Flash(params: {
   }
 
   throw new Error(`Modèles Gemini indisponibles: ${modelErrors.join(", ")}`);
+}
+
+async function runCloudflareVisionAnalysis(params: {
+  targetImage: string;
+  docName?: string;
+  cfToken: string;
+  accountId: string;
+}): Promise<string> {
+  const { targetImage, docName, cfToken, accountId } = params;
+  if (!targetImage || targetImage.length < 50 || !cfToken || !accountId) return "";
+  try {
+    const cfVisionPrompt = `Tu es le moteur de perception visuelle officiel de StudyCloud.
+Analyse minutieusement cette image/document (« ${docName || "Image d'étude"} »).
+1. TEXTE ET ÉNONCÉ : Retranscris fidèlement l'intégralité du texte, chaque question, consigne et donnée numérique avec son unité.
+2. FORMULES : Écris toutes les formules mathématiques et physiques en KaTeX standard ($...$ ou $$...$$).
+3. SCHÉMAS / CIRCUITS / FIGURES : Décris précisément les composants, graphes, repères, courbes, objets réels ou dessins.
+Donne une observation fidèle et exhaustive sans inventer.`;
+
+    const cleanB64 = targetImage.includes("base64,") ? targetImage.split("base64,")[1].trim() : targetImage.trim();
+    const binary = Uint8Array.from(atob(cleanB64), c => c.charCodeAt(0));
+    const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
+    let runRes = await fetch(runUrl, {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${cfToken}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        prompt: cfVisionPrompt,
+        image: Array.from(binary),
+        max_tokens: 4096,
+      }),
+    });
+
+    if (runRes.status === 403) {
+      const errText = await runRes.text().catch(() => "");
+      if (errText.includes("agree")) {
+        await fetch(runUrl, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: "agree" }),
+        }).catch(() => { });
+
+        runRes = await fetch(runUrl, {
+          method: "POST",
+          headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: cfVisionPrompt,
+            image: Array.from(binary),
+            max_tokens: 4096,
+          }),
+        });
+      }
+    }
+
+    if (runRes.ok) {
+      const runData: any = await runRes.json();
+      const vContent = runData?.result?.response || runData?.response || "";
+      if (vContent && vContent.trim().length > 15) {
+        return stripAiReasoningScratchpad(cleanTechnicalMediaJargon(vContent.trim()));
+      }
+    }
+  } catch (cfvErr) {
+    logger.warn("Cloudflare Vision execution failed", { event: "cloudflare_vision_error", error: cfvErr });
+  }
+  return "";
+}
+
+function getFileDescriptorBackend(name?: string, mime?: string, hasImg?: boolean, hasVid?: boolean, hasAud?: boolean) {
+  const ext = (name || "").split('.').pop()?.toLowerCase() || "";
+  if (mime?.startsWith("image/") || hasImg || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg'].includes(ext)) {
+    return { kind: 'image', label: 'image', article: 'cette image' };
+  }
+  if (mime?.startsWith("video/") || hasVid || ['mp4', 'webm', 'mov', 'mkv', 'avi'].includes(ext)) {
+    return { kind: 'vidéo', label: 'vidéo', article: 'cette vidéo' };
+  }
+  if (mime?.startsWith("audio/") || hasAud || ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].includes(ext)) {
+    return { kind: 'audio', label: 'enregistrement audio', article: 'cet enregistrement audio' };
+  }
+  if (mime?.includes("pdf") || ext === "pdf") {
+    return { kind: 'pdf', label: 'document PDF', article: 'ce document PDF' };
+  }
+  if (mime?.includes("word") || ['doc', 'docx'].includes(ext)) {
+    return { kind: 'word', label: 'document Word', article: 'ce document Word' };
+  }
+  if (mime?.includes("spreadsheet") || ['xls', 'xlsx', 'csv'].includes(ext)) {
+    return { kind: 'excel', label: 'feuille de calcul', article: 'cette feuille de calcul' };
+  }
+  if (mime?.includes("presentation") || ['ppt', 'pptx'].includes(ext)) {
+    return { kind: 'powerpoint', label: 'présentation', article: 'cette présentation' };
+  }
+  return { kind: 'document', label: 'document', article: 'ce document' };
 }
 
 export default {
@@ -1330,49 +1473,6 @@ export default {
 
     if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: corsHeaders });
-    }
-
-    function stripAiReasoningScratchpad(text: string): string {
-      if (!text || typeof text !== "string") return "";
-      let cleaned = text;
-
-      cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
-      cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, "").trim();
-      cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, "").trim();
-      cleaned = cleaned.replace(/<think>[\s\S]*$/gi, "").trim();
-      cleaned = cleaned.replace(/<thought>[\s\S]*$/gi, "").trim();
-      cleaned = cleaned.replace(/<reasoning>[\s\S]*$/gi, "").trim();
-
-      const reasoningMonologuePatterns = [
-        /^(?:[\s\S]*?\b(?:Let['’]s think|Waitcheck|The figure caption|doesn['’]t indicate|We need infer|retire la self['’]? ambiguous|Thisisaband-stop|Actually in the original circuit)\b[\s\S]*?\n\n)/i,
-        /^(?:(?:out and feedback branches|Standard active first-order|The figure caption text)[\s\S]*?\n\n)/i,
-      ];
-
-      for (const pat of reasoningMonologuePatterns) {
-        if (pat.test(cleaned)) {
-          cleaned = cleaned.replace(pat, "").trim();
-        }
-      }
-
-      const frenchOrHeadingIdx = cleaned.search(/(?:\n\s*|^)(?:#{1,3}\s+|(?:\*\*|__)?(?:Question|Exercice|[EÉ]tape|Partie|Démonstration|Calcul|Analyse|Pour|Dans|Soit|On|Le|La|Les|D'après|Notons|Considérons)\b)/i);
-      if (frenchOrHeadingIdx > 0 && frenchOrHeadingIdx < 1500) {
-        const preamble = cleaned.slice(0, frenchOrHeadingIdx);
-        if (/\b(?:think|wait|circuit|maybe|suggests|removes|removing|leaving|replaces|sistor|op-amp|inverting|feedback|series|parallel|branch|figure|caption|infer)\b/i.test(preamble) &&
-          !/\b(?:bonjour|voici|étudiant|question|résolution|exercice)\b/i.test(preamble)) {
-          cleaned = cleaned.slice(frenchOrHeadingIdx).trim();
-        }
-      }
-
-      // Nettoyage impératif de toute fuite d'outils internes (outil de vision, expert vision, rapport OCR, etc.)
-      cleaned = cleaned
-        .replace(/(?:grâce à|via|selon|d'après|avec)\s+l'outil\s+de\s+vision/gi, "d'après votre document")
-        .replace(/l'outil\s+de\s+vision\s+(?:a\s+extrait|montre|indique|permet\s+de)/gi, "l'image montre")
-        .replace(/vous\s+pouvez\s+utiliser\s+l'outil\s+de\s+vision\s*(?:pour[^.\n]*)?[.]?/gi, "")
-        .replace(/l'outil\s+de\s+vision/gi, "l'image")
-        .replace(/expert\s+vision/gi, "l'analyse visuelle")
-        .replace(/rapport\s+(?:ocr|vision|d'extraction)/gi, "énoncé de l'exercice");
-
-      return cleaned;
     }
 
     // Helper universel et robuste pour extraire et désérialiser du JSON avec formules KaTeX et antislashs
@@ -1671,7 +1771,7 @@ export default {
           const isSelectedGemini = targetModel === "gemini-2.0-flash" || targetModel.includes("gemini") || targetModel === "gemini-3.8-flash" || targetModel === "gemini-3.6-flash";
 
           // Si un média (vidéo, audio, document PDF/Word avec schémas, ou image) est fourni ET que le modèle sélectionné n'est pas Gemini :
-          // Gemini Flash intervient en arrière-plan comme moteur de perception universel.
+          // Gemini Flash ou Cloudflare Workers AI Vision intervient en arrière-plan comme moteur de perception universel.
           // Il produit un dossier d'observation haute fidélité qui est transmis au modèle enseignant choisi (Agent Delmas, DeepSeek, Claude...).
           let backgroundPerceptionReport = String(body.perceptionReport || "").trim();
           const isDocImage = Boolean(
@@ -1683,7 +1783,7 @@ export default {
             backgroundPerceptionReport = "";
           }
           if (isDocImage) {
-            // Pour les images, la vision multimodale directe de Gemini prévaut formellement sur tout vieux rapport textuel
+            // Pour les images, la vision multimodale directe prévaut formellement sur tout vieux rapport textuel
             backgroundPerceptionReport = "";
           }
           const needsVisualOrAudioPerception = Boolean(
@@ -1694,7 +1794,8 @@ export default {
             videoFrames.length > 0 ||
             (documentBase64 && documentBase64.length > 50 && (!docContent || docContent.trim().length < 120))
           );
-          if (!backgroundPerceptionReport && needsVisualOrAudioPerception && !isSelectedGemini) {
+          const canGeminiDoDirectVision = Boolean(isSelectedGemini && geminiKeyToUse && !geminiKeyToUse.startsWith("AIzaSyDKct") && geminiKeyToUse.length > 25);
+          if (!backgroundPerceptionReport && needsVisualOrAudioPerception && !canGeminiDoDirectVision) {
             // 1. D'abord tenter Google Gemini Flash si une clé Gemini semble présente
             if (geminiKeyToUse && !geminiKeyToUse.startsWith("AIzaSyDKct") && geminiKeyToUse.length > 25) {
               try {
@@ -1752,61 +1853,12 @@ DIRECTIVES D'OBSERVATION STRICTES :
               }
 
               if (targetImage && targetImage.length > 50) {
-                try {
-                  const cfVisionPrompt = `Tu es le moteur de perception visuelle officiel de StudyCloud.
-Analyse minutieusement cette image/document (« ${docName || "Image d'étude"} »).
-1. TEXTE ET ÉNONCÉ : Retranscris fidèlement l'intégralité du texte, chaque question, consigne et donnée numérique avec son unité.
-2. FORMULES : Écris toutes les formules mathématiques et physiques en KaTeX ($...$).
-3. SCHÉMAS / CIRCUITS / FIGURES : Décris précisément les composants, graphes, repères, courbes et liaisons.
-Donne une description exhaustive pour que le tuteur puisse résoudre et enseigner.`;
-
-                  const cleanB64 = targetImage.replace(/^data:[^;]+;base64,/i, "").trim();
-                  const binary = Uint8Array.from(atob(cleanB64), c => c.charCodeAt(0));
-                  const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
-                  let runRes = await fetch(runUrl, {
-                    method: "POST",
-                    headers: {
-                      "Authorization": `Bearer ${cfToken}`,
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      prompt: cfVisionPrompt,
-                      image: Array.from(binary),
-                      max_tokens: 4096,
-                    }),
-                  });
-
-                  if (runRes.status === 403) {
-                    const errText = await runRes.text().catch(() => "");
-                    if (errText.includes("agree")) {
-                      await fetch(runUrl, {
-                        method: "POST",
-                        headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ prompt: "agree" }),
-                      }).catch(() => { });
-
-                      runRes = await fetch(runUrl, {
-                        method: "POST",
-                        headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          prompt: cfVisionPrompt,
-                          image: Array.from(binary),
-                          max_tokens: 4096,
-                        }),
-                      });
-                    }
-                  }
-
-                  if (runRes.ok) {
-                    const runData: any = await runRes.json();
-                    const vContent = runData?.result?.response || runData?.response || "";
-                    if (vContent && vContent.trim().length > 15) {
-                      backgroundPerceptionReport = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(vContent.trim()));
-                    }
-                  }
-                } catch (cfvErr) {
-                  logger.warn("Cloudflare Vision fallback failed", { event: "cloudflare_vision_error", error: cfvErr });
-                }
+                backgroundPerceptionReport = await runCloudflareVisionAnalysis({
+                  targetImage,
+                  docName: docName || "",
+                  cfToken,
+                  accountId,
+                });
               }
             }
 
@@ -1850,38 +1902,39 @@ RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entou
             }
           }
 
-          if (docContent) {
-            if (!isContinuation) {
-              systemPrompt += `\n\n[DOCUMENT DE COURS JOINT : "${docName || "Document d'étude"}"]\n${docContent.slice(0, 45000)}\nCONSIGNE PÉDAGOGIQUE : Utilise ce document de cours lorsque la demande ou question de l'étudiant y fait référence ou porte dessus. S'il te pose une question générale, te salue ou aborde un sujet différent, réponds naturellement sans forcer la mention du document.`;
-            } else {
-              systemPrompt += `\n\n[DOCUMENT D'APPUI EN ARCHIVE DE RÉFÉRENCE - NE PAS RÉANALYSER DU DÉBUT] :\n${docContent.slice(0, 4000)}`;
-            }
-          } else if (!isContinuation && isAgentCreationTask) {
-            systemPrompt += `\n\n[ATTENTION - AUCUN DOCUMENT FOURNI] : L'étudiant n'a joint aucun fichier de cours. Si sa demande porte sur une création (QCM, carte mentale, résumé, devoir, etc.) mais qu'il ne précise aucun sujet ni chapitre précis et que la conversation n'a pas abordé de matière : TU NE DOIS EN AUCUN CAS CRÉER DANS LE VIDE. Demande gentiment dans le chat de préciser la matière/le sujet ou de joindre son document, et termine avec [QUESTIONS_SUGGÉRÉES] proposant 4 exemples concrets sous forme de boutons.`;
-          }
+          const mediaDesc = getFileDescriptorBackend(docName, mimeType, Boolean(imageBase64), Boolean(videoBase64 || videoFrames.length > 0), Boolean(audioBase64));
+          const hasActiveFile = Boolean(hasMedia || (docContent && docContent.trim().length > 0) || (docName && docName.trim().length > 0));
 
-          if (isAgentCreationTask && body.requested_type) {
-            systemPrompt += `\n\n[ORIENTATION PARTICULIÈRE] : L'étudiant a orienté son souhait vers un module de type "${body.requested_type}". Adapte ta création en conséquence.`;
-          }
-
-          const isNewConversation = (!history || history.length === 0);
-          if (isNewConversation) {
-            systemPrompt += `\n\n[NOUVELLE CONVERSATION] : L'étudiant démarre une nouvelle discussion thématique. Accueille-le chaleureusement et concentre-toi sur son nouveau sujet d'étude ou sa nouvelle question sans préjuger des sujets passés.`;
-          } else {
-            systemPrompt += `\n\n[CONVERSATION EN COURS] : Cette discussion contient déjà des échanges passés. Maintiens la continuité et la cohérence pédagogique avec les réponses précédentes de cette même session.`;
-          }
-
-          if (backgroundPerceptionReport && hasMedia) {
+          if (hasActiveFile) {
             systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
-[DOSSIER D'OBSERVATION DU FICHIER ANALYSÉ EN ARRIÈRE-PLAN PAR LE MOTEUR MULTIMODAL] :
-Média analysé : « ${docName || "Document d'étude"} »
-
-${backgroundPerceptionReport}
+[FICHIER D'ÉTUDE ACTIF : ${mediaDesc.label.toUpperCase()} « ${docName || "Fichier joint"} »]
+Type exact de ce fichier : ${mediaDesc.label} (${mediaDesc.article}).
+${docContent ? `Extrait de contenu textuel :\n${docContent.slice(0, 40000)}\n` : ''}
+${backgroundPerceptionReport ? `Dossier de perception visuelle / auditive réelle :\n${backgroundPerceptionReport}\n` : ''}
 
 CONSIGNES STRICTES POUR LE TUTEUR :
-1. Si l'élève te demande d'analyser son image, photo ou document (ex: "Tu as vu mon image ?", "Résous l'exercice sur l'image"), réponds avec précision en utilisant les données visibles dans ce dossier !
-2. Si sa question est générale ou sans rapport avec ce fichier, réponds naturellement sans imposer ce document.
-3. RÈGLE D'OR : Ne mentionne JAMAIS aucun outil technique externe (ne dis pas "d'après le rapport de perception", "l'outil d'analyse indique"). Parle naturellement : "Sur votre image...", "Dans l'exercice...", "Le schéma du circuit montre...".
+1. DÉTECTION DU TYPE EXACT :
+   - Désigne TOUJOURS ce fichier par son type réel : ${mediaDesc.article} (ou "${mediaDesc.label}").
+   - Ne qualifie JAMAIS tout de simple "document" lorsqu'il s'agit d'une image, d'une vidéo ou d'un fichier audio.
+2. CONFIRMATION VISUELLE OU TEXTUELLE IMMÉDIATE (1 À 2 PHRASES EN DÉBUT DE RÉPONSE) :
+   - Dès ton tout premier retour ou lorsque l'étudiant te pose une question sur son fichier, commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou des éléments réels que tu observes dans ${mediaDesc.article} (ex: "J'ai bien sous les yeux ${mediaDesc.article} « ${docName || ''} » qui porte sur [résumé fidèle en quelques mots du sujet réel]").
+   - Cela prouve immédiatement et de façon rassurante à l'étudiant que tu as bel et bien vu le contenu exact de son fichier.
+3. BASER 100% DES RÉPONSES SUR CE CONTENU RÉEL :
+   - Réponds rigoureusement aux questions en te basant sur ce qui figure réellement dans ${mediaDesc.article}.
+   - INTERDICTION STRICTE D'INVENTER : N'invente AUCUNE formule, AUCUN circuit, AUCUN filtre analogique, AUCUN AOP ($Q_0$, $R_1, R_2$, Millman, etc.) s'ils ne sont pas réellement présents dans ce fichier !
+4. CHANGEMENT DE FICHIER DANS LA CONVERSATION :
+   - Si les échanges précédents dans la discussion traitaient d'un autre fichier (par exemple un ancien exercice d'électronique ou un ancien document), IGNORE TOTALEMENT l'ancien fichier et concentre-toi à 100% sur le NOUVEAU fichier actuel (${mediaDesc.article} « ${docName || ''} »).
+5. RÈGLE D'OR : Ne mentionne JAMAIS aucun outil technique externe (ne dis pas "d'après le rapport de perception", "l'outil d'analyse indique"). Parle naturellement : "Sur votre image...", "Dans l'exercice...", "Le schéma montre...".
+══════════════════════════════════════════════════════════════════════════════`;
+          } else {
+            systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+[AUCUN FICHIER NI IMAGE JOINT DANS CETTE DEMANDE] :
+- L'étudiant N'A JOINT AUCUN FICHIER (aucune image, aucune photo, aucun document PDF, aucune vidéo, aucun audio).
+- RÈGLE ABSOLUE EN CAS D'ABSENCE DE FICHIER :
+  1. Si l'étudiant fait référence à un fichier, une image ou un exercice prétendument joint (ex: "Tu as vu mon image ?", "Résous l'exercice sur l'image", "Qu'est-ce que tu penses de mon document ?"), réponds-lui poliment et clairement :
+     "Vous n'avez actuellement joint aucun fichier ni aucune image à votre message. Pour que je puisse l'analyser et vous aider, veuillez cliquer sur le trombone 📎 ou glisser votre image/document dans la zone de texte !"
+  2. INTERDICTION FORMELLE DE SIMULER OU D'INVENTER : Ne fais AUCUNE supposition de fichier imaginaire. N'évoque JAMAIS de formules de filtres analogiques, de circuits avec AOP ($Q_0$, $R_1, R_2$, Millman, Bode) ou d'autres documents sortis de nulle part !
+  3. Si la question de l'élève est générale, théorique ou conversationnelle, réponds-y directement avec clarté et bienveillance.
 ══════════════════════════════════════════════════════════════════════════════`;
           }
 
@@ -1988,6 +2041,32 @@ CONSIGNES STRICTES DE CONTINUATION :
             } catch (g20Err: any) {
               logger.warn("Gemini Flash call exception, falling back to Workers AI", { event: "gemini_flash_error", error: g20Err });
               geminiErrorDetail = g20Err?.message || String(g20Err);
+              if (!backgroundPerceptionReport && needsVisualOrAudioPerception) {
+                let targetImage = imageBase64;
+                if (!targetImage && Array.isArray(videoFrames) && videoFrames.length > 0) {
+                  targetImage = videoFrames[0]?.base64 || "";
+                }
+                if (!targetImage && Array.isArray(documentImages) && documentImages.length > 0) {
+                  targetImage = (typeof documentImages[0] === 'string' ? documentImages[0] : documentImages[0]?.base64) || "";
+                }
+                if (targetImage && targetImage.length > 50) {
+                  try {
+                    const cfv = await runCloudflareVisionAnalysis({
+                      targetImage,
+                      docName: docName || "",
+                      cfToken,
+                      accountId,
+                    });
+                    if (cfv) {
+                      backgroundPerceptionReport = cfv;
+                      systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+[DOSSIER DE PERCEPTION VISUELLE CLOUDFLARE EN RECOURS] :
+${cfv}
+══════════════════════════════════════════════════════════════════════════════`;
+                    }
+                  } catch {}
+                }
+              }
             }
           }
 
@@ -2044,8 +2123,8 @@ CONSIGNES STRICTES DE CONTINUATION :
                       cfMessages.push({
                         role: "user",
                         content: isAgentCreationTask
-                          ? `[DOCUMENT / COURS ACTIF DE L'ÉTUDIANT : « ${docName || "Document d'étude"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Document d'étude joint par l'étudiant."}\n\n[MISSION STRICTE DE L'AGENT DE CRÉATION] :\n${m.content}`
-                          : `[DOCUMENT / COURS ACTIF DE L'ÉTUDIANT : « ${docName || "Document d'étude"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Document d'étude joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ce document (« ${docName || "Document d'étude"} ») et pose la question : « ${m.content} ».\nRéponds directement, chaleureusement et précisément à sa question en t'appuyant sur ce document.\nNe fais aucune référence aux éventuels anciens fichiers ou anciennes images de la discussion et ne demande jamais de renvoyer le fichier car tu as déjà tout ce qu'il faut sous les yeux.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
+                          ? `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Fichier joint par l'étudiant."}\n\n[MISSION STRICTE DE L'AGENT DE CRÉATION] :\n${m.content}`
+                          : `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} » (${mediaDesc.article})] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Fichier joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ${mediaDesc.article} (« ${docName || "Fichier joint"} ») et pose la question : « ${m.content} ».\n1. Commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou contenu réel que tu observes dans ${mediaDesc.article}.\n2. Réponds directement, chaleureusement et précisément à sa question en t'appuyant rigoureusement sur ${mediaDesc.article}.\n3. N'invente aucun filtre analogique, formule ou schéma non présent. Ne fais aucune référence aux anciens fichiers de la discussion et ne demande jamais de renvoyer le fichier.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
                       });
                     } else {
                       cfMessages.push({ role: m.role, content: m.content });
@@ -2144,7 +2223,18 @@ CONSIGNES STRICTES DE CONTINUATION :
               try {
                 const cfMessages: any[] = [];
                 if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
-                for (const m of simpleMessages) cfMessages.push({ role: m.role, content: m.content });
+                const activeDocInfo = backgroundPerceptionReport || docContent;
+                for (let i = 0; i < simpleMessages.length; i++) {
+                  const m = simpleMessages[i];
+                  if (i === simpleMessages.length - 1 && m.role === "user" && (activeDocInfo || docName)) {
+                    cfMessages.push({
+                      role: "user",
+                      content: `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} » (${mediaDesc.article})] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Fichier joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ${mediaDesc.article} (« ${docName || "Fichier joint"} ») et pose la question : « ${m.content} ».\n1. Commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou contenu réel que tu observes dans ${mediaDesc.article}.\n2. Réponds directement, chaleureusement et précisément à sa question en t'appuyant rigoureusement sur ${mediaDesc.article}.\n3. N'invente aucun filtre analogique, formule ou schéma non présent. Ne fais aucune référence aux anciens fichiers de la discussion et ne demande jamais de renvoyer le fichier.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
+                    });
+                  } else {
+                    cfMessages.push({ role: m.role, content: m.content });
+                  }
+                }
 
                 const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
                   method: "POST",

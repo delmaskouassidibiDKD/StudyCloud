@@ -747,7 +747,144 @@ async function extractAudioContentFromItem(item: any): Promise<{
 }
 
 /**
- * Détecte si un élément est un document d'étude (PDF, Word DOCX/DOC, PPTX, Excel, Texte, etc.)
+ * Analyse et identifie la nature exacte d'un fichier/média
+ */
+export function getFileDescriptor(item: any): {
+  kind: 'image' | 'video' | 'audio' | 'pdf' | 'word' | 'excel' | 'powerpoint' | 'text' | 'document';
+  label: string;
+  labelCap: string;
+  article: string;
+  verb: string;
+} {
+  if (!item) {
+    return {
+      kind: 'document',
+      label: 'document',
+      labelCap: 'Document',
+      article: 'ce document',
+      verb: 'analyser'
+    };
+  }
+
+  const name = String(item.name || item.title || item.fileName || item.file?.name || '').toLowerCase();
+  const type = String(item.type || item.mimeType || '').toLowerCase();
+  const ext = String(item.extension || '').toLowerCase().replace(/^\./, '') || (name.includes('.') ? name.split('.').pop() || '' : '');
+  const category = String(item.category || item.fileType || item.file_category || '').toLowerCase();
+
+  // 1. Image
+  if (
+    type.startsWith('image/') ||
+    category === 'image' || category === 'images' || category === 'photo' || category === 'photos' ||
+    ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp', 'svg', 'ico', 'tiff'].includes(ext) ||
+    /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(name)
+  ) {
+    return {
+      kind: 'image',
+      label: 'image',
+      labelCap: 'Image',
+      article: 'cette image',
+      verb: 'observer'
+    };
+  }
+
+  // 2. Vidéo
+  if (
+    type.startsWith('video/') ||
+    category === 'video' || category === 'vidéo' || category === 'videos' || category === 'vidéos' ||
+    ['mp4', 'webm', 'mov', 'mkv', 'avi', 'flv', 'wmv', 'm4v', '3gp', 'ogv', 'ts'].includes(ext) ||
+    /\.(mp4|webm|mov|mkv|avi|flv|wmv|m4v|3gp|ogv|ts)$/i.test(name)
+  ) {
+    return {
+      kind: 'video',
+      label: 'vidéo',
+      labelCap: 'Vidéo',
+      article: 'cette vidéo',
+      verb: 'visionner'
+    };
+  }
+
+  // 3. Audio
+  if (
+    type.startsWith('audio/') ||
+    category === 'audio' || category === 'son' || category === 'musique' || category === 'vocal' ||
+    ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma', 'opus'].includes(ext) ||
+    /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus)$/i.test(name)
+  ) {
+    return {
+      kind: 'audio',
+      label: 'enregistrement audio',
+      labelCap: 'Audio',
+      article: 'cet enregistrement audio',
+      verb: 'écouter'
+    };
+  }
+
+  // 4. PDF
+  if (type.includes('pdf') || ext === 'pdf' || /\.pdf$/i.test(name)) {
+    return {
+      kind: 'pdf',
+      label: 'document PDF',
+      labelCap: 'Document PDF',
+      article: 'ce document PDF',
+      verb: 'examiner'
+    };
+  }
+
+  // 5. Word
+  if (type.includes('word') || ['doc', 'docx'].includes(ext) || /\.(docx?)$/i.test(name)) {
+    return {
+      kind: 'word',
+      label: 'document Word',
+      labelCap: 'Document Word',
+      article: 'ce document Word',
+      verb: 'étudier'
+    };
+  }
+
+  // 6. Excel
+  if (type.includes('spreadsheet') || ['xls', 'xlsx', 'csv'].includes(ext) || /\.(xlsx?|csv)$/i.test(name)) {
+    return {
+      kind: 'excel',
+      label: 'feuille de calcul',
+      labelCap: 'Feuille de calcul',
+      article: 'cette feuille de calcul',
+      verb: 'analyser'
+    };
+  }
+
+  // 7. PowerPoint
+  if (type.includes('presentation') || ['ppt', 'pptx'].includes(ext) || /\.(pptx?)$/i.test(name)) {
+    return {
+      kind: 'powerpoint',
+      label: 'présentation',
+      labelCap: 'Présentation',
+      article: 'cette présentation',
+      verb: 'parcourir'
+    };
+  }
+
+  // 8. Texte brut
+  if (type.startsWith('text/') || ['txt', 'md', 'rtf'].includes(ext) || /\.(txt|md|rtf)$/i.test(name)) {
+    return {
+      kind: 'text',
+      label: 'document texte',
+      labelCap: 'Document texte',
+      article: 'ce document texte',
+      verb: 'lire'
+    };
+  }
+
+  return {
+    kind: 'document',
+    label: 'document',
+    labelCap: 'Document',
+    article: 'ce document',
+    verb: 'analyser'
+  };
+}
+
+/**
+ * Détecte si un élément est une image
  */
 function isImageItem(item: any): boolean {
   if (!item) return false;
@@ -768,9 +905,13 @@ function isImageItem(item: any): boolean {
 
 function isDocumentItem(item: any): boolean {
   if (!item) return false;
+  // Les images, vidéos et fichiers audio ne sont JAMAIS des documents texte
+  if (isImageItem(item) || isVideoItem(item) || isAudioItem(item)) {
+    return false;
+  }
   const name = String(item.name || item.title || item.fileName || '').toLowerCase();
   const type = String(item.type || item.mimeType || '').toLowerCase();
-  const ext = String(item.extension || '').toLowerCase();
+  const ext = String(item.extension || '').toLowerCase().replace(/^\./, '');
   const category = String(item.category || item.fileType || item.file_category || '').toLowerCase();
 
   return Boolean(
@@ -778,7 +919,6 @@ function isDocumentItem(item: any): boolean {
     category.includes('doc') ||
     category.includes('pdf') ||
     category.includes('cours') ||
-    category.includes('fichier') ||
     type.includes('pdf') ||
     type.includes('word') ||
     type.includes('officedocument') ||
@@ -972,11 +1112,23 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 11. Vidéo d'étude
+  // 11. Image d'étude
+  const isImageDoc = mainDoc && (isImageItem({ name: mainDoc }) || /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(mainDoc));
+  if (isImageDoc) {
+    return pickReassuringStep([
+      `J'observe attentivement votre image « ${mainDoc} »...`,
+      "J'analyse visuellement tous les détails, schémas et textes de l'image...",
+      "Je repère les éléments clés et les données visibles sur la photo...",
+      "Je prépare une explication fidèle et détaillée de ce qui figure sur l'image...",
+      "Votre réponse arrive dans un instant..."
+    ]);
+  }
+
+  // 12. Vidéo d'étude
   const isVideoOrVisual = mainDoc && (isVideoItem({ name: mainDoc }) || /\.(mp4|webm|mov|mkv|avi|flv|wmv|m4v|3gp|ogv|ts)$/i.test(mainDoc) || /vid[eé]o/i.test(mainDoc));
   if (isVideoOrVisual) {
     return pickReassuringStep([
-      `J'analyse la vidéo « ${mainDoc} » et sa bande sonore...`,
+      `Je visionne la vidéo « ${mainDoc} » et sa piste audio...`,
       "J'examine ce qui se passe et ce qui est dit dans la vidéo...",
       "Je repère les éléments visuels et sonores essentiels...",
       "Je rédige une analyse claire et complète de votre vidéo...",
@@ -984,19 +1136,53 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 12. Audio d'étude (vocal, cours oral, podcast)
+  // 13. Audio d'étude (vocal, cours oral, podcast)
   const isAudioDoc = mainDoc && (isAudioItem({ name: mainDoc }) || /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus)$/i.test(mainDoc) || /audio|vocal/i.test(mainDoc));
   if (isAudioDoc) {
     return pickReassuringStep([
-      `J'écoute attentivement l'enregistrement « ${mainDoc} »...`,
+      `J'écoute attentivement votre enregistrement audio « ${mainDoc} »...`,
       "J'analyse les paroles et le discours prononcé...",
       "Je repère les idées maîtresses et explications orales...",
-      "Je prépare une synthèse claire de votre document audio...",
+      "Je prépare une synthèse claire de votre enregistrement audio...",
       "Votre réponse est bientôt prête..."
     ]);
   }
 
-  // 12. Document d'étude ouvert ou joint (PDF, Word, etc.)
+  // 14. Document PDF d'étude
+  const isPdfDoc = mainDoc && (/\.pdf$/i.test(mainDoc) || mainDoc.toLowerCase().includes('pdf'));
+  if (isPdfDoc) {
+    return pickReassuringStep([
+      `J'étudie attentivement votre document PDF « ${mainDoc} »...`,
+      "J'analyse les pages, les textes, les schémas et graphiques du PDF...",
+      "Je repère les formules, figures et notions clés...",
+      "Je prépare une réponse complète et structurée...",
+      "Votre réponse est bientôt prête..."
+    ]);
+  }
+
+  // 15. Document Word d'étude
+  const isWordDoc = mainDoc && (/\.(docx?)$/i.test(mainDoc) || mainDoc.toLowerCase().includes('word'));
+  if (isWordDoc) {
+    return pickReassuringStep([
+      `J'étudie votre document Word « ${mainDoc} »...`,
+      "J'analyse le texte rédigé et les illustrations...",
+      "Je structure les explications pas-à-pas pour vous...",
+      "Votre réponse est bientôt prête..."
+    ]);
+  }
+
+  // 16. Feuille de calcul (Excel, CSV)
+  const isSpreadsheetDoc = mainDoc && (/\.(xlsx?|csv)$/i.test(mainDoc));
+  if (isSpreadsheetDoc) {
+    return pickReassuringStep([
+      `J'analyse votre feuille de calcul « ${mainDoc} »...`,
+      "J'examine les colonnes, les données et les tableaux...",
+      "Je calcule et interprète les résultats pertinents...",
+      "Votre réponse est bientôt prête..."
+    ]);
+  }
+
+  // 17. Document d'étude ouvert ou joint (PDF, Word, etc.)
   const isDocFile = mainDoc && (isDocumentItem({ name: mainDoc }) || /\.(pdf|docx?|pptx?|xlsx?|txt|md)$/i.test(mainDoc));
   if (isDocFile) {
     return pickReassuringStep([
@@ -1008,10 +1194,11 @@ function getLiveAiActivity(prompt: string, docNames: string[], elapsedSec: numbe
     ]);
   }
 
-  // 13. Document général ouvert ou joint
+  // 18. Fichier général ouvert ou joint
   if (hasDoc) {
+    const desc = getFileDescriptor({ name: mainDoc });
     return pickReassuringStep([
-      `Je m'appuie sur votre document « ${mainDoc} »...`,
+      `Je m'appuie sur ${desc.article} « ${mainDoc} »...`,
       "Je sélectionne les passages importants pour répondre au mieux...",
       "Je prépare une réponse claire adaptée à votre cours...",
       "Je peaufine les explications pour vous guider...",
@@ -3301,7 +3488,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const analyzedMediaPerConvRef = useRef<Record<string, string>>({});
   const cachedDocumentTextRef = useRef<Record<string, string>>({});
   const cachedPerceptionReportsRef = useRef<Record<string, string>>({});
-  const activeMediaSigCacheReset = resolvedActiveItem ? getMediaItemSignature(resolvedActiveItem) : '';
+  const lastAnalyzedDocSignatureRef = useRef<string>('');
+  const lastAnalyzedDocNameRef = useRef<string>('');
+  const activeMediaSigCacheReset = computeActiveMediaSignature(resolvedActiveItem, attachedResources);
   useEffect(() => {
     cachedPerceptionReportsRef.current = {};
     cachedDocumentTextRef.current = {};
@@ -4882,30 +5071,34 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
     }
 
     try {
-      // 1. Rassemblement et vérification préalable de tous les documents (Actif en Orange + Pièces jointes en Bleu)
+      // 1. Rassemblement et vérification préalable de tous les documents (Pièces jointes dans le chat en priorité + Actif à l'écran)
       const allDocs: any[] = [];
+      if (Array.isArray(attachedResources)) {
+        for (const res of attachedResources) {
+          if (res && (res.name || res.title || res.fileName)) {
+            allDocs.push({ ...res, isOrangeActive: false, isAttachedChat: true });
+          }
+        }
+      }
       const hasValidActiveItem = Boolean(
         resolvedActiveItem &&
         resolvedActiveName &&
         resolvedActiveName.trim().length > 0
       );
       if (hasValidActiveItem && resolvedActiveItem) {
-        allDocs.push({ ...resolvedActiveItem, isOrangeActive: true });
-      }
-      if (Array.isArray(attachedResources)) {
-        for (const res of attachedResources) {
-          if (res && (res.name || res.title || res.fileName)) {
-            const alreadyIn = allDocs.some(d =>
-              (d.id && res.id && d.id === res.id) ||
-              (d.name && res.name && d.name === res.name) ||
-              (d.title && res.title && d.title === res.title)
-            );
-            if (!alreadyIn) {
-              allDocs.push({ ...res, isOrangeActive: false });
-            }
-          }
+        const alreadyIn = allDocs.some(d =>
+          (d.id && resolvedActiveItem.id && d.id === resolvedActiveItem.id) ||
+          (d.name && resolvedActiveItem.name && d.name === resolvedActiveItem.name) ||
+          (d.title && resolvedActiveItem.title && d.title === resolvedActiveItem.title)
+        );
+        if (!alreadyIn) {
+          allDocs.push({ ...resolvedActiveItem, isOrangeActive: true });
         }
       }
+
+      // Document principal actif et son descripteur précis
+      const primaryDoc = allDocs[0] || null;
+      const primaryDocDesc = getFileDescriptor(primaryDoc);
 
       // Signature stable des médias présents dans ce tour pour la session active
       const currentMediaSignature = allDocs
@@ -4913,6 +5106,13 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
         .filter(sig => sig && sig !== '::::')
         .sort()
         .join('|');
+
+      // Détection formelle d'un changement de fichier dans la même conversation
+      const isFileChangedInConversation = Boolean(
+        lastAnalyzedDocSignatureRef.current &&
+        currentMediaSignature &&
+        lastAnalyzedDocSignatureRef.current !== currentMediaSignature
+      );
 
       // Clé unique liée au userId ET à la conversation active pour une isolation totale par utilisateur
       const convCacheKey = `${currentUserId}_${currentConversationId}`;
@@ -4929,11 +5129,17 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
       const requiresFreshAnalysis = Boolean(
         options?.forceReanalysis ||
         isExplicitReanalysisRequested ||
-        isVisualSpecificDetailRequested
+        isVisualSpecificDetailRequested ||
+        isFileChangedInConversation
       );
 
-      let existingPerception = (currentMediaSignature ? cachedPerceptionReportsRef.current[currentMediaSignature] : '') ||
-        (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '');
+      if (isFileChangedInConversation) {
+        cachedPerceptionReportsRef.current = {};
+        cachedDocumentTextRef.current = {};
+      }
+
+      let existingPerception = (currentMediaSignature && !isFileChangedInConversation ? cachedPerceptionReportsRef.current[currentMediaSignature] : '') ||
+        (currentMediaSignature && !isFileChangedInConversation ? cachedDocumentTextRef.current[currentMediaSignature] : '');
 
       // Récupération asynchrone sécurisée depuis la base D1 (expire après 30 min) si non présente en mémoire vive
       if (!existingPerception && currentMediaSignature && currentUserId && currentUserId !== 'default-user' && !requiresFreshAnalysis) {
@@ -4989,37 +5195,35 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
       } | null = null;
 
       if (hasAttachedDoc) {
-        if (resolvedActiveItem) {
-          if (isVideoItem(resolvedActiveItem)) {
-            activeVideoInfo = await extractVideoContentFromItem(resolvedActiveItem);
-          } else if (isAudioItem(resolvedActiveItem)) {
-            activeAudioInfo = await extractAudioContentFromItem(resolvedActiveItem);
-          } else if (isDocumentItem(resolvedActiveItem)) {
-            // Marquage _needsCanvas : rendu Canvas PDF si le prompt contient des termes visuels ou s'il s'agit d'une création
+        // Extraction prioritaire depuis le document principal
+        if (primaryDoc) {
+          if (isVideoItem(primaryDoc)) {
+            activeVideoInfo = await extractVideoContentFromItem(primaryDoc);
+          } else if (isAudioItem(primaryDoc)) {
+            activeAudioInfo = await extractAudioContentFromItem(primaryDoc);
+          } else if (isDocumentItem(primaryDoc)) {
             const visualTerms = /schéma|schema|figure|graphe|graphique|circuit|dessin|tableau|image|diagramme|courbe|illustration|diagram/i;
-            (resolvedActiveItem as any)._needsCanvas = visualTerms.test(userText) || isCreationIntent;
-            activeDocumentInfo = await extractDocumentDetails(resolvedActiveItem);
-          } else {
-            activeImageInfo = await extractImageBase64FromItem(resolvedActiveItem);
+            (primaryDoc as any)._needsCanvas = visualTerms.test(userText) || isCreationIntent;
+            activeDocumentInfo = await extractDocumentDetails(primaryDoc);
+          } else if (isImageItem(primaryDoc) || (!isVideoItem(primaryDoc) && !isAudioItem(primaryDoc) && !isDocumentItem(primaryDoc))) {
+            activeImageInfo = await extractImageBase64FromItem(primaryDoc);
           }
         }
-        if (Array.isArray(attachedResources) && attachedResources.length > 0) {
-          for (const res of attachedResources) {
-            if (!activeVideoInfo && isVideoItem(res)) {
-              const foundVid = await extractVideoContentFromItem(res);
-              if (foundVid) activeVideoInfo = foundVid;
-            } else if (!activeAudioInfo && isAudioItem(res)) {
-              const foundAud = await extractAudioContentFromItem(res);
-              if (foundAud) activeAudioInfo = foundAud;
-            } else if (!activeDocumentInfo && isDocumentItem(res)) {
-              const visualTerms2 = /schéma|schema|figure|graphe|graphique|circuit|dessin|tableau|image|diagramme|courbe|illustration|diagram/i;
-              (res as any)._needsCanvas = visualTerms2.test(userText) || isCreationIntent;
-              const foundDoc = await extractDocumentDetails(res);
-              if (foundDoc) activeDocumentInfo = foundDoc;
-            } else if (!activeImageInfo) {
-              const foundImg = await extractImageBase64FromItem(res);
-              if (foundImg) activeImageInfo = foundImg;
-            }
+        for (const doc of allDocs.slice(1)) {
+          if (!activeVideoInfo && isVideoItem(doc)) {
+            const foundVid = await extractVideoContentFromItem(doc);
+            if (foundVid) activeVideoInfo = foundVid;
+          } else if (!activeAudioInfo && isAudioItem(doc)) {
+            const foundAud = await extractAudioContentFromItem(doc);
+            if (foundAud) activeAudioInfo = foundAud;
+          } else if (!activeDocumentInfo && isDocumentItem(doc)) {
+            const visualTerms2 = /schéma|schema|figure|graphe|graphique|circuit|dessin|tableau|image|diagramme|courbe|illustration|diagram/i;
+            (doc as any)._needsCanvas = visualTerms2.test(userText) || isCreationIntent;
+            const foundDoc = await extractDocumentDetails(doc);
+            if (foundDoc) activeDocumentInfo = foundDoc;
+          } else if (!activeImageInfo && (isImageItem(doc) || (!isVideoItem(doc) && !isAudioItem(doc) && !isDocumentItem(doc)))) {
+            const foundImg = await extractImageBase64FromItem(doc);
+            if (foundImg) activeImageInfo = foundImg;
           }
         }
         if (activeDocumentInfo?.textContent && currentMediaSignature) {
@@ -5030,6 +5234,9 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
       const resolvedAttachedText = hasAttachedDoc ? (
         activeDocumentInfo?.textContent ||
         (currentMediaSignature ? cachedDocumentTextRef.current[currentMediaSignature] : '') ||
+        (primaryDoc as any)?.content ||
+        (primaryDoc as any)?.text ||
+        (primaryDoc as any)?.rawText ||
         (resolvedActiveItem as any)?.content ||
         (resolvedActiveItem as any)?.text ||
         (resolvedActiveItem as any)?.rawText ||
@@ -5082,16 +5289,11 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
 
       if (activityTimerRef.current) clearInterval(activityTimerRef.current);
       const startTimestamp = Date.now();
-      const activeDocName = resolvedActiveItem?.name || resolvedActiveItem?.title || '';
-      const initialDocNames: string[] = activeDocName ? [activeDocName] : [];
-      if (Array.isArray(attachedResources)) {
-        for (const r of attachedResources) {
-          if (r?.name && !initialDocNames.includes(r.name)) initialDocNames.push(r.name);
-        }
-      }
+      const activeDocName = primaryDoc ? (primaryDoc.name || primaryDoc.title || primaryDoc.fileName || '') : (resolvedActiveItem?.name || resolvedActiveItem?.title || '');
+      const initialDocNames: string[] = allDocs.map((d: any) => d?.name || d?.title || d?.fileName).filter(Boolean);
       const docNames = initialDocNames;
-      const attachedFileName = resolvedActiveName || (Array.isArray(attachedResources) ? attachedResources.map((r: any) => r?.name).filter(Boolean).join(', ') : '');
-      const mainDocName = hasAttachedDoc ? (resolvedActiveName || (attachedResources[0]?.name) || undefined) : undefined;
+      const attachedFileName = allDocs.map((d: any) => d?.name || d?.title || d?.fileName).filter(Boolean).join(', ');
+      const mainDocName = hasAttachedDoc ? (primaryDoc?.name || primaryDoc?.title || primaryDoc?.fileName || resolvedActiveName || undefined) : undefined;
 
       // ══════════════════════════════════════════════════════════════════════════
       // ORCHESTRATION PAR L'IA SÉLECTIONNÉE & POOL DES 3 AGENTS EN PARALLÈLE
@@ -5472,26 +5674,37 @@ CONSIGNES STRICTES :
 ══════════════════════════════════════════════════════════════════════════════`;
       } else if (hasAttachedDoc && mainDocName) {
         effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
-[NOUVEAU DOCUMENT ATTACHÉ PAR L'ÉTUDIANT : « ${mainDocName} »] :
-L'étudiant vient d'attacher ou de changer de document pour travailler sur « ${mainDocName} ».
+[FICHIER D'ÉTUDE EN COURS : ${primaryDocDesc.labelCap.toUpperCase()} « ${mainDocName} »]
+Type exact : ${primaryDocDesc.label} (${primaryDocDesc.article}).
+
 CONSIGNES STRICTES :
-1. RUPTURE NETTE AVEC LES ANCIENS SUJETS OU ANCIENNES IMAGES :
-   - Concentre-toi EXCLUSIVEMENT sur ce nouveau document (« ${mainDocName} »).
-   - Ne mentionne plus aucune ancienne image ou ancien sujet évoqué plus haut dans l'historique.
-   - Si ce document est une IMAGE, PHOTO ou SCAN : Observe DIRECTEMENT et EXCLUSIVEMENT l'image fournie dans la requête. Décris fidèlement ce qui s'y trouve (objet réel, planète Terre, document, personne, etc.). INTERDICTION FORMELLE d'inventer des filtres analogiques, AOP ou Millman si l'image ne montre pas un montage électronique.
-2. RÉPONSE DIRECTE ET IMMÉDIATE :
-   - Réponds directement et précisément à la question de l'élève à propos de ce document « ${mainDocName} ».
-   - Ne dis JAMAIS que tu ne vois pas d'image ou de document. Le document est actif à l'écran.
-   - Ne demande JAMAIS de renvoyer le document.
+1. DÉTECTION DU TYPE EXACT :
+   - Désigne TOUJOURS ce fichier par son type réel : ${primaryDocDesc.article} (ou "${primaryDocDesc.label}").
+   - Ne qualifie JAMAIS tout de simple "document" lorsqu'il s'agit d'une image, d'une vidéo ou d'un fichier audio !
+2. ACCUSÉ DE RÉCEPTION BREF ET RECONNAISSANCE IMMÉDIATE (1 À 2 PHRASES OBLIGATOIRES EN DÉBUT DE RÉPONSE) :
+   - Dès ton tout premier retour ou lorsque l'étudiant te pose une question sur ce fichier, commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou des éléments réels que tu observes dans ${primaryDocDesc.article} (ex: "J'ai bien sous les yeux ${primaryDocDesc.article} « ${mainDocName} » qui présente [résumé fidèle en quelques mots du sujet réel]").
+   - Cela prouve formellement et immédiatement à l'étudiant que tu as bel et bien vu et analysé le contenu réel de son fichier !
+3. FIDÉLITÉ ABSOLUE AU CONTENU RÉEL :
+   - Réponds rigoureusement aux questions de l'élève en te basant UNIQUEMENT sur ce qui figure dans ${primaryDocDesc.article}.
+   - INTERDICTION STRICTE D'INVENTER : N'invente AUCUNE formule, AUCUN circuit, AUCUN filtre analogique, AUCUN AOP ($Q_0$, $R_1, R_2$, Millman, etc.) s'ils ne sont pas réellement présents dans ce fichier !
+${isFileChangedInConversation ? `4. CHANGEMENT DE FICHIER DANS LA CONVERSATION :
+   - RUPTURE IMMÉDIATE ET TOTALE : L'étudiant vient de changer de fichier dans la discussion. Ignore complètement le fichier précédent (« ${lastAnalyzedDocNameRef.current} »), ses exercices, schémas ou formules. Concentre-toi à 100% sur le NOUVEAU fichier actuel (${primaryDocDesc.article} « ${mainDocName} »).` : `4. CONCENTRATION TOTALE :
+   - Concentre-toi EXCLUSIVEMENT sur ${primaryDocDesc.article} « ${mainDocName} » et ne mentionne plus d'anciens sujets passés.`}
+5. RÉPONSE DIRECTE ET IMMÉDIATE :
+   - Ne dis JAMAIS que tu ne vois pas d'image ou de document et ne demande JAMAIS de renvoyer le document.
 ══════════════════════════════════════════════════════════════════════════════`;
       } else if (!hasAttachedDoc) {
         effectiveSystemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
-[AUCUN DOCUMENT OU FICHIER JOINT DANS CETTE DISCUSSION] :
-L'étudiant n'a joint AUCUN document, AUCUN fichier, et AUCUNE image dans cette discussion.
+[AUCUN FICHIER NI IMAGE JOINT DANS CETTE DISCUSSION] :
+L'étudiant n'a joint AUCUN document, AUCUN fichier, AUCUNE image, AUCUNE vidéo, AUCUN audio à son message.
 CONSIGNES STRICTES :
-1. NE DIS JAMAIS et N'AFFIRME JAMAIS que tu as un document ou un fichier sous les yeux, que tu analyses un document, ou que tu as reçu un "Document d'étude".
-2. Ne fais référence à aucun document imaginaire et n'utilise pas de formule comme "d'après ton document".
-3. Réponds directement, naturellement et pédagogiquement à l'étudiant en te basant sur son message.
+1. SI L'ÉTUDIANT FAIT RÉFÉRENCE À UN FICHIER JOINT (ex: "Tu as vu mon image ?", "Résous l'exercice sur la photo", "Qu'est-ce que tu penses de mon document ?") :
+   - Réponds-lui poliment, clairement et avec bienveillance :
+     "Vous n'avez actuellement joint aucun fichier ni aucune image à votre message. Pour que je puisse l'analyser et vous aider, veuillez cliquer sur le trombone 📎 ou glisser votre image/document dans la zone de texte !"
+   - Ne prétends JAMAIS que tu as un fichier sous les yeux et ne tente pas de deviner un document absent.
+2. INTERDICTION FORMELLE DE SIMULER OU D'INVENTER :
+   - N'évoque JAMAIS de formules de filtres analogiques, de montages à Amplificateur Opérationnel (AOP), de théorèmes de Millman, de $Q_0 = \\frac{\\sqrt{R_1 R_2 C_1 C_2}}{C_2(R_1 + R_2)}$ ou d'autres documents sortis de nulle part !
+3. Si la question de l'élève est générale, théorique ou conversationnelle (sans prétendre avoir joint un fichier), réponds-y directement avec clarté et pédagogie.
 ══════════════════════════════════════════════════════════════════════════════`;
       }
 
@@ -5665,6 +5878,11 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           }).catch(err => console.warn('[AssistantChat] Erreur sauvegarde perception D1:', err));
         }
         analyzedMediaPerConvRef.current[convCacheKey] = currentMediaSignature;
+        lastAnalyzedDocSignatureRef.current = currentMediaSignature;
+        lastAnalyzedDocNameRef.current = mainDocName || '';
+      } else {
+        lastAnalyzedDocSignatureRef.current = '';
+        lastAnalyzedDocNameRef.current = '';
       }
 
       const fullAiText = (aiResult as any).raw_response || (aiResult as any).rawResponse || aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
@@ -6169,6 +6387,11 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           }).catch(err => console.warn('[AssistantChat] Erreur sauvegarde perception D1:', err));
         }
         analyzedMediaPerConvRef.current[convCacheKey] = currentMediaSignature;
+        lastAnalyzedDocSignatureRef.current = currentMediaSignature;
+        lastAnalyzedDocNameRef.current = mainDocName || '';
+      } else {
+        lastAnalyzedDocSignatureRef.current = '';
+        lastAnalyzedDocNameRef.current = '';
       }
 
       // Si l'utilisateur est toujours dans CETTE conversation, mise à jour fluide de l'affichage
@@ -7142,49 +7365,58 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                   </div>
                 )}
 
-                {resolvedActiveName && (
-                  <div
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0 border bg-orange-500/10 border-orange-500/40"
-                    title="Document ouvert à l'écran"
-                  >
-                    <div className="shrink-0 flex items-center justify-center">
-                      <FileIconBadge fileName={resolvedActiveName} size={16} />
-                    </div>
-                    <span className="text-[10px] sm:text-[11px] font-bold text-orange-300 truncate">
-                      {resolvedActiveName}
-                    </span>
-                    <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-orange-500/25 text-orange-400 shrink-0">
-                      Actif
-                    </span>
-                  </div>
-                )}
-
-                {attachedResources.map(res => (
-                  <div
-                    key={res.id || res.name}
-                    className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0 border bg-blue-500/10 border-blue-500/40"
-                    title="Document joint"
-                  >
-                    <div className="shrink-0 flex items-center justify-center">
-                      <FileIconBadge fileName={res.name} size={16} />
-                    </div>
-                    <span className="text-[10px] sm:text-[11px] font-bold text-blue-300 truncate">
-                      {res.name}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleRemoveAttachment(res);
-                      }}
-                      className="ml-1 text-blue-400 hover:text-white p-0.5 rounded-full hover:bg-blue-700/50 transition-colors cursor-pointer"
-                      title="Retirer ce document"
+                {resolvedActiveName && (() => {
+                  const desc = getFileDescriptor(resolvedActiveItem || { name: resolvedActiveName });
+                  return (
+                    <div
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0 border bg-orange-500/10 border-orange-500/40"
+                      title={`${desc.labelCap} actif à l'écran`}
                     >
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ))}
+                      <div className="shrink-0 flex items-center justify-center">
+                        <FileIconBadge fileName={resolvedActiveName} size={16} />
+                      </div>
+                      <span className="text-[10px] sm:text-[11px] font-bold text-orange-300 truncate">
+                        {resolvedActiveName}
+                      </span>
+                      <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-orange-500/25 text-orange-400 shrink-0">
+                        {desc.labelCap} Actif
+                      </span>
+                    </div>
+                  );
+                })()}
+
+                {attachedResources.map(res => {
+                  const desc = getFileDescriptor(res);
+                  return (
+                    <div
+                      key={res.id || res.name}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0 border bg-blue-500/10 border-blue-500/40"
+                      title={`${desc.labelCap} joint`}
+                    >
+                      <div className="shrink-0 flex items-center justify-center">
+                        <FileIconBadge fileName={res.name} size={16} />
+                      </div>
+                      <span className="text-[10px] sm:text-[11px] font-bold text-blue-300 truncate">
+                        {res.name}
+                      </span>
+                      <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-blue-500/25 text-blue-400 shrink-0">
+                        {desc.labelCap}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleRemoveAttachment(res);
+                        }}
+                        className="ml-1 text-blue-400 hover:text-white p-0.5 rounded-full hover:bg-blue-700/50 transition-colors cursor-pointer"
+                        title={`Retirer ${desc.article}`}
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  );
+                })}
               </div>
 
               <div className="flex items-center gap-1.5 shrink-0 self-end">

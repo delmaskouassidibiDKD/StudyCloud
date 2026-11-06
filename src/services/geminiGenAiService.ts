@@ -73,7 +73,7 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
 
   // 1. Flux vidéo direct inline (avec piste audio native)
   if (options.videoBase64 && options.videoBase64.length > 50) {
-    const cleanVideoBase64 = options.videoBase64.replace(/^data:[^;]+;base64,/i, '').trim();
+    const cleanVideoBase64 = options.videoBase64.includes('base64,') ? options.videoBase64.split('base64,')[1].trim() : options.videoBase64.trim();
     let effectiveVideoMime = options.videoMimeType || options.mimeType || 'video/mp4';
     if (options.videoBase64.includes('video/webm')) effectiveVideoMime = 'video/webm';
     else if (options.videoBase64.includes('video/quicktime')) effectiveVideoMime = 'video/quicktime';
@@ -91,7 +91,7 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
 
   // 2. Flux audio direct inline
   if (options.audioBase64 && options.audioBase64.length > 50) {
-    const cleanAudioBase64 = options.audioBase64.replace(/^data:[^;]+;base64,/i, '').trim();
+    const cleanAudioBase64 = options.audioBase64.includes('base64,') ? options.audioBase64.split('base64,')[1].trim() : options.audioBase64.trim();
     let effectiveAudioMime = options.audioMimeType || 'audio/mp3';
     if (options.audioBase64.includes('audio/wav')) effectiveAudioMime = 'audio/wav';
     else if (options.audioBase64.includes('audio/ogg') || options.audioBase64.includes('audio/opus')) effectiveAudioMime = 'audio/ogg';
@@ -111,7 +111,7 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
 
   // 3. Document PDF direct inline (Vision et OCR natif de chaque page, graphiques, figures, schémas, tableaux)
   if (options.documentBase64 && options.documentBase64.length > 50) {
-    const cleanDocBase64 = options.documentBase64.replace(/^data:[^;]+;base64,/i, '').trim();
+    const cleanDocBase64 = options.documentBase64.includes('base64,') ? options.documentBase64.split('base64,')[1].trim() : options.documentBase64.trim();
     let effectiveDocMime = options.documentMimeType || 'application/pdf';
     if (options.documentBase64.includes('application/pdf')) effectiveDocMime = 'application/pdf';
     if (cleanDocBase64.length < 28 * 1024 * 1024) {
@@ -128,7 +128,7 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
   if (Array.isArray(options.documentImages) && options.documentImages.length > 0) {
     for (const dImg of options.documentImages) {
       const rawImg = typeof dImg === 'string' ? dImg : (dImg.base64 || '');
-      const cleanImg = rawImg.replace(/^data:[^;]+;base64,/i, '').trim();
+      const cleanImg = rawImg.includes('base64,') ? rawImg.split('base64,')[1].trim() : rawImg.trim();
       const mime = (typeof dImg === 'object' && dImg.mimeType) ? dImg.mimeType : 'image/jpeg';
       if (cleanImg && cleanImg.length < 28 * 1024 * 1024) {
         currentParts.push({
@@ -143,7 +143,7 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
 
   // 5. Image directe inline
   if (options.imageBase64 && options.imageBase64.length > 50) {
-    const cleanBase64 = options.imageBase64.replace(/^data:[^;]+;base64,/i, '').trim();
+    const cleanBase64 = options.imageBase64.includes('base64,') ? options.imageBase64.split('base64,')[1].trim() : options.imageBase64.trim();
     let effectiveMime = options.mimeType || 'image/jpeg';
     if (options.imageBase64.includes('image/png')) effectiveMime = 'image/png';
     else if (options.imageBase64.includes('image/webp')) effectiveMime = 'image/webp';
@@ -163,7 +163,8 @@ export async function callGoogleGenAi(options: GenerateGeminiOptions): Promise<s
   // 6. Frames vidéo (si aucun flux vidéo direct n'a pu être fourni)
   if ((!options.videoBase64 || options.videoBase64.length <= 50) && Array.isArray(options.videoFrames) && options.videoFrames.length > 0) {
     for (const f of options.videoFrames) {
-      const fBase64 = String(f.base64 || '').replace(/^data:[^;]+;base64,/i, '').trim();
+      const rawF = String(f.base64 || '');
+      const fBase64 = rawF.includes('base64,') ? rawF.split('base64,')[1].trim() : rawF.trim();
       if (fBase64) {
         currentParts.push({
           inlineData: {
