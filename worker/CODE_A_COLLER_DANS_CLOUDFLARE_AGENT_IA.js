@@ -1096,7 +1096,7 @@ function safeJsonParse(rawString) {
 
   try {
     return JSON.parse(preProcessed);
-  } catch (_e1) {}
+  } catch (_e1) { }
 
   let sanitized = "";
   let inString = false;
@@ -1140,7 +1140,7 @@ function safeJsonParse(rawString) {
 
   try {
     return JSON.parse(sanitized);
-  } catch (_e2) {}
+  } catch (_e2) { }
 
   let openBraces = 0;
   let openBrackets = 0;
@@ -1457,7 +1457,7 @@ Réponds STRICTEMENT avec cet objet JSON :
 }`
       };
 
-          agentName: "PedagogicalTutorAgent",
+      agentName: "PedagogicalTutorAgent",
         systemPrompt: `CONSIGNE UNIVERSELLE - MOTEUR PÉDAGOGIQUE POUR TOUT COURS OU DOCUMENT ('resume') :
 
 Tu es un professeur expert et un ingénieur pédagogique universel. Ton rôle est d'analyser n'importe quel document, cours ou sujet fourni par l'utilisateur (quel que soit le domaine : sciences, droit, économie, informatique, lettres, médecine, gestion, etc.) et de le transformer en un support de révision parfait et structuré.
@@ -1571,8 +1571,8 @@ Réponds STRICTEMENT avec cet objet JSON structuré :
     }
   ]
 }`
-      };
-  }
+  };
+}
 }
 
 /**

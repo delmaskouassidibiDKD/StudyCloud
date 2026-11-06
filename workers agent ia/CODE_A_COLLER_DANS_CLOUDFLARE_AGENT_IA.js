@@ -391,38 +391,22 @@ async function handleCreationRequest(request, env, corsHeaders) {
     }
   }
 
-  // Tentative B : Fallback Google Gemini si configuré (env.STUDYCLOUD_GEMINI_1 ou body.geminiApiKey)
-  const geminiKey = (env && (env.STUDYCLOUD_GEMINI_1 || env['studyCloud-Gemini-1'] || env['StudyCloud-cloud-1'] || env.GEMINI_API_KEY)) ||
-    (typeof process !== 'undefined' && process.env ? (process.env.STUDYCLOUD_GEMINI_1 || process.env['studyCloud-Gemini-1']) : "") ||
-    body.geminiApiKey || "";
-  if (!creationData && geminiKey) {
+  // Tentative B : Fallback Workers AI Kimi K2.7 Code
+  if (!creationData && env && env.AI) {
     try {
-      const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: `${selectedPrompt}\n\n${userContent}` }]
-            }
-          ],
-          generationConfig: {
-            responseMimeType: "application/json",
-            temperature: 0.3
-          }
-        })
+      const kimiRes = await env.AI.run("@cf/moonshotai/kimi-k2.7-code", {
+        messages: [
+          { role: "system", content: selectedPrompt },
+          { role: "user", content: userContent }
+        ]
       });
-      if (geminiRes.ok) {
-        const gData = await geminiRes.json();
-        const candText = gData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        if (candText) {
-          rawAiText = candText;
-          creationData = tryParseJson(candText);
-          usedModel = "google/gemini-2.0-flash";
-        }
+      const candText = (kimiRes && (kimiRes.response || kimiRes.text)) || "";
+      if (candText) {
+        rawAiText = candText;
+        creationData = tryParseJson(candText);
+        usedModel = "cloudflare/@cf/moonshotai/kimi-k2.7-code";
       }
-    } catch (_gErr) {}
+    } catch (_kErr) {}
   }
 
   // Tentative C : Fallback Synthèse Locale Intelligente (100% garanti hors-panne)
@@ -522,29 +506,21 @@ Réponds EXCLUSIVEMENT avec un objet JSON respectant cette structure exacte :
     } catch (_cfErr) {}
   }
 
-  // Tentative B : Fallback Gemini
-  const geminiKey = (env && (env.STUDYCLOUD_GEMINI_1 || env['studyCloud-Gemini-1'] || env['StudyCloud-cloud-1'] || env.GEMINI_API_KEY)) ||
-    (typeof process !== 'undefined' && process.env ? (process.env.STUDYCLOUD_GEMINI_1 || process.env['studyCloud-Gemini-1']) : "") ||
-    body.geminiApiKey || "";
-  if (!gradeResult && geminiKey) {
+  // Tentative B : Fallback Workers AI Kimi K2.7 Code
+  if (!gradeResult && env && env.AI) {
     try {
-      const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
-          generationConfig: { responseMimeType: "application/json" }
-        })
+      const gRes = await env.AI.run("@cf/moonshotai/kimi-k2.7-code", {
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ]
       });
-      if (gRes.ok) {
-        const gData = await gRes.json();
-        const txt = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (txt) {
-          gradeResult = tryParseJson(txt);
-          usedModel = "google/gemini-2.0-flash";
-        }
+      const txt = (gRes && (gRes.response || gRes.text)) || "";
+      if (txt) {
+        gradeResult = tryParseJson(txt);
+        usedModel = "cloudflare/@cf/moonshotai/kimi-k2.7-code";
       }
-    } catch (_gErr) {}
+    } catch (_kErr) {}
   }
 
   // Tentative C : Fallback d'évaluation locale instantanée
@@ -657,25 +633,18 @@ L'étudiant demande de poursuivre ta réponse précédente (arrêtée vers : "..
     }
   }
 
-  // Tentative B : Fallback Gemini
-  const geminiKey = (env && (env.STUDYCLOUD_GEMINI_1 || env['studyCloud-Gemini-1'] || env['StudyCloud-cloud-1'] || env.GEMINI_API_KEY)) ||
-    (typeof process !== 'undefined' && process.env ? (process.env.STUDYCLOUD_GEMINI_1 || process.env['studyCloud-Gemini-1']) : "") ||
-    body.geminiApiKey || "";
-  if (!aiText && geminiKey) {
+  // Tentative B : Fallback Workers AI Kimi K2.7 Code
+  if (!aiText && env && env.AI) {
     try {
-      const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${finalPrompt}` }] }]
-        })
+      const gRes = await env.AI.run("@cf/moonshotai/kimi-k2.7-code", {
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: finalPrompt }
+        ]
       });
-      if (gRes.ok) {
-        const gData = await gRes.json();
-        aiText = gData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        usedModel = "google/gemini-2.0-flash";
-      }
-    } catch (_gErr) {}
+      aiText = (gRes && (gRes.response || gRes.text)) || "";
+      if (aiText) usedModel = "cloudflare/@cf/moonshotai/kimi-k2.7-code";
+    } catch (_kErr) {}
   }
 
   // Tentative C : Fallback local

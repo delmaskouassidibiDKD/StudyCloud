@@ -328,53 +328,32 @@ export function validateAndFormatCreation(
     });
     creationData = { title: creationTitle, affirmations: cleanAffs };
   } else if (creationType === 'questionnaire' || creationType === 'questionnaire-test') {
-    let rawQs = Array.isArray(payloadData)
+    const rawQs = Array.isArray(payloadData)
       ? payloadData
       : (payloadData?.questions || (Array.isArray(parsed.questions) ? parsed.questions : []));
-
-    // Si le parsing initial n'a donné aucune question, tenter l'extraction de secours par regex
-    if (!Array.isArray(rawQs) || rawQs.length === 0) {
-      const fallbackExtracted = extractQuestionsFromRawText(answerText);
-      if (fallbackExtracted.length > 0) {
-        rawQs = fallbackExtracted;
-      }
-    }
-
-    const cleanQs = (Array.isArray(rawQs) ? rawQs : [])
-      .filter((q: any) => {
-        const qText = String(q.question || q.texte || '').trim();
-        // Éliminer les questions factices ou vides
-        return qText.length > 0 && !qText.includes("Consulter les explications fournies par l'assistant");
-      })
-      .slice(0, 25)
-      .map((q: any, idx: number) => {
-        const opts = Array.isArray(q.options) ? q.options : (Array.isArray(q.choices) ? q.choices : []);
-        const rawIdx = q.correct_index !== undefined
-          ? q.correct_index
-          : (q.correctIndex !== undefined
-            ? q.correctIndex
-            : (q.answerIndex !== undefined
-              ? q.answerIndex
-              : (q.correctAnswer !== undefined ? q.correctAnswer : 0)));
-        let corrIdx = Number(rawIdx);
-        if (isNaN(corrIdx) || corrIdx < 0 || corrIdx >= opts.length) corrIdx = 0;
-        return {
-          id: q.id || `q_${idx + 1}`,
-          question: q.question || q.texte || `Question n°${idx + 1}`,
-          options: opts,
-          correct_index: corrIdx,
-          correctIndex: corrIdx,
-          answerIndex: corrIdx,
-          correctAnswer: corrIdx,
-          explanation: q.explanation || q.explication || ''
-        };
-      });
-
-    if (cleanQs.length > 0) {
-      creationData = { title: creationTitle, questions: cleanQs };
-    } else {
-      creationData = null;
-    }
+    const cleanQs = (Array.isArray(rawQs) ? rawQs : []).slice(0, 18).map((q: any, idx: number) => {
+      const opts = Array.isArray(q.options) ? q.options : (Array.isArray(q.choices) ? q.choices : []);
+      const rawIdx = q.correct_index !== undefined
+        ? q.correct_index
+        : (q.correctIndex !== undefined
+          ? q.correctIndex
+          : (q.answerIndex !== undefined
+            ? q.answerIndex
+            : (q.correctAnswer !== undefined ? q.correctAnswer : 0)));
+      let corrIdx = Number(rawIdx);
+      if (isNaN(corrIdx) || corrIdx < 0 || corrIdx >= opts.length) corrIdx = 0;
+      return {
+        id: q.id || `q_${idx + 1}`,
+        question: q.question || q.texte || `Question n°${idx + 1}`,
+        options: opts,
+        correct_index: corrIdx,
+        correctIndex: corrIdx,
+        answerIndex: corrIdx,
+        correctAnswer: corrIdx,
+        explanation: q.explanation || q.explication || ''
+      };
+    });
+    creationData = { title: creationTitle, questions: cleanQs };
   } else if (creationType === 'carte-memoire') {
     const rawCards = Array.isArray(payloadData)
       ? payloadData
