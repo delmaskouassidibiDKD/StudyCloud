@@ -11,9 +11,9 @@ import { CreationResult, CreationType } from './types.js';
 
 export function safeJsonParse(text: string): any {
   if (!text || typeof text !== 'string') return null;
-  const clean = text.trim();
+  let clean = text.trim();
 
-  // Essai direct
+  // Essai direct 1
   try {
     return JSON.parse(clean);
   } catch (_e1) {}
@@ -24,33 +24,183 @@ export function safeJsonParse(text: string): any {
     try {
       return JSON.parse(mdMatch[1].trim());
     } catch (_e2) {}
+    clean = mdMatch[1].trim();
+  } else {
+    // Extraction entre la première accolade ouvrante et la dernière fermante
+    const firstBrace = clean.indexOf('{');
+    const lastBrace = clean.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      clean = clean.slice(firstBrace, lastBrace + 1);
+      try {
+        return JSON.parse(clean);
+      } catch (_e3) {}
+    }
   }
 
-  // Extraction entre la première accolade ouvrante et la dernière fermante
-  const firstBrace = clean.indexOf('{');
-  const lastBrace = clean.lastIndexOf('}');
-  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-    const candidate = clean.slice(firstBrace, lastBrace + 1);
-    try {
-      return JSON.parse(candidate);
-    } catch (_e3) {}
+  // Nettoyage et assainissement des antislashs LaTeX non échappés
+  let sanitized = '';
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < clean.length; i++) {
+    const char = clean[i];
+    const code = clean.charCodeAt(i);
+
+    if (char === '"' && !escaped) {
+      inString = !inString;
+      sanitized += char;
+    } else if (inString) {
+      if (char === '\n') {
+        sanitized += '\\n';
+      } else if (char === '\r') {
+        sanitized += '\\r';
+      } else if (char === '\t') {
+        sanitized += '\\t';
+      } else if (code < 32) {
+        sanitized += ' ';
+      } else if (char === '\\') {
+        const next = clean[i + 1];
+        if (next === '\\') {
+          sanitized += '\\\\';
+          i++; // passer le deuxième slash
+          continue;
+        } else if (next === '"') {
+          sanitized += '\\"';
+          i++;
+          continue;
+        } else if (next === '/' || (next === 'u' && /^[0-9a-fA-F]{4}/.test(clean.slice(i + 2, i + 6)))) {
+          sanitized += '\\';
+        } else if (next === 'n' && !/^(?:nabla|nu|neq|neg|notin)\b/i.test(clean.slice(i + 1))) {
+          sanitized += '\\n';
+          i++;
+          continue;
+        } else if (next === 'r' && !/^(?:right|rho|rightarrow|rangle)\b/i.test(clean.slice(i + 1))) {
+          sanitized += '\\r';
+          i++;
+          continue;
+        } else if (next === 't' && !/^(?:times|theta|tau|to|text|textbf|textit|tan|tilde)\b/i.test(clean.slice(i + 1))) {
+          sanitized += '\\t';
+          i++;
+          continue;
+        } else {
+          // Tout autre antislash (LaTeX \dfrac, \boxed, \frac, \omega, \beta, \Delta, \tau, etc.)
+          sanitized += '\\\\';
+        }
+      } else {
+        sanitized += char;
+      }
+    } else {
+      sanitized += char;
+    }
+
+    if (char === '\\' && !escaped) {
+      escaped = true;
+    } else {
+      escaped = false;
+    }
   }
 
-  // Réparation heuristique en cas de coupure (fermeture des accolades)
-  let repaired = clean.replace(/```json/gi, '').replace(/```/g, '').trim();
-  let openBraces = (repaired.match(/\{/g) || []).length;
-  let closeBraces = (repaired.match(/\}/g) || []).length;
-  let openBrackets = (repaired.match(/\[/g) || []).length;
-  let closeBrackets = (repaired.match(/\]/g) || []).length;
+  // Suppression des virgules traînantes avant } ou ]
+  sanitized = sanitized.replace(/,\s*([\]}])/g, '$1');
 
-  while (openBrackets > closeBrackets) { repaired += ']'; closeBrackets++; }
-  while (openBraces > closeBraces) { repaired += '}'; closeBraces++; }
+  try {
+    return JSON.parse(sanitized);
+  } catch (_e4) {}
+
+  // Réparation heuristique en cas de troncature (fermeture des accolades et crochets)
+  let repaired = sanitized;
+  let openBraces = (repaired.match(/\{/g) || []).length - (repaired.match(/\}/g) || []).length;
+  let openBrackets = (repaired.match(/\[/g) || []).length - (repaired.match(/\]/g) || []).length;
+
+  while (openBrackets > 0) { repaired += ']'; openBrackets--; }
+  while (openBraces > 0) { repaired += '}'; openBraces--; }
 
   try {
     return JSON.parse(repaired);
-  } catch (_e4) {
+  } catch (_e5) {
     return null;
   }
+}
+
+/**
+ * Extraction chirurgicale des questions d'un quiz si le JSON global est tronqué ou malformé
+ */
+export function extractQuestionsFromRawText(text: string): any[] {
+  const questions: any[] = [];
+  if (!text || typeof text !== 'string') return questions;
+
+  // 1. Tenter d'extraire des objets JSON de questions individuels
+  const qObjRegex = /\{[^{}]*?"question"\s*:\s*"((?:[^"\\]|\\.)+)"[^{}]*?"options"\s*:\s*\[([\s\S]*?)\][^{}]*?\}/g;
+  let m: RegExpExecArray | null;
+
+  while ((m = qObjRegex.exec(text)) !== null) {
+    const qText = m[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim();
+    const rawOpts = m[2];
+    const opts: string[] = [];
+    const optMatch = rawOpts.match(/"((?:[^"\\]|\\.)+)"/g);
+    if (optMatch) {
+      for (const o of optMatch) {
+        opts.push(o.replace(/^"|"$/g, '').replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim());
+      }
+    }
+    const idxMatch = m[0].match(/"(?:correct_index|correctIndex|answerIndex)"\s*:\s*(\d+)/i);
+    const corrIdx = idxMatch ? parseInt(idxMatch[1], 10) : 0;
+    const explMatch = m[0].match(/"(?:explanation|explication)"\s*:\s*"((?:[^"\\]|\\.)+)"/i);
+    const expl = explMatch ? explMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\').trim() : '';
+
+    if (qText && opts.length >= 2) {
+      questions.push({
+        id: `q_${questions.length + 1}`,
+        question: qText,
+        options: opts,
+        correct_index: corrIdx,
+        correctIndex: corrIdx,
+        answerIndex: corrIdx,
+        explanation: expl,
+      });
+    }
+  }
+
+  // 2. Si aucune question JSON n'a été trouvée, parser le format textuel markdown ("1. Question... A. ... B. ...")
+  if (questions.length === 0) {
+    const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+    let currentQ: any = null;
+
+    for (const line of lines) {
+      const qMatch = line.match(/^(?:(?:\*{1,2}|#{1,4}\s*)?(?:Question\s*)?(\d+)[.:\)]\s*(?:\*{1,2})?|Q(\d+)[:\.-])\s*(.*)/i);
+      const optMatch = line.match(/^(?:[-*•]\s*)?(?:(?:\*{1,2})?([A-Da-d1-4])[.:\)\-]\s*(?:\*{1,2})?|\(([A-Da-d1-4])\)|\[([A-Da-d1-4])\])\s*(.*)/i);
+      const ansMatch = line.match(/(?:(?:bonne|correcte?)\s+)?r[eé]ponse(?:\s+correcte)?\s*[:=]\s*[*_`]*([A-Da-d1-4])/i);
+      const explMatch = line.match(/(?:explication|justification|pourquoi)\s*[:=]\s*(.*)/i);
+
+      if (qMatch && !optMatch) {
+        if (currentQ && currentQ.options.length >= 2) questions.push(currentQ);
+        currentQ = {
+          id: `q_${questions.length + 1}`,
+          question: (qMatch[3] || qMatch[1] || line).replace(/^\*{1,2}|\*{1,2}$/g, '').trim(),
+          options: [],
+          correct_index: 0,
+          correctIndex: 0,
+          answerIndex: 0,
+          explanation: '',
+        };
+      } else if (optMatch && currentQ) {
+        const optText = (optMatch[4] || optMatch[3] || optMatch[2] || optMatch[1] || '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim();
+        if (optText) currentQ.options.push(optText);
+      } else if (ansMatch && currentQ) {
+        const char = (ansMatch[1] || '').toUpperCase();
+        if (char >= 'A' && char <= 'D') {
+          currentQ.correct_index = char.charCodeAt(0) - 65;
+          currentQ.correctIndex = currentQ.correct_index;
+          currentQ.answerIndex = currentQ.correct_index;
+        }
+      } else if (explMatch && currentQ) {
+        currentQ.explanation = explMatch[1].trim();
+      }
+    }
+    if (currentQ && currentQ.options.length >= 2) questions.push(currentQ);
+  }
+
+  return questions;
 }
 
 export function validateAndFormatCreation(
@@ -67,8 +217,21 @@ export function validateAndFormatCreation(
     chat_response: answerText,
   };
 
-  const parsed = safeJsonParse(answerText);
+  let parsed = safeJsonParse(answerText);
   if (!parsed || typeof parsed !== 'object') {
+    // Si parsed est null, mais que answerText contient des questions de quiz
+    const fallbackQs = extractQuestionsFromRawText(answerText);
+    if (fallbackQs.length >= 2) {
+      const qTitle = `Questionnaire QCM : ${docName || 'Étude Académique'}`;
+      return {
+        mode: 'creation',
+        decision: 'creation',
+        creation_type: (requestedType && requestedType.includes('test')) ? 'questionnaire-test' : 'questionnaire',
+        creation_title: qTitle,
+        creation_data: { title: qTitle, questions: fallbackQs.slice(0, 18) },
+        chat_response: "J'ai conçu votre questionnaire interactif dans l'espace Création !",
+      };
+    }
     return defaultChat;
   }
 
@@ -165,32 +328,53 @@ export function validateAndFormatCreation(
     });
     creationData = { title: creationTitle, affirmations: cleanAffs };
   } else if (creationType === 'questionnaire' || creationType === 'questionnaire-test') {
-    const rawQs = Array.isArray(payloadData)
+    let rawQs = Array.isArray(payloadData)
       ? payloadData
       : (payloadData?.questions || (Array.isArray(parsed.questions) ? parsed.questions : []));
-    const cleanQs = (Array.isArray(rawQs) ? rawQs : []).slice(0, 18).map((q: any, idx: number) => {
-      const opts = Array.isArray(q.options) ? q.options : (Array.isArray(q.choices) ? q.choices : []);
-      const rawIdx = q.correct_index !== undefined
-        ? q.correct_index
-        : (q.correctIndex !== undefined
-          ? q.correctIndex
-          : (q.answerIndex !== undefined
-            ? q.answerIndex
-            : (q.correctAnswer !== undefined ? q.correctAnswer : 0)));
-      let corrIdx = Number(rawIdx);
-      if (isNaN(corrIdx) || corrIdx < 0 || corrIdx >= opts.length) corrIdx = 0;
-      return {
-        id: q.id || `q_${idx + 1}`,
-        question: q.question || q.texte || `Question n°${idx + 1}`,
-        options: opts,
-        correct_index: corrIdx,
-        correctIndex: corrIdx,
-        answerIndex: corrIdx,
-        correctAnswer: corrIdx,
-        explanation: q.explanation || q.explication || ''
-      };
-    });
-    creationData = { title: creationTitle, questions: cleanQs };
+
+    // Si le parsing initial n'a donné aucune question, tenter l'extraction de secours par regex
+    if (!Array.isArray(rawQs) || rawQs.length === 0) {
+      const fallbackExtracted = extractQuestionsFromRawText(answerText);
+      if (fallbackExtracted.length > 0) {
+        rawQs = fallbackExtracted;
+      }
+    }
+
+    const cleanQs = (Array.isArray(rawQs) ? rawQs : [])
+      .filter((q: any) => {
+        const qText = String(q.question || q.texte || '').trim();
+        // Éliminer les questions factices ou vides
+        return qText.length > 0 && !qText.includes("Consulter les explications fournies par l'assistant");
+      })
+      .slice(0, 25)
+      .map((q: any, idx: number) => {
+        const opts = Array.isArray(q.options) ? q.options : (Array.isArray(q.choices) ? q.choices : []);
+        const rawIdx = q.correct_index !== undefined
+          ? q.correct_index
+          : (q.correctIndex !== undefined
+            ? q.correctIndex
+            : (q.answerIndex !== undefined
+              ? q.answerIndex
+              : (q.correctAnswer !== undefined ? q.correctAnswer : 0)));
+        let corrIdx = Number(rawIdx);
+        if (isNaN(corrIdx) || corrIdx < 0 || corrIdx >= opts.length) corrIdx = 0;
+        return {
+          id: q.id || `q_${idx + 1}`,
+          question: q.question || q.texte || `Question n°${idx + 1}`,
+          options: opts,
+          correct_index: corrIdx,
+          correctIndex: corrIdx,
+          answerIndex: corrIdx,
+          correctAnswer: corrIdx,
+          explanation: q.explanation || q.explication || ''
+        };
+      });
+
+    if (cleanQs.length > 0) {
+      creationData = { title: creationTitle, questions: cleanQs };
+    } else {
+      creationData = null;
+    }
   } else if (creationType === 'carte-memoire') {
     const rawCards = Array.isArray(payloadData)
       ? payloadData

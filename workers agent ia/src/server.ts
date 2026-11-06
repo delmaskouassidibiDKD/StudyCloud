@@ -982,32 +982,15 @@ async function handleCreationRequest(request: Request, env: Env, corsHeaders: Re
       response_format: { type: "json_object" }
     });
   } catch (err: any) {
-    const geminiKey = body.geminiApiKey || 
-      (env as any)?.STUDYCLOUD_GEMINI_1 || 
-      (env as any)?.['studyCloud-Gemini-1'] || 
-      (env as any)?.['StudyCloud-cloud-1'] || 
-      (env as any)?.GEMINI_API_KEY ||
-      (typeof process !== 'undefined' && process.env ? (process.env.STUDYCLOUD_GEMINI_1 || process.env['studyCloud-Gemini-1']) : undefined);
-    if (geminiKey) {
-      try {
-        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: selectedPrompt }] },
-            contents: [{ role: "user", parts: [{ text: text }] }],
-            generationConfig: { temperature: 0.3, responseMimeType: "application/json" }
-          })
-        });
-        if (gRes.ok) {
-          const gData: any = await gRes.json();
-          const gRaw = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (gRaw) {
-            aiResponse = { response: gRaw };
-          }
-        }
-      } catch (_gErr) {}
-    }
+    try {
+      // Fallback 100% Cloudflare Workers AI Kimi K2.7 Code
+      aiResponse = await env.AI.run("@cf/moonshotai/kimi-k2.7-code", {
+        messages: [
+          { role: "system", content: selectedPrompt },
+          { role: "user", content: `Voici le texte source à traiter :\n${text}` }
+        ]
+      });
+    } catch (_cfErr) {}
   }
 
   const rawJson = aiResponse?.response || (typeof aiResponse === 'string' ? aiResponse : JSON.stringify(aiResponse || {}));
@@ -1196,7 +1179,7 @@ export default {
         const workersai = createWorkersAI({ binding: env.AI });
 
         const customSystem = body.system || rawHistory.find((h: any) => h.role === "system")?.content;
-        const defaultSystem = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Gemini / Delmas IA).
+        const defaultSystem = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Delmas IA).
 Tu es directement connectée à l'espace d'étude de l'étudiant, avec deux modes de fonctionnement distincts selon ton analyse du prompt :
 
 1. BRANCHE DISCUSSION SIMPLE DANS LE CHAT (Mode par défaut) :

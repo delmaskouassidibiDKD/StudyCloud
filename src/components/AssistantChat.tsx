@@ -1622,10 +1622,17 @@ function hasRealCreationData(type: string, content: any): boolean {
 
   if (norm === 'questionnaire' || norm === 'questionnaire-test') {
     const qs = Array.isArray(content) ? content : content.questions;
-    return Array.isArray(qs) && qs.length > 0 && qs.some((q: any) => {
+    if (!Array.isArray(qs) || qs.length < 3) return false;
+    const validQuestions = qs.filter((q: any) => {
       const txt = typeof q === 'string' ? q : (q?.question || q?.enonce || q?.title || '');
-      return String(txt).trim().length > 3;
+      const str = String(txt).trim();
+      const opts = Array.isArray(q?.options) ? q.options : (Array.isArray(q?.choices) ? q.choices : []);
+      return str.length > 5 &&
+        opts.length >= 2 &&
+        !str.includes("Consulter les explications") &&
+        !opts.some((o: any) => String(o).includes("Consulter les explications"));
     });
+    return validQuestions.length >= 3;
   }
 
   if (norm === 'carte-mentale' || norm === 'carte-mentale-2') {
@@ -2144,7 +2151,7 @@ RÈGLES CRUCIALES POUR LE QUESTIONNAIRE QCM :
 /**
  * Regex exhaustive des outils et supports d'apprentissage avec frontières Unicode
  */
-const CREATION_TOOLS_REGEX = /(?<![\p{L}\p{N}])(?:cartes?\s*mentales?|cartes?\s*conceptuelles?|mind\s*-?maps?|mind\s*maps?|qcms?|q\.?c\.?m\.?s?|quizz?|quizzes|questionnaires?|flash\s*-?cards?|cartes?\s*m[eé]moires?|r[eé]sum[eé]s?|synth[eè]ses?|fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+synth[eè]ses?|fiches?\s+r[eé]visions?|exercices?\s+[eé]crits?|s[eé]ries?\s+d['’]exercices?|devoirs?\s+complets?|sujets?\s+d['’]examens?|examens?\s+blancs?|infographies?|fiches?\s+visuelles?|vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|documents?\s+pdf|polycopi[eé]s?)(?![\p{L}\p{N}])/iu;
+const CREATION_TOOLS_REGEX = /(?<![\p{L}\p{N}])(?:cartes?\s*mentales?|cartes?\s*conceptuelles?|mind\s*-?maps?|mind\s*maps?|qcms?|q\.?c\.?m\.?s?|quizz?|quizzes|questionnaires?|questions?|s[eé]ries?\s+de\s+questions?|questions?\s+d['’]entra[îi]nements?|flash\s*-?cards?|cartes?\s*m[eé]moires?|r[eé]sum[eé]s?|synth[eè]ses?|fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+synth[eè]ses?|fiches?\s+r[eé]visions?|exercices?\s+[eé]crits?|s[eé]ries?\s+d['’]exercices?|devoirs?\s+complets?|sujets?\s+d['’]examens?|examens?\s+blancs?|infographies?|fiches?\s+visuelles?|vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|documents?\s+pdf|polycopi[eé]s?)(?![\p{L}\p{N}])/iu;
 
 /**
  * Détermine si le message de l'étudiant exprime une véritable INTENTION de créer un support,
@@ -2276,8 +2283,8 @@ export function detectAllCreationFormats(
   // 2. Questionnaire Test vs Questionnaire QCM (Détection exhaustive : QCM, QCMs, Quiz, Quizzes, Questionnaires, Choix Multiples)
   if (/(?<![\p{L}\p{N}])(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?s?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+(?:not[eé]es?|qcm|quizz?))(?![\p{L}\p{N}])/iu.test(t)) {
     addFormat('questionnaire-test', /(?<![\p{L}\p{N}])(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?s?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+(?:not[eé]es?|qcm|quizz?))(?![\p{L}\p{N}])/iu);
-  } else if (/(?<![\p{L}\p{N}])(?:q\.?c\.?m\.?s?|quizz?|quizzes|q[u]?estion+aires?|questions?\s+[àa]\s+choix\s+multiples?|questions?\s+qcm|qcu)(?![\p{L}\p{N}])/iu.test(t)) {
-    addFormat('questionnaire', /(?<![\p{L}\p{N}])(?:q\.?c\.?m\.?s?|quizz?|quizzes|q[u]?estion+aires?|questions?\s+[àa]\s+choix\s+multiples?|questions?\s+qcm|qcu)(?![\p{L}\p{N}])/iu);
+  } else if (/(?<![\p{L}\p{N}])(?:q\.?c\.?m\.?s?|quizz?|quizzes|q[u]?estion+aires?|questions?\s+[àa]\s+choix\s+multiples?|questions?\s+qcm|qcu|questions?|s[eé]ries?\s+de\s+questions?|questions?\s+d['’]entra[îi]nements?)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('questionnaire', /(?<![\p{L}\p{N}])(?:q\.?c\.?m\.?s?|quizz?|quizzes|q[u]?estion+aires?|questions?\s+[àa]\s+choix\s+multiples?|questions?\s+qcm|qcu|questions?|s[eé]ries?\s+de\s+questions?|questions?\s+d['’]entra[îi]nements?)(?![\p{L}\p{N}])/iu);
   }
 
   // 3. Carte Conceptuelle (carte-mentale-2) vs Carte Mentale arborescente (carte-mentale)
@@ -5003,25 +5010,11 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
       } catch (_fallbackErr) { }
     }
 
-    // Filet de dernier recours : Si finalContent est toujours null/vide apres tous les essais,
-    // construire un contenu minimal valide pour eviter que la creation reste bloquee en 'generating'.
-    if (!finalContent || (typeof finalContent === 'object' && !Array.isArray(finalContent) && Object.keys(finalContent).length === 0)) {
-      console.warn('[executeCreationApiCall] finalContent null pour', normType, '- construction contenu minimal');
-      const rawPreview = rawResponseText.slice(0, 800) || 'Contenu non disponible';
-      switch (normType) {
-        case 'questionnaire': case 'questionnaire-test':
-          finalContent = { questions: [] }; break;
-        case 'vrai-ou-faux': case 'vrai-ou-faux-test':
-          finalContent = { affirmations: [] }; break;
-        case 'carte-memoire':
-          finalContent = { cards: [] }; break;
-        case 'carte-mentale': case 'carte-mentale-2':
-          finalContent = { root: { id: 'root-1', label: params.mainDocName || params.creationTitle, children: [] } }; break;
-        case 'resume':
-          finalContent = { title: params.creationTitle, overview: rawPreview, key_definitions: [], sections: [], formulas: [], traps_and_tips: [], markdown: rawPreview }; break;
-        default:
-          finalContent = { title: params.creationTitle, content: rawPreview };
-      }
+    // Vérification stricte : Si finalContent ne contient pas de vraies données (ex: moins de 3 questions réelles),
+    // échouer proprement sans enregistrer de création vide ni facturer de crédits à l'étudiant.
+    if (!finalContent || !hasRealCreationData(normType, finalContent)) {
+      console.warn('[executeCreationApiCall] Échec validation contenu réel pour', normType);
+      throw new Error(`La génération du support (${normType}) n'a pas produit de questions ou d'éléments valides à partir de votre document. Aucun crédit n'a été décompté.`);
     }
 
     const activeTpc = getActiveTokensPerCredit();

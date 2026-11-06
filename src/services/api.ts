@@ -171,20 +171,32 @@ export function safeJsonParse<T = any>(raw: string): T | null {
         sanitized += ' ';
       } else if (char === '\\') {
         const next = cleaned[i + 1];
-        const isHexU = next === 'u' && /^[0-9a-fA-F]{4}/.test(cleaned.slice(i + 2, i + 6));
-        const isValidJsonEscape = ['"', '\\', '/', 'b', 'f', 'n', 'r', 't'].includes(next) || isHexU;
-
-        if (isValidJsonEscape) {
-          const sub = cleaned.slice(i + 1);
-          const isLatexKeyword = /^(?:text|textbf|textit|frac|dfrac|beta|tau|theta|times|rho|right|rightarrow|to|left|leftarrow|partial|pi|omega|sum|int|lim|sqrt|alpha|gamma|delta|epsilon|lambda|mu|nu|sigma|phi|psi)\b/i.test(sub);
-
-          if (isLatexKeyword) {
-            sanitized += '\\\\';
-          } else {
-            sanitized += '\\';
-          }
+        if (next === '\\') {
+          // Déjà échappé \\ -> conserver \\\\
+          sanitized += '\\\\';
+          i++; // passer le deuxième slash
+          continue;
+        } else if (next === '"') {
+          // Guillemet échappé \" -> conserver \"
+          sanitized += '\\"';
+          i++;
+          continue;
+        } else if (next === '/' || (next === 'u' && /^[0-9a-fA-F]{4}/.test(cleaned.slice(i + 2, i + 6)))) {
+          sanitized += '\\';
+        } else if (next === 'n' && !/^(?:nabla|nu|neq|neg|notin)\b/i.test(cleaned.slice(i + 1))) {
+          sanitized += '\\n';
+          i++;
+          continue;
+        } else if (next === 'r' && !/^(?:right|rho|rightarrow|rangle)\b/i.test(cleaned.slice(i + 1))) {
+          sanitized += '\\r';
+          i++;
+          continue;
+        } else if (next === 't' && !/^(?:times|theta|tau|to|text|textbf|textit|tan|tilde)\b/i.test(cleaned.slice(i + 1))) {
+          sanitized += '\\t';
+          i++;
+          continue;
         } else {
-          // Tout autre antislash (ex: \underline, \omega, \log, \cdot, etc.) est doublé
+          // Tout autre antislash (LaTeX \dfrac, \boxed, \frac, \omega, \beta, \Delta, \tau, \pi, etc.)
           sanitized += '\\\\';
         }
       } else {

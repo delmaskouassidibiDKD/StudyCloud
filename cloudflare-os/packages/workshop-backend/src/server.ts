@@ -1487,28 +1487,7 @@ export default {
           const accountId = "c80164ed977e6535efd1b67a54741ed6";
           const cfToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
 
-          const rawApiKey = String(body.apiKey || body.apiToken || body.geminiApiKey || "").trim();
-          const candidateKeys = [
-            (env as any)?.STUDYCLOUD_GEMINI_1,
-            (env as any)?.['studyCloud-Gemini-1'],
-            (env as any)?.['StudyCloud-Gemini-1'],
-            (env as any)?.['STUDYCLOUD-GEMINI-1'],
-            (env as any)?.['StudyCloud-cloud-1'],
-            (env as any)?.['studyCloud-cloud-1'],
-            (env as any)?.STUDYCLOUD_CLOUD_1,
-            (env as any)?.GEMINI_API_KEY,
-            (typeof process !== "undefined" && process.env) ? process.env.STUDYCLOUD_GEMINI_1 : undefined,
-            (typeof process !== "undefined" && process.env) ? process.env['studyCloud-Gemini-1'] : undefined,
-            (typeof process !== "undefined" && process.env) ? process.env.GEMINI_API_KEY : undefined,
-          ];
-          let cloudflareGeminiSecret = "";
-          for (const k of candidateKeys) {
-            if (k && typeof k === "string" && k.trim().length > 15) {
-              cloudflareGeminiSecret = k.trim();
-              break;
-            }
-          }
-          // MÉTHODE ROBOT ROUGE DIRECTE :
+          // MÉTHODE ROBOT ROUGE DIRECTE 100% CLOUDFLARE WORKERS AI :
           // Chaque modèle Cloudflare Workers AI traite le fichier directement avec sa propre vision ou intelligence.
           // Zéro appel vers Gemini.
           let audioTranscript = "";

@@ -168,10 +168,6 @@ async function handleParallelChat(request, env, corsHeaders) {
   const audioTranscript = body.audioTranscript || body.audioText || "";
   const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
   const wantStream = Boolean(body.stream || request.headers.get("accept")?.includes("text/event-stream"));
-  const geminiApiKey = body.geminiApiKey || 
-    request.headers.get("x-gemini-api-key") || 
-    (env && (env.STUDYCLOUD_GEMINI_1 || env['studyCloud-Gemini-1'] || env['StudyCloud-cloud-1'] || env.GEMINI_API_KEY)) || 
-    (typeof process !== 'undefined' && process.env ? (process.env.STUDYCLOUD_GEMINI_1 || process.env['studyCloud-Gemini-1']) : "") || "";
 
   if (!message.trim() && !attachedFileContent.trim() && !imageBase64.trim() && !audioBase64.trim()) {
     return errorResponse("Veuillez fournir un message, un document ou une image à analyser.", 400, corsHeaders);
@@ -196,30 +192,6 @@ async function handleParallelChat(request, env, corsHeaders) {
         }
       } catch (vErr) {
         console.warn("[Workers AI Vision Fail in Chat]", vErr.message);
-      }
-    }
-    // B. Fallback Gemini 2.0 Flash Vision
-    if (!visionAnalysisText && geminiApiKey) {
-      try {
-        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{
-              role: "user",
-              parts: [
-                { inline_data: { mime_type: "image/jpeg", data: cleanBase64 } },
-                { text: "Analyse cette image d'exercice ou de cours pour l'étudiant avec rigueur pédagogique." }
-              ]
-            }]
-          })
-        });
-        if (gRes.ok) {
-          const gData = await gRes.json();
-          visionAnalysisText = gData?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-        }
-      } catch (gErr) {
-        console.warn("[Gemini Vision Fail in Chat]", gErr.message);
       }
     }
   }
@@ -719,36 +691,21 @@ async function handleVisionAnalysis(request, env, corsHeaders) {
       }
     }
 
-    // 2. Fallback Google Gemini 2.0 Flash Multimodal
-    const geminiKey = (env && env.GEMINI_API_KEY) || body.geminiApiKey || request.headers.get("x-gemini-api-key") || "";
-    if (geminiKey) {
+    // 2. Fallback Kimi K2.7 Code Workers AI
+    if (env && env.AI) {
       try {
-        const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            contents: [{
-              role: "user",
-              parts: [
-                { inline_data: { mime_type: "image/jpeg", data: cleanBase64 } },
-                { text: prompt }
-              ]
-            }]
-          })
+        const kRes = await env.AI.run("@cf/moonshotai/kimi-k2.7-code", {
+          messages: [{ role: "user", content: prompt }]
         });
-        if (gRes.ok) {
-          const gData = await gRes.json();
-          const gText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (gText) {
-            return jsonResponse({
-              success: true,
-              analysis: gText,
-              model: "google/gemini-2.0-flash-vision"
-            }, 200, corsHeaders);
-          }
+        if (kRes && (kRes.response || kRes.text)) {
+          return jsonResponse({
+            success: true,
+            analysis: kRes.response || kRes.text,
+            model: "cloudflare/@cf/moonshotai/kimi-k2.7-code"
+          }, 200, corsHeaders);
         }
-      } catch (gErr) {
-        console.warn("[Gemini Vision Fail]", gErr.message);
+      } catch (kErr) {
+        console.warn("[Workers AI Kimi Vision Fail]", kErr.message);
       }
     }
 
@@ -997,56 +954,22 @@ async function executeMultiEngineInference({ env, messages, systemPrompt, userPr
     }
   }
 
-  // 2. TENTATIVE B : Fallback Transparent Google Gemini 2.0 Flash avec Function Calling
-  const finalGeminiKey = geminiApiKey || (env && env.GEMINI_API_KEY) || "";
-  if (!outputText && finalGeminiKey) {
+  // 2. TENTATIVE B : Fallback Workers AI Kimi K2.7 Code
+  if (!outputText && env && env.AI) {
     try {
-      console.log("[Multi-Engine] Bascule de secours vers Google Gemini 2.0 Flash...");
-      const gPayload = {
-        contents: [{ role: "user", parts: [{ text: `${systemPrompt}\n\n${userPrompt}` }] }],
-        generationConfig: {
-          temperature: mode === "json" ? 0.2 : 0.6
-        }
-      };
-
-      if (mode === "json") {
-        gPayload.generationConfig.responseMimeType = "application/json";
-      } else if (enableTools) {
-        gPayload.tools = [{
-          functionDeclarations: STUDYCLOUD_TOOLS.map(t => ({
-            name: t.name,
-            description: t.description,
-            parameters: t.parameters
-          }))
-        }];
-      }
-
-      const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${finalGeminiKey}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(gPayload)
+      console.log("[Multi-Engine] Bascule de secours vers Workers AI Kimi K2.7 Code...");
+      const kRes = await env.AI.run("@cf/moonshotai/kimi-k2.7-code", {
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt }
+        ]
       });
-
-      if (gRes.ok) {
-        const gData = await gRes.json();
-        const candPart = gData?.candidates?.[0]?.content?.parts?.[0];
-        if (candPart?.functionCall) {
-          const fCall = candPart.functionCall;
-          detectedToolCall = {
-            name: fCall.name,
-            arguments: fCall.args || {}
-          };
-          outputText = `J'ai activé l'outil **${fCall.name.replace("generate_", "")}** pour répondre à votre étude.`;
-          usedModel = "google/gemini-2.0-flash";
-        } else if (candPart?.text) {
-          outputText = candPart.text;
-          usedModel = "google/gemini-2.0-flash";
-        }
-      } else {
-        console.warn(`[Gemini HTTP Error] ${gRes.status}`);
+      if (kRes && (kRes.response || kRes.text)) {
+        outputText = kRes.response || kRes.text;
+        usedModel = "@cf/moonshotai/kimi-k2.7-code";
       }
-    } catch (gErr) {
-      console.warn("[Gemini Exception]", gErr.message);
+    } catch (kErr) {
+      console.warn("[Workers AI Kimi Fallback Fail]", kErr.message);
     }
   }
 

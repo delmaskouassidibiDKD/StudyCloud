@@ -170,53 +170,114 @@ function autoCorrectQuiz(quiz: any, safeDocName: string): QuizContent {
  * Extraction dynamique d'un Quiz à partir de texte brut / Markdown de l'IA
  */
 function parseQuizFromText(rawText: string, safeDocName: string): QuizContent {
-  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
   const questions: any[] = [];
-  let currentQ: any = null;
 
-  for (const line of lines) {
-    // Détection d'une nouvelle question
-    // Ex: "1. Question ...", "Question 1 : ...", "**1.** ...", "### 1. ...", "Q1: ..."
-    const qMatch = line.match(/^(?:(?:\*{1,2}|#{1,4}\s*)?(?:Question\s*)?(\d+)[.:\)]\s*(?:\*{1,2})?|Q(\d+)[:\.-])\s*(.*)/i);
-    // Détection d'une option A, B, C, D ou 1, 2, 3, 4 ou a, b, c, d
-    const optMatch = line.match(/^(?:[-*•]\s*)?(?:(?:\*{1,2})?([A-Da-d1-4])[.:\)\-]\s*(?:\*{1,2})?|\(([A-Da-d1-4])\)|\[([A-Da-d1-4])\])\s*(.*)/i);
-    // Détection de la réponse / explication
-    const ansMatch = line.match(/(?:(?:bonne|correcte?)\s+)?r[eé]ponse(?:\s+correcte)?\s*[:=]\s*[*_`]*([A-Da-d1-4])/i) || line.match(/Answer\s*[:=]\s*[*_`]*([A-Da-d1-4])/i);
-    const explMatch = line.match(/(?:explication|justification|pourquoi|note|remarque)\s*[:=]\s*(.*)/i);
+  // 0. Extraction prioritaire si rawText contient un objet ou tableau JSON
+  if (rawText.includes('{') || rawText.includes('[')) {
+    try {
+      const parsed = safeJsonParse(rawText);
+      const rawQs = Array.isArray(parsed)
+        ? parsed
+        : (parsed?.questions || parsed?.quiz?.questions || parsed?.creation_data?.questions || []);
+      if (Array.isArray(rawQs) && rawQs.length > 0) {
+        for (let idx = 0; idx < rawQs.length; idx++) {
+          const q = rawQs[idx];
+          const qText = sanitizeText(q?.question || q?.texte || q?.prompt || '');
+          const opts = (Array.isArray(q?.options) ? q.options : (Array.isArray(q?.choices) ? q.choices : []))
+            .map((o: any) => sanitizeText(o))
+            .filter(Boolean);
+          if (qText && opts.length >= 2 && !qText.includes("Consulter les explications fournies par l'assistant")) {
+            const rawIdx = q?.correct_index ?? q?.correctIndex ?? q?.answerIndex ?? q?.correctAnswer ?? 0;
+            let corrIdx = Number(rawIdx);
+            if (isNaN(corrIdx) || corrIdx < 0 || corrIdx >= opts.length) corrIdx = 0;
+            questions.push({
+              id: sanitizeText(q?.id) || `q-${idx + 1}`,
+              question: qText,
+              options: opts,
+              answerIndex: corrIdx,
+              explanation: sanitizeText(q?.explanation || q?.explication || '')
+            });
+          }
+        }
+      }
+    } catch (_jErr) {}
+  }
 
-    if (qMatch && !optMatch) {
-      if (currentQ && currentQ.options.length >= 2) {
-        questions.push(currentQ);
+  // 1. Si aucune question JSON n'a été trouvée, parser ligne par ligne le Markdown
+  if (questions.length === 0) {
+    const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+    let currentQ: any = null;
+
+    for (const line of lines) {
+      // Détection d'une nouvelle question
+      // Ex: "1. Question ...", "Question 1 : ...", "**1.** ...", "### 1. ...", "Q1: ..."
+      const qMatch = line.match(/^(?:(?:\*{1,2}|#{1,4}\s*)?(?:Question\s*)?(\d+)[.:\)]\s*(?:\*{1,2})?|Q(\d+)[:\.-])\s*(.*)/i);
+      // Détection d'une option A, B, C, D ou 1, 2, 3, 4 ou a, b, c, d
+      const optMatch = line.match(/^(?:[-*•]\s*)?(?:(?:\*{1,2})?([A-Da-d1-4])[.:\)\-]\s*(?:\*{1,2})?|\(([A-Da-d1-4])\)|\[([A-Da-d1-4])\])\s*(.*)/i);
+      // Détection de la réponse / explication
+      const ansMatch = line.match(/(?:(?:bonne|correcte?)\s+)?r[eé]ponse(?:\s+correcte)?\s*[:=]\s*[*_`]*([A-Da-d1-4])/i) || line.match(/Answer\s*[:=]\s*[*_`]*([A-Da-d1-4])/i);
+      const explMatch = line.match(/(?:explication|justification|pourquoi|note|remarque)\s*[:=]\s*(.*)/i);
+
+      if (qMatch && !optMatch) {
+        if (currentQ && currentQ.options.length >= 2) {
+          questions.push(currentQ);
+        }
+        const qTitle = qMatch[3] || qMatch[1] || line;
+        currentQ = {
+          id: `q-${questions.length + 1}`,
+          question: qTitle.replace(/^\*{1,2}|\*{1,2}$/g, '').trim(),
+          options: [],
+          answerIndex: 0,
+          explanation: '',
+        };
+      } else if (optMatch && currentQ) {
+        const optText = (optMatch[4] || optMatch[3] || optMatch[2] || optMatch[1] || '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim();
+        if (optText) {
+          currentQ.options.push(optText);
+        }
+      } else if (ansMatch && currentQ) {
+        const char = (ansMatch[1] || '').toUpperCase();
+        if (char >= 'A' && char <= 'D') {
+          currentQ.answerIndex = char.charCodeAt(0) - 65;
+        } else if (char >= '1' && char <= '4') {
+          currentQ.answerIndex = parseInt(char, 10) - 1;
+        }
+      } else if (explMatch && currentQ) {
+        currentQ.explanation = explMatch[1].trim();
+      } else if (currentQ && currentQ.options.length >= 2 && !currentQ.explanation && /^(?:Remarque|Note|Détail)/i.test(line)) {
+        currentQ.explanation = line.trim();
       }
-      const qTitle = qMatch[3] || qMatch[1] || line;
-      currentQ = {
-        id: `q-${questions.length + 1}`,
-        question: qTitle.replace(/^\*{1,2}|\*{1,2}$/g, '').trim(),
-        options: [],
-        answerIndex: 0,
-        explanation: '',
-      };
-    } else if (optMatch && currentQ) {
-      const optText = (optMatch[4] || optMatch[3] || optMatch[2] || optMatch[1] || '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim();
-      if (optText) {
-        currentQ.options.push(optText);
-      }
-    } else if (ansMatch && currentQ) {
-      const char = (ansMatch[1] || '').toUpperCase();
-      if (char >= 'A' && char <= 'D') {
-        currentQ.answerIndex = char.charCodeAt(0) - 65;
-      } else if (char >= '1' && char <= '4') {
-        currentQ.answerIndex = parseInt(char, 10) - 1;
-      }
-    } else if (explMatch && currentQ) {
-      currentQ.explanation = explMatch[1].trim();
-    } else if (currentQ && currentQ.options.length >= 2 && !currentQ.explanation && /^(?:Remarque|Note|Détail)/i.test(line)) {
-      currentQ.explanation = line.trim();
+    }
+
+    if (currentQ && currentQ.options.length >= 2) {
+      questions.push(currentQ);
     }
   }
 
-  if (currentQ && currentQ.options.length >= 2) {
-    questions.push(currentQ);
+  // 2. Extraction chirurgicale par regex en cas de bloc JSON mal fermé
+  if (questions.length === 0) {
+    const qRegex = /"question"\s*:\s*"((?:[^"\\]|\\.)*)"/g;
+    const optRegex = /"options"\s*:\s*\[([\s\S]*?)\]/g;
+    const qMatches: string[] = [];
+    let m;
+    while ((m = qRegex.exec(rawText)) !== null) {
+      qMatches.push(m[1].replace(/\\"/g, '"'));
+    }
+    const optBlocks: string[][] = [];
+    let om;
+    while ((om = optRegex.exec(rawText)) !== null) {
+      const items = (om[1].match(/"((?:[^"\\]|\\.)*)"/g) || []).map(s => s.slice(1, -1).replace(/\\"/g, '"'));
+      if (items.length >= 2) optBlocks.push(items);
+    }
+    for (let i = 0; i < Math.min(qMatches.length, optBlocks.length); i++) {
+      questions.push({
+        id: `q-${i + 1}`,
+        question: qMatches[i],
+        options: optBlocks[i],
+        answerIndex: 0,
+        explanation: ''
+      });
+    }
   }
 
   const shuffledQuestions = questions.map(q => {
@@ -233,18 +294,7 @@ function parseQuizFromText(rawText: string, safeDocName: string): QuizContent {
   return {
     title: `Quiz : ${safeDocName}`,
     difficulty: 'Moyen',
-    questions: (shuffledQuestions.length > 0 ? shuffledQuestions : [
-      {
-        id: 'q-1',
-        question: `Compréhension du document : ${safeDocName}`,
-        options: [
-          'Analyser les notions fondamentales et formules du cours',
-          'Consulter les explications fournies par l\'assistant dans le chat'
-        ],
-        answerIndex: 0,
-        explanation: 'L\'assistant a analysé votre document et synthétisé les points clés pour vos révisions.'
-      }
-    ]).slice(0, 18),
+    questions: shuffledQuestions.slice(0, 18),
   };
 }
 
