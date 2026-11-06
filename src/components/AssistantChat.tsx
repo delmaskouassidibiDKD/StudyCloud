@@ -265,15 +265,26 @@ async function extractImageBase64FromItem(item: any): Promise<{ base64: string; 
   else if (name.endsWith('.webp') || ext === 'webp') mimeType = 'image/webp';
   else if (name.endsWith('.gif') || ext === 'gif') mimeType = 'image/gif';
 
+  // 0. Cache instantané pré-optimisé
+  if (item._preparedImage && typeof item._preparedImage.base64 === 'string' && item._preparedImage.base64.length > 50) {
+    return item._preparedImage;
+  }
+
   // 1. Déjà présent en mémoire sous forme Base64
   if (typeof item.base64 === 'string' && item.base64.length > 50) {
-    return { base64: item.base64, mimeType };
+    const res = { base64: item.base64, mimeType };
+    item._preparedImage = res;
+    return res;
   }
   if (typeof item.imageBase64 === 'string' && item.imageBase64.length > 50) {
-    return { base64: item.imageBase64, mimeType };
+    const res = { base64: item.imageBase64, mimeType };
+    item._preparedImage = res;
+    return res;
   }
   if (typeof item.dataUrl === 'string' && item.dataUrl.startsWith('data:image')) {
-    return { base64: item.dataUrl, mimeType };
+    const res = { base64: item.dataUrl, mimeType };
+    item._preparedImage = res;
+    return res;
   }
 
   const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -288,17 +299,69 @@ async function extractImageBase64FromItem(item: any): Promise<{ base64: string; 
     });
   };
 
+  // Traitement d'image conforme à la méthode Robot Rouge (prepareChatAttachment) :
+  // Redimensionne sur Canvas à max 1568px et compresse à < 1 Mo pour une vision IA optimale
+  const CHAT_ATTACHMENT_IMAGE_MAX_EDGE = 1568;
+  const CHAT_ATTACHMENT_IMAGE_QUALITY = 0.85;
+  const MAX_CHAT_ATTACHMENT_BYTES = 1024 * 1024;
+
+  const prepareImageBlob = async (blob: Blob): Promise<{ base64: string; mimeType: string }> => {
+    try {
+      const bitmap = await createImageBitmap(blob);
+      try {
+        const maxEdge = Math.max(bitmap.width, bitmap.height);
+        const supportedOrig = blob.type === "image/jpeg" || blob.type === "image/png" || blob.type === "image/webp";
+        if (supportedOrig && blob.size <= MAX_CHAT_ATTACHMENT_BYTES && maxEdge <= CHAT_ATTACHMENT_IMAGE_MAX_EDGE) {
+          const b64 = await blobToBase64(blob);
+          return { base64: b64, mimeType: blob.type };
+        }
+
+        const scale = Math.min(1, CHAT_ATTACHMENT_IMAGE_MAX_EDGE / maxEdge);
+        const width = Math.max(1, Math.round(bitmap.width * scale));
+        const height = Math.max(1, Math.round(bitmap.height * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          const b64 = await blobToBase64(blob);
+          return { base64: b64, mimeType: blob.type || "image/jpeg" };
+        }
+        ctx.drawImage(bitmap, 0, 0, width, height);
+
+        const toBlobPromise = (t: string, q: number) => new Promise<Blob | null>(res => canvas.toBlob(res, t, q));
+        let outBlob = await toBlobPromise("image/webp", CHAT_ATTACHMENT_IMAGE_QUALITY);
+        let outMime = "image/webp";
+        if (!outBlob || outBlob.size > MAX_CHAT_ATTACHMENT_BYTES) {
+          outBlob = await toBlobPromise("image/jpeg", CHAT_ATTACHMENT_IMAGE_QUALITY);
+          outMime = "image/jpeg";
+        }
+        const finalBlob = outBlob || blob;
+        const b64 = await blobToBase64(finalBlob);
+        return { base64: b64, mimeType: finalBlob.type || outMime };
+      } finally {
+        bitmap.close();
+      }
+    } catch (err) {
+      console.warn("[AssistantChat] prepareImageBlob fallback:", err);
+      const b64 = await blobToBase64(blob);
+      return { base64: b64, mimeType: blob.type || "image/jpeg" };
+    }
+  };
+
   // 2. Blob ou File direct attaché
   if (item.file instanceof Blob || item.file instanceof File) {
     try {
-      const b64 = await blobToBase64(item.file);
-      return { base64: b64, mimeType: item.file.type || mimeType };
+      const res = await prepareImageBlob(item.file);
+      item._preparedImage = res;
+      return res;
     } catch { }
   }
   if (item.blob instanceof Blob) {
     try {
-      const b64 = await blobToBase64(item.blob);
-      return { base64: b64, mimeType: item.blob.type || mimeType };
+      const res = await prepareImageBlob(item.blob);
+      item._preparedImage = res;
+      return res;
     } catch { }
   }
 
@@ -307,8 +370,9 @@ async function extractImageBase64FromItem(item: any): Promise<{ base64: string; 
     try {
       const blob = await getFileBlob(item.id);
       if (blob) {
-        const b64 = await blobToBase64(blob);
-        return { base64: b64, mimeType: blob.type || mimeType };
+        const res = await prepareImageBlob(blob);
+        item._preparedImage = res;
+        return res;
       }
     } catch (e) {
       console.warn('[AssistantChat] Erreur lecture binaire IndexedDB:', e);
@@ -329,8 +393,9 @@ async function extractImageBase64FromItem(item: any): Promise<{ base64: string; 
       const resp = await fetch(targetUrl);
       if (resp.ok) {
         const blob = await resp.blob();
-        const b64 = await blobToBase64(blob);
-        return { base64: b64, mimeType: blob.type || mimeType };
+        const res = await prepareImageBlob(blob);
+        item._preparedImage = res;
+        return res;
       }
     } catch (e) {
       console.warn('[AssistantChat] Erreur lecture image URL:', e);
@@ -3225,6 +3290,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const resolvedActiveItem = activePreviewItem || null;
   const resolvedActiveName = resolvedActiveItem?.name || resolvedActiveItem?.title || resolvedActiveItem?.fileName || undefined;
 
+  // Traitement / Optimisation Canvas en cours pour les images (Méthode Robot Rouge)
+  const [isPreparingAttachment, setIsPreparingAttachment] = useState(false);
+
   const currentUserId = typeof window !== 'undefined'
     ? (safeGetItem('unifolder_user_id') || safeGetItem('studycloud_user_id') || 'default-user')
     : 'default-user';
@@ -3495,6 +3563,48 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     cachedPerceptionReportsRef.current = {};
     cachedDocumentTextRef.current = {};
   }, [activeMediaSigCacheReset]);
+
+  // Traitement automatique et pré-optimisation Canvas des images (Méthode Robot Rouge)
+  useEffect(() => {
+    let active = true;
+    const isImgItem = (item: any) => {
+      if (!item) return false;
+      const name = String(item.name || item.title || item.fileName || '').toLowerCase();
+      const type = String(item.type || item.mimeType || '').toLowerCase();
+      const ext = String(item.extension || '').toLowerCase();
+      return Boolean(item.isImage || type.startsWith('image/') || /\.(jpe?g|png|webp|gif|bmp|svg)$/i.test(name) || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'bmp', 'svg'].includes(ext));
+    };
+
+    const hasImg = isImgItem(resolvedActiveItem) || (Array.isArray(attachedResources) && attachedResources.some(isImgItem));
+    if (!hasImg) {
+      setIsPreparingAttachment(false);
+      return;
+    }
+
+    setIsPreparingAttachment(true);
+    const prepareAll = async () => {
+      try {
+        if (resolvedActiveItem && isImgItem(resolvedActiveItem) && !(resolvedActiveItem as any)._preparedImage) {
+          await extractImageBase64FromItem(resolvedActiveItem);
+        }
+        if (Array.isArray(attachedResources)) {
+          for (const r of attachedResources) {
+            if (isImgItem(r) && !(r as any)._preparedImage) {
+              await extractImageBase64FromItem(r);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("[AssistantChat] Image prep error:", err);
+      } finally {
+        if (active) {
+          setIsPreparingAttachment(false);
+        }
+      }
+    };
+    prepareAll();
+    return () => { active = false; };
+  }, [resolvedActiveName, attachedResources?.map((r: any) => r.id || r.name).join(',')]);
   // Barre de propositions collée au clavier
   const [showProposalBar, setShowProposalBar] = useState(true);
 
@@ -7373,13 +7483,17 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                       title={`${desc.labelCap} actif à l'écran`}
                     >
                       <div className="shrink-0 flex items-center justify-center">
-                        <FileIconBadge fileName={resolvedActiveName} size={16} />
+                        {isPreparingAttachment ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400" />
+                        ) : (
+                          <FileIconBadge fileName={resolvedActiveName} size={16} />
+                        )}
                       </div>
                       <span className="text-[10px] sm:text-[11px] font-bold text-orange-300 truncate">
                         {resolvedActiveName}
                       </span>
                       <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-orange-500/25 text-orange-400 shrink-0">
-                        {desc.labelCap} Actif
+                        {isPreparingAttachment ? "Traitement..." : `${desc.labelCap} Actif`}
                       </span>
                     </div>
                   );
@@ -7394,13 +7508,17 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                       title={`${desc.labelCap} joint`}
                     >
                       <div className="shrink-0 flex items-center justify-center">
-                        <FileIconBadge fileName={res.name} size={16} />
+                        {isPreparingAttachment ? (
+                          <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                        ) : (
+                          <FileIconBadge fileName={res.name} size={16} />
+                        )}
                       </div>
                       <span className="text-[10px] sm:text-[11px] font-bold text-blue-300 truncate">
                         {res.name}
                       </span>
                       <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-blue-500/25 text-blue-400 shrink-0">
-                        {desc.labelCap}
+                        {isPreparingAttachment ? "Traitement..." : desc.labelCap}
                       </span>
                       <button
                         type="button"
@@ -7442,17 +7560,21 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                   /* Dès que l'IA a fini ou est disponible : SEUL le bouton Envoyer est affiché */
                   <button
                     type="submit"
-                    disabled={!inputValue.trim()}
+                    disabled={!inputValue.trim() || isPreparingAttachment}
                     onClick={(e) => {
-                      if (inputValue.trim()) {
+                      if (inputValue.trim() && !isPreparingAttachment) {
                         e.preventDefault();
                         handleSend();
                       }
                     }}
                     className="p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
-                    title={tStudy("send_button_title", "Envoyer")}
+                    title={isPreparingAttachment ? "Traitement et optimisation de l'image en cours..." : tStudy("send_button_title", "Envoyer")}
                   >
-                    <Send className="w-4 h-4" />
+                    {isPreparingAttachment ? (
+                      <Loader2 className="w-4 h-4 animate-spin text-zinc-400" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
                   </button>
                 )}
               </div>

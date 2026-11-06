@@ -1770,100 +1770,18 @@ export default {
 
           const isSelectedGemini = targetModel === "gemini-2.0-flash" || targetModel.includes("gemini") || targetModel === "gemini-3.8-flash" || targetModel === "gemini-3.6-flash";
 
-          // Si un média (vidéo, audio, document PDF/Word avec schémas, ou image) est fourni ET que le modèle sélectionné n'est pas Gemini :
-          // Gemini Flash ou Cloudflare Workers AI Vision intervient en arrière-plan comme moteur de perception universel.
-          // Il produit un dossier d'observation haute fidélité qui est transmis au modèle enseignant choisi (Agent Delmas, DeepSeek, Claude...).
-          let backgroundPerceptionReport = String(body.perceptionReport || "").trim();
-          const isDocImage = Boolean(
-            (imageBase64 && imageBase64.length > 50) ||
-            /\.(png|jpe?g|webp|gif|bmp|svg)$/i.test(docName || "")
-          );
-          const isElectronicsTheme = /filtre|aop|millman|bode|ampli|rlc|électronique/i.test(docName || "");
-          if (backgroundPerceptionReport && !isElectronicsTheme && /filtre|aop|millman|bode|amplificateur opérationnel/i.test(backgroundPerceptionReport)) {
-            backgroundPerceptionReport = "";
-          }
-          if (isDocImage) {
-            // Pour les images, la vision multimodale directe prévaut formellement sur tout vieux rapport textuel
-            backgroundPerceptionReport = "";
-          }
-          const needsVisualOrAudioPerception = Boolean(
-            (imageBase64 && imageBase64.length > 50) ||
-            (videoBase64 && videoBase64.length > 50) ||
-            (audioBase64 && audioBase64.length > 50) ||
-            documentImages.length > 0 ||
-            videoFrames.length > 0 ||
-            (documentBase64 && documentBase64.length > 50 && (!docContent || docContent.trim().length < 120))
-          );
-          const canGeminiDoDirectVision = Boolean(isSelectedGemini && geminiKeyToUse && !geminiKeyToUse.startsWith("AIzaSyDKct") && geminiKeyToUse.length > 25);
-          if (!backgroundPerceptionReport && needsVisualOrAudioPerception && !canGeminiDoDirectVision) {
-            // 1. D'abord tenter Google Gemini Flash si une clé Gemini semble présente
-            if (geminiKeyToUse && !geminiKeyToUse.startsWith("AIzaSyDKct") && geminiKeyToUse.length > 25) {
-              try {
-                const perceptionSystemPrompt = `Tu es l'Expert de Perception Multimodale de l'équipe pédagogique StudyCloud.
-Ton rôle est d'analyser méticuleusement ce fichier (vidéo, audio, document PDF/Word avec schémas, ou image) pour fournir un dossier d'observation complet, rigoureux et fidèle au modèle enseignant principal.
-
-DIRECTIVES D'OBSERVATION STRICTES :
-1. ÉNONCÉ ET DONNÉES BRUTES :
-   - Retranscris fidèlement le texte intégral, les questions, les données numériques et leurs unités.
-   - Retranscris TOUTES les formules mathématiques et physiques avec KaTeX standard ($...$ ou $$...$$).
-2. SCHÉMAS, CIRCUITS, GRAPHES ET FIGURES GÉOMÉTRIQUES :
-   - Décris avec une précision absolue tous les éléments visuels :
-     * Circuits électroniques : nom des composants (R1, R2, C, L, AOP), valeurs chiffrées, noeuds, tensions Ve et Vs, bornes inverseuse (-) et non-inverseuse (+).
-     * Figures géométriques, repères et graphiques : axes, échelles, courbes, points remarquables, asymptotes, valeurs aux limites.
-     * Tableaux ou schémas blocs : entrées, sorties, relations de transfert.
-3. FLUX AUDIO OU VIDÉO :
-   - Retranscris fidèlement les paroles prononcées, les explications orales de l'enseignant et décris les scènes/actions clés.
-4. OBJECTIVITÉ ET EXHAUSTIVITÉ :
-   - Ne résous pas l'exercice toi-même : donne TOUTES les observations pour que le modèle enseignant principal puisse résoudre et répondre avec exactitude.`;
-
-                const gPerception = await executeGemini20Flash({
-                  apiKey: geminiKeyToUse,
-                  systemPrompt: perceptionSystemPrompt,
-                  messages: [{ role: "user", content: `Analyse détaillée de ce fichier joint : ${(userPrompt || "Analyse ce document").trim()}` }],
-                  effectivePrompt: `Analyse détaillée du fichier joint : ${(userPrompt || "Analyse ce document").trim()}`,
-                  imageBase64,
-                  mimeType,
-                  videoBase64,
-                  videoFrames,
-                  videoMimeType,
-                  audioBase64,
-                  audioMimeType,
-                  documentBase64,
-                  documentMimeType,
-                  documentImages,
-                  mediaType,
-                });
-
-                if (gPerception && gPerception.trim().length > 20) {
-                  backgroundPerceptionReport = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gPerception.trim()));
-                }
-              } catch (pErr) {
-                logger.warn("Background Gemini perception analysis failed", { event: "gemini_perception_error", error: pErr });
+          // MÉTHODE ROBOT ROUGE DIRECTE :
+          // Chaque modèle traite le fichier directement avec sa propre vision ou intelligence.
+          // Zéro appel secret intermédiaire vers Gemini 2.0 Flash.
+          let audioTranscript = "";
+          if (audioBase64 && audioBase64.length > 50 && cfToken && accountId) {
+            try {
+              const whisperRes = await callWhisperExpert(audioBase64, cfToken, accountId);
+              if (whisperRes && whisperRes.content) {
+                audioTranscript = whisperRes.content.trim();
               }
-            }
-
-            // 2. Fallback universel Cloudflare Workers AI Vision si Gemini n'a pas répondu ou clé indisponible
-            if (!backgroundPerceptionReport) {
-              let targetImage = imageBase64;
-              if (!targetImage && Array.isArray(videoFrames) && videoFrames.length > 0) {
-                targetImage = videoFrames[0]?.base64 || "";
-              }
-              if (!targetImage && Array.isArray(documentImages) && documentImages.length > 0) {
-                targetImage = (typeof documentImages[0] === 'string' ? documentImages[0] : documentImages[0]?.base64) || "";
-              }
-
-              if (targetImage && targetImage.length > 50) {
-                backgroundPerceptionReport = await runCloudflareVisionAnalysis({
-                  targetImage,
-                  docName: docName || "",
-                  cfToken,
-                  accountId,
-                });
-              }
-            }
-
-            if (!backgroundPerceptionReport && docContent && docContent.trim().length > 10) {
-              backgroundPerceptionReport = docContent.trim();
+            } catch (wErr) {
+              logger.warn("Whisper audio transcription failed", { event: "whisper_error", error: wErr });
             }
           }
 
@@ -1910,7 +1828,7 @@ RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entou
 [FICHIER D'ÉTUDE ACTIF : ${mediaDesc.label.toUpperCase()} « ${docName || "Fichier joint"} »]
 Type exact de ce fichier : ${mediaDesc.label} (${mediaDesc.article}).
 ${docContent ? `Extrait de contenu textuel :\n${docContent.slice(0, 40000)}\n` : ''}
-${backgroundPerceptionReport ? `Dossier de perception visuelle / auditive réelle :\n${backgroundPerceptionReport}\n` : ''}
+${audioTranscript ? `Transcription de l'enregistrement audio :\n${audioTranscript}\n` : ''}
 
 CONSIGNES STRICTES POUR LE TUTEUR :
 1. DÉTECTION DU TYPE EXACT :
@@ -2013,7 +1931,6 @@ CONSIGNES STRICTES DE CONTINUATION :
           // ══════════════════════════════════════════════════════════════════════════════
           // BRANCHE 1 : GOOGLE GEMINI FLASH MULTIMODAL (SI SÉLECTIONNÉ PAR L'UTILISATEUR)
           // ══════════════════════════════════════════════════════════════════════════════
-          // Implémentation conforme au Google Cookbook officiel
           let geminiErrorDetail = "";
           if (isSelectedGemini && geminiKeyToUse) {
             try {
@@ -2041,36 +1958,8 @@ CONSIGNES STRICTES DE CONTINUATION :
             } catch (g20Err: any) {
               logger.warn("Gemini Flash call exception, falling back to Workers AI", { event: "gemini_flash_error", error: g20Err });
               geminiErrorDetail = g20Err?.message || String(g20Err);
-              if (!backgroundPerceptionReport && needsVisualOrAudioPerception) {
-                let targetImage = imageBase64;
-                if (!targetImage && Array.isArray(videoFrames) && videoFrames.length > 0) {
-                  targetImage = videoFrames[0]?.base64 || "";
-                }
-                if (!targetImage && Array.isArray(documentImages) && documentImages.length > 0) {
-                  targetImage = (typeof documentImages[0] === 'string' ? documentImages[0] : documentImages[0]?.base64) || "";
-                }
-                if (targetImage && targetImage.length > 50) {
-                  try {
-                    const cfv = await runCloudflareVisionAnalysis({
-                      targetImage,
-                      docName: docName || "",
-                      cfToken,
-                      accountId,
-                    });
-                    if (cfv) {
-                      backgroundPerceptionReport = cfv;
-                      systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
-[DOSSIER DE PERCEPTION VISUELLE CLOUDFLARE EN RECOURS] :
-${cfv}
-══════════════════════════════════════════════════════════════════════════════`;
-                    }
-                  } catch {}
-                }
-              }
             }
           }
-
-          // Si Gemini a atteint un quota temporaire (429) ou n'a pas répondu, on laisse basculer automatiquement sur la Branche 3.e (Llama 3.3 70B rapide) sans afficher de message d'erreur bloquant.
 
           // ══════════════════════════════════════════════════════════════════════════════
           // BRANCHE 2 : AGENT DELMAS (CHEF D'ÉQUIPE MULTI-IA LLAMA 3.3 - CHAT UNIQUEMENT)
@@ -2092,7 +1981,7 @@ ${cfv}
                 accountId,
                 geminiKey: geminiKeyToUse,
                 requestedType: body.requested_type,
-                perceptionReport: backgroundPerceptionReport,
+                perceptionReport: audioTranscript,
                 documentBase64,
                 documentImages,
               });
@@ -2115,16 +2004,40 @@ ${cfv}
               try {
                 const cfMessages: any[] = [];
                 if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
-                const activeDocInfo = backgroundPerceptionReport || docContent;
+
                 for (let i = 0; i < simpleMessages.length; i++) {
                   const m = simpleMessages[i];
-                  if (i === simpleMessages.length - 1 && m.role === "user") {
-                    if (activeDocInfo || docName) {
+                  const isLastUser = (i === simpleMessages.length - 1 && m.role === "user");
+
+                  if (isLastUser) {
+                    if (imageBase64 && imageBase64.length > 50) {
+                      // MÉTHODE ROBOT ROUGE MULTIMODAL DIRECT :
+                      // Envoi direct de l'image_url à l'IA (Kimi K2.7 Code, GLM 5.3 Flash, etc.)
+                      const cleanB64 = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
+                      const imgMime = mimeType || "image/jpeg";
+                      const textHeader = isAgentCreationTask
+                        ? `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Image jointe"} »]\n\n[MISSION STRICTE DE L'AGENT DE CRÉATION] :\n${m.content}`
+                        : `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Image jointe"} » (${mediaDesc.article})]\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant te pose une question sur cette image (« ${docName || "Image jointe"} »).\n1. Décris brièvement en 1 à 2 phrases ce que tu observes réellement dans l'image.\n2. Réponds directement, chaleureusement et précisément à sa question en t'appuyant rigoureusement sur l'image.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`;
+
+                      cfMessages.push({
+                        role: "user",
+                        content: [
+                          { type: "text", text: textHeader },
+                          {
+                            type: "image_url",
+                            image_url: {
+                              url: `data:${imgMime};base64,${cleanB64}`,
+                            },
+                          },
+                        ],
+                      });
+                    } else if (docContent || docName || audioTranscript) {
+                      const activeInfo = docContent || audioTranscript;
                       cfMessages.push({
                         role: "user",
                         content: isAgentCreationTask
-                          ? `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Fichier joint par l'étudiant."}\n\n[MISSION STRICTE DE L'AGENT DE CRÉATION] :\n${m.content}`
-                          : `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} » (${mediaDesc.article})] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Fichier joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ${mediaDesc.article} (« ${docName || "Fichier joint"} ») et pose la question : « ${m.content} ».\n1. Commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou contenu réel que tu observes dans ${mediaDesc.article}.\n2. Réponds directement, chaleureusement et précisément à sa question en t'appuyant rigoureusement sur ${mediaDesc.article}.\n3. N'invente aucun filtre analogique, formule ou schéma non présent. Ne fais aucune référence aux anciens fichiers de la discussion et ne demande jamais de renvoyer le fichier.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
+                          ? `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} »] :\n${activeInfo ? activeInfo.slice(0, 30000) : "Fichier joint par l'étudiant."}\n\n[MISSION STRICTE DE L'AGENT DE CRÉATION] :\n${m.content}`
+                          : `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} » (${mediaDesc.article})] :\n${activeInfo ? activeInfo.slice(0, 30000) : "Fichier joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ${mediaDesc.article} (« ${docName || "Fichier joint"} ») et pose la question : « ${m.content} ».\n1. Commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou contenu réel que tu observes dans ${mediaDesc.article}.\n2. Réponds directement, chaleureusement et précisément à sa question en t'appuyant rigoureusement sur ${mediaDesc.article}.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
                       });
                     } else {
                       cfMessages.push({ role: m.role, content: m.content });
@@ -2134,7 +2047,7 @@ ${cfv}
                   }
                 }
 
-                const cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
+                let cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
                   method: "POST",
                   headers: {
                     "Authorization": `Bearer ${cfToken}`,
@@ -2146,6 +2059,33 @@ ${cfv}
                     max_tokens: 8192,
                   }),
                 });
+
+                // Si le modèle sélectionné ne supporte pas nativement le format multimodal image_url,
+                // fallback automatique avec Cloudflare Llama Vision
+                if (!cfRes.ok && imageBase64 && imageBase64.length > 50) {
+                  try {
+                    const cfVision = await runCloudflareVisionAnalysis({
+                      targetImage: imageBase64,
+                      docName: docName || "",
+                      cfToken,
+                      accountId,
+                    });
+                    if (cfVision) {
+                      const textFallbackMessages = cfMessages.map(cm => {
+                        if (Array.isArray(cm.content)) {
+                          const textPart = cm.content.find((p: any) => p.type === "text")?.text || "";
+                          return { role: cm.role, content: `${textPart}\n\n[OBSERVATION DE L'IMAGE JOINTE] :\n${cfVision}` };
+                        }
+                        return cm;
+                      });
+                      cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
+                        method: "POST",
+                        headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ model: targetModel, messages: textFallbackMessages, max_tokens: 8192 }),
+                      });
+                    }
+                  } catch {}
+                }
 
                 if (cfRes.ok) {
                   const cfData: any = await cfRes.json();
@@ -2223,7 +2163,7 @@ ${cfv}
               try {
                 const cfMessages: any[] = [];
                 if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
-                const activeDocInfo = backgroundPerceptionReport || docContent;
+                const activeDocInfo = docContent || audioTranscript;
                 for (let i = 0; i < simpleMessages.length; i++) {
                   const m = simpleMessages[i];
                   if (i === simpleMessages.length - 1 && m.role === "user" && (activeDocInfo || docName)) {
@@ -2313,7 +2253,7 @@ ${cfv}
           const creationId = String(body.creationId || `crea-${Date.now()}`).trim();
 
           // Calcul précis des jetons / crédits consommés
-          const totalChars = (userPrompt || '').length + (answerText || '').length + (backgroundPerceptionReport || '').length + (docContent || '').slice(0, 4000).length;
+          const totalChars = (userPrompt || '').length + (answerText || '').length + (audioTranscript || '').length + (docContent || '').slice(0, 4000).length;
           const calculatedTokens = Math.max(90, Math.ceil(totalChars / 3.8));
 
           // Déduction proportionnelle aux tokens (Formule 2 demandée par l'administrateur)
@@ -2511,7 +2451,7 @@ ${cfv}
             creationRes,
             answerText,
             effectiveModelUsed,
-            backgroundPerceptionReport,
+            audioTranscript,
             calculatedTokens,
             creditsDeducted,
             remainingCredits,
@@ -2568,7 +2508,7 @@ ${cfv}
         }
 
         // Mode synchrone classique
-        const { creationRes, answerText, effectiveModelUsed, backgroundPerceptionReport, calculatedTokens, creditsDeducted, remainingCredits, geminiErrorDetail } = await executeGenerationAndPersist();
+        const { creationRes, answerText, effectiveModelUsed, calculatedTokens, creditsDeducted, remainingCredits, geminiErrorDetail } = await executeGenerationAndPersist();
 
         return new Response(JSON.stringify({
           success: true,
@@ -2584,7 +2524,6 @@ ${cfv}
           chat_response: creationRes.chat_response,
           raw_response: answerText,
           model: effectiveModelUsed,
-          perceptionReport: backgroundPerceptionReport || undefined,
           tokens: calculatedTokens,
           credits: creditsDeducted,
           credits_deducted: creditsDeducted,
