@@ -40,7 +40,7 @@ import { StorageAlertNotificationModal } from './components/StorageAlertNotifica
 import { WallpaperSelectorDrawer } from './components/WallpaperSelectorDrawer';
 import { UploadQueueWidget } from './components/UploadQueueWidget';
 import { checkAndPerformWallpaperAutoRotation } from './utils/wallpaperHelper';
-import { purgeVolatileStorage, safeLocalStorageRemove } from './utils/safeStorage';
+import { purgeVolatileStorage, safeLocalStorageRemove, sanitizeItemForStorage } from './utils/safeStorage';
 import { documentSpeechService, useDocumentSpeech } from './services/documentSpeechService';
 
 // Nettoyage immédiat au chargement de l'application pour libérer l'espace des appareils saturés
@@ -744,7 +744,13 @@ export default function App() {
     refetchStagingFiles();
   }, [refetchStagingFiles]);
   const docSpeech = useDocumentSpeech();
-  const [activePreviewItemState, setActivePreviewItemState] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null>(null);
+  const [activePreviewItemState, setActivePreviewItemState] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null>(() => {
+    try {
+      const raw = localStorage.getItem('studycloud_active_preview_item');
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+  });
   const [previewOwnerTab, setPreviewOwnerTab] = useState<NavigationTab | null>(() => {
     try {
       const saved = localStorage.getItem('studycloud_preview_owner_tab');
@@ -819,7 +825,8 @@ export default function App() {
     const tabOwner = currentTab || 'folders';
     setPreviewOwnerTab(tabOwner);
     try {
-      localStorage.removeItem('studycloud_active_preview_item');
+      const sanitized = sanitizeItemForStorage(item);
+      localStorage.setItem('studycloud_active_preview_item', JSON.stringify(sanitized));
       localStorage.setItem('studycloud_preview_owner_tab', tabOwner);
     } catch (e) {}
     if (item.lockFullscreen) {

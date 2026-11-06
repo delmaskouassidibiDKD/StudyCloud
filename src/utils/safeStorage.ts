@@ -105,9 +105,6 @@ export function purgeVolatileStorage(): void {
         try { localStorage.removeItem(item.key); } catch {}
       });
     }
-
-    // Purger active_preview_item résiduel si présent
-    try { localStorage.removeItem('studycloud_active_preview_item'); } catch {}
   } catch (err) {
     console.warn('[safeStorage] Erreur durant purge:', err);
   }

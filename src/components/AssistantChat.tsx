@@ -3527,13 +3527,74 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     return formatConsumedCreditsDisplay(rawTokens, tokensPerCredit, chatLanguage);
   };
 
-  const [isTyping, setIsTyping] = useState(false);
-  const [isWaitingServer, setIsWaitingServer] = useState(false);
-  const isChatRequestInFlightRef = useRef<boolean>(false);
-  const lastSendTimeRef = useRef<number>(0);
-  const lastSendTextRef = useRef<string>('');
-  const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null);
-  const [aiActivityText, setAiActivityText] = useState<string>('Je réfléchis...');
+  const [waitingConvIds, setWaitingConvIds] = useState<Record<string, boolean>>({});
+  const [typingConvIds, setTypingConvIds] = useState<Record<string, boolean>>({});
+  const [aiActivityByConv, setAiActivityByConv] = useState<Record<string, string>>({});
+  const inFlightConvsRef = useRef<Record<string, boolean>>({});
+
+  const isWaitingServer = Boolean(waitingConvIds[currentConversationId]);
+  const isTyping = Boolean(typingConvIds[currentConversationId]);
+  const aiActivityText = aiActivityByConv[currentConversationId] || 'Je réfléchis à votre question...';
+
+  const setConversationWaiting = useCallback((convId: string, waiting: boolean) => {
+    if (!convId) return;
+    setWaitingConvIds(prev => {
+      if (waiting) {
+        if (prev[convId]) return prev;
+        return { ...prev, [convId]: true };
+      } else {
+        if (!prev[convId]) return prev;
+        const next = { ...prev };
+        delete next[convId];
+        return next;
+      }
+    });
+  }, []);
+
+  const setConversationTyping = useCallback((convId: string, typing: boolean) => {
+    if (!convId) return;
+    setTypingConvIds(prev => {
+      if (typing) {
+        if (prev[convId]) return prev;
+        return { ...prev, [convId]: true };
+      } else {
+        if (!prev[convId]) return prev;
+        const next = { ...prev };
+        delete next[convId];
+        return next;
+      }
+    });
+  }, []);
+
+  const setConversationActivity = useCallback((convId: string, text: string) => {
+    if (!convId) return;
+    setAiActivityByConv(prev => ({ ...prev, [convId]: text }));
+  }, []);
+
+  const setIsWaitingServer = useCallback((waiting: boolean) => {
+    setConversationWaiting(currentConversationIdRef.current, waiting);
+  }, [setConversationWaiting]);
+
+  const setIsTyping = useCallback((typing: boolean) => {
+    setConversationTyping(currentConversationIdRef.current, typing);
+  }, [setConversationTyping]);
+
+  const setAiActivityText = useCallback((text: string) => {
+    setConversationActivity(currentConversationIdRef.current, text);
+  }, [setConversationActivity]);
+
+  const isChatRequestInFlightRef = {
+    get current() {
+      return Boolean(inFlightConvsRef.current[currentConversationIdRef.current]);
+    },
+    set current(val: boolean) {
+      if (val) {
+        inFlightConvsRef.current[currentConversationIdRef.current] = true;
+      } else {
+        delete inFlightConvsRef.current[currentConversationIdRef.current];
+      }
+    }
+  };
   const activityTimerRef = useRef<any>(null);
   // Cache de signature des médias analysés par session de discussion (évite de ré-extraire et ré-envoyer 20 Mo à chaque question)
   const analyzedMediaPerConvRef = useRef<Record<string, string>>({});
@@ -3896,6 +3957,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       } catch { }
       delete activeControllersByConvRef.current[targetId];
     }
+    delete inFlightConvsRef.current[targetId];
+    setConversationWaiting(targetId, false);
+    setConversationTyping(targetId, false);
     // aiBackgroundManager.clearTask(targetId);
 
     if (targetId === currentConversationIdRef.current) {
@@ -4001,7 +4065,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       setMessages([]);
       return;
     }
-    const isThisConvInFlight = Boolean(isChatRequestInFlightRef.current && currentConversationIdRef.current === convId);
+    const isThisConvInFlight = Boolean(inFlightConvsRef.current[convId]);
 
     // 1. Chargement instantané du cache local (zéro latence)
     const local = safeGetItem(`studycloud_conv_msgs_${convId}`);
@@ -4020,8 +4084,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
 
     if (isThisConvInFlight) {
-      setIsWaitingServer(true);
-      setIsTyping(true);
+      setConversationWaiting(convId, true);
+      setConversationTyping(convId, true);
     } else {
       // Si aucune requête de chat en cours pour cette conversation, s'assurer que les messages ne restent pas figés en streaming
       if (localParsed.length > 0 && localParsed[localParsed.length - 1]?.isStreaming) {
@@ -4029,8 +4093,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         setMessages(localParsed);
         safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(localParsed));
       }
-      setIsWaitingServer(false);
-      setIsTyping(false);
+      setConversationWaiting(convId, false);
+      setConversationTyping(convId, false);
     }
 
     try {
@@ -4365,8 +4429,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setActiveCreation(null);
     setSessionCreations([]);
     setRetryingMessageId(null);
-    setIsTyping(false);
-    setIsWaitingServer(false);
+    delete inFlightConvsRef.current[newId];
+    setConversationWaiting(newId, false);
+    setConversationTyping(newId, false);
     setIsHistoryDrawerOpen(false);
     setShowProposalBar(true);
 
@@ -5096,8 +5161,12 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
 
     // Protection anti-rebond et anti-doublon (empêche tout double lancement accidentel par double-clic ou répétition instantanée)
     const now = Date.now();
-    if (isChatRequestInFlightRef.current) {
-      console.warn('[AssistantChat] Une requête est déjà en cours de traitement, envoi ignoré.');
+    // Fixer la conversation cible de manière immuable pour cette requête
+    const targetConvId = currentConversationIdRef.current;
+    const targetUserId = currentUserId;
+
+    if (inFlightConvsRef.current[targetConvId]) {
+      console.warn(`[AssistantChat] Une requête est déjà en cours de traitement pour la conversation ${targetConvId}, envoi ignoré.`);
       return;
     }
     if (userText === lastSendTextRef.current && (now - lastSendTimeRef.current) < 1200) {
@@ -5107,11 +5176,9 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
     lastSendTimeRef.current = now;
     lastSendTextRef.current = userText;
     lastSendTimestampRef.current = now;
-    isChatRequestInFlightRef.current = true;
-
-    // Fixer la conversation cible de manière immuable pour cette requête
-    const targetConvId = currentConversationIdRef.current;
-    const targetUserId = currentUserId;
+    inFlightConvsRef.current[targetConvId] = true;
+    setConversationWaiting(targetConvId, true);
+    setConversationTyping(targetConvId, true);
 
     const newUserMsgId = Date.now().toString();
     const newUserMsg: Message = { id: newUserMsgId, text: userText, sender: 'user' };
@@ -5162,14 +5229,14 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
     const updatedMessages = [...convBaseMessages, newUserMsg];
     const updatedMessagesWithPending = [...updatedMessages, initialAiMsg];
     safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(updatedMessages));
-    isChatRequestInFlightRef.current = true;
+    inFlightConvsRef.current[targetConvId] = true;
 
     if (currentConversationIdRef.current === targetConvId) {
       messagesRef.current = updatedMessages;
       setMessages(updatedMessagesWithPending);
       setInputValue('');
-      setIsTyping(true);
-      setIsWaitingServer(true);
+      setConversationTyping(targetConvId, true);
+      setConversationWaiting(targetConvId, true);
     }
 
     // Sauvegarde Cloudflare D1 immédiate du message utilisateur (horodatage garanti AVANT l'IA)
@@ -5184,7 +5251,9 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
 
     // Détection immédiate hors ligne avant envoi réseau
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-      isChatRequestInFlightRef.current = false;
+      delete inFlightConvsRef.current[targetConvId];
+      setConversationWaiting(targetConvId, false);
+      setConversationTyping(targetConvId, false);
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         text: "Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).",
@@ -5197,8 +5266,6 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
       const reverted = convBaseMessages.concat([newUserMsg, errorMsg]);
       safeSetItem(`studycloud_conv_msgs_${targetConvId}`, JSON.stringify(reverted));
       if (currentConversationIdRef.current === targetConvId) {
-        setIsWaitingServer(false);
-        setIsTyping(false);
         setRetryingMessageId(null);
         window.dispatchEvent(new CustomEvent('ai-creation-status-update', {
           detail: { phase: 'idle', isLoading: false, isError: true, resetToPrompts: true }
@@ -5994,10 +6061,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
 
       // Si cette requête a été annulée
       if (abortSignal.aborted) {
-        isChatRequestInFlightRef.current = false;
+        delete inFlightConvsRef.current[targetConvId];
+        setConversationWaiting(targetConvId, false);
+        setConversationTyping(targetConvId, false);
         if (currentConversationIdRef.current === targetConvId) {
-          setIsWaitingServer(false);
-          setIsTyping(false);
           setRetryingMessageId(null);
           window.dispatchEvent(new CustomEvent('ai-creation-status-update', { detail: { phase: 'idle', isLoading: false, isCancelled: true, resetToPrompts: false } }));
         }
@@ -6548,7 +6615,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         const finalizeAiMessage = () => {
           if (isAiMsgFinalized || abortSignal.aborted) return;
           isAiMsgFinalized = true;
-          isChatRequestInFlightRef.current = false;
+          delete inFlightConvsRef.current[targetConvId];
+          setConversationWaiting(targetConvId, false);
+          setConversationTyping(targetConvId, false);
           if (typingTimerRef.current) {
             clearInterval(typingTimerRef.current);
             typingTimerRef.current = null;
@@ -6568,8 +6637,6 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                 m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false, model: effectiveModelName, tokens: respTokens, credits: respCredits } : m
               );
             });
-            setIsTyping(false);
-            setIsWaitingServer(false);
             setRetryingMessageId(null);
             if (scrollContainerRef.current && !isUserScrolledUpRef.current) {
               scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
@@ -6622,13 +6689,15 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         }, tickSpeed);
       } else {
         // L'utilisateur navigue sur une autre conversation : la tâche d'arrière-plan a persisté en toute discrétion
-        isChatRequestInFlightRef.current = false;
-        setIsWaitingServer(false);
-        setIsTyping(false);
+        delete inFlightConvsRef.current[targetConvId];
+        setConversationWaiting(targetConvId, false);
+        setConversationTyping(targetConvId, false);
       }
 
     } catch (err: any) {
-      isChatRequestInFlightRef.current = false;
+      delete inFlightConvsRef.current[targetConvId];
+      setConversationWaiting(targetConvId, false);
+      setConversationTyping(targetConvId, false);
       if (abortSignal.aborted) {
         return;
       }
@@ -6723,7 +6792,8 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
   }, []);
 
   const handleSend = () => {
-    if (!inputValue.trim() || isChatRequestInFlightRef.current || isWaitingServer) return;
+    const activeConvId = currentConversationIdRef.current;
+    if (!inputValue.trim() || inFlightConvsRef.current[activeConvId] || waitingConvIds[activeConvId]) return;
     sendMessage(inputValue);
   };
 

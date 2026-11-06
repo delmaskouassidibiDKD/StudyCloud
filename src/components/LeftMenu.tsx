@@ -28,6 +28,7 @@ import {
   CATEGORY_LABELS 
 } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
+import { sanitizeItemForStorage } from '../utils/safeStorage';
 
 
 interface LeftMenuProps {
@@ -73,7 +74,14 @@ export function LeftMenu({
   const [menuCoords, setMenuCoords] = useState<{ top: number; left: number; file: any; isImportedSection: boolean } | null>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [attachedResources, setAttachedResources] = useState<any[]>([]);
+  const [attachedResources, setAttachedResources] = useState<any[]>(() => {
+    try {
+      const raw = localStorage.getItem('studycloud_attached_resources');
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -160,8 +168,22 @@ export function LeftMenu({
   }, []);
 
   useEffect(() => {
+    try {
+      if (attachedResources && attachedResources.length > 0) {
+        const sanitized = attachedResources.map(sanitizeItemForStorage);
+        localStorage.setItem('studycloud_attached_resources', JSON.stringify(sanitized));
+      } else {
+        localStorage.removeItem('studycloud_attached_resources');
+      }
+    } catch (e) {}
+  }, [attachedResources]);
+
+  useEffect(() => {
     const handleNewConv = () => {
       setAttachedResources([]);
+      try {
+        localStorage.removeItem('studycloud_attached_resources');
+      } catch (e) {}
     };
     window.addEventListener('studycloud_new_conversation', handleNewConv);
     return () => window.removeEventListener('studycloud_new_conversation', handleNewConv);
