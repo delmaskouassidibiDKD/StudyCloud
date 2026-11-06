@@ -5,7 +5,7 @@
  */
 
 export interface ExpertReport {
-  expert: 'whisper-audio' | 'llama-vision' | 'gemini-video' | 'deepseek-math' | 'gemini-perception' | 'kimi-code';
+  expert: 'whisper-audio' | 'llama-vision' | 'deepseek-math' | 'kimi-code';
   status: 'success' | 'skipped' | 'failed';
   summary: string;
   content: string;

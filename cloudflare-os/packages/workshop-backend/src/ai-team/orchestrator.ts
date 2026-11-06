@@ -4,17 +4,15 @@
  * ============================================================================
  * Llama 3.3 70B Fast est désigné comme Chef d'Équipe.
  * Quand Llama 3.3 est sélectionné :
- * - Il mobilise les experts spécialisés (Whisper Audio, Llama Vision, Gemini Vidéo, DeepSeek Calcul).
+ * - Il mobilise les experts spécialisés (Whisper Audio, Llama Vision, Kimi Code, DeepSeek Calcul).
  * - Il synthétise tous leurs rapports et produit la réponse finale pédagogique.
  * 
- * RÈGLE STRICTE :
- * Si l'utilisateur choisit un autre modèle spécifique (Gemini, DeepSeek, Claude...),
- * ce modèle s'exécute SEUL de manière individuelle sans délégation.
+ * 100% CLOUDFLARE WORKERS AI - ZÉRO API GOOGLE GEMINI
  * ============================================================================
  */
 
 import { OrchestrationInput, OrchestrationResult, ExpertReport } from './types';
-import { callWhisperExpert, callVisionExpert, callVideoExpert, callMathExpert, callCodeExpert } from './experts';
+import { callWhisperExpert, callVisionExpert, callMathExpert, callCodeExpert } from './experts';
 
 export function isChefModel(targetModel: string): boolean {
   if (!targetModel) return true;
@@ -73,20 +71,13 @@ export async function orchestrateMultiAgentTeam(
     expertTasks.push(callWhisperExpert(audioBase64, cfToken, accountId));
   }
 
-  // B. Expert Vision de secours (Llama 3.2 11B Vision) - si pas de rapport visuel complet
-  if (imageBase64 && imageBase64.length > 50 && (!perceptionReport || perceptionReport.length < 20)) {
+  // B. Expert Vision (Llama 3.2 11B Vision) pour images et schémas
+  if (imageBase64 && imageBase64.length > 50) {
     expertsMobilized.push('👁️ Llama Vision');
     expertTasks.push(callVisionExpert(imageBase64, cfToken, accountId, userPrompt));
   }
 
-  // C. Expert Vidéo dédié
-  const hasVideo = (videoBase64 && videoBase64.length > 100) || (videoUrl && videoUrl.length > 10);
-  if (hasVideo && geminiKey) {
-    expertsMobilized.push('🎬 Gemini Flash Vidéo');
-    expertTasks.push(callVideoExpert(videoBase64 || '', videoUrl || '', geminiKey));
-  }
-
-  // Analyse contextuelle élargie (Prompt + Nom de doc + Contenu + Rapport de perception Gemini)
+  // Analyse contextuelle élargie (Prompt + Nom de doc + Contenu)
   const combinedContext = `${userPrompt} ${docName || ''} ${(docContent || '').slice(0, 4000)} ${(perceptionReport || '').slice(0, 4000)}`;
 
   // D. Expert Calcul & Démonstrations Algébriques (DeepSeek R1 Raisonnement 32B)
@@ -110,12 +101,6 @@ export async function orchestrateMultiAgentTeam(
   const expertReports: string[] = [];
   const successfulExperts: string[] = [];
 
-  // Intégration prioritaire du dossier de perception multimédia Gemini Flash (Images, Documents PDF/Word, Schémas, Audio/Vidéo)
-  if (perceptionReport && perceptionReport.trim().length > 15) {
-    successfulExperts.push('👁️ Gemini Flash (Perception Multimodale)');
-    expertReports.push(`[DOSSIER DE PERCEPTION MULTIMODALE DU FICHIER TRANSMIS PAR GEMINI FLASH] :\n${perceptionReport.trim()}`);
-  }
-
   for (const res of expertResults) {
     if (res.status === 'fulfilled' && res.value && res.value.status === 'success' && res.value.content) {
       const exp = res.value;
@@ -125,9 +110,6 @@ export async function orchestrateMultiAgentTeam(
       } else if (exp.expert === 'llama-vision') {
         successfulExperts.push('👁️ Llama Vision');
         expertReports.push(`[ÉNONCÉ ET OBSERVATIONS DU SCHÉMA / IMAGE (LLAMA VISION)] :\n${exp.content}`);
-      } else if (exp.expert === 'gemini-video') {
-        successfulExperts.push('🎬 Gemini Vidéo');
-        expertReports.push(`[ANALYSE DE LA VIDÉO DE COURS (GEMINI FLASH)] :\n${exp.content}`);
       } else if (exp.expert === 'deepseek-math') {
         successfulExperts.push('🧮 DeepSeek R1 Calcul');
         expertReports.push(`[RÉSOLUTIONS, CALCULS ET DÉMONSTRATIONS PAS À PAS (DEEPSEEK R1)] :\n${exp.content}`);
@@ -154,7 +136,7 @@ RÈGLE 2 — RÉSOUDRE COMPLÈTEMENT ET RÉELLEMENT SANS RESTER AU STADE DES ÉT
   * Résous directement et entièrement chaque question avec calculs réels, formules KaTeX standard ($...$ en ligne, $$...$$ en bloc centré avec \\dfrac{}{}) et résultats finaux encadrés $$ \\boxed{\\text{Résultat}} $$.
 
 RÈGLE 3 — SYNTHÈSE PÉDAGOGIQUE PARFAITE :
-- Exploite harmonieusement les observations visuelles de Gemini Flash, les calculs précis de DeepSeek R1, les codes de Kimi et les transcriptions audio pour donner une réponse limpide et encourageante.
+- Exploite harmonieusement les observations visuelles de Llama Vision et Kimi, les calculs précis de DeepSeek R1, les codes de Kimi et les transcriptions audio de Whisper pour donner une réponse limpide et encourageante.
 ══════════════════════════════════════════════════════════════════════════════`;
 
   let enrichedSystemPrompt = `${chefDirectiveHeader}\n\n${systemPrompt}`;

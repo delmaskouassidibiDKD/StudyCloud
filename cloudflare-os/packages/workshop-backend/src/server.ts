@@ -922,264 +922,8 @@ function stripAiReasoningScratchpad(text: string): string {
  * Exécute l'appel multimodal vers Google Gemini Flash selon le Google Cookbook officiel
  * Supporte nativement vidéos (avec audio), fichiers audios, images et documents.
  */
-async function executeGemini20Flash(params: {
-  apiKey: string;
-  systemPrompt: string;
-  messages: Array<{ role: "user" | "assistant"; content: string }>;
-  effectivePrompt: string;
-  imageBase64?: string;
-  mimeType?: string;
-  videoBase64?: string;
-  videoFrames?: Array<{ base64: string; mimeType?: string; timestamp?: number }>;
-  videoMimeType?: string;
-  audioBase64?: string;
-  audioMimeType?: string;
-  documentBase64?: string;
-  documentMimeType?: string;
-  documentImages?: Array<{ base64: string; mimeType?: string; name?: string }>;
-  mediaType?: string;
-}): Promise<string> {
-  const { apiKey, systemPrompt, messages, effectivePrompt, imageBase64, mimeType, videoBase64, videoFrames, videoMimeType, audioBase64, audioMimeType, documentBase64, documentMimeType, documentImages } = params;
-
-  const contents: any[] = [];
-
-  // Messages historiques : rôles stricts 'user' et 'model' selon Google Cookbook
-  const historyTurns = messages.slice(0, -1);
-  for (const m of historyTurns) {
-    contents.push({
-      role: m.role === "assistant" ? "model" : "user",
-      parts: [{ text: m.content }],
-    });
-  }
-
-  // Dernier tour utilisateur (multimodal selon la spécification Google Cookbook)
-  const currentParts: any[] = [];
-
-  // 1. Flux vidéo direct inline (contient automatiquement la vidéo et la piste sonore synchronisée)
-  if (videoBase64 && videoBase64.length > 50) {
-    const cleanVideoBase64 = videoBase64.includes("base64,") ? videoBase64.split("base64,")[1].trim() : videoBase64.trim();
-    let effectiveVideoMime = videoMimeType || "video/mp4";
-    if (videoBase64.includes("video/webm")) effectiveVideoMime = "video/webm";
-    else if (videoBase64.includes("video/quicktime")) effectiveVideoMime = "video/quicktime";
-    else if (videoBase64.includes("video/ogg")) effectiveVideoMime = "video/ogg";
-    else if (videoBase64.includes("video/x-msvideo") || videoBase64.includes("video/avi")) effectiveVideoMime = "video/avi";
-
-    if (cleanVideoBase64.length < 28 * 1024 * 1024) {
-      currentParts.push({
-        inlineData: {
-          mimeType: effectiveVideoMime,
-          data: cleanVideoBase64,
-        }
-      });
-    }
-  }
-
-  // 2. Flux audio direct inline (fichiers audio, notes vocales, podcast, cours oral)
-  if (audioBase64 && audioBase64.length > 50) {
-    const cleanAudioBase64 = audioBase64.includes("base64,") ? audioBase64.split("base64,")[1].trim() : audioBase64.trim();
-    let effectiveAudioMime = audioMimeType || "audio/mp3";
-    if (audioBase64.includes("audio/wav")) effectiveAudioMime = "audio/wav";
-    else if (audioBase64.includes("audio/ogg") || audioBase64.includes("audio/opus")) effectiveAudioMime = "audio/ogg";
-    else if (audioBase64.includes("audio/m4a") || audioBase64.includes("audio/x-m4a")) effectiveAudioMime = "audio/m4a";
-    else if (audioBase64.includes("audio/webm")) effectiveAudioMime = "audio/webm";
-    else if (audioBase64.includes("audio/aac")) effectiveAudioMime = "audio/aac";
-
-    if (cleanAudioBase64.length < 28 * 1024 * 1024) {
-      currentParts.push({
-        inlineData: {
-          mimeType: effectiveAudioMime,
-          data: cleanAudioBase64,
-        }
-      });
-    }
-  }
-
-  // 3. Document PDF direct inline (Vision et OCR natif multimodale de chaque page, graphiques, figures, schémas, tableaux)
-  if (documentBase64 && documentBase64.length > 50) {
-    const cleanDocBase64 = documentBase64.includes("base64,") ? documentBase64.split("base64,")[1].trim() : documentBase64.trim();
-    let effectiveDocMime = documentMimeType || "application/pdf";
-    if (documentBase64.includes("application/pdf")) effectiveDocMime = "application/pdf";
-    if (cleanDocBase64.length < 28 * 1024 * 1024) {
-      currentParts.push({
-        inlineData: {
-          mimeType: effectiveDocMime,
-          data: cleanDocBase64,
-        }
-      });
-    }
-  }
-
-  // 4. Schémas et images extraits de documents (dessins, circuits, graphiques d'un fichier Word .docx)
-  if (Array.isArray(documentImages) && documentImages.length > 0) {
-    for (const dImg of documentImages) {
-      const rawImg = typeof dImg === 'string' ? dImg : (dImg.base64 || "");
-      const cleanImg = rawImg.includes("base64,") ? rawImg.split("base64,")[1].trim() : rawImg.trim();
-      const mime = (typeof dImg === 'object' && dImg.mimeType) ? dImg.mimeType : "image/jpeg";
-      if (cleanImg && cleanImg.length < 28 * 1024 * 1024) {
-        currentParts.push({
-          inlineData: {
-            mimeType: mime,
-            data: cleanImg,
-          }
-        });
-      }
-    }
-  }
-
-  // 5. Image directe inline
-  if (imageBase64 && imageBase64.length > 50) {
-    const cleanBase64 = imageBase64.includes("base64,") ? imageBase64.split("base64,")[1].trim() : imageBase64.trim();
-    let effectiveMime = mimeType || "image/jpeg";
-    if (imageBase64.includes("image/png")) effectiveMime = "image/png";
-    else if (imageBase64.includes("image/webp")) effectiveMime = "image/webp";
-    else if (imageBase64.includes("image/gif")) effectiveMime = "image/gif";
-    else if (imageBase64.includes("application/pdf")) effectiveMime = "application/pdf";
-
-    if (cleanBase64) {
-      currentParts.push({
-        inlineData: {
-          mimeType: effectiveMime,
-          data: cleanBase64,
-        }
-      });
-    }
-  }
-
-  // 6. Frames vidéo (SEULEMENT si aucun flux videoBase64 direct n'a pu être fourni)
-  if ((!videoBase64 || videoBase64.length <= 50) && Array.isArray(videoFrames) && videoFrames.length > 0) {
-    for (const f of videoFrames) {
-      const rawF = String(f.base64 || "");
-      const fBase64 = rawF.includes("base64,") ? rawF.split("base64,")[1].trim() : rawF.trim();
-      if (fBase64) {
-        currentParts.push({
-          inlineData: {
-            mimeType: f.mimeType || "image/jpeg",
-            data: fBase64,
-          }
-        });
-      }
-    }
-  }
-
-  currentParts.push({ text: effectivePrompt });
-
-  contents.push({
-    role: "user",
-    parts: currentParts,
-  });
-
-  const reqBody: any = {
-    contents,
-    generationConfig: {
-      temperature: 0.7,
-      maxOutputTokens: 8192,
-    }
-  };
-
-  let effectiveSystemPrompt = (systemPrompt || "").trim();
-  effectiveSystemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
-[DIRECTIVES MULTIMÉDIAS STRICTES - VIDÉO, AUDIO, IMAGE, DOCUMENT] :
-1. DÉTECTION DU TYPE DE CONTENU :
-   - VIDÉO : Si le document est une vidéo (WhatsApp, MP4, WebM, etc.), traite-le formellement comme une VIDÉO.
-   - AUDIO : Si le document est un fichier sonore (vocal WhatsApp, MP3, WAV, podcast, cours audio), traite-le formellement comme un ENREGISTREMENT AUDIO.
-   - IMAGE : Si le document est une image, photo ou scan, traite-le comme une IMAGE.
-   - DOCUMENT (PDF, Word, etc.) : Si le document est un PDF, un fichier Word ou un texte, traite-le formellement comme un DOCUMENT. Analyse son contenu textuel ET observe attentivement tous ses éléments visuels (images, schémas, dessins, graphiques, figures géométriques, diagrammes, courbes, tableaux, formules manuscrites ou encadrées).
-
-2. STYLE NATUREL ET HUMAIN (STYLE OFFICIEL GOOGLE GEMINI) :
-   - INTERDICTION STRICTE DE JARGON TECHNIQUE : Ne mentionne JAMAIS de termes internes de traitement ou d'ingénierie (interdiction absolue de dire "j'ai reçu X images clés", "clichés capturés", "frames", "échantillons", "rapport ocr", ou de découper artificiellement la réponse par "Scène à X.Xs").
-   - Parle directement et naturellement comme le fait l'assistant Google Gemini officiel (ex: "Cette image montre...", "Dans cette image, on observe...", "Cette vidéo montre...", "Cet enregistrement audio présente...", "Dans ce document PDF...").
-
-3. ANALYSE GLOBALE HARMONIEUSE :
-   - Pour une vidéo : Décris le contenu visuel (personnes, actions, décor, tenues, textes et incrustations à l'écran) ET intègre naturellement l'ambiance et la piste sonore (musique, paroles, voix, ce qui est dit).
-   - Pour un audio : Retranscris et synthétise ce qui est dit, les intervenants, le ton et les notions clés.
-   - Pour une image : Décris fidèlement et exhaustivement ce qui est visible sur l'image (schémas, personnes, objets du monde réel, paysage, formules réelles) SANS inventer de formules ou de circuits inexistants.
-   - Pour un document (PDF, Word) : Intègre à la fois le texte du cours et l'analyse visuelle de TOUS les schémas, graphiques, illustrations ou figures présents.
-══════════════════════════════════════════════════════════════════════════════
-[INTERDICTION STRICTE DE PLAQUER DES SUJETS INEXISTANTS OU DES FORMULES DE FILTRES] :
-- Analyse STRICTEMENT et FIDÈLEMENT le contenu réel du fichier fourni (image, photo, schéma ou document).
-- N'invente JAMAIS de texte, de schéma ou de formule qui ne figure pas sur l'image ou le document.
-- INTERDICTION FORMELLE de parler de filtres analogiques, de montages AOP, de théorème de Millman, de diagrammes de Bode ou de facteurs de qualité Q0 sauf si le document joint est EXPLICITEMENT et UNIQUEMENT un cours d'électronique portant sur ce sujet.
-══════════════════════════════════════════════════════════════════════════════`;
-
-  reqBody.systemInstruction = {
-    parts: [{ text: effectiveSystemPrompt }]
-  };
-
-  // Sélection directe et ordonnée des modèles Google Gemini actifs sur l'API officielle
-  const candidateModels = [
-    "gemini-2.0-flash",
-    "gemini-1.5-flash",
-    "gemini-1.5-flash-latest",
-    "gemini-2.0-flash-exp",
-  ];
-
-  const hasInlineMedia = currentParts.some((p: any) => Boolean(p?.inlineData));
-  const textOnlyContents = contents.map((c: any, idx: number) => {
-    if (idx === contents.length - 1 && Array.isArray(c.parts)) {
-      const textParts = c.parts.filter((p: any) => !p?.inlineData);
-      return { ...c, parts: textParts.length > 0 ? textParts : [{ text: effectivePrompt }] };
-    }
-    return c;
-  });
-  const textOnlyReqBody = {
-    ...reqBody,
-    contents: textOnlyContents,
-  };
-
-  const modelErrors: string[] = [];
-  let consecutiveRateLimits = 0;
-  for (const mod of candidateModels) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 28000);
-      let res: Response;
-      try {
-        res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${apiKey}`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(reqBody),
-          signal: controller.signal,
-        });
-      } finally {
-        clearTimeout(timeoutId);
-      }
-
-      if (res.ok) {
-        const data: any = await res.json();
-        const txt = data?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
-        if (txt) return cleanTechnicalMediaJargon(txt);
-      } else {
-        const errBody = await res.text().catch(() => "");
-        logger.warn("Gemini Google API error", { event: "ai.gemini.error", error: `${mod}:${res.status}:${errBody}` });
-        modelErrors.push(`${mod}:${res.status}`);
-
-        // Repli rapide si 400 (ex: inlineData non supporté pour ce format)
-        if (res.status === 400 && hasInlineMedia) {
-          try {
-            const fallbackRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${apiKey}`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(textOnlyReqBody),
-            });
-            if (fallbackRes.ok) {
-              const fbData: any = await fallbackRes.json();
-              const fbTxt = fbData?.candidates?.[0]?.content?.parts?.map((p: any) => p.text).filter(Boolean).join("") || "";
-              if (fbTxt) return cleanTechnicalMediaJargon(fbTxt);
-            }
-          } catch {}
-        }
-
-        if (res.status === 429) {
-          consecutiveRateLimits++;
-          if (consecutiveRateLimits >= 2) break;
-        }
-      }
-    } catch (e: any) {
-      modelErrors.push(`${mod}:EXCEPTION:${e?.message || e}`);
-    }
-  }
-
-  throw new Error(`Modèles Gemini indisponibles: ${modelErrors.join(", ")}`);
+async function executeGemini20Flash(_params: any): Promise<string> {
+  throw new Error("Modèle Gemini désactivé");
 }
 
 async function runCloudflareVisionAnalysis(params: {
@@ -1598,7 +1342,7 @@ export default {
         const orchestratorInstruction = String(body.orchestratorInstruction || '').trim();
 
         const userPrompt = String(body.message || body.prompt || "").trim();
-        let targetModel = String(body.model || body.requested_model || "gemini-2.0-flash").trim();
+        let targetModel = String(body.model || body.requested_model || "@cf/meta/llama-3.3-70b-instruct-fp8-fast").trim();
         const history = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
         const docContent = String(body.attachedFileContent || body.file_content || body.documentContent || body.docContent || "").trim();
         const docName = String(body.attachedFileName || body.file_name || body.fileName || body.docName || "").trim();
@@ -1626,8 +1370,9 @@ export default {
 
         if (targetModel.includes("llama-3.3") && !targetModel.includes("fp8-fast")) {
           targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-        } else if (targetModel.includes("gemini") || targetModel === "gemini-3.8-flash" || targetModel === "gemini-2.5-flash" || targetModel === "gemini-3.6-flash") {
-          targetModel = "gemini-2.0-flash";
+        } else if (targetModel.includes("gemini") || targetModel.includes("flash")) {
+          // Remplacement immédiat et définitif de tout modèle Gemini par Agent Delmas (Llama 3.3 70B Fast)
+          targetModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
         } else if (targetModel.includes("claude-3-5")) {
           targetModel = "claude-sonnet-4-5";
         }
@@ -1763,16 +1508,9 @@ export default {
               break;
             }
           }
-          const isKnownDeadKey = rawApiKey.startsWith("AIzaSyDKct");
-          const hasValidUserGeminiKey = !isKnownDeadKey && rawApiKey.startsWith("AIzaSy") && rawApiKey.length > 25;
-          const fallbackGeminiKey = ["AIzaSyA", "K6XU4uK5R-wVjH", "gB2Z-p5kM8mK9eXQ"].join("");
-          const geminiKeyToUse = cloudflareGeminiSecret || (hasValidUserGeminiKey ? rawApiKey : "") || fallbackGeminiKey;
-
-          const isSelectedGemini = targetModel === "gemini-2.0-flash" || targetModel.includes("gemini") || targetModel === "gemini-3.8-flash" || targetModel === "gemini-3.6-flash";
-
           // MÉTHODE ROBOT ROUGE DIRECTE :
-          // Chaque modèle traite le fichier directement avec sa propre vision ou intelligence.
-          // Zéro appel secret intermédiaire vers Gemini 2.0 Flash.
+          // Chaque modèle Cloudflare Workers AI traite le fichier directement avec sa propre vision ou intelligence.
+          // Zéro appel vers Gemini.
           let audioTranscript = "";
           if (audioBase64 && audioBase64.length > 50 && cfToken && accountId) {
             try {
@@ -1857,16 +1595,12 @@ CONSIGNES STRICTES POUR LE TUTEUR :
           }
 
           const friendlyNameMap: Record<string, string> = {
-            "gemini-2.0-flash": "Google Gemini 2.0 Flash",
-            "gemini-3.8-flash": "Google Gemini 2.0 Flash",
-            "gemini-3.6-flash": "Google Gemini 2.0 Flash",
-            "gemini-1.5-flash": "Google Gemini 1.5 Flash",
+            "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Agent Delmas (Chef Multi-IA)",
+            "@cf/meta/llama-3.3-70b-instruct": "Agent Delmas (Chef Multi-IA)",
             "@cf/moonshotai/kimi-k2.7-code": "Kimi K2.7 Code",
             "@cf/zai-org/glm-5.3-flash": "GLM 5.3 Flash",
             "@cf/deepseek-ai/deepseek-v4-pro-0813": "DeepSeek V4 Pro",
             "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b": "DeepSeek R1 32B",
-            "@cf/meta/llama-3.3-70b-instruct-fp8-fast": "Agent Delmas (Chef Multi-IA)",
-            "@cf/meta/llama-3.3-70b-instruct": "Agent Delmas (Chef Multi-IA)",
             "claude-3-5-sonnet-20241022": "Claude 3.5 Sonnet",
             "claude-sonnet-4-5": "Claude Sonnet 4.5",
             "gpt-4o-mini": "OpenAI GPT-4o Mini",
@@ -1927,42 +1661,10 @@ CONSIGNES STRICTES DE CONTINUATION :
 
           let answerText = "";
           let effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
-
-          // ══════════════════════════════════════════════════════════════════════════════
-          // BRANCHE 1 : GOOGLE GEMINI FLASH MULTIMODAL (SI SÉLECTIONNÉ PAR L'UTILISATEUR)
-          // ══════════════════════════════════════════════════════════════════════════════
           let geminiErrorDetail = "";
-          if (isSelectedGemini && geminiKeyToUse) {
-            try {
-              const gText = await executeGemini20Flash({
-                apiKey: geminiKeyToUse,
-                systemPrompt,
-                messages: simpleMessages,
-                effectivePrompt,
-                imageBase64,
-                mimeType,
-                videoBase64,
-                videoFrames,
-                videoMimeType,
-                audioBase64,
-                audioMimeType,
-                documentBase64,
-                documentMimeType,
-                documentImages,
-                mediaType,
-              });
-              if (gText) {
-                answerText = stripAiReasoningScratchpad(cleanTechnicalMediaJargon(gText));
-                effectiveModelUsed = "Google Gemini 2.0 Flash";
-              }
-            } catch (g20Err: any) {
-              logger.warn("Gemini Flash call exception, falling back to Workers AI", { event: "gemini_flash_error", error: g20Err });
-              geminiErrorDetail = g20Err?.message || String(g20Err);
-            }
-          }
 
           // ══════════════════════════════════════════════════════════════════════════════
-          // BRANCHE 2 : AGENT DELMAS (CHEF D'ÉQUIPE MULTI-IA LLAMA 3.3 - CHAT UNIQUEMENT)
+          // BRANCHE 1 : AGENT DELMAS (CHEF D'ÉQUIPE MULTI-IA LLAMA 3.3 - CHAT UNIQUEMENT)
           // ══════════════════════════════════════════════════════════════════════════════
           if (!answerText && isChefModel(targetModel) && !isAgentCreationTask) {
             try {
@@ -1979,7 +1681,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                 videoUrl,
                 cfToken,
                 accountId,
-                geminiKey: geminiKeyToUse,
+                geminiKey: undefined,
                 requestedType: body.requested_type,
                 perceptionReport: audioTranscript,
                 documentBase64,
@@ -2200,24 +1902,6 @@ CONSIGNES STRICTES DE CONTINUATION :
                 logger.error("Cloudflare Workers AI fallback exception", { event: "cloudflare_fallback_error", error: cfErr });
               }
             }
-          }
-
-          // Secours résilient Google Gemini 2.0 Flash Multimodal (uniquement si pas déjà tenté en Branche 1)
-          if (!answerText && geminiKeyToUse && !isSelectedGemini) {
-            try {
-              const fallbackGText = await executeGemini20Flash({
-                apiKey: geminiKeyToUse,
-                systemPrompt,
-                messages: simpleMessages,
-                effectivePrompt,
-                imageBase64,
-                mimeType,
-              });
-              if (fallbackGText) {
-                answerText = stripAiReasoningScratchpad(fallbackGText);
-                effectiveModelUsed = "Google Gemini 2.0 Flash (Secours)";
-              }
-            } catch (_eFallbackG) { }
           }
 
           // Secours final gracieux

@@ -568,9 +568,11 @@ export function getModel(env: Cloudflare.Env, config: AiModelConfig,
                          options: ModelRoutingOptions = {}): ModelHandle {
   // Automatically migrate models to current active versions
   if (config.provider === "google" || (typeof config.model === "string" && config.model.includes("gemini"))) {
-    if (config.model.includes("2.0") || config.model.includes("2.5") || config.model.includes("1.5") || config.model.includes("3.8") || config.model === "gemini-2.0-flash") {
-      config = { ...config, model: "gemini-2.0-flash" };
-    }
+    config = {
+      ...config,
+      provider: "cloudflare",
+      model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast"
+    };
   }
   if (config.provider === "cloudflare" || (typeof config.model === "string" && config.model.includes("llama-3.3"))) {
     if (config.model === "@cf/meta/llama-3.3-70b-instruct") {
@@ -744,8 +746,9 @@ function directAuth(config: AiModelConfig, keyHeader: string): Pick<HandleArgs, 
 // Direct provider access using the credentials in the model config itself (no AI Gateway).
 export function getModelDirect(config: AiModelConfig, sessionAffinity?: string): ModelHandle {
   let effectiveModel = config.model;
-  if (config.provider === "google" && (effectiveModel.includes("gemini-2.0") || effectiveModel.includes("gemini-2.5") || effectiveModel.includes("gemini-1.5") || effectiveModel.includes("gemini-3.8") || effectiveModel === "gemini-2.0-flash")) {
-    effectiveModel = "gemini-2.0-flash";
+  if (config.provider === "google" || (typeof effectiveModel === "string" && effectiveModel.includes("gemini"))) {
+    config = { ...config, provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" };
+    effectiveModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
   } else if (config.provider === "cloudflare" && effectiveModel === "@cf/meta/llama-3.3-70b-instruct") {
     effectiveModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
   } else if (config.provider === "anthropic" && effectiveModel.includes("claude-3-5")) {

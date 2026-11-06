@@ -328,11 +328,11 @@ export async function sendChatMessageToAi(params: {
     userMsgId: params.userMsgId || undefined,
     aiMsgId: params.aiMsgId || undefined,
     perceptionReport: params.perceptionReport || undefined,
-    model: params.model || params.selectedModel || 'gemini-2.0-flash',
-    powerMode: isPowerMode,
-    isPowerMode: isPowerMode,
-    engine: isPowerMode ? 'gemini' : (params.engine || 'standard'),
-    geminiApiKey: userGeminiApiKey || undefined,
+    model: (!params.model || params.model.includes('gemini')) ? '@cf/meta/llama-3.3-70b-instruct-fp8-fast' : (params.model || params.selectedModel),
+    powerMode: false,
+    isPowerMode: false,
+    engine: 'standard',
+    geminiApiKey: undefined,
     apiKey: cleanExplicitKey || undefined,
     apiToken: cleanExplicitKey || undefined,
     message: params.prompt || params.message || '',
@@ -353,8 +353,8 @@ export async function sendChatMessageToAi(params: {
     mediaType: params.mediaType || undefined,
   };
 
-  // 1. Appel direct via le SDK officiel @google/genai si une clé Gemini est disponible et que le modèle ciblé est Gemini (ou Power Mode)
-  if (userGeminiApiKey && userGeminiApiKey.length > 20 && (params.model === 'gemini-2.0-flash' || isPowerMode || params.engine === 'gemini')) {
+  // Appel au backend Cloudflare OS (Workers AI)
+  if (false) {
     try {
       const isContinuation = Boolean(
         params.isContinuation ||
@@ -494,8 +494,8 @@ export async function sendChatMessageToAi(params: {
     if (isNeuronQuotaExhausted) {
       console.warn('[StudyCloud AI] Quota 10,000 neurones Cloudflare atteint (Erreur 4006).');
 
-      // TENTATIVE DE SECOURS DIRECT GEMINI : Si une clé est disponible
-      if (userGeminiApiKey && userGeminiApiKey.length > 10) {
+      // TENTATIVE DE SECOURS DIRECT GEMINI (Désactivée)
+      if (false) {
         try {
           const isContinuation = Boolean(
             params.isContinuation ||
@@ -943,8 +943,8 @@ export async function generateDirectAiCreation(params: {
     }
   } catch (_rootErr) {}
 
-  // 4. TENTATIVE : Gemini direct via le SDK officiel @google/genai
-  if (userGeminiApiKey && userGeminiApiKey.length > 10) {
+  // 4. TENTATIVE : Gemini direct via le SDK officiel (Désactivée)
+  if (false) {
     try {
       const gText = await callGoogleGenAi({
         apiKey: userGeminiApiKey,
@@ -1018,8 +1018,8 @@ export async function gradeDevoirWithAi(devoirData: any, userAnswers: Record<str
     }
   } catch (_e) {}
 
-  // 2. Tenter Gemini direct si configuré
-  if (userGeminiApiKey && userGeminiApiKey.length > 10) {
+  // 2. Tenter Gemini direct si configuré (Désactivée)
+  if (false) {
     try {
       const geminiPrompt = `Tu es un professeur rigoureux. Évalue les réponses rédigées par l'étudiant pour ce devoir.
 Réponds STRICTEMENT avec un objet JSON :

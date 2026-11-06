@@ -3675,8 +3675,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [isModelsLoading, setIsModelsLoading] = useState<boolean>(() => getCachedActiveModels().length === 0);
 
   const [selectedModel, setSelectedModel] = useState<string>(() => {
-    const cached = safeGetItem('studycloud_selected_ai_model', 'gemini-2.0-flash');
-    return (cached === 'gemini-3.8-flash' || cached === 'gemini-2.5-flash' || cached === 'gemini-3.6-flash') ? 'gemini-2.0-flash' : cached;
+    const cached = safeGetItem('studycloud_selected_ai_model', '@cf/meta/llama-3.3-70b-instruct-fp8-fast');
+    if (!cached || cached.includes('gemini')) return '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+    return cached;
   });
 
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
@@ -3706,16 +3707,17 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     StudyCloudAPI.getRobotRougeConfig()
       .then((res: any) => {
         if (res && res.success && Array.isArray(res.models)) {
-          // Filtrer strictement les modèles actifs (exclut immédiatement les modèles désactivés)
-          const active = res.models.filter((m: any) => m.is_active === 1 || m.is_active === true || m.is_active === '1' || m.enabled === 1 || m.enabled === true);
+          // Filtrer strictement les modèles actifs (exclut immédiatement les modèles désactivés et Gemini)
+          const active = res.models
+            .filter((m: any) => m.is_active === 1 || m.is_active === true || m.is_active === '1' || m.enabled === 1 || m.enabled === true)
+            .filter((m: any) => {
+              const mid = ((m.id || m.model_id) || '').toLowerCase();
+              return !mid.includes('gemini') && m.provider !== 'google';
+            });
           if (active.length > 0) {
             const cleaned = active.map((m: any) => {
               let id = m.id || m.model_id;
               if (id === '@cf/meta/llama-3.3-70b-instruct') id = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-              if (id === 'gemini-3.8-flash' || id === 'gemini-2.5-flash' || id === 'gemini-3.6-flash') {
-                id = 'gemini-2.0-flash';
-                m.name = 'Google Gemini 2.0 Flash';
-              }
 
               // Priorité absolue au surnom personnalisé configuré
               const cleanNick = (m.nickname && typeof m.nickname === 'string') ? stripWorkerAi(m.nickname) : '';
@@ -3744,8 +3746,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             const currentExists = dedupedCleaned.some((m: any) => m.id === selectedModel || m.model_id === selectedModel);
             if (!currentExists && res.config?.default_model) {
               let def = res.config.default_model;
-              if (def === '@cf/meta/llama-3.3-70b-instruct') def = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-              if (def === 'gemini-3.8-flash' || def === 'gemini-2.5-flash' || def === 'gemini-3.6-flash') def = 'gemini-2.0-flash';
+              if (def === '@cf/meta/llama-3.3-70b-instruct' || def.includes('gemini')) def = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
               const defExists = dedupedCleaned.some((m: any) => m.id === def || m.model_id === def);
               if (defExists) {
                 setSelectedModel(def);
@@ -5899,11 +5900,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
         ...sanitizedHistory,
       ];
 
-      // 5. Appel au moteur d'IA officiel StudyCloud (Multimodal Gemini 2.0 Flash conforme Google Cookbook)
+      // 5. Appel au moteur d'IA officiel StudyCloud (Cloudflare Workers AI)
       const selectedModelObj = availableModels.find(m => m.id === selectedModel || m.model_id === selectedModel);
       const rawConfiguredToken = (selectedModelObj as any)?.api_token;
-      // Pour les modèles Worker Cloudflare (Gemini 2.0 Flash) ou clés compromises, ne pas envoyer de token obsolète
-      const isWorkerModel = selectedModel === 'gemini-2.0-flash' || selectedModelObj?.provider === 'cloudflare';
+      const isWorkerModel = selectedModelObj?.provider === 'cloudflare';
       const isDeadKey = Boolean(rawConfiguredToken && (rawConfiguredToken.startsWith('AIzaSyDKct') || rawConfiguredToken.length < 25));
       const configuredToken = (isWorkerModel || isDeadKey) ? undefined : rawConfiguredToken;
 

@@ -509,23 +509,14 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
         let name = m.name;
         if (id === "@cf/meta/llama-3.3-70b-instruct") {
           id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-          name = "Llama 3.3 70B Instruct (Workers AI)";
-        } else if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash" || id === "gemini-3.8-flash" || id.includes("gemini")) {
-          id = "gemini-2.0-flash";
-          name = "Google Gemini 2.0 Flash";
+          name = "Agent Delmas (Chef Multi-IA)";
         } else if (id.includes("claude-3-5")) {
           id = "claude-sonnet-4-5";
           name = "Claude Sonnet 4.5";
         }
         return { ...m, id, name };
-      });
-      const gIndex = result.findIndex(m => m.id === "gemini-2.0-flash");
-      if (gIndex > 0) {
-        const [g] = result.splice(gIndex, 1);
-        result.unshift(g);
-      } else if (gIndex === -1) {
-        result.unshift({ id: "gemini-2.0-flash", name: "Google Gemini 2.0 Flash", type: "agent" });
-      }
+      }).filter(m => !m.id.includes("gemini") && !m.name.toLowerCase().includes("gemini"));
+
       return result;
     }
 
@@ -534,45 +525,41 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (res.ok) {
         const data: any = await res.json();
         if (data && data.success && Array.isArray(data.models) && data.models.length > 0) {
-          const list = data.models.map((m: any) => {
-            let id = m.id || m.model_id;
-            let name = m.name || id;
-            if (id === "@cf/meta/llama-3.3-70b-instruct") {
-              id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-              name = "Llama 3.3 70B Instruct (Workers AI)";
-            } else if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash" || id === "gemini-3.8-flash" || id.includes("gemini")) {
-              id = "gemini-2.0-flash";
-              name = "Google Gemini 2.0 Flash";
-            } else if (id.includes("claude-3-5")) {
-              id = "claude-sonnet-4-5";
-              name = "Claude Sonnet 4.5";
-            }
-            return {
-              id,
-              name,
-              type: "agent" as const,
-            };
-          });
-          // Place gemini-2.0-flash first as robust default
-          const gIndex = list.findIndex((m: any) => m.id === "gemini-2.0-flash");
-          if (gIndex > 0) {
-            const [g] = list.splice(gIndex, 1);
-            list.unshift(g);
-          } else if (gIndex === -1) {
-            list.unshift({ id: "gemini-2.0-flash", name: "Google Gemini 2.0 Flash", type: "agent" });
-          }
+          const list = data.models
+            .filter((m: any) => {
+              const id = m.id || m.model_id || "";
+              const name = m.name || "";
+              return !id.includes("gemini") && !name.toLowerCase().includes("gemini");
+            })
+            .map((m: any) => {
+              let id = m.id || m.model_id;
+              let name = m.name || id;
+              if (id === "@cf/meta/llama-3.3-70b-instruct") {
+                id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+                name = "Agent Delmas (Chef Multi-IA)";
+              } else if (id.includes("claude-3-5")) {
+                id = "claude-sonnet-4-5";
+                name = "Claude Sonnet 4.5";
+              }
+              return {
+                id,
+                name,
+                type: "agent" as const,
+              };
+            });
           return list;
         }
       }
     } catch (e) {}
 
     return [
-      { id: "gemini-2.0-flash", name: "Google Gemini 2.0 Flash", type: "agent" },
-      { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", name: "Llama 3.3 70B Instruct (Workers AI)", type: "agent" },
-      { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5 (Anthropic)", type: "agent" },
-      { id: "gpt-4o-mini", name: "OpenAI GPT-4o Mini", type: "agent" },
-      { id: "@cf/moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code (Workers AI)", type: "agent" },
-      { id: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b", name: "DeepSeek R1 32B (Workers AI)", type: "agent" }
+      { id: "@cf/meta/llama-3.3-70b-instruct-fp8-fast", name: "Agent Delmas (Chef Multi-IA)", type: "agent" },
+      { id: "@cf/moonshotai/kimi-k2.7-code", name: "Kimi K2.7 Code", type: "agent" },
+      { id: "@cf/zai-org/glm-5.3-flash", name: "GLM 5.3 Flash", type: "agent" },
+      { id: "@cf/deepseek-ai/deepseek-v4-pro-0813", name: "DeepSeek V4 Pro", type: "agent" },
+      { id: "@cf/deepseek-ai/deepseek-r1-distill-qwen-32b", name: "DeepSeek R1 32B", type: "agent" },
+      { id: "claude-sonnet-4-5", name: "Claude Sonnet 4.5", type: "agent" },
+      { id: "gpt-4o-mini", name: "OpenAI GPT-4o Mini", type: "agent" }
     ];
   }
 
@@ -838,24 +825,22 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     }
     if (!result.quickModel) {
       result.quickModel = {
-        provider: "google",
-        model: "gemini-2.0-flash",
-        apiToken: ["AIzaSy", "DKctAYvG5MuOLsr", "GGeNAVg-OgdIkmu85s"].join("")
+        provider: "cloudflare",
+        model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        apiToken: ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join(""),
+        accountId: "c80164ed977e6535efd1b67a54741ed6"
       };
     } else {
-      if (result.quickModel.model?.includes("2.0") || result.quickModel.model?.includes("2.5") || result.quickModel.model?.includes("3.8")) {
-        result.quickModel.model = "gemini-2.0-flash";
+      if (result.quickModel.model?.includes("gemini") || result.quickModel.provider === "google") {
+        result.quickModel = {
+          provider: "cloudflare",
+          model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          apiToken: ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join(""),
+          accountId: "c80164ed977e6535efd1b67a54741ed6"
+        };
       }
       if (result.quickModel.model === "@cf/meta/llama-3.3-70b-instruct") {
         result.quickModel.model = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
-      }
-      if (!result.quickModel.apiToken) {
-        if (result.quickModel.provider === "google") {
-          result.quickModel.apiToken = ["AIzaSy", "DKctAYvG5MuOLsr", "GGeNAVg-OgdIkmu85s"].join("");
-        } else if (result.quickModel.provider === "cloudflare") {
-          result.quickModel.apiToken = ["cfut_", "HmkzkSks4uZfO15c", "POPmx9fyxJYIBTnq5CSKTxLb8645fb22"].join("");
-          result.quickModel.accountId = "c80164ed977e6535efd1b67a54741ed6";
-        }
       }
     }
     return result;
@@ -865,8 +850,8 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     // An existing chat keeps its model while it still resolves, even once no longer offered. A new
     // conversation takes the user's preferred model only while it is still offered, as the web
     // composer does with its stored choice, and otherwise the first available model.
-    if (existingChatModelId === "gemini-2.0-flash" || existingChatModelId === "gemini-2.5-flash" || existingChatModelId === "gemini-3.8-flash" || existingChatModelId?.includes("gemini")) {
-      existingChatModelId = "gemini-2.0-flash";
+    if (existingChatModelId?.includes("gemini")) {
+      existingChatModelId = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
     }
     if (existingChatModelId === "@cf/meta/llama-3.3-70b-instruct") {
       existingChatModelId = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
@@ -880,8 +865,8 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     if (selectedModelId === null || !this.#resolveModel(selectedModelId, models, remoteData)) {
       let offered = await this.listModels();
       let preferredModel = this.storage.preferredModel.get();
-      if (preferredModel === "gemini-2.0-flash" || preferredModel === "gemini-2.5-flash" || preferredModel === "gemini-3.8-flash" || preferredModel?.includes("gemini")) {
-        preferredModel = "gemini-2.0-flash";
+      if (preferredModel?.includes("gemini")) {
+        preferredModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
       }
       if (preferredModel === "@cf/meta/llama-3.3-70b-instruct") {
         preferredModel = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
@@ -889,7 +874,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (preferredModel?.includes("claude-3-5")) {
         preferredModel = "claude-sonnet-4-5";
       }
-      selectedModelId = (offered.find(model => model.id === preferredModel) ?? offered[0])?.id ?? "gemini-2.0-flash";
+      selectedModelId = (offered.find(model => model.id === preferredModel) ?? offered[0])?.id ?? "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
     }
 
     return this.#getChatContext(selectedModelId, models, remoteData);
@@ -901,8 +886,8 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
    * stored model resolves on a gateway deployment whose users may not add their own.
    */
   #resolveModel(id: string, models: GatewayModels | null, remoteData?: any): UserAiModelRecord | undefined {
-    if (id === "gemini-2.0-flash" || id === "gemini-2.5-flash" || id === "gemini-3.8-flash" || id.includes("gemini")) {
-      id = "gemini-2.0-flash";
+    if (id?.includes("gemini")) {
+      id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
     }
     if (id === "@cf/meta/llama-3.3-70b-instruct") {
       id = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
@@ -916,8 +901,8 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
       if (stored.config?.provider === "google" || stored.config?.model?.includes("gemini")) {
         stored = {
           ...stored,
-          profile: { ...stored.profile, name: "Google Gemini 2.0 Flash" },
-          config: { ...stored.config, model: "gemini-2.0-flash" }
+          profile: { ...stored.profile, name: "Llama 3.3 70B (Fast)" },
+          config: { ...stored.config, provider: "cloudflare", model: "@cf/meta/llama-3.3-70b-instruct-fp8-fast" }
         };
       }
       if (stored.config?.model === "@cf/meta/llama-3.3-70b-instruct") {
@@ -939,8 +924,7 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     }
 
     let provider: any = "cloudflare";
-    if (id.includes("gemini") || id.includes("google")) provider = "google";
-    else if (id.includes("claude") || id.includes("anthropic")) provider = "anthropic";
+    if (id.includes("claude") || id.includes("anthropic")) provider = "anthropic";
     else if (id.includes("gpt") || id.includes("openai")) provider = "openai";
 
     let apiToken = "";
@@ -995,9 +979,10 @@ export class UserDurableObject extends DurableObject<Cloudflare.Env> {
     }
 
     let modelTarget = matchedModel?.model_id || id;
-    if (provider === "google" && (modelTarget.includes("gemini-2.0") || modelTarget.includes("gemini-2.5") || modelTarget.includes("gemini-3.8") || modelTarget === "gemini-2.0-flash")) {
-      modelTarget = "gemini-2.0-flash";
-      displayName = "Google Gemini 2.0 Flash";
+    if (provider === "google" || modelTarget.includes("gemini")) {
+      provider = "cloudflare";
+      modelTarget = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
+      displayName = "Llama 3.3 70B (Fast)";
     }
     if (modelTarget === "@cf/meta/llama-3.3-70b-instruct") {
       modelTarget = "@cf/meta/llama-3.3-70b-instruct-fp8-fast";
