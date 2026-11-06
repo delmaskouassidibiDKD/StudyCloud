@@ -2130,6 +2130,11 @@ RÈGLES CRUCIALES POUR LE QUESTIONNAIRE QCM :
 }
 
 /**
+ * Regex exhaustive des outils et supports d'apprentissage avec frontières Unicode
+ */
+const CREATION_TOOLS_REGEX = /(?<![\p{L}\p{N}])(?:cartes?\s*mentales?|cartes?\s*conceptuelles?|mind\s*-?maps?|mind\s*maps?|qcms?|q\.?c\.?m\.?s?|quizz?|quizzes|questionnaires?|flash\s*-?cards?|cartes?\s*m[eé]moires?|r[eé]sum[eé]s?|synth[eè]ses?|fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+synth[eè]ses?|fiches?\s+r[eé]visions?|exercices?\s+[eé]crits?|s[eé]ries?\s+d['’]exercices?|devoirs?\s+complets?|sujets?\s+d['’]examens?|examens?\s+blancs?|infographies?|fiches?\s+visuelles?|vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|documents?\s+pdf|polycopi[eé]s?)(?![\p{L}\p{N}])/iu;
+
+/**
  * Détermine si le message de l'étudiant exprime une véritable INTENTION de créer un support,
  * et NON une simple mention, question, explication ou discussion sur un support existant.
  */
@@ -2138,29 +2143,39 @@ export function hasExplicitCreationIntent(userText: string): boolean {
   const t = userText.trim().toLowerCase();
   if (!t) return false;
 
-  // 1. Verbes d'action impératifs ou déclaratifs de création explicite
-  // Ex: "crée", "génère", "fais-moi", "conçois", "prépare", "fabrique", "construis", "produis", "peux-tu me créer", "je veux créer", "donne-moi"
-  const hasStrongCreationCommand = /\b(?:cr[eé][eé]r?|cr[eé]ez|g[eé]n[eé]r(?:er|e|ez)?|fais(?:-moi)?|fait(?:-moi)?|faites(?:-moi)?|con[çc]ois|conception|construi[st]|construisez|fabrique|fabriquer|produi[st]|produisez|pr[eé]pare(?:-moi)?|pr[eé]parez(?:-moi)?|lance(?:-moi)?|lancez(?:-moi)?|r[eé]dige(?:-moi)?|r[eé]digez(?:-moi)?|donne(?:-moi)?|propose(?:-moi)?)\b/i.test(t) ||
+  // 1. Verbes et mots d'action impératifs ou déclaratifs de création explicite
+  // Inclut maintenant "création", "faire", "donne", "besoin", etc.
+  const hasStrongCreationCommand = /(?<![\p{L}\p{N}])(?:cr[eé][eé]r?|cr[eé]ez|cr[eé]ations?|g[eé]n[eé]r(?:er|e|ez)?|g[eé]n[eé]rations?|fais(?:-moi)?|fait(?:-moi)?|faites(?:-moi)?|con[çc]ois|conception|construi[st]|construisez|fabrique|fabriquer|produi[st]|produisez|pr[eé]pare(?:-moi)?|pr[eé]parez(?:-moi)?|lance(?:-moi)?|lancez(?:-moi)?|r[eé]dige(?:-moi)?|r[eé]digez(?:-moi)?|donne(?:-moi)?|propose(?:-moi)?|ponds(?:-moi)?|sort(?:-moi)?)(?![\p{L}\p{N}])/iu.test(t) ||
     /\b(?:peux-tu|pourrais-tu|merci\s+de)\s+(?:me\s+)?(?:faire|cr[eé]er|g[eé]n[eé]rer|pr[eé]parer|concevoir|construire|fabriquer|produire|sortir|pondre|donner)\b/i.test(t) ||
-    /\b(?:je\s+(?:veux|voudrais|souhaite|aimerais)|besoin\s+de)\s+(?:(?:cr[eé]er|g[eé]n[eé]rer|faire|avoir)\s+)?(?:un|une|des|\d+)\b/i.test(t);
+    /\b(?:je\s+(?:veux|voudrais|souhaite|aimerais)|besoin\s+de)\s+(?:(?:cr[eé]er|g[eé]n[eé]rer|faire|avoir)\s+)?(?:un|une|des|\d+)?\b/i.test(t);
 
-  // 2. Formulations courtes directes débutant par une quantité ou un article + support
-  // Ex: "2 QCM sur le chapitre", "une carte mentale", "3 flashcards", "un résumé complet", "des QCM"
-  const isDirectCreationPhrase = /^(?:un|une|des|\d+|deux|trois|quatre)\s+(?:nouvelles?\s+|autres?\s+)?(?:cartes?\s*mentales?|cartes?\s*conceptuelles?|mind\s*-?maps?|mind\s*maps?|qcms?|q\.?c\.?m\.?|questionnaires?|flashcards?|cartes?\s*m[eé]moires?|r[eé]sum[eé]s?|fiches?\s+de\s+r[eé]visions?|exercices?|devoirs?|vrai\s+ou\s+faux)\b/i.test(t);
+  // 2. Détection de questions explicatives / discussions / métas / salutations (JAMAIS une création sauf commande forte)
+  const isDiscussionOrMetaQuery = /^(?:pourquoi|comment|qu['’]est-ce|quand|qui|o[uù]|est-ce\s+que|peux-tu\s+m['’]expliquer|peux-tu\s+m['’]aider|aide-moi\s+[àa]\s+(?:comprendre|r[eé]soudre)|c['’]est\s+quoi|dis-moi|je\s+ne\s+comprends\s+pas|r[eé]sous|d[eé]taille|salut|bonjour|coucou|hello|que\s+penses-tu|donne\s+ton\s+avis|analyse|v[eé]rifie|corrige)\b/i.test(t) ||
+    /\b(?:parle(?:-moi)?\s+de|lis\s+(?:la|le)|corrige\s+(?:la|le|mon|ton)|avis\s+sur|que\s+veut\s+dire|signifie|o[uù]\s+est|retrouver|afficher|voir\s+(?:la|le|mon|ton))\b/i.test(t) ||
+    /\b(?:dans\s+le|dans\s+la)\s+(?:qcm|carte|question|exercice|r[eé]sum[eé])\b/i.test(t) ||
+    /\b(?:pourquoi\s+la\s+r[eé]ponse|quelle\s+est\s+la\s+r[eé]ponse|est-ce\s+(?:vrai|faux|juste|correct))\b/i.test(t) ||
+    /^(?:explique|expliquer)\s+(?:la|le|les|ce|cette|ces|mon|ton|notre)\b/i.test(t) ||
+    /^(?:merci|ok|d['’]?accord|super|merci\s+beaucoup|mercii+|tr[eè]s\s+bien|parfait|cool|yes|oui)\s*[!.?]*$/i.test(t);
 
-  // 3. Questions de discussion, compréhension, correction ou analyse (JAMAIS une création sauf si commande forte de création)
-  // Ex: "C'est quoi une carte mentale ?", "Explique la carte mentale", "Dans le QCM pourquoi...", "Je n'ai pas compris le résumé"
-  const isDiscussionOrMetaQuery = /^(?:pourquoi|comment|qu['’]est-ce|quand|qui|o[uù]|est-ce\s+que|peux-tu\s+m['’]expliquer|peux-tu\s+m['’]aider|explique|aide-moi\s+[àa]\s+(?:comprendre|r[eé]soudre)|c['’]est\s+quoi|dis-moi|je\s+ne\s+comprends\s+pas|r[eé]sous|d[eé]taille|salut|bonjour|coucou|hello|que\s+penses-tu|donne\s+ton\s+avis|analyse|v[eé]rifie|corrige)\b/i.test(t) ||
-    /\b(?:parle(?:-moi)?\s+de|lis\s+(?:la|le)|corrige\s+(?:la|le|mon|ton)|avis\s+sur|que\s+veut\s+dire|signifie|o[uù]\s+est|retrouver|afficher|voir\s+(?:la|le|mon|ton))\b/i.test(t);
-
+  // Si c'est une question de cours ou une demande d'explication sans commande forte de création -> faux
   if (isDiscussionOrMetaQuery && !hasStrongCreationCommand) {
     return false;
   }
 
-  return hasStrongCreationCommand || isDirectCreationPhrase;
+  // 3. Commande explicite de création + mention d'au moins un support
+  if (hasStrongCreationCommand && CREATION_TOOLS_REGEX.test(t)) {
+    return true;
+  }
+
+  // 4. Mention directe d'un support de création sans être une discussion/question (ex: "carte mentale", "QCM", "plusieurs exemples QCM", "QCM et carte mentale")
+  if (CREATION_TOOLS_REGEX.test(t) && !isDiscussionOrMetaQuery) {
+    return true;
+  }
+
+  return false;
 }
 
-// Détection de tous les formats de création demandés (support multi-agents + héritage de clarification)
+// Détection de tous les formats de création demandés (support multi-agents, zéro doublon, zéro création non demandée)
 export function detectAllCreationFormats(
   userText: string,
   requestedType?: string,
@@ -2172,12 +2187,12 @@ export function detectAllCreationFormats(
   const t = (userText || '').trim().toLowerCase();
   if (!t) return [];
 
-  // RÈGLE CARDINALE : Un mot-clé seul ne doit JAMAIS déclencher de création.
+  // RÈGLE CARDINALE : Un mot-clé seul ne doit JAMAIS déclencher de création si ce n'est pas une demande claire.
   // Seule une véritable INTENTION de création explicite déclenche les agents !
   const hasIntent = hasExplicitCreationIntent(userText);
 
   // Si l'utilisateur n'a pas formulé d'intention de création directe dans ce message,
-  // on vérifie uniquement s'il répond à une demande de précision récente de l'IA (héritage de clarification)
+  // on vérifie STRICTEMENT s'il répond à une clarification immédiate de l'IA (choix de document ou synthèse globale)
   if (!hasIntent) {
     if (Array.isArray(conversationMessages) && conversationMessages.length >= 2) {
       const nonEmptyMsgs = conversationMessages.filter(m => {
@@ -2185,17 +2200,23 @@ export function detectAllCreationFormats(
         return txt.length > 0 && !(m as any)?.isError;
       });
 
-      const recentSlice = nonEmptyMsgs.slice(-8);
-      const hasRecentClarificationPrompt = recentSlice.some(m => {
+      const lastAiMsg = [...nonEmptyMsgs].reverse().find(m => {
         const sender = (m as any)?.sender || (m as any)?.role;
-        const txt = String((m as any)?.text || (m as any)?.content || '').trim();
-        return (sender === 'ai' || sender === 'assistant') &&
-          /\?|quel(?:le)?s?\s+(?:sujet|cours|chapitre|fichier|document|th[èe]me|mat[iî]ère|partie)|pr[eé]cis(?:er|ez)|joindre|s[eé]lectionner|sur\s+quoi|QUESTIONS_SUGG[EÉ]R[EÉ]ES/i.test(txt);
+        return sender === 'ai' || sender === 'assistant';
       });
 
-      if (hasRecentClarificationPrompt) {
-        for (let i = recentSlice.length - 1; i >= 0; i--) {
-          const msgI = recentSlice[i];
+      const lastAiText = String((lastAiMsg as any)?.text || (lastAiMsg as any)?.content || '').trim();
+      const isAwaitingDocClarification = lastAiText &&
+        /\?|quel(?:le)?s?\s+(?:sujet|cours|chapitre|fichier|document|th[èe]me|mat[iî]ère|partie)|pr[eé]cis(?:er|ez)|joindre|s[eé]lectionner|sur\s+quoi|QUESTIONS_SUGG[EÉ]R[EÉ]ES/i.test(lastAiText);
+
+      // L'utilisateur répond spécifiquement par un choix de document ou synthèse globale
+      const isClarificationChoice = /^(?:document|doc|chapitre|partie|option|synth[eè]se|tout|l['’]ensemble)\b/i.test(t) ||
+        /^(?:1|2|3|le\s+premier|le\s+deuxi[eè]me|les\s+deux|les\s+trois)$/i.test(t);
+
+      if (isAwaitingDocClarification && isClarificationChoice) {
+        // Retrouver le format initialement demandé par l'utilisateur juste avant la clarification
+        for (let i = nonEmptyMsgs.length - 1; i >= 0; i--) {
+          const msgI = nonEmptyMsgs[i];
           const senderI = (msgI as any)?.sender || (msgI as any)?.role;
           const textI = String((msgI as any)?.text || (msgI as any)?.content || '').trim();
           if (senderI === 'user' && textI && hasExplicitCreationIntent(textI)) {
@@ -2211,33 +2232,7 @@ export function detectAllCreationFormats(
     return [];
   }
 
-  const matchedEntries: Array<{ type: AiCreationType; index: number; count: number }> = [];
-
-  const extractQuantityBefore = (matchIndex: number): number => {
-    // Analyse des 28 caractères précédant immédiatement le début du mot-clé
-    const prefix = t.slice(Math.max(0, matchIndex - 28), matchIndex);
-
-    // 1. Si le chiffre est un numéro de liste / énumération (ex: "1.", "2.", "1)", "2)", "1 -", "2 -", "n°1", "n°2"), c'est un rang, JAMAIS une quantité !
-    if (/(?:^|[\s\n])(?:\d+|[ivx]+|[a-z])\s*[\.\)\-:]\s*$/i.test(prefix)) {
-      return 1;
-    }
-
-    // 2. Si le chiffre qualifie un terme générique global (ex: "2 créations :", "2 supports :", "2 formats :", "2 choses :", "2 exemples :"), ce n'est PAS un multiplicateur individuel
-    if (/\b(?:\d+|deux|trois|quatre|cinq)\s+(?:cr[eé]ations?|supports?|formats?|choses?|types?|fichiers?|modules?|exemples?)\b/i.test(prefix)) {
-      return 1;
-    }
-
-    // 3. Correspondance d'un nombre immédiat qualifiant ce format spécifique (ex: "2 ", "deux ", "3 nouveaux ")
-    const numMatch = prefix.match(/\b(2|3|4|5|deux|trois|quatre|cinq)\s+(?:petits?\s+|nouveaux?\s+|nouvelles?\s+|autres?\s+)?$/i);
-    if (!numMatch) return 1;
-
-    const raw = numMatch[1].toLowerCase();
-    if (raw === 'deux' || raw === '2') return 2;
-    if (raw === 'trois' || raw === '3') return 3;
-    if (raw === 'quatre' || raw === '4') return 4;
-    if (raw === 'cinq' || raw === '5') return 5;
-    return 1;
-  };
+  const matchedEntries: Array<{ type: AiCreationType; index: number }> = [];
 
   const addFormat = (type: AiCreationType, regex: RegExp) => {
     const globalRegex = new RegExp(regex.source, regex.flags.includes('g') ? regex.flags : regex.flags + 'g');
@@ -2246,19 +2241,12 @@ export function detectAllCreationFormats(
 
     while ((m = globalRegex.exec(t)) !== null) {
       const idx = m.index;
-      const count = extractQuantityBefore(idx);
-
-      // Si le format a déjà été détecté dans ce même message, on évite les doublons accidentels
+      // DÉDUPLICATION STRICTE : Chaque format demandé dans un message est ajouté UNE SEULE FOIS (jamais de 2x carte mentale)
       const existing = matchedEntries.find(e => e.type === type);
-      if (existing) {
-        if (count > existing.count) {
-          existing.count = count;
-        }
-      } else {
+      if (!existing) {
         matchedEntries.push({
           type,
           index: idx,
-          count,
         });
       }
       found = true;
@@ -2266,96 +2254,72 @@ export function detectAllCreationFormats(
     return found;
   };
 
-  // 1. Vrai ou Faux Test vs Vrai ou Faux (SEULEMENT sur demande explicite, JAMAIS sur simple mot "affirmations")
-  if (/\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i.test(t)) {
-    addFormat('vrai-ou-faux-test', /\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i);
-  } else if (/\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i.test(t)) {
-    addFormat('vrai-ou-faux', /\b(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)\b/i);
+  // 1. Vrai ou Faux Test vs Vrai ou Faux
+  if (/(?<![\p{L}\p{N}])(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('vrai-ou-faux-test', /(?<![\p{L}\p{N}])(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux\s+teste?s?|v\s*\/?\s*f\s+teste?s?|[eé]preuves?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)(?![\p{L}\p{N}])/iu);
+  } else if (/(?<![\p{L}\p{N}])(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('vrai-ou-faux', /(?<![\p{L}\p{N}])(?:vrai(?:e?s)?\s*(?:ou|\/|-)\s*faux|v\/f|affirmations?\s+vrai(?:e?s)?\s*(?:ou|\/)\s*faux)(?![\p{L}\p{N}])/iu);
   }
 
   // 2. Questionnaire Test vs Questionnaire QCM (Détection exhaustive : QCM, QCMs, Quiz, Quizzes, Questionnaires, Choix Multiples)
-  if (/\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?s?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+(?:not[eé]es?|qcm|quizz?))\b/i.test(t)) {
-    addFormat('questionnaire-test', /\b(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?s?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+(?:not[eé]es?|qcm|quizz?))\b/i);
-  } else if (/\b(?:q\.?c\.?m\.?s?|quizz?|quizzes|q[u]?estion+aires?|questions?\s+[àa]\s+choix\s+multiples?|questions?\s+qcm|qcu)\b/i.test(t)) {
-    addFormat('questionnaire', /\b(?:q\.?c\.?m\.?s?|quizz?|quizzes|q[u]?estion+aires?|questions?\s+[àa]\s+choix\s+multiples?|questions?\s+qcm|qcu)\b/i);
+  if (/(?<![\p{L}\p{N}])(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?s?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+(?:not[eé]es?|qcm|quizz?))(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('questionnaire-test', /(?<![\p{L}\p{N}])(?:q[u]?estion+aires?\s+teste?s?|q\.?c\.?m\.?s?\s+teste?s?|quizz?\s+teste?s?|teste?s?\s+not[eé]s?|teste?s?\s+chronos?|[eé]preuves?\s+(?:not[eé]es?|qcm|quizz?))(?![\p{L}\p{N}])/iu);
+  } else if (/(?<![\p{L}\p{N}])(?:q\.?c\.?m\.?s?|quizz?|quizzes|q[u]?estion+aires?|questions?\s+[àa]\s+choix\s+multiples?|questions?\s+qcm|qcu)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('questionnaire', /(?<![\p{L}\p{N}])(?:q\.?c\.?m\.?s?|quizz?|quizzes|q[u]?estion+aires?|questions?\s+[àa]\s+choix\s+multiples?|questions?\s+qcm|qcu)(?![\p{L}\p{N}])/iu);
   }
 
   // 3. Carte Conceptuelle (carte-mentale-2) vs Carte Mentale arborescente (carte-mentale)
-  // Toute demande standard de carte mentale est 'carte-mentale' (jamais étiquetée '2')
-  if (/\b(?:cartes?\s*conceptuelle?s?|mind\s*-?\s*maps?\s*conceptuelle?s?|cartes?\s*mentale?s?\s*conceptuelle?s?)\b/i.test(t)) {
-    addFormat('carte-mentale-2', /\b(?:cartes?\s*conceptuelle?s?|mind\s*-?\s*maps?\s*conceptuelle?s?|cartes?\s*mentale?s?\s*conceptuelle?s?)\b/i);
-  } else if (/\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|mind\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i.test(t)) {
-    addFormat('carte-mentale', /\b(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|mind\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)\b/i);
+  if (/(?<![\p{L}\p{N}])(?:cartes?\s*conceptuelle?s?|mind\s*-?\s*maps?\s*conceptuelle?s?|cartes?\s*mentale?s?\s*conceptuelle?s?)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('carte-mentale-2', /(?<![\p{L}\p{N}])(?:cartes?\s*conceptuelle?s?|mind\s*-?\s*maps?\s*conceptuelle?s?|cartes?\s*mentale?s?\s*conceptuelle?s?)(?![\p{L}\p{N}])/iu);
+  } else if (/(?<![\p{L}\p{N}])(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|mind\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('carte-mentale', /(?<![\p{L}\p{N}])(?:cartes?\s*mentale?s?|mind\s*-?\s*maps?|mind\s*maps?|arborescences?|sch[eé]mas?\s*heuristiques?)(?![\p{L}\p{N}])/iu);
   }
 
   // 4. Cartes Mémoires / Flashcards
-  if (/\b(?:cartes?\s*m[eé]moires?|flash\s*-?\s*cards?|fiches?\s+de\s+m[eé]morisations?|cartes?\s+flash)\b/i.test(t)) {
-    addFormat('carte-memoire', /\b(?:cartes?\s*m[eé]moires?|flash\s*-?\s*cards?|fiches?\s+de\s+m[eé]morisations?|cartes?\s+flash)\b/i);
+  if (/(?<![\p{L}\p{N}])(?:cartes?\s*m[eé]moires?|flash\s*-?\s*cards?|fiches?\s+de\s+m[eé]morisations?|cartes?\s+flash)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('carte-memoire', /(?<![\p{L}\p{N}])(?:cartes?\s*m[eé]moires?|flash\s*-?\s*cards?|fiches?\s+de\s+m[eé]morisations?|cartes?\s+flash)(?![\p{L}\p{N}])/iu);
   }
 
   // 5. Devoir Complet / Examen
-  if (/\b(?:devoirs?\s+complets?|sujets?\s+d['’]examens?|[eé]preuves?\s+d['’]examens?|devoirs?\s+d['’]examens?|examens?\s+complets?|examens?\s+blancs?|devoirs?\s+surveill[eé]s?)\b/i.test(t)) {
-    addFormat('devoir-complet', /\b(?:devoirs?\s+complets?|sujets?\s+d['’]examens?|[eé]preuves?\s+d['’]examens?|devoirs?\s+d['’]examens?|examens?\s+complets?|examens?\s+blancs?|devoirs?\s+surveill[eé]s?)\b/i);
+  if (/(?<![\p{L}\p{N}])(?:devoirs?\s+complets?|sujets?\s+d['’]examens?|[eé]preuves?\s+d['’]examens?|devoirs?\s+d['’]examens?|examens?\s+complets?|examens?\s+blancs?|devoirs?\s+surveill[eé]s?)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('devoir-complet', /(?<![\p{L}\p{N}])(?:devoirs?\s+complets?|sujets?\s+d['’]examens?|[eé]preuves?\s+d['’]examens?|devoirs?\s+d['’]examens?|examens?\s+complets?|examens?\s+blancs?|devoirs?\s+surveill[eé]s?)(?![\p{L}\p{N}])/iu);
   }
 
   // 6. Infographie
-  if (/\b(?:infographies?|fiches?\s+visuelles?|posters?\s+p[eé]dagogiques?)\b/i.test(t)) {
-    addFormat('infographie', /\b(?:infographies?|fiches?\s+visuelles?|posters?\s+p[eé]dagogiques?)\b/i);
+  if (/(?<![\p{L}\p{N}])(?:infographies?|fiches?\s+visuelles?|posters?\s+p[eé]dagogiques?)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('infographie', /(?<![\p{L}\p{N}])(?:infographies?|fiches?\s+visuelles?|posters?\s+p[eé]dagogiques?)(?![\p{L}\p{N}])/iu);
   }
 
   // 7. Document PDF
-  if (/\b(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf)\b/i.test(t)) {
-    addFormat('pdf', /\b(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|export\s+pdf)\b/i);
+  if (/(?<![\p{L}\p{N}])(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|g[eé]n[eé]rer\s+un\s+pdf|cr[eé]er\s+un\s+pdf|faire\s+un\s+pdf|export\s+pdf)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('pdf', /(?<![\p{L}\p{N}])(?:documents?\s+pdf|polycopi[eé]s?|polycopies?|export\s+pdf)(?![\p{L}\p{N}])/iu);
   }
 
   // 8. Exercices Écrits
   const hasDevoir = matchedEntries.some(e => e.type === 'devoir-complet');
   if (!hasDevoir) {
-    if (/\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]applications?|s[eé]ries?\s+d['’]exercices?|exos?\s+[eé]crits?)\b/i.test(t)) {
-      addFormat('exercices-ecrits', /\b(?:exercices?\s+[eé]crits?|exercices?\s+d['’]applications?|s[eé]ries?\s+d['’]exercices?|exos?\s+[eé]crits?)\b/i);
-    } else if (/\b(?:exercices?|exos?)\b/i.test(t) && !/\b(?:exercice|exo)\s+\d+\b/i.test(t)) {
-      addFormat('exercices-ecrits', /\b(?:exercices?|exos?)\b/i);
+    if (/(?<![\p{L}\p{N}])(?:exercices?\s+[eé]crits?|exercices?\s+d['’]applications?|s[eé]ries?\s+d['’]exercices?|exos?\s+[eé]crits?)(?![\p{L}\p{N}])/iu.test(t)) {
+      addFormat('exercices-ecrits', /(?<![\p{L}\p{N}])(?:exercices?\s+[eé]crits?|exercices?\s+d['’]applications?|s[eé]ries?\s+d['’]exercices?|exos?\s+[eé]crits?)(?![\p{L}\p{N}])/iu);
+    } else if (/(?<![\p{L}\p{N}])(?:exercices?|exos?)(?![\p{L}\p{N}])/iu.test(t) && !/\b(?:exercice|exo)\s+\d+\b/i.test(t)) {
+      addFormat('exercices-ecrits', /(?<![\p{L}\p{N}])(?:exercices?|exos?)(?![\p{L}\p{N}])/iu);
     }
   }
 
   // 9. Résumé / Synthèse / Fiche de Révision
-  if (/\b(?:fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+r[eé]sum[eé]s?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+de\s+cours|fiches?\s+r[eé]visions?|fiches?\s+synth[eè]ses?)\b/i.test(t)) {
-    addFormat('resume', /\b(?:fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+r[eé]sum[eé]s?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+de\s+cours|fiches?\s+r[eé]visions?|fiches?\s+synth[eè]ses?)\b/i);
-  } else if (/\b(?:r[eé]sum[eé]s?|synth[eè]ses?)\b/i.test(t)) {
-    addFormat('resume', /\b(?:r[eé]sum[eé]s?|synth[eè]ses?)\b/i);
+  if (/(?<![\p{L}\p{N}])(?:fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+r[eé]sum[eé]s?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+de\s+cours|fiches?\s+r[eé]visions?|fiches?\s+synth[eè]ses?)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('resume', /(?<![\p{L}\p{N}])(?:fiches?\s+de\s+r[eé]visions?|fiches?\s+de\s+r[eé]sum[eé]s?|fiches?\s+de\s+synth[eè]ses?|fiches?\s+de\s+cours|fiches?\s+r[eé]visions?|fiches?\s+synth[eè]ses?)(?![\p{L}\p{N}])/iu);
+  } else if (/(?<![\p{L}\p{N}])(?:r[eé]sum[eé]s?|synth[eè]ses?)(?![\p{L}\p{N}])/iu.test(t)) {
+    addFormat('resume', /(?<![\p{L}\p{N}])(?:r[eé]sum[eé]s?|synth[eè]ses?)(?![\p{L}\p{N}])/iu);
   }
 
   // Trier selon l'ordre chronologique d'apparition dans le message de l'étudiant
   matchedEntries.sort((a, b) => a.index - b.index);
 
-  // Déplier les formats détectés en respectant scrupuleusement les quantités
+  // Déplier les formats détectés sans AUCUN doublon
   const detected: AiCreationType[] = [];
   for (const entry of matchedEntries) {
-    const qty = Math.min(Math.max(entry.count || 1, 1), 3);
-    for (let c = 0; c < qty; c++) {
+    if (!detected.includes(entry.type)) {
       detected.push(entry.type);
-    }
-  }
-
-  if (detected.length === 0) {
-    if (requestedType && typeof requestedType === 'string' && requestedType.trim()) {
-      return [normalizeCreationType(requestedType) as AiCreationType];
-    }
-    // Si l'étudiant répond à une clarification (ex: clic sur un bouton "Créer sur doc1" ou "Synthèse globale")
-    if (Array.isArray(conversationMessages) && conversationMessages.length >= 2) {
-      const recentSlice = conversationMessages.filter(m => {
-        const txt = String((m as any)?.text || (m as any)?.content || '').trim();
-        return txt.length > 0 && !(m as any)?.isError;
-      }).slice(-8);
-
-      for (let i = recentSlice.length - 1; i >= 0; i--) {
-        const msgI = recentSlice[i];
-        const textI = String((msgI as any)?.text || (msgI as any)?.content || '').trim();
-        const prevFormats = detectAllCreationFormats(textI, undefined, undefined);
-        if (prevFormats.length > 0) {
-          return prevFormats;
-        }
-      }
     }
   }
 
@@ -5428,18 +5392,19 @@ Réponds EXCLUSIVEMENT avec l'objet JSON complet pour CE SEUL format "${normType
         hasDispatchedAgents = true;
         orchestratorMode = 'agents_launched';
 
-        const dispatchedTasks: Array<{ id: string; title: string; toolType: string; formatLabel: string; isQueued: boolean }> = [];
-        const fmtOccurrences: Record<string, number> = {};
-        const fmtTotals: Record<string, number> = {};
+        // DÉDUPLICATION STRICTE ABSOLUE : Chaque format demandé est instancié EXACTEMENT 1 fois
+        const uniqueFormats: AiCreationType[] = [];
         for (const f of formatsToDispatch) {
-          fmtTotals[f] = (fmtTotals[f] || 0) + 1;
+          if (!uniqueFormats.includes(f)) {
+            uniqueFormats.push(f);
+          }
         }
 
-        for (let idx = 0; idx < formatsToDispatch.length; idx++) {
-          const fmt = formatsToDispatch[idx];
-          fmtOccurrences[fmt] = (fmtOccurrences[fmt] || 0) + 1;
-          const baseFormatTitle = CREATION_NAME_MAP[fmt] || CREATION_FORMAT_LABELS[fmt] || "Support d'apprentissage";
-          const formatTitle = fmtTotals[fmt] > 1 ? `${baseFormatTitle} #${fmtOccurrences[fmt]}` : baseFormatTitle;
+        const dispatchedTasks: Array<{ id: string; title: string; toolType: string; formatLabel: string; isQueued: boolean }> = [];
+
+        for (let idx = 0; idx < uniqueFormats.length; idx++) {
+          const fmt = uniqueFormats[idx];
+          const formatTitle = CREATION_NAME_MAP[fmt] || CREATION_FORMAT_LABELS[fmt] || "Support d'apprentissage";
           const currentCreationId = 'crea-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
           const currentTaskId = 'task-' + Date.now() + '-' + idx + '-' + Math.random().toString(36).slice(2, 6);
           const cTitle = mainDocName ? `${formatTitle} : ${mainDocName}` : `${formatTitle} : ${userText.slice(0, 35).trim() || "Thème d'étude"}`;
@@ -6418,8 +6383,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           fullResponseText = fullResponseText.replace(/\[LANCER_AGENTS\s*:\s*[^\]]+\]/gi, '').trim();
         }
         const isPurelyConversationalUser = /^(?:merci|ok|d['’]?accord|bonjour|salut|super|merci\s+beaucoup|mercii+|tr[eè]s\s+bien|parfait|cool|yes|oui)\s*[!.?]*$/i.test((userText || '').trim());
-        const aiAnnouncedGeneration = Boolean(agentTagMatch) && !isPurelyConversationalUser;
-        if (!hasDispatchedAgents && hasEducationalContext && !needsMultiDocClarification && aiAnnouncedGeneration) {
+        const userHasIntent = hasExplicitCreationIntent(userText);
+        const aiAnnouncedGeneration = Boolean(agentTagMatch) && userHasIntent && !isPurelyConversationalUser;
+        if (!hasDispatchedAgents && hasEducationalContext && !needsMultiDocClarification && !needsSubjectClarification && aiAnnouncedGeneration) {
           let postDetectedFormats: AiCreationType[] = [];
           if (agentTagMatch && agentTagMatch[1]) {
             const rawTokens = agentTagMatch[1].split(/[,;|]+/).map(s => s.trim()).filter(Boolean);
@@ -6432,7 +6398,7 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
               }
             }
           }
-          if (postDetectedFormats.length === 0 && !isPurelyConversationalUser) {
+          if (postDetectedFormats.length === 0) {
             postDetectedFormats = detectAllCreationFormats(userText, undefined, undefined);
           }
           // Déduplication stricte des formats pour ne jamais lancer deux fois la même création ni ajouter de format non demandé
