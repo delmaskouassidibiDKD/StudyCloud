@@ -3,7 +3,7 @@
 // Conçu par DKD Technologies pour StudyCloud
 // ============================================================================
 
-const CACHE_NAME = 'studycloud-pwa-v43';
+const CACHE_NAME = 'studycloud-pwa-vmw4ibhxo';
 
 // Ressources fondamentales du "Shell" de l'application pré-mises en cache à l'installation
 const PRECACHE_ASSETS = [
@@ -270,3 +270,5 @@ self.addEventListener('notificationclick', (event) => {
     })
   );
 });
+
+// BUILD_DEPLOY_VERSION_mw4ibhxo
