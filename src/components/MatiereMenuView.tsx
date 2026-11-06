@@ -619,7 +619,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         viewerExpandLevel === 3
           ? 'fixed inset-0 z-[100] w-screen h-screen'
           : viewerExpandLevel === 2
-          ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+          ? 'fixed inset-0 z-[99999] w-screen h-screen'
           : ''
       }`}>
         {/* Barre d'en-tête du lecteur */}
@@ -2592,7 +2592,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
               viewerExpandLevel === 3
                 ? 'fixed inset-0 z-[100] w-screen h-screen'
                 : viewerExpandLevel === 2
-                ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+                ? 'fixed inset-0 z-[99999] w-screen h-screen'
                 : (isViewerMaximized || selectedFile)
                   ? "w-full flex-1 rounded-xl border border-white/10"
                   : "w-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-400/40 dark:border-slate-800 rounded-xl"

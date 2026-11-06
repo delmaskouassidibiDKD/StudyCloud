@@ -197,7 +197,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
         viewerExpandLevel === 3
           ? 'fixed inset-0 z-[100] w-screen h-screen'
           : viewerExpandLevel === 2
-          ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+          ? 'fixed inset-0 z-[99999] w-screen h-screen'
           : ''
       }`}>
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
@@ -493,7 +493,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
             viewerExpandLevel === 3
               ? 'fixed inset-0 z-[100] w-screen h-screen'
               : viewerExpandLevel === 2
-              ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+              ? 'fixed inset-0 z-[99999] w-screen h-screen'
               : (isViewerMaximized || selectedItem)
                 ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'

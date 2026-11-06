@@ -454,7 +454,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
     >
       {/* 1. ÉLÉMENT VIDÉO PRINCIPAL AVEC CADRAGE PLEIN ÉCRAN & ZOOM */}
       {resolvedSrc ? (
-        <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+        <div className="relative w-full h-full flex-1 flex items-center justify-center overflow-hidden min-h-0">
           <video
             ref={videoRef}
             src={resolvedSrc}
@@ -537,7 +537,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
               setIsBuffering(false);
               setErrorMessage("Impossible de lire ce fichier vidéo. Vérifiez que le format est supporté par votre appareil.");
             }}
-            className={`w-full h-full cursor-pointer transition-all duration-300 ${getObjectFitClass()}`}
+            className={`w-full h-full max-w-full max-h-full cursor-pointer transition-all duration-300 ${getObjectFitClass()}`}
           />
         </div>
       ) : null}

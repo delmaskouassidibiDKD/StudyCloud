@@ -19,26 +19,20 @@ export const ViewerSuperExpandButton: React.FC<ViewerSuperExpandButtonProps> = (
 
   const handleNextStep = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (activeLevel === 1) {
-      // Étape 1 : Agrandir vers le haut en occupant l'espace de la barre du haut
-      onExpandChange(2);
-    } else if (activeLevel === 2) {
-      // Étape 2 : Agrandir vers la gauche en occupant tout l'écran (Plein écran total sans barres)
-      onExpandChange(3);
-    } else {
-      // Revenir à l'affichage normal
+    if (activeLevel >= 2) {
+      // Revenir immédiatement à l'affichage normal
       onExpandChange(1);
+    } else {
+      // Passer en plein écran agrandi propre
+      onExpandChange(2);
     }
   };
 
   const getTooltip = () => {
-    if (activeLevel === 1) {
-      return "Agrandir (1/2 : Étendre vers le haut en masquant les boutons supérieurs)";
+    if (activeLevel >= 2) {
+      return "Réduire la vue (revenir à l'affichage normal)";
     }
-    if (activeLevel === 2) {
-      return "Agrandir (2/2 : Étendre vers la gauche en masquant la barre latérale - Plein écran total)";
-    }
-    return "Restaurer la taille d'affichage d'origine";
+    return "Agrandir en plein écran";
   };
 
   return (
@@ -99,7 +93,7 @@ export const ViewerSuperExpandButton: React.FC<ViewerSuperExpandButtonProps> = (
       </div>
 
       <span className="text-[10px] sm:text-[11px] font-black tracking-tight leading-none hidden xs:inline">
-        {activeLevel === 1 ? 'Agrandir +' : activeLevel === 2 ? 'Plein écran' : 'Réduire'}
+        {activeLevel >= 2 ? 'Réduire' : 'Plein écran'}
       </span>
     </button>
   );

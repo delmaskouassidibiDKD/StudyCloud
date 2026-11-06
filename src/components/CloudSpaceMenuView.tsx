@@ -1676,7 +1676,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           viewerExpandLevel === 3
             ? 'fixed inset-0 z-[100] w-screen h-screen'
             : viewerExpandLevel === 2
-            ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+            ? 'fixed inset-0 z-[99999] w-screen h-screen'
             : ''
         }`}>
           {/* Barre supérieure de la page d'écriture */}
@@ -1843,7 +1843,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         viewerExpandLevel === 3
           ? 'fixed inset-0 z-[100] w-screen h-screen'
           : viewerExpandLevel === 2
-          ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+          ? 'fixed inset-0 z-[99999] w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure du lecteur ("l'écriture qui apparaît à droite") */}
@@ -2734,7 +2734,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             viewerExpandLevel === 3
               ? 'fixed inset-0 z-[100] w-screen h-screen'
               : viewerExpandLevel === 2
-              ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+              ? 'fixed inset-0 z-[99999] w-screen h-screen'
               : (isViewerMaximized || viewerFile)
                 ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'

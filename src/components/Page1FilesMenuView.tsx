@@ -10738,7 +10738,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         viewerExpandLevel === 3
           ? 'fixed inset-0 z-[100] w-screen h-screen'
           : viewerExpandLevel === 2
-          ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+          ? 'fixed inset-0 z-[99999] w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure dédiée à la page d'écriture (SANS bouton horizontal/vertical, SANS zoom) */}
@@ -10936,7 +10936,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         viewerExpandLevel === 3
           ? 'fixed inset-0 z-[100] w-screen h-screen'
           : viewerExpandLevel === 2
-          ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+          ? 'fixed inset-0 z-[99999] w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure du lecteur document (Image 1) */}
@@ -11526,20 +11526,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // 3. LECTEUR VIDÉO DÉDIÉ (IMAGE 4)
   const renderVideoPlayer = (file: FileItem) => {
+    const isPlayerExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 2);
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
     const fallbackStreamUrl = file.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}` : '';
     const videoSrc = file.videoUrl || file.url || fallbackStreamUrl;
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+        isPlayerExpanded
+          ? 'fixed inset-0 z-[99999] w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure du lecteur vidéo (Image 4) */}
-        <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
+        <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-6 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 sm:gap-3 shadow-md shrink-0">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <button
               type="button"
@@ -11568,7 +11567,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </div>
           </div>
 
-          <div className="flex items-center gap-1.5 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 pr-1 sm:pr-3">
             <button
               type="button"
               onClick={() => handleShareFile(file)}
@@ -11598,43 +11597,44 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <ViewerFitButton />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={isPlayerExpanded ? 2 : 1}
+              onExpandChange={(lvl) => {
+                if (lvl >= 2) {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(2);
+                } else {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                }
+              }}
+            />
 
             <button
               type="button"
               onClick={() => {
-                const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
-                if (isMobileScreen) {
-                  // Sur mobile : basculer entre vue normale et plein écran simple sans super-agrandissement
-                  setIsViewerMaximized(!isViewerMaximized);
+                if (isPlayerExpanded) {
+                  setIsViewerMaximized(false);
                   resetViewerExpand();
                 } else {
-                  if (isViewerMaximized || viewerExpandLevel >= 2) {
-                    setIsViewerMaximized(false);
-                    resetViewerExpand();
-                  } else {
-                    setIsViewerMaximized(true);
-                    setViewerExpandLevel(1);
-                  }
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(2);
                 }
               }}
               className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
-                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                isPlayerExpanded
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
+                  : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               )}
-              title={(isViewerMaximized || viewerExpandLevel >= 2) ? "Réduire la vue" : "Plein écran"}
+              title={isPlayerExpanded ? "Réduire la vue (Échap)" : "Agrandir en plein écran"}
             >
-              {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+              {isPlayerExpanded ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
             <button
               type="button"
               onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
-              title={isViewerMaximized ? "Réduire la vue" : "Fermer le lecteur vidéo"}
+              title="Fermer le lecteur vidéo"
             >
               <X className="w-4 h-4 stroke-[2.5]" />
             </button>
@@ -11642,7 +11642,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         </div>
 
         {/* Corps du lecteur vidéo (Image 4) */}
-        <div className="flex-1 w-full h-full flex items-center justify-center relative p-1 sm:p-2 overflow-hidden">
+        <div className="flex-1 w-full h-full flex items-center justify-center relative p-1 sm:p-2 overflow-hidden min-h-0">
           <ModernVideoPlayer
             src={videoSrc}
             poster={file.previewUrl}
@@ -11650,7 +11650,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             fileId={file.id}
             fileSize={file.size}
             autoPlay={true}
-            className={`w-full h-full rounded-2xl ${viewerExpandLevel >= 2 ? 'max-h-none' : 'max-h-[calc(100vh-180px)]'}`}
+            className="w-full h-full rounded-2xl max-h-none flex-1"
           />
         </div>
       </div>
@@ -11678,7 +11678,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         viewerExpandLevel === 3
           ? 'fixed inset-0 z-[100] w-screen h-screen'
           : viewerExpandLevel === 2
-          ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+          ? 'fixed inset-0 z-[99999] w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure du lecteur image (Image 5) */}
@@ -12669,7 +12669,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   viewerExpandLevel === 3
                     ? 'fixed inset-0 z-[100] w-screen h-screen'
                     : viewerExpandLevel === 2
-                    ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+                    ? 'fixed inset-0 z-[99999] w-screen h-screen'
                     : (isViewerMaximized || selectedDocFile)
                       ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                       : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
@@ -13000,15 +13000,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
               {/* PANNEAU DE DROITE : LECTEUR VIDÉO INDÉPENDANT (IMAGE 4) */}
               {selectedVideoFile && (
-                <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  viewerExpandLevel === 3
-                    ? 'fixed inset-0 z-[100] w-screen h-screen'
-                    : viewerExpandLevel === 2
-                    ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
-                    : (isViewerMaximized || selectedVideoFile)
-                      ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
-                      : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                <div className={`flex flex-col bg-[#04060A] ${
+                  (isViewerMaximized || viewerExpandLevel >= 2)
+                    ? 'fixed inset-0 z-[99999] w-screen h-screen'
+                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] flex-1 border-t md:border-t-0 md:border-l border-white/10'
+                }`}>
                   {renderVideoPlayer(selectedVideoFile)}
                 </div>
               )}
@@ -13081,7 +13077,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   viewerExpandLevel === 3
                     ? 'fixed inset-0 z-[100] w-screen h-screen'
                     : viewerExpandLevel === 2
-                    ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+                    ? 'fixed inset-0 z-[99999] w-screen h-screen'
                     : (isViewerMaximized || selectedImageFile)
                       ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                       : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'

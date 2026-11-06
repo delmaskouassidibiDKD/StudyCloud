@@ -1266,7 +1266,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         viewerExpandLevel === 3
           ? 'fixed inset-0 z-[100] w-screen h-screen'
           : viewerExpandLevel === 2
-          ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+          ? 'fixed inset-0 z-[99999] w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure du lecteur */}
@@ -1842,7 +1842,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               viewerExpandLevel === 3
                 ? 'fixed inset-0 z-[100] w-screen h-screen'
                 : viewerExpandLevel === 2
-                ? 'fixed top-0 bottom-0 right-0 left-0 md:left-64 z-[90] w-auto h-screen'
+                ? 'fixed inset-0 z-[99999] w-screen h-screen'
                 : (isViewerMaximized || selectedFile)
                   ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                   : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
