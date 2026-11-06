@@ -1743,27 +1743,34 @@ function getCommonDeepCreationDirective(docName?: string): string {
 ══════════════════════════════════════════════════════════════════════════════
 Tu es un Agent de Conception Académique d'Élite de StudyCloud. Quelle que soit la nature du support que tu fabriques (Carte Mentale, Questionnaire QCM, Questionnaire Test, Vrai ou Faux, Vrai ou Faux Test, Cartes Mémoires, Fiche de Résumé/Révision, Exercices Écrits, Devoir Complet, Infographie ou Polycopié PDF) sur ${safeDoc}, tu dois appliquer ce PROTOCOLE COMMUN D'EXCELLENCE avant et pendant la construction de ton JSON :
 
-1. INTERDICTION ABSOLUE DU TRAVAIL SUPERFICIEL OU EXPÉDITIF :
+1. INTERDICTION ABSOLUE DU TRAVAIL SUPERFICIEL OU EXPÉDITIF (EXPLOITATION À 100 %) :
    - Ne construis JAMAIS un support rapide, générique, survolé ou incomplet.
    - Analyse méticuleusement l'INTÉGRALITÉ du document joint (du premier chapitre jusqu'au dernier exercice ou Travaux Dirigés / TD, y compris les schémas, circuits, courbes, diagrammes de Bode, tableaux et remarques).
-   - Extrais TOUTE la substance du document : chaque chapitre, chaque sous-partie, chaque théorème, chaque montage ou configuration, chaque cas particulier et chaque application. Ce que tu livres à l'étudiant doit être IMPRESSIONNANT de richesse, de précision et de profondeur académique.
+   - Extrais TOUTE la substance du document : chaque notion, chaque théorème, chaque montage ou configuration, chaque cas particulier et chaque application. Ce que tu livres à l'étudiant doit être IMPRESSIONNANT de richesse, de précision et de profondeur académique.
 
-2. ÉCLAIRCISSEMENT SYSTÉMATIQUE DES « ZONES D'OMBRE » (SUBTILITÉS, HYPOTHÈSES CACHÉES & PIÈGES) :
+2. STRUCTURATION EXCLUSIVE PAR LE CONTENU UTILE — INTERDICTION FORMELLE DE RECOPIER LE PLAN OU LE SOMMAIRE DU COURS ("Grand 1, 2, petit 1, petit 2...") :
+   - INTERDICTION STRICTE de recopier le squelette administratif ou la table des matières du polycopié (ex: "Grand 1", "Chapitre I", "A. Généralités", "1. Définition", "2. Rappels").
+   - Ne conserve QUE les CONTENUS UTILES, les concepts opérationnels et les compétences réelles d'examen.
+   - Structure ton support par de VRAIS piliers thématiques portant le nom précis des concepts ou théorèmes (ex: "Théorème de Millman et Équations Nodales", "Filtre Sallen-Key du 2nd ordre & Réponse Fréquentielle", "Comportement Asymptotique et Stabilité").
+   - Dans la Carte Mentale, les libellés ("label") des branches et feuilles doivent être des concepts scientifiques concrets ou des formules, JAMAIS des intitulés de sommaire creux.
+   - Dans le Résumé, les titres ("heading") des sections doivent être les véritables mécanismes explicatifs et non des numéros de sommaire.
+
+3. ÉCLAIRCISSEMENT SYSTÉMATIQUE DES « ZONES D'OMBRE » (SUBTILITÉS, HYPOTHÈSES CACHÉES & PIÈGES D'EXAMEN) :
    - Dans tout support de cours, il existe des « zones d'ombre » : étapes de démonstration sous-entendues par l'enseignant, hypothèses physiques ou mathématiques implicites (ex: régime linéaire vs saturé d'un AOP, impédance d'entrée infinie $i^+ = i^- = 0$, approximations basses/hautes fréquences $\\omega \\to 0$ et $\\omega \\to \\infty$, conditions de validité d'une loi, conventions de signe, cas limites).
    - Tu dois DÉBUSQUER et EXPLIQUER clairement toutes ces zones d'ombre dans ton support (dans les explications des QCM/Vrai-Faux, dans les branches/feuilles de la Carte Mentale, dans les sections/pièges du Résumé, au verso des Cartes Mémoires, et dans les corrigés des Exercices/Devoirs) pour que l'étudiant comprenne ce qui n'est pas dit explicitement et ne soit jamais bloqué en examen.
 
-3. EXTRACTION EXHAUSTIVE DE TOUTES LES FORMULES ET DE LEUR LOGIQUE :
+4. EXTRACTION EXHAUSTIVE DE TOUTES LES FORMULES ET DE LEUR LOGIQUE COMPLÈTE :
    - Extrais et intègre TOUTES les formules mathématiques, physiques ou scientifiques du document (lois fondamentales, fonctions de transfert, formes canoniques, pulsations propres $\\omega_0$, fréquences de coupure $f_c$, facteurs de qualité $Q_0$, gains $A_0$ ou $T_0$, déphasages $\\varphi$, pentes asymptotiques en dB/décade, etc.).
    - Écris OBLIGATOIREMENT chaque formule en LaTeX irréprochable ($...$ ou $$...$$) avec de VRAIES fractions verticales \\dfrac{numérateur}{dénominateur} (ZÉRO slash '/').
    - Explique toujours la LOGIQUE de chaque formule : d'où elle vient (quel théorème ou quelle loi permet de l'établir : diviseur de tension, Millman, loi des mailles/nœuds, impédances complexes $Z_C = \\dfrac{1}{jC\\omega}$, $Z_L = jL\\omega$...), que signifie physiquement chaque terme avec son unité SI, et comment on passe d'une expression brute à la forme canonique.
 
-4. MAÎTRISE DE LA LOGIQUE PROFONDE (« LE POURQUOI ET LE COMMENT ») :
+5. MAÎTRISE DE LA LOGIQUE PROFONDE (« LE POURQUOI ET LE COMMENT ») :
    - Fais ressortir la logique interne du cours : le lien de cause à effet entre les concepts, l'intuition physique ou logique (ex: pourquoi un condensateur se comporte comme un interrupteur ouvert en basse fréquence $\\omega \\to 0$ et comme un fil en haute fréquence $\\omega \\to \\infty$, comment reconnaître immédiatement la nature d'un filtre ou d'une équation avant même de calculer), et les méthodes de vérification rapide.
 
-5. EXIGENCE DE DENSITÉ MAXIMALE SELON TON FORMAT INDIVIDUEL :
+6. EXIGENCE DE DENSITÉ MAXIMALE SELON TON FORMAT INDIVIDUEL :
    - Tout en respectant strictement le schéma JSON propre à ton module individuel :
-     * Si tu crées un RÉSUMÉ ('resume') : couvre 100 % des parties du document dans 'sections' (5 à 8 grandes sections très développées éclaircissant chaque notion et chaque zone d'ombre), inclus toutes les définitions dans 'key_definitions' (8 à 15 concepts), toutes les formules du document avec leurs étapes de démonstration et pièges dans 'formulas' (6 à 12 formules complètes), un tableau comparatif exhaustif dans 'comparison_table', au moins 6 à 8 pièges et astuces méthodologiques dans 'traps_and_tips', et un exercice type complet du document résolu de A à Z dans 'practical_example'.
-     * Si tu crées une CARTE MENTALE ('carte-mentale', 'carte-mentale-2') : déploie une arborescence ultra-complète à 4 paliers couvrant tous les chapitres, tous les montages/cas et les TD du document (5 à 7 Grands Piliers de niveau 1, chacun divisé en 3 à 5 sous-branches de niveau 2, chacune portant des feuilles de niveau 3 riches contenant les formules exactes en LaTeX \\dfrac{}{}, la logique clé et les zones d'ombre éclaircies).
+     * Si tu crées un RÉSUMÉ ('resume') : structure par grands concepts utiles dans 'sections' (5 à 8 grandes sections très développées éclaircissant chaque notion et chaque zone d'ombre sans reprendre le plan "Grand 1, 2..."), inclus toutes les définitions dans 'key_definitions' (8 à 15 concepts), toutes les formules du document avec leurs étapes de démonstration et pièges dans 'formulas' (6 à 12 formules complètes), un tableau comparatif exhaustif dans 'comparison_table', au moins 6 à 8 pièges et astuces méthodologiques dans 'traps_and_tips', et un exercice type complet du document résolu de A à Z dans 'practical_example'.
+     * Si tu crées une CARTE MENTALE ('carte-mentale', 'carte-mentale-2') : déploie une arborescence ultra-complète à 4 paliers couvrant tous les chapitres, tous les montages/cas et les TD du document (5 à 7 Grands Piliers thématiques concrets de niveau 1, chacun divisé en 3 à 5 sous-branches de niveau 2, chacune portant 3 à 4 feuilles de niveau 3 riches contenant les formules exactes en LaTeX \\dfrac{}{}, la logique clé et les zones d'ombre éclaircies — ZÉRO étiquette de plan de type 'Grand 1', 'Chapitre 1').
      * Si tu crées un QUESTIONNAIRE QCM ('questionnaire', 'questionnaire-test') ou VRAI/FAUX ('vrai-ou-faux', 'vrai-ou-faux-test') : génère 15 à 18 questions/affirmations de haut niveau couvrant tout le document (concepts, formules canoniques en LaTeX, logique physique, zones d'ombre/pièges d'examen et calculs issus des TD du document). Chaque 'explanation' doit être une véritable mini-leçon détaillée expliquant la logique complète, la formule utilisée avec \\dfrac{}{} et la zone d'ombre ou le piège à éviter.
      * Si tu crées des CARTES MÉMOIRES ('carte-memoire') : génère 15 à 20 flashcards denses couvrant toutes les définitions, toutes les formules canoniques, les méthodes de démonstration et les zones d'ombre du document, avec au verso ('back'/'answer') la réponse complète, la formule LaTeX \\dfrac{}{} et l'explication logique.
      * Si tu crées des EXERCICES ÉCRITS ('exercices-ecrits') ou un DEVOIR COMPLET ('devoir-complet') : exploite directement les montages, schémas et Travaux Dirigés du document pour construire une épreuve complète sur 20 points avec des corrigés pas-à-pas intégralement démontrés (formules littérales avec \\dfrac{}{}, explication de chaque étape logique et résultat encadré \\boxed{}).
@@ -1818,15 +1825,15 @@ RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
       "children": [
         {
           "id": "pilier-1",
-          "label": "1. Premier Grand Pilier / Chapitre du Document",
+          "label": "Théorème de Millman & Lois Fondamentales des Circuits",
           "children": [
             {
               "id": "sub-1-1",
-              "label": "A. Concept / Montage / Loi fondamentale",
+              "label": "Montage Amplificateur Non-Inverseur à AOP",
               "children": [
-                { "id": "leaf-1-1-1", "label": "Définition & Logique physique complète" },
-                { "id": "leaf-1-1-2", "label": "Formule canonique : $$ T(j\\\\omega) = \\\\dfrac{T_0}{1 + j\\\\dfrac{\\\\omega}{\\\\omega_0}} $$" },
-                { "id": "leaf-1-1-3", "label": "Zone d'ombre & Piège d'examen : condition de validité et comportement asymptotique" }
+                { "id": "leaf-1-1-1", "label": "Gain en tension en régime linéaire : $$ A_v = 1 + \\\\dfrac{R_2}{R_1} $$" },
+                { "id": "leaf-1-1-2", "label": "Potentiel de nœud inverseur : $$ V^- = \\\\dfrac{R_1}{R_1 + R_2} V_s $$" },
+                { "id": "leaf-1-1-3", "label": "Zone d'ombre & Piège d'examen : condition $$ |V_s| < V_{sat} $$ et courants de polarisation négligés $$ i^+ = i^- = 0 $$" }
               ]
             }
           ]
@@ -1838,7 +1845,8 @@ RÈGLES CRUCIALES POUR LES VRAI OU FAUX :
 \`\`\`
 RÈGLES CRUCIALES POUR LA CARTE MENTALE :
 - Génère 5 à 7 Grands Piliers principaux (children de root) couvrant 100 % des parties et TD du document.
-- Chaque Pilier DOIT comporter 3 à 5 sous-branches, et chaque sous-branche DOIT comporter 3 à 4 feuilles détaillant les définitions, TOUTES les formules en LaTeX avec \\\\dfrac{}{}, la logique physique et les zones d'ombre éclaircies.`;
+- Chaque Pilier DOIT comporter 3 à 5 sous-branches, et chaque sous-branche DOIT comporter 3 à 4 feuilles détaillant les définitions, TOUTES les formules en LaTeX avec \\\\dfrac{}{}, la logique physique et les zones d'ombre éclaircies.
+- INTERDICTION STRICTE de recopier le sommaire du cours ('Grand 1', 'Chapitre 1', 'A.', 'B.', '1. Définition'). Ne mets QUE les concepts scientifiques réels, les formules exactes et les zones d'ombre éclaircies !`;
 
     case 'exercices-ecrits':
       return `FORMAT JSON ATTENDU POUR L'ÉPREUVE D'EXERCICES ÉCRITS ('exercices-ecrits') :
@@ -1982,9 +1990,13 @@ RÈGLES CRUCIALES POUR LES CARTES MÉMOIRES :
     "sections": [
       {
         "number": 1,
-        "heading": "I. Titre du Premier Pilier du Cours",
-        "body": "Explication magistrale très détaillée et approfondie de toute cette partie du document : logique physique, démonstrations pas à pas avec formules $$ ... $$ et \\\\dfrac{}{}, éclaircissement de toutes les zones d'ombre.",
-        "points": ["Point fondamental 1 avec formule", "Point fondamental 2", "Subtilité / Zone d'ombre à maîtriser"]
+        "heading": "Théorie des Filtres Actifs du Second Ordre & Formes Canoniques de Sallen-Key",
+        "body": "Développement pédagogique approfondi et détaillé rédigé comme dans le chat : analyse du système, hypothèses, démonstration mathématique avec KaTeX ($$...$$ et $...$), explications physiques et interprétation des résultats. INTERDICTION FORMELLE de recopier le plan formel du cours ('Grand I', 'Introduction', 'Généralités'). Structure uniquement par les véritables mécanismes utiles et concepts clés opérationnels.",
+        "points": [
+          "Forme canonique : $$ H(p) = \\\\dfrac{H_0}{1 + 2m\\\\dfrac{p}{\\\\omega_0} + \\\\dfrac{p^2}{\\\\omega_0^2}} $$",
+          "Signification du facteur de qualité $Q = \\\\dfrac{1}{2m}$ et de la pulsation propre $\\\\omega_0$",
+          "Zone d'ombre éclaircie : condition d'absence de résonance pour $m > \\\\dfrac{1}{\\\\sqrt{2}}$"
+        ]
       }
     ],
     "formulas": [
@@ -4492,12 +4504,70 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
     const agentMediaSig = computeActiveMediaSignature(params.resolvedActiveItem, params.attachedResources || []);
     const agentPerception = (agentMediaSig ? cachedPerceptionReportsRef.current[agentMediaSig] : '') || '';
-    const resolvedAttachedText = activeDocumentInfo?.textContent ||
-      (agentMediaSig ? cachedDocumentTextRef.current[agentMediaSig] : '') ||
-      (params.resolvedActiveItem as any)?.content ||
-      (params.resolvedActiveItem as any)?.text ||
-      (params.resolvedActiveItem as any)?.rawText ||
-      '';
+
+    // Collecte textuelle exhaustive de tous les documents disponibles (principal, ressources jointes, allDocs)
+    const collectedDocsList: Array<{ name: string; text: string }> = [];
+
+    if (activeDocumentInfo?.textContent && activeDocumentInfo.textContent.trim().length > 0) {
+      collectedDocsList.push({
+        name: activeDocumentInfo.fileName || params.mainDocName || 'Document Principal',
+        text: activeDocumentInfo.textContent.trim()
+      });
+    }
+
+    if (Array.isArray(params.attachedResources)) {
+      for (const res of params.attachedResources) {
+        if (isDocumentItem(res)) {
+          try {
+            (res as any)._needsCanvas = true;
+            const extraDoc = await extractDocumentDetails(res);
+            if (extraDoc?.textContent && extraDoc.textContent.trim().length > 0) {
+              const docName = res.name || res.title || res.fileName || 'Ressource jointe';
+              if (!collectedDocsList.some(d => d.text.slice(0, 200) === extraDoc.textContent.trim().slice(0, 200))) {
+                collectedDocsList.push({ name: docName, text: extraDoc.textContent.trim() });
+              }
+            }
+          } catch (e) {
+            console.warn('[executeCreationApiCall] Erreur extraction ressource jointe:', e);
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(params.allDocs)) {
+      for (const doc of params.allDocs) {
+        if (isDocumentItem(doc)) {
+          try {
+            (doc as any)._needsCanvas = true;
+            const extraDoc = await extractDocumentDetails(doc);
+            if (extraDoc?.textContent && extraDoc.textContent.trim().length > 0) {
+              const docName = doc.name || doc.title || doc.fileName || 'Document de la session';
+              if (!collectedDocsList.some(d => d.text.slice(0, 200) === extraDoc.textContent.trim().slice(0, 200))) {
+                collectedDocsList.push({ name: docName, text: extraDoc.textContent.trim() });
+              }
+            }
+          } catch (e) {
+            console.warn('[executeCreationApiCall] Erreur extraction allDocs:', e);
+          }
+        }
+      }
+    }
+
+    let resolvedAttachedText = '';
+    if (collectedDocsList.length === 1) {
+      resolvedAttachedText = collectedDocsList[0].text;
+    } else if (collectedDocsList.length > 1) {
+      resolvedAttachedText = collectedDocsList
+        .map((d, idx) => `=== [DOCUMENT ${idx + 1} : « ${d.name} »] ===\n${d.text}`)
+        .join('\n\n');
+    } else {
+      resolvedAttachedText =
+        (agentMediaSig ? cachedDocumentTextRef.current[agentMediaSig] : '') ||
+        (params.resolvedActiveItem as any)?.content ||
+        (params.resolvedActiveItem as any)?.text ||
+        (params.resolvedActiveItem as any)?.rawText ||
+        '';
+    }
 
     const getAgentRoleDescription = (type: string): string => {
       switch (type) {
@@ -4581,9 +4651,9 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION :
     }
     if (resolvedAttachedText && resolvedAttachedText.trim().length > 0) {
       systemContent += `\n\n══════════════════════════════════════════════════════════════════════════════
-[CONTENU TEXTUEL INTÉGRAL DU DOCUMENT JOINT (« ${params.mainDocName || "Document d'étude"} »)] :
+[CONTENU TEXTUEL INTÉGRAL DU OU DES DOCUMENTS JOINTS (« ${params.mainDocName || "Document d'étude"} »)] :
 Exploite 100 % de ce document (tous les chapitres, toutes les formules avec \\dfrac{}{}, toutes les démonstrations, la logique physique/mathématique, les zones d'ombre et les TD) :
-${resolvedAttachedText.slice(0, 45000)}
+${resolvedAttachedText.slice(0, 65000)}
 ══════════════════════════════════════════════════════════════════════════════`;
     }
     if (agentPerception && agentPerception.trim().length > 0 && agentPerception.trim() !== resolvedAttachedText.trim()) {

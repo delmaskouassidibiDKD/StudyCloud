@@ -1565,7 +1565,7 @@ RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entou
             systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
 [FICHIER D'ÉTUDE ACTIF : ${mediaDesc.label.toUpperCase()} « ${docName || "Fichier joint"} »]
 Type exact de ce fichier : ${mediaDesc.label} (${mediaDesc.article}).
-${docContent ? `Extrait de contenu textuel :\n${docContent.slice(0, 40000)}\n` : ''}
+${docContent ? `Extrait de contenu textuel :\n${docContent.slice(0, 65000)}\n` : ''}
 ${audioTranscript ? `Transcription de l'enregistrement audio :\n${audioTranscript}\n` : ''}
 
 CONSIGNES STRICTES POUR LE TUTEUR :
@@ -1738,8 +1738,8 @@ CONSIGNES STRICTES DE CONTINUATION :
                       cfMessages.push({
                         role: "user",
                         content: isAgentCreationTask
-                          ? `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} »] :\n${activeInfo ? activeInfo.slice(0, 30000) : "Fichier joint par l'étudiant."}\n\n[MISSION STRICTE DE L'AGENT DE CRÉATION] :\n${m.content}`
-                          : `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} » (${mediaDesc.article})] :\n${activeInfo ? activeInfo.slice(0, 30000) : "Fichier joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ${mediaDesc.article} (« ${docName || "Fichier joint"} ») et pose la question : « ${m.content} ».\n1. Commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou contenu réel que tu observes dans ${mediaDesc.article}.\n2. Réponds directement, chaleureusement et précisément à sa question en t'appuyant rigoureusement sur ${mediaDesc.article}.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
+                          ? `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} »] :\n${activeInfo ? activeInfo.slice(0, 65000) : "Fichier joint par l'étudiant."}\n\n[MISSION STRICTE DE L'AGENT DE CRÉATION] :\n${m.content}`
+                          : `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} » (${mediaDesc.article})] :\n${activeInfo ? activeInfo.slice(0, 65000) : "Fichier joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ${mediaDesc.article} (« ${docName || "Fichier joint"} ») et pose la question : « ${m.content} ».\n1. Commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou contenu réel que tu observes dans ${mediaDesc.article}.\n2. Réponds directement, chaleureusement et précisément à sa question en t'appuyant rigoureusement sur ${mediaDesc.article}.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
                       });
                     } else {
                       cfMessages.push({ role: m.role, content: m.content });
@@ -1871,7 +1871,7 @@ CONSIGNES STRICTES DE CONTINUATION :
                   if (i === simpleMessages.length - 1 && m.role === "user" && (activeDocInfo || docName)) {
                     cfMessages.push({
                       role: "user",
-                      content: `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} » (${mediaDesc.article})] :\n${activeDocInfo ? activeDocInfo.slice(0, 30000) : "Fichier joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ${mediaDesc.article} (« ${docName || "Fichier joint"} ») et pose la question : « ${m.content} ».\n1. Commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou contenu réel que tu observes dans ${mediaDesc.article}.\n2. Réponds directement, chaleureusement et précisément à sa question en t'appuyant rigoureusement sur ${mediaDesc.article}.\n3. N'invente aucun filtre analogique, formule ou schéma non présent. Ne fais aucune référence aux anciens fichiers de la discussion et ne demande jamais de renvoyer le fichier.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
+                      content: `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} » (${mediaDesc.article})] :\n${activeDocInfo ? activeDocInfo.slice(0, 65000) : "Fichier joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ${mediaDesc.article} (« ${docName || "Fichier joint"} ») et pose la question : « ${m.content} ».\n1. Commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou contenu réel que tu observes dans ${mediaDesc.article}.\n2. Réponds directement, chaleureusement et précisément à sa question en t'appuyant rigoureusement sur ${mediaDesc.article}.\n3. N'invente aucun filtre analogique, formule ou schéma non présent. Ne fais aucune référence aux anciens fichiers de la discussion et ne demande jamais de renvoyer le fichier.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
                     });
                   } else {
                     cfMessages.push({ role: m.role, content: m.content });
