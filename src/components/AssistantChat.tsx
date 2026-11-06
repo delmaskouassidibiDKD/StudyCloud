@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Globe, Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square, WifiOff, RotateCw, AlertTriangle, Coins, ArrowRight } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
@@ -3530,7 +3530,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [waitingConvIds, setWaitingConvIds] = useState<Record<string, boolean>>({});
   const [typingConvIds, setTypingConvIds] = useState<Record<string, boolean>>({});
   const [aiActivityByConv, setAiActivityByConv] = useState<Record<string, string>>({});
+  const [retryingMessageId, setRetryingMessageId] = useState<string | null>(null);
   const inFlightConvsRef = useRef<Record<string, boolean>>({});
+  const lastSendTextRef = useRef<string>('');
+  const lastSendTimeRef = useRef<number>(0);
 
   const isWaitingServer = Boolean(waitingConvIds[currentConversationId]);
   const isTyping = Boolean(typingConvIds[currentConversationId]);
