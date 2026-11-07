@@ -1072,7 +1072,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
     return (
       <div className={`w-full h-full min-h-0 flex flex-col bg-[#04060A] text-white ${
-        viewerExpandLevel >= 2
+        (viewerExpandLevel >= 2 || isViewerMaximized)
           ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
@@ -1231,24 +1231,19 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
             <button
               type="button"
               onClick={() => {
-                const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-                if (isMobile) {
-                  setIsViewerMaximized(!isViewerMaximized);
+                const isExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 2);
+                if (isExpanded) {
+                  setIsViewerMaximized(false);
                   resetViewerExpand();
                 } else {
-                  if (isViewerMaximized || viewerExpandLevel >= 2) {
-                    setIsViewerMaximized(false);
-                    resetViewerExpand();
-                  } else {
-                    setIsViewerMaximized(true);
-                    setViewerExpandLevel(1);
-                  }
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(2);
                 }
               }}
               className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 ${
-                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               }`}
-              title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : "Agrandir le lecteur"}
+              title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : "Agrandir en plein écran"}
             >
               {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
@@ -3485,7 +3480,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         {selectedFile && (
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 h-full min-h-0 ${
-              viewerExpandLevel >= 2
+              (viewerExpandLevel >= 2 || isViewerMaximized)
                 ? 'fixed inset-0 z-50 w-screen h-screen'
                 : (isViewerMaximized || selectedFile)
                   ? 'w-full flex-1 rounded-xl border border-white/10'

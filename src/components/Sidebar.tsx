@@ -173,14 +173,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
   ];
 
   const viewerExpandLevel = useViewerExpandLevel();
-  const isViewerHidingSidebar = viewerExpandLevel >= 2;
+  // Sur ordinateur : la barre latérale gauche se masque dès le niveau 2 (pour faire place au document/vidéo)
+  const isDesktopSidebarHidden = viewerExpandLevel >= 2;
+  // Sur mobile : la barre de navigation reste visible à l'étape 2 (comme sur l'Image 3) et ne se masque qu'au niveau 3
+  const isMobileBottomNavHidden = viewerExpandLevel >= 3;
 
   return (
     <>
       {/* Desktop Sidebar - Couleur pure #1F4761 en Jour / #070a13 en Sombre */}
       <aside 
         className={`hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto px-3.5 py-6 pb-24 shrink-0 select-none z-40 border-r-2 border-[#153447] dark:border-[#1e293b] shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)] transition-all duration-300 sidebar-desktop ${
-          isViewerHidingSidebar ? '!hidden pointer-events-none' : ''
+          isDesktopSidebarHidden ? '!hidden pointer-events-none' : ''
         }`}
       >
         {/* Brand Header - Logo et Nom de l'application */}
@@ -336,7 +339,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
       {/* Bottom Navigation Bar Mobile avec halo lumineux doux sur l'icône active */}
       <div 
         className={`mobile-fixed-bottom bottom-nav bg-[#070a13]/95 backdrop-blur-xl border-t border-white/10 px-2 py-1 z-[99999] flex items-center justify-around shadow-[0px_-4px_20px_rgba(0,0,0,0.5)] md:!hidden transition-all duration-300 ${
-          isViewerHidingSidebar ? '!hidden pointer-events-none' : ''
+          isMobileBottomNavHidden ? '!hidden pointer-events-none' : ''
         }`}
       >
         {mobileNavItems.map((item) => {

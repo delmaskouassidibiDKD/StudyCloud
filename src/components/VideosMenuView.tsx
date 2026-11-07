@@ -1777,7 +1777,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        viewerExpandLevel >= 2
+        (viewerExpandLevel >= 2 || isViewerMaximized)
           ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
@@ -2147,7 +2147,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR VIDÉO DÉDIÉ (IMAGE 4) */}
         {selectedVideo && (
           <div className={`flex flex-col bg-[#04060A] ${
-            viewerExpandLevel >= 2
+            (viewerExpandLevel >= 2 || isViewerMaximized)
               ? 'fixed inset-0 z-50 w-screen h-screen'
               : (isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'

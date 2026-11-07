@@ -260,9 +260,9 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     );
 
     CloudDataStore.restoreFromTrash(file as any);
-    await CloudStorageAPI.restoreTrashItem(file.id).catch(() => {});
-    invalidateCloudQueries.trash().catch(() => {});
-    invalidateCloudQueries.all().catch(() => {});
+    await CloudStorageAPI.restoreTrashItem(file.id).catch(() => { });
+    invalidateCloudQueries.trash().catch(() => { });
+    invalidateCloudQueries.all().catch(() => { });
     window.dispatchEvent(new Event('unifolder_data_restored'));
     showToast(`"${file.name}" a été restauré dans son menu d'origine`);
   };
@@ -290,7 +290,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
     // 4. Supprimer de CloudDataStore et supprimer le blob local
     CloudDataStore.permanentlyRemoveTrashFile(file.id);
-    deleteFileBlob(file.id).catch(() => {});
+    deleteFileBlob(file.id).catch(() => { });
 
     showToast(`"${file.name}" a été supprimé définitivement`);
 
@@ -301,8 +301,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       console.warn('[Trash] deleteTrashPermanently error:', e);
     }
 
-    invalidateCloudQueries.trash().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    invalidateCloudQueries.trash().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
   };
 
   // Vider toute la corbeille
@@ -324,7 +324,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         LocalSyncReplication.recordLocalDeletions(allIds, 'trash');
       }
       CloudDataStore.emptyTrash();
-      allIds.forEach(id => deleteFileBlob(id).catch(() => {}));
+      allIds.forEach(id => deleteFileBlob(id).catch(() => { }));
 
       try {
         await CloudStorageAPI.deleteTrashPermanently(allIds);
@@ -332,8 +332,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         console.warn('[Trash] emptyTrash error:', e);
       }
 
-      invalidateCloudQueries.trash().catch(() => {});
-      invalidateCloudQueries.overview().catch(() => {});
+      invalidateCloudQueries.trash().catch(() => { });
+      invalidateCloudQueries.overview().catch(() => { });
       showToast('La corbeille a été vidée avec succès');
       setIsConfirmEmptyOpen(false);
     } catch (e) {
@@ -376,9 +376,9 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     );
 
     CloudDataStore.restoreFromTrash(toRestore as any);
-    await CloudStorageAPI.restoreMultipleTrash(idsToRestore).catch(() => {});
-    invalidateCloudQueries.trash().catch(() => {});
-    invalidateCloudQueries.all().catch(() => {});
+    await CloudStorageAPI.restoreMultipleTrash(idsToRestore).catch(() => { });
+    invalidateCloudQueries.trash().catch(() => { });
+    invalidateCloudQueries.all().catch(() => { });
     window.dispatchEvent(new Event('unifolder_data_restored'));
     showToast(`${toRestore.length} élément(s) restauré(s) dans leur menu d'origine`);
     setSelectedIds([]);
@@ -410,7 +410,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
     idsToDelete.forEach(id => {
       CloudDataStore.permanentlyRemoveTrashFile(id);
-      deleteFileBlob(id).catch(() => {});
+      deleteFileBlob(id).catch(() => { });
     });
 
     setSelectedIds([]);
@@ -423,8 +423,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       console.warn('[Trash] deleteTrashPermanently selected error:', e);
     }
 
-    invalidateCloudQueries.trash().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    invalidateCloudQueries.trash().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
   };
 
   // Sélectionner / désélectionner un élément
@@ -684,21 +684,19 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             setSelectedFile(file);
           }
         }}
-        className={`group aspect-square rounded-2xl bg-[#0A0D18] border transition-all duration-300 flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen
-            ? 'z-[100] relative overflow-visible'
-            : isSelected
+        className={`group aspect-square rounded-2xl bg-[#0A0D18] border transition-all duration-300 flex flex-col justify-between shadow-md select-none cursor-pointer ${isMenuOpen
+          ? 'z-[100] relative overflow-visible'
+          : isSelected
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
-        } ${
-          isChecked
+          } ${isChecked
             ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-xl scale-[1.02]'
             : isSelected
-            ? 'border-amber-400 ring-2 ring-amber-400/90 shadow-2xl scale-[1.02]'
-            : isMenuOpen
-            ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
-            : 'border-stone-800/80 hover:border-amber-500/50 hover:scale-[1.01]'
-        }`}
+              ? 'border-amber-400 ring-2 ring-amber-400/90 shadow-2xl scale-[1.02]'
+              : isMenuOpen
+                ? 'border-rose-500 ring-2 ring-rose-500/40 shadow-2xl'
+                : 'border-stone-800/80 hover:border-amber-500/50 hover:scale-[1.01]'
+          }`}
       >
         {/* Arrière-plan : aperçu audio ou pochette créateur haute fidélité */}
         <div className="absolute inset-0 z-0 overflow-hidden rounded-2xl pointer-events-none">
@@ -723,9 +721,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-                isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
-              }`}
+              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
+                }`}
               title="Options corbeille"
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -787,15 +784,14 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             setSelectedFile(file);
           }
         }}
-        className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none cursor-pointer ${
-          isChecked
-            ? 'ring-4 ring-amber-400 shadow-2xl scale-[1.02]'
-            : isSelected
+        className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none cursor-pointer ${isChecked
+          ? 'ring-4 ring-amber-400 shadow-2xl scale-[1.02]'
+          : isSelected
             ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
             : isMenuOpen
-            ? 'ring-4 ring-rose-500/80 shadow-2xl z-[100] relative overflow-visible'
-            : 'hover:scale-[1.01] shadow-md active:scale-98 z-10 overflow-hidden'
-        }`}
+              ? 'ring-4 ring-rose-500/80 shadow-2xl z-[100] relative overflow-visible'
+              : 'hover:scale-[1.01] shadow-md active:scale-98 z-10 overflow-hidden'
+          }`}
       >
         {/* Barre supérieure : Bouton 3 traits & Badge taille */}
         <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} flex items-center justify-between gap-1`}>
@@ -807,9 +803,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-                isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
-              }`}
+              className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
+                }`}
               title="Options corbeille"
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -876,13 +871,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             setSelectedFile(file);
           }
         }}
-        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${
-          isChecked
-            ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02] cursor-pointer'
-            : isSelected
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${isChecked
+          ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02] cursor-pointer'
+          : isSelected
             ? 'border-emerald-500 ring-4 ring-emerald-500/50 shadow-2xl scale-[1.02] cursor-pointer'
             : 'border-white/10 hover:border-emerald-400/50 shadow-md cursor-pointer'
-        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
+          } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
         {/* Conteneur média interne : arrondit l'image sans couper le menu déroulant */}
         <div className="absolute inset-0 rounded-xl sm:rounded-2xl overflow-hidden pointer-events-none">
@@ -907,9 +901,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${
-                isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : ''
-              }`}
+              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : ''
+                }`}
               title="Options corbeille (3 traits)"
             >
               <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
@@ -978,13 +971,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             setSelectedFile(file);
           }
         }}
-        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${
-          isChecked
-            ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02] cursor-pointer'
-            : isSelected
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${isChecked
+          ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02] cursor-pointer'
+          : isSelected
             ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02] cursor-pointer'
             : 'border-white/10 hover:border-purple-400/50 shadow-md cursor-pointer'
-        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
+          } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
         {/* Conteneur média interne : arrondit la vignette sans couper le menu déroulant */}
         <div className="absolute inset-0 rounded-xl sm:rounded-2xl overflow-hidden pointer-events-none">
@@ -1016,9 +1008,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                 e.stopPropagation();
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${
-                isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : ''
-              }`}
+              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : ''
+                }`}
               title="Options corbeille (3 traits)"
             >
               <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
@@ -1105,15 +1096,14 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               setSelectedFile(file);
             }
           }}
-          className={`group relative rounded-2xl transition-all duration-200 flex flex-col justify-between shadow-lg select-none cursor-pointer bg-[#0A0D18] border p-2 sm:p-2.5 ${
-            isChecked
-              ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
-              : isSelected
+          className={`group relative rounded-2xl transition-all duration-200 flex flex-col justify-between shadow-lg select-none cursor-pointer bg-[#0A0D18] border p-2 sm:p-2.5 ${isChecked
+            ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
+            : isSelected
               ? 'border-orange-400 ring-2 ring-orange-400/90 shadow-2xl scale-[1.02] z-20'
               : isMenuOpen
-              ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-[100] relative overflow-visible'
-              : 'border-stone-800/80 hover:border-orange-500/50 z-10 overflow-hidden'
-          }`}
+                ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-[100] relative overflow-visible'
+                : 'border-stone-800/80 hover:border-orange-500/50 z-10 overflow-hidden'
+            }`}
         >
           {/* Barre haute : Bouton 3 traits & Badge Dossier 3D */}
           <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} flex items-center justify-between gap-1 mb-1`}>
@@ -1125,9 +1115,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                   e.stopPropagation();
                   setActiveMenuFileId(prev => prev === file.id ? null : file.id);
                 }}
-                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-                  isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
-                }`}
+                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
+                  }`}
                 title="Options corbeille"
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -1184,15 +1173,14 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               setSelectedFile(file);
             }
           }}
-          className={`group relative bg-[#0E1526] hover:bg-[#141E34] border rounded-2xl p-2 sm:p-2.5 shadow-lg transition-all duration-200 flex flex-col justify-between select-none cursor-pointer ${
-            isChecked
-              ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
-              : isSelected
+          className={`group relative bg-[#0E1526] hover:bg-[#141E34] border rounded-2xl p-2 sm:p-2.5 shadow-lg transition-all duration-200 flex flex-col justify-between select-none cursor-pointer ${isChecked
+            ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
+            : isSelected
               ? 'border-cyan-400 ring-2 ring-cyan-400/90 shadow-2xl scale-[1.02] z-20'
               : isMenuOpen
-              ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-[100] relative overflow-visible'
-              : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1 z-10 overflow-hidden'
-          }`}
+                ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-[100] relative overflow-visible'
+                : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1 z-10 overflow-hidden'
+            }`}
         >
           {/* Haut de carte : Badge TXT et Bouton 3 traits */}
           <div className={`flex items-center justify-between ${isMenuOpen ? 'relative z-[80]' : 'relative z-20'}`}>
@@ -1208,9 +1196,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                   e.stopPropagation();
                   setActiveMenuFileId(prev => prev === file.id ? null : file.id);
                 }}
-                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${
-                  isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
-                }`}
+                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
+                  }`}
                 title="Options corbeille"
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -1263,7 +1250,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        viewerExpandLevel >= 2
+        (viewerExpandLevel >= 2 || isViewerMaximized)
           ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
@@ -1353,23 +1340,17 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
-                if (isMobileScreen) {
-                  // Sur mobile : basculer entre vue normale et plein écran simple sans super-agrandissement
-                  setIsViewerMaximized(!isViewerMaximized);
+                const isExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 2);
+                if (isExpanded) {
+                  setIsViewerMaximized(false);
                   resetViewerExpand();
                 } else {
-                  if (isViewerMaximized || viewerExpandLevel >= 2) {
-                    setIsViewerMaximized(false);
-                    resetViewerExpand();
-                  } else {
-                    setIsViewerMaximized(true);
-                    setViewerExpandLevel(1);
-                  }
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(2);
                 }
               }}
               className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               }`}
               title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : 'Plein écran'}
             >
@@ -1574,11 +1555,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             <button
               type="button"
               onClick={() => setIsSelectionMode(!isSelectionMode)}
-              className={`flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full border transition-all cursor-pointer shrink-0 active:scale-95 ${
-                isSelectionMode
-                  ? 'bg-rose-500 text-white border-rose-400 font-bold'
-                  : 'bg-[#182032] hover:bg-[#222c44] text-white border-stone-700/50'
-              }`}
+              className={`flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full border transition-all cursor-pointer shrink-0 active:scale-95 ${isSelectionMode
+                ? 'bg-rose-500 text-white border-rose-400 font-bold'
+                : 'bg-[#182032] hover:bg-[#222c44] text-white border-stone-700/50'
+                }`}
               title={isSelectionMode ? 'Quitter la sélection' : 'Sélection multiple'}
             >
               <CheckSquare className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
@@ -1608,11 +1588,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               key={tab.id}
               type="button"
               onClick={() => setActiveFilter(tab.id as any)}
-              className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
-                activeFilter === tab.id
-                  ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
-                  : 'bg-[#182032] text-slate-200 hover:text-white hover:bg-[#222c44] border border-stone-700/50'
-              }`}
+              className={`px-2.5 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${activeFilter === tab.id
+                ? 'bg-rose-600 text-white shadow-md shadow-rose-600/30'
+                : 'bg-[#182032] text-slate-200 hover:text-white hover:bg-[#222c44] border border-stone-700/50'
+                }`}
             >
               {tab.label}
             </button>
@@ -1682,13 +1661,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       {/* CONTENU PRINCIPAL DE LA CORBEILLE AVEC MODE SPLIT-SCREEN LORSQU'UN FICHIER EST SÉLECTIONNÉ */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         <main
-          className={`overflow-y-auto bg-white py-5 pb-64 sm:pb-80 ${
-            ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
-              ? 'hidden'
-              : selectedFile
+          className={`overflow-y-auto bg-white py-5 pb-64 sm:pb-80 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
+            ? 'hidden'
+            : selectedFile
               ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-200 px-3 sm:px-4'
               : 'flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12'
-          }`}
+            }`}
         >
           {loading ? (
             <div className="py-24 flex flex-col items-center justify-center gap-3">
@@ -1737,11 +1715,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <Music className="w-4 h-4" />
                     <span>Fichiers Audio ({categorized.audios.length})</span>
                   </div>
-                  <div className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
+                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
                     {categorized.audios.map((file, idx) => renderAudioCard(file, idx))}
                   </div>
                 </section>
@@ -1754,11 +1731,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <FolderArchive className="w-4 h-4" />
                     <span>Classeur & Dossiers ({categorized.classeur.length})</span>
                   </div>
-                  <div className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
+                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
                     {categorized.classeur.map((file, idx) => renderClasseurCard(file, idx))}
                   </div>
                 </section>
@@ -1771,11 +1747,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <FileText className="w-4 h-4" />
                     <span>Documents ({categorized.documents.length})</span>
                   </div>
-                  <div className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
+                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
                     {categorized.documents.map((file, idx) => renderDocumentCard(file, idx))}
                   </div>
                 </section>
@@ -1788,11 +1763,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <ImageIcon className="w-4 h-4" />
                     <span>Images ({categorized.images.length})</span>
                   </div>
-                  <div className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
+                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
                     {categorized.images.map((file, idx) => renderImageCard(file, idx))}
                   </div>
                 </section>
@@ -1805,11 +1779,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <Film className="w-4 h-4" />
                     <span>Vidéos ({categorized.videos.length})</span>
                   </div>
-                  <div className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
-                  }`}>
+                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5'
+                    }`}>
                     {categorized.videos.map((file, idx) => renderVideoCard(file, idx))}
                   </div>
                 </section>
@@ -1822,11 +1795,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                     <FileText className="w-4 h-4" />
                     <span>Autres Fichiers ({categorized.others.length})</span>
                   </div>
-                  <div className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
+                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
                     {categorized.others.map((file, idx) => renderDocumentCard(file, idx))}
                   </div>
                 </section>
@@ -1839,7 +1811,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         {selectedFile && (
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl ${
-              viewerExpandLevel >= 2
+              (viewerExpandLevel >= 2 || isViewerMaximized)
                 ? 'fixed inset-0 z-50 w-screen h-screen'
                 : (isViewerMaximized || viewerExpandLevel >= 1)
                   ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
