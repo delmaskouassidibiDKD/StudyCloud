@@ -1811,16 +1811,6 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
                 <button
                   type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-blue-400 border border-blue-500/40 text-[11px] sm:text-xs font-bold transition-all cursor-pointer active:scale-95"
-                  title="Ajouter des fichiers confidentiels"
-                >
-                  <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
-                  <span className="hidden sm:inline">Ajouter</span>
-                </button>
-
-                <button
-                  type="button"
                   onClick={() => {
                     setIsUnlocked(false);
                     setSelectedIds(new Set());
