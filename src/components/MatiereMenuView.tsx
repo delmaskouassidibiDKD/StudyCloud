@@ -735,7 +735,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                 title={docLayoutMode === 'vertical' ? "Défilement vertical (Cliquer pour horizontal)" : "Défilement horizontal (Cliquer pour vertical)"}
               >
                 <SlidersHorizontal className={`w-3.5 h-3.5 ${docLayoutMode === 'vertical' ? 'rotate-90 text-blue-400' : 'text-amber-400'}`} />
-                <span className="text-[11px] font-black">{docLayoutMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
+                <span className="text-[11px] font-black hidden xl:inline">{docLayoutMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
               </button>
             )}
 
@@ -1707,9 +1707,19 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] ${selectedFile ? 'bg-[#04060A]' : 'bg-[#C5B0A4] dark:bg-[#0b0f19]'} text-[#2D4A3E] dark:text-slate-100 ${
+      className={`absolute inset-x-0 bottom-0 ${
+        viewerExpandLevel >= 2
+          ? 'top-0 md:top-0 md:left-0 w-full md:w-full z-40'
+          : 'top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)]'
+      } ${
+        (viewerExpandLevel >= 2 || isViewerMaximized)
+          ? 'bg-[#04060A]'
+          : selectedFile
+            ? 'bg-[#04060A] md:bg-[#C5B0A4] md:dark:bg-[#0b0f19]'
+            : 'bg-[#C5B0A4] dark:bg-[#0b0f19]'
+      } text-[#2D4A3E] dark:text-slate-100 ${
         selectedFile
-          ? 'p-0 overflow-hidden flex flex-col h-[calc(100vh-62px)] md:h-[calc(100vh-66px)]'
+          ? `p-0 md:px-3 md:pb-3 md:pt-0 overflow-hidden flex flex-col ${viewerExpandLevel >= 2 ? 'h-screen md:h-screen' : 'h-[calc(100vh-62px)] md:h-[calc(100vh-66px)]'}`
           : 'px-4 pb-8 pt-0 overflow-y-auto'
       } transition-colors duration-300 ${
         isDraggingOver ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-50/20' : ''
@@ -1972,7 +1982,11 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       )}
 
       <div className={`w-full ${
-        selectedFile ? 'pt-0 pb-0' : 'pt-14 sm:pt-16'
+        (isViewerMaximized || viewerExpandLevel >= 1) && selectedFile
+          ? 'pt-0 pb-0'
+          : selectedFile
+            ? 'pt-0 md:pt-14 md:sm:pt-16 pb-0 md:pb-1'
+            : 'pt-14 sm:pt-16'
       } flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0 h-full`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FICHIERS */}
         <div className={`overflow-y-auto px-2 sm:px-4 pt-1 pb-24 transition-all duration-200 ${
@@ -2588,10 +2602,10 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 h-full min-h-0 ${
               (viewerExpandLevel >= 2 || isViewerMaximized)
                 ? 'fixed inset-0 z-50 w-screen h-screen'
-                : (isViewerMaximized || selectedFile)
-                  ? "w-full flex-1 rounded-none border-0"
-                  : "w-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10 rounded-none"
-            } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0 border-white/10' : ''}`}
+                : (isViewerMaximized || viewerExpandLevel >= 1)
+                  ? 'w-full flex-1 rounded-xl border border-white/10'
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-w-0 border-t md:border-t-0 md:border-l border-white/10 md:rounded-2xl'
+            }`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>

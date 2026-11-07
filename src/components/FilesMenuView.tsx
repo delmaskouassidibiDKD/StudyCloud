@@ -1077,8 +1077,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           : ''
       }`}>
         {/* Barre d'en-tête du lecteur (conforme à l'Image 3 du menu documents, sans bouton superflu) */}
-        <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
-          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+        <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-2.5 sm:px-3 py-1.5 sm:py-2 border-b border-white/10 flex items-center justify-between gap-1 sm:gap-2 shadow-md shrink-0 min-w-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 shrink">
             <button
               type="button"
               disabled={!canGoPrev}
@@ -1098,8 +1098,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
 
-            <div className="min-w-0 ml-1">
-              <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[120px] xs:max-w-[150px] sm:max-w-[220px]" title={file.name}>
+            <div className="min-w-0 ml-0.5 sm:ml-1">
+              <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[90px] xs:max-w-[120px] sm:max-w-[160px] lg:max-w-[220px]" title={file.name}>
                 {file.name}
               </p>
               <p className="text-[10px] text-slate-400 font-semibold truncate">
@@ -1109,14 +1109,14 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           </div>
 
           {/* Outils du lecteur à droite : disposition claire et espacée avec boutons ronds */}
-          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 min-w-0">
             {isPdf && (
               <>
                 {/* Bouton de bascule défilement masqué sur mobile (pas besoin sur téléphone, lecture directe horizontale fluide) */}
                 <button
                   type="button"
                   onClick={() => setDocLayoutMode(m => m === 'vertical' ? 'horizontal' : 'vertical')}
-                  className={`hidden md:flex items-center gap-1 px-2.5 py-1 rounded-full border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                  className={`hidden md:flex items-center gap-1 px-2 py-1 rounded-full border transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 ${
                     docLayoutMode === 'vertical'
                       ? 'bg-blue-600/30 text-blue-300 border-blue-400/50 hover:bg-blue-600/40'
                       : 'bg-amber-500/20 text-amber-300 border-amber-400/50 hover:bg-amber-500/30'
@@ -1124,7 +1124,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                   title={docLayoutMode === 'vertical' ? "Défilement vertical actif (Cliquer pour passer en horizontal)" : "Mode horizontal actif (Cliquer pour passer en défilement vertical)"}
                 >
                   <SlidersHorizontal className={`w-3.5 h-3.5 ${docLayoutMode === 'vertical' ? 'rotate-90 text-blue-400' : 'text-amber-400'}`} />
-                  <span className="text-[11px] font-bold hidden sm:inline">
+                  <span className="text-[11px] font-bold hidden xl:inline">
                     {docLayoutMode === 'vertical' ? 'Vertical' : 'Horizontal'}
                   </span>
                 </button>
@@ -1138,7 +1138,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                   <ZoomOut className="w-3.5 h-3.5" />
                 </button>
 
-                <span className="text-[10px] font-bold text-slate-300 w-10 text-center hidden sm:inline-block shrink-0">
+                <span className="text-[10px] font-bold text-slate-300 w-8 text-center hidden lg:inline-block shrink-0">
                   {Math.round(viewerZoom * 100)}%
                 </span>
 
@@ -2211,9 +2211,19 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`absolute inset-x-0 bottom-0 ${viewerExpandLevel >= 2 ? 'top-0 md:top-0 md:left-0 w-full md:w-full z-40' : 'top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)]'} ${selectedFile ? 'bg-[#04060A]' : 'bg-[#C5B0A4] dark:bg-[#0b0f19]'} text-[#2D4A3E] dark:text-slate-100 ${
+      className={`absolute inset-x-0 bottom-0 ${
+        viewerExpandLevel >= 2
+          ? 'top-0 md:top-0 md:left-0 w-full md:w-full z-40'
+          : 'top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)]'
+      } ${
+        (viewerExpandLevel >= 2 || isViewerMaximized)
+          ? 'bg-[#04060A]'
+          : selectedFile
+            ? 'bg-[#04060A] md:bg-[#C5B0A4] md:dark:bg-[#0b0f19]'
+            : 'bg-[#C5B0A4] dark:bg-[#0b0f19]'
+      } text-[#2D4A3E] dark:text-slate-100 ${
         selectedFile
-          ? `p-0 overflow-hidden flex flex-col ${viewerExpandLevel >= 2 ? 'h-screen md:h-screen' : 'h-[calc(100vh-62px)] md:h-[calc(100vh-66px)]'}`
+          ? `p-0 md:px-3 md:pb-3 md:pt-0 overflow-hidden flex flex-col ${viewerExpandLevel >= 2 ? 'h-screen md:h-screen' : 'h-[calc(100vh-62px)] md:h-[calc(100vh-66px)]'}`
           : 'px-4 pb-8 pt-0 overflow-y-auto'
       } transition-colors duration-300 ${
         isDraggingOver ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-50/20' : ''
@@ -2802,7 +2812,11 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
 
       <div className={`w-full ${
-        selectedFile ? 'pt-0 pb-0' : 'pt-14 sm:pt-16'
+        (isViewerMaximized || viewerExpandLevel >= 1) && selectedFile
+          ? 'pt-0 pb-0'
+          : selectedFile
+            ? 'pt-0 md:pt-14 md:sm:pt-16 pb-0 md:pb-1'
+            : 'pt-14 sm:pt-16'
       } flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0 h-full`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FICHIERS */}
         <div className={`overflow-y-auto px-2 sm:px-4 pt-1 pb-24 transition-all duration-200 ${
@@ -3483,10 +3497,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 h-full min-h-0 ${
               (viewerExpandLevel >= 2 || isViewerMaximized)
                 ? 'fixed inset-0 z-50 w-screen h-screen'
-                : (isViewerMaximized || selectedFile)
-                  ? 'w-full flex-1 rounded-none border-0'
-                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10 rounded-none'
-            } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0 border-white/10' : ''}`}
+                : (isViewerMaximized || viewerExpandLevel >= 1)
+                  ? 'w-full flex-1 rounded-xl border border-white/10'
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-w-0 border-t md:border-t-0 md:border-l border-white/10 md:rounded-2xl'
+            }`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>
