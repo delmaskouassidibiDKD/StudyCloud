@@ -10735,10 +10735,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const renderNoteWriterPage = (file: FileItem) => {
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-text ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure dédiée à la page d'écriture (SANS bouton horizontal/vertical, SANS zoom) */}
@@ -10809,12 +10807,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </button>
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             <button
               type="button"
@@ -10930,10 +10930,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure du lecteur document (Image 1) */}
@@ -11042,12 +11040,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </button>
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             <button
               type="button"
@@ -11592,15 +11592,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             <ViewerSuperExpandButton
-              expandLevel={isPlayerExpanded ? 2 : 1}
+              expandLevel={viewerExpandLevel}
               onExpandChange={(lvl) => {
-                if (lvl >= 2) {
-                  setIsViewerMaximized(true);
-                  setViewerExpandLevel(2);
-                } else {
-                  setIsViewerMaximized(false);
-                  resetViewerExpand();
-                }
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
               }}
             />
 
@@ -11612,7 +11608,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   resetViewerExpand();
                 } else {
                   setIsViewerMaximized(true);
-                  setViewerExpandLevel(2);
+                  setViewerExpandLevel(1);
                 }
               }}
               className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
@@ -11669,10 +11665,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const renderImageViewer = (file: FileItem) => {
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure du lecteur image (Image 5) */}
@@ -11732,12 +11726,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </button>
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             <button
               type="button"
@@ -12598,7 +12594,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES DOCUMENTS */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-                isViewerMaximized 
+                (isViewerMaximized || viewerExpandLevel >= 1)
                   ? 'hidden' 
                   : selectedDocFile
                     ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -12657,14 +12653,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* PANNEAU DE DROITE : LECTEUR DOCUMENT INDÉPENDANT (IMAGE 1) */}
               {selectedDocFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  viewerExpandLevel === 3
-                    ? 'fixed inset-0 z-[100] w-screen h-screen'
-                    : viewerExpandLevel === 2
-                    ? 'fixed inset-0 z-[99999] w-screen h-screen'
-                    : (isViewerMaximized || selectedDocFile)
+                  viewerExpandLevel >= 2
+                    ? 'fixed inset-0 z-50 w-screen h-screen'
+                    : (isViewerMaximized || viewerExpandLevel >= 1)
                       ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                       : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderDocumentReader(selectedDocFile)}
                 </div>
               )}
@@ -12992,10 +12986,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* PANNEAU DE DROITE : LECTEUR VIDÉO INDÉPENDANT (IMAGE 4) */}
               {selectedVideoFile && (
                 <div className={`flex flex-col bg-[#04060A] ${
-                  (isViewerMaximized || viewerExpandLevel >= 2)
-                    ? 'fixed inset-0 z-[99999] w-screen h-screen'
-                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] flex-1 border-t md:border-t-0 md:border-l border-white/10'
-                }`}>
+                  viewerExpandLevel >= 2
+                    ? 'fixed inset-0 z-50 w-screen h-screen'
+                    : (isViewerMaximized || viewerExpandLevel >= 1)
+                      ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
+                      : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] flex-1 border-t md:border-t-0 md:border-l border-white/10'
+                } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderVideoPlayer(selectedVideoFile)}
                 </div>
               )}
@@ -13007,7 +13003,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES IMAGES */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-                isViewerMaximized 
+                (isViewerMaximized || viewerExpandLevel >= 1)
                   ? 'hidden' 
                   : selectedImageFile
                     ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -13065,14 +13061,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* PANNEAU DE DROITE : LECTEUR IMAGE INDÉPENDANT (IMAGE 5) */}
               {selectedImageFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  viewerExpandLevel === 3
-                    ? 'fixed inset-0 z-[100] w-screen h-screen'
-                    : viewerExpandLevel === 2
-                    ? 'fixed inset-0 z-[99999] w-screen h-screen'
-                    : (isViewerMaximized || selectedImageFile)
+                  viewerExpandLevel >= 2
+                    ? 'fixed inset-0 z-50 w-screen h-screen'
+                    : (isViewerMaximized || viewerExpandLevel >= 1)
                       ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
                       : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderImageViewer(selectedImageFile)}
                 </div>
               )}
@@ -13084,7 +13078,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : LISTE DES TÉLÉCHARGEMENTS */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-                isViewerMaximized 
+                (isViewerMaximized || viewerExpandLevel >= 1)
                   ? 'hidden' 
                   : selectedDownloadFile
                     ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -13202,10 +13196,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* PANNEAU DE DROITE : LECTEUR INDÉPENDANT */}
               {selectedDownloadFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  (isViewerMaximized || selectedDownloadFile)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
-                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                  viewerExpandLevel >= 2
+                    ? 'fixed inset-0 z-50 w-screen h-screen'
+                    : (isViewerMaximized || viewerExpandLevel >= 1)
+                      ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
+                      : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderDownloadReader(selectedDownloadFile)}
                 </div>
               )}
@@ -13217,7 +13213,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               {/* PANNEAU DE GAUCHE : ARBORESCENCE & FICHIERS */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-                isViewerMaximized 
+                (isViewerMaximized || viewerExpandLevel >= 1) 
                   ? 'hidden' 
                   : opened3DFolder && selectedClasseurFile 
                     ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
@@ -13540,10 +13536,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* PANNEAU DE DROITE : LECTEUR LORSQU'UN FICHIER DU DOSSIER EST OUVERT */}
               {opened3DFolder && selectedClasseurFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  (isViewerMaximized || selectedClasseurFile)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
-                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                  viewerExpandLevel >= 2
+                    ? 'fixed inset-0 z-50 w-screen h-screen'
+                    : (isViewerMaximized || viewerExpandLevel >= 1)
+                      ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
+                      : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderClasseurFileReader(selectedClasseurFile)}
                 </div>
               )}
@@ -13626,10 +13624,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
               {selectedCollectionFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  (isViewerMaximized || selectedCollectionFile)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
-                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                  viewerExpandLevel >= 2
+                    ? 'fixed inset-0 z-50 w-screen h-screen'
+                    : (isViewerMaximized || viewerExpandLevel >= 1)
+                      ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
+                      : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderCollectionReader(selectedCollectionFile)}
                 </div>
               )}
@@ -13640,7 +13640,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {(currentSubView?.id === 'studycloud-collection-favorites' || (isCloudView && cloudActiveTab === 'favorites')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-                isViewerMaximized 
+                (isViewerMaximized || viewerExpandLevel >= 1) 
                   ? 'hidden' 
                   : selectedCollectionFile
                     ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -13713,10 +13713,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
               {selectedCollectionFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  (isViewerMaximized || selectedCollectionFile)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
-                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                  viewerExpandLevel >= 2
+                    ? 'fixed inset-0 z-50 w-screen h-screen'
+                    : (isViewerMaximized || viewerExpandLevel >= 1)
+                      ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
+                      : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderCollectionReader(selectedCollectionFile)}
                 </div>
               )}
@@ -13727,7 +13729,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {(currentSubView?.id === 'studycloud-collection-trash' || (isCloudView && cloudActiveTab === 'trash')) && (
             <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-                isViewerMaximized 
+                (isViewerMaximized || viewerExpandLevel >= 1) 
                   ? 'hidden' 
                   : selectedCollectionFile
                     ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -13829,10 +13831,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
               {selectedCollectionFile && (
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-                  (isViewerMaximized || selectedCollectionFile)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
-                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-                } ${!isViewerMaximized ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                  viewerExpandLevel >= 2
+                    ? 'fixed inset-0 z-50 w-screen h-screen'
+                    : (isViewerMaximized || viewerExpandLevel >= 1)
+                      ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0' 
+                      : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
                   {renderCollectionReader(selectedCollectionFile)}
                 </div>
               )}

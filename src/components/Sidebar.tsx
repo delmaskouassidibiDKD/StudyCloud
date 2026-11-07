@@ -173,7 +173,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
   ];
 
   const viewerExpandLevel = useViewerExpandLevel();
-  const isViewerHidingSidebar = viewerExpandLevel === 3;
+  const isViewerHidingSidebar = viewerExpandLevel >= 2;
 
   return (
     <>

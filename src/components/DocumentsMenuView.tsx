@@ -1853,10 +1853,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure du lecteur document (Image 3) */}
@@ -1982,12 +1980,17 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             )}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) {
+                  setIsViewerMaximized(true);
+                } else {
+                  setIsViewerMaximized(false);
+                }
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             <button
               type="button"
@@ -2104,7 +2107,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       />
 
       {/* EN-TÊTE FIXE DU MENU DOCUMENTS */}
-      <header className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm ${(isViewerMaximized && selectedDoc) ? 'hidden' : (selectedDoc ? 'hidden md:block' : '')}`}>
+      <header className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedDoc) ? 'hidden' : (selectedDoc ? 'hidden md:block' : '')}`}>
         <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Retour et Titre */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
@@ -2280,10 +2283,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR DOCUMENT DÉDIÉ (IMAGE 3) */}
         {selectedDoc && (
           <div className={`flex flex-col bg-[#04060A] animate-in fade-in duration-150 ${
-            viewerExpandLevel === 3
-              ? 'fixed inset-0 z-[100] w-screen h-screen'
-              : viewerExpandLevel === 2
-              ? 'fixed inset-0 z-[99999] w-screen h-screen'
+            viewerExpandLevel >= 2
+              ? 'fixed inset-0 z-50 w-screen h-screen'
               : (isViewerMaximized || selectedDoc)
                 ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'

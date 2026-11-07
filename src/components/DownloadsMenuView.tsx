@@ -194,10 +194,8 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
@@ -228,12 +226,14 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
             {isVid && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             <button
               type="button"
@@ -399,7 +399,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE */}
         <div className={`overflow-y-auto px-3 sm:px-6 py-4 pb-64 ${
-          (isViewerMaximized && selectedItem)
+          ((isViewerMaximized || viewerExpandLevel >= 1) && selectedItem)
             ? 'hidden'
             : selectedItem
               ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-200'
@@ -490,14 +490,12 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR */}
         {selectedItem && (
           <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-            viewerExpandLevel === 3
-              ? 'fixed inset-0 z-[100] w-screen h-screen'
-              : viewerExpandLevel === 2
-              ? 'fixed inset-0 z-[99999] w-screen h-screen'
-              : (isViewerMaximized || selectedItem)
+            viewerExpandLevel >= 2
+              ? 'fixed inset-0 z-50 w-screen h-screen'
+              : (isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-          } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+          } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
             {renderReader(selectedItem)}
           </div>
         )}

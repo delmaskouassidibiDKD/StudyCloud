@@ -78,7 +78,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         document.documentElement.classList.remove('dark');
         document.body.classList.remove('dark');
       }
-    } catch (e) {}
+    } catch (e) { }
   }, [isDarkMode]);
 
   useEffect(() => {
@@ -136,14 +136,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     try {
       const saved = localStorage.getItem('studycloud_pricing_initial_tab');
       if (saved === 'storage' || saved === 'ai' || saved === 'renewal') return saved;
-    } catch {}
+    } catch { }
     return 'storage';
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('studycloud_pricing_initial_tab', pricingInitialTab);
-    } catch {}
+    } catch { }
   }, [pricingInitialTab]);
 
   const [previousViewMode, setPreviousViewMode] = useState<string>('home');
@@ -154,7 +154,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       if (saved && saved.trim().length > 0) {
         return saved;
       }
-    } catch {}
+    } catch { }
     return 'home';
   });
 
@@ -163,7 +163,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       if (viewMode) {
         localStorage.setItem('unifolder_view_mode', viewMode);
       }
-    } catch {}
+    } catch { }
   }, [viewMode]);
 
   useEffect(() => {
@@ -188,14 +188,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         const val = parseInt(saved, 10);
         if (!isNaN(val) && val >= 0 && val <= 2) return val;
       }
-    } catch {}
+    } catch { }
     return 1;
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('studycloud_dashboard_page_index', String(activePageIndex));
-    } catch {}
+    } catch { }
   }, [activePageIndex]);
 
   const [dragOffset, setDragOffset] = useState<number>(0);
@@ -213,7 +213,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       const cached = localStorage.getItem('studycloud_dashboard_wallpaper');
       // Ignorer les anciens blob: expirés pour éviter l'écran grisé
       if (cached && !cached.startsWith('blob:')) return cached;
-    } catch {}
+    } catch { }
     return DEFAULT_WALLPAPER_URL;
   });
 
@@ -248,7 +248,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             localStorage.setItem('studycloud_dashboard_wallpaper', cloudWallpaperData.url);
             localStorage.removeItem('studycloud_dashboard_wallpaper_local');
             localStorage.setItem('studycloud_dashboard_wallpaper_id', String(cloudWallpaperData.id));
-          } catch {}
+          } catch { }
         } else {
           // Fond d'écran personnalisé distant : synchroniser et mettre en cache local
           import('../utils/wallpaperHelper').then(m => {
@@ -256,8 +256,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               if (localUrl && !localUrl.startsWith('blob:')) {
                 setDashboardWallpaper(localUrl);
               }
-            }).catch(() => {});
-          }).catch(() => {});
+            }).catch(() => { });
+          }).catch(() => { });
         }
       }
     }
@@ -265,8 +265,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
   useEffect(() => {
     const handleWallpaperChange = (e: any) => {
-      const wp = e?.detail?.wallpaper !== undefined 
-        ? e.detail.wallpaper 
+      const wp = e?.detail?.wallpaper !== undefined
+        ? e.detail.wallpaper
         : (localStorage.getItem('studycloud_dashboard_wallpaper_local') || localStorage.getItem('studycloud_dashboard_wallpaper'));
       setDashboardWallpaper(wp || DEFAULT_WALLPAPER_URL);
     };
@@ -278,7 +278,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     try {
       const saved = localStorage.getItem('studycloud_wallpaper_fit_mode');
       if (saved === 'cover' || saved === 'contain') return saved;
-    } catch {}
+    } catch { }
     return 'contain'; // Par défaut sur PC : vue complète pour ne jamais trop zoomer
   });
 
@@ -496,7 +496,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     const handleDataRestored = () => {
       const saved = localStorage.getItem('unifolder_saved_matieres');
       if (saved) {
-        try { setSavedMatieres(JSON.parse(saved)); } catch (e) {}
+        try { setSavedMatieres(JSON.parse(saved)); } catch (e) { }
       } else {
         setSavedMatieres([]);
       }
@@ -524,9 +524,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       return updated;
     });
     if (mat.id) {
-      StudyCloudAPI.deleteMatiere(mat.id).catch(() => {});
+      StudyCloudAPI.deleteMatiere(mat.id).catch(() => { });
     } else if (mat.name) {
-      StudyCloudAPI.deleteMatiere(mat.name).catch(() => {});
+      StudyCloudAPI.deleteMatiere(mat.name).catch(() => { });
     }
     window.dispatchEvent(new Event('unifolder_matieres_updated'));
     window.dispatchEvent(new Event('unifolder_files_updated'));
@@ -575,11 +575,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
 
   const renderBlock = (id: string, index: number) => {
-    let defaultAction = () => {};
+    let defaultAction = () => { };
     let iconContent = null;
     let label = '';
 
-    switch(id) {
+    switch (id) {
       case 'files':
         label = 'Mes fichiers';
         defaultAction = () => setViewMode('files-menu');
@@ -610,20 +610,20 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               </defs>
 
               {/* Onglet et dos du dossier en BLEU intense */}
-              <path 
-                d="M 14 20 C 14 16 17 13 21 13 L 42 13 C 45 13 48 16 50 19 L 54 24 L 84 24 C 88 24 91 27 91 31 L 91 46 L 14 46 Z" 
-                fill="url(#p2FilesBackBlueGrad)" 
-                stroke="#18181B" 
-                strokeWidth="1.3" 
-                strokeLinejoin="round" 
+              <path
+                d="M 14 20 C 14 16 17 13 21 13 L 42 13 C 45 13 48 16 50 19 L 54 24 L 84 24 C 88 24 91 27 91 31 L 91 46 L 14 46 Z"
+                fill="url(#p2FilesBackBlueGrad)"
+                stroke="#18181B"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
               />
 
               {/* Liseré lumineux cyan sur le haut de l'onglet bleu */}
-              <path 
-                d="M 21 15 L 42 15 C 44 15 46 17 48 19 L 51 24 L 84 24" 
-                stroke="#BAE6FD" 
-                strokeWidth="1.2" 
-                strokeLinecap="round" 
+              <path
+                d="M 21 15 L 42 15 C 44 15 46 17 48 19 L 51 24 L 84 24"
+                stroke="#BAE6FD"
+                strokeWidth="1.2"
+                strokeLinecap="round"
               />
 
               {/* Feuilles de documents blancs/bleutés qui dépassent à l'intérieur */}
@@ -632,7 +632,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               <line x1="30" y1="31" x2="56" y2="31" stroke="#93C5FD" strokeWidth="2.2" strokeLinecap="round" />
 
               {/* Corps principal avant du dossier en ORANGE chaleureux 3D */}
-              <path 
+              <path
                 d="
                   M 14 34
                   L 44 34
@@ -647,12 +647,12 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                   L 8 40
                   C 8 36 10 34 14 34
                   Z
-                " 
-                fill="url(#p2FilesFrontOrangeGrad)" 
-                stroke="#18181B" 
-                strokeWidth="1.3" 
-                strokeLinejoin="round" 
-                strokeLinecap="round" 
+                "
+                fill="url(#p2FilesFrontOrangeGrad)"
+                stroke="#18181B"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
+                strokeLinecap="round"
               />
 
               {/* Liseré fin BLEU ÉLECTRIQUE sur le pli supérieur du rabat orange (mélange orange & bleu parfait) */}
@@ -698,11 +698,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 </linearGradient>
               </defs>
               <rect x="12" y="18" width="76" height="72" rx="14" fill="url(#p2SchedBodyGrad)" stroke="#18181B" strokeWidth="1.3" />
-              <path 
-                d="M 12 32 C 12 24 18 18 26 18 L 74 18 C 82 18 88 24 88 32 L 88 38 L 12 38 Z" 
-                fill="url(#p2SchedHeaderGrad)" 
-                stroke="#18181B" 
-                strokeWidth="1.3" 
+              <path
+                d="M 12 32 C 12 24 18 18 26 18 L 74 18 C 82 18 88 24 88 32 L 88 38 L 12 38 Z"
+                fill="url(#p2SchedHeaderGrad)"
+                stroke="#18181B"
+                strokeWidth="1.3"
               />
               <text x="50" y="31" fill="#FFFFFF" fontSize="10" fontWeight="900" textAnchor="middle" letterSpacing="2">EDT</text>
               <rect x="28" y="10" width="7" height="15" rx="3.5" fill="url(#p2RingGrad)" stroke="#18181B" strokeWidth="1" />
@@ -808,11 +808,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 </linearGradient>
               </defs>
               <rect x="12" y="16" width="76" height="74" rx="14" fill="url(#p2CalPaperGrad)" stroke="#18181B" strokeWidth="1.3" />
-              <path 
-                d="M 12 30 C 12 22 18 16 26 16 L 74 16 C 82 16 88 22 88 30 L 88 36 L 12 36 Z" 
-                fill="url(#p2CalHeaderGrad)" 
-                stroke="#18181B" 
-                strokeWidth="1.3" 
+              <path
+                d="M 12 30 C 12 22 18 16 26 16 L 74 16 C 82 16 88 22 88 30 L 88 36 L 12 36 Z"
+                fill="url(#p2CalHeaderGrad)"
+                stroke="#18181B"
+                strokeWidth="1.3"
               />
               <text x="50" y="29" fill="#FFFFFF" fontSize="9.5" fontWeight="900" textAnchor="middle" letterSpacing="1.5">CALENDRIER</text>
               <rect x="28" y="10" width="7" height="13" rx="3.5" fill="#CBD5E1" stroke="#18181B" strokeWidth="1" />
@@ -852,20 +852,20 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                   <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
                 </linearGradient>
               </defs>
-              <path 
-                d="M 50 84 C 50 84 14 58 14 33 C 14 18 26 10 38 10 C 45 10 50 15 50 15 C 50 15 55 10 62 10 C 74 10 86 18 86 33 C 86 58 50 84 50 84 Z" 
-                fill="url(#p2FavHeart3DGrad)" 
-                stroke="#18181B" 
-                strokeWidth="1.3" 
-                strokeLinejoin="round" 
+              <path
+                d="M 50 84 C 50 84 14 58 14 33 C 14 18 26 10 38 10 C 45 10 50 15 50 15 C 50 15 55 10 62 10 C 74 10 86 18 86 33 C 86 58 50 84 50 84 Z"
+                fill="url(#p2FavHeart3DGrad)"
+                stroke="#18181B"
+                strokeWidth="1.3"
+                strokeLinejoin="round"
               />
-              <path 
-                d="M 23 30 C 23 20 29 14 38 14 C 43 14 47 17 48 19 C 42 20 30 24 25 36 C 24 34 23 32 23 30 Z" 
-                fill="url(#p2FavHighlightGrad)" 
+              <path
+                d="M 23 30 C 23 20 29 14 38 14 C 43 14 47 17 48 19 C 42 20 30 24 25 36 C 24 34 23 32 23 30 Z"
+                fill="url(#p2FavHighlightGrad)"
               />
-              <path 
-                d="M 72 22 L 74 28 L 80 30 L 74 32 L 72 38 L 70 32 L 64 30 L 70 28 Z" 
-                fill="#FEF08A" 
+              <path
+                d="M 72 22 L 74 28 L 80 30 L 74 32 L 72 38 L 70 32 L 64 30 L 70 28 Z"
+                fill="#FEF08A"
               />
             </svg>
           </div>
@@ -942,15 +942,15 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               <rect x="34" y="43" width="12" height="40" rx="4" fill="url(#p2BarGrad2)" stroke="#18181B" strokeWidth="1" />
               <rect x="50" y="31" width="12" height="52" rx="4" fill="url(#p2BarGrad3)" stroke="#18181B" strokeWidth="1" />
               <rect x="66" y="17" width="12" height="66" rx="4" fill="url(#p2BarGrad4)" stroke="#18181B" strokeWidth="1" />
-              <path 
-                d="M 20 52 Q 46 36 74 13" 
-                stroke="#EF4444" 
-                strokeWidth="4" 
-                strokeLinecap="round" 
+              <path
+                d="M 20 52 Q 46 36 74 13"
+                stroke="#EF4444"
+                strokeWidth="4"
+                strokeLinecap="round"
               />
-              <path 
-                d="M 64 13 L 76 13 L 76 25 Z" 
-                fill="#EF4444" 
+              <path
+                d="M 64 13 L 76 13 L 76 25 Z"
+                fill="#EF4444"
               />
             </svg>
           </div>
@@ -1086,7 +1086,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     const isMobileOnlyApp = id === 'storage' || id === 'ai-subscriptions';
 
     return (
-      <div 
+      <div
         key={id}
         onClick={(e) => {
           if (hasMovedRef.current) {
@@ -1101,11 +1101,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-24 md:h-24 lg:w-26 lg:h-26 flex items-center justify-center transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_10px_24px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_14px_28px_rgba(0,0,0,0.28)] group-hover:scale-110 active:scale-95">
           {iconContent}
         </div>
-        <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center px-0.5 leading-tight md:leading-snug tracking-tight w-full line-clamp-2 transition-colors ${
-          dashboardWallpaper && viewMode === 'home'
+        <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center px-0.5 leading-tight md:leading-snug tracking-tight w-full line-clamp-2 transition-colors ${dashboardWallpaper && viewMode === 'home'
             ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] bg-black/45 px-1.5 md:px-2 py-0.5 rounded-full border border-white/10'
             : 'text-stone-900 dark:text-stone-100'
-        }`}>{label}</span>
+          }`}>{label}</span>
       </div>
     );
   };
@@ -1114,7 +1113,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [scheduleItems, setScheduleItems] = useState<{ day: string; time: string; matiere: string; room: string }[]>(() => {
     const saved = localStorage.getItem('unifolder_schedule');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try { return JSON.parse(saved); } catch (e) { }
     }
     return [
       { day: 'Lundi', time: '08:00 - 10:00', matiere: 'Mathématiques', room: 'Salle 101' },
@@ -1135,7 +1134,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [gradesItems, setGradesItems] = useState<{ matiere: string; grade: string; coefficient: string }[]>(() => {
     const saved = localStorage.getItem('unifolder_grades');
     if (saved) {
-      try { return JSON.parse(saved); } catch (e) {}
+      try { return JSON.parse(saved); } catch (e) { }
     }
     return [];
   });
@@ -1152,20 +1151,18 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const isDedicatedView = viewMode === 'page1-files-menu' || viewMode.startsWith('matiere-') || viewMode === 'red-robot-menu';
 
   return (
-    <div className={`flex flex-col ${
-      isDedicatedView
+    <div className={`flex flex-col ${isDedicatedView
         ? `w-full h-full min-h-0 flex-1 items-stretch text-left p-0 ${viewerExpandLevel >= 2 ? 'pt-0 md:pt-0' : 'pt-[64px] md:pt-[68px]'} pb-0`
-        : viewMode === 'home' 
-          ? 'items-center justify-start h-full max-h-full overflow-hidden touch-pan-x select-none overscroll-none px-1 sm:px-4 text-center pt-[64px] md:pt-[68px] pb-16 md:pb-24' 
+        : viewMode === 'home'
+          ? 'items-center justify-start h-full max-h-full overflow-hidden touch-pan-x select-none overscroll-none px-1 sm:px-4 text-center pt-[64px] md:pt-[68px] pb-16 md:pb-24'
           : 'items-center justify-start min-h-[75vh] overflow-y-auto px-1 sm:px-4 text-center pt-[64px] md:pt-[68px] pb-16 md:pb-24'
-    } transition-colors duration-200 ${
-      dashboardWallpaper && viewMode === 'home'
+      } transition-colors duration-200 ${dashboardWallpaper && viewMode === 'home'
         ? 'bg-transparent text-white'
         : 'bg-[#0a0e17] text-white'
-    }`}>
+      }`}>
       {/* Fond d'écran personnalisé du tableau de bord (Visible sur la Page 1 et la Page 2) */}
       {dashboardWallpaper && viewMode === 'home' && (
-        <div 
+        <div
           className="fixed inset-0 w-screen h-screen z-0 pointer-events-none overflow-hidden select-none bg-[#0a0e17]"
           style={{
             position: 'fixed',
@@ -1183,14 +1180,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           }}
         >
           {/* Image de fond plein écran en pleine définition, 100% nette et lumineuse sans aucun flou ni voile sombre */}
-          <img 
-            src={dashboardWallpaper} 
-            alt="Fond d'écran Tableau de Bord" 
+          <img
+            src={dashboardWallpaper}
+            alt="Fond d'écran Tableau de Bord"
             loading="eager"
             decoding="sync"
             // @ts-ignore
             fetchPriority="high"
-            className="w-full h-full object-cover object-center select-none" 
+            className="w-full h-full object-cover object-center select-none"
             style={{
               width: '100%',
               height: '100%',
@@ -1208,22 +1205,20 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                   setDashboardWallpaper(reliable);
                   (e.target as HTMLImageElement).src = reliable;
                 }
-              } catch {}
+              } catch { }
             }}
           />
         </div>
       )}
 
       {/* Fixed Header bar with action buttons - Masqué en mode super-agrandi (viewerExpandLevel >= 2) */}
-      <div className={`fixed top-0 left-0 right-0 ${viewerExpandLevel === 3 ? 'md:left-0' : 'md:left-64'} z-40 px-3 md:px-6 py-2 h-[64px] md:h-[68px] flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${
-        viewerExpandLevel >= 2 ? '!hidden pointer-events-none' : ''
-      } ${
-        dashboardWallpaper && viewMode === 'home'
+      <div className={`fixed top-0 left-0 right-0 ${viewerExpandLevel >= 2 ? 'md:left-0' : 'md:left-64'} z-40 px-3 md:px-6 py-2 h-[64px] md:h-[68px] flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${viewerExpandLevel >= 2 ? '!hidden pointer-events-none' : ''
+        } ${dashboardWallpaper && viewMode === 'home'
           ? 'bg-transparent border-b-2 border-white/50 text-white shadow-sm'
-          : isDarkMode 
-            ? 'bg-[#070a13] border-b border-[#1e293b] shadow-md' 
+          : isDarkMode
+            ? 'bg-[#070a13] border-b border-[#1e293b] shadow-md'
             : 'bg-[#E9D7C9] border-b-2 border-stone-800 shadow-sm'
-      }`}>
+        }`}>
         <div className="flex items-center gap-2">
           <MenuDrawer
             onNavigateHome={() => {
@@ -1256,20 +1251,18 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           <div className="flex flex-col items-center">
             <button
               onClick={() => onOpenStudySpace?.()}
-              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
-                isDarkMode 
-                  ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-amber-500/50 shadow-sm' 
+              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center active:scale-95 ${isDarkMode
+                  ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-amber-500/50 shadow-sm'
                   : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
-              }`}
+                }`}
               title="Ouvrir le Menu de création"
             >
               <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${
-              dashboardWallpaper && viewMode === 'home'
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${dashboardWallpaper && viewMode === 'home'
                 ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
                 : (isDarkMode ? 'text-white' : 'text-stone-700')
-            }`}>
+              }`}>
               Menu de création
             </span>
           </div>
@@ -1278,11 +1271,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           <div className="flex flex-col items-center">
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
-                isDarkMode 
-                  ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-amber-500/50 shadow-sm' 
+              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center active:scale-95 ${isDarkMode
+                  ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-amber-500/50 shadow-sm'
                   : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
-              }`}
+                }`}
               title={isDarkMode ? "Passer en mode jour" : "Passer en mode nuit / sombre"}
             >
               {isDarkMode ? (
@@ -1291,11 +1283,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 <Moon className="w-4 h-4 text-indigo-600" />
               )}
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${
-              dashboardWallpaper && viewMode === 'home'
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${dashboardWallpaper && viewMode === 'home'
                 ? 'text-amber-300 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
                 : (isDarkMode ? 'text-amber-300' : 'text-stone-700')
-            }`}>
+              }`}>
               {isDarkMode ? "Jour" : "Sombre"}
             </span>
           </div>
@@ -1304,29 +1295,26 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           <div className="flex flex-col items-center relative">
             <button
               onClick={() => setIsLanguageMenuOpen(!isLanguageMenuOpen)}
-              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
-                isDarkMode
+              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${isDarkMode
                   ? 'bg-[#1e293b] hover:bg-[#283852] text-white border-[#334155] shadow-sm'
                   : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
-              }`}
+                }`}
               title="Langue"
             >
               <Globe className="w-4 h-4 text-rose-400" />
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${
-              dashboardWallpaper && viewMode === 'home'
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${dashboardWallpaper && viewMode === 'home'
                 ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
                 : (isDarkMode ? 'text-white' : 'text-stone-700')
-            }`}>
+              }`}>
               Langue
             </span>
-            
+
             {isLanguageMenuOpen && (
-              <div className={`absolute top-full right-0 mt-2 rounded-2xl shadow-2xl z-50 min-w-[160px] py-1.5 max-h-[300px] overflow-y-auto border-2 ${
-                isDarkMode
+              <div className={`absolute top-full right-0 mt-2 rounded-2xl shadow-2xl z-50 min-w-[160px] py-1.5 max-h-[300px] overflow-y-auto border-2 ${isDarkMode
                   ? 'bg-[#111a2e] border-[#334155] text-white'
                   : 'bg-[#F5F1E9] border-2 border-stone-800 text-stone-800'
-              }`}>
+                }`}>
                 {[
                   { code: 'fr', label: 'Français' },
                   { code: 'en', label: 'English' },
@@ -1346,13 +1334,12 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                     <button
                       key={lang.code}
                       onClick={() => handleLanguageChange(lang.code)}
-                      className={`w-full text-left px-3.5 py-2 text-xs font-bold transition-colors ${
-                        isSelected 
-                          ? 'bg-rose-500/25 text-rose-400 border-l-4 border-rose-500' 
-                          : isDarkMode 
-                          ? 'text-slate-200 hover:bg-[#1e293b] border-l-4 border-transparent' 
-                          : 'text-stone-700 hover:bg-stone-200 border-l-4 border-transparent'
-                      }`}
+                      className={`w-full text-left px-3.5 py-2 text-xs font-bold transition-colors ${isSelected
+                          ? 'bg-rose-500/25 text-rose-400 border-l-4 border-rose-500'
+                          : isDarkMode
+                            ? 'text-slate-200 hover:bg-[#1e293b] border-l-4 border-transparent'
+                            : 'text-stone-700 hover:bg-stone-200 border-l-4 border-transparent'
+                        }`}
                     >
                       {lang.label}
                     </button>
@@ -1369,21 +1356,19 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               className="flex flex-col items-center justify-center cursor-pointer group active:scale-95 transition-all select-none shrink-0"
               title={isAssistantOpen ? "Fermer Delmas IA" : "Ouvrir Delmas IA"}
             >
-              <div className={`relative p-0.5 rounded-full transition-all duration-200 ${
-                isAssistantOpen 
-                  ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.7)] scale-105' 
+              <div className={`relative p-0.5 rounded-full transition-all duration-200 ${isAssistantOpen
+                  ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.7)] scale-105'
                   : 'hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]'
-              }`}>
+                }`}>
                 <DelmasRobot size={38} variant="blue" />
               </div>
             </button>
-            <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap transition-colors ${
-              isAssistantOpen 
-                ? 'text-blue-500' 
+            <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap transition-colors ${isAssistantOpen
+                ? 'text-blue-500'
                 : (dashboardWallpaper && viewMode === 'home'
-                    ? 'text-blue-300 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)] group-hover:text-blue-200'
-                    : (isDarkMode ? 'text-blue-400 group-hover:text-blue-300' : 'text-blue-600 group-hover:text-blue-700'))
-            }`}>
+                  ? 'text-blue-300 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)] group-hover:text-blue-200'
+                  : (isDarkMode ? 'text-blue-400 group-hover:text-blue-300' : 'text-blue-600 group-hover:text-blue-700'))
+              }`}>
               delmas IA
             </span>
           </div>
@@ -1396,20 +1381,18 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 setPreviousViewMode(viewMode === 'abondamment' ? 'home' : viewMode);
                 setViewMode('abondamment');
               }}
-              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
-                isDarkMode
+              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${isDarkMode
                   ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-[#334155] shadow-sm'
                   : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
-              }`}
+                }`}
               title="Abonnement"
             >
               <Sparkles className="w-4 h-4 text-amber-400" />
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${
-              dashboardWallpaper && viewMode === 'home'
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${dashboardWallpaper && viewMode === 'home'
                 ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
                 : (isDarkMode ? 'text-white' : 'text-stone-700')
-            }`}>
+              }`}>
               Abonnement
             </span>
           </div>
@@ -1418,20 +1401,18 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           <div className="flex flex-col items-center">
             <button
               onClick={() => setIsMatiereMenuOpen(true)}
-              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
-                isDarkMode
+              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${isDarkMode
                   ? 'bg-[#1e293b] hover:bg-[#283852] text-orange-400 border-[#334155] shadow-sm'
                   : 'bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
-              }`}
+                }`}
               title="Matière"
             >
               <FolderPlus className="w-4 h-4 text-orange-400" />
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${
-              dashboardWallpaper && viewMode === 'home'
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${dashboardWallpaper && viewMode === 'home'
                 ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
                 : (isDarkMode ? 'text-white' : 'text-stone-700')
-            }`}>
+              }`}>
               Matière
             </span>
           </div>
@@ -1441,15 +1422,15 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
       {/* Delmas IA Overlay Modal - Isolé hors du header avec createPortal vers document.body (ne subit aucune déformation ni creux) */}
       {isAssistantOpen && typeof document !== 'undefined' && createPortal(
-        <div 
+        <div
           className="fixed inset-0 z-[200000] flex items-end sm:items-center justify-center sm:justify-end p-0 sm:p-4 sm:pr-6 pointer-events-none"
         >
-          <div 
+          <div
             className="pointer-events-auto w-full sm:w-[420px] md:w-[480px] h-[85vh] sm:h-[82vh] sm:max-h-[820px] bg-[#16181d]/96 backdrop-blur-xl sm:rounded-3xl rounded-t-3xl border border-zinc-700/70 shadow-2xl flex flex-col overflow-hidden relative text-left"
             onClick={(e) => e.stopPropagation()}
           >
-            <DelmasChat 
-              onClose={() => setIsAssistantOpen(false)} 
+            <DelmasChat
+              onClose={() => setIsAssistantOpen(false)}
             />
           </div>
         </div>,
@@ -1457,16 +1438,16 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       )}
 
       {isMatiereMenuOpen && typeof document !== 'undefined' && createPortal(
-        <div 
+        <div
           className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200"
           onClick={() => setIsMatiereMenuOpen(false)}
         >
-          <div 
+          <div
             className="bg-[#2d2d2d] text-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-stone-700 space-y-4 text-left relative max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-xl font-bold mb-2">Ajouter des matières ou autres</h2>
-            
+
             <div className="space-y-3">
               {matieresList.map((item, index) => {
                 const isAlreadyExists = item.name.trim() !== '' && savedMatieres.some(
@@ -1608,16 +1589,16 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       )}
 
       {editingMatiere && (
-        <div 
+        <div
           className="fixed inset-0 z-[99999] bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={() => setEditingMatiere(null)}
         >
-          <div 
+          <div
             className="bg-[#2d2d2d] text-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-stone-700 space-y-4 text-left relative"
             onClick={(e) => e.stopPropagation()}
           >
             <h2 className="text-xl font-bold mb-2">Modifier la matière</h2>
-            
+
             <div className="space-y-3">
               <div className="bg-stone-800 p-3 rounded-2xl border border-stone-700 space-y-1.5">
                 <div className="flex-1 mb-2">
@@ -1682,14 +1663,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                           localStorage.setItem(newKey, existingFiles);
                           localStorage.removeItem(oldKey);
                         }
-                      } catch (_) {}
+                      } catch (_) { }
                     }
 
                     setSavedMatieres(prev => {
                       const updated = [...prev];
-                      updated[editingMatiere.index] = { 
+                      updated[editingMatiere.index] = {
                         id: matId,
-                        name: newName, 
+                        name: newName,
                         coefficient: String(newCoeff),
                         color: matColor
                       };
@@ -1714,11 +1695,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       )}
 
       {activeModal === 'schedule' && (
-        <div 
+        <div
           className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={() => setActiveModal('none')}
         >
-          <div 
+          <div
             className="bg-[#2d2d2d] text-white rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-stone-700 space-y-4 text-left relative max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1826,11 +1807,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       )}
 
       {activeModal === 'grades' && (
-        <div 
+        <div
           className="fixed inset-0 z-[99999] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
           onClick={() => setActiveModal('none')}
         >
-          <div 
+          <div
             className="bg-[#2d2d2d] text-white rounded-3xl p-6 w-full max-w-lg shadow-2xl border border-stone-700 space-y-4 text-left relative max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
@@ -1939,10 +1920,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       )}
 
       {viewMode === 'abondamment' && (
-        <PricingView 
+        <PricingView
           initialTab={pricingInitialTab}
-          onBack={() => setViewMode(previousViewMode || 'home')} 
-          onSelectPlan={(plan) => notify(`Plan ${plan} sélectionné`)} 
+          onBack={() => setViewMode(previousViewMode || 'home')}
+          onSelectPlan={(plan) => notify(`Plan ${plan} sélectionné`)}
         />
       )}
 
@@ -1962,16 +1943,16 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               isImage: f.isImage || false,
             }));
             localStorage.setItem('published_selected_files', JSON.stringify(payload));
-          } catch (e) {}
+          } catch (e) { }
           if (onOpenPublishView) onOpenPublishView();
         }}
       />}
       {typeof viewMode === 'string' && viewMode.startsWith('matiere-') && (
-        <FilesMenuView 
+        <FilesMenuView
           key={viewMode}
-          initialMatiere={viewMode.replace('matiere-', '')} 
-          onBack={() => setViewMode('home')} 
-          setActivePreviewItem={setActivePreviewItem} 
+          initialMatiere={viewMode.replace('matiere-', '')}
+          onBack={() => setViewMode('home')}
+          setActivePreviewItem={setActivePreviewItem}
           onOpenCreateShareLink={onOpenCreateShareLink}
           onImportFile={onOpenUpload}
           onPublishFiles={(files) => {
@@ -1985,7 +1966,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 isImage: f.isImage || false,
               }));
               localStorage.setItem('published_selected_files', JSON.stringify(payload));
-            } catch (e) {}
+            } catch (e) { }
             if (onOpenPublishView) onOpenPublishView();
           }}
         />
@@ -1999,8 +1980,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'level-menu' && <LevelMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'storage-menu' && (
-        <StorageMenuView 
-          onBack={() => setViewMode('home')} 
+        <StorageMenuView
+          onBack={() => setViewMode('home')}
           onOpenPricing={(tab = 'storage') => {
             setPricingInitialTab(tab);
             setPreviousViewMode('storage-menu');
@@ -2009,26 +1990,26 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         />
       )}
       {viewMode === 'page1-files-menu' && (
-        <Page1FilesMenuView 
+        <Page1FilesMenuView
           onBack={() => {
             setActivePageIndex(0);
             setViewMode('home');
-          }} 
-          onOpenStudySpace={onOpenStudySpace} 
+          }}
+          onOpenStudySpace={onOpenStudySpace}
           onOpenCreateShareLink={onOpenCreateShareLink}
         />
       )}
       {viewMode === 'red-robot-menu' && (
-        <RedRobotMenuView 
+        <RedRobotMenuView
           onBack={() => {
             setActivePageIndex(0);
             setViewMode('home');
-          }} 
+          }}
         />
       )}
 
       {viewMode === 'home' && (
-        <div 
+        <div
           className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-1 sm:py-2 relative z-10 flex-1 flex flex-col h-full min-h-[calc(100dvh-140px)] md:min-h-0 select-none touch-pan-x"
           onTouchStart={handleTouchStart}
           onTouchMove={handleTouchMove}
@@ -2041,20 +2022,19 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         >
           {/* Titre de l'écran actif décalé vers la droite sur ordinateur pour ne pas chevaucher le bouton flèche */}
           <div className="flex items-center justify-between mb-2 sm:mb-3 px-2 md:pl-16 shrink-0">
-            <span className={`text-xs font-black select-none transition-all duration-200 ${
-              dashboardWallpaper 
-                ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] bg-black/45 px-3 py-1 rounded-full border border-white/10' 
+            <span className={`text-xs font-black select-none transition-all duration-200 ${dashboardWallpaper
+                ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] bg-black/45 px-3 py-1 rounded-full border border-white/10'
                 : 'text-stone-500 dark:text-stone-400'
-            }`}>
+              }`}>
               {activePageIndex === 0 ? "Espace libre • Page 1" : "Écran d'accueil • Page 2"}
             </span>
           </div>
 
           {/* Conteneur Carrousel / Glissement fluide (Swipe phone & Desktop) */}
-          <div 
+          <div
             className="w-full flex-1 overflow-hidden select-none touch-pan-x relative flex flex-col"
           >
-            <div 
+            <div
               className="flex w-[200%] h-full will-change-transform"
               style={{
                 transform: `translate3d(calc(-${activePageIndex * 50}% + ${dragOffset}px), 0, 0)`,
@@ -2065,7 +2045,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               <div className="w-1/2 shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start">
                 <div className="grid grid-cols-4 md:flex md:flex-wrap md:items-start md:justify-start items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-4 lg:gap-6 gap-x-1.5 sm:gap-x-3 md:gap-4 lg:gap-6">
                   {/* Application Fichiers 3D Espace Cloud */}
-                  <div 
+                  <div
                     onClick={(e) => {
                       if (hasMovedRef.current) {
                         e.preventDefault();
@@ -2115,12 +2095,12 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                         </defs>
 
                         {/* Dos du dossier avec onglet arrière */}
-                        <path 
-                          d="M 14 18 C 14 14 17 12 21 12 L 42 12 C 45 12 48 15 50 18 L 54 22 L 86 22 C 90 22 93 25 93 29 L 93 42 L 14 42 Z" 
-                          fill="url(#p1FolderBackGrad)" 
-                          stroke="#18181B" 
-                          strokeWidth="1.3" 
-                          strokeLinejoin="round" 
+                        <path
+                          d="M 14 18 C 14 14 17 12 21 12 L 42 12 C 45 12 48 15 50 18 L 54 22 L 86 22 C 90 22 93 25 93 29 L 93 42 L 14 42 Z"
+                          fill="url(#p1FolderBackGrad)"
+                          stroke="#18181B"
+                          strokeWidth="1.3"
+                          strokeLinejoin="round"
                         />
 
                         {/* Feuilles de documents blanches qui dépassent à l'intérieur */}
@@ -2129,7 +2109,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                         <line x1="30" y1="27" x2="54" y2="27" stroke="#93C5FD" strokeWidth="2" strokeLinecap="round" />
 
                         {/* Corps principal avant du dossier en bleu élégant avec contour fin */}
-                        <path 
+                        <path
                           d="
                             M 14 26
                             L 44 26
@@ -2144,12 +2124,12 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                             L 6 32
                             C 6 28 9 26 14 26
                             Z
-                          " 
-                          fill="url(#p1FolderFrontGrad)" 
-                          stroke="#18181B" 
-                          strokeWidth="1.3" 
-                          strokeLinejoin="round" 
-                          strokeLinecap="round" 
+                          "
+                          fill="url(#p1FolderFrontGrad)"
+                          stroke="#18181B"
+                          strokeWidth="1.3"
+                          strokeLinejoin="round"
+                          strokeLinecap="round"
                         />
 
                         {/* Liseré fin bleu clair sur le pli supérieur du rabat */}
@@ -2207,17 +2187,16 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       </svg>
                     </div>
 
-                    <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${
-                      dashboardWallpaper 
-                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1.5 md:px-2.5 py-0.5 rounded-full border border-white/10' 
+                    <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper
+                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1.5 md:px-2.5 py-0.5 rounded-full border border-white/10'
                         : 'text-stone-900 dark:text-stone-100'
-                    }`}>
+                      }`}>
                       Espace Cloud
                     </span>
                   </div>
 
                   {/* Nouvelle Application : Grand Robot Rouge qui bouge */}
-                  <div 
+                  <div
                     onClick={(e) => {
                       if (hasMovedRef.current) {
                         e.preventDefault();
@@ -2240,17 +2219,16 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       </div>
                     </div>
 
-                    <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${
-                      dashboardWallpaper 
-                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1.5 md:px-2.5 py-0.5 rounded-full border border-white/10' 
+                    <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper
+                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1.5 md:px-2.5 py-0.5 rounded-full border border-white/10'
                         : 'text-stone-900 dark:text-stone-100'
-                    }`}>
+                      }`}>
                       Robot Rouge
                     </span>
                   </div>
 
                   {/* Nouvelle Application 3D : Menu de création (Livre 3D avec Petit Robot Bleu au milieu) */}
-                  <div 
+                  <div
                     onClick={(e) => {
                       if (hasMovedRef.current) {
                         e.preventDefault();
@@ -2267,11 +2245,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       <CreationMenuBookIcon className="w-full h-full" />
                     </div>
 
-                    <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${
-                      dashboardWallpaper 
-                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1.5 md:px-2.5 py-0.5 rounded-full border border-white/10' 
+                    <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper
+                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1.5 md:px-2.5 py-0.5 rounded-full border border-white/10'
                         : 'text-stone-900 dark:text-stone-100'
-                    }`}>
+                      }`}>
                       Menu de création
                     </span>
                   </div>
@@ -2292,12 +2269,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
       {/* Pagination dots (Pointillés de navigation des pages) - Presque collé à la limite en bas de l'écran et au milieu */}
       {viewMode === 'home' && (
-        <div 
-          className={`fixed bottom-[72px] md:bottom-2.5 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-[calc(50%+8rem)] md:-translate-x-1/2 z-30 flex items-center gap-2.5 px-3.5 py-1.5 rounded-full ${
-            dashboardWallpaper 
-              ? 'bg-black/60 border-white/20 shadow-xl' 
+        <div
+          className={`fixed bottom-[72px] md:bottom-2.5 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-[calc(50%+8rem)] md:-translate-x-1/2 z-30 flex items-center gap-2.5 px-3.5 py-1.5 rounded-full ${dashboardWallpaper
+              ? 'bg-black/60 border-white/20 shadow-xl'
               : 'bg-stone-900/10 dark:bg-black/50 border-stone-800/15 dark:border-white/10'
-          } backdrop-blur-md border shadow-[0_2px_10px_rgba(0,0,0,0.08)] transition-all select-none`}
+            } backdrop-blur-md border shadow-[0_2px_10px_rgba(0,0,0,0.08)] transition-all select-none`}
           role="navigation"
           aria-label="Pagination des menus"
         >
@@ -2307,11 +2283,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             onClick={() => handleGoToPage(0)}
             aria-label="Page 1 : Espace libre"
             title="Page 1 (Espace libre)"
-            className={`transition-all duration-300 rounded-full cursor-pointer focus:outline-none ${
-              activePageIndex === 0
+            className={`transition-all duration-300 rounded-full cursor-pointer focus:outline-none ${activePageIndex === 0
                 ? 'w-6 h-2 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]'
                 : 'w-2 h-2 bg-stone-400/60 dark:bg-stone-500/50 hover:bg-stone-600 dark:hover:bg-stone-300'
-            }`}
+              }`}
           />
           {/* Point 2 (Écran d'accueil principal - index 1) */}
           <button
@@ -2319,11 +2294,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             onClick={() => handleGoToPage(1)}
             aria-label="Page 2 : Écran d'accueil"
             title="Page 2 (Écran d'accueil)"
-            className={`transition-all duration-300 rounded-full cursor-pointer focus:outline-none ${
-              activePageIndex === 1
+            className={`transition-all duration-300 rounded-full cursor-pointer focus:outline-none ${activePageIndex === 1
                 ? 'w-6 h-2 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]'
                 : 'w-2 h-2 bg-stone-400/60 dark:bg-stone-500/50 hover:bg-stone-600 dark:hover:bg-stone-300'
-            }`}
+              }`}
           />
         </div>
       )}

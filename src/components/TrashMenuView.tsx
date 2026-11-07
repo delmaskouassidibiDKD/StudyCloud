@@ -1263,10 +1263,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure du lecteur */}
@@ -1342,12 +1340,14 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             {fileType === 'video' && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             {/* Bouton Agrandir / Réduire */}
             <button
@@ -1683,7 +1683,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         <main
           className={`overflow-y-auto bg-white py-5 pb-64 sm:pb-80 ${
-            (isViewerMaximized && selectedFile)
+            ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
               ? 'hidden'
               : selectedFile
               ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-200 px-3 sm:px-4'
@@ -1839,14 +1839,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         {selectedFile && (
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl ${
-              viewerExpandLevel === 3
-                ? 'fixed inset-0 z-[100] w-screen h-screen'
-                : viewerExpandLevel === 2
-                ? 'fixed inset-0 z-[99999] w-screen h-screen'
-                : (isViewerMaximized || selectedFile)
+              viewerExpandLevel >= 2
+                ? 'fixed inset-0 z-50 w-screen h-screen'
+                : (isViewerMaximized || viewerExpandLevel >= 1)
                   ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                   : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
-            } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
+            } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>

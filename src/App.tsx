@@ -1840,7 +1840,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <div className={`flex-1 flex flex-col ${currentTab === 'folders' ? 'h-dvh max-h-dvh overflow-hidden pb-0 md:pb-0 md:h-auto md:max-h-none md:overflow-visible' : 'min-h-dvh pb-20 md:pb-0'} ${viewerExpandLevel === 3 ? 'md:ml-0' : 'md:ml-64'} ${isCloudSkyTab || isProfileTab ? 'bg-transparent' : currentTab === 'library' ? 'bg-[#DDDDDD]' : currentTab === 'folders' ? 'bg-transparent' : 'bg-[#E9D7C9]'} dark:bg-[#0b0f19] transition-all duration-300`}>
+      <div className={`flex-1 flex flex-col ${currentTab === 'folders' ? 'h-dvh max-h-dvh overflow-hidden pb-0 md:pb-0 md:h-auto md:max-h-none md:overflow-visible' : 'min-h-dvh pb-20 md:pb-0'} ${viewerExpandLevel >= 2 ? 'md:ml-0' : 'md:ml-64'} ${isCloudSkyTab || isProfileTab ? 'bg-transparent' : currentTab === 'library' ? 'bg-[#DDDDDD]' : currentTab === 'folders' ? 'bg-transparent' : 'bg-[#E9D7C9]'} dark:bg-[#0b0f19] transition-all duration-300`}>
         <main className={`flex-1 ${currentTab === 'library' || isCloudSkyTab || isProfileTab || currentTab === 'folders' ? 'p-0 w-full h-full overflow-hidden' : 'p-6 md:p-8 max-w-7xl w-full mx-auto'}`}>
           {currentTab === 'folders' ? (
             <FoldersView

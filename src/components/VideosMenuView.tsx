@@ -1777,8 +1777,8 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        isPlayerExpanded
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure du lecteur vidéo */}
@@ -1856,15 +1856,11 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             <ViewerSuperExpandButton
-              expandLevel={isPlayerExpanded ? 2 : 1}
+              expandLevel={viewerExpandLevel}
               onExpandChange={(lvl) => {
-                if (lvl >= 2) {
-                  setIsViewerMaximized(true);
-                  setViewerExpandLevel(2);
-                } else {
-                  setIsViewerMaximized(false);
-                  resetViewerExpand();
-                }
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
               }}
             />
 
@@ -2035,7 +2031,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES VIDÉOS (IMAGE 1) */}
         <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-          (isViewerMaximized || viewerExpandLevel >= 2)
+          (isViewerMaximized || viewerExpandLevel >= 1)
             ? 'hidden'
             : selectedVideo
               ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -2151,10 +2147,12 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR VIDÉO DÉDIÉ (IMAGE 4) */}
         {selectedVideo && (
           <div className={`flex flex-col bg-[#04060A] ${
-            (isViewerMaximized || viewerExpandLevel >= 2)
-              ? 'fixed inset-0 z-[99999] w-screen h-screen'
-              : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] flex-1 border-t md:border-t-0 md:border-l border-white/10'
-          }`}>
+            viewerExpandLevel >= 2
+              ? 'fixed inset-0 z-50 w-screen h-screen'
+              : (isViewerMaximized || viewerExpandLevel >= 1)
+                ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
+                : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] flex-1 border-t md:border-t-0 md:border-l border-white/10'
+          } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
             {renderVideoPlayer(selectedVideo)}
           </div>
         )}

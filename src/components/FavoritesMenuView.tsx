@@ -842,10 +842,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
         {/* Barre d'en-tête du lecteur */}
@@ -886,12 +884,14 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
             {fileType === 'video' && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             {/* Bouton Agrandir / Réduire */}
             <button
@@ -1123,7 +1123,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES FAVORIS */}
         <main
-          className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${(isViewerMaximized && selectedFile)
+          className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
             ? 'hidden'
             : selectedFile
               ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
@@ -1257,14 +1257,12 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         {selectedFile && (
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${
-              viewerExpandLevel === 3
-                ? 'fixed inset-0 z-[100] w-screen h-screen'
-                : viewerExpandLevel === 2
-                ? 'fixed inset-0 z-[99999] w-screen h-screen'
-                : (isViewerMaximized || selectedFile)
+              viewerExpandLevel >= 2
+                ? 'fixed inset-0 z-50 w-screen h-screen'
+                : (isViewerMaximized || viewerExpandLevel >= 1)
                   ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                   : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 dark:border-stone-800'
-            } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
+            } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>

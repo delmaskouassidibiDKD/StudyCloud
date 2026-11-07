@@ -901,13 +901,20 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isSearchOpen) {
-        handleCloseSearch();
+      if (e.key === 'Escape') {
+        if (viewerExpandLevel >= 2) {
+          setViewerExpandLevel(1);
+        } else if (isViewerMaximized || viewerExpandLevel === 1) {
+          setIsViewerMaximized(false);
+          resetViewerExpand();
+        } else if (isSearchOpen) {
+          handleCloseSearch();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isSearchOpen]);
+  }, [isSearchOpen, viewerExpandLevel, isViewerMaximized]);
 
   const isMatchingMatiere = (file: ImportedItem, targetMatiere: any | string): boolean => {
     if (!file) return false;
@@ -1015,10 +1022,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
     return (
       <div className={`w-full h-full min-h-0 flex flex-col bg-[#04060A] text-white ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
         {/* Barre d'en-tête du lecteur */}
@@ -1274,12 +1279,17 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
             {fileType === 'video' && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) {
+                  setIsViewerMaximized(true);
+                } else {
+                  setIsViewerMaximized(false);
+                }
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             {/* Plein écran */}
             <button
@@ -2278,9 +2288,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#C5B0A4] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 ${
+      className={`absolute inset-x-0 bottom-0 ${viewerExpandLevel >= 2 ? 'top-0 md:top-0 md:left-0 w-full md:w-full z-40' : 'top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)]'} bg-[#C5B0A4] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 ${
         selectedFile
-          ? 'px-2 sm:px-4 pb-2 pt-0 overflow-hidden flex flex-col h-[calc(100vh-62px)] md:h-[calc(100vh-66px)]'
+          ? `px-2 sm:px-4 pb-2 pt-0 overflow-hidden flex flex-col ${viewerExpandLevel >= 2 ? 'h-screen md:h-screen' : 'h-[calc(100vh-62px)] md:h-[calc(100vh-66px)]'}`
           : 'px-4 pb-8 pt-0 overflow-y-auto'
       } transition-colors duration-300 ${
         isDraggingOver ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-50/20' : ''
@@ -2303,8 +2313,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         multiple 
         onChange={handleFileChange} 
       />
-      <div className={`fixed top-[66px] md:top-[70px] left-2 sm:left-4 right-2 sm:right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none gap-1 sm:gap-2 ${
-        (isViewerMaximized && selectedFile) ? 'hidden' : (selectedFile ? 'hidden md:flex' : '')
+      <div className={`fixed top-[66px] md:top-[70px] left-2 sm:left-4 right-2 sm:right-4 ${viewerExpandLevel >= 2 ? 'md:left-4' : 'md:left-[17.5rem]'} flex items-center justify-between z-40 pointer-events-none gap-1 sm:gap-2 ${
+        ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile) || viewerExpandLevel >= 2 ? 'hidden' : (selectedFile ? 'hidden md:flex' : '')
       }`}>
         {/* GAUCHE : Bouton Retour (taille réduite et compacte sur mobile) */}
         <div className="flex flex-col items-start gap-1 pointer-events-auto shrink-0">
@@ -2869,11 +2879,11 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
 
       <div className={`w-full ${
-        isViewerMaximized && selectedFile ? 'pt-1 pb-1' : 'pt-14 sm:pt-16'
+        ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile) ? 'pt-1 pb-1' : 'pt-14 sm:pt-16'
       } flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0 h-full`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FICHIERS */}
         <div className={`overflow-y-auto px-2 sm:px-4 pt-1 pb-24 transition-all duration-200 ${
-          (isViewerMaximized && selectedFile)
+          ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
             ? 'hidden'
             : selectedFile
             ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 h-full min-h-0 border-b md:border-b-0 md:border-r border-stone-400/40 dark:border-slate-800'
@@ -3548,10 +3558,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         {selectedFile && (
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 h-full min-h-0 ${
-              viewerExpandLevel === 3
-                ? 'fixed inset-0 z-[100] w-screen h-screen'
-                : viewerExpandLevel === 2
-                ? 'fixed inset-0 z-[99999] w-screen h-screen'
+              viewerExpandLevel >= 2
+                ? 'fixed inset-0 z-50 w-screen h-screen'
                 : (isViewerMaximized || selectedFile)
                   ? 'w-full flex-1 rounded-xl border border-white/10'
                   : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-400/40 dark:border-slate-800 rounded-xl'

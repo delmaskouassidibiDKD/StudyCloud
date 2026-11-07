@@ -108,11 +108,11 @@ interface SecureFolderMenuViewProps {
   onToggleFullscreen?: () => void;
 }
 
-export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({ 
-  onBack, 
+export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
+  onBack,
   onOpenStudySpace,
   isFullscreen,
-  onToggleFullscreen 
+  onToggleFullscreen
 }) => {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [hasServerPin, setHasServerPin] = useState<boolean | null>(null);
@@ -240,7 +240,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       setIsSubmittingPin(true);
       try {
         localStorage.setItem('studycloud_secure_folder_pin', trimmed);
-        await CloudStorageAPI.setSecurePin(trimmed).catch(() => {});
+        await CloudStorageAPI.setSecurePin(trimmed).catch(() => { });
         setHasServerPin(true);
         setIsUnlocked(true);
         setPinError(null);
@@ -265,7 +265,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       let isWorkerOk = false;
       try {
         isWorkerOk = await CloudStorageAPI.verifySecurePin(trimmed);
-      } catch {}
+      } catch { }
 
       setIsSubmittingPin(false);
 
@@ -387,7 +387,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
         const fileId = `sec-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
         const localBlobUrl = URL.createObjectURL(comp.file);
 
-        await storeFileBlob(fileId, comp.file as any).catch(() => {});
+        await storeFileBlob(fileId, comp.file as any).catch(() => { });
 
         const item: FileItem = {
           id: fileId,
@@ -413,7 +413,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     CloudDataStore.setSecureFiles([...newItems, ...secureFiles]);
 
     UploadQueue.enqueueExisting(newItemsWithFiles, { category: 'secure' });
-    invalidateCloudQueries.secure().catch(() => {});
+    invalidateCloudQueries.secure().catch(() => { });
     showToast(`${newItems.length} fichier(s) protégé(s) avec succès !`);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -431,9 +431,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     }
 
     CloudDataStore.restoreFromSecure([file]);
-    await CloudStorageAPI.restoreFromSecureFolder(file.id).catch(() => {});
-    invalidateCloudQueries.secure().catch(() => {});
-    invalidateCloudQueries.all().catch(() => {});
+    await CloudStorageAPI.restoreFromSecureFolder(file.id).catch(() => { });
+    invalidateCloudQueries.secure().catch(() => { });
+    invalidateCloudQueries.all().catch(() => { });
     showToast(`"${file.name}" déverrouillé et restauré dans son menu d'origine 🔓`);
   };
 
@@ -449,12 +449,12 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       setSelectedFile(null);
     }
 
-    deleteFileBlob(file.id).catch(() => {});
+    deleteFileBlob(file.id).catch(() => { });
     CloudDataStore.deleteSecureToTrash([file]);
-    await CloudStorageAPI.deleteSecureFilesToTrash(file.id).catch(() => {});
-    invalidateCloudQueries.secure().catch(() => {});
-    invalidateCloudQueries.trash().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    await CloudStorageAPI.deleteSecureFilesToTrash(file.id).catch(() => { });
+    invalidateCloudQueries.secure().catch(() => { });
+    invalidateCloudQueries.trash().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
     showToast(`"${file.name}" déplacé dans la corbeille 🗑️`);
   };
 
@@ -517,9 +517,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     setSelectedIds(new Set());
 
     CloudDataStore.restoreFromSecure(filesToRestore);
-    await CloudStorageAPI.restoreFromSecureFolder(ids).catch(() => {});
-    invalidateCloudQueries.secure().catch(() => {});
-    invalidateCloudQueries.all().catch(() => {});
+    await CloudStorageAPI.restoreFromSecureFolder(ids).catch(() => { });
+    invalidateCloudQueries.secure().catch(() => { });
+    invalidateCloudQueries.all().catch(() => { });
     showToast(`${filesToRestore.length} fichier(s) déverrouillé(s) avec succès 🔓`);
   };
 
@@ -534,12 +534,12 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     }
     setSelectedIds(new Set());
 
-    filesToTrash.forEach(f => deleteFileBlob(f.id).catch(() => {}));
+    filesToTrash.forEach(f => deleteFileBlob(f.id).catch(() => { }));
     CloudDataStore.deleteSecureToTrash(filesToTrash);
-    await CloudStorageAPI.deleteSecureFilesToTrash(ids).catch(() => {});
-    invalidateCloudQueries.secure().catch(() => {});
-    invalidateCloudQueries.trash().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    await CloudStorageAPI.deleteSecureFilesToTrash(ids).catch(() => { });
+    invalidateCloudQueries.secure().catch(() => { });
+    invalidateCloudQueries.trash().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
     showToast(`${filesToTrash.length} fichier(s) déplacé(s) dans la corbeille 🗑️`);
   };
 
@@ -764,7 +764,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 setSelectedIds(new Set());
                 if (selectedFile && toUnlock.some(u => u.id === selectedFile.id)) setSelectedFile(null);
                 CloudDataStore.restoreFromSecure(toUnlock);
-                await CloudStorageAPI.restoreFromSecureFolder(toUnlock.map(f => f.id)).catch(() => {});
+                await CloudStorageAPI.restoreFromSecureFolder(toUnlock.map(f => f.id)).catch(() => { });
                 showToast(`${toUnlock.length} fichier(s) déverrouillé(s) avec succès 🔓`);
               }
             }}
@@ -801,9 +801,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 setSecureFiles(prev => prev.filter(f => !toTrash.some(t => t.id === f.id)));
                 setSelectedIds(new Set());
                 if (selectedFile && toTrash.some(t => t.id === selectedFile.id)) setSelectedFile(null);
-                toTrash.forEach(f => deleteFileBlob(f.id).catch(() => {}));
+                toTrash.forEach(f => deleteFileBlob(f.id).catch(() => { }));
                 CloudDataStore.deleteSecureToTrash(toTrash);
-                await CloudStorageAPI.deleteSecureFilesToTrash(toTrash.map(f => f.id)).catch(() => {});
+                await CloudStorageAPI.deleteSecureFilesToTrash(toTrash.map(f => f.id)).catch(() => { });
                 showToast(`${toTrash.length} fichier(s) déplacé(s) dans la corbeille 🗑️`);
               }
             }}
@@ -857,12 +857,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
-      }`}>
+        }`}>
         {/* Barre supérieure du lecteur */}
         <div className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
           {/* Navigation Précédent / Suivant et Titre du fichier */}
@@ -965,12 +963,14 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             {fileType === 'video' && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             {/* Bouton Agrandir / Réduire */}
             <button
@@ -991,9 +991,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                   }
                 }
               }}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
-              }`}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${(isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                }`}
               title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : 'Plein écran'}
             >
               {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
@@ -1122,15 +1121,14 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group relative aspect-[3/4] rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 cursor-pointer select-none shadow-md ${
-          isChecked
-            ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
-            : isCurrentViewer
+        className={`group relative aspect-[3/4] rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 cursor-pointer select-none shadow-md ${isChecked
+          ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
+          : isCurrentViewer
             ? 'border-blue-500 ring-4 ring-blue-500/80 shadow-2xl scale-[1.02]'
             : isMenuOpen
-            ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-2xl'
-            : 'border-white/10 hover:border-amber-400/50 hover:scale-[1.01]'
-        } ${isMenuOpen ? 'z-[100] relative overflow-visible' : isChecked ? 'z-20 relative overflow-hidden' : 'z-10 overflow-hidden'}`}
+              ? 'border-amber-400 ring-2 ring-amber-400/40 shadow-2xl'
+              : 'border-white/10 hover:border-amber-400/50 hover:scale-[1.01]'
+          } ${isMenuOpen ? 'z-[100] relative overflow-visible' : isChecked ? 'z-20 relative overflow-hidden' : 'z-10 overflow-hidden'}`}
       >
         {/* Arrière-plan : aperçu audio haute fidélité */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
@@ -1179,13 +1177,11 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 if (selectedIds.size > 0) return;
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-1 sm:p-1.2 rounded-lg bg-black/75 text-white border transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
-                selectedIds.size > 0
-                  ? 'opacity-20 cursor-not-allowed pointer-events-none'
-                  : 'hover:bg-black cursor-pointer active:scale-90'
-              } ${
-                isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : 'border-white/30'
-              }`}
+              className={`p-1 sm:p-1.2 rounded-lg bg-black/75 text-white border transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${selectedIds.size > 0
+                ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                : 'hover:bg-black cursor-pointer active:scale-90'
+                } ${isMenuOpen ? 'border-amber-400 ring-2 ring-amber-400/50 bg-black' : 'border-white/30'
+                }`}
               title={selectedIds.size > 0 ? "Menu désactivé en mode sélection" : "Options (3 traits)"}
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -1235,15 +1231,14 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${
-          isChecked
-            ? 'border-emerald-400 ring-4 ring-emerald-400/90 shadow-2xl scale-[1.02]'
-            : isCurrentViewer
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${isChecked
+          ? 'border-emerald-400 ring-4 ring-emerald-400/90 shadow-2xl scale-[1.02]'
+          : isCurrentViewer
             ? 'border-blue-500 ring-4 ring-blue-500/80 shadow-2xl scale-[1.02]'
             : isMenuOpen
-            ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
-            : 'border-white/10 hover:border-emerald-500/50 shadow-md'
-        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
+              ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
+              : 'border-white/10 hover:border-emerald-500/50 shadow-md'
+          } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
         {/* Conteneur média interne : arrondit l'image sans couper le menu déroulant */}
         <div className="absolute inset-0 rounded-xl sm:rounded-2xl overflow-hidden pointer-events-none">
@@ -1270,9 +1265,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 if (selectedIds.size > 0) return;
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${
-                isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : ''
-              }`}
+              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : ''
+                }`}
               title="Options (3 traits)"
             >
               <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
@@ -1319,15 +1313,14 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${
-          isChecked
-            ? 'border-purple-400 ring-4 ring-purple-400/90 shadow-2xl scale-[1.02]'
-            : isCurrentViewer
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${isChecked
+          ? 'border-purple-400 ring-4 ring-purple-400/90 shadow-2xl scale-[1.02]'
+          : isCurrentViewer
             ? 'border-blue-500 ring-4 ring-blue-500/80 shadow-2xl scale-[1.02]'
             : isMenuOpen
-            ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
-            : 'border-white/10 hover:border-purple-500/50 shadow-md'
-        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
+              ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
+              : 'border-white/10 hover:border-purple-500/50 shadow-md'
+          } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
         {/* Conteneur média interne : arrondit la vignette sans couper le menu déroulant */}
         <div className="absolute inset-0 rounded-xl sm:rounded-2xl overflow-hidden pointer-events-none">
@@ -1361,9 +1354,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 if (selectedIds.size > 0) return;
                 setActiveMenuFileId(prev => prev === file.id ? null : file.id);
               }}
-              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${
-                isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : ''
-              }`}
+              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm cursor-pointer active:scale-90 hover:bg-black ${isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : ''
+                }`}
               title="Options (3 traits)"
             >
               <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
@@ -1412,15 +1404,14 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
         key={file.id}
         style={{ background: theme.bg }}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none cursor-pointer ${
-          isChecked
-            ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
-            : isCurrentViewer
+        className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none cursor-pointer ${isChecked
+          ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
+          : isCurrentViewer
             ? 'ring-4 ring-blue-400 shadow-2xl scale-[1.02] z-20'
             : isMenuOpen
-            ? 'ring-4 ring-blue-400/80 shadow-2xl z-[100] relative overflow-visible'
-            : 'hover:scale-[1.01] shadow-md active:scale-98 z-10 overflow-hidden'
-        }`}
+              ? 'ring-4 ring-blue-400/80 shadow-2xl z-[100] relative overflow-visible'
+              : 'hover:scale-[1.01] shadow-md active:scale-98 z-10 overflow-hidden'
+          }`}
       >
         {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé / Taille */}
         <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} flex items-center justify-between gap-1`}>
@@ -1435,13 +1426,11 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                   if (selectedIds.size > 0) return;
                   setActiveMenuFileId(prev => prev === file.id ? null : file.id);
                 }}
-                className={`p-1.5 rounded-lg bg-black/80 text-white border transition-all shadow-md ${
-                  selectedIds.size > 0
-                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
-                    : 'hover:bg-black cursor-pointer active:scale-90'
-                } ${
-                  isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : 'border-white/20'
-                }`}
+                className={`p-1.5 rounded-lg bg-black/80 text-white border transition-all shadow-md ${selectedIds.size > 0
+                  ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                  : 'hover:bg-black cursor-pointer active:scale-90'
+                  } ${isMenuOpen ? 'border-blue-400 ring-2 ring-blue-400/50 bg-black' : 'border-white/20'
+                  }`}
                 title={selectedIds.size > 0 ? "Menu désactivé en mode sélection" : "Options"}
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -1532,21 +1521,19 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       <div
         key={file.id}
         onClick={() => setSelectedFile(file)}
-        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${
-          isMenuOpen
-            ? 'z-[100] relative overflow-visible'
-            : isChecked
+        className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${isMenuOpen
+          ? 'z-[100] relative overflow-visible'
+          : isChecked
             ? 'z-20 relative overflow-hidden'
             : 'z-10 relative overflow-hidden'
-        } ${
-          isChecked
+          } ${isChecked
             ? 'border-orange-400 ring-4 ring-orange-400/90 shadow-2xl scale-[1.02]'
             : isCurrentViewer
-            ? 'border-blue-500 ring-4 ring-blue-500/80 shadow-2xl scale-[1.02]'
-            : isMenuOpen
-            ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
-            : 'border-white/10 hover:border-orange-400/50 hover:scale-[1.01]'
-        }`}
+              ? 'border-blue-500 ring-4 ring-blue-500/80 shadow-2xl scale-[1.02]'
+              : isMenuOpen
+                ? 'border-blue-400 ring-2 ring-blue-400/40 shadow-2xl'
+                : 'border-white/10 hover:border-orange-400/50 hover:scale-[1.01]'
+          }`}
       >
         {/* Barre supérieure : Bouton 3 traits, Checkbox & Badge Sécurisé */}
         <div className={`${isMenuOpen ? 'relative z-[80]' : 'relative z-20'} p-2 flex items-center justify-between gap-1`}>
@@ -1561,13 +1548,11 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                   if (selectedIds.size > 0) return;
                   setActiveMenuFileId(prev => prev === file.id ? null : file.id);
                 }}
-                className={`p-1.5 rounded-lg bg-black/80 text-white border transition-all shadow-md ${
-                  selectedIds.size > 0
-                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
-                    : 'hover:bg-black cursor-pointer active:scale-90'
-                } ${
-                  isMenuOpen ? 'border-orange-400 ring-2 ring-orange-400/50 bg-black' : 'border-white/20'
-                }`}
+                className={`p-1.5 rounded-lg bg-black/80 text-white border transition-all shadow-md ${selectedIds.size > 0
+                  ? 'opacity-20 cursor-not-allowed pointer-events-none'
+                  : 'hover:bg-black cursor-pointer active:scale-90'
+                  } ${isMenuOpen ? 'border-orange-400 ring-2 ring-orange-400/50 bg-black' : 'border-white/20'
+                  }`}
                 title={selectedIds.size > 0 ? "Menu désactivé en mode sélection" : "Options"}
               >
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -1710,175 +1695,174 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
               <>
                 {/* Menu 3 traits général */}
                 <div className="relative studycloud-sec-menu-trigger">
-                <button
-                  type="button"
-                  onClick={() => setIsHeaderMenuOpen(!isHeaderMenuOpen)}
-                  className={`flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full border transition-all cursor-pointer active:scale-95 shadow-sm ${
-                    isHeaderMenuOpen
+                  <button
+                    type="button"
+                    onClick={() => setIsHeaderMenuOpen(!isHeaderMenuOpen)}
+                    className={`flex items-center justify-center w-7 h-7 sm:w-9 sm:h-9 rounded-full border transition-all cursor-pointer active:scale-95 shadow-sm ${isHeaderMenuOpen
                       ? 'bg-blue-600 text-white border-blue-400'
                       : 'bg-[#182032] hover:bg-[#222c44] text-white border-stone-700/50'
-                  }`}
-                  title="Options du dossier sécurisé (3 traits)"
+                      }`}
+                    title="Options du dossier sécurisé (3 traits)"
+                  >
+                    <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+                  </button>
+
+                  {isHeaderMenuOpen && (
+                    <div
+                      className="studycloud-sec-menu-panel absolute right-0 top-11 z-[150] w-64 bg-[#0A0F1D] border-2 border-blue-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.35)] text-white animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-1 text-xs font-bold"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="px-3 py-2 bg-[#0E1527] border-b border-blue-500/25 flex items-center justify-between">
+                        <span className="text-white font-black">Options du Dossier</span>
+                        <button
+                          type="button"
+                          onClick={() => setIsHeaderMenuOpen(false)}
+                          className="p-1 rounded text-slate-400 hover:text-white"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      <div className="py-1 divide-y divide-white/5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            selectAll();
+                            setIsHeaderMenuOpen(false);
+                          }}
+                          className="w-full px-3 py-2 flex items-center gap-2.5 text-amber-300 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+                        >
+                          <CheckSquare className="w-4 h-4 text-amber-300" />
+                          <span>{selectedIds.size === displayedFiles.length && displayedFiles.length > 0 ? 'Tout décocher' : 'Tout cocher (Sélectionner tout)'}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setIsHeaderMenuOpen(false);
+                            if (selectedIds.size > 0) {
+                              await handleBatchRestore();
+                            } else {
+                              const toUnlock = [...displayedFiles];
+                              setSecureFiles(prev => prev.filter(f => !toUnlock.some(u => u.id === f.id)));
+                              setSelectedIds(new Set());
+                              if (selectedFile && toUnlock.some(u => u.id === selectedFile.id)) setSelectedFile(null);
+                              CloudDataStore.restoreFromSecure(toUnlock);
+                              await CloudStorageAPI.restoreFromSecureFolder(toUnlock.map(f => f.id)).catch(() => { });
+                              showToast(`${toUnlock.length} fichier(s) déverrouillé(s) avec succès 🔓`);
+                            }
+                          }}
+                          className="w-full px-3 py-2 flex items-center gap-2.5 text-emerald-400 hover:bg-emerald-500/15 transition-colors cursor-pointer text-left"
+                        >
+                          <Unlock className="w-4 h-4 text-emerald-400" />
+                          <span>{selectedIds.size > 0 ? `Tout déverrouiller (${selectedIds.size} cochés)` : `Tout déverrouiller (${displayedFiles.length} fichiers)`}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setIsHeaderMenuOpen(false);
+                            if (selectedIds.size > 0) {
+                              await handleBatchTrash();
+                            } else {
+                              const toTrash = [...displayedFiles];
+                              setSecureFiles(prev => prev.filter(f => !toTrash.some(t => t.id === f.id)));
+                              setSelectedIds(new Set());
+                              if (selectedFile && toTrash.some(t => t.id === selectedFile.id)) setSelectedFile(null);
+                              toTrash.forEach(f => deleteFileBlob(f.id).catch(() => { }));
+                              CloudDataStore.deleteSecureToTrash(toTrash);
+                              await CloudStorageAPI.deleteSecureFilesToTrash(toTrash.map(f => f.id)).catch(() => { });
+                              showToast(`${toTrash.length} fichier(s) déplacé(s) dans la corbeille 🗑️`);
+                            }
+                          }}
+                          className="w-full px-3 py-2 flex items-center gap-2.5 text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+                        >
+                          <Trash2 className="w-4 h-4 text-rose-400" />
+                          <span>{selectedIds.size > 0 ? `Tout mettre à la corbeille (${selectedIds.size} cochés)` : `Tout mettre à la corbeille (${displayedFiles.length} fichiers)`}</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsHeaderMenuOpen(false);
+                            fileInputRef.current?.click();
+                          }}
+                          className="w-full px-3 py-2 flex items-center gap-2.5 text-blue-400 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
+                        >
+                          <Plus className="w-4 h-4 text-blue-400" />
+                          <span>Ajouter des fichiers confidentiels</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsHeaderMenuOpen(false);
+                            setShowChangePinModal(true);
+                          }}
+                          className="w-full px-3 py-2 flex items-center gap-2.5 text-slate-300 hover:bg-white/10 transition-colors cursor-pointer text-left"
+                        >
+                          <Settings className="w-4 h-4 text-slate-400" />
+                          <span>Changer le code secret</span>
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsHeaderMenuOpen(false);
+                            setIsUnlocked(false);
+                            setSelectedIds(new Set());
+                            setSelectedFile(null);
+                            showToast('Dossier sécurisé verrouillé 🔒');
+                          }}
+                          className="w-full px-3 py-2 flex items-center gap-2.5 text-red-400 hover:bg-red-500/15 transition-colors cursor-pointer text-left"
+                        >
+                          <Lock className="w-4 h-4 text-red-400" />
+                          <span>Verrouiller le coffre</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowChangePinModal(true)}
+                  className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-200/80 hover:bg-stone-300 text-stone-700 text-xs font-bold transition-all cursor-pointer active:scale-95"
+                  title="Modifier le code secret"
                 >
-                  <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+                  <Settings className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Changer de code</span>
                 </button>
 
-                {isHeaderMenuOpen && (
-                  <div
-                    className="studycloud-sec-menu-panel absolute right-0 top-11 z-[150] w-64 bg-[#0A0F1D] border-2 border-blue-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.35)] text-white animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col p-1 text-xs font-bold"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="px-3 py-2 bg-[#0E1527] border-b border-blue-500/25 flex items-center justify-between">
-                      <span className="text-white font-black">Options du Dossier</span>
-                      <button
-                        type="button"
-                        onClick={() => setIsHeaderMenuOpen(false)}
-                        className="p-1 rounded text-slate-400 hover:text-white"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-blue-400 border border-blue-500/40 text-[11px] sm:text-xs font-bold transition-all cursor-pointer active:scale-95"
+                  title="Ajouter des fichiers confidentiels"
+                >
+                  <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
+                  <span className="hidden sm:inline">Ajouter</span>
+                </button>
 
-                    <div className="py-1 divide-y divide-white/5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          selectAll();
-                          setIsHeaderMenuOpen(false);
-                        }}
-                        className="w-full px-3 py-2 flex items-center gap-2.5 text-amber-300 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
-                      >
-                        <CheckSquare className="w-4 h-4 text-amber-300" />
-                        <span>{selectedIds.size === displayedFiles.length && displayedFiles.length > 0 ? 'Tout décocher' : 'Tout cocher (Sélectionner tout)'}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setIsHeaderMenuOpen(false);
-                          if (selectedIds.size > 0) {
-                            await handleBatchRestore();
-                          } else {
-                            const toUnlock = [...displayedFiles];
-                            setSecureFiles(prev => prev.filter(f => !toUnlock.some(u => u.id === f.id)));
-                            setSelectedIds(new Set());
-                            if (selectedFile && toUnlock.some(u => u.id === selectedFile.id)) setSelectedFile(null);
-                            CloudDataStore.restoreFromSecure(toUnlock);
-                            await CloudStorageAPI.restoreFromSecureFolder(toUnlock.map(f => f.id)).catch(() => {});
-                            showToast(`${toUnlock.length} fichier(s) déverrouillé(s) avec succès 🔓`);
-                          }
-                        }}
-                        className="w-full px-3 py-2 flex items-center gap-2.5 text-emerald-400 hover:bg-emerald-500/15 transition-colors cursor-pointer text-left"
-                      >
-                        <Unlock className="w-4 h-4 text-emerald-400" />
-                        <span>{selectedIds.size > 0 ? `Tout déverrouiller (${selectedIds.size} cochés)` : `Tout déverrouiller (${displayedFiles.length} fichiers)`}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={async () => {
-                          setIsHeaderMenuOpen(false);
-                          if (selectedIds.size > 0) {
-                            await handleBatchTrash();
-                          } else {
-                            const toTrash = [...displayedFiles];
-                            setSecureFiles(prev => prev.filter(f => !toTrash.some(t => t.id === f.id)));
-                            setSelectedIds(new Set());
-                            if (selectedFile && toTrash.some(t => t.id === selectedFile.id)) setSelectedFile(null);
-                            toTrash.forEach(f => deleteFileBlob(f.id).catch(() => {}));
-                            CloudDataStore.deleteSecureToTrash(toTrash);
-                            await CloudStorageAPI.deleteSecureFilesToTrash(toTrash.map(f => f.id)).catch(() => {});
-                            showToast(`${toTrash.length} fichier(s) déplacé(s) dans la corbeille 🗑️`);
-                          }
-                        }}
-                        className="w-full px-3 py-2 flex items-center gap-2.5 text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
-                      >
-                        <Trash2 className="w-4 h-4 text-rose-400" />
-                        <span>{selectedIds.size > 0 ? `Tout mettre à la corbeille (${selectedIds.size} cochés)` : `Tout mettre à la corbeille (${displayedFiles.length} fichiers)`}</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsHeaderMenuOpen(false);
-                          fileInputRef.current?.click();
-                        }}
-                        className="w-full px-3 py-2 flex items-center gap-2.5 text-blue-400 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
-                      >
-                        <Plus className="w-4 h-4 text-blue-400" />
-                        <span>Ajouter des fichiers confidentiels</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsHeaderMenuOpen(false);
-                          setShowChangePinModal(true);
-                        }}
-                        className="w-full px-3 py-2 flex items-center gap-2.5 text-slate-300 hover:bg-white/10 transition-colors cursor-pointer text-left"
-                      >
-                        <Settings className="w-4 h-4 text-slate-400" />
-                        <span>Changer le code secret</span>
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsHeaderMenuOpen(false);
-                          setIsUnlocked(false);
-                          setSelectedIds(new Set());
-                          setSelectedFile(null);
-                          showToast('Dossier sécurisé verrouillé 🔒');
-                        }}
-                        className="w-full px-3 py-2 flex items-center gap-2.5 text-red-400 hover:bg-red-500/15 transition-colors cursor-pointer text-left"
-                      >
-                        <Lock className="w-4 h-4 text-red-400" />
-                        <span>Verrouiller le coffre</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="button"
-                onClick={() => setShowChangePinModal(true)}
-                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-stone-200/80 hover:bg-stone-300 text-stone-700 text-xs font-bold transition-all cursor-pointer active:scale-95"
-                title="Modifier le code secret"
-              >
-                <Settings className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Changer de code</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-blue-400 border border-blue-500/40 text-[11px] sm:text-xs font-bold transition-all cursor-pointer active:scale-95"
-                title="Ajouter des fichiers confidentiels"
-              >
-                <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
-                <span className="hidden sm:inline">Ajouter</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setIsUnlocked(false);
-                  setSelectedIds(new Set());
-                  setSelectedFile(null);
-                  showToast('Dossier sécurisé verrouillé 🔒');
-                }}
-                className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-red-500/15 text-red-600 hover:bg-red-500/25 border border-red-500/30 text-[11px] sm:text-xs font-bold transition-all cursor-pointer active:scale-95"
-                title="Verrouiller le coffre"
-              >
-                <Lock className="w-3.5 h-3.5 stroke-[2.5]" />
-                <span className="hidden sm:inline">Verrouiller</span>
-              </button>
-            </>
-          )}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsUnlocked(false);
+                    setSelectedIds(new Set());
+                    setSelectedFile(null);
+                    showToast('Dossier sécurisé verrouillé 🔒');
+                  }}
+                  className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full bg-red-500/15 text-red-600 hover:bg-red-500/25 border border-red-500/30 text-[11px] sm:text-xs font-bold transition-all cursor-pointer active:scale-95"
+                  title="Verrouiller le coffre"
+                >
+                  <Lock className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span className="hidden sm:inline">Verrouiller</span>
+                </button>
+              </>
+            )}
+          </div>
         </div>
-      </div>
-    </header>
+      </header>
 
       {/* CONTENU PRINCIPAL */}
       {!isUnlocked ? (
@@ -1969,12 +1953,12 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
         <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
           <main
             className={`overflow-y-auto bg-stone-100 py-4 pb-36 ${
-              (isViewerMaximized && selectedFile)
+              ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
                 ? 'hidden'
                 : selectedFile
                 ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-200 px-3 sm:px-4'
                 : 'flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12'
-            }`}
+              }`}
           >
             {/* Filtres par catégorie et sélection */}
             {secureFiles.length > 0 && (
@@ -1983,11 +1967,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setCategoryFilter('all')}
-                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                      categoryFilter === 'all'
-                        ? 'bg-blue-600 text-white shadow-md'
-                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
-                    }`}
+                    className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${categoryFilter === 'all'
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                      }`}
                   >
                     Tout ({categoryCounts.all})
                   </button>
@@ -1995,11 +1978,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setCategoryFilter('audio')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                        categoryFilter === 'audio'
-                          ? 'bg-amber-500 text-black shadow-md'
-                          : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
-                      }`}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${categoryFilter === 'audio'
+                        ? 'bg-amber-500 text-black shadow-md'
+                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                        }`}
                     >
                       <Music className="w-3.5 h-3.5" />
                       <span>Audios ({categoryCounts.audio})</span>
@@ -2009,11 +1991,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setCategoryFilter('documents')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                        categoryFilter === 'documents'
-                          ? 'bg-blue-500 text-white shadow-md'
-                          : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
-                      }`}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${categoryFilter === 'documents'
+                        ? 'bg-blue-500 text-white shadow-md'
+                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                        }`}
                     >
                       <FileText className="w-3.5 h-3.5" />
                       <span>Documents ({categoryCounts.documents})</span>
@@ -2023,11 +2004,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setCategoryFilter('images')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                        categoryFilter === 'images'
-                          ? 'bg-emerald-600 text-white shadow-md'
-                          : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
-                      }`}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${categoryFilter === 'images'
+                        ? 'bg-emerald-600 text-white shadow-md'
+                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                        }`}
                     >
                       <ImageIcon className="w-3.5 h-3.5" />
                       <span>Images ({categoryCounts.images})</span>
@@ -2037,11 +2017,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setCategoryFilter('videos')}
-                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                        categoryFilter === 'videos'
-                          ? 'bg-purple-600 text-white shadow-md'
-                          : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
-                      }`}
+                      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition-all cursor-pointer ${categoryFilter === 'videos'
+                        ? 'bg-purple-600 text-white shadow-md'
+                        : 'bg-stone-200/80 hover:bg-stone-300 text-stone-700'
+                        }`}
                     >
                       <Film className="w-3.5 h-3.5" />
                       <span>Vidéos ({categoryCounts.videos})</span>
@@ -2098,11 +2077,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             ) : (
               <>
                 <div
-                  className={`grid gap-2 sm:gap-4 ${
-                    selectedFile
-                      ? 'grid-cols-3 lg:grid-cols-3'
-                      : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}
+                  className={`grid gap-2 sm:gap-4 ${selectedFile
+                    ? 'grid-cols-3 lg:grid-cols-3'
+                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}
                 >
                   {displayedFiles.slice(0, visibleCount).map((file, idx) => {
                     const fType = getFileType(file);
@@ -2133,14 +2111,12 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
           {selectedFile && (
             <aside
               className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${
-                viewerExpandLevel === 3
-                  ? 'fixed inset-0 z-[100] w-screen h-screen'
-                  : viewerExpandLevel === 2
-                  ? 'fixed inset-0 z-[99999] w-screen h-screen'
-                  : (isViewerMaximized || selectedFile)
+                viewerExpandLevel >= 2
+                  ? 'fixed inset-0 z-50 w-screen h-screen'
+                  : (isViewerMaximized || viewerExpandLevel >= 1)
                     ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
-              } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
+              } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
             >
               {renderDedicatedReader(selectedFile)}
             </aside>

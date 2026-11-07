@@ -96,7 +96,7 @@ const isExcludedFromImages = (d: any): boolean => {
       if (studyRaw && studyRaw.includes(d.id)) return true;
       const lmRaw = localStorage.getItem('unifolder_left_menu_general_imports');
       if (lmRaw && lmRaw.includes(d.id)) return true;
-    } catch (e) {}
+    } catch (e) { }
   }
   if (d.category === 'classeur' || d.category === 'classeur_folder' || d.category === 'mes-fichiers' || d.category === 'trash' || d.category === 'secure') return true;
   const fId = d.folderId || d.folder_id || d.originalFolderId;
@@ -240,7 +240,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                 setImagesList(data);
                 CloudDataStore.setImages(data as any);
               }
-            }).catch(() => {});
+            }).catch(() => { });
           } else if (task.status === 'error') {
             activeErrs[task.id] = task.error || "Non enregistré sur le Cloud";
             if (savingIntervalsRef.current[task.id]) {
@@ -294,7 +294,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             setImagesList(data);
             CloudDataStore.setImages(data as any);
           }
-        }).catch(() => {});
+        }).catch(() => { });
       }
     };
     window.addEventListener('studycloud_file_uploaded', handleUploadedEvent);
@@ -359,7 +359,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     });
     setImagesList(prev => prev.filter(i => i.id !== imgId));
     CloudDataStore.removeFile(imgId);
-    deleteFileBlob(imgId).catch(() => {});
+    deleteFileBlob(imgId).catch(() => { });
     if (selectedImage?.id === imgId) {
       setSelectedImage(null);
       setIsViewerMaximized(false);
@@ -464,7 +464,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       const localBlobUrl = URL.createObjectURL(f);
 
       // Sauvegarde immédiate du blob dans IndexedDB (0ms) pour affichage local instantané
-      storeFileBlob(fileId, f).catch(() => {});
+      storeFileBlob(fileId, f).catch(() => { });
 
       const item: FileItem = {
         id: fileId,
@@ -516,7 +516,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             origBytes = comp.originalSizeBytes;
             origFormatted = comp.originalSizeFormatted;
             if (comp.file !== file) {
-              await storeFileBlob(id, comp.file as any).catch(() => {});
+              await storeFileBlob(id, comp.file as any).catch(() => { });
             }
           } catch (err) {
             console.warn('[ImagesMenuView] Compression image échouée, utilisation brute:', err);
@@ -554,9 +554,9 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     }
     CloudDataStore.toggleFavorite(img.id, nextState);
     if (nextState) {
-      await CloudStorageAPI.addFavorite(img.id, 'images').catch(() => {});
+      await CloudStorageAPI.addFavorite(img.id, 'images').catch(() => { });
     } else {
-      await CloudStorageAPI.removeFavorite(img.id).catch(() => {});
+      await CloudStorageAPI.removeFavorite(img.id).catch(() => { });
     }
     showToast(nextState ? `"${img.name}" ajoutée aux favoris ⭐` : `"${img.name}" retirée des favoris`);
   };
@@ -583,10 +583,10 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
 
     CloudDataStore.moveToTrash(fileWithSource);
     LocalSyncReplication.recordLocalDeletion(img.id, 'images');
-    await CloudStorageAPI.deleteImage(img.id, img.name).catch(() => {});
-    invalidateCloudQueries.images().catch(() => {});
-    invalidateCloudQueries.trash().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    await CloudStorageAPI.deleteImage(img.id, img.name).catch(() => { });
+    invalidateCloudQueries.images().catch(() => { });
+    invalidateCloudQueries.trash().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
     showToast(`"${img.name}" déplacée dans la corbeille 🗑️`);
   };
 
@@ -813,8 +813,8 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
 
         // Cloner le blob IndexedDB de manière indépendante pour éviter toute suppression partagée
         getFileBlob(img.id).then(blob => {
-          if (blob) storeFileBlob(newImgId, blob).catch(() => {});
-        }).catch(() => {});
+          if (blob) storeFileBlob(newImgId, blob).catch(() => { });
+        }).catch(() => { });
 
         CloudStorageAPI.duplicateItem(img.id, 'images', undefined, newName, newImgId).then((serverData) => {
           if (serverData && serverData.id && serverData.id !== newImgId) {
@@ -824,14 +824,14 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             setImagesList(prev => prev.map(i => i.id === newImgId ? { ...i, id: realId } : i));
             getFileBlob(newImgId).then(b => {
               if (b) {
-                storeFileBlob(realId, b).catch(() => {});
-                deleteFileBlob(newImgId).catch(() => {});
+                storeFileBlob(realId, b).catch(() => { });
+                deleteFileBlob(newImgId).catch(() => { });
               }
-            }).catch(() => {});
+            }).catch(() => { });
             LocalSyncReplication.recordLocalUpsert(realId, 'images', { ...newImg, id: realId });
           }
-          invalidateCloudQueries.images().catch(() => {});
-          invalidateCloudQueries.overview().catch(() => {});
+          invalidateCloudQueries.images().catch(() => { });
+          invalidateCloudQueries.overview().catch(() => { });
         }).catch(console.error);
         showToast(`Image dupliquée : "${newName}" !`);
         break;
@@ -858,7 +858,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             pinnedIds = pinnedIds.filter(id => id !== img.id);
           }
           localStorage.setItem('studycloud_pinned_ids', JSON.stringify(pinnedIds));
-        } catch {}
+        } catch { }
 
         // 2. Mise à jour de l'état local
         setImagesList(prev => {
@@ -895,8 +895,8 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
           }
           CloudDataStore.updateFile(img.id, { name: finalName });
           CloudStorageAPI.renameItem(img.id, finalName, 'images').catch(console.error);
-          invalidateCloudQueries.images().catch(() => {});
-          invalidateCloudQueries.overview().catch(() => {});
+          invalidateCloudQueries.images().catch(() => { });
+          invalidateCloudQueries.overview().catch(() => { });
           showToast(`Image renommée en "${finalName}" !`);
         }
         break;
@@ -968,16 +968,16 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     if (!isTransferPromptOpen) return null;
 
     const count = itemsToTransfer.length;
-    const titleText = count === 1 
+    const titleText = count === 1
       ? `Que souhaitez-vous faire avec "${itemsToTransfer[0]?.name}" ?`
       : `Que souhaitez-vous faire avec ces ${count} images ?`;
 
     const content = (
-      <div 
+      <div
         className="fixed inset-0 z-[2700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150 pointer-events-auto select-none"
         onClick={() => setIsTransferPromptOpen(false)}
       >
-        <div 
+        <div
           className="relative w-full max-w-[420px] bg-[#0A0F1D] border-2 border-amber-500/40 rounded-3xl p-5 sm:p-6 shadow-[0_25px_60px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)] text-white animate-in zoom-in-95 duration-150 flex flex-col gap-4"
           onClick={(e) => e.stopPropagation()}
         >
@@ -1014,7 +1014,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                 setIsTransferModalOpen(true);
                 CloudStorageAPI.getClasseurFolders().then(folders => {
                   if (folders && Array.isArray(folders)) setClasseur3DFolders(folders);
-                }).catch(() => {});
+                }).catch(() => { });
               }}
               className="group p-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400/60 transition-all text-left flex items-start gap-3.5 cursor-pointer shadow-md active:scale-98"
             >
@@ -1043,7 +1043,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                 setIsTransferModalOpen(true);
                 CloudStorageAPI.getClasseurFolders().then(folders => {
                   if (folders && Array.isArray(folders)) setClasseur3DFolders(folders);
-                }).catch(() => {});
+                }).catch(() => { });
               }}
               className="group p-4 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-400/60 transition-all text-left flex items-start gap-3.5 cursor-pointer shadow-md active:scale-98"
             >
@@ -1101,7 +1101,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     const parentNavFolder = currentNavFolder?.parentId ? classeur3DFolders.find(f => f.id === currentNavFolder.parentId) : null;
 
     const toggleFolderCheck = (folderId: string) => {
-      setTransferSelectedFolderIds(prev => 
+      setTransferSelectedFolderIds(prev =>
         prev.includes(folderId) ? prev.filter(id => id !== folderId) : [...prev, folderId]
       );
     };
@@ -1109,7 +1109,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     const isSelectionActive = transferSelectedFolderIds.length > 0;
 
     const content = (
-      <div 
+      <div
         className="fixed inset-0 z-[2700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200 pointer-events-auto select-none"
         onClick={() => {
           setIsTransferModalOpen(false);
@@ -1117,7 +1117,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
           setTransferSearchQuery('');
         }}
       >
-        <div 
+        <div
           className="relative w-full max-w-[440px] max-h-[82vh] bg-[#0A0F1D] border-2 border-amber-500/40 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)] flex flex-col overflow-hidden text-white animate-in zoom-in-95 duration-200"
           onClick={(e) => e.stopPropagation()}
         >
@@ -1192,7 +1192,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                     <span className="text-[11px] font-bold">Retour</span>
                   </button>
                 )}
-                
+
                 <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
                   {parentNavFolder ? (
                     <>
@@ -1261,11 +1261,10 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                         setTransferNavFolderId(folder.id);
                       }
                     }}
-                    className={`group flex items-center justify-between gap-2.5 p-2.5 rounded-2xl transition-all border cursor-pointer ${
-                      isChecked
+                    className={`group flex items-center justify-between gap-2.5 p-2.5 rounded-2xl transition-all border cursor-pointer ${isChecked
                         ? 'bg-amber-500/15 border-amber-500/40 shadow-sm'
                         : 'bg-slate-900/60 hover:bg-slate-800/80 border-white/5 hover:border-white/15'
-                    }`}
+                      }`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0 flex-1">
                       <button
@@ -1340,13 +1339,12 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               type="button"
               disabled={!isSelectionActive || isTransferring}
               onClick={handleExecuteTransfer}
-              className={`px-4 sm:px-5 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center gap-2 transition-all shadow-lg ${
-                isSelectionActive && !isTransferring
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center gap-2 transition-all shadow-lg ${isSelectionActive && !isTransferring
                   ? transferMode === 'move'
                     ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 cursor-pointer shadow-amber-500/20 active:scale-95'
                     : 'bg-emerald-500 hover:bg-emerald-400 text-slate-950 cursor-pointer shadow-emerald-500/20 active:scale-95'
                   : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-white/5'
-              }`}
+                }`}
             >
               {isTransferring ? (
                 <>
@@ -1382,7 +1380,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
     const smartStyle = computeSmartMenuStyle(rect, 440);
 
     return createPortal(
-      <div 
+      <div
         className="studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(16,185,129,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150"
         style={smartStyle.style}
         onClick={(e) => e.stopPropagation()}
@@ -1574,22 +1572,21 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             setSelectedImage(img);
           }
         }}
-        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${
-          hasFailed
+        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${hasFailed
             ? 'border-rose-500 ring-4 ring-rose-500/50 shadow-2xl bg-rose-950/40 cursor-default'
             : isSaving
               ? 'border-emerald-500/40 cursor-wait'
               : isChecked
                 ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02] cursor-pointer'
-                : isSelected 
-                  ? 'border-emerald-500 ring-4 ring-emerald-500/50 shadow-2xl scale-[1.02] cursor-pointer' 
+                : isSelected
+                  ? 'border-emerald-500 ring-4 ring-emerald-500/50 shadow-2xl scale-[1.02] cursor-pointer'
                   : 'border-white/10 hover:border-emerald-400/50 shadow-md cursor-pointer'
-        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
+          } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
         {/* 1. LIGNE DU HAUT QUI SE REMPLIT EN TEMPS RÉEL (OU DEVIENT ROUGE EN CAS D'ÉCHEC) */}
         {isSaving && !hasFailed && (
           <div className="absolute top-0 inset-x-0 h-1.5 bg-black/60 z-35 overflow-hidden pointer-events-none rounded-t-xl sm:rounded-t-2xl">
-            <div 
+            <div
               className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_10px_#34d399]"
               style={{ width: `${progressVal}%` }}
             />
@@ -1704,11 +1701,10 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                 if (isSelectionMode || selectedItemIds.length > 0) return;
                 setActiveMenuImageId(isMenuOpen ? null : img.id);
               }}
-              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${
-                isSelectionMode || selectedItemIds.length > 0
+              className={`p-0.5 sm:p-1.2 rounded-md sm:rounded-lg bg-black/75 text-white border border-white/30 transition-all flex items-center justify-center shadow-lg backdrop-blur-sm ${isSelectionMode || selectedItemIds.length > 0
                   ? 'opacity-20 cursor-not-allowed pointer-events-none'
                   : 'hover:bg-black cursor-pointer active:scale-90'
-              }`}
+                }`}
               title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options de l'image (3 traits)"}
             >
               <Menu className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.2]" />
@@ -1768,13 +1764,10 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   // =========================================================================
   const renderImageViewer = (file: FileItem) => {
     return (
-      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
-      }`}>
+        }`}>
         {/* Barre supérieure du lecteur image (Image 5) */}
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -1809,11 +1802,10 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             <button
               type="button"
               onClick={() => handleToggleFavorite(file)}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer ${
-                file.isFavorite
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer ${file.isFavorite
                   ? 'bg-amber-500/20 text-amber-400 border-amber-400/40'
                   : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
-              }`}
+                }`}
               title={file.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
             >
               <Star className={`w-3.5 h-3.5 ${file.isFavorite ? 'fill-amber-400 text-amber-400' : ''}`} />
@@ -1846,12 +1838,14 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             )}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             <button
               type="button"
@@ -1871,9 +1865,8 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                   }
                 }
               }}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
-              }`}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${(isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                }`}
               title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : 'Plein écran'}
             >
               {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
@@ -2025,13 +2018,12 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       {/* DISPOSITION SPLIT (IMAGE 5) */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES IMAGES (IMAGE 1) */}
-        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
-          (isViewerMaximized && selectedImage)
+        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedImage)
             ? 'hidden'
             : selectedImage
               ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
               : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
-        }`}>
+          }`}>
           <div className="space-y-3 sm:space-y-4">
             {/* SOUS-TITRE : NOMBRE D'IMAGES DISPONIBLES */}
             <div className="flex items-center justify-between border-b border-stone-200/60 dark:border-white/5 pb-2 mb-1">
@@ -2078,23 +2070,22 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                   {sortOption === 'pinned'
                     ? 'Aucune image épinglée'
                     : sortOption === 'duplicates'
-                    ? 'Aucun résultat pour les doublons'
-                    : 'Aucune image disponible'}
+                      ? 'Aucun résultat pour les doublons'
+                      : 'Aucune image disponible'}
                 </p>
                 <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
                   {sortOption === 'pinned'
                     ? 'Vous n\'avez pas encore d\'images épinglées. Utilisez l\'option "Épinglez" dans le menu à 3 traits pour en épingler.'
                     : sortOption === 'duplicates'
-                    ? 'Toutes vos images sont uniques dans la base de données. Aucun doublon détecté.'
-                    : 'Ce dossier ne contient aucune image pour le moment.'}
+                      ? 'Toutes vos images sont uniques dans la base de données. Aucun doublon détecté.'
+                      : 'Ce dossier ne contient aucune image pour le moment.'}
                 </p>
                 {(sortOption === 'duplicates' || sortOption === 'pinned') && (
                   <button
                     type="button"
                     onClick={() => setSortOption('recent')}
-                    className={`mt-3 px-4 py-1.5 rounded-full text-white text-xs font-bold transition-all shadow-sm cursor-pointer ${
-                      sortOption === 'pinned' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500'
-                    }`}
+                    className={`mt-3 px-4 py-1.5 rounded-full text-white text-xs font-bold transition-all shadow-sm cursor-pointer ${sortOption === 'pinned' ? 'bg-amber-600 hover:bg-amber-500' : 'bg-emerald-600 hover:bg-emerald-500'
+                      }`}
                   >
                     Afficher toutes les images
                   </button>
@@ -2103,11 +2094,10 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             ) : (
               <>
                 {/* GRILLE DES CARTES IMAGES AVEC DÉFILEMENT INFINI (12 PAR LOT) */}
-                <div className={`grid gap-2 sm:gap-4 ${
-                  selectedImage
+                <div className={`grid gap-2 sm:gap-4 ${selectedImage
                     ? 'grid-cols-3 md:grid-cols-3 xl:grid-cols-3'
                     : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                }`}>
+                  }`}>
                   {displayedImages.map((img, idx) => renderImageCard(img, idx))}
                 </div>
 
@@ -2140,15 +2130,12 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
 
         {/* PANNEAU DE DROITE : LECTEUR IMAGE DÉDIÉ (IMAGE 5) */}
         {selectedImage && (
-          <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-            viewerExpandLevel === 3
-              ? 'fixed inset-0 z-[100] w-screen h-screen'
-              : viewerExpandLevel === 2
-              ? 'fixed inset-0 z-[99999] w-screen h-screen'
-              : (isViewerMaximized || selectedImage)
+          <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${viewerExpandLevel >= 2
+              ? 'fixed inset-0 z-50 w-screen h-screen'
+              : (isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-          } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+            } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
             {renderImageViewer(selectedImage)}
           </div>
         )}
@@ -2234,7 +2221,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
                 markItemDeleted(i.id);
                 CloudDataStore.dismissRecent(i.id);
                 LocalSyncReplication.recordLocalDeletion(i.id, 'images');
-                CloudStorageAPI.deleteImage(i.id, i.name).catch(() => {});
+                CloudStorageAPI.deleteImage(i.id, i.name).catch(() => { });
               });
               setImagesList(prev => prev.filter(i => !selectedItemIds.includes(i.id)));
               if (selectedImage && selectedItemIds.includes(selectedImage.id)) {
@@ -2243,9 +2230,9 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               setSelectedItemIds([]);
               setIsSelectionMode(false);
               CloudDataStore.moveToTrash(trashedItems);
-              invalidateCloudQueries.images().catch(() => {});
-              invalidateCloudQueries.trash().catch(() => {});
-              invalidateCloudQueries.overview().catch(() => {});
+              invalidateCloudQueries.images().catch(() => { });
+              invalidateCloudQueries.trash().catch(() => { });
+              invalidateCloudQueries.overview().catch(() => { });
               showToast(`${toDelete.length} image(s) déplacée(s) dans la corbeille 🗑️`);
             }}
             className="flex items-center gap-1.5 hover:text-rose-400 font-semibold cursor-pointer transition-colors"
@@ -2269,9 +2256,9 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       )}
 
       {/* MODAL FORMAT NON COMPATIBLE AU MILIEU DE L'ÉCRAN */}
-      <IncompatibleFormatModal 
-        info={incompatibleAlertInfo} 
-        onClose={() => setIncompatibleAlertInfo(null)} 
+      <IncompatibleFormatModal
+        info={incompatibleAlertInfo}
+        onClose={() => setIncompatibleAlertInfo(null)}
       />
     </div>
   );

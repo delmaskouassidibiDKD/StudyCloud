@@ -1673,10 +1673,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     if (isTxtNote) {
       return (
         <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-          viewerExpandLevel === 3
-            ? 'fixed inset-0 z-[100] w-screen h-screen'
-            : viewerExpandLevel === 2
-            ? 'fixed inset-0 z-[99999] w-screen h-screen'
+          viewerExpandLevel >= 2
+            ? 'fixed inset-0 z-50 w-screen h-screen'
             : ''
         }`}>
           {/* Barre supérieure de la page d'écriture */}
@@ -1840,10 +1838,8 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
         {/* Barre supérieure du lecteur ("l'écriture qui apparaît à droite") */}
@@ -1956,12 +1952,14 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             {isVideo && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             <button
               type="button"
@@ -2244,7 +2242,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-140px)]">
         {/* PANNEAU DE GAUCHE : CONTENU DYNAMIQUE SELON L'ONGLET */}
         <main className={`overflow-y-auto px-3 sm:px-6 py-5 pb-32 bg-stone-100 ${
-          (isViewerMaximized && viewerFile)
+          ((isViewerMaximized || viewerExpandLevel >= 1) && viewerFile)
             ? 'hidden'
             : viewerFile
               ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-200'
@@ -2731,14 +2729,12 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             ========================================================================= */}
         {viewerFile && (
           <div className={`flex flex-col bg-[#04060A] text-white animate-in fade-in duration-150 ${
-            viewerExpandLevel === 3
-              ? 'fixed inset-0 z-[100] w-screen h-screen'
-              : viewerExpandLevel === 2
-              ? 'fixed inset-0 z-[99999] w-screen h-screen'
-              : (isViewerMaximized || viewerFile)
+            viewerExpandLevel >= 2
+              ? 'fixed inset-0 z-50 w-screen h-screen'
+              : (isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
                 : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
-          } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+          } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
             {renderReader(viewerFile)}
           </div>
         )}

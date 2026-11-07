@@ -616,10 +616,8 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
     return (
       <div className={`w-full h-full min-h-0 flex flex-col bg-[#04060A] text-white ${
-        viewerExpandLevel === 3
-          ? 'fixed inset-0 z-[100] w-screen h-screen'
-          : viewerExpandLevel === 2
-          ? 'fixed inset-0 z-[99999] w-screen h-screen'
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
         {/* Barre d'en-tête du lecteur */}
@@ -874,12 +872,14 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
             {fileType === 'video' && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
-            {(isViewerMaximized || viewerExpandLevel >= 1) && (
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
-              />
-            )}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
+              }}
+            />
 
             {/* Bouton Agrandir / Réduire */}
             <button
@@ -1979,7 +1979,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       } flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0 h-full`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FICHIERS */}
         <div className={`overflow-y-auto px-2 sm:px-4 pt-1 pb-24 transition-all duration-200 ${
-          (isViewerMaximized && selectedFile)
+          ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
             ? 'hidden'
             : selectedFile
             ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 h-full min-h-0 border-b md:border-b-0 md:border-r border-stone-400/40 dark:border-slate-800'
@@ -2589,14 +2589,12 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         {selectedFile && (
           <aside 
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 h-full min-h-0 ${
-              viewerExpandLevel === 3
-                ? 'fixed inset-0 z-[100] w-screen h-screen'
-                : viewerExpandLevel === 2
-                ? 'fixed inset-0 z-[99999] w-screen h-screen'
-                : (isViewerMaximized || selectedFile)
+              viewerExpandLevel >= 2
+                ? 'fixed inset-0 z-50 w-screen h-screen'
+                : (isViewerMaximized || viewerExpandLevel >= 1)
                   ? "w-full flex-1 rounded-xl border border-white/10"
                   : "w-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-400/40 dark:border-slate-800 rounded-xl"
-            } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
+            } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>
