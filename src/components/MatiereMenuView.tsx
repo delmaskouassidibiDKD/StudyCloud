@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Edit3, ArrowLeft, Upload, File, MoreVertical, X, Search, Check, Copy, Plus, Download, Link as LinkIcon, Eye, EyeOff, Menu, Star, Maximize2, Minimize2, Music, Film, Image as ImageIcon, FileEdit, FileText, BookOpen, Share2, ChevronLeft, ChevronRight, SlidersHorizontal, Mic, Pause, Play, Square, RotateCcw, ZoomIn, ZoomOut } from 'lucide-react';
+import { Edit3, ArrowLeft, Upload, File, MoreVertical, X, Search, Check, Copy, Plus, Download, Link as LinkIcon, Eye, EyeOff, Menu, Star, Maximize2, Minimize2, Music, Film, Image as ImageIcon, FileEdit, FileText, BookOpen, Share2, ChevronLeft, ChevronRight, SlidersHorizontal, Mic, Pause, Play, Square, RotateCcw, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import { smartSentenceSplit } from './CenterMenu';
 import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import { ImportedItem, getFileTimestamp, getDocumentTheme } from './FilesMenuView';
 import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
-import { StudyCloudAPI } from '../services/api';
+import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { ImageCardPreview } from './ImageCardPreview';
@@ -109,8 +109,13 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [viewerExpandLevel, isViewerMaximized, selectedFile]);
 
-  // États du lecteur dédié (Lecteur Intégré, Zoom, Lecture Vocale Automatique)
-  const [readerPdfViewMode, setReaderPdfViewMode] = useState<'native' | 'continuous'>('native');
+  // États du lecteur dédié (Conforme à l'affichage moderne du menu document)
+  const [docLayoutMode, setDocLayoutMode] = useState<'vertical' | 'horizontal'>('horizontal');
+  const [viewerZoom, setViewerZoom] = useState<number>(1);
+  const [viewerRotation, setViewerRotation] = useState<number>(0);
+  const [docCurrentPage, setDocCurrentPage] = useState<number>(1);
+  const [splitResolvedPdfUrl, setSplitResolvedPdfUrl] = useState<string>('');
+  const [readerPdfViewMode, setReaderPdfViewMode] = useState<'native' | 'continuous'>('continuous');
   const [readerPdfScale, setReaderPdfScale] = useState<number>(1.25);
   const [speechState, setSpeechState] = useState<'stopped' | 'loading' | 'playing' | 'paused'>('stopped');
   const [isAudioMenuOpen, setIsAudioMenuOpen] = useState<boolean>(false);
@@ -121,6 +126,44 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   const [docExtractedText, setDocExtractedText] = useState<string>('');
   const speechSegmentsRef = useRef<{ text: string; page?: number; lineIndex?: number }[]>([]);
   const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+
+  // Résolution robuste de l'URL PDF (Stream Cloud, IndexedDB local, ou direct)
+  useEffect(() => {
+    if (!selectedFile) {
+      setSplitResolvedPdfUrl('');
+      return;
+    }
+
+    let isMounted = true;
+    const rawUrl = selectedFile.url || (selectedFile as any).previewUrl || '';
+    const isDeadOrThumb = rawUrl.startsWith('blob:') || rawUrl.startsWith('data:image');
+    const safeDirectUrl = isDeadOrThumb ? '' : rawUrl;
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const streamFallbackUrl = selectedFile.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(selectedFile.id)}` : '';
+
+    if (safeDirectUrl) {
+      setSplitResolvedPdfUrl(safeDirectUrl);
+    } else if (streamFallbackUrl) {
+      setSplitResolvedPdfUrl(streamFallbackUrl);
+    }
+
+    if (selectedFile.id && ((selectedFile as any).isUploading || !safeDirectUrl)) {
+      getFileBlobUrl(selectedFile.id).then(localUrl => {
+        if (!isMounted) return;
+        if (localUrl) {
+          setSplitResolvedPdfUrl(localUrl);
+        } else if (safeDirectUrl) {
+          setSplitResolvedPdfUrl(safeDirectUrl);
+        } else if (streamFallbackUrl) {
+          setSplitResolvedPdfUrl(streamFallbackUrl);
+        }
+      }).catch(() => { });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [selectedFile?.id, selectedFile?.url, (selectedFile as any)?.isUploading]);
 
   useEffect(() => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -133,8 +176,11 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     setActiveSpeechLineIndex(-1);
     speechSegmentsRef.current = [];
     setDocExtractedText('');
-    setReaderPdfViewMode('native');
+    setReaderPdfViewMode('continuous');
     setReaderPdfScale(1.25);
+    setDocCurrentPage(1);
+    setViewerZoom(1);
+    setViewerRotation(0);
   }, [selectedFile?.id]);
 
   useEffect(() => {
@@ -613,6 +659,13 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     const canGoNext = currentIndex >= 0 && currentIndex < filteredFiles.length - 1;
     const isPdf = file.name?.toLowerCase().endsWith('.pdf') || file.type?.includes('pdf') || file.extension?.toLowerCase() === 'pdf';
     const showSpeechControls = fileType === 'document' || fileType === 'note';
+    const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+    const cleanPdfBase = (file.name || 'document').replace(/[^a-zA-Z0-9_-]/g, '_');
+    const rawDirectUrl = file.url || (file as any).previewUrl || '';
+    const isDeadBlob = rawDirectUrl.startsWith('blob:') || rawDirectUrl.startsWith('data:image');
+    const directPdfSource = isDeadBlob ? '' : rawDirectUrl;
+    const workerBaseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const nativePdfUrl = splitResolvedPdfUrl || directPdfSource || (file.id ? `${workerBaseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}` : '');
 
     return (
       <div className={`w-full h-full min-h-0 flex flex-col bg-[#04060A] text-white ${
@@ -620,28 +673,16 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
       }`}>
-        {/* Barre d'en-tête du lecteur */}
-        <div className="px-3 sm:px-4 py-2 bg-[#0A0E1A] border-b border-stone-800 flex items-center justify-between gap-2 sm:gap-3 shrink-0">
-          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
-            {isViewerMaximized && (
-              <button
-                type="button"
-                onClick={() => setIsViewerMaximized(false)}
-                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs rounded-lg transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 mr-1"
-                title="Réduire pour réafficher la liste des fichiers"
-              >
-                <ArrowLeft className="w-3.5 h-3.5 stroke-[2.8]" />
-                <span className="hidden sm:inline">Réduire</span>
-              </button>
-            )}
-
+        {/* Barre d'en-tête du lecteur épurée et moderne */}
+        <div className="px-2.5 sm:px-4 py-2 bg-[#0A0E1A] border-b border-stone-800 flex items-center justify-between gap-1.5 sm:gap-3 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
             {filteredFiles.length > 1 && (
-              <div className="flex items-center gap-1 shrink-0 mr-1">
+              <div className="flex items-center gap-1 shrink-0 mr-0.5 sm:mr-1">
                 <button
                   type="button"
                   disabled={!canGoPrev}
                   onClick={() => canGoPrev && setSelectedFile(filteredFiles[currentIndex - 1])}
-                  className="p-1 rounded-md bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:pointer-events-none text-white transition-colors cursor-pointer"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
                   title="Fichier précédent"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
@@ -650,7 +691,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                   type="button"
                   disabled={!canGoNext}
                   onClick={() => canGoNext && setSelectedFile(filteredFiles[currentIndex + 1])}
-                  className="p-1 rounded-md bg-white/10 hover:bg-white/20 disabled:opacity-30 disabled:pointer-events-none text-white transition-colors cursor-pointer"
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 disabled:opacity-30 disabled:pointer-events-none text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
                   title="Fichier suivant"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -667,7 +708,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
             </div>
 
             <div className="min-w-0">
-              <h3 className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-xs md:max-w-md" title={file.name}>
+              <h3 className="text-xs sm:text-sm font-bold text-white truncate max-w-[120px] xs:max-w-[160px] sm:max-w-xs md:max-w-md" title={file.name}>
                 {file.name}
               </h3>
               <p className="text-[10px] text-slate-400 truncate">
@@ -676,161 +717,127 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
             </div>
           </div>
 
-          {/* MILIEU : BOUTON LECTEUR INTÉGRÉ & LECTEUR AUTOMATIQUE (VOCAL) (Trace rouge de l'utilisateur) */}
+          {/* MILIEU : Outils d'affichage pour PDF (conforme à DocumentsMenuView) */}
           <div className="flex items-center gap-1.5 shrink-0 mx-auto">
-            {/* Bouton Lecteur Intégré / Visionneuse PDF pour les PDF */}
-            {isPdf && (
+            {isPdf && !isMobileScreen && (
               <button
                 type="button"
                 onClick={() => {
-                  const next = readerPdfViewMode === 'native' ? 'continuous' : 'native';
-                  setReaderPdfViewMode(next);
-                  if (next === 'native' && speechState === 'playing') {
-                    handleStopSpeech();
-                  }
+                  const nextMode = docLayoutMode === 'vertical' ? 'horizontal' : 'vertical';
+                  setDocLayoutMode(nextMode);
+                  setDocCurrentPage(1);
                 }}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer shadow-sm ${
-                  readerPdfViewMode === 'native'
-                    ? 'bg-blue-600/20 text-blue-400 border-blue-500/40 hover:bg-blue-600/30'
-                    : 'bg-stone-800 text-stone-200 border-stone-700 hover:bg-stone-700'
+                className={`hidden md:flex h-7 sm:h-8 px-2.5 sm:px-3 rounded-full items-center gap-1.5 text-xs font-bold border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                  docLayoutMode === 'horizontal'
+                    ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 ring-1 ring-amber-400/40'
+                    : 'bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30 ring-1 ring-blue-400/40'
                 }`}
-                title={readerPdfViewMode === 'native' ? "Passer au lecteur intégré avec défilement vertical continu et lecture vocale" : "Revenir à la visionneuse PDF native du navigateur"}
+                title={docLayoutMode === 'vertical' ? "Défilement vertical (Cliquer pour horizontal)" : "Défilement horizontal (Cliquer pour vertical)"}
               >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span className="font-bold">
-                  {readerPdfViewMode === 'native' ? 'Lecteur Intégré' : 'Visionneuse PDF'}
-                </span>
+                <SlidersHorizontal className={`w-3.5 h-3.5 ${docLayoutMode === 'vertical' ? 'rotate-90 text-blue-400' : 'text-amber-400'}`} />
+                <span className="text-[11px] font-black">{docLayoutMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
               </button>
             )}
 
-            {/* Lecteur automatique (Synthèse vocale de l'espace d'étude) - apparaît en Lecteur Intégré ou sur document Word/texte */}
-            {showSpeechControls && (
-              <div className="flex items-center gap-1 shrink-0 animate-fadeIn">
-                {isAudioMenuOpen && (
-                  <div className="flex items-center gap-1 bg-[#111625] px-2 py-0.5 rounded-lg border border-stone-700 text-white shadow-sm shrink-0">
-                    {speechState === 'playing' && (
-                      <div className="flex items-center gap-0.5 mr-1 text-orange-500">
-                        <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                        <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                        <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={handleTogglePause}
-                      className="p-1 hover:bg-white/10 rounded text-xs transition-colors cursor-pointer"
-                      title={speechState === 'playing' ? "Pause" : "Reprendre"}
-                    >
-                      {speechState === 'playing' ? (
-                        <Pause className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
-                      ) : (
-                        <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
-                      )}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleStopSpeech}
-                      className="p-1 hover:bg-red-950/40 rounded text-red-500 transition-colors cursor-pointer"
-                      title="Arrêter"
-                    >
-                      <Square className="w-3 h-3 fill-red-500" />
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleRestartSpeech}
-                      className="p-1 hover:bg-blue-950/40 rounded text-blue-400 transition-colors cursor-pointer"
-                      title="Recommencer"
-                    >
-                      <RotateCcw className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* Auto-scroll */}
-                    <button
-                      type="button"
-                      onClick={() => setAutoScrollEnabled(prev => !prev)}
-                      className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${
-                        autoScrollEnabled
-                          ? 'bg-emerald-950/60 text-emerald-300 border-emerald-600'
-                          : 'bg-stone-800 text-stone-400 border-stone-700'
-                      }`}
-                      title={autoScrollEnabled ? "Défilement auto actif (cliquer pour désactiver)" : "Défilement auto désactivé"}
-                    >
-                      <span className={`w-1.5 h-1.5 rounded-full ${autoScrollEnabled ? 'bg-emerald-400 animate-ping' : 'bg-stone-500'}`} />
-                      <span className="hidden sm:inline">{autoScrollEnabled ? "Auto-scroll" : "Libre"}</span>
-                    </button>
-
-                    {/* Zoom si PDF continu */}
-                    {isPdf && readerPdfViewMode === 'continuous' && (
-                      <div className="flex items-center gap-0.5 border-l border-stone-700 pl-1 ml-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setReaderPdfScale(s => Math.max(0.6, s - 0.15))}
-                          className="p-0.5 hover:text-orange-400 text-stone-300 cursor-pointer"
-                          title="Zoom arrière"
-                        >
-                          <ZoomOut className="w-3 h-3" />
-                        </button>
-                        <span className="font-mono text-[10px] px-1 font-bold text-stone-300">{Math.round(readerPdfScale * 100)}%</span>
-                        <button
-                          type="button"
-                          onClick={() => setReaderPdfScale(s => Math.min(2.5, s + 0.15))}
-                          className="p-0.5 hover:text-orange-400 text-stone-300 cursor-pointer"
-                          title="Zoom avant"
-                        >
-                          <ZoomIn className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      onClick={() => setIsAudioMenuOpen(false)}
-                      className="p-0.5 hover:bg-white/10 rounded-full text-stone-400 hover:text-white ml-0.5 cursor-pointer"
-                      title="Fermer la barre de contrôle"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
+            {/* Lecteur automatique (Synthèse vocale) */}
+            {showSpeechControls && isAudioMenuOpen && (
+              <div className="flex items-center gap-1 bg-[#111625] px-2 py-0.5 rounded-full border border-stone-700 text-white shadow-sm shrink-0">
+                {speechState === 'playing' && (
+                  <div className="flex items-center gap-0.5 mr-1 text-orange-500">
+                    <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                   </div>
                 )}
-
-                {/* Bouton Vocal */}
                 <button
                   type="button"
-                  onClick={handleStartSpeech}
-                  className={`px-2.5 py-1 rounded-lg border transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm shrink-0 ${
-                    speechState === 'playing'
-                      ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300 border-orange-400'
-                      : speechState === 'paused'
-                      ? 'bg-amber-500 text-stone-950 font-bold border-amber-400'
-                      : isAudioMenuOpen
-                      ? 'bg-orange-950/60 text-orange-400 border-orange-700'
-                      : 'bg-stone-800 hover:bg-stone-700 text-stone-200 border-stone-700'
-                  }`}
-                  title="Lire automatiquement le document (Synthèse vocale)"
+                  onClick={handleTogglePause}
+                  className="p-1 hover:bg-white/10 rounded-full text-xs transition-colors cursor-pointer"
+                  title={speechState === 'playing' ? "Pause" : "Reprendre"}
                 >
-                  <Mic className="w-3.5 h-3.5 text-orange-500" />
-                  <span className="text-xs font-bold">Vocal</span>
+                  {speechState === 'playing' ? (
+                    <Pause className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStopSpeech}
+                  className="p-1 hover:bg-red-950/40 rounded-full text-red-500 transition-colors cursor-pointer"
+                  title="Arrêter"
+                >
+                  <Square className="w-3 h-3 fill-red-500" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handleRestartSpeech}
+                  className="p-1 hover:bg-blue-950/40 rounded-full text-blue-400 transition-colors cursor-pointer"
+                  title="Recommencer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAudioMenuOpen(false)}
+                  className="p-0.5 hover:bg-white/10 rounded-full text-stone-400 hover:text-white ml-0.5 cursor-pointer"
+                  title="Fermer"
+                >
+                  <X className="w-3 h-3" />
                 </button>
               </div>
             )}
           </div>
 
-          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 pr-1 sm:pr-2">
+            {/* Outils PDF (Zoom, Rotation) */}
+            {isPdf && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setViewerZoom(z => Math.max(0.4, Math.round((z - 0.2) * 10) / 10))}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+                  title="Zoom arrière"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+
+                <span className="text-[10px] font-bold text-slate-300 w-10 text-center hidden sm:inline-block shrink-0">
+                  {Math.round(viewerZoom * 100)}%
+                </span>
+
+                <button
+                  type="button"
+                  onClick={() => setViewerZoom(z => Math.min(3, Math.round((z + 0.2) * 10) / 10))}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+                  title="Zoom avant"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewerRotation(r => (r + 90) % 360)}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
+                  title="Faire pivoter"
+                >
+                  <RotateCw className="w-3.5 h-3.5" />
+                </button>
+              </>
+            )}
+
             {/* Étoile Favori */}
             <button
               type="button"
               onClick={() => handleToggleFavorite(file.id)}
-              className={`p-1.5 rounded-lg border transition-all cursor-pointer ${
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 ${
                 file.isFavorite
                   ? 'bg-amber-500/20 text-amber-400 border-amber-400/40'
-                  : 'bg-black/60 hover:bg-white/10 text-slate-300 border-white/20'
+                  : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
               }`}
               title={file.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
             >
-              <Star className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${file.isFavorite ? 'fill-amber-400' : ''}`} />
+              <Star className={`w-3.5 h-3.5 ${file.isFavorite ? 'fill-amber-400' : ''}`} />
             </button>
 
             {/* Partager */}
@@ -840,20 +847,20 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                 setSuccessMessage(msg);
                 setTimeout(() => setSuccessMessage(null), 3000);
               })}
-              className="p-1.5 rounded-lg bg-black/60 hover:bg-white/10 text-slate-300 border border-white/20 transition-colors cursor-pointer"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
               title="Partager"
             >
-              <Share2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Share2 className="w-3.5 h-3.5" />
             </button>
 
             {/* Télécharger */}
             <button
               type="button"
               onClick={() => handleDownload(file.url, file.name, file.id)}
-              className="p-1.5 rounded-lg bg-black/60 hover:bg-white/10 text-slate-300 border border-white/20 transition-colors cursor-pointer"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
               title="Télécharger"
             >
-              <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <Download className="w-3.5 h-3.5" />
             </button>
 
             {/* Ouvrir dans l'espace d'étude avec IA */}
@@ -861,33 +868,35 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
               <button
                 type="button"
                 onClick={() => setActivePreviewItem({ ...file, folderName: matiereName })}
-                className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-colors cursor-pointer"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50 shrink-0"
                 title="Ouvrir dans le Menu de création"
               >
-                <BookOpen className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
             )}
 
-            {/* Bouton d'agrandissement de cadre (uniquement pour vidéo) */}
+            {/* Bouton de cadrage (uniquement pour vidéo) */}
             {fileType === 'video' && <ViewerFitButton />}
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             <ViewerSuperExpandButton
               expandLevel={viewerExpandLevel}
               onExpandChange={(lvl) => {
-                if (lvl >= 1) setIsViewerMaximized(true);
-                else setIsViewerMaximized(false);
+                if (lvl >= 1) {
+                  setIsViewerMaximized(true);
+                } else {
+                  setIsViewerMaximized(false);
+                }
                 setViewerExpandLevel(lvl);
               }}
             />
 
-            {/* Bouton Agrandir / Réduire */}
+            {/* Agrandir / Réduire */}
             <button
               type="button"
               onClick={() => {
-                const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
-                if (isMobileScreen) {
-                  // Sur mobile : basculer entre vue normale et plein écran simple sans super-agrandissement
+                const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+                if (isMobile) {
                   setIsViewerMaximized(!isViewerMaximized);
                   resetViewerExpand();
                 } else {
@@ -900,15 +909,15 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                   }
                 }
               }}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 ${
                 (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 text-white border-blue-400' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               }`}
-              title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire' : 'Plein écran'}
+              title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : "Agrandir le lecteur"}
             >
               {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
 
-            {/* Fermer */}
+            {/* Fermer (bouton rond rouge bien visible à droite sans être coincé dans le creux) */}
             <button
               type="button"
               onClick={() => {
@@ -916,16 +925,16 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                 setIsViewerMaximized(false);
                 resetViewerExpand();
               }}
-              className="p-1.5 rounded-lg bg-white/10 hover:bg-rose-600 hover:text-white text-slate-300 border border-white/20 transition-colors cursor-pointer"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95 shrink-0"
               title="Fermer le lecteur"
             >
-              <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+              <X className="w-4 h-4 stroke-[2.5]" />
             </button>
           </div>
         </div>
 
-        {/* Corps du lecteur selon le type */}
-        <div className="flex-1 w-full h-full min-h-0 overflow-hidden flex flex-col relative bg-[#04060A]">
+        {/* Corps du Document conforme au Menu Document (Image 3) */}
+        <div className="flex-1 w-full h-full flex flex-col overflow-hidden bg-stone-100 dark:bg-stone-900 select-text">
           {fileType === 'audio' && (
             <div className="w-full h-full flex flex-col justify-center bg-[#070B14]">
               <ModernAudioPlayer
@@ -983,63 +992,55 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           )}
 
           {fileType === 'document' && (
-            <div className="w-full h-full min-h-0 flex-1 flex flex-col bg-[#070B14] select-text">
-              {isPdf && (typeof window !== 'undefined' && window.innerWidth < 768) ? (
-                <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
-                  <MobilePdfViewer
-                    fileId={file.id}
-                    file={file}
-                    url={file.url}
-                    docZoom={Math.round(readerPdfScale * 100)}
-                    onZoomChange={(z) => setReaderPdfScale(z / 100)}
-                    activeSpeechPage={activeSpeechPage}
-                    activeSpeechLineIndex={activeSpeechLineIndex}
-                    currentSpokenText={speechSegmentsRef.current[currentSentenceIdx]?.text}
-                    autoScrollEnabled={autoScrollEnabled}
-                    isSpeaking={speechState === 'playing'}
-                    onSegmentsExtracted={(segs) => {
-                      if (speechSegmentsRef.current.length === 0) {
-                        speechSegmentsRef.current = segs;
-                      }
-                    }}
-                    isFullscreen={isViewerMaximized}
-                  />
-                </div>
-              ) : isPdf && readerPdfViewMode === 'continuous' ? (
-                <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
+            <div className="w-full h-full min-h-0 flex-1 flex flex-col bg-stone-100 dark:bg-stone-900 select-text">
+              {isPdf ? (
+                (isMobileScreen || docLayoutMode === 'horizontal') ? (
                   <PdfHorizontalViewer
                     fileId={file.id}
-                    file={file}
-                    url={file.url}
-                    docZoom={Math.round(readerPdfScale * 100)}
-                    layoutMode="vertical"
-                    activeSpeechPage={activeSpeechPage}
-                    activeSpeechLineIndex={activeSpeechLineIndex}
-                    currentSpokenText={speechSegmentsRef.current[currentSentenceIdx]?.text}
-                    autoScrollEnabled={autoScrollEnabled}
-                    isSpeaking={speechState === 'playing'}
-                    onSegmentsExtracted={(segs) => {
-                      if (speechSegmentsRef.current.length === 0) {
-                        speechSegmentsRef.current = segs;
-                      }
-                    }}
+                    file={file as any}
+                    url={splitResolvedPdfUrl || file.url}
+                    docZoom={Math.round(viewerZoom * 100)}
+                    layoutMode="horizontal"
+                    currentPage={docCurrentPage}
+                    onPageChange={setDocCurrentPage}
                     isFullscreen={isViewerMaximized}
                   />
-                </div>
+                ) : !isMobileScreen && nativePdfUrl ? (
+                  <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
+                    <object
+                      key={`pdf-native-${file.id || cleanPdfBase}`}
+                      data={nativePdfUrl}
+                      type="application/pdf"
+                      className="w-full h-full border-0 block flex-1"
+                      style={{ width: '100%', height: '100%' }}
+                    >
+                      <iframe
+                        key={`iframe-pdf-native-${file.id || cleanPdfBase}`}
+                        src={nativePdfUrl}
+                        title={file.name || 'Document PDF'}
+                        className="w-full h-full border-0 block flex-1"
+                        style={{ width: '100%', height: '100%' }}
+                      />
+                    </object>
+                  </div>
+                ) : (
+                  <PdfHorizontalViewer
+                    fileId={file.id}
+                    file={file as any}
+                    url={splitResolvedPdfUrl || file.url}
+                    docZoom={Math.round(viewerZoom * 100)}
+                    layoutMode="vertical"
+                    currentPage={docCurrentPage}
+                    onPageChange={setDocCurrentPage}
+                    isFullscreen={isViewerMaximized}
+                  />
+                )
               ) : (
                 <ModernDocumentViewer
                   fileId={file.id}
                   url={file.url}
                   fileName={file.name}
                   fileSize={formattedSize}
-                  hideHeader={true}
-                  pdfViewMode={readerPdfViewMode}
-                  onPdfViewModeChange={setReaderPdfViewMode}
-                  pdfScale={readerPdfScale}
-                  onPdfScaleChange={setReaderPdfScale}
-                  onExtractedText={setDocExtractedText}
-                  activeSpeechPage={activeSpeechPage}
-                  autoScrollEnabled={autoScrollEnabled}
                   className="w-full h-full border-0 rounded-none shadow-none"
                 />
               )}
