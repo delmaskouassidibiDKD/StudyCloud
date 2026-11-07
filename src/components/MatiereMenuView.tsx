@@ -1787,7 +1787,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                   onClick={() => setIsHeaderMenuOpen(false)} 
                 />
                 <div 
-                  className="studycloud-file-menu-panel bg-white dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-xl shadow-xl py-2 text-left animate-in fade-in duration-150 flex flex-col"
+                  className="studycloud-file-menu-panel bg-white dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-xl shadow-xl py-2 text-left animate-in fade-in duration-150 flex flex-col overflow-y-auto overscroll-contain max-h-[75vh]"
                   style={smartStyle.style}
                   onClick={(e) => e.stopPropagation()}
                 >
@@ -2090,7 +2090,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                                   const smartStyle = computeSmartMenuStyle(el?.getBoundingClientRect(), 420, 200);
                                   return createPortal(
                                     <div 
-                                      className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col"
+                                      className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col overflow-y-auto overscroll-contain max-h-[75vh]"
                                       style={smartStyle.style}
                                       onClick={(e) => e.stopPropagation()}
                                     >
@@ -2357,7 +2357,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                           const smartStyle = computeSmartMenuStyle(el?.getBoundingClientRect(), 420, 200);
                           return createPortal(
                             <div 
-                              className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col"
+                              className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col overflow-y-auto overscroll-contain max-h-[75vh]"
                               style={smartStyle.style}
                               onClick={(e) => e.stopPropagation()}
                             >

@@ -85,10 +85,12 @@ export function computeSmartMenuStyle(
   const headerBottom = getHeaderBottomBoundary();
 
   // Limites strictes absolues
+  const isMobile = vw < 768;
+  const bottomBarHeight = isMobile ? 74 : 0;
   const minLeft = Math.max(SMART_SAFE_MARGIN, sidebarRight + SMART_SAFE_MARGIN);
   const maxRight = Math.max(minLeft + 160, vw - SMART_SAFE_MARGIN);
   const minTop = Math.max(SMART_SAFE_MARGIN, headerBottom + 6);
-  const maxBottom = Math.max(minTop + 160, vh - SMART_SAFE_MARGIN);
+  const maxBottom = Math.max(minTop + 160, vh - SMART_SAFE_MARGIN - bottomBarHeight);
 
   // Largeur finale garantie
   const availableWidth = Math.max(160, maxRight - minLeft);
@@ -108,7 +110,7 @@ export function computeSmartMenuStyle(
         zIndex: 99999,
       },
       baseClass:
-        'studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150',
+        'studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 rounded-xl overflow-y-auto overscroll-contain flex flex-col animate-in fade-in zoom-in-95 duration-150',
     };
   }
 
@@ -167,7 +169,7 @@ export function computeSmartMenuStyle(
       zIndex: 99999,
     },
     baseClass:
-      'studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 rounded-xl overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-150',
+      'studycloud-file-menu-panel bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 rounded-xl overflow-y-auto overscroll-contain flex flex-col animate-in fade-in zoom-in-95 duration-150',
   };
 }
 

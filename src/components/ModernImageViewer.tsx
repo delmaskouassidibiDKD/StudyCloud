@@ -78,8 +78,8 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
       } catch (err) {}
     }
 
-    // Priorité 3 : Source directe fournie (dataUrl, blob actif ou URL http)
-    if (src && typeof src === 'string' && src.trim()) {
+    // Priorité 3 : Source directe fournie (dataUrl ou URL http distante)
+    if (src && typeof src === 'string' && src.trim() && !src.startsWith('blob:')) {
       let finalSrc = src;
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       if (finalSrc.includes('localhost') && !baseUrl.includes('localhost')) {
@@ -104,6 +104,12 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
       setResolvedSrc(streamUrl);
+      return;
+    }
+
+    // Priorité 6 : Fallback sur src même si blob
+    if (src && typeof src === 'string' && src.trim()) {
+      setResolvedSrc(src);
       return;
     }
 
@@ -184,64 +190,56 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
             alt={alt || fileName}
             onLoad={() => setIsLoading(false)}
             onError={async () => {
-              const attempt = attemptIndexRef.current;
-              attemptIndexRef.current += 1;
+              const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+              const streamUrl = fileId ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}` : '';
+              const r2Url = r2Key ? `${baseUrl}/api/cloud/file/images/${encodeURIComponent(r2Key)}` : '';
+              const thumbWorkerUrl = fileId ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(fileId)}` : '';
 
-              if (fileId) {
-                // Tentative 1 : getFileBlob frais depuis IndexedDB
-                if (attempt === 0) {
-                  try {
-                    const b = await getFileBlob(fileId);
-                    if (b) {
-                      const freshUrl = URL.createObjectURL(b);
-                      if (freshUrl && freshUrl !== resolvedSrc) {
-                        setResolvedSrc(freshUrl);
-                        return;
-                      }
-                    }
-                  } catch (e) {}
-                }
-
-                // Tentative 2 : Miniature locale IndexedDB
-                if (attempt <= 1) {
-                  try {
-                    const thumb = await getThumbnailData(fileId);
-                    if (thumb && thumb !== resolvedSrc) {
-                      setResolvedSrc(thumb);
+              // Tentative 1 : Fichier local frais depuis IndexedDB
+              if (fileId && attemptIndexRef.current === 0) {
+                attemptIndexRef.current = 1;
+                try {
+                  const b = await getFileBlob(fileId);
+                  if (b) {
+                    const freshUrl = URL.createObjectURL(b);
+                    if (freshUrl && freshUrl !== resolvedSrc) {
+                      setResolvedSrc(freshUrl);
                       return;
                     }
-                  } catch (e) {}
-                }
+                  }
+                } catch (e) {}
+              }
 
-                // Tentative 3 : R2 image file
-                if (attempt <= 2 && r2Key) {
-                  const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-                  const r2Url = `${baseUrl}/api/cloud/file/images/${encodeURIComponent(r2Key)}`;
-                  if (r2Url !== resolvedSrc) {
-                    setResolvedSrc(r2Url);
+              // Tentative 2 : Streaming Cloudflare Worker (auto-guérison de la clé R2)
+              if (streamUrl && resolvedSrc !== streamUrl) {
+                attemptIndexRef.current = 2;
+                setResolvedSrc(streamUrl);
+                return;
+              }
+
+              // Tentative 3 : R2 direct si r2Key disponible
+              if (r2Url && resolvedSrc !== r2Url) {
+                attemptIndexRef.current = 3;
+                setResolvedSrc(r2Url);
+                return;
+              }
+
+              // Tentative 4 : Thumbnail Worker
+              if (thumbWorkerUrl && resolvedSrc !== thumbWorkerUrl) {
+                attemptIndexRef.current = 4;
+                setResolvedSrc(thumbWorkerUrl);
+                return;
+              }
+
+              // Tentative 5 : Miniature locale IndexedDB
+              if (fileId) {
+                try {
+                  const thumb = await getThumbnailData(fileId);
+                  if (thumb && thumb !== resolvedSrc) {
+                    setResolvedSrc(thumb);
                     return;
                   }
-                }
-
-                // Tentative 4 : Stream worker
-                if (attempt <= 3) {
-                  const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-                  const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
-                  if (streamUrl !== resolvedSrc) {
-                    setResolvedSrc(streamUrl);
-                    return;
-                  }
-                }
-
-                // Tentative 5 : Thumbnail worker
-                if (attempt <= 4) {
-                  const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-                  const thumbWorkerUrl = `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(fileId)}`;
-                  if (thumbWorkerUrl !== resolvedSrc) {
-                    setResolvedSrc(thumbWorkerUrl);
-                    return;
-                  }
-                }
+                } catch (e) {}
               }
 
               setHasError(true);

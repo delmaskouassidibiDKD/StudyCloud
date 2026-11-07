@@ -523,8 +523,8 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
 
   return (
     <div className={`w-full h-full min-h-0 flex flex-col bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-hidden ${className}`}>
-      {/* 1. EN-TÊTE DU DOCUMENT AVEC ACTIONS & CONTRÔLES (Masqué quand hideHeader={true}, pour Word/Excel/PPTX ou sur mobile pour PDF afin d'éviter la bande vide et combler tout l'espace) */}
-      {!hideHeader && !isWord && !isExcel && !isPptx && !(isPdf && isMobile) && (
+      {/* 1. EN-TÊTE DU DOCUMENT AVEC ACTIONS & CONTRÔLES (Masqué quand hideHeader={true}, pour Word/Excel/PPTX ou pour PDF afin d'éviter la bande vide et combler tout l'espace) */}
+      {!hideHeader && !isWord && !isExcel && !isPptx && !isPdf && (
         <div className="flex items-center justify-between px-2 sm:px-4 py-1 sm:py-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0 z-10 shadow-xs">
           {/* Masqué sur mobile pour éviter la redondance et libérer l'espace vertical */}
           <div className="hidden sm:flex items-center gap-2.5 min-w-0">
@@ -630,8 +630,8 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
                 type="button"
                 onClick={() => setPdfViewMode((m: any) => m === 'native' ? 'continuous' : 'native')}
                 className={`hidden md:flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border transition-colors cursor-pointer ${activePdfViewMode === 'native'
-                    ? 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
-                    : 'bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-200'
+                  ? 'bg-blue-600/15 text-blue-600 dark:text-blue-400 border-blue-500/30'
+                  : 'bg-white dark:bg-zinc-800 text-zinc-700 dark:text-zinc-200 border-zinc-300 dark:border-zinc-700 hover:bg-zinc-200'
                   }`}
                 title={activePdfViewMode === 'native' ? "Passer au défilement vertical continu PDF.js" : "Passer au lecteur navigateur intégré"}
               >

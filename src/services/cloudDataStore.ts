@@ -1498,9 +1498,13 @@ export const CloudDataStore = {
           }
         } else {
           // Détection intelligente de la catégorie pour un placement immédiat et exact
+          const detectedByExt = detectFileCategory({ name: file.name, type: file.type, extension: (file as any).extension });
+          const isMediaExt = /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name || '');
           let detectedCat = rawCat;
-          if (!detectedCat || detectedCat === 'trash' || detectedCat === 'folder') {
-            detectedCat = detectFileCategory({ name: file.name, type: file.type });
+          if (isMediaExt && detectedByExt) {
+            detectedCat = detectedByExt;
+          } else if (!detectedCat || detectedCat === 'trash' || detectedCat === 'folder' || detectedCat === 'secure') {
+            detectedCat = detectedByExt || 'documents';
           }
 
           if (detectedCat === 'images' || (file as any).isImage) {
@@ -1586,7 +1590,14 @@ export const CloudDataStore = {
       updatedMap[k] = filterFn(updatedMap[k]);
     }
     const lockedItems = arr.map(f => {
-      const origCat = (f as any).originalCategory || f.category;
+      const detectedByExt = detectFileCategory({ name: f.name, type: (f as any).type, extension: (f as any).extension });
+      const isMediaExt = /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(f.name || '');
+      let origCat = (f as any).originalCategory || f.category;
+      if (isMediaExt && detectedByExt) {
+        origCat = detectedByExt;
+      } else if (!origCat || origCat === 'secure' || origCat === 'trash') {
+        origCat = detectedByExt || 'documents';
+      }
       const isAud = origCat === 'audio';
       const resolvedCover = (f as any).coverUrl
         || (f as any).thumbnailUrl
@@ -1595,6 +1606,8 @@ export const CloudDataStore = {
         || '';
       return {
         ...f,
+        category: 'secure',
+        originalCategory: origCat,
         isSecure: true,
         coverUrl: isAud ? (resolvedCover || (f as any).coverUrl || undefined) : (f as any).coverUrl,
         thumbnailUrl: isAud ? (resolvedCover || (f as any).thumbnailUrl || undefined) : (f as any).thumbnailUrl,
@@ -1639,7 +1652,14 @@ export const CloudDataStore = {
     const updatedMap = { ...currentState.folderFilesMap };
 
     arr.forEach(file => {
-      const origCat = (file as any).originalCategory || file.category;
+      const detectedByExt = detectFileCategory({ name: file.name, type: (file as any).type, extension: (file as any).extension });
+      const isMediaExt = /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name || '');
+      let origCat = (file as any).originalCategory || file.category;
+      if (isMediaExt && detectedByExt) {
+        origCat = detectedByExt;
+      } else if (!origCat || origCat === 'secure' || origCat === 'trash') {
+        origCat = detectedByExt || 'documents';
+      }
       const meta = (file as any).metadata || {};
       const isAud = origCat === 'audio';
       const resolvedCover = (file as any).coverUrl
@@ -1649,13 +1669,31 @@ export const CloudDataStore = {
         || (isAud && (file as any).previewUrl && !(file as any).previewUrl.startsWith('blob:') && !(file as any).previewUrl.includes('.mp3') ? (file as any).previewUrl : '')
         || '';
 
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const streamFallback = file.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}` : '';
+      const r2Key = (file as any).r2Key || (file as any).r2_key || meta.r2Key;
+      const r2Fallback = r2Key ? `${baseUrl}/api/cloud/file/${origCat}/${encodeURIComponent(r2Key)}` : '';
+
+      let workingUrl = (file as any).url;
+      if (!workingUrl || workingUrl.startsWith('blob:') || workingUrl.includes('localhost')) {
+        workingUrl = r2Fallback || streamFallback || (file as any).url || '';
+      }
+
+      let workingPreview = (file as any).previewUrl;
+      if (!workingPreview || workingPreview.startsWith('blob:') || workingPreview.includes('localhost')) {
+        workingPreview = workingUrl || streamFallback;
+      }
+
       const restored: any = {
         ...file,
         isSecure: false,
         category: origCat,
+        originalCategory: origCat,
+        r2Key: r2Key || undefined,
+        url: workingUrl,
+        previewUrl: isAud ? (resolvedCover || workingPreview) : workingPreview,
+        thumbnailUrl: isAud ? (resolvedCover || undefined) : ((file as any).thumbnailUrl || workingPreview),
         coverUrl: isAud ? (resolvedCover || (file as any).coverUrl || undefined) : (file as any).coverUrl,
-        thumbnailUrl: isAud ? (resolvedCover || (file as any).thumbnailUrl || undefined) : (file as any).thumbnailUrl,
-        previewUrl: isAud ? (resolvedCover || (file as any).previewUrl || (file as any).url) : (file as any).previewUrl,
         artist: (file as any).artist || meta.artist || undefined,
         title: (file as any).title || meta.title || file.name,
         album: (file as any).album || meta.album || undefined,
@@ -1713,14 +1751,26 @@ export const CloudDataStore = {
     if (arr.length === 0) return;
     const idSet = new Set(arr.map(f => f.id));
     const newSecure = currentState.secure.filter(s => !idSet.has(s.id));
-    const trashedItems = arr.map(f => ({
-      ...f,
-      isTrash: true,
-      isFavorite: false,
-      isSecure: false,
-      sourceCategory: 'secure',
-      date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
-    }));
+    const trashedItems = arr.map(f => {
+      const detectedByExt = detectFileCategory({ name: f.name, type: (f as any).type, extension: (f as any).extension });
+      const isMediaExt = /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(f.name || '');
+      let realCategory = (f as any).originalCategory || f.category;
+      if (isMediaExt && detectedByExt) {
+        realCategory = detectedByExt;
+      } else if (!realCategory || realCategory === 'secure' || realCategory === 'trash') {
+        realCategory = detectedByExt || 'documents';
+      }
+      return {
+        ...f,
+        category: realCategory,
+        sourceCategory: realCategory,
+        originalCategory: realCategory,
+        isTrash: true,
+        isFavorite: false,
+        isSecure: false,
+        date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+      };
+    });
     const newTrash = [...trashedItems, ...currentState.trash.filter(t => !idSet.has(t.id))];
 
     currentState = {

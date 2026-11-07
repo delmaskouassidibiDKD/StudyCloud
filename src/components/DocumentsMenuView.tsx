@@ -2249,9 +2249,9 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           <div className={`flex flex-col bg-[#04060A] animate-in fade-in duration-150 ${(viewerExpandLevel >= 2 || isViewerMaximized)
               ? 'fixed inset-0 z-50 w-screen h-screen'
               : (isViewerMaximized || selectedDoc)
-                ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
-            } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0 border-white/10' : ''}`}>
+                ? 'w-full flex-1 h-full min-h-0'
+                : 'w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+            } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l border-white/10' : ''}`}>
             {renderDocumentReader(selectedDoc)}
           </div>
         )}

@@ -21,10 +21,13 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
     if (img.r2Key) {
       return `${baseUrl}/api/cloud/file/images/${encodeURIComponent(img.r2Key)}`;
     }
+    if (img.id) {
+      return `${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}`;
+    }
     if (directUrl && directUrl.startsWith('blob:')) {
       return directUrl;
     }
-    return img.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}` : '';
+    return '';
   });
 
   const [hasFailed, setHasFailed] = useState(false);
@@ -94,6 +97,15 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
         const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}`;
         if (streamUrl !== src) {
           setSrc(streamUrl);
+          return;
+        }
+      }
+
+      // Étape 5 : Tenter la miniature du Worker
+      if (attempt <= 4 && img.id) {
+        const thumbUrl = `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(img.id)}`;
+        if (thumbUrl !== src) {
+          setSrc(thumbUrl);
           return;
         }
       }

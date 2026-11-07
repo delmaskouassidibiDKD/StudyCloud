@@ -2914,7 +2914,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                                   const smartStyle = computeSmartMenuStyle(el?.getBoundingClientRect(), 420, 200);
                                   return createPortal(
                                     <div 
-                                      className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col"
+                                      className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col overflow-y-auto overscroll-contain max-h-[75vh]"
                                       style={smartStyle.style}
                                       onClick={(e) => e.stopPropagation()}
                                     >
@@ -3223,7 +3223,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                           const smartStyle = computeSmartMenuStyle(el?.getBoundingClientRect(), 420, 200);
                           return createPortal(
                             <div 
-                              className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col"
+                              className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col overflow-y-auto overscroll-contain max-h-[75vh]"
                               style={smartStyle.style}
                               onClick={(e) => e.stopPropagation()}
                             >

@@ -3214,7 +3214,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
         if (item) {
           const itm = item as any;
-          const origCat = itm.originalCategory || itm.category || 'documents';
+          const detectedCat = detectFileCategory({ name: itm.name, type: itm.type, extension: itm.extension });
+          const isMediaExt = /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(itm.name || '');
+          let origCat = itm.originalCategory || itm.category;
+          if (isMediaExt && detectedCat) origCat = detectedCat;
+          else if (!origCat || origCat === 'secure' || origCat === 'trash') origCat = detectedCat || 'documents';
           const isAud = origCat === 'audio';
           const cachedCover = isAud ? getCachedMediaThumbnail(itm.id || itm.audioUrl || itm.url || '') : null;
           const validCover = isAud ? (
@@ -3641,7 +3645,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         }
 
         // Persistance dans Cloudflare D1 secure_files
-        const origCat = (file as any).originalCategory || file.category || 'documents';
+        const detectedMoveCat = detectFileCategory({ name: file.name, type: (file as any).type, extension: (file as any).extension });
+        const isMediaMoveExt = /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name || '');
+        let origCat = (file as any).originalCategory || file.category;
+        if (isMediaMoveExt && detectedMoveCat) origCat = detectedMoveCat;
+        else if (!origCat || origCat === 'secure' || origCat === 'trash') origCat = detectedMoveCat || 'documents';
         CloudStorageAPI.moveToSecureFolder(file, origCat, (file as any).folderId || opened3DFolder?.id).catch(console.error);
 
         showToast(`"${file.name}" verrouillé dans le dossier sécurisé !`);
@@ -3650,7 +3658,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
       case 'unlock_file':
       case 'restore_from_secure': {
-        const origCat = (file as any).originalCategory || file.category;
+        const detectedUnlockCat = detectFileCategory({ name: file.name, type: (file as any).type, extension: (file as any).extension });
+        const isMediaUnlockExt = /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name || '');
+        let origCat = (file as any).originalCategory || file.category;
+        if (isMediaUnlockExt && detectedUnlockCat) origCat = detectedUnlockCat;
+        else if (!origCat || origCat === 'secure' || origCat === 'trash') origCat = detectedUnlockCat || 'documents';
         const origSource = (file as any).originalSource || 'StudyCloud';
         const meta = (file as any).metadata || {};
         const isAud = origCat === 'audio';
@@ -11232,6 +11244,37 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               )}
             </ViewerHeaderActionsMenu>
 
+            {/* Super Agrandissement Progressif (Desktop uniquement) */}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) setIsViewerMaximized(true);
+                else setIsViewerMaximized(false);
+                setViewerExpandLevel(lvl);
+              }}
+            />
+
+            {/* Bouton Agrandir / Réduire (Masquer la barre supérieure robot bleu / plein écran) */}
+            <button
+              type="button"
+              onClick={() => {
+                const isExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 2);
+                if (isExpanded) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(2);
+                }
+              }}
+              className={'w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ' + (
+                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+              )}
+              title={(isViewerMaximized || viewerExpandLevel >= 2) ? "Réduire la vue" : "Agrandir en masquant la barre supérieure (Robot Bleu)"}
+            >
+              {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+            </button>
+
             {/* Bouton Fermer */}
             <button
               type="button"
@@ -11717,9 +11760,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDrop={handleGlobalDrop}
-      className={`animate-in fade-in duration-150 bg-[#F4F6F8] dark:bg-[#0C111D] text-stone-900 dark:text-slate-100 flex flex-col overflow-y-auto selection:bg-blue-600 selection:text-white ${isFullscreen
+      className={`animate-in fade-in duration-150 ${(selectedDocFile || selectedVideoFile || selectedImageFile || selectedAudioTrack || selectedDownloadFile || selectedClasseurFile || selectedCollectionFile || splitSelectedFile) ? 'bg-[#04060A] overflow-hidden' : (activeDedicatedMenu === 'secure-folder' || activeDedicatedMenu === 'trash') ? 'bg-[#04060A] overflow-hidden' : 'bg-[#F4F6F8] dark:bg-[#0C111D] overflow-y-auto'} text-stone-900 dark:text-slate-100 flex flex-col selection:bg-blue-600 selection:text-white ${isFullscreen
         ? 'fixed inset-0 z-[1000] w-screen h-screen'
-        : 'fixed top-[64px] md:top-[68px] bottom-0 left-0 md:left-64 right-0 z-30 min-h-[calc(100vh-68px)]'
+        : 'fixed top-[64px] md:top-[68px] bottom-0 left-0 md:left-64 right-0 z-30'
         }`}>
       {/* Toast Notification universel en haut au milieu */}
       {toastMessage && (
@@ -12480,9 +12523,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${viewerExpandLevel >= 2
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                    : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
-                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                    ? 'w-full flex-1 h-full min-h-0'
+                    : 'w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
                   {renderDocumentReader(selectedDocFile)}
                 </div>
               )}
@@ -12491,9 +12534,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 2. MENU AUDIO : LAYOUT ET LECTEUR AUDIO DÉDIÉ (IMAGE 2 & IMAGE 3) */}
           {(currentSubView?.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedAudioTrack ? 'bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedAudioTrack ? 'bg-[#04060A]' : ''} h-full min-h-0`}>
               {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
-              <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${selectedAudioTrack
+              <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-28 ${selectedAudioTrack
                 ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
                 : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                 }`}>
@@ -12729,8 +12772,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
               {/* PANNEAU DE DROITE : LECTEUR AUDIO INDÉPENDANT (IMAGE 2 & IMAGE 3) */}
               {selectedAudioTrack ? (
-                <div className={`animate-in fade-in duration-150 ${isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'
-                  } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10`}>
+                <div className={`animate-in fade-in duration-150 ${
+                  (viewerExpandLevel >= 2 || isViewerMaximized)
+                    ? 'fixed inset-0 z-50 w-screen h-screen'
+                    : isMobilePlayerOpen
+                      ? 'flex w-full flex-1 h-full min-h-0'
+                      : 'hidden md:flex'
+                  } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-0 md:border-l border-white/10`}>
                   {renderAudioPlayer(selectedAudioTrack)}
                 </div>
               ) : (
@@ -12804,9 +12852,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div className={`flex flex-col bg-[#04060A] ${viewerExpandLevel >= 2
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                    : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
-                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                    ? 'w-full flex-1 h-full min-h-0'
+                    : 'w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
                   {renderVideoPlayer(selectedVideoFile)}
                 </div>
               )}
@@ -12876,9 +12924,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${viewerExpandLevel >= 2
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                    : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
-                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                    ? 'w-full flex-1 h-full min-h-0'
+                    : 'w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
                   {renderImageViewer(selectedImageFile)}
                 </div>
               )}
@@ -13005,9 +13053,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${viewerExpandLevel >= 2
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                    : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
-                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                    ? 'w-full flex-1 h-full min-h-0'
+                    : 'w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
                   {renderDownloadReader(selectedDownloadFile)}
                 </div>
               )}
@@ -13340,9 +13388,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${viewerExpandLevel >= 2
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                    : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
-                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                    ? 'w-full flex-1 h-full min-h-0'
+                    : 'w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
                   {renderClasseurFileReader(selectedClasseurFile)}
                 </div>
               )}

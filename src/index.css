@@ -742,7 +742,9 @@ p.brand-tagline,
   border-radius: 0.75rem;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.98), 0 0 25px rgba(59, 130, 246, 0.25);
   color: #e2e8f0;
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: calc(100vh - 90px);
   display: flex;
   flex-direction: column;
 }
@@ -760,7 +762,9 @@ p.brand-tagline,
   border-radius: 1rem;
   box-shadow: 0 25px 60px rgba(0, 0, 0, 0.98), 0 0 25px rgba(59, 130, 246, 0.35);
   color: #ffffff;
-  overflow: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  max-height: calc(100vh - 90px);
   display: flex;
   flex-direction: column;
 }

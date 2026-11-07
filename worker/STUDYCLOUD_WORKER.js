@@ -6155,8 +6155,10 @@ a:hover{transform:translateY(-2px)}
             return errorResponse("Acc\xE8s interdit aux donn\xE9es d'un autre utilisateur", 403, origin);
           }
         }
+        const docExt = (key.split(".").pop() || "").toLowerCase();
+        const isDocCategory = category === "documents" || category === "study" || category === "classeur" || ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "md", "json", "rtf", "odt", "ods", "odp"].includes(docExt);
         const rangeHeader = request.headers.get("Range");
-        const rangeOptions = rangeHeader ? { range: request.headers } : void 0;
+        const rangeOptions = rangeHeader && !isDocCategory ? { range: request.headers } : void 0;
         let found = await getObjectFromAnyBucket(rawEnv, category, key, rangeOptions);
         if (!found || !found.object) {
           found = await getObjectFromAnyBucket(rawEnv, category, rawKey, rangeOptions);
@@ -6199,6 +6201,26 @@ a:hover{transform:translateY(-2px)}
             gif: "image/gif"
           };
           if (ext && mimeMap[ext]) headers.set("Content-Type", mimeMap[ext]);
+        }
+        if (isDocCategory) {
+          const rawBuf = await object.arrayBuffer();
+          const u8 = new Uint8Array(rawBuf);
+          if (u8.length >= 2 && u8[0] === 31 && u8[1] === 139 && typeof DecompressionStream !== "undefined") {
+            try {
+              const ds = new DecompressionStream("gzip");
+              const decompressedStream = new Blob([rawBuf]).stream().pipeThrough(ds);
+              const decompressedBuf = await new Response(decompressedStream).arrayBuffer();
+              if (found.bucket) {
+                ctx.waitUntil(found.bucket.put(key, decompressedBuf, { httpMetadata: { contentType: headers.get("Content-Type") || "application/pdf" } }).catch(() => {
+                }));
+              }
+              headers.set("Content-Length", String(decompressedBuf.byteLength));
+              return new Response(decompressedBuf, { status: 200, headers });
+            } catch {
+            }
+          }
+          headers.set("Content-Length", String(rawBuf.byteLength));
+          return new Response(rawBuf, { status: 200, headers });
         }
         if (rangeHeader && object.range) {
           const start = object.range.offset;
@@ -6245,11 +6267,89 @@ a:hover{transform:translateY(-2px)}
           foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, COALESCE(original_category, category, "audio") as category FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord || !foundRecord.r2_key) {
-          return errorResponse("Fichier introuvable dans la base de donn\xE9es", 404, origin);
+          let recoveredKey = "";
+          if (foundRecord) {
+            const urlKeys = extractR2Keys("", foundRecord.file_url || foundRecord.image_url || foundRecord.video_url || "");
+            if (urlKeys.length > 0) recoveredKey = urlKeys[0];
+            if (!recoveredKey) {
+              const rowsToCheck = await env.DB.prepare(`
+                SELECT r2_key FROM files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                UNION ALL
+                SELECT r2_key FROM secure_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                UNION ALL
+                SELECT r2_key FROM trash_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                LIMIT 1
+              `).bind(fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name).first().catch(() => null);
+              if (rowsToCheck?.r2_key) recoveredKey = rowsToCheck.r2_key;
+            }
+            if (recoveredKey) {
+              foundRecord.r2_key = recoveredKey;
+              try {
+                if (foundRecord.category === "images") {
+                  await env.DB.prepare("UPDATE image_files SET r2_key = ? WHERE id = ?").bind(recoveredKey, fileId).run();
+                } else if (foundRecord.category === "videos") {
+                  await env.DB.prepare("UPDATE video_files SET r2_key = ? WHERE id = ?").bind(recoveredKey, fileId).run();
+                } else if (foundRecord.category === "documents") {
+                  await env.DB.prepare("UPDATE document_files SET r2_key = ? WHERE id = ?").bind(recoveredKey, fileId).run();
+                } else if (foundRecord.category === "audio") {
+                  await env.DB.prepare("UPDATE audio_files SET r2_key = ? WHERE id = ?").bind(recoveredKey, fileId).run();
+                }
+              } catch {
+              }
+            }
+          }
+          if (!foundRecord || !foundRecord.r2_key) {
+            return errorResponse("Fichier introuvable dans la base de donn\xE9es", 404, origin);
+          }
         }
+        const ext = (foundRecord.extension || foundRecord.name.split(".").pop() || "").toLowerCase();
+        const isDocStream = foundRecord.category === "documents" || foundRecord.category === "study" || foundRecord.category === "classeur" || ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "md", "json", "rtf", "odt", "ods", "odp"].includes(ext);
         const rangeHeader = request.headers.get("Range");
-        const rangeOptions = rangeHeader ? { range: request.headers } : void 0;
+        const rangeOptions = rangeHeader && !isDocStream ? { range: request.headers } : void 0;
         let found = await getObjectFromAnyBucket(rawEnv, foundRecord.category || "documents", foundRecord.r2_key, rangeOptions);
+        if (!found || !found.object) {
+          const allBuckets = getAllBuckets(rawEnv);
+          for (const b of allBuckets) {
+            try {
+              const listRes = await b.list({ limit: 500 });
+              if (listRes && Array.isArray(listRes.objects)) {
+                const cleanName = (foundRecord.name || "").replace(/[^a-zA-Z0-9._-]/g, "_");
+                const matched = listRes.objects.find(
+                  (o) => o.key.includes(fileId) || cleanName && o.key.includes(cleanName) || foundRecord.r2_key && o.key.includes(foundRecord.r2_key.split("/").pop() || "____none____")
+                );
+                if (matched) {
+                  let obj = null;
+                  if (rangeOptions) {
+                    try {
+                      obj = await b.get(matched.key, rangeOptions);
+                    } catch (e) {
+                    }
+                  }
+                  if (!obj) {
+                    try {
+                      obj = await b.get(matched.key);
+                    } catch (e) {
+                    }
+                  }
+                  if (obj) {
+                    found = { object: obj, bucket: b };
+                    foundRecord.r2_key = matched.key;
+                    try {
+                      if (foundRecord.category === "images") await env.DB.prepare("UPDATE image_files SET r2_key = ? WHERE id = ?").bind(matched.key, fileId).run();
+                      else if (foundRecord.category === "videos") await env.DB.prepare("UPDATE video_files SET r2_key = ? WHERE id = ?").bind(matched.key, fileId).run();
+                      else if (foundRecord.category === "documents") await env.DB.prepare("UPDATE document_files SET r2_key = ? WHERE id = ?").bind(matched.key, fileId).run();
+                      else if (foundRecord.category === "audio") await env.DB.prepare("UPDATE audio_files SET r2_key = ? WHERE id = ?").bind(matched.key, fileId).run();
+                      await env.DB.prepare("UPDATE files SET r2_key = ? WHERE id = ?").bind(matched.key, fileId).run();
+                    } catch (e) {
+                    }
+                    break;
+                  }
+                }
+              }
+            } catch (le) {
+            }
+          }
+        }
         if (!found || !found.object) {
           return errorResponse("Objet binaire introuvable dans R2", 404, origin);
         }
@@ -6261,7 +6361,6 @@ a:hover{transform:translateY(-2px)}
         headers.set("Accept-Ranges", "bytes");
         headers.set("Access-Control-Allow-Origin", origin);
         let mime = headers.get("Content-Type");
-        const ext = (foundRecord.extension || foundRecord.name.split(".").pop() || "").toLowerCase();
         const isAudio = foundRecord.category === "audio" || foundRecord.name && foundRecord.name.toLowerCase().startsWith("whatsapp audio");
         const mimeMap = {
           mp4: isAudio ? "audio/mp4" : "video/mp4",
@@ -6285,6 +6384,26 @@ a:hover{transform:translateY(-2px)}
         };
         if (!mime || mime.includes("octet-stream") || isAudio && mime.startsWith("video/")) {
           if (ext && mimeMap[ext]) headers.set("Content-Type", mimeMap[ext]);
+        }
+        if (isDocStream) {
+          const rawBuf = await object.arrayBuffer();
+          const u8 = new Uint8Array(rawBuf);
+          if (u8.length >= 2 && u8[0] === 31 && u8[1] === 139 && typeof DecompressionStream !== "undefined") {
+            try {
+              const ds = new DecompressionStream("gzip");
+              const decompressedStream = new Blob([rawBuf]).stream().pipeThrough(ds);
+              const decompressedBuf = await new Response(decompressedStream).arrayBuffer();
+              if (found.bucket) {
+                ctx.waitUntil(found.bucket.put(foundRecord.r2_key, decompressedBuf, { httpMetadata: { contentType: headers.get("Content-Type") || "application/pdf" } }).catch(() => {
+                }));
+              }
+              headers.set("Content-Length", String(decompressedBuf.byteLength));
+              return new Response(decompressedBuf, { status: 200, headers });
+            } catch {
+            }
+          }
+          headers.set("Content-Length", String(rawBuf.byteLength));
+          return new Response(rawBuf, { status: 200, headers });
         }
         if (rangeHeader && object.range) {
           const start = object.range.offset;
@@ -6327,6 +6446,23 @@ a:hover{transform:translateY(-2px)}
               targetCategory = thumbRow.category || "videos";
               fallbackDataUrl = thumbRow.thumbnail_data || "";
             } else {
+              let iRow = null;
+              if (reqUserId && reqUserId !== "default-user") {
+                iRow = await env.DB.prepare("SELECT thumbnail_url, image_url, r2_key, user_id FROM image_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
+              }
+              if (!iRow) {
+                iRow = await env.DB.prepare("SELECT thumbnail_url, image_url, r2_key, user_id FROM image_files WHERE id = ? LIMIT 1").bind(fileId).first();
+              }
+              if (iRow) {
+                targetCategory = "images";
+                if (iRow.r2_key) targetR2Key = iRow.r2_key;
+                if (!fallbackDataUrl && iRow.thumbnail_url && !iRow.thumbnail_url.includes("/api/cloud/thumbnail/")) {
+                  fallbackDataUrl = iRow.thumbnail_url;
+                }
+                if (!fallbackDataUrl && iRow.image_url && !iRow.image_url.includes("/api/cloud/thumbnail/")) {
+                  fallbackDataUrl = iRow.image_url;
+                }
+              }
               let vRow = null;
               if (reqUserId && reqUserId !== "default-user") {
                 vRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM video_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
@@ -9416,31 +9552,95 @@ a:hover{transform:translateY(-2px)}
           const name = file.name || "Fichier s\xE9curis\xE9";
           const size = file.size || "0 o";
           const sizeBytes = Number(file.sizeBytes || 0);
-          const category = file.category || fromCategory || "documents";
-          const extension = file.extension || "";
-          const originalCategory = fromCategory || file.category || "documents";
+          const extLower = (file.extension || (name.includes(".") ? name.split(".").pop() : "") || "").toLowerCase();
+          let detectedNature = "";
+          if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff"].includes(extLower)) detectedNature = "images";
+          else if (["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv"].includes(extLower)) detectedNature = "videos";
+          else if (["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus"].includes(extLower)) detectedNature = "audio";
+          const category = detectedNature || file.category || fromCategory || "documents";
+          const extension = file.extension || extLower;
+          const originalCategory = detectedNature || fromCategory || file.category || "documents";
           const originalFolderId = fromFolderId || file.originalFolderId || "";
           const dateFormatted = file.date || "";
           let fileUrl = file.url || file.previewUrl || "";
           const r2Key = file.r2Key || (fileUrl ? extractR2Keys("", fileUrl)[0] || "" : "");
-          let existingAudioRow = null;
+          let existingRow = null;
           if (originalCategory === "audio" || category === "audio") {
             try {
-              existingAudioRow = await env.DB.prepare("SELECT * FROM audio_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).first();
+              existingRow = await env.DB.prepare("SELECT * FROM audio_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).first();
+            } catch (e) {
+            }
+          } else if (originalCategory === "images" || category === "images") {
+            try {
+              existingRow = await env.DB.prepare("SELECT * FROM image_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).first();
+            } catch (e) {
+            }
+          } else if (originalCategory === "videos" || category === "videos") {
+            try {
+              existingRow = await env.DB.prepare("SELECT * FROM video_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).first();
+            } catch (e) {
+            }
+          } else if (originalCategory === "documents" || category === "documents") {
+            try {
+              existingRow = await env.DB.prepare("SELECT * FROM document_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).first();
+            } catch (e) {
+            }
+          } else if (fromFolderId || originalCategory === "classeur") {
+            try {
+              existingRow = await env.DB.prepare("SELECT * FROM classeur_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).first();
             } catch (e) {
             }
           }
-          const resolvedCover = (file.coverUrl && !file.coverUrl.startsWith("blob:") ? file.coverUrl : "") || (file.thumbnailUrl && !file.thumbnailUrl.startsWith("blob:") ? file.thumbnailUrl : "") || (file.previewUrl && !file.previewUrl.startsWith("blob:") && !file.previewUrl.includes(".mp3") ? file.previewUrl : "") || existingAudioRow?.cover_url || "";
+          if (!existingRow) {
+            try {
+              existingRow = await env.DB.prepare(`
+                SELECT id, user_id, name, size, size_bytes, extension, r2_key, image_url as file_url, 'images' as found_cat FROM image_files WHERE id = ? AND user_id = ?
+                UNION ALL
+                SELECT id, user_id, name, size, size_bytes, extension, r2_key, video_url as file_url, 'videos' as found_cat FROM video_files WHERE id = ? AND user_id = ?
+                UNION ALL
+                SELECT id, user_id, name, size, size_bytes, 'mp3' as extension, r2_key, audio_url as file_url, 'audio' as found_cat FROM audio_files WHERE id = ? AND user_id = ?
+                UNION ALL
+                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, 'documents' as found_cat FROM document_files WHERE id = ? AND user_id = ?
+                UNION ALL
+                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, 'classeur' as found_cat FROM classeur_files WHERE id = ? AND user_id = ?
+                UNION ALL
+                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, 'mes-fichiers' as found_cat FROM files WHERE id = ? AND user_id = ?
+                LIMIT 1
+              `).bind(id, reqUserId, id, reqUserId, id, reqUserId, id, reqUserId, id, reqUserId, id, reqUserId).first();
+            } catch (e) {
+            }
+          }
+          if (!existingRow) {
+            try {
+              existingRow = await env.DB.prepare("SELECT * FROM files WHERE id = ? AND user_id = ?").bind(id, reqUserId).first();
+            } catch (e) {
+            }
+          }
+          const resolvedR2Key = file.r2Key || existingRow?.r2_key || (fileUrl ? extractR2Keys("", fileUrl)[0] || "" : "");
+          const resolvedExtension = file.extension || existingRow?.extension || extLower;
+          if ((!fileUrl || fileUrl.startsWith("blob:") || fileUrl.includes("localhost")) && existingRow) {
+            fileUrl = existingRow.file_url || existingRow.image_url || existingRow.video_url || existingRow.audio_url || fileUrl;
+          }
+          if (!fileUrl || fileUrl.startsWith("blob:") || fileUrl.includes("localhost")) {
+            if (resolvedR2Key) {
+              fileUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(category)}/${encodeURIComponent(resolvedR2Key)}`;
+            } else {
+              fileUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(id)}`;
+            }
+          }
+          const resolvedCover = (file.coverUrl && !file.coverUrl.startsWith("blob:") ? file.coverUrl : "") || (file.thumbnailUrl && !file.thumbnailUrl.startsWith("blob:") ? file.thumbnailUrl : "") || (file.previewUrl && !file.previewUrl.startsWith("blob:") && !file.previewUrl.includes(".mp3") ? file.previewUrl : "") || existingRow?.cover_url || existingRow?.thumbnail_url || "";
           const fileToPersist = {
             ...file,
+            r2Key: resolvedR2Key || file.r2Key || void 0,
+            extension: resolvedExtension || file.extension || void 0,
             coverUrl: resolvedCover || file.coverUrl || void 0,
             thumbnailUrl: resolvedCover || file.thumbnailUrl || void 0,
-            artist: file.artist || existingAudioRow?.artist || void 0,
-            title: file.title || existingAudioRow?.title || name,
-            album: file.album || existingAudioRow?.album || void 0,
-            durationSec: file.durationSec || existingAudioRow?.duration_sec || 0,
-            lyricsSnippet: file.lyricsSnippet || existingAudioRow?.lyrics_snippet || "",
-            fullLyrics: file.fullLyrics || (existingAudioRow?.full_lyrics_json ? JSON.parse(existingAudioRow.full_lyrics_json) : [])
+            artist: file.artist || existingRow?.artist || void 0,
+            title: file.title || existingRow?.title || name,
+            album: file.album || existingRow?.album || void 0,
+            durationSec: file.durationSec || existingRow?.duration_sec || 0,
+            lyricsSnippet: file.lyricsSnippet || existingRow?.lyrics_snippet || "",
+            fullLyrics: file.fullLyrics || (existingRow?.full_lyrics_json ? JSON.parse(existingRow.full_lyrics_json) : [])
           };
           const metaJson = JSON.stringify(fileToPersist);
           await env.DB.prepare(`
@@ -9465,12 +9665,12 @@ a:hover{transform:translateY(-2px)}
             size,
             sizeBytes,
             category,
-            extension,
+            resolvedExtension,
             originalCategory,
             originalFolderId,
             dateFormatted,
             metaJson,
-            r2Key,
+            resolvedR2Key,
             fileUrl
           ).run();
           if (fromFolderId) {
@@ -9507,33 +9707,107 @@ a:hover{transform:translateY(-2px)}
             const origFolder = secFile.original_folder_id || "";
             const meta = secFile.metadata_json ? JSON.parse(secFile.metadata_json) : {};
             if (action === "trash") {
-              const resolvedR2Key = secFile.r2_key && String(secFile.r2_key).trim() !== "" ? String(secFile.r2_key).trim() : extractR2Keys("", secFile.file_url || "")[0] || "";
+              const fileExt = (secFile.extension || secFile.name.split(".").pop() || "").toLowerCase();
+              let detectedCat = "";
+              if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff"].includes(fileExt)) detectedCat = "images";
+              else if (["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv"].includes(fileExt)) detectedCat = "videos";
+              else if (["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus"].includes(fileExt)) detectedCat = "audio";
+              let realCategory = detectedCat || secFile.original_category;
+              if (!realCategory || realCategory === "secure" || realCategory === "trash") {
+                realCategory = secFile.category && secFile.category !== "secure" ? secFile.category : detectedCat || "documents";
+              }
+              let resolvedR2Key = secFile.r2_key && String(secFile.r2_key).trim() !== "" ? String(secFile.r2_key).trim() : meta.r2Key || (extractR2Keys("", secFile.file_url || "")[0] || "");
+              if (!resolvedR2Key) {
+                const rec = await env.DB.prepare(`
+                  SELECT r2_key FROM files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM image_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM video_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM audio_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  LIMIT 1
+                `).bind(secFile.id, secFile.name, secFile.id, secFile.name, secFile.id, secFile.name, secFile.id, secFile.name).first().catch(() => null);
+                if (rec?.r2_key) resolvedR2Key = rec.r2_key;
+              }
+              const resolvedExt = secFile.extension || (secFile.name.includes(".") ? secFile.name.split(".").pop() : "") || fileExt || "";
+              let trashFileUrl = secFile.file_url || "";
+              if (!trashFileUrl || trashFileUrl.startsWith("blob:") || trashFileUrl.includes("localhost") || trashFileUrl.includes("127.0.0.1")) {
+                if (resolvedR2Key) trashFileUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(realCategory)}/${encodeURIComponent(resolvedR2Key)}`;
+                else trashFileUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(secFile.id)}`;
+              }
+              const trashMeta = {
+                ...meta,
+                originalCategory: realCategory,
+                sourceCategory: realCategory,
+                wasInSecure: true,
+                r2Key: resolvedR2Key
+              };
               await env.DB.prepare(`
                 INSERT INTO trash_files (
                   id, user_id, name, size, size_bytes, category, extension,
                   source_category, original_folder_id, metadata_json, date_formatted,
                   r2_key, file_url, deleted_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, 'secure', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-                ON CONFLICT(id) DO UPDATE SET deleted_at = CURRENT_TIMESTAMP
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                  category = excluded.category,
+                  source_category = excluded.source_category,
+                  extension = excluded.extension,
+                  r2_key = COALESCE(NULLIF(excluded.r2_key, ''), trash_files.r2_key),
+                  file_url = excluded.file_url,
+                  deleted_at = CURRENT_TIMESTAMP
               `).bind(
                 secFile.id,
                 reqUserId,
                 secFile.name,
                 secFile.size,
                 secFile.size_bytes,
-                secFile.category || "documents",
-                secFile.extension || "",
+                realCategory,
+                resolvedExt,
+                realCategory,
                 origFolder,
-                secFile.metadata_json || "{}",
+                JSON.stringify(trashMeta),
                 secFile.date_formatted || "",
                 resolvedR2Key,
-                secFile.file_url || ""
+                trashFileUrl
               ).run();
               await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId).run();
-              await recordSyncItem(env.DB, reqUserId, secFile.id, "trash", { id: secFile.id, name: secFile.name, size: secFile.size, isTrash: true }, 0);
+              await recordSyncItem(env.DB, reqUserId, secFile.id, "trash", { id: secFile.id, name: secFile.name, size: secFile.size, isTrash: true, category: realCategory }, 0);
               await recordSyncItem(env.DB, reqUserId, secFile.id, "secure", { id: secFile.id }, 1);
             } else {
-              const isFolder = origCat === "classeur_folder" || secFile.category === "folder";
+              const fileExt = (secFile.extension || secFile.name.split(".").pop() || "").toLowerCase();
+              let detectedCat = "";
+              if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff"].includes(fileExt)) detectedCat = "images";
+              else if (["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv"].includes(fileExt)) detectedCat = "videos";
+              else if (["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus"].includes(fileExt)) detectedCat = "audio";
+              let realCat = detectedCat || secFile.original_category;
+              if (!realCat || realCat === "secure" || realCat === "trash") {
+                realCat = secFile.category && secFile.category !== "secure" ? secFile.category : detectedCat || "documents";
+              }
+              let resolvedR2Key = secFile.r2_key && String(secFile.r2_key).trim() !== "" ? String(secFile.r2_key).trim() : meta.r2Key || (extractR2Keys("", secFile.file_url || "")[0] || "");
+              if (!resolvedR2Key) {
+                const rec = await env.DB.prepare(`
+                  SELECT r2_key FROM files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM image_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM video_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM audio_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  LIMIT 1
+                `).bind(secFile.id, secFile.name, secFile.id, secFile.name, secFile.id, secFile.name, secFile.id, secFile.name).first().catch(() => null);
+                if (rec?.r2_key) resolvedR2Key = rec.r2_key;
+              }
+              const resolvedExt = secFile.extension || (secFile.name.includes(".") ? secFile.name.split(".").pop() : "") || fileExt || "";
+              let finalRestoredUrl = secFile.file_url || "";
+              if (!finalRestoredUrl || finalRestoredUrl.startsWith("blob:") || finalRestoredUrl.includes("localhost") || finalRestoredUrl.includes("127.0.0.1")) {
+                if (resolvedR2Key) {
+                  finalRestoredUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(realCat)}/${encodeURIComponent(resolvedR2Key)}`;
+                } else {
+                  finalRestoredUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(secFile.id)}`;
+                }
+              }
+              const isFolder = realCat === "classeur_folder" || secFile.category === "folder";
               if (isFolder) {
                 await env.DB.prepare(`
                   INSERT INTO classeur_folders (
@@ -9582,6 +9856,7 @@ a:hover{transform:translateY(-2px)}
                     size = excluded.size,
                     size_bytes = excluded.size_bytes,
                     date_formatted = excluded.date_formatted,
+                    r2_key = COALESCE(NULLIF(excluded.r2_key, ''), classeur_files.r2_key),
                     file_url = excluded.file_url,
                     updated_at = CURRENT_TIMESTAMP
                 `).bind(
@@ -9592,12 +9867,12 @@ a:hover{transform:translateY(-2px)}
                   secFile.size,
                   secFile.size_bytes,
                   secFile.category,
-                  secFile.extension,
+                  resolvedExt,
                   secFile.date_formatted,
-                  secFile.r2_key,
+                  resolvedR2Key,
                   secFile.file_url
                 ).run();
-              } else if (origCat === "downloads") {
+              } else if (realCat === "downloads") {
                 await env.DB.prepare(`
                   INSERT INTO download_files (id, user_id, name, size, size_bytes, category, extension, file_url, date_formatted, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -9608,8 +9883,8 @@ a:hover{transform:translateY(-2px)}
                     file_url = excluded.file_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.category || "documents", secFile.extension || "", secFile.file_url, secFile.date_formatted).run();
-              } else if (origCat === "audio") {
+                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, realCat, resolvedExt, secFile.file_url, secFile.date_formatted).run();
+              } else if (realCat === "audio") {
                 const coverToRestore = meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith("blob:") && !meta.previewUrl.includes(".mp3") ? meta.previewUrl : "") || "";
                 const artistToRestore = meta.artist || "Artiste inconnu";
                 const titleToRestore = meta.title || secFile.name;
@@ -9618,7 +9893,7 @@ a:hover{transform:translateY(-2px)}
                 const lyricsSnippetToRestore = meta.lyricsSnippet || "";
                 const fullLyricsToRestore = JSON.stringify(meta.fullLyrics || []);
                 const audioUrlToRestore = secFile.file_url || meta.audioUrl || meta.url || "";
-                const r2KeyToRestore = secFile.r2_key || meta.r2Key || (extractR2Keys("", audioUrlToRestore)[0] || "");
+                const r2KeyToRestore = resolvedR2Key || meta.r2Key || (extractR2Keys("", audioUrlToRestore)[0] || "");
                 await env.DB.prepare(`
                   INSERT INTO audio_files (
                     id, user_id, name, title, artist, album, duration_sec, size, size_bytes,
@@ -9657,7 +9932,7 @@ a:hover{transform:translateY(-2px)}
                   fullLyricsToRestore,
                   coverToRestore,
                   r2KeyToRestore,
-                  audioUrlToRestore
+                  finalRestoredUrl
                 ).run();
                 try {
                   await env.DB.prepare(`
@@ -9669,49 +9944,111 @@ a:hover{transform:translateY(-2px)}
                       r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
                       file_url = excluded.file_url,
                       updated_at = CURRENT_TIMESTAMP
-                  `).bind(secFile.id, reqUserId, secFile.name, secFile.size_bytes || 0, r2KeyToRestore, audioUrlToRestore, Date.now()).run();
+                  `).bind(secFile.id, reqUserId, secFile.name, secFile.size_bytes || 0, r2KeyToRestore, finalRestoredUrl, Date.now()).run();
                 } catch (e) {
                 }
-              } else if (origCat === "images") {
+              } else if (realCat === "images") {
                 await env.DB.prepare(`
-                  INSERT INTO image_files (id, user_id, name, size, size_bytes, image_url, date_formatted, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  INSERT INTO image_files (id, user_id, name, size, size_bytes, extension, r2_key, image_url, thumbnail_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                   ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     size = excluded.size,
                     size_bytes = excluded.size_bytes,
+                    extension = excluded.extension,
+                    r2_key = COALESCE(NULLIF(excluded.r2_key, ''), image_files.r2_key),
                     image_url = excluded.image_url,
+                    thumbnail_url = excluded.thumbnail_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
-              } else if (origCat === "videos") {
+                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, resolvedExt, resolvedR2Key, finalRestoredUrl, finalRestoredUrl, secFile.date_formatted).run();
+                try {
+                  await env.DB.prepare(`
+                    INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                    VALUES (?, ?, 'menu-images', ?, ?, 'image/' || ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                      name = excluded.name,
+                      size = excluded.size,
+                      r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
+                      file_url = excluded.file_url,
+                      updated_at = CURRENT_TIMESTAMP
+                  `).bind(secFile.id, reqUserId, secFile.name, secFile.size_bytes || 0, resolvedExt, resolvedExt.toUpperCase(), resolvedR2Key, finalRestoredUrl, Date.now()).run();
+                } catch (e) {
+                }
+              } else if (realCat === "videos") {
                 await env.DB.prepare(`
-                  INSERT INTO video_files (id, user_id, name, size, size_bytes, video_url, date_formatted, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  INSERT INTO video_files (id, user_id, name, size, size_bytes, duration_sec, resolution, extension, r2_key, video_url, thumbnail_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                   ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     size = excluded.size,
                     size_bytes = excluded.size_bytes,
+                    extension = excluded.extension,
+                    r2_key = COALESCE(NULLIF(excluded.r2_key, ''), video_files.r2_key),
                     video_url = excluded.video_url,
+                    thumbnail_url = excluded.thumbnail_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, Number(meta.durationSec || 0), meta.resolution || "1080p", resolvedExt, resolvedR2Key, finalRestoredUrl, finalRestoredUrl, secFile.date_formatted).run();
+                try {
+                  await env.DB.prepare(`
+                    INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                    VALUES (?, ?, 'menu-videos', ?, ?, 'video/' || ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                      name = excluded.name,
+                      size = excluded.size,
+                      r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
+                      file_url = excluded.file_url,
+                      updated_at = CURRENT_TIMESTAMP
+                  `).bind(secFile.id, reqUserId, secFile.name, secFile.size_bytes || 0, resolvedExt, resolvedExt.toUpperCase(), resolvedR2Key, finalRestoredUrl, Date.now()).run();
+                } catch (e) {
+                }
               } else {
                 await env.DB.prepare(`
-                  INSERT INTO document_files (id, user_id, name, size, size_bytes, file_url, date_formatted, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, page_count, date_formatted, source, r2_key, file_url, preview_url, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                   ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     size = excluded.size,
                     size_bytes = excluded.size_bytes,
+                    extension = excluded.extension,
+                    r2_key = COALESCE(NULLIF(excluded.r2_key, ''), document_files.r2_key),
                     file_url = excluded.file_url,
+                    preview_url = excluded.preview_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+                `).bind(
+                  secFile.id,
+                  reqUserId,
+                  secFile.name,
+                  secFile.size,
+                  secFile.size_bytes,
+                  resolvedExt,
+                  meta.documentCategory || "COURS",
+                  Number(meta.pageCount || 1),
+                  secFile.date_formatted,
+                  meta.source || "StudyCloud",
+                  resolvedR2Key,
+                  finalRestoredUrl,
+                  meta.previewUrl || finalRestoredUrl
+                ).run();
+                try {
+                  await env.DB.prepare(`
+                    INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                    VALUES (?, ?, 'menu-documents', ?, ?, 'application/' || ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                      name = excluded.name,
+                      size = excluded.size,
+                      r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
+                      file_url = excluded.file_url,
+                      updated_at = CURRENT_TIMESTAMP
+                  `).bind(secFile.id, reqUserId, secFile.name, secFile.size_bytes || 0, resolvedExt, resolvedExt.toUpperCase(), resolvedR2Key, finalRestoredUrl, Date.now()).run();
+                } catch (e) {
+                }
               }
               await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId).run();
-              const finalCategory = isFolder ? "classeur_folder" : origCat;
-              const isAudioFile = origCat === "audio";
+              const finalCategory = isFolder ? "classeur_folder" : realCat;
+              const isAudioFile = realCat === "audio";
               const audioCoverUrl = isAudioFile ? meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith("blob:") && !meta.previewUrl.includes(".mp3") ? meta.previewUrl : "") || "" : "";
               const restoredPayload = {
                 id: secFile.id,
@@ -9719,11 +10056,11 @@ a:hover{transform:translateY(-2px)}
                 size: secFile.size || "0 o",
                 sizeBytes: Number(secFile.size_bytes || 0),
                 category: finalCategory,
-                extension: secFile.extension || "",
+                extension: resolvedExt,
                 date: secFile.date_formatted || (/* @__PURE__ */ new Date()).toLocaleDateString("fr-FR"),
-                url: secFile.file_url || "",
-                previewUrl: isAudioFile ? audioCoverUrl || secFile.file_url || "" : secFile.file_url || "",
-                thumbnailUrl: isAudioFile ? audioCoverUrl || "" : secFile.file_url || "",
+                url: finalRestoredUrl,
+                previewUrl: isAudioFile ? audioCoverUrl || finalRestoredUrl : finalRestoredUrl,
+                thumbnailUrl: isAudioFile ? audioCoverUrl || "" : finalRestoredUrl,
                 coverUrl: isAudioFile ? audioCoverUrl || void 0 : void 0,
                 artist: isAudioFile ? meta.artist || void 0 : void 0,
                 title: isAudioFile ? meta.title || secFile.name : void 0,
@@ -9734,6 +10071,7 @@ a:hover{transform:translateY(-2px)}
                 folderId: origFolder || void 0,
                 originalFolderId: origFolder || void 0,
                 metadata: meta,
+                r2Key: resolvedR2Key || void 0,
                 isFolder,
                 isTrash: false,
                 isFavorite: false,
@@ -9798,9 +10136,40 @@ a:hover{transform:translateY(-2px)}
               SELECT * FROM trash_files WHERE id = ? AND user_id = ?
             `).bind(tid, reqUserId).first();
             if (item) {
-              const srcCat = item.source_category || item.category || "documents";
-              const origFolder = item.original_folder_id || "";
               const meta = item.metadata_json ? JSON.parse(item.metadata_json) : {};
+              const itemExt = (item.extension || item.name.split(".").pop() || "").toLowerCase();
+              let detectedSrcCat = "";
+              if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff"].includes(itemExt)) detectedSrcCat = "images";
+              else if (["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv"].includes(itemExt)) detectedSrcCat = "videos";
+              else if (["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus"].includes(itemExt)) detectedSrcCat = "audio";
+              let srcCat = detectedSrcCat || item.source_category || item.category || "documents";
+              if (srcCat === "secure" || srcCat === "trash") {
+                srcCat = meta.originalCategory || meta.sourceCategory || detectedSrcCat || "documents";
+              }
+              let resolvedR2Key = item.r2_key && String(item.r2_key).trim() !== "" ? String(item.r2_key).trim() : meta.r2Key || (extractR2Keys("", item.file_url || "")[0] || "");
+              if (!resolvedR2Key) {
+                const rec = await env.DB.prepare(`
+                  SELECT r2_key FROM files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM image_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM video_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM audio_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  LIMIT 1
+                `).bind(item.id, item.name, item.id, item.name, item.id, item.name, item.id, item.name).first().catch(() => null);
+                if (rec?.r2_key) resolvedR2Key = rec.r2_key;
+              }
+              const resolvedExt = item.extension || (item.name.includes(".") ? item.name.split(".").pop() : "") || itemExt || "";
+              const origFolder = item.original_folder_id || "";
+              let finalTrashRestoredUrl = item.file_url || "";
+              if (!finalTrashRestoredUrl || finalTrashRestoredUrl.startsWith("blob:") || finalTrashRestoredUrl.includes("localhost") || finalTrashRestoredUrl.includes("127.0.0.1")) {
+                if (resolvedR2Key) {
+                  finalTrashRestoredUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(srcCat)}/${encodeURIComponent(resolvedR2Key)}`;
+                } else {
+                  finalTrashRestoredUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(item.id)}`;
+                }
+              }
               if (srcCat === "classeur_folder" || item.category === "folder") {
                 const fMeta = item.metadata_json ? JSON.parse(item.metadata_json) : {};
                 await env.DB.prepare(`
@@ -9945,15 +10314,35 @@ a:hover{transform:translateY(-2px)}
                     updated_at = CURRENT_TIMESTAMP
                 `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.category || "documents", item.extension || "", item.file_url, item.date_formatted).run();
               } else if (srcCat === "audio") {
+                const coverToRestore = meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith("blob:") && !meta.previewUrl.includes(".mp3") ? meta.previewUrl : "") || "";
+                const artistToRestore = meta.artist || "Artiste inconnu";
+                const titleToRestore = meta.title || item.name;
+                const albumToRestore = meta.album || "";
+                const durationSecToRestore = Number(meta.durationSec || 0);
+                const lyricsSnippetToRestore = meta.lyricsSnippet || "";
+                const fullLyricsToRestore = JSON.stringify(meta.fullLyrics || []);
+                const audioUrlToRestore = item.file_url || meta.audioUrl || meta.url || "";
+                const r2KeyToRestore = resolvedR2Key || meta.r2Key || (extractR2Keys("", audioUrlToRestore)[0] || "");
                 await env.DB.prepare(`
-                  INSERT INTO audio_files (id, user_id, name, artist, duration_sec, size, size_bytes, audio_url, date_formatted, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  INSERT INTO audio_files (
+                    id, user_id, name, title, artist, album, duration_sec, size, size_bytes,
+                    date_formatted, lyrics_snippet, full_lyrics_json, cover_url, r2_key,
+                    audio_url, is_favorite, is_pinned, created_at, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                   ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
+                    title = excluded.title,
                     artist = excluded.artist,
+                    album = excluded.album,
                     duration_sec = excluded.duration_sec,
                     size = excluded.size,
                     size_bytes = excluded.size_bytes,
+                    cover_url = CASE
+                      WHEN excluded.cover_url IS NOT NULL AND excluded.cover_url != '' AND excluded.cover_url NOT LIKE 'blob:%'
+                      THEN excluded.cover_url
+                      ELSE audio_files.cover_url
+                    END,
+                    r2_key = COALESCE(NULLIF(excluded.r2_key, ''), audio_files.r2_key),
                     audio_url = excluded.audio_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
@@ -9961,49 +10350,130 @@ a:hover{transform:translateY(-2px)}
                   item.id,
                   reqUserId,
                   item.name,
-                  meta.artist || "Artiste inconnu",
-                  Number(meta.durationSec || 0),
+                  titleToRestore,
+                  artistToRestore,
+                  albumToRestore,
+                  durationSecToRestore,
                   item.size,
                   item.size_bytes,
-                  item.file_url,
-                  item.date_formatted
+                  item.date_formatted,
+                  lyricsSnippetToRestore,
+                  fullLyricsToRestore,
+                  coverToRestore,
+                  r2KeyToRestore,
+                  finalTrashRestoredUrl
                 ).run();
+                try {
+                  await env.DB.prepare(`
+                    INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                    VALUES (?, ?, 'menu-audio', ?, ?, 'audio/mpeg', 'MP3', ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                      name = excluded.name,
+                      size = excluded.size,
+                      r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
+                      file_url = excluded.file_url,
+                      updated_at = CURRENT_TIMESTAMP
+                  `).bind(item.id, reqUserId, item.name, item.size_bytes || 0, r2KeyToRestore, finalTrashRestoredUrl, Date.now()).run();
+                } catch (e) {
+                }
               } else if (srcCat === "images") {
                 await env.DB.prepare(`
-                  INSERT INTO image_files (id, user_id, name, size, size_bytes, image_url, date_formatted, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  INSERT INTO image_files (id, user_id, name, size, size_bytes, extension, r2_key, image_url, thumbnail_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                   ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     size = excluded.size,
                     size_bytes = excluded.size_bytes,
+                    extension = excluded.extension,
+                    r2_key = COALESCE(NULLIF(excluded.r2_key, ''), image_files.r2_key),
                     image_url = excluded.image_url,
+                    thumbnail_url = excluded.thumbnail_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, resolvedExt, resolvedR2Key, finalTrashRestoredUrl, finalTrashRestoredUrl, item.date_formatted).run();
+                try {
+                  await env.DB.prepare(`
+                    INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                    VALUES (?, ?, 'menu-images', ?, ?, 'image/' || ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                      name = excluded.name,
+                      size = excluded.size,
+                      r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
+                      file_url = excluded.file_url,
+                      updated_at = CURRENT_TIMESTAMP
+                  `).bind(item.id, reqUserId, item.name, item.size_bytes || 0, resolvedExt, resolvedExt.toUpperCase(), resolvedR2Key, finalTrashRestoredUrl, Date.now()).run();
+                } catch (e) {
+                }
               } else if (srcCat === "videos") {
                 await env.DB.prepare(`
-                  INSERT INTO video_files (id, user_id, name, size, size_bytes, video_url, date_formatted, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  INSERT INTO video_files (id, user_id, name, size, size_bytes, duration_sec, resolution, extension, r2_key, video_url, thumbnail_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                   ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     size = excluded.size,
                     size_bytes = excluded.size_bytes,
+                    extension = excluded.extension,
+                    r2_key = COALESCE(NULLIF(excluded.r2_key, ''), video_files.r2_key),
                     video_url = excluded.video_url,
+                    thumbnail_url = excluded.thumbnail_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, Number(meta.durationSec || 0), meta.resolution || "1080p", resolvedExt, resolvedR2Key, finalTrashRestoredUrl, finalTrashRestoredUrl, item.date_formatted).run();
+                try {
+                  await env.DB.prepare(`
+                    INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                    VALUES (?, ?, 'menu-videos', ?, ?, 'video/' || ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                      name = excluded.name,
+                      size = excluded.size,
+                      r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
+                      file_url = excluded.file_url,
+                      updated_at = CURRENT_TIMESTAMP
+                  `).bind(item.id, reqUserId, item.name, item.size_bytes || 0, resolvedExt, resolvedExt.toUpperCase(), resolvedR2Key, finalTrashRestoredUrl, Date.now()).run();
+                } catch (e) {
+                }
               } else {
                 await env.DB.prepare(`
-                  INSERT INTO document_files (id, user_id, name, size, size_bytes, file_url, date_formatted, updated_at)
-                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, page_count, date_formatted, source, r2_key, file_url, preview_url, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
                   ON CONFLICT(id) DO UPDATE SET
                     name = excluded.name,
                     size = excluded.size,
                     size_bytes = excluded.size_bytes,
+                    extension = excluded.extension,
+                    r2_key = COALESCE(NULLIF(excluded.r2_key, ''), document_files.r2_key),
                     file_url = excluded.file_url,
+                    preview_url = excluded.preview_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+                `).bind(
+                  item.id,
+                  reqUserId,
+                  item.name,
+                  item.size,
+                  item.size_bytes,
+                  resolvedExt,
+                  meta.documentCategory || "COURS",
+                  Number(meta.pageCount || 1),
+                  item.date_formatted,
+                  meta.source || "StudyCloud",
+                  resolvedR2Key,
+                  finalTrashRestoredUrl,
+                  meta.previewUrl || finalTrashRestoredUrl
+                ).run();
+                try {
+                  await env.DB.prepare(`
+                    INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
+                    VALUES (?, ?, 'menu-documents', ?, ?, 'application/' || ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                      name = excluded.name,
+                      size = excluded.size,
+                      r2_key = COALESCE(NULLIF(excluded.r2_key, ''), files.r2_key),
+                      file_url = excluded.file_url,
+                      updated_at = CURRENT_TIMESTAMP
+                  `).bind(item.id, reqUserId, item.name, item.size_bytes || 0, resolvedExt, resolvedExt.toUpperCase(), resolvedR2Key, finalTrashRestoredUrl, Date.now()).run();
+                } catch (e) {
+                }
               }
               await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run();
               const finalCategory = srcCat === "classeur_folder" || item.category === "folder" ? "classeur_folder" : srcCat;
@@ -14657,7 +15127,7 @@ Lien vers le produit : ${productShareUrl}`;
     }
   },
   // Handler CRON Cloudflare : exécution périodique automatique pour nettoyer les interactions de plus de 30 jours
-  async scheduled(event, env, ctx) {
+  async scheduled(event, env, ctx2) {
     if (env && env.DB) {
       try {
         await env.DB.prepare(`

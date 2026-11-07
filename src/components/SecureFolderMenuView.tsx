@@ -450,7 +450,6 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       setSelectedFile(null);
     }
 
-    deleteFileBlob(file.id).catch(() => { });
     CloudDataStore.deleteSecureToTrash([file]);
     await CloudStorageAPI.deleteSecureFilesToTrash(file.id).catch(() => { });
     invalidateCloudQueries.secure().catch(() => { });
@@ -535,7 +534,6 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     }
     setSelectedIds(new Set());
 
-    filesToTrash.forEach(f => deleteFileBlob(f.id).catch(() => { }));
     CloudDataStore.deleteSecureToTrash(filesToTrash);
     await CloudStorageAPI.deleteSecureFilesToTrash(ids).catch(() => { });
     invalidateCloudQueries.secure().catch(() => { });
@@ -802,7 +800,6 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 setSecureFiles(prev => prev.filter(f => !toTrash.some(t => t.id === f.id)));
                 setSelectedIds(new Set());
                 if (selectedFile && toTrash.some(t => t.id === selectedFile.id)) setSelectedFile(null);
-                toTrash.forEach(f => deleteFileBlob(f.id).catch(() => { }));
                 CloudDataStore.deleteSecureToTrash(toTrash);
                 await CloudStorageAPI.deleteSecureFilesToTrash(toTrash.map(f => f.id)).catch(() => { });
                 showToast(`${toTrash.length} fichier(s) déplacé(s) dans la corbeille 🗑️`);
@@ -1747,7 +1744,6 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                               setSecureFiles(prev => prev.filter(f => !toTrash.some(t => t.id === f.id)));
                               setSelectedIds(new Set());
                               if (selectedFile && toTrash.some(t => t.id === selectedFile.id)) setSelectedFile(null);
-                              toTrash.forEach(f => deleteFileBlob(f.id).catch(() => { }));
                               CloudDataStore.deleteSecureToTrash(toTrash);
                               await CloudStorageAPI.deleteSecureFilesToTrash(toTrash.map(f => f.id)).catch(() => { });
                               showToast(`${toTrash.length} fichier(s) déplacé(s) dans la corbeille 🗑️`);
@@ -1928,7 +1924,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
         </div>
       ) : (
         /* VUE DES FICHIERS PROTÉGÉS AVEC MODE SPLIT-SCREEN LATÉRAL (COMME DANS LA CORBEILLE) */
-        <div className={`flex-1 flex flex-col md:flex-row w-full ${selectedFile ? 'h-full flex-1 overflow-hidden bg-[#04060A]' : 'overflow-hidden min-h-[calc(100vh-120px)]'} relative`}>
+        <div className={`flex-1 flex flex-col md:flex-row w-full ${selectedFile ? 'h-full flex-1 overflow-hidden bg-[#04060A]' : 'overflow-hidden flex-1'} relative`}>
           <main
             className={`overflow-y-auto bg-stone-100 py-4 pb-36 ${
               ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
@@ -2092,9 +2088,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 (viewerExpandLevel >= 2 || isViewerMaximized)
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                    : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
-              } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
+                    ? 'w-full flex-1 h-full min-h-0'
+                    : 'w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-stone-200 md:border-stone-800'
+              } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}
             >
               {renderDedicatedReader(selectedFile)}
             </aside>

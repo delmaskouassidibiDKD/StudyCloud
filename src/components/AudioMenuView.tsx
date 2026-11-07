@@ -1859,7 +1859,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
   // Rendu de l'état vide (Image 1)
   const renderAudioEmptyState = () => (
-    <div className="flex flex-1 flex-col items-center justify-center p-8 text-center select-none bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10 animate-in fade-in duration-200 h-full min-h-[500px]">
+    <div className="flex flex-1 flex-col items-center justify-center p-8 text-center select-none bg-[#090D1A] border-0 md:border-l border-white/10 animate-in fade-in duration-200 h-full min-h-[500px]">
       <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 flex items-center justify-center shadow-[0_8px_30px_rgba(245,158,11,0.45)] border-2 border-white/30 ring-4 ring-black/40 relative mb-4">
         <div className="absolute inset-2 rounded-full border border-white/20 pointer-events-none" />
         <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] relative z-10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -1902,7 +1902,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       />
 
       {/* EN-TÊTE FIXE DU MENU AUDIO */}
-      <header className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedTrack) ? 'hidden' : (selectedTrack && isMobilePlayerOpen ? 'hidden md:block' : '')}`}>
+      <header className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedTrack) ? 'hidden' : (selectedTrack ? 'hidden md:block' : '')}`}>
         <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour et Titre Audio */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
@@ -1994,9 +1994,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       </header>
 
       {/* DISPOSITION SPLIT EN DEUX COLONNES (IMAGES 1 & 2) */}
-      <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+      <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-0 h-full">
         {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
-        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-24 ${
           (isViewerMaximized || viewerExpandLevel >= 1) && selectedTrack && isMobilePlayerOpen
             ? 'hidden'
             : (selectedTrack && isMobilePlayerOpen)
@@ -2337,10 +2337,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             (viewerExpandLevel >= 2 || isViewerMaximized)
               ? 'fixed inset-0 z-50 w-screen h-screen'
               : (isViewerMaximized || viewerExpandLevel >= 1)
-                ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
+                ? 'w-full flex-1 h-full min-h-0'
                 : isMobilePlayerOpen
-                  ? 'flex w-full flex-1 h-full min-h-[calc(100vh-140px)] md:w-7/12 lg:w-7/12 xl:w-7/12 md:border-l md:border-t-0 border-white/10'
-                  : 'hidden md:flex md:w-7/12 lg:w-7/12 xl:w-7/12 md:min-h-0 flex-1 border-t md:border-t-0 md:border-l border-white/10'
+                  ? 'flex w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 md:border-l border-0 border-white/10'
+                  : 'hidden md:flex md:w-7/12 lg:w-7/12 xl:w-7/12 md:min-h-0 flex-1 border-0 md:border-l border-white/10'
           } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
             {renderAudioPlayer(selectedTrack)}
           </div>
