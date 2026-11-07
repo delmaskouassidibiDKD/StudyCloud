@@ -1110,7 +1110,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       </header>
 
       {/* DISPOSITION SPLIT (COMME DANS LE MENU CORBEILLE ET DOCUMENTS) */}
-      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedFile ? 'bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FAVORIS */}
         <main
           className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
@@ -1249,9 +1249,9 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${(viewerExpandLevel >= 2 || isViewerMaximized)
                 ? 'fixed inset-0 z-50 w-screen h-screen'
                 : (isViewerMaximized || viewerExpandLevel >= 1)
-                  ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                  : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-200 dark:border-stone-800'
-              } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
+                  ? 'w-full flex-1 h-full min-h-0'
+                  : 'w-full flex-1 h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+              } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>
@@ -1260,7 +1260,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
 
       {/* TOAST FLOTTANT */}
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1424] border border-amber-500/40 text-amber-300 px-4 py-2.5 rounded-full shadow-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1424] border border-amber-500/40 text-amber-300 px-4 py-2.5 rounded-full shadow-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <Check className="w-4 h-4 stroke-[3]" />
           <span>{toastMessage}</span>
         </div>

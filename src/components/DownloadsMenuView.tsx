@@ -300,7 +300,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
     <div className="flex-1 flex flex-col w-full min-h-screen bg-stone-100 text-stone-900 select-none animate-in fade-in duration-200">
       {/* Toast */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 bg-black/90 text-white border border-white/20 rounded-xl shadow-2xl text-xs sm:text-sm font-semibold flex items-center gap-2 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-50 px-4 py-2.5 bg-black/90 text-white border border-white/20 rounded-xl shadow-2xl text-xs sm:text-sm font-semibold flex items-center gap-2 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200">
           <Check className="w-4 h-4 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>
@@ -388,7 +388,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
       </header>
 
       {/* DISPOSITION SPLIT */}
-      <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedItem ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
         {/* PANNEAU DE GAUCHE : LISTE */}
         <div className={`overflow-y-auto px-3 sm:px-6 py-4 pb-64 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedItem)
           ? 'hidden'
@@ -482,9 +482,9 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
             (viewerExpandLevel >= 2 || isViewerMaximized)
               ? 'fixed inset-0 z-50 w-screen h-screen'
               : (isViewerMaximized || viewerExpandLevel >= 1)
-                ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
-          } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                ? 'w-full flex-1 h-full min-h-0'
+                : 'w-full flex-1 h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+          } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
             {renderReader(selectedItem)}
           </div>
         )}

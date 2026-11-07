@@ -1886,7 +1886,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     <div className="w-full h-full flex flex-col bg-stone-50 dark:bg-[#070B14] overflow-hidden select-none">
       {/* Toast de confirmation */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 bg-black/90 text-white border border-white/20 rounded-xl shadow-2xl text-xs sm:text-sm font-semibold flex items-center gap-2 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-50 px-4 py-2.5 bg-black/90 text-white border border-white/20 rounded-xl shadow-2xl text-xs sm:text-sm font-semibold flex items-center gap-2 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200">
           <Check className="w-4 h-4 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>
@@ -1999,7 +1999,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       </header>
 
       {/* DISPOSITION SPLIT (IMAGE 4) */}
-      <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedVideo ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
         {/* PANNEAU DE GAUCHE : LISTE DES VIDÉOS (IMAGE 1) */}
         <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
           (isViewerMaximized || viewerExpandLevel >= 1)
@@ -2122,7 +2122,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
               ? 'fixed inset-0 z-50 w-screen h-screen'
               : (isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'w-full flex-1 h-full min-h-0'
-                : 'w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+                : 'w-full flex-1 h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
           } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
             {renderVideoPlayer(selectedVideo)}
           </div>
@@ -2131,7 +2131,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
 
       {/* BARRE D'ACTIONS FLOTTANTE EN MODE SÉLECTION */}
       {isSelectionMode && selectedItemIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#0A0E1A]/95 backdrop-blur-md border border-purple-500/40 rounded-full px-4 sm:px-6 py-2.5 shadow-2xl flex items-center gap-3 sm:gap-4 text-white text-xs sm:text-sm animate-in slide-in-from-bottom-4 duration-200">
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[95vw] bg-[#0A0E1A]/95 backdrop-blur-md border border-purple-500/40 rounded-full px-3.5 sm:px-6 py-2 sm:py-2.5 shadow-2xl flex items-center gap-2.5 sm:gap-4 text-white text-xs sm:text-sm animate-in slide-in-from-bottom-4 duration-200 overflow-x-auto no-scrollbar">
           <span className="font-bold text-purple-300">
             {selectedItemIds.length} sélectionnée{selectedItemIds.length > 1 ? 's' : ''}
           </span>

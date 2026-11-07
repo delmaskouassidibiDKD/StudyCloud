@@ -7291,33 +7291,33 @@ a:hover{transform:translateY(-2px)}
         const fileId = path.replace('/api/cloud/stream/', '').trim();
         if (!fileId || !env.DB) return errorResponse('ID de fichier manquant ou DB inaccessible', 400, origin);
 
-        let foundRecord: any = await env.DB.prepare('SELECT id, r2_key, extension, name, "study" as category FROM study_imported_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        let foundRecord: any = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, "study" as category FROM study_imported_files WHERE id = ? LIMIT 1').bind(fileId).first();
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "documents" as category FROM document_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, "documents" as category FROM document_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "videos" as category FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, video_url as file_url, "videos" as category FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "audio" as category FROM audio_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, audio_url as file_url, "audio" as category FROM audio_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "images" as category FROM image_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, image_url as file_url, "images" as category FROM image_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "classeur" as category FROM classeur_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, "classeur" as category FROM classeur_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "mes-fichiers" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, "mes-fichiers" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, file_type as extension, title as name, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, file_type as extension, title as name, file_url, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, COALESCE(source_category, category, "audio") as category FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, COALESCE(source_category, category, "audio") as category FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, COALESCE(original_category, category, "audio") as category FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, COALESCE(original_category, category, "audio") as category FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
 
         if (!foundRecord || !foundRecord.r2_key) {
@@ -7331,11 +7331,21 @@ a:hover{transform:translateY(-2px)}
               const rowsToCheck: any = await env.DB.prepare(`
                 SELECT r2_key FROM files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
+                SELECT r2_key FROM image_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                UNION ALL
+                SELECT r2_key FROM video_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                UNION ALL
+                SELECT r2_key FROM audio_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                UNION ALL
+                SELECT r2_key FROM document_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                UNION ALL
+                SELECT r2_key FROM classeur_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                UNION ALL
                 SELECT r2_key FROM secure_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
                 SELECT r2_key FROM trash_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 LIMIT 1
-              `).bind(fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name).first<any>().catch(() => null);
+              `).bind(fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name).first<any>().catch(() => null);
               if (rowsToCheck?.r2_key) recoveredKey = rowsToCheck.r2_key;
             }
 
@@ -7352,6 +7362,44 @@ a:hover{transform:translateY(-2px)}
                   await env.DB.prepare('UPDATE audio_files SET r2_key = ? WHERE id = ?').bind(recoveredKey, fileId).run();
                 }
               } catch {}
+            }
+          }
+
+          if (!foundRecord || !foundRecord.r2_key) {
+            // Recherche de secours dynamique dans tous les buckets R2 par listing d'objets (tolérance absolue)
+            const allBuckets = getAllBuckets(rawEnv);
+            const searchTarget = (foundRecord?.name || fileId).replace(/[^a-zA-Z0-9._-]/g, '_');
+            for (const b of allBuckets) {
+              try {
+                const listRes = await b.list({ limit: 500 });
+                if (listRes && Array.isArray(listRes.objects)) {
+                  const matched = listRes.objects.find((o: any) =>
+                    o.key.includes(fileId) ||
+                    (searchTarget && o.key.includes(searchTarget)) ||
+                    (foundRecord?.name && o.key.toLowerCase().includes(foundRecord.name.toLowerCase()))
+                  );
+                  if (matched) {
+                    recoveredKey = matched.key;
+                    if (!foundRecord) {
+                      const detectedExt = (matched.key.split('.').pop() || '').toLowerCase();
+                      let cat = 'documents';
+                      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg'].includes(detectedExt)) cat = 'images';
+                      else if (['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(detectedExt)) cat = 'videos';
+                      else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].includes(detectedExt)) cat = 'audio';
+                      foundRecord = { id: fileId, name: matched.key.split('/').pop() || fileId, category: cat, r2_key: matched.key, extension: detectedExt };
+                    } else {
+                      foundRecord.r2_key = matched.key;
+                    }
+                    try {
+                      if (foundRecord.category === 'images') await env.DB.prepare('UPDATE image_files SET r2_key = ? WHERE id = ?').bind(matched.key, fileId).run();
+                      else if (foundRecord.category === 'videos') await env.DB.prepare('UPDATE video_files SET r2_key = ? WHERE id = ?').bind(matched.key, fileId).run();
+                      else if (foundRecord.category === 'documents') await env.DB.prepare('UPDATE document_files SET r2_key = ? WHERE id = ?').bind(matched.key, fileId).run();
+                      else if (foundRecord.category === 'audio') await env.DB.prepare('UPDATE audio_files SET r2_key = ? WHERE id = ?').bind(matched.key, fileId).run();
+                    } catch {}
+                    break;
+                  }
+                }
+              } catch (le) {}
             }
           }
 
@@ -11031,13 +11079,20 @@ a:hover{transform:translateY(-2px)}
               await recordSyncItem(env.DB, reqUserId, secFile.id, 'secure', { id: secFile.id }, 1);
             } else {
               // Action 'restore' : renvoyer dans son menu d'origine
-              const fileExt = (secFile.extension || secFile.name.split('.').pop() || '').toLowerCase();
+              const fileExt = (secFile.extension || (secFile.name.includes('.') ? secFile.name.split('.').pop() : '') || '').toLowerCase();
+              const rawName = (secFile.name || '').toLowerCase();
               let detectedCat = '';
-              if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff'].includes(fileExt)) detectedCat = 'images';
+              if (rawName.includes('whatsapp video') || rawName.includes('vid-') || /\.(mp4|mkv|avi|mov|webm|3gp|flv|wmv)$/i.test(rawName)) detectedCat = 'videos';
+              else if (rawName.includes('whatsapp audio') || rawName.includes('aud-') || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(rawName)) detectedCat = 'audio';
+              else if (rawName.includes('whatsapp image') || rawName.includes('img-') || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|tiff)$/i.test(rawName)) detectedCat = 'images';
+              else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff'].includes(fileExt)) detectedCat = 'images';
               else if (['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv'].includes(fileExt)) detectedCat = 'videos';
               else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'].includes(fileExt)) detectedCat = 'audio';
 
               let realCat = detectedCat || secFile.original_category;
+              if (detectedCat && (realCat === 'documents' || realCat === 'secure' || realCat === 'trash')) {
+                realCat = detectedCat;
+              }
               if (!realCat || realCat === 'secure' || realCat === 'trash') {
                 realCat = secFile.category && secFile.category !== 'secure' ? secFile.category : (detectedCat || 'documents');
               }
@@ -11053,19 +11108,23 @@ a:hover{transform:translateY(-2px)}
                   SELECT r2_key FROM video_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                   UNION ALL
                   SELECT r2_key FROM audio_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM document_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM classeur_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                   LIMIT 1
-                `).bind(secFile.id, secFile.name, secFile.id, secFile.name, secFile.id, secFile.name, secFile.id, secFile.name).first<any>().catch(() => null);
+                `).bind(secFile.id, secFile.name, secFile.id, secFile.name, secFile.id, secFile.name, secFile.id, secFile.name, secFile.id, secFile.name, secFile.id, secFile.name).first<any>().catch(() => null);
                 if (rec?.r2_key) resolvedR2Key = rec.r2_key;
               }
               const resolvedExt = secFile.extension || (secFile.name.includes('.') ? secFile.name.split('.').pop() : '') || fileExt || '';
 
-              let finalRestoredUrl = secFile.file_url || '';
-              if (!finalRestoredUrl || finalRestoredUrl.startsWith('blob:') || finalRestoredUrl.includes('localhost') || finalRestoredUrl.includes('127.0.0.1')) {
-                if (resolvedR2Key) {
-                  finalRestoredUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(realCat)}/${encodeURIComponent(resolvedR2Key)}`;
-                } else {
-                  finalRestoredUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(secFile.id)}`;
-                }
+              let finalRestoredUrl = '';
+              if (resolvedR2Key) {
+                finalRestoredUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(realCat)}/${encodeURIComponent(resolvedR2Key)}`;
+              } else if (secFile.file_url && !secFile.file_url.startsWith('blob:') && !secFile.file_url.includes('localhost') && !secFile.file_url.includes('127.0.0.1') && !secFile.file_url.includes('/api/cloud/file/secure/')) {
+                finalRestoredUrl = secFile.file_url;
+              } else {
+                finalRestoredUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(secFile.id)}`;
               }
 
               const isFolder = realCat === 'classeur_folder' || secFile.category === 'folder';
@@ -11378,15 +11437,22 @@ a:hover{transform:translateY(-2px)}
 
             if (item) {
               const meta = item.metadata_json ? JSON.parse(item.metadata_json) : {};
-              const itemExt = (item.extension || item.name.split('.').pop() || '').toLowerCase();
+              const itemExt = (item.extension || (item.name.includes('.') ? item.name.split('.').pop() : '') || '').toLowerCase();
+              const rawItemName = (item.name || '').toLowerCase();
               let detectedSrcCat = '';
-              if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff'].includes(itemExt)) detectedSrcCat = 'images';
+              if (rawItemName.includes('whatsapp video') || rawItemName.includes('vid-') || /\.(mp4|mkv|avi|mov|webm|3gp|flv|wmv)$/i.test(rawItemName)) detectedSrcCat = 'videos';
+              else if (rawItemName.includes('whatsapp audio') || rawItemName.includes('aud-') || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(rawItemName)) detectedSrcCat = 'audio';
+              else if (rawItemName.includes('whatsapp image') || rawItemName.includes('img-') || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|tiff)$/i.test(rawItemName)) detectedSrcCat = 'images';
+              else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff'].includes(itemExt)) detectedSrcCat = 'images';
               else if (['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv'].includes(itemExt)) detectedSrcCat = 'videos';
               else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'].includes(itemExt)) detectedSrcCat = 'audio';
 
               let srcCat = detectedSrcCat || item.source_category || item.category || 'documents';
               if (srcCat === 'secure' || srcCat === 'trash') {
                 srcCat = meta.originalCategory || meta.sourceCategory || detectedSrcCat || 'documents';
+              }
+              if (detectedSrcCat && (srcCat === 'documents' || srcCat === 'classeur' || srcCat === 'mes-fichiers')) {
+                srcCat = detectedSrcCat;
               }
               let resolvedR2Key = (item.r2_key && String(item.r2_key).trim() !== '')
                 ? String(item.r2_key).trim()
@@ -11400,20 +11466,24 @@ a:hover{transform:translateY(-2px)}
                   SELECT r2_key FROM video_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                   UNION ALL
                   SELECT r2_key FROM audio_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM document_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                  UNION ALL
+                  SELECT r2_key FROM classeur_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                   LIMIT 1
-                `).bind(item.id, item.name, item.id, item.name, item.id, item.name, item.id, item.name).first<any>().catch(() => null);
+                `).bind(item.id, item.name, item.id, item.name, item.id, item.name, item.id, item.name, item.id, item.name, item.id, item.name).first<any>().catch(() => null);
                 if (rec?.r2_key) resolvedR2Key = rec.r2_key;
               }
               const resolvedExt = item.extension || (item.name.includes('.') ? item.name.split('.').pop() : '') || itemExt || '';
               const origFolder = item.original_folder_id || '';
 
-              let finalTrashRestoredUrl = item.file_url || '';
-              if (!finalTrashRestoredUrl || finalTrashRestoredUrl.startsWith('blob:') || finalTrashRestoredUrl.includes('localhost') || finalTrashRestoredUrl.includes('127.0.0.1')) {
-                if (resolvedR2Key) {
-                  finalTrashRestoredUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(srcCat)}/${encodeURIComponent(resolvedR2Key)}`;
-                } else {
-                  finalTrashRestoredUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(item.id)}`;
-                }
+              let finalTrashRestoredUrl = '';
+              if (resolvedR2Key) {
+                finalTrashRestoredUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(srcCat)}/${encodeURIComponent(resolvedR2Key)}`;
+              } else if (item.file_url && !item.file_url.startsWith('blob:') && !item.file_url.includes('localhost') && !item.file_url.includes('127.0.0.1') && !item.file_url.includes('/api/cloud/file/trash/') && !item.file_url.includes('/api/cloud/file/secure/')) {
+                finalTrashRestoredUrl = item.file_url;
+              } else {
+                finalTrashRestoredUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(item.id)}`;
               }
 
               if (srcCat === 'classeur_folder' || item.category === 'folder') {
@@ -11501,7 +11571,7 @@ a:hover{transform:translateY(-2px)}
                     await cleanUserFavoriteOnDelete(env.DB, reqUserId, cFile.id);
                   }
                 }
-              } else if (origFolder || srcCat === 'classeur') {
+              } else if ((origFolder || srcCat === 'classeur') && srcCat !== 'videos' && srcCat !== 'images' && srcCat !== 'audio' && !detectedSrcCat) {
                 await env.DB.prepare(`
                   INSERT INTO classeur_files (
                     id, user_id, folder_id, name, size, size_bytes, category, extension,

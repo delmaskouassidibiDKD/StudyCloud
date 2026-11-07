@@ -1250,11 +1250,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     const fileType = getFileType(file);
 
     return (
-      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        (viewerExpandLevel >= 2 || isViewerMaximized)
+      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${(viewerExpandLevel >= 2 || isViewerMaximized)
           ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
-      }`}>
+        }`}>
         {/* Barre supérieure du lecteur */}
         <div className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
           {/* Navigation Précédent / Suivant et Titre du fichier */}
@@ -1358,9 +1357,8 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                   setViewerExpandLevel(2);
                 }
               }}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
-              }`}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${(isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                }`}
               title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : 'Plein écran'}
             >
               {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
@@ -1668,7 +1666,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       )}
 
       {/* CONTENU PRINCIPAL DE LA CORBEILLE AVEC MODE SPLIT-SCREEN LORSQU'UN FICHIER EST SÉLECTIONNÉ */}
-      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedFile ? 'bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
         <main
           className={`overflow-y-auto bg-white py-5 pb-64 sm:pb-80 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
             ? 'hidden'
@@ -1819,13 +1817,12 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR / APERÇU DÉDIÉ PAR TYPE DE FICHIER */}
         {selectedFile && (
           <aside
-            className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl ${
-              (viewerExpandLevel >= 2 || isViewerMaximized)
+            className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl ${(viewerExpandLevel >= 2 || isViewerMaximized)
                 ? 'fixed inset-0 z-50 w-screen h-screen'
                 : (isViewerMaximized || viewerExpandLevel >= 1)
                   ? 'w-full flex-1 h-full min-h-0'
-                  : 'w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-stone-200 md:border-stone-800'
-            } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}
+                  : 'w-full flex-1 h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+              } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>
@@ -1871,7 +1868,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
       {/* TOAST NOTIFICATION FLOTTANT */}
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1424] border border-rose-500/40 text-rose-300 px-4 py-2.5 rounded-full shadow-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1424] border border-rose-500/40 text-rose-300 px-4 py-2.5 rounded-full shadow-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <Check className="w-4 h-4 stroke-[3]" />
           <span>{toastMessage}</span>
         </div>

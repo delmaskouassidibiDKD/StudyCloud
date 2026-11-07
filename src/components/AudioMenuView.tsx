@@ -1885,7 +1885,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     <div className="w-full h-full flex flex-col bg-stone-50 dark:bg-[#070B14] overflow-hidden select-none">
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 px-4 py-2.5 bg-black/90 text-white border border-white/20 rounded-xl shadow-2xl text-xs sm:text-sm font-semibold flex items-center gap-2 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-50 px-4 py-2.5 bg-black/90 text-white border border-white/20 rounded-xl shadow-2xl text-xs sm:text-sm font-semibold flex items-center gap-2 backdrop-blur-md animate-in fade-in slide-in-from-bottom-2 duration-200">
           <Check className="w-4 h-4 text-emerald-400" />
           <span>{toastMessage}</span>
         </div>
@@ -2353,7 +2353,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
       {/* Barre d'actions flottante de multi-sélection */}
       {isSelectionMode && selectedItemIds.length > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#0B101D] border-2 border-amber-500/40 rounded-2xl shadow-2xl px-4 py-2.5 flex items-center gap-3 text-xs text-white backdrop-blur-md animate-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[95vw] bg-[#0B101D] border-2 border-amber-500/40 rounded-2xl shadow-2xl px-3 sm:px-4 py-2 sm:py-2.5 flex items-center gap-2 sm:gap-3 text-xs text-white backdrop-blur-md animate-in slide-in-from-bottom-3 duration-200 overflow-x-auto no-scrollbar">
           <span className="font-bold text-amber-300">
             {selectedItemIds.length} sélectionné{selectedItemIds.length > 1 ? 's' : ''}
           </span>

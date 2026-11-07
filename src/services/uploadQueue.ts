@@ -402,7 +402,19 @@ class UploadQueueManager {
         };
         await CloudStorageAPI.saveClasseurFile(fileToSave as any, resolvedFolderId);
       } else {
-        const uploadCat = (category === 'classeur' || category === 'downloads' || category === 'secure' || category === 'trash' ? 'documents' : category) as any;
+        const extLower = (fileName.includes('.') ? fileName.split('.').pop() || '' : '').toLowerCase();
+        let detectedMediaCat: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
+        if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff'].includes(extLower) || (file.type && file.type.startsWith('image/'))) {
+          detectedMediaCat = 'images';
+        } else if (['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv'].includes(extLower) || (file.type && file.type.startsWith('video/'))) {
+          detectedMediaCat = 'videos';
+        } else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'].includes(extLower) || (file.type && file.type.startsWith('audio/'))) {
+          detectedMediaCat = 'audio';
+        }
+
+        const uploadCat = category === 'secure'
+          ? detectedMediaCat
+          : (category === 'classeur' || category === 'downloads' || category === 'trash' ? 'documents' : category) as any;
         const res = await CloudStorageAPI.uploadFile(
           file,
           uploadCat,
@@ -446,6 +458,23 @@ class UploadQueueManager {
             }
           }
         }
+
+        // Si importé directement dans le dossier sécurisé, persister immédiatement dans secure_files sur D1
+        if (category === 'secure') {
+          const secureFileItem: FileItem = {
+            ...task.fileItem,
+            id: serverFileId || id,
+            name: fileName,
+            category: detectedMediaCat,
+            originalCategory: detectedMediaCat,
+            url: uploadUrl || task.fileItem?.url || '',
+            previewUrl: previewDataUrl || uploadUrl || task.fileItem?.previewUrl || '',
+            r2Key: r2Key || task.fileItem?.r2Key || '',
+            isSecure: true,
+            isFavorite: false,
+          };
+          await CloudStorageAPI.moveToSecureFolder(secureFileItem, detectedMediaCat).catch(console.error);
+        }
       }
 
       // Étape C : Succès - mise à jour définitive du CloudDataStore et nettoyage du tampon local
@@ -456,6 +485,10 @@ class UploadQueueManager {
         task.fileItem.id = serverFileId || id;
         if (uploadUrl) task.fileItem.url = uploadUrl;
         if (r2Key) task.fileItem.r2Key = r2Key;
+        if (category === 'secure') {
+          task.fileItem.isSecure = true;
+          task.fileItem.category = (task.fileItem as any).originalCategory || task.fileItem.category;
+        }
         task.fileItem.isUploading = false;
         task.fileItem.uploadProgress = 100;
       }
@@ -479,22 +512,27 @@ class UploadQueueManager {
         Boolean((task.fileItem as any)?.isStudySession);
 
       if (!isStudyOrCreationImport && category !== 'study') {
+        const isSec = category === 'secure';
+        const effectiveMediaCat = (task.fileItem as any)?.originalCategory || task.fileItem?.category || 'documents';
         CloudDataStore.updateFile(id, {
           id: serverFileId || id,
           url: uploadUrl || task.fileItem.url,
           r2Key: r2Key || task.fileItem.r2Key,
-          previewUrl: category === 'images'
+          category: isSec ? effectiveMediaCat : task.fileItem?.category,
+          originalCategory: isSec ? effectiveMediaCat : (task.fileItem as any)?.originalCategory,
+          isSecure: isSec ? true : task.fileItem?.isSecure,
+          previewUrl: (category === 'images' || (isSec && effectiveMediaCat === 'images'))
             ? (uploadUrl || task.fileItem.url)
-            : (category === 'audio'
+            : ((category === 'audio' || (isSec && effectiveMediaCat === 'audio'))
                 ? (previewDataUrl || task.fileItem?.coverUrl || undefined)
                 : (previewDataUrl || uploadUrl || task.fileItem.previewUrl)),
-          thumbnailUrl: category === 'images'
+          thumbnailUrl: (category === 'images' || (isSec && effectiveMediaCat === 'images'))
             ? (uploadUrl || task.fileItem.url)
             : (previewDataUrl || task.fileItem?.thumbnailUrl || undefined),
-          coverUrl: category === 'audio' ? (previewDataUrl || task.fileItem?.coverUrl) : undefined,
-          artist: task.fileItem?.artist || (category === 'audio' ? 'Artiste inconnu' : undefined),
-          videoUrl: category === 'videos' ? (uploadUrl || task.fileItem.videoUrl) : undefined,
-          audioUrl: category === 'audio' ? (uploadUrl || task.fileItem.audioUrl) : undefined,
+          coverUrl: (category === 'audio' || (isSec && effectiveMediaCat === 'audio')) ? (previewDataUrl || task.fileItem?.coverUrl) : undefined,
+          artist: task.fileItem?.artist || ((category === 'audio' || (isSec && effectiveMediaCat === 'audio')) ? 'Artiste inconnu' : undefined),
+          videoUrl: (category === 'videos' || (isSec && effectiveMediaCat === 'videos')) ? (uploadUrl || task.fileItem.videoUrl) : undefined,
+          audioUrl: (category === 'audio' || (isSec && effectiveMediaCat === 'audio')) ? (uploadUrl || task.fileItem.audioUrl) : undefined,
           isUploading: false,
           uploadProgress: 100,
         }, folderId);

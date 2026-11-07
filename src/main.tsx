@@ -97,6 +97,10 @@ document.documentElement.style.setProperty('--app-height', `${initialHeight}px`)
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './services/queryClient';
 import { LocalSyncReplication } from './services/localSyncReplication';
+import { clearAllLocalCaches } from './services/localFileStorage';
+
+// Purge automatique et immédiate de tous les caches locaux lourds (IndexedDB/localStorage)
+clearAllLocalCaches();
 LocalSyncReplication.startAutoReplication();
 
 import { GlobalAudioProvider } from './context/GlobalAudioContext';

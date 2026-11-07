@@ -4,6 +4,8 @@
  * la limite de 5 Mo du localStorage du navigateur.
  */
 
+import { getWorkerApiUrl } from './api';
+
 export const MAX_FILE_SIZE_BYTES = 50 * 1024 * 1024; // 50 Mo
 
 export function formatFileSize(bytes: number | string | undefined | null): string {
@@ -104,63 +106,33 @@ export async function ensureDecompressedBlob(blob: Blob, forceMimeType?: string)
 }
 
 /**
- * Stocke un Blob ou File complet dans IndexedDB
+ * Stocke un Blob ou File complet dans IndexedDB - DÉSACTIVÉ pour éviter la duplication locale
+ * et les plantages mémoire ("Aïe aïe aïe") sur mobile. Le serveur R2 est la seule source de vérité.
  */
-export async function storeFileBlob(id: string, blob: Blob | File): Promise<void> {
-  try {
-    const cleanBlob = await ensureDecompressedBlob(blob);
-    const db = await getDB();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.put({ id, blob: cleanBlob, updatedAt: Date.now() });
-
-      req.onsuccess = () => resolve();
-      req.onerror = () => reject(req.error);
-    });
-  } catch (err) {
-    console.warn('[LocalFileStorage] Erreur sauvegarde binaire IndexedDB:', err);
-  }
+export async function storeFileBlob(_id: string, _blob: Blob | File): Promise<void> {
+  return Promise.resolve();
 }
 
 /**
- * Récupère le Blob d'un fichier par son ID (et le décompresse automatiquement s'il avait été stocké en GZIP)
+ * Récupère le Blob d'un fichier par son ID (téléchargement à la demande depuis le serveur si nécessaire)
  */
 export async function getFileBlob(id: string): Promise<Blob | null> {
   if (!id) return null;
   try {
-    const db = await getDB();
-    const rawBlob = await new Promise<Blob | null>((resolve, reject) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.get(id);
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('sc_auth_token') || localStorage.getItem('studycloud_token')) : null;
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
 
-      req.onsuccess = () => {
-        const result = req.result;
-        if (result && result.blob) {
-          resolve(result.blob);
-        } else {
-          resolve(null);
-        }
-      };
-      req.onerror = () => reject(req.error);
-    });
-
-    if (!rawBlob) return null;
-
-    if (rawBlob.size >= 2) {
-      const header = new Uint8Array(await rawBlob.slice(0, 2).arrayBuffer());
-      if (header[0] === 0x1f && header[1] === 0x8b) {
-        const cleanBlob = await ensureDecompressedBlob(rawBlob);
-        storeFileBlob(id, cleanBlob).catch(() => {});
-        return cleanBlob;
-      }
+    const res = await fetch(`${baseUrl}/api/cloud/stream/${encodeURIComponent(id)}`, { headers });
+    if (res.ok) {
+      const b = await res.blob();
+      return await ensureDecompressedBlob(b);
     }
-    return rawBlob;
   } catch (err) {
-    console.warn('[LocalFileStorage] Erreur lecture binaire IndexedDB:', err);
-    return null;
+    console.warn('[LocalFileStorage] Erreur lecture stream distant:', err);
   }
+  return null;
 }
 
 /**
@@ -189,8 +161,8 @@ export async function resolveCleanDocumentBlob(options: {
   mimeType?: string;
 }): Promise<Blob | null> {
   const { fileId, url, r2Key, mimeType } = options;
-  const baseUrl = options.baseUrl ?? (import.meta.env.VITE_API_URL || '');
-  const token = typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_token') : null;
+  const baseUrl = options.baseUrl ?? getWorkerApiUrl().replace(/\/+$/, '');
+  const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('sc_auth_token') || localStorage.getItem('studycloud_token')) : null;
   const headers: Record<string, string> = {};
   if (token) headers['Authorization'] = `Bearer ${token}`;
 
@@ -330,44 +302,37 @@ export async function clearAllFileBlobs(): Promise<void> {
 }
 
 /**
- * Sauvegarde la miniature / image d'aperçu dans IndexedDB pour affichage local instantané (0ms)
+ * Sauvegarde la miniature - DÉSACTIVÉ pour éviter la duplication en base64 dans IndexedDB
  */
-export async function storeThumbnailData(id: string, dataUrl: string): Promise<void> {
-  if (!id || !dataUrl) return;
-  try {
-    const db = await getDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORE_NAME, 'readwrite');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.put({ id: `thumb_${id}`, blob: null, dataUrl, updatedAt: Date.now() });
-
-      req.onsuccess = () => resolve();
-      req.onerror = () => resolve();
-    });
-  } catch (err) {
-    console.warn('[LocalFileStorage] Erreur sauvegarde miniature IndexedDB:', err);
-  }
+export async function storeThumbnailData(_id: string, _dataUrl: string): Promise<void> {
+  return Promise.resolve();
 }
 
 /**
  * Récupère la miniature / image d'aperçu depuis IndexedDB
  */
-export async function getThumbnailData(id: string): Promise<string | null> {
-  if (!id) return null;
-  try {
-    const db = await getDB();
-    return new Promise((resolve) => {
-      const tx = db.transaction(STORE_NAME, 'readonly');
-      const store = tx.objectStore(STORE_NAME);
-      const req = store.get(`thumb_${id}`);
+export async function getThumbnailData(_id: string): Promise<string | null> {
+  return null;
+}
 
-      req.onsuccess = () => {
-        const res = req.result;
-        resolve(res?.dataUrl || null);
-      };
-      req.onerror = () => resolve(null);
-    });
-  } catch {
-    return null;
-  }
+/**
+ * Nettoyage complet des bases locales (appelé au démarrage pour purger la RAM et le stockage du téléphone)
+ */
+export async function clearAllLocalCaches(): Promise<void> {
+  try {
+    if (typeof window !== 'undefined' && window.indexedDB) {
+      try { window.indexedDB.deleteDatabase('StudyCloudFilesDB'); } catch {}
+      try { window.indexedDB.deleteDatabase('StudyCloudCacheDB'); } catch {}
+    }
+    if (typeof localStorage !== 'undefined') {
+      const keysToRemove: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('sc_fallback_') || k.startsWith('studycloud_sync_') || k.startsWith('cached_media_') || k.startsWith('thumb_'))) {
+          keysToRemove.push(k);
+        }
+      }
+      keysToRemove.forEach(k => { try { localStorage.removeItem(k); } catch {} });
+    }
+  } catch {}
 }

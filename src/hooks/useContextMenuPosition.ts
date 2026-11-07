@@ -132,27 +132,30 @@ export function computeSmartMenuStyle(
   // ── 2. Position verticale (Y) ────────────────────────────────────────────
   const spaceBelow = maxBottom - (triggerRect.bottom + 4);
   const spaceAbove = (triggerRect.top - 4) - minTop;
+  const totalVerticalSpace = maxBottom - minTop;
+  const targetMenuHeight = Math.min(menuHeight, totalVerticalSpace);
 
   let top: number;
   let finalMaxHeight: number;
 
-  if (spaceBelow >= menuHeight) {
+  if (spaceBelow >= targetMenuHeight) {
     // Il y a largement la place en-dessous
     top = triggerRect.bottom + 4;
-    finalMaxHeight = Math.min(menuHeight, spaceBelow);
-  } else if (spaceAbove >= menuHeight) {
+    finalMaxHeight = targetMenuHeight;
+  } else if (spaceAbove >= targetMenuHeight) {
     // Pas assez de place en dessous, mais il y a la place au-dessus
-    top = triggerRect.top - 4 - menuHeight;
-    finalMaxHeight = menuHeight;
-  } else if (spaceBelow >= spaceAbove) {
-    // Aucune des deux directions ne contient 100% de menuHeight,
-    // mais le bas a PLUS d'espace disponible que le haut
-    top = triggerRect.bottom + 4;
-    finalMaxHeight = Math.max(160, spaceBelow);
-  } else {
-    // Le haut a plus d'espace que le bas
-    finalMaxHeight = Math.max(160, spaceAbove);
+    top = triggerRect.top - 4 - targetMenuHeight;
+    finalMaxHeight = targetMenuHeight;
+  } else if (spaceAbove >= spaceBelow) {
+    // Le haut a plus d'espace disponible que le bas : on ancre au-dessus
+    // et on monte jusqu'à minTop si besoin pour afficher un maximum d'options
+    finalMaxHeight = Math.min(targetMenuHeight, Math.max(280, (triggerRect.top - 4) - minTop));
     top = (triggerRect.top - 4) - finalMaxHeight;
+  } else {
+    // Le bas a plus d'espace : on descend vers le bas
+    // et on décale le haut vers minTop si spaceBelow est inférieur à 300px
+    finalMaxHeight = Math.min(targetMenuHeight, Math.max(300, spaceBelow));
+    top = Math.max(minTop, Math.min(triggerRect.bottom + 4, maxBottom - finalMaxHeight));
   }
 
   // Clamping STRICT absolu vertical :

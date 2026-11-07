@@ -107,7 +107,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
   const controlsTimeoutRef = useRef<any>(null);
 
   // Notification HUD désactivée à la demande de l'utilisateur (aucun message intempestif)
-  const showNotification = (_msg: string) => {};
+  const showNotification = (_msg: string) => { };
 
   // 1. Résolution de la source vidéo (Blob local instantané, IndexedDB ou stream Cloudflare)
   const resolveVideoSource = useCallback(async () => {
@@ -348,11 +348,11 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
     if (!document.fullscreenElement) {
       containerRef.current.requestFullscreen().then(() => {
         setIsFullscreen(true);
-      }).catch(() => {});
+      }).catch(() => { });
     } else {
       document.exitFullscreen().then(() => {
         setIsFullscreen(false);
-      }).catch(() => {});
+      }).catch(() => { });
     }
   };
 
@@ -450,11 +450,11 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className={`group relative w-full h-full flex flex-col items-center justify-center bg-black overflow-hidden select-none font-sans rounded-2xl ${className}`}
+      className={`group relative w-full h-full min-h-full flex-1 flex flex-col items-center justify-center bg-black overflow-hidden select-none font-sans rounded-2xl ${className}`}
     >
       {/* 1. ÉLÉMENT VIDÉO PRINCIPAL AVEC CADRAGE PLEIN ÉCRAN & ZOOM */}
       {resolvedSrc ? (
-        <div className="relative w-full h-full flex-1 flex items-center justify-center overflow-hidden min-h-0">
+        <div className="relative w-full h-full min-h-full flex-1 flex items-center justify-center overflow-hidden min-h-0 bg-black">
           <video
             ref={videoRef}
             src={resolvedSrc}
@@ -476,7 +476,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                   try {
                     const bEnd = videoRef.current.buffered.end(videoRef.current.buffered.length - 1);
                     setBufferedEnd(bEnd);
-                  } catch {}
+                  } catch { }
                 }
               }
             }}
@@ -522,7 +522,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                       return;
                     }
                   }
-                } catch (e) {}
+                } catch (e) { }
 
                 // 2. Tenter le endpoint de streaming Cloudflare si on ne l'a pas déjà essayé
                 const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
@@ -594,11 +594,10 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
         </button>
       )}
 
-      {/* 6. BARRE DE CONTRÔLE COMPLÈTE EN BAS (Surélevée sur mobile pour ne pas être masquée par la barre de navigation) */}
+      {/* 6. BARRE DE CONTRÔLE COMPLÈTE EN BAS */}
       <div
-        className={`absolute ${isFullscreen ? 'bottom-0' : 'bottom-16 sm:bottom-0'} inset-x-0 p-2 sm:p-4 bg-gradient-to-t from-black/95 via-black/80 to-transparent flex flex-col gap-1.5 sm:gap-2 transition-opacity duration-300 z-20 ${
-          showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
-        }`}
+        className={`absolute bottom-0 inset-x-0 p-2 sm:p-4 pb-3 sm:pb-4 bg-gradient-to-t from-black/95 via-black/80 to-transparent flex flex-col gap-1.5 sm:gap-2 transition-opacity duration-300 z-20 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+          }`}
       >
         {/* BARRE DE PROGRESSION INTERACTIVE */}
         <div
@@ -743,11 +742,10 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                   setShowQualityMenu(!showQualityMenu);
                   setShowSpeedMenu(false);
                 }}
-                className={`px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all cursor-pointer border flex items-center gap-1 ${
-                  quality !== 'auto'
+                className={`px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all cursor-pointer border flex items-center gap-1 ${quality !== 'auto'
                     ? 'bg-purple-600/30 text-purple-300 border-purple-500/50 shadow-sm'
                     : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-white/10'
-                }`}
+                  }`}
                 title="Régler la qualité vidéo"
               >
                 <Sliders className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-purple-400" />
@@ -782,9 +780,8 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                       key={item.id}
                       type="button"
                       onClick={() => handleQualityChange(item.id)}
-                      className={`px-3 py-1.5 text-left text-xs font-semibold hover:bg-purple-600/20 hover:text-purple-300 cursor-pointer flex items-center justify-between gap-2 ${
-                        quality === item.id ? 'text-purple-400 font-bold bg-purple-500/10' : 'text-zinc-300'
-                      }`}
+                      className={`px-3 py-1.5 text-left text-xs font-semibold hover:bg-purple-600/20 hover:text-purple-300 cursor-pointer flex items-center justify-between gap-2 ${quality === item.id ? 'text-purple-400 font-bold bg-purple-500/10' : 'text-zinc-300'
+                        }`}
                     >
                       <div className="flex items-center gap-1.5 min-w-0">
                         {quality === item.id && <Check className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
@@ -807,11 +804,10 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                   setShowSpeedMenu(!showSpeedMenu);
                   setShowQualityMenu(false);
                 }}
-                className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${
-                  playbackRate !== 1
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${playbackRate !== 1
                     ? 'bg-purple-600/30 text-purple-300 border-purple-500/50'
                     : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-transparent'
-                }`}
+                  }`}
                 title="Vitesse de lecture"
               >
                 {playbackRate}x
@@ -824,9 +820,8 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                       key={r}
                       type="button"
                       onClick={() => setSpeed(r)}
-                      className={`px-3 py-1 text-left text-xs font-semibold hover:bg-purple-600/20 hover:text-purple-300 cursor-pointer ${
-                        playbackRate === r ? 'text-purple-400 font-bold bg-purple-500/10' : 'text-zinc-300'
-                      }`}
+                      className={`px-3 py-1 text-left text-xs font-semibold hover:bg-purple-600/20 hover:text-purple-300 cursor-pointer ${playbackRate === r ? 'text-purple-400 font-bold bg-purple-500/10' : 'text-zinc-300'
+                        }`}
                     >
                       {r}x
                     </button>
@@ -839,9 +834,8 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
             <button
               type="button"
               onClick={toggleLoop}
-              className={`p-1 sm:p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${
-                isLooping ? 'bg-purple-600/30 text-purple-300' : 'hover:bg-white/10 text-zinc-300 hover:text-white'
-              }`}
+              className={`p-1 sm:p-1.5 rounded-lg transition-colors cursor-pointer shrink-0 ${isLooping ? 'bg-purple-600/30 text-purple-300' : 'hover:bg-white/10 text-zinc-300 hover:text-white'
+                }`}
               title={isLooping ? "Boucle activée" : "Lire en boucle"}
             >
               <Repeat className="w-3.5 h-3.5 sm:w-4 sm:h-4" />

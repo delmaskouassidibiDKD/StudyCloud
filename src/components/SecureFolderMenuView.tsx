@@ -394,6 +394,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
           id: fileId,
           name: f.name,
           category,
+          originalCategory: category,
           source: 'Dossier sécurisé',
           size: comp.originalSizeFormatted,
           sizeBytes: comp.originalSizeBytes,
@@ -854,7 +855,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     const fileType = getFileType(file);
 
     return (
-      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
+      <div className={`w-full h-full min-h-full flex-1 flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
         (viewerExpandLevel >= 2 || isViewerMaximized)
           ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
@@ -990,9 +991,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
         </div>
 
         {/* Corps du lecteur selon le type */}
-        <div className="flex-1 w-full h-full overflow-hidden flex flex-col relative bg-[#04060A]">
+        <div className="flex-1 w-full h-full min-h-full overflow-hidden flex flex-col relative bg-[#04060A]">
           {fileType === 'audio' && (
-            <div className="w-full h-full flex flex-col justify-center bg-[#070B14]">
+            <div className="w-full h-full min-h-full flex-1 flex flex-col justify-center bg-[#070B14]">
               <ModernAudioPlayer
                 fileId={file.id}
                 src={file.url}
@@ -1006,7 +1007,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
           )}
 
           {fileType === 'video' && (
-            <div className="w-full h-full flex flex-col justify-center bg-black">
+            <div className="w-full h-full min-h-full flex-1 flex flex-col justify-center bg-black">
               <ModernVideoPlayer
                 fileId={file.id}
                 src={file.url}
@@ -1018,7 +1019,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
           )}
 
           {fileType === 'image' && (
-            <div className="w-full h-full flex flex-col bg-[#070B14]">
+            <div className="w-full h-full min-h-full flex-1 flex flex-col bg-[#070B14]">
               <ModernImageViewer
                 fileId={file.id}
                 src={file.url}
@@ -1031,7 +1032,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
           )}
 
           {fileType === 'document' && (
-            <div className="w-full h-full flex flex-col bg-[#070B14] select-text">
+            <div className="w-full h-full min-h-full flex-1 flex flex-col bg-[#070B14] select-text">
               <ModernDocumentViewer
                 fileId={file.id}
                 url={file.url}
@@ -1584,7 +1585,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
   };
 
   return (
-    <div className={`flex-1 flex flex-col w-full ${selectedFile ? 'h-full flex-1 overflow-hidden bg-[#04060A] overscroll-none' : 'min-h-screen bg-stone-100'} text-stone-900 select-none animate-in fade-in duration-200`}>
+    <div className={`flex-1 flex flex-col w-full ${selectedFile ? 'h-full min-h-full flex-1 overflow-hidden bg-[#04060A] overscroll-none' : 'min-h-screen bg-stone-100'} text-stone-900 select-none animate-in fade-in duration-200`}>
       <input
         type="file"
         ref={fileInputRef}
@@ -1924,14 +1925,13 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
         </div>
       ) : (
         /* VUE DES FICHIERS PROTÉGÉS AVEC MODE SPLIT-SCREEN LATÉRAL (COMME DANS LA CORBEILLE) */
-        <div className={`flex-1 flex flex-col md:flex-row w-full ${selectedFile ? 'h-full flex-1 overflow-hidden bg-[#04060A]' : 'overflow-hidden flex-1'} relative`}>
+        <div className={`flex-1 flex flex-col md:flex-row w-full ${selectedFile ? 'h-full min-h-full flex-1 overflow-hidden bg-[#04060A]' : 'overflow-hidden flex-1'} relative`}>
           <main
-            className={`overflow-y-auto bg-stone-100 py-4 pb-36 ${
-              ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
+            className={`overflow-y-auto bg-stone-100 py-4 pb-36 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
                 ? 'hidden'
                 : selectedFile
-                ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-200 px-3 sm:px-4'
-                : 'flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12'
+                  ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-200 px-3 sm:px-4'
+                  : 'flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}
           >
             {/* Filtres par catégorie et sélection */}
@@ -2084,13 +2084,12 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
           {/* PANNEAU DE DROITE : LECTEUR / APERÇU DÉDIÉ (COMME DANS LA CORBEILLE) */}
           {selectedFile && (
             <aside
-              className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${
-                (viewerExpandLevel >= 2 || isViewerMaximized)
+              className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${(viewerExpandLevel >= 2 || isViewerMaximized)
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
-                    ? 'w-full flex-1 h-full min-h-0'
-                    : 'w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-stone-200 md:border-stone-800'
-              } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}
+                    ? 'w-full flex-1 h-full min-h-full min-h-0'
+                    : 'w-full flex-1 h-full min-h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+                } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}
             >
               {renderDedicatedReader(selectedFile)}
             </aside>
@@ -2100,18 +2099,18 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
       {/* BARRE D'ACTIONS FLOTTANTE LORS DE LA SÉLECTION MULTIPLE */}
       {isUnlocked && selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 bg-[#070A14] text-white border border-white/20 px-4 py-2.5 rounded-2xl shadow-2xl flex items-center gap-3 animate-in fade-in slide-in-from-bottom-4 duration-200">
-          <span className="text-xs font-bold text-blue-400 shrink-0">
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 max-w-[95vw] bg-[#070A14] text-white border border-white/20 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl shadow-2xl flex items-center gap-2 sm:gap-3 animate-in fade-in slide-in-from-bottom-4 duration-200 overflow-x-auto no-scrollbar">
+          <span className="text-xs font-bold text-blue-400 shrink-0 whitespace-nowrap">
             {selectedIds.size} sélectionné{selectedIds.size > 1 ? 's' : ''}
           </span>
 
-          <div className="h-4 w-px bg-white/20" />
+          <div className="h-4 w-px bg-white/20 shrink-0" />
 
           {/* Déverrouiller la sélection */}
           <button
             type="button"
             onClick={handleBatchRestore}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer active:scale-95 shadow"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all cursor-pointer active:scale-95 shadow shrink-0 whitespace-nowrap"
             title="Restaurer vers les menus d'origine"
           >
             <Unlock className="w-3.5 h-3.5" />
@@ -2122,7 +2121,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
           <button
             type="button"
             onClick={handleBatchTrash}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all cursor-pointer active:scale-95 shadow"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition-all cursor-pointer active:scale-95 shadow shrink-0 whitespace-nowrap"
             title="Mettre dans la corbeille"
           >
             <Trash2 className="w-3.5 h-3.5" />
@@ -2133,7 +2132,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
           <button
             type="button"
             onClick={() => setSelectedIds(new Set())}
-            className="p-1.5 text-stone-400 hover:text-white"
+            className="p-1.5 text-stone-400 hover:text-white shrink-0 cursor-pointer"
             title="Annuler la sélection"
           >
             <X className="w-4 h-4" />
@@ -2241,7 +2240,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
       {/* TOAST FLOTTANT */}
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1424] border border-blue-500/40 text-blue-300 px-4 py-2.5 rounded-full shadow-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 bg-[#0F1424] border border-blue-500/40 text-blue-300 px-4 py-2.5 rounded-full shadow-2xl text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-3 duration-200">
           <Check className="w-4 h-4 stroke-[3]" />
           <span>{toastMessage}</span>
         </div>

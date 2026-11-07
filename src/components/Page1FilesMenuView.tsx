@@ -10699,7 +10699,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // 0. PAGE D'ÉCRITURE / BLOC-NOTES DÉDIÉE (ÉCRITURE DIRECTE, SANS BOUTON HORIZONTAL NI ZOOM)
   const renderNoteWriterPage = (file: FileItem) => {
     return (
-      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-text ${(viewerExpandLevel >= 2 || isViewerMaximized)
+      <div className={`w-full h-full min-h-full flex-1 flex flex-col bg-[#04060A] text-white overflow-hidden select-text ${(viewerExpandLevel >= 2 || isViewerMaximized)
         ? 'fixed inset-0 z-50 w-screen h-screen'
         : ''
         }`}>
@@ -10799,7 +10799,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         </div>
 
         {/* Corps de la page d'écriture : Titre en majuscules + Zone de texte libre */}
-        <div className="flex-1 p-4 sm:p-6 overflow-hidden flex flex-col space-y-3 bg-[#070B14]/80 select-text">
+        <div className="flex-1 w-full h-full min-h-0 p-4 sm:p-6 overflow-hidden flex flex-col space-y-3 bg-[#070B14] select-text">
           {/* Titre dédié en majuscules limité à 2 lignes */}
           <textarea
             value={noteTitleContent}
@@ -10834,12 +10834,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               handleUpdateNoteContent(newText, noteTitleContent, file.id);
             }}
             placeholder="Écrivez vos notes, cours ou réflexions ici..."
-            className="w-full flex-1 bg-transparent text-slate-100 placeholder:text-slate-600 text-xs sm:text-sm md:text-base leading-relaxed resize-none outline-none font-sans no-scrollbar break-all [overflow-wrap:anywhere] [word-break:break-word] selection:bg-cyan-500/30"
+            className="w-full flex-1 min-h-0 bg-transparent text-slate-100 placeholder:text-slate-600 text-xs sm:text-sm md:text-base leading-relaxed resize-none outline-none font-sans no-scrollbar break-all [overflow-wrap:anywhere] [word-break:break-word] selection:bg-cyan-500/30"
           />
         </div>
 
         {/* Barre inférieure : Statistiques et statut de synchronisation */}
-        <div className="px-4 sm:px-6 py-2 bg-[#070B14] border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400 shrink-0 select-none">
+        <div className="px-4 sm:px-6 py-2 pb-24 md:pb-2 bg-[#070B14] border-t border-white/10 flex items-center justify-between text-[11px] text-slate-400 shrink-0 select-none">
           <div className="flex items-center gap-3">
             <span>{noteTextContent.length} caractères</span>
             <span>•</span>
@@ -13064,7 +13064,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 6. CLASSEUR : DOSSIERS 3D ET FICHIERS DU DOSSIER OUVERT */}
           {(currentSubView?.id === 'studycloud-classeur-classeur' || currentSubView?.id?.startsWith('studycloud-classeur-') || (isCloudView && cloudActiveTab === 'classeur')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${(opened3DFolder && selectedClasseurFile) ? 'bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${(opened3DFolder && selectedClasseurFile) ? 'h-full min-h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
               {/* PANNEAU DE GAUCHE : ARBORESCENCE & FICHIERS */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${(isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'hidden'
@@ -13388,8 +13388,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${viewerExpandLevel >= 2
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
-                    ? 'w-full flex-1 h-full min-h-0'
-                    : 'w-full flex-1 h-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+                    ? 'w-full flex-1 h-full min-h-full min-h-0'
+                    : 'w-full flex-1 h-full min-h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
                   } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
                   {renderClasseurFileReader(selectedClasseurFile)}
                 </div>
@@ -13416,7 +13416,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 8. DOSSIER SÉCURISÉ */}
           {(currentSubView?.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) && (
-            <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedCollectionFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${isViewerMaximized
                 ? 'hidden'
                 : selectedCollectionFile
@@ -13473,9 +13473,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${viewerExpandLevel >= 2
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                    : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
-                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                    ? 'w-full flex-1 h-full min-h-full min-h-0'
+                    : 'w-full flex-1 h-full min-h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
                   {renderCollectionReader(selectedCollectionFile)}
                 </div>
               )}
@@ -13484,7 +13484,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 9. FAVORIS */}
           {(currentSubView?.id === 'studycloud-collection-favorites' || (isCloudView && cloudActiveTab === 'favorites')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedCollectionFile ? 'bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedCollectionFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${(isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'hidden'
                 : selectedCollectionFile
@@ -13559,9 +13559,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${viewerExpandLevel >= 2
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                    : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
-                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                    ? 'w-full flex-1 h-full min-h-full min-h-0'
+                    : 'w-full flex-1 h-full min-h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
                   {renderCollectionReader(selectedCollectionFile)}
                 </div>
               )}
@@ -13570,7 +13570,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 10. CORBEILLE */}
           {(currentSubView?.id === 'studycloud-collection-trash' || (isCloudView && cloudActiveTab === 'trash')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedCollectionFile ? 'bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedCollectionFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${(isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'hidden'
                 : selectedCollectionFile
@@ -13671,9 +13671,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${viewerExpandLevel >= 2
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
-                    ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                    : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
-                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                    ? 'w-full flex-1 h-full min-h-full min-h-0'
+                    : 'w-full flex-1 h-full min-h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+                  } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
                   {renderCollectionReader(selectedCollectionFile)}
                 </div>
               )}

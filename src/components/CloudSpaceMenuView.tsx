@@ -2194,7 +2194,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       {/* =========================================================================
           3. DISPOSITION SPLIT-SCREEN : LISTE À GAUCHE & LECTEUR À DROITE
           ========================================================================= */}
-      <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-140px)]">
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${viewerFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-140px)]'}`}>
         {/* PANNEAU DE GAUCHE : CONTENU DYNAMIQUE SELON L'ONGLET */}
         <main className={`overflow-y-auto px-3 sm:px-6 py-5 pb-32 bg-stone-100 ${
           ((isViewerMaximized || viewerExpandLevel >= 1) && viewerFile)
@@ -2687,9 +2687,9 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             (viewerExpandLevel >= 2 || isViewerMaximized)
               ? 'fixed inset-0 z-50 w-screen h-screen'
               : (isViewerMaximized || viewerExpandLevel >= 1)
-                ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
-          } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
+                ? 'w-full flex-1 h-full min-h-0'
+                : 'w-full flex-1 h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+          } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}>
             {renderReader(viewerFile)}
           </div>
         )}
@@ -2784,7 +2784,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           NOTIFICATION TOAST FLOTTANTE
           ========================================================================= */}
       {toastMessage && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl bg-black/90 border border-white/20 shadow-2xl text-white text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 px-4 py-2.5 rounded-2xl bg-black/90 border border-white/20 shadow-2xl text-white text-xs font-bold flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-200">
           <Sparkles className="w-4 h-4 text-cyan-400" />
           <span>{toastMessage}</span>
         </div>

@@ -314,32 +314,11 @@ async function hydrateFromIndexedDB(): Promise<boolean> {
   return false;
 }
 
-// Persistance async dans IndexedDB (isolée par utilisateur)
+// Persistance async dans IndexedDB - DÉSACTIVÉE : aucune duplication locale lourde.
+// Tout se passe en direct entre le serveur Cloudflare (D1/R2) et l'application.
+// Empêche la saturation mémoire (OOM "Aïe aïe aïe") et les gels sur téléphone.
 async function persistToIndexedDB(): Promise<void> {
-  try {
-    const key = getCacheKey();
-    await idbSet(key, {
-      overview: currentState.overview,
-      classeurFolders: currentState.classeurFolders,
-      folderFilesMap: currentState.folderFilesMap,
-      documents: currentState.documents,
-      images: currentState.images,
-      videos: currentState.videos,
-      audio: currentState.audio,
-      downloads: currentState.downloads,
-      secure: currentState.secure,
-      trash: currentState.trash,
-      favorites: currentState.favorites,
-      favIds: Array.from(currentState.favIdSet),
-      pinIds: Array.from(currentState.pinIdSet),
-      dismissedRecentIds: Array.from(dismissedRecentSet),
-      recentFiles: currentState.recentFiles,
-      lastSyncTime: currentState.lastSyncTime,
-    });
-    try { localStorage.setItem(LS_FLAG_KEY, '1'); } catch { }
-  } catch (e) {
-    console.warn('[CloudDataStore] Persist error:', e);
-  }
+  return Promise.resolve();
 }
 
 let tombstoneChecker: ((id: string) => boolean) | null = null;
@@ -1027,6 +1006,28 @@ export const CloudDataStore = {
     const recent = isEligible
       ? [file, ...currentState.recentFiles.filter(f => f.id !== file.id && isRecentEligible(f))].slice(0, 6)
       : currentState.recentFiles.filter(f => isRecentEligible(f));
+
+    if (file.isSecure || cat === 'secure') {
+      currentState = {
+        ...currentState,
+        secure: [file, ...currentState.secure.filter(f => f.id !== file.id)]
+      };
+      persistToIndexedDB().catch(() => { });
+      notify();
+      try { invalidateCloudQueries.secure(); } catch {}
+      return;
+    }
+
+    if (file.isTrash || cat === 'trash') {
+      currentState = {
+        ...currentState,
+        trash: [file, ...currentState.trash.filter(f => f.id !== file.id)]
+      };
+      persistToIndexedDB().catch(() => { });
+      notify();
+      try { invalidateCloudQueries.trash(); } catch {}
+      return;
+    }
 
     if (isFolder && targetFolder) {
       const currentList = currentState.folderFilesMap[targetFolder] || [];
