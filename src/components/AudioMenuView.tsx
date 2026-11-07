@@ -58,6 +58,8 @@ import { handleNativeShare } from '../utils/nativeShare';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
 import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import { useGlobalAudio } from '../context/GlobalAudioContext';
+import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 interface AudioMenuViewProps {
   onBack: () => void;
@@ -190,6 +192,31 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
   const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const viewerExpandLevel = useViewerExpandLevel();
+  const isPlayerExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 2);
+
+  const handleCloseReader = useCallback(() => {
+    setSelectedTrack(null);
+    setIsMobilePlayerOpen(false);
+    setIsViewerMaximized(false);
+    resetViewerExpand();
+    pauseAudio();
+  }, [setSelectedTrack, pauseAudio]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (isViewerMaximized || viewerExpandLevel >= 1) {
+          setIsViewerMaximized(false);
+          resetViewerExpand();
+        } else if (selectedTrack && isMobilePlayerOpen) {
+          handleCloseReader();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewerExpandLevel, isViewerMaximized, selectedTrack, isMobilePlayerOpen, handleCloseReader]);
 
   // Mode sélection & menu 3 traits
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -1607,7 +1634,11 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           {/* Bouton retour vers la liste */}
           <button
             type="button"
-            onClick={() => setIsMobilePlayerOpen(false)}
+            onClick={() => {
+              setIsMobilePlayerOpen(false);
+              setIsViewerMaximized(false);
+              resetViewerExpand();
+            }}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-black/40 hover:bg-white/10 border border-white/10 text-xs font-semibold text-slate-300 hover:text-white transition-all cursor-pointer active:scale-95"
             title="Retour à la liste"
           >
@@ -1701,14 +1732,49 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               )}
             </div>
 
-            {/* Fermer */}
+            {/* Super Agrandissement Progressif (Desktop uniquement) */}
+            <ViewerSuperExpandButton
+              expandLevel={viewerExpandLevel}
+              onExpandChange={(lvl) => {
+                if (lvl >= 1) {
+                  setIsViewerMaximized(true);
+                } else {
+                  setIsViewerMaximized(false);
+                }
+                setViewerExpandLevel(lvl);
+              }}
+            />
+
+            {/* Bouton Agrandir / Réduire (Masquer la barre supérieure robot bleu / plein écran) */}
             <button
               type="button"
               onClick={() => {
-                setSelectedTrack(null);
-                setIsMobilePlayerOpen(false);
-                pauseAudio();
+                if (isPlayerExpanded) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else {
+                  setIsViewerMaximized(true);
+                  setViewerExpandLevel(2);
+                }
               }}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                isPlayerExpanded
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
+                  : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+              }`}
+              title={isPlayerExpanded ? "Réduire la vue (Barres visibles)" : "Agrandir en masquant la barre supérieure (Robot Bleu)"}
+            >
+              {isPlayerExpanded ? (
+                <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+              ) : (
+                <Maximize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+              )}
+            </button>
+
+            {/* Fermer */}
+            <button
+              type="button"
+              onClick={handleCloseReader}
               className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
               title="Fermer le lecteur audio"
             >
@@ -1890,18 +1956,27 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       />
 
       {/* EN-TÊTE FIXE DU MENU AUDIO */}
-      <header className="sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm">
+      <header className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedTrack) ? 'hidden' : (selectedTrack && isMobilePlayerOpen ? 'hidden md:block' : '')}`}>
         <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour et Titre Audio */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
             <button
               type="button"
-              onClick={onBack}
+              onClick={() => {
+                if (isViewerMaximized) {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                } else if (selectedTrack && isMobilePlayerOpen) {
+                  handleCloseReader();
+                } else {
+                  onBack();
+                }
+              }}
               className="flex items-center gap-1.5 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
-              title="Retour au gestionnaire de fichiers"
+              title={isViewerMaximized ? "Réduire la vue" : (selectedTrack && isMobilePlayerOpen) ? "Fermer le lecteur" : "Retour au gestionnaire de fichiers"}
             >
               <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
-              <span className="hidden xs:inline">Retour</span>
+              <span className="hidden xs:inline">{isViewerMaximized ? "Réduire" : "Retour"}</span>
             </button>
 
             <div className="hidden sm:block">
@@ -1975,10 +2050,13 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       {/* DISPOSITION SPLIT EN DEUX COLONNES (IMAGES 1 & 2) */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
-        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${selectedTrack
-            ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
-            : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
-          }`}>
+        <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
+          (isViewerMaximized || viewerExpandLevel >= 1) && selectedTrack && isMobilePlayerOpen
+            ? 'hidden'
+            : (selectedTrack && isMobilePlayerOpen)
+              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+        }`}>
           <div className="w-full space-y-3">
             {/* En-tête de la liste */}
             <div className="flex items-center justify-between px-1 py-0.5">
@@ -2309,8 +2387,15 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
         {/* PANNEAU DE DROITE : LECTEUR AUDIO DÉDIÉ OU ÉTAT VIDE (IMAGES 1 & 2) */}
         {selectedTrack ? (
-          <div className={`animate-in fade-in duration-150 ${isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'
-            } md:w-7/12 lg:w-7/12 xl:w-7/12 flex-col bg-[#090D1A] border-t md:border-t-0 md:border-l border-white/10`}>
+          <div className={`flex flex-col bg-[#090D1A] animate-in fade-in duration-150 ${
+            (viewerExpandLevel >= 2 || isViewerMaximized)
+              ? 'fixed inset-0 z-50 w-screen h-screen'
+              : (isViewerMaximized || viewerExpandLevel >= 1)
+                ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
+                : isMobilePlayerOpen
+                  ? 'flex w-full flex-1 h-full min-h-[calc(100vh-140px)] md:w-7/12 lg:w-7/12 xl:w-7/12 md:border-l md:border-t-0 border-white/10'
+                  : 'hidden md:flex md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] flex-1 border-t md:border-t-0 md:border-l border-white/10'
+          } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
             {renderAudioPlayer(selectedTrack)}
           </div>
         ) : (
