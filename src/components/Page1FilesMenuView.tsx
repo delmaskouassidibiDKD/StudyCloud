@@ -11245,54 +11245,42 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Bouton 3 traits remplaçant les 3 boutons pour désencombrer l'en-tête */}
+            {/* Bouton 3 traits unifié désencombrant l'en-tête */}
             <ViewerHeaderActionsMenu
               onShare={() => handleShareFile(track)}
               onDownload={() => handleDownloadFile(track)}
               onOpenStudySpace={() => handleOpenStudySpaceForCurrentMenu(true)}
               studySpaceTitle="Ouvrir dans l'Espace d'étude"
-            />
-            
-            {/* Options 3 traits */}
-            <div className="relative studycloud-menu-trigger">
-              <button
-                type="button"
-                id="p1-player-menu-trigger"
-                onClick={() => setIsPlayerMenuOpen(!isPlayerMenuOpen)}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-black/60 hover:bg-white/20 text-white border border-white/15 transition-all cursor-pointer shadow-sm active:scale-95"
-                title="Options de lecture"
-              >
-                <Menu className="w-4 h-4 stroke-[2.2]" />
-              </button>
-              {isPlayerMenuOpen && (() => {
-                const el = typeof document !== 'undefined' ? document.getElementById('p1-player-menu-trigger') : null;
-                const smartStyle = computeSmartMenuStyle(el?.getBoundingClientRect(), 220, 208);
-                return createPortal(
-                  <div 
-                    className="studycloud-file-menu-panel bg-[#0D1527] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
-                    style={smartStyle.style}
-                    onClick={(e) => e.stopPropagation()}
+            >
+              {(close) => (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { toggleAudioRepeat(); close(); }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-stone-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 text-stone-700 dark:text-stone-200 transition-colors border-t border-stone-100 dark:border-slate-800 cursor-pointer"
                   >
-                    <button type="button" onClick={() => { handleDownloadFile(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
-                      <Download className="w-4 h-4 text-blue-400" /> Télécharger ce son
-                    </button>
-                    <button type="button" onClick={() => { handleShareFile(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
-                      <Share2 className="w-4 h-4 text-emerald-400" /> Partager
-                    </button>
-                    <button type="button" onClick={() => { toggleAudioRepeat(); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
-                      <Repeat className="w-4 h-4 text-amber-400" /> <span>{isAudioRepeat === 'one' ? "Désactiver la boucle" : "Lire en boucle"}</span>
-                    </button>
-                    <button type="button" onClick={() => { setIsAudioShuffle(!isAudioShuffle); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer">
-                      <Shuffle className="w-4 h-4 text-amber-400" /> <span>{isAudioShuffle ? "Désactiver mode aléatoire" : "Mode aléatoire"}</span>
-                    </button>
-                    <button type="button" onClick={() => { handleDeleteAudio(track); setIsPlayerMenuOpen(false); }} className="w-full px-3.5 py-2.5 text-left hover:bg-rose-950/40 text-rose-400 flex items-center gap-2.5 cursor-pointer">
-                      <Trash2 className="w-4 h-4 text-rose-500" /> Supprimer ce son
-                    </button>
-                  </div>,
-                  document.body
-                );
-              })()}
-            </div>
+                    <Repeat className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                    <span>{isAudioRepeat === 'one' ? "Désactiver la boucle" : "Lire en boucle"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setIsAudioShuffle(!isAudioShuffle); close(); }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-stone-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 text-stone-700 dark:text-stone-200 transition-colors border-t border-stone-100 dark:border-slate-800 cursor-pointer"
+                  >
+                    <Shuffle className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                    <span>{isAudioShuffle ? "Désactiver mode aléatoire" : "Mode aléatoire"}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { handleDeleteAudio(track); close(); }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2.5 transition-colors border-t border-stone-100 dark:border-slate-800 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-500" />
+                    <span>Supprimer ce son</span>
+                  </button>
+                </>
+              )}
+            </ViewerHeaderActionsMenu>
 
             {/* Bouton Fermer */}
             <button

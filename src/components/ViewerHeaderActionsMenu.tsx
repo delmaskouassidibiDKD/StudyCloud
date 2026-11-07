@@ -11,6 +11,7 @@ export interface ViewerHeaderActionsMenuProps {
   onOpenStudySpace?: () => void;
   studySpaceTitle?: string;
   className?: string;
+  children?: ((close: () => void) => React.ReactNode) | React.ReactNode;
 }
 
 export const ViewerHeaderActionsMenu: React.FC<ViewerHeaderActionsMenuProps> = ({
@@ -21,13 +22,14 @@ export const ViewerHeaderActionsMenu: React.FC<ViewerHeaderActionsMenuProps> = (
   onOpenStudySpace,
   studySpaceTitle = "Ouvrir dans le Menu de création",
   className = '',
+  children,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
   useSmartContextMenuClose(isOpen, () => setIsOpen(false));
 
-  const hasAnyAction = Boolean(onToggleFavorite || onShare || onDownload || onOpenStudySpace);
+  const hasAnyAction = Boolean(onToggleFavorite || onShare || onDownload || onOpenStudySpace || children);
   if (!hasAnyAction) return null;
 
   return (
@@ -136,6 +138,9 @@ export const ViewerHeaderActionsMenu: React.FC<ViewerHeaderActionsMenuProps> = (
                 <span>{studySpaceTitle}</span>
               </button>
             )}
+
+            {/* Options additionnelles personnalisées */}
+            {typeof children === 'function' ? children(() => setIsOpen(false)) : children}
           </div>,
           document.body
         );

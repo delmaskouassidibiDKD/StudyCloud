@@ -1648,61 +1648,35 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           </button>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Bouton 3 traits remplaçant les 3 boutons pour désencombrer l'en-tête */}
+            {/* Bouton 3 traits unifié désencombrant l'en-tête */}
             <ViewerHeaderActionsMenu
               onToggleFavorite={() => handleToggleFavorite(track)}
               isFavorite={track.isFavorite}
               onShare={() => handleShare(track)}
               onDownload={() => handleDownload(track)}
               onOpenStudySpace={onOpenStudySpace ? () => onOpenStudySpace(track, 'Audio', audioList) : undefined}
-            />
-
-            {/* Menu 3 traits */}
-            <div className="relative">
-              <button
-                type="button"
-                disabled={isSelectionMode || selectedItemIds.length > 0}
-                onClick={() => {
-                  if (isSelectionMode || selectedItemIds.length > 0) return;
-                  setIsPlayerMenuOpen(!isPlayerMenuOpen);
-                }}
-                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-black/60 text-white border border-white/15 transition-all shadow-sm ${isSelectionMode || selectedItemIds.length > 0
-                    ? 'opacity-20 cursor-not-allowed pointer-events-none'
-                    : 'hover:bg-white/20 cursor-pointer active:scale-95'
-                  }`}
-                title={isSelectionMode || selectedItemIds.length > 0 ? "Menu désactivé en mode sélection" : "Options"}
-              >
-                <Menu className="w-4 h-4 stroke-[2.2]" />
-              </button>
-              {isPlayerMenuOpen && !isSelectionMode && selectedItemIds.length === 0 && (
-                <div
-                  className="absolute right-0 top-9 z-50 w-52 bg-[#0D1527] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl"
-                  onClick={(e) => e.stopPropagation()}
-                >
+            >
+              {(close) => (
+                <>
                   <button
                     type="button"
-                    onClick={() => { handleDownload(track); setIsPlayerMenuOpen(false); }}
-                    className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer"
+                    onClick={() => { handleRenameAudio(track); close(); }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-stone-100 dark:hover:bg-slate-800/80 flex items-center gap-2.5 text-stone-700 dark:text-stone-200 transition-colors border-t border-stone-100 dark:border-slate-800 cursor-pointer"
                   >
-                    <Download className="w-4 h-4 text-blue-400" /> Télécharger ce son
+                    <Plus className="w-4 h-4 text-amber-500 dark:text-amber-400" />
+                    <span>Renommer</span>
                   </button>
                   <button
                     type="button"
-                    onClick={() => { handleRenameAudio(track); setIsPlayerMenuOpen(false); }}
-                    className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer"
+                    onClick={() => { handleDeleteAudio(track); close(); }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2.5 transition-colors border-t border-stone-100 dark:border-slate-800 cursor-pointer"
                   >
-                    <Plus className="w-4 h-4 text-amber-400" /> Renommer
+                    <Trash2 className="w-4 h-4 text-rose-500" />
+                    <span>Supprimer ce son</span>
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => { handleDeleteAudio(track); setIsPlayerMenuOpen(false); }}
-                    className="w-full px-3.5 py-2.5 text-left hover:bg-rose-950/40 text-rose-400 flex items-center gap-2.5 cursor-pointer"
-                  >
-                    <Trash2 className="w-4 h-4 text-rose-500" /> Supprimer ce son
-                  </button>
-                </div>
+                </>
               )}
-            </div>
+            </ViewerHeaderActionsMenu>
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             <ViewerSuperExpandButton
