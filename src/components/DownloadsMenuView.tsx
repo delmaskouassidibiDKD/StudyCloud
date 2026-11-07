@@ -396,7 +396,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
           ((isViewerMaximized || viewerExpandLevel >= 1) && selectedItem)
             ? 'hidden'
             : selectedItem
-              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-200'
+              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-200'
               : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
         }`}>
           {loading ? (

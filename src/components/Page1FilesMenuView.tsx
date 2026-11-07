@@ -12579,7 +12579,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 (isViewerMaximized || viewerExpandLevel >= 1)
                   ? 'hidden' 
                   : selectedDocFile
-                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-3 sm:space-y-4">
@@ -12653,8 +12653,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
                 selectedAudioTrack
-                  ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
-                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                  ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
+                  : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
               }`}>
                 <div className="w-full space-y-3">
                   {/* En-tête de la liste */}
@@ -12913,7 +12913,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedVideoFile
-                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-3 sm:space-y-4">
@@ -12988,7 +12988,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 (isViewerMaximized || viewerExpandLevel >= 1)
                   ? 'hidden' 
                   : selectedImageFile
-                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-3 sm:space-y-4">
@@ -13063,7 +13063,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 (isViewerMaximized || viewerExpandLevel >= 1)
                   ? 'hidden' 
                   : selectedDownloadFile
-                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-6">
@@ -13198,7 +13198,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 (isViewerMaximized || viewerExpandLevel >= 1) 
                   ? 'hidden' 
                   : opened3DFolder && selectedClasseurFile 
-                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="w-full">
@@ -13554,7 +13554,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 isViewerMaximized 
                   ? 'hidden' 
                   : selectedCollectionFile
-                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-4">
@@ -13625,7 +13625,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 (isViewerMaximized || viewerExpandLevel >= 1) 
                   ? 'hidden' 
                   : selectedCollectionFile
-                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-4 animate-in fade-in duration-200">
@@ -13714,7 +13714,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 (isViewerMaximized || viewerExpandLevel >= 1) 
                   ? 'hidden' 
                   : selectedCollectionFile
-                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+                    ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
               }`}>
                 <div className="space-y-4 animate-in fade-in duration-200">

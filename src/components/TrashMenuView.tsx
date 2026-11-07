@@ -1664,7 +1664,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
           className={`overflow-y-auto bg-white py-5 pb-64 sm:pb-80 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
             ? 'hidden'
             : selectedFile
-              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-200 px-3 sm:px-4'
+              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-200 px-3 sm:px-4'
               : 'flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12'
             }`}
         >

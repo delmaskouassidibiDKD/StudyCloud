@@ -2054,8 +2054,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           (isViewerMaximized || viewerExpandLevel >= 1) && selectedTrack && isMobilePlayerOpen
             ? 'hidden'
             : (selectedTrack && isMobilePlayerOpen)
-              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
-              : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              : 'w-full md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
         }`}>
           <div className="w-full space-y-3">
             {/* En-tête de la liste */}

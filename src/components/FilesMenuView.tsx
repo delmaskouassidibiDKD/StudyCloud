@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { Edit3, ArrowLeft, ChevronDown, Upload, File, Folder, Check, MoreVertical, X, Search, Copy, Plus, Download, Link as LinkIcon, Globe, Eye, EyeOff, Menu, Star, Maximize2, Minimize2, Music, Film, Image as ImageIcon, FileEdit, FileText, BookOpen, Share2, ChevronLeft, ChevronRight, SlidersHorizontal, Mic, Pause, Play, Square, RotateCcw, RotateCw, ZoomIn, ZoomOut } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import { smartSentenceSplit } from './CenterMenu';
+import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, getFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 import { persistRawFile } from './PublishFileView';
@@ -456,16 +458,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
 
-  useEffect(() => {
-    if (!openMenuId) return;
-    const handleClickOutside = () => {
-      setOpenMenuId(null);
-    };
-    window.addEventListener('click', handleClickOutside);
-    return () => {
-      window.removeEventListener('click', handleClickOutside);
-    };
-  }, [openMenuId]);
+  useSmartContextMenuClose(Boolean(openMenuId), () => setOpenMenuId(null));
   const [classifyFileIds, setClassifyFileIds] = useState<string[] | null>(null);
   const [selectedMatiereIds, setSelectedMatiereIds] = useState<string[]>([]);
   const [isAddingNewMatiere, setIsAddingNewMatiere] = useState(false);
@@ -2817,13 +2810,13 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           : selectedFile
             ? 'pt-0 md:pt-14 md:sm:pt-16 pb-0 md:pb-1'
             : 'pt-14 sm:pt-16'
-      } flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0 h-full`}>
+      } flex-1 flex flex-col md:flex-row ${selectedFile ? 'overflow-hidden min-h-0 h-full' : 'overflow-visible min-h-0'} relative`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FICHIERS */}
         <div className={`overflow-y-auto px-2 sm:px-4 pt-1 pb-24 transition-all duration-200 ${
           ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
             ? 'hidden'
             : selectedFile
-            ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 h-full min-h-0 border-b md:border-b-0 md:border-r border-stone-400/40 dark:border-slate-800'
+            ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 h-full min-h-0 border-0 md:border-r border-stone-400/40 dark:border-slate-800'
             : 'w-full max-w-7xl mx-auto'
         }`}>
           {filteredFiles.length === 0 ? (
@@ -2935,13 +2928,14 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                               <div className="relative">
                                 <button
                                   type="button"
+                                  id={`files-menu-trigger-${f.id}`}
                                   disabled={isSelectionMode || selectedFileIds.length > 0}
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     if (isSelectionMode || selectedFileIds.length > 0) return;
                                     setOpenMenuId(isMenuOpen ? null : f.id);
                                   }}
-                                  className={`p-1 sm:p-1.2 rounded-lg bg-black/40 text-white border border-white/20 transition-all flex items-center justify-center shadow-sm ${
+                                  className={`studycloud-menu-trigger p-1 sm:p-1.2 rounded-lg bg-black/40 text-white border border-white/20 transition-all flex items-center justify-center shadow-sm ${
                                     isSelectionMode || selectedFileIds.length > 0
                                       ? 'opacity-20 cursor-not-allowed pointer-events-none'
                                       : 'hover:bg-black/70 cursor-pointer active:scale-90'
@@ -2951,162 +2945,168 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                                   <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
                                 </button>
 
-                                {isMenuOpen && !isSelectionMode && selectedFileIds.length === 0 && !isSaving && (
-                                  <div 
-                                    className="absolute top-8 left-0 z-50 bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    <div className="flex items-center justify-between px-3 py-1.5 border-b border-stone-200 mb-1">
-                                      <span className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Options</span>
-                                      <button
-                                        onClick={() => setOpenMenuId(null)}
-                                        className="p-0.5 hover:bg-stone-200 rounded-md text-stone-600 hover:text-stone-900 cursor-pointer transition-colors"
-                                      >
-                                        <X className="w-3.5 h-3.5" />
-                                      </button>
-                                    </div>
-
-                                    <button
-                                      onClick={() => {
-                                        setClassifyFileIds([f.id]);
-                                        setOpenMenuId(null);
-                                      }}
-                                      className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-b border-stone-200 cursor-pointer"
+                                {isMenuOpen && !isSelectionMode && selectedFileIds.length === 0 && !isSaving && (() => {
+                                  const el = typeof document !== 'undefined' ? document.getElementById(`files-menu-trigger-${f.id}`) : null;
+                                  const smartStyle = computeSmartMenuStyle(el?.getBoundingClientRect(), 420, 200);
+                                  return createPortal(
+                                    <div 
+                                      className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col"
+                                      style={smartStyle.style}
+                                      onClick={(e) => e.stopPropagation()}
                                     >
-                                      <span>📚 Classer dans les matières</span>
-                                    </button>
+                                      <div className="flex items-center justify-between px-3 py-1.5 border-b border-stone-200 mb-1">
+                                        <span className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Options</span>
+                                        <button
+                                          onClick={() => setOpenMenuId(null)}
+                                          className="p-0.5 hover:bg-stone-200 rounded-md text-stone-600 hover:text-stone-900 cursor-pointer transition-colors"
+                                        >
+                                          <X className="w-3.5 h-3.5" />
+                                        </button>
+                                      </div>
 
-                                    <button
-                                      onClick={() => {
-                                        handleToggleFavorite(f.id);
-                                        setOpenMenuId(null);
-                                      }}
-                                      className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                                    >
-                                      <span>❤️ {f.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}</span>
-                                    </button>
-
-                                    <button
-                                      onClick={() => {
-                                        handleDownload(f.url, f.name, f.id);
-                                        setOpenMenuId(null);
-                                      }}
-                                      className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                                    >
-                                      <Download className="w-4 h-4 text-stone-600" />
-                                      <span>Télécharger</span>
-                                    </button>
-
-                                    {setActivePreviewItem && (
                                       <button
                                         onClick={() => {
-                                          setActivePreviewItem({ ...f, folderName: f.matiere || selectedTab || 'Mes fichiers' });
+                                          setClassifyFileIds([f.id]);
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-b border-stone-200 cursor-pointer"
+                                      >
+                                        <span>📚 Classer dans les matières</span>
+                                      </button>
+
+                                      <button
+                                        onClick={() => {
+                                          handleToggleFavorite(f.id);
                                           setOpenMenuId(null);
                                         }}
                                         className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
                                       >
-                                        <BookOpen className="w-4 h-4 text-sky-600" />
-                                        <span>Ouvrir dans le Menu de création</span>
+                                        <span>❤️ {f.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}</span>
                                       </button>
-                                    )}
 
-                                    <button
-                                      onClick={() => {
-                                        if (onOpenCreateShareLink) onOpenCreateShareLink([f]);
-                                        setOpenMenuId(null);
-                                      }}
-                                      className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                                    >
-                                      <LinkIcon className="w-4 h-4 text-stone-600" />
-                                      <span>Créer un lien de partage</span>
-                                    </button>
+                                      <button
+                                        onClick={() => {
+                                          handleDownload(f.url, f.name, f.id);
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                                      >
+                                        <Download className="w-4 h-4 text-stone-600" />
+                                        <span>Télécharger</span>
+                                      </button>
 
-                                    <button
-                                      onClick={() => {
-                                        setRenamingFileId(f.id);
-                                        setNewFileName(f.name);
-                                        setOpenMenuId(null);
-                                      }}
-                                      className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                                    >
-                                      <Edit3 className="w-4 h-4 text-stone-600" />
-                                      <span>Renommer</span>
-                                    </button>
+                                      {setActivePreviewItem && (
+                                        <button
+                                          onClick={() => {
+                                            setActivePreviewItem({ ...f, folderName: f.matiere || selectedTab || 'Mes fichiers' });
+                                            setOpenMenuId(null);
+                                          }}
+                                          className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                                        >
+                                          <BookOpen className="w-4 h-4 text-sky-600" />
+                                          <span>Ouvrir dans le Menu de création</span>
+                                        </button>
+                                      )}
 
-                                    <button
-                                      onClick={() => {
-                                        handleDuplicate(f.id);
-                                        setOpenMenuId(null);
-                                      }}
-                                      className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                                    >
-                                      <Copy className="w-4 h-4 text-stone-600" />
-                                      <span>Dupliquer</span>
-                                    </button>
+                                      <button
+                                        onClick={() => {
+                                          if (onOpenCreateShareLink) onOpenCreateShareLink([f]);
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                                      >
+                                        <LinkIcon className="w-4 h-4 text-stone-600" />
+                                        <span>Créer un lien de partage</span>
+                                      </button>
 
-                                    <button
-                                      onClick={() => {
-                                        setIsSelectionMode(true);
-                                        setSelectedFileIds([f.id]);
-                                        setOpenMenuId(null);
-                                      }}
-                                      className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                                    >
-                                      <span>☑️ Sélectionner</span>
-                                    </button>
+                                      <button
+                                        onClick={() => {
+                                          setRenamingFileId(f.id);
+                                          setNewFileName(f.name);
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                                      >
+                                        <Edit3 className="w-4 h-4 text-stone-600" />
+                                        <span>Renommer</span>
+                                      </button>
 
-                                    <button
-                                      onClick={() => {
-                                        setIsSelectionMode(true);
-                                        setSelectedFileIds(filteredFiles.map(item => item.id));
-                                        setOpenMenuId(null);
-                                      }}
-                                      className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                                    >
-                                      <span>☑️ Tout sélectionner</span>
-                                    </button>
+                                      <button
+                                        onClick={() => {
+                                          handleDuplicate(f.id);
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                                      >
+                                        <Copy className="w-4 h-4 text-stone-600" />
+                                        <span>Dupliquer</span>
+                                      </button>
 
-                                    <button
-                                      onClick={async () => {
-                                        if (onPublishFiles) {
-                                          try {
-                                            const blob = await getFileBlob(f.id);
-                                            if (blob) {
-                                              await persistRawFile(f.id, blob);
+                                      <button
+                                        onClick={() => {
+                                          setIsSelectionMode(true);
+                                          setSelectedFileIds([f.id]);
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                                      >
+                                        <span>☑️ Sélectionner</span>
+                                      </button>
+
+                                      <button
+                                        onClick={() => {
+                                          setIsSelectionMode(true);
+                                          setSelectedFileIds(filteredFiles.map(item => item.id));
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                                      >
+                                        <span>☑️ Tout sélectionner</span>
+                                      </button>
+
+                                      <button
+                                        onClick={async () => {
+                                          if (onPublishFiles) {
+                                            try {
+                                              const blob = await getFileBlob(f.id);
+                                              if (blob) {
+                                                await persistRawFile(f.id, blob);
+                                              }
+                                            } catch (err) {
+                                              console.warn('Could not sync raw file for publication:', err);
                                             }
-                                          } catch (err) {
-                                            console.warn('Could not sync raw file for publication:', err);
+                                            const payload = [{
+                                              id: f.id,
+                                              name: f.name,
+                                              size: f.size,
+                                              type: f.type,
+                                              url: f.url || '',
+                                              isImage: f.isImage,
+                                            }];
+                                            onPublishFiles(payload);
+                                            window.dispatchEvent(new Event('studycloud_refresh_selected_files'));
                                           }
-                                          const payload = [{
-                                            id: f.id,
-                                            name: f.name,
-                                            size: f.size,
-                                            type: f.type,
-                                            url: f.url || '',
-                                            isImage: f.isImage,
-                                          }];
-                                          onPublishFiles(payload);
-                                          window.dispatchEvent(new Event('studycloud_refresh_selected_files'));
-                                        }
-                                        setOpenMenuId(null);
-                                      }}
-                                      className="w-full text-left px-3.5 py-2 hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 transition-colors border-t border-stone-200 cursor-pointer font-semibold"
-                                    >
-                                      <Globe className="w-4 h-4 text-emerald-600" />
-                                      <span>Publier (rendre public)</span>
-                                    </button>
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 transition-colors border-t border-stone-200 cursor-pointer font-semibold"
+                                      >
+                                        <Globe className="w-4 h-4 text-emerald-600" />
+                                        <span>Publier (rendre public)</span>
+                                      </button>
 
-                                    <button
-                                      onClick={() => {
-                                        handleDelete(f.id);
-                                        setOpenMenuId(null);
-                                      }}
-                                      className="w-full text-left px-3.5 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2 transition-colors border-t border-stone-200 cursor-pointer"
-                                    >
-                                      <span>🗑️ Supprimer</span>
-                                    </button>
-                                  </div>
-                                )}
+                                      <button
+                                        onClick={() => {
+                                          handleDelete(f.id);
+                                          setOpenMenuId(null);
+                                        }}
+                                        className="w-full text-left px-3.5 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2 transition-colors border-t border-stone-200 cursor-pointer"
+                                      >
+                                        <span>🗑️ Supprimer</span>
+                                      </button>
+                                    </div>,
+                                    document.body
+                                  );
+                                })()}
                               </div>
                             )}
 
@@ -3235,13 +3235,15 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                           </div>
                         ) : !isSaving && (
                           <button
+                            type="button"
+                            id={`files-menu-trigger-list-${f.id}`}
                             disabled={isSelectionMode || selectedFileIds.length > 0}
                             onClick={(e) => {
                               e.stopPropagation();
                               if (isSelectionMode || selectedFileIds.length > 0) return;
                               setOpenMenuId(openMenuId === f.id ? null : f.id);
                             }}
-                            className={`absolute top-1 left-1 z-30 w-7 h-7 rounded-full text-white flex items-center justify-center transition-all shadow-md ${
+                            className={`studycloud-menu-trigger absolute top-1 left-1 z-30 w-7 h-7 rounded-full text-white flex items-center justify-center transition-all shadow-md ${
                               isSelectionMode || selectedFileIds.length > 0
                                 ? 'bg-black/20 opacity-20 pointer-events-none cursor-not-allowed'
                                 : 'bg-black/60 hover:bg-black cursor-pointer active:scale-90'
@@ -3252,158 +3254,164 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                           </button>
                         )}
 
-                        {openMenuId === f.id && !isSelectionMode && selectedFileIds.length === 0 && !isSaving && (
-                          <div 
-                            className="absolute top-9 left-0 z-50 bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="flex items-center justify-between px-3 py-1.5 border-b border-stone-200 mb-1">
-                              <span className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Options</span>
-                              <button
-                                onClick={() => setOpenMenuId(null)}
-                                className="p-0.5 hover:bg-stone-200 rounded-md text-stone-600 hover:text-stone-900 cursor-pointer transition-colors"
-                              >
-                                <X className="w-3.5 h-3.5" />
-                              </button>
-                            </div>
-
-                            <button
-                              onClick={() => {
-                                setClassifyFileIds([f.id]);
-                                setOpenMenuId(null);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-b border-stone-200 cursor-pointer"
+                        {openMenuId === f.id && !isSelectionMode && selectedFileIds.length === 0 && !isSaving && (() => {
+                          const el = typeof document !== 'undefined' ? document.getElementById(`files-menu-trigger-list-${f.id}`) : null;
+                          const smartStyle = computeSmartMenuStyle(el?.getBoundingClientRect(), 420, 200);
+                          return createPortal(
+                            <div 
+                              className="studycloud-file-menu-panel bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn flex flex-col"
+                              style={smartStyle.style}
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              <span>📚 Classer dans les matières</span>
-                            </button>
+                              <div className="flex items-center justify-between px-3 py-1.5 border-b border-stone-200 mb-1">
+                                <span className="text-[10px] uppercase tracking-wider text-stone-500 font-bold">Options</span>
+                                <button
+                                  onClick={() => setOpenMenuId(null)}
+                                  className="p-0.5 hover:bg-stone-200 rounded-md text-stone-600 hover:text-stone-900 cursor-pointer transition-colors"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
 
-                            <button
-                              onClick={() => {
-                                handleToggleFavorite(f.id);
-                                setOpenMenuId(null);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                            >
-                              <span>❤️ {f.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}</span>
-                            </button>
-
-                            <button
-                              onClick={() => {
-                                handleDownload(f.url, f.name, f.id);
-                                setOpenMenuId(null);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                            >
-                              <Download className="w-4 h-4 text-stone-600" />
-                              <span>Télécharger</span>
-                            </button>
-
-                            {setActivePreviewItem && (
                               <button
                                 onClick={() => {
-                                  setActivePreviewItem({ ...f, folderName: f.matiere || selectedTab || 'Mes fichiers' });
+                                  setClassifyFileIds([f.id]);
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-b border-stone-200 cursor-pointer"
+                              >
+                                <span>📚 Classer dans les matières</span>
+                              </button>
+
+                              <button
+                                onClick={() => {
+                                  handleToggleFavorite(f.id);
                                   setOpenMenuId(null);
                                 }}
                                 className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
                               >
-                                <BookOpen className="w-4 h-4 text-sky-600" />
-                                <span>Ouvrir dans l'espace d'étude</span>
+                                <span>❤️ {f.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}</span>
                               </button>
-                            )}
 
-                            <button
-                              onClick={() => {
-                                if (onOpenCreateShareLink) onOpenCreateShareLink([f]);
-                                setOpenMenuId(null);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                            >
-                              <LinkIcon className="w-4 h-4 text-stone-600" />
-                              <span>Créer un lien de partage</span>
-                            </button>
+                              <button
+                                onClick={() => {
+                                  handleDownload(f.url, f.name, f.id);
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                              >
+                                <Download className="w-4 h-4 text-stone-600" />
+                                <span>Télécharger</span>
+                              </button>
+
+                              {setActivePreviewItem && (
+                                <button
+                                  onClick={() => {
+                                    setActivePreviewItem({ ...f, folderName: f.matiere || selectedTab || 'Mes fichiers' });
+                                    setOpenMenuId(null);
+                                  }}
+                                  className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                                >
+                                  <BookOpen className="w-4 h-4 text-sky-600" />
+                                  <span>Ouvrir dans l'espace d'étude</span>
+                                </button>
+                              )}
+
+                              <button
+                                onClick={() => {
+                                  if (onOpenCreateShareLink) onOpenCreateShareLink([f]);
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                              >
+                                <LinkIcon className="w-4 h-4 text-stone-600" />
+                                <span>Créer un lien de partage</span>
+                              </button>
 
 
-                            <button
-                              onClick={() => {
-                                setRenamingFileId(f.id);
-                                setNewFileName(f.name);
-                                setOpenMenuId(null);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                            >
-                              <Edit3 className="w-4 h-4 text-stone-600" />
-                              <span>Renommer</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDuplicate(f.id);
-                                setOpenMenuId(null);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                            >
-                              <Copy className="w-4 h-4 text-stone-600" />
-                              <span>Dupliquer</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                setIsSelectionMode(true);
-                                setSelectedFileIds([f.id]);
-                                setOpenMenuId(null);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                            >
-                              <span>☑️ Sélectionner</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                setIsSelectionMode(true);
-                                setSelectedFileIds(filteredFiles.map(item => item.id));
-                                setOpenMenuId(null);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
-                            >
-                              <span>☑️ Tout sélectionner</span>
-                            </button>
-                            <button
-                              onClick={async () => {
-                                if (onPublishFiles) {
-                                  try {
-                                    const blob = await getFileBlob(f.id);
-                                    if (blob) {
-                                      await persistRawFile(f.id, blob);
+                              <button
+                                onClick={() => {
+                                  setRenamingFileId(f.id);
+                                  setNewFileName(f.name);
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                              >
+                                <Edit3 className="w-4 h-4 text-stone-600" />
+                                <span>Renommer</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleDuplicate(f.id);
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                              >
+                                <Copy className="w-4 h-4 text-stone-600" />
+                                <span>Dupliquer</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setIsSelectionMode(true);
+                                  setSelectedFileIds([f.id]);
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                              >
+                                <span>☑️ Sélectionner</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setIsSelectionMode(true);
+                                  setSelectedFileIds(filteredFiles.map(item => item.id));
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                              >
+                                <span>☑️ Tout sélectionner</span>
+                              </button>
+                              <button
+                                onClick={async () => {
+                                  if (onPublishFiles) {
+                                    try {
+                                      const blob = await getFileBlob(f.id);
+                                      if (blob) {
+                                        await persistRawFile(f.id, blob);
+                                      }
+                                    } catch (err) {
+                                      console.warn('Could not sync raw file for publication:', err);
                                     }
-                                  } catch (err) {
-                                    console.warn('Could not sync raw file for publication:', err);
+                                    const payload = [{
+                                      id: f.id,
+                                      name: f.name,
+                                      size: f.size,
+                                      type: f.type,
+                                      url: f.url || '',
+                                      isImage: f.isImage,
+                                    }];
+                                    onPublishFiles(payload);
+                                    window.dispatchEvent(new Event('studycloud_refresh_selected_files'));
                                   }
-                                  const payload = [{
-                                    id: f.id,
-                                    name: f.name,
-                                    size: f.size,
-                                    type: f.type,
-                                    url: f.url || '',
-                                    isImage: f.isImage,
-                                  }];
-                                  onPublishFiles(payload);
-                                  window.dispatchEvent(new Event('studycloud_refresh_selected_files'));
-                                }
-                                setOpenMenuId(null);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 transition-colors border-t border-stone-200 cursor-pointer font-semibold"
-                            >
-                              <Globe className="w-4 h-4 text-emerald-600" />
-                              <span>Publier (rendre public)</span>
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDelete(f.id);
-                                setOpenMenuId(null);
-                              }}
-                              className="w-full text-left px-3.5 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2 transition-colors border-t border-stone-200 cursor-pointer"
-                            >
-                              <span>🗑️ Supprimer</span>
-                            </button>
-                          </div>
-                        )}
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 transition-colors border-t border-stone-200 cursor-pointer font-semibold"
+                              >
+                                <Globe className="w-4 h-4 text-emerald-600" />
+                                <span>Publier (rendre public)</span>
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleDelete(f.id);
+                                  setOpenMenuId(null);
+                                }}
+                                className="w-full text-left px-3.5 py-2 hover:bg-red-50 text-red-600 flex items-center gap-2 transition-colors border-t border-stone-200 cursor-pointer"
+                              >
+                                <span>🗑️ Supprimer</span>
+                              </button>
+                            </div>,
+                            document.body
+                          );
+                        })()}
 
                         <div className={`w-full aspect-[3/4] ${bgColor} rounded-xl shadow-[3px_3px_0px_0px_#1c1917] flex flex-col items-center justify-between p-3 text-white relative overflow-hidden transition-all ${
                           isReaderSelected ? 'ring-4 ring-white/95 dark:ring-amber-400 scale-[1.03]' : ''

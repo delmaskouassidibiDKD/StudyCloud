@@ -1987,14 +1987,14 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           : selectedFile
             ? 'pt-0 md:pt-14 md:sm:pt-16 pb-0 md:pb-1'
             : 'pt-14 sm:pt-16'
-      } flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0 h-full`}>
+      } flex-1 flex flex-col md:flex-row ${selectedFile ? 'overflow-hidden min-h-0 h-full' : 'overflow-visible min-h-0'} relative`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FICHIERS */}
-        <div className={`overflow-y-auto px-2 sm:px-4 pt-1 pb-24 transition-all duration-200 ${
+        <div className={`px-2 sm:px-4 pt-1 pb-24 transition-all duration-200 ${
           ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
             ? 'hidden'
             : selectedFile
-            ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 h-full min-h-0 border-b md:border-b-0 md:border-r border-stone-400/40 dark:border-slate-800'
-            : 'w-full max-w-7xl mx-auto'
+            ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 h-full min-h-0 border-0 md:border-r border-stone-400/40 dark:border-slate-800 overflow-y-auto'
+            : 'w-full max-w-7xl mx-auto overflow-visible'
         }`}>
           {filteredFiles.length === 0 ? (
             <div className="text-center pt-2">

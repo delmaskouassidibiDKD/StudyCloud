@@ -2230,7 +2230,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           ((isViewerMaximized || viewerExpandLevel >= 1) && viewerFile)
             ? 'hidden'
             : viewerFile
-              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-200'
+              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-200'
               : 'w-full md:px-10 lg:px-12'
         }`}>
           {/* ONGLET 1 : CLASSEUR — miroir fidèle du vrai menu Classeur */}

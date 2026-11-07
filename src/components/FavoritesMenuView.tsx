@@ -1121,7 +1121,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
             ? 'hidden'
             : selectedFile
-              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
               : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
             }`}
         >

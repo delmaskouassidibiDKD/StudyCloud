@@ -2034,7 +2034,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
           (isViewerMaximized || viewerExpandLevel >= 1)
             ? 'hidden'
             : selectedVideo
-              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
+              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80'
               : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
         }`}>
           <div className="space-y-3 sm:space-y-4">
