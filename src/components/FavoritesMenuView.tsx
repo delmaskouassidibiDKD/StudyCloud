@@ -961,6 +961,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
             <div className="w-full h-full flex flex-col bg-[#070B14]">
               <ModernImageViewer
                 fileId={file.id}
+                r2Key={(file as any).r2Key}
                 src={file.url}
                 fileName={file.name}
                 fileSize={file.size}

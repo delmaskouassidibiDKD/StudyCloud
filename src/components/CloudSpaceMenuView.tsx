@@ -1996,6 +1996,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           ) : isImage ? (
             <ModernImageViewer
               fileId={file.id}
+              r2Key={(file as any).r2Key}
               src={activeUrl}
               alt={name}
               fileName={name}

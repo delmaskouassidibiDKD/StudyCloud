@@ -1148,7 +1148,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [newGradeCoeff, setNewGradeCoeff] = useState('');
 
   const viewerExpandLevel = useViewerExpandLevel();
-  const isDedicatedView = viewMode === 'page1-files-menu' || viewMode.startsWith('matiere-') || viewMode === 'red-robot-menu';
+  const isDedicatedView = viewMode === 'files-menu' || viewMode === 'page1-files-menu' || viewMode.startsWith('matiere-') || viewMode === 'red-robot-menu';
 
   return (
     <div className={`flex flex-col ${isDedicatedView

@@ -1296,7 +1296,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
             <div className="w-full h-full flex flex-col bg-[#070B14]">
               <ModernImageViewer
                 fileId={file.id}
-                src={file.previewUrl || file.thumbnailUrl || file.url}
+                r2Key={(file as any).r2Key}
+                src={splitResolvedPdfUrl || file.previewUrl || file.thumbnailUrl || file.url}
                 fileName={file.name}
                 fileSize={formattedSize}
                 alt={file.name}
@@ -2210,9 +2211,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`absolute inset-x-0 bottom-0 ${viewerExpandLevel >= 2 ? 'top-0 md:top-0 md:left-0 w-full md:w-full z-40' : 'top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)]'} bg-[#C5B0A4] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 ${
+      className={`absolute inset-x-0 bottom-0 ${viewerExpandLevel >= 2 ? 'top-0 md:top-0 md:left-0 w-full md:w-full z-40' : 'top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)]'} ${selectedFile ? 'bg-[#04060A]' : 'bg-[#C5B0A4] dark:bg-[#0b0f19]'} text-[#2D4A3E] dark:text-slate-100 ${
         selectedFile
-          ? `px-2 sm:px-4 pb-2 pt-0 overflow-hidden flex flex-col ${viewerExpandLevel >= 2 ? 'h-screen md:h-screen' : 'h-[calc(100vh-62px)] md:h-[calc(100vh-66px)]'}`
+          ? `p-0 overflow-hidden flex flex-col ${viewerExpandLevel >= 2 ? 'h-screen md:h-screen' : 'h-[calc(100vh-62px)] md:h-[calc(100vh-66px)]'}`
           : 'px-4 pb-8 pt-0 overflow-y-auto'
       } transition-colors duration-300 ${
         isDraggingOver ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-50/20' : ''
@@ -2801,7 +2802,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
 
       <div className={`w-full ${
-        ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile) ? 'pt-1 pb-1' : 'pt-14 sm:pt-16'
+        selectedFile ? 'pt-0 pb-0' : 'pt-14 sm:pt-16'
       } flex-1 flex flex-col md:flex-row overflow-hidden relative min-h-0 h-full`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FICHIERS */}
         <div className={`overflow-y-auto px-2 sm:px-4 pt-1 pb-24 transition-all duration-200 ${
@@ -3483,9 +3484,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
               (viewerExpandLevel >= 2 || isViewerMaximized)
                 ? 'fixed inset-0 z-50 w-screen h-screen'
                 : (isViewerMaximized || selectedFile)
-                  ? 'w-full flex-1 rounded-xl border border-white/10'
-                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-400/40 dark:border-slate-800 rounded-xl'
-            } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
+                  ? 'w-full flex-1 rounded-none border-0'
+                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10 rounded-none'
+            } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0 border-white/10' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}
           </aside>

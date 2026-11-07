@@ -11,7 +11,7 @@ import {
   Image as ImageIcon,
   AlertCircle
 } from 'lucide-react';
-import { getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
+import { getFileBlobUrl, getFileBlob, getThumbnailData } from '../services/localFileStorage';
 import { getWorkerApiUrl } from '../services/api';
 
 import { useMediaFitMode } from '../utils/viewerFitManager';
@@ -20,6 +20,7 @@ interface ModernImageViewerProps {
   src?: string;
   alt?: string;
   fileId?: string;
+  r2Key?: string;
   fileName?: string;
   fileSize?: string | number;
   className?: string;
@@ -29,6 +30,7 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
   src,
   alt = 'Image',
   fileId,
+  r2Key,
   fileName = 'Image',
   fileSize,
   className = ''
@@ -44,13 +46,39 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
   const [hasError, setHasError] = useState<boolean>(false);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const attemptIndexRef = useRef<number>(0);
 
-  // Résolution de l'image : l'image enregistrée sur le Cloudflare Worker / R2 est la source directe
+  // Résolution robuste de l'image (IndexedDB local d'abord, miniature, source directe, r2Key, stream worker)
   const resolveImage = useCallback(async () => {
     setIsLoading(true);
     setHasError(false);
+    attemptIndexRef.current = 0;
 
-    // Priorité 1 : Source directe (URL R2 / Worker)
+    // Priorité 1 : Fichier original en IndexedDB (0ms, 100% hors-ligne, fiable sur téléphone)
+    if (fileId) {
+      try {
+        const localBlobUrl = await getFileBlobUrl(fileId);
+        if (localBlobUrl) {
+          setResolvedSrc(localBlobUrl);
+          setIsLoading(false);
+          return;
+        }
+      } catch (err) {}
+    }
+
+    // Priorité 2 : Miniature de secours déjà présente en IndexedDB
+    if (fileId) {
+      try {
+        const thumb = await getThumbnailData(fileId);
+        if (thumb && thumb.startsWith('data:')) {
+          setResolvedSrc(thumb);
+          setIsLoading(false);
+          return;
+        }
+      } catch (err) {}
+    }
+
+    // Priorité 3 : Source directe fournie (dataUrl, blob actif ou URL http)
     if (src && typeof src === 'string' && src.trim()) {
       let finalSrc = src;
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
@@ -60,13 +88,18 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
           finalSrc = `${baseUrl}/api/cloud/${parts[1]}`;
         }
       }
-      if (!finalSrc.startsWith('blob:') && !finalSrc.includes('/api/cloud/thumbnail/')) {
-        setResolvedSrc(finalSrc);
-        return;
-      }
+      setResolvedSrc(finalSrc);
+      return;
     }
 
-    // Priorité 2 : Streaming Cloudflare Worker si fileId
+    // Priorité 4 : Clé R2 directe
+    if (r2Key) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      setResolvedSrc(`${baseUrl}/api/cloud/file/images/${encodeURIComponent(r2Key)}`);
+      return;
+    }
+
+    // Priorité 5 : Streaming Cloudflare Worker si fileId
     if (fileId) {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
@@ -74,20 +107,9 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
       return;
     }
 
-    // Secours local si blob disponible dans ce navigateur
-    if (fileId) {
-      try {
-        const blobUrl = await getFileBlobUrl(fileId);
-        if (blobUrl) {
-          setResolvedSrc(blobUrl);
-          return;
-        }
-      } catch (err) {}
-    }
-
     setHasError(true);
     setIsLoading(false);
-  }, [src, fileId]);
+  }, [src, fileId, r2Key]);
 
   useEffect(() => {
     resolveImage();
@@ -162,25 +184,66 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
             alt={alt || fileName}
             onLoad={() => setIsLoading(false)}
             onError={async () => {
+              const attempt = attemptIndexRef.current;
+              attemptIndexRef.current += 1;
+
               if (fileId) {
-                try {
-                  const b = await getFileBlob(fileId);
-                  if (b) {
-                    const freshUrl = URL.createObjectURL(b);
-                    if (freshUrl !== resolvedSrc) {
-                      setResolvedSrc(freshUrl);
+                // Tentative 1 : getFileBlob frais depuis IndexedDB
+                if (attempt === 0) {
+                  try {
+                    const b = await getFileBlob(fileId);
+                    if (b) {
+                      const freshUrl = URL.createObjectURL(b);
+                      if (freshUrl && freshUrl !== resolvedSrc) {
+                        setResolvedSrc(freshUrl);
+                        return;
+                      }
+                    }
+                  } catch (e) {}
+                }
+
+                // Tentative 2 : Miniature locale IndexedDB
+                if (attempt <= 1) {
+                  try {
+                    const thumb = await getThumbnailData(fileId);
+                    if (thumb && thumb !== resolvedSrc) {
+                      setResolvedSrc(thumb);
                       return;
                     }
-                  }
-                } catch (e) {}
+                  } catch (e) {}
+                }
 
-                const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-                const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
-                if (resolvedSrc !== streamUrl) {
-                  setResolvedSrc(streamUrl);
-                  return;
+                // Tentative 3 : R2 image file
+                if (attempt <= 2 && r2Key) {
+                  const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+                  const r2Url = `${baseUrl}/api/cloud/file/images/${encodeURIComponent(r2Key)}`;
+                  if (r2Url !== resolvedSrc) {
+                    setResolvedSrc(r2Url);
+                    return;
+                  }
+                }
+
+                // Tentative 4 : Stream worker
+                if (attempt <= 3) {
+                  const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+                  const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
+                  if (streamUrl !== resolvedSrc) {
+                    setResolvedSrc(streamUrl);
+                    return;
+                  }
+                }
+
+                // Tentative 5 : Thumbnail worker
+                if (attempt <= 4) {
+                  const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+                  const thumbWorkerUrl = `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(fileId)}`;
+                  if (thumbWorkerUrl !== resolvedSrc) {
+                    setResolvedSrc(thumbWorkerUrl);
+                    return;
+                  }
                 }
               }
+
               setHasError(true);
               setIsLoading(false);
             }}

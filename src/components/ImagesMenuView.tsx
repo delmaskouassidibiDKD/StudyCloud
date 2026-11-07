@@ -1884,6 +1884,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             alt={file.name}
             fileName={file.name}
             fileId={file.id}
+            r2Key={(file as any).r2Key}
             fileSize={file.size}
             className="w-full h-full max-h-[calc(100vh-180px)] rounded-2xl"
           />
