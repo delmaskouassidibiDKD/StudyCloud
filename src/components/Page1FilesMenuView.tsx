@@ -155,6 +155,7 @@ import { applyDashboardWallpaper } from '../utils/wallpaperHelper';
 import { computeSmartMenuStyle } from '../hooks/useContextMenuPosition';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
 import { ViewerFitButton } from './ViewerFitButton';
+import { ViewerHeaderActionsMenu } from './ViewerHeaderActionsMenu';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
@@ -10774,11 +10775,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </div>
           </div>
 
-          {/* Boutons d'action : Télécharger .txt, Partager, Agrandir, Fermer */}
+          {/* Boutons d'action : Menu 3 traits, Agrandir, Fermer */}
           <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
+            <ViewerHeaderActionsMenu
+              onShare={() => handleShareFile(file)}
+              onDownload={() => {
                 const fullContent = (noteTitleContent ? `${noteTitleContent}\n\n` : '') + noteTextContent;
                 const blob = new Blob([fullContent], { type: 'text/plain;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
@@ -10791,20 +10792,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 URL.revokeObjectURL(url);
                 showToast(`"${file.name}" téléchargé !`);
               }}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Télécharger la note (.txt)"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleShareFile(file)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Partager"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-            </button>
+            />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             <ViewerSuperExpandButton
@@ -11006,32 +10994,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <span className="text-[11px] font-black">{docLayoutMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => handleShareFile(file)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Partager"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleDownloadFile(file)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Télécharger"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleOpenStudySpaceForCurrentMenu(true)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
-              title="Ouvrir dans le Menu de création"
-            >
-              <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
-            </button>
+            {/* Bouton 3 traits remplaçant les 3 boutons pour désencombrer l'en-tête */}
+            <ViewerHeaderActionsMenu
+              onShare={() => handleShareFile(file)}
+              onDownload={() => handleDownloadFile(file)}
+              onOpenStudySpace={() => handleOpenStudySpaceForCurrentMenu(true)}
+            />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             <ViewerSuperExpandButton
@@ -11277,30 +11245,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => handleShareFile(track)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Partager"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDownloadFile(track)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Télécharger"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOpenStudySpaceForCurrentMenu(true)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
-              title="Ouvrir dans l'Espace d'étude"
-            >
-              <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
-            </button>
+            {/* Bouton 3 traits remplaçant les 3 boutons pour désencombrer l'en-tête */}
+            <ViewerHeaderActionsMenu
+              onShare={() => handleShareFile(track)}
+              onDownload={() => handleDownloadFile(track)}
+              onOpenStudySpace={() => handleOpenStudySpaceForCurrentMenu(true)}
+              studySpaceTitle="Ouvrir dans l'Espace d'étude"
+            />
             
             {/* Options 3 traits */}
             <div className="relative studycloud-menu-trigger">
@@ -11550,30 +11501,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 pr-1 sm:pr-3">
-            <button
-              type="button"
-              onClick={() => handleShareFile(file)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Partager"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDownloadFile(file)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Télécharger"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOpenStudySpaceForCurrentMenu(true)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
-              title="Ouvrir dans l'Espace d'étude"
-            >
-              <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
-            </button>
+            {/* Bouton 3 traits remplaçant les 3 boutons pour désencombrer l'en-tête */}
+            <ViewerHeaderActionsMenu
+              onShare={() => handleShareFile(file)}
+              onDownload={() => handleDownloadFile(file)}
+              onOpenStudySpace={() => handleOpenStudySpaceForCurrentMenu(true)}
+              studySpaceTitle="Ouvrir dans l'Espace d'étude"
+            />
 
             {/* Bouton de cadrage (agrandissement de cadre vidéo) */}
             <ViewerFitButton />
@@ -11688,30 +11622,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           </div>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => handleShareFile(file)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Partager"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDownloadFile(file)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Télécharger"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleOpenStudySpaceForCurrentMenu(true)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
-              title="Ouvrir dans l'Espace d'étude"
-            >
-              <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
-            </button>
+            {/* Bouton 3 traits remplaçant les 3 boutons pour désencombrer l'en-tête */}
+            <ViewerHeaderActionsMenu
+              onShare={() => handleShareFile(file)}
+              onDownload={() => handleDownloadFile(file)}
+              onOpenStudySpace={() => handleOpenStudySpaceForCurrentMenu(true)}
+              studySpaceTitle="Ouvrir dans l'Espace d'étude"
+            />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             <ViewerSuperExpandButton

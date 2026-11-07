@@ -57,6 +57,7 @@ import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFo
 import { handleNativeShare } from '../utils/nativeShare';
 import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
+import { ViewerHeaderActionsMenu } from './ViewerHeaderActionsMenu';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
@@ -1940,44 +1941,14 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               </>
             )}
 
-            <button
-              type="button"
-              onClick={() => handleToggleFavorite(file)}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${file.isFavorite ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
-                }`}
-              title={file.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-            >
-              <Star className={`w-3.5 h-3.5 ${file.isFavorite ? 'fill-amber-400' : ''}`} />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleShare(file)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Partager"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              type="button"
-              onClick={() => handleDownload(file)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Télécharger"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-
-            {onOpenStudySpace && (
-              <button
-                type="button"
-                onClick={() => onOpenStudySpace(file, 'Documents', documentsList)}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
-                title="Ouvrir dans le Menu de création"
-              >
-                <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
-              </button>
-            )}
+            {/* Bouton 3 traits remplaçant les 3 boutons pour désencombrer l'en-tête */}
+            <ViewerHeaderActionsMenu
+              onToggleFavorite={() => handleToggleFavorite(file)}
+              isFavorite={file.isFavorite}
+              onShare={() => handleShare(file)}
+              onDownload={() => handleDownload(file)}
+              onOpenStudySpace={onOpenStudySpace ? () => onOpenStudySpace(file, 'Documents', documentsList) : undefined}
+            />
 
             {/* Super Agrandissement Progressif (Desktop uniquement) */}
             <ViewerSuperExpandButton

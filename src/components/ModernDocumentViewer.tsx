@@ -523,8 +523,8 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
 
   return (
     <div className={`w-full h-full min-h-0 flex flex-col bg-white dark:bg-zinc-950 text-zinc-900 dark:text-zinc-100 overflow-hidden ${className}`}>
-      {/* 1. EN-TÊTE DU DOCUMENT AVEC ACTIONS & CONTRÔLES (Masqué quand hideHeader={true} ou pour Word/Excel/PPTX qui ont leur propre barre intégrée) */}
-      {!hideHeader && !isWord && !isExcel && !isPptx && (
+      {/* 1. EN-TÊTE DU DOCUMENT AVEC ACTIONS & CONTRÔLES (Masqué quand hideHeader={true}, pour Word/Excel/PPTX ou sur mobile pour PDF afin d'éviter la bande vide et combler tout l'espace) */}
+      {!hideHeader && !isWord && !isExcel && !isPptx && !(isPdf && isMobile) && (
         <div className="flex items-center justify-between px-2 sm:px-4 py-1 sm:py-2 bg-zinc-100 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800 shrink-0 z-10 shadow-xs">
           {/* Masqué sur mobile pour éviter la redondance et libérer l'espace vertical */}
           <div className="hidden sm:flex items-center gap-2.5 min-w-0">

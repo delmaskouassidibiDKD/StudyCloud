@@ -59,6 +59,7 @@ import { ensureFileExtension } from '../utils/fileExtensionHelper';
 import { computeSmartMenuStyle, useSmartContextMenuClose } from '../hooks/useContextMenuPosition';
 import { useGlobalAudio } from '../context/GlobalAudioContext';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import { ViewerHeaderActionsMenu } from './ViewerHeaderActionsMenu';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 interface AudioMenuViewProps {
@@ -1647,43 +1648,14 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           </button>
 
           <div className="flex items-center gap-1.5 shrink-0">
-            <button
-              type="button"
-              onClick={() => handleToggleFavorite(track)}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer ${track.isFavorite
-                  ? 'bg-amber-500/20 text-amber-400 border-amber-400/40'
-                  : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
-                }`}
-              title={track.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-            >
-              <Star className={`w-3.5 h-3.5 ${track.isFavorite ? 'fill-amber-400' : ''}`} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleShare(track)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Partager"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleDownload(track)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-              title="Télécharger"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-            {onOpenStudySpace && (
-              <button
-                type="button"
-                onClick={() => onOpenStudySpace(track, 'Audio', audioList)}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
-                title="Ouvrir dans le Menu de création"
-              >
-                <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
-              </button>
-            )}
+            {/* Bouton 3 traits remplaçant les 3 boutons pour désencombrer l'en-tête */}
+            <ViewerHeaderActionsMenu
+              onToggleFavorite={() => handleToggleFavorite(track)}
+              isFavorite={track.isFavorite}
+              onShare={() => handleShare(track)}
+              onDownload={() => handleDownload(track)}
+              onOpenStudySpace={onOpenStudySpace ? () => onOpenStudySpace(track, 'Audio', audioList) : undefined}
+            />
 
             {/* Menu 3 traits */}
             <div className="relative">

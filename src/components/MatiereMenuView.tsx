@@ -28,6 +28,7 @@ import { validateFilesForMesFichiersAsync } from '../services/fileTypeValidator'
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
 import { ViewerFitButton } from './ViewerFitButton';
+import { ViewerHeaderActionsMenu } from './ViewerHeaderActionsMenu';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 interface MatiereMenuViewProps {
@@ -826,54 +827,17 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
               </>
             )}
 
-            {/* Étoile Favori */}
-            <button
-              type="button"
-              onClick={() => handleToggleFavorite(file.id)}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 ${
-                file.isFavorite
-                  ? 'bg-amber-500/20 text-amber-400 border-amber-400/40'
-                  : 'bg-black/60 hover:bg-slate-800 text-white border-white/10'
-              }`}
-              title={file.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-            >
-              <Star className={`w-3.5 h-3.5 ${file.isFavorite ? 'fill-amber-400' : ''}`} />
-            </button>
-
-            {/* Partager */}
-            <button
-              type="button"
-              onClick={() => handleNativeShare(file as any, (msg) => {
+            {/* Bouton 3 traits remplaçant les 3 boutons pour désencombrer l'en-tête */}
+            <ViewerHeaderActionsMenu
+              onToggleFavorite={() => handleToggleFavorite(file.id)}
+              isFavorite={file.isFavorite}
+              onShare={() => handleNativeShare(file as any, (msg) => {
                 setSuccessMessage(msg);
                 setTimeout(() => setSuccessMessage(null), 3000);
               })}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
-              title="Partager"
-            >
-              <Share2 className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Télécharger */}
-            <button
-              type="button"
-              onClick={() => handleDownload(file.url, file.name, file.id)}
-              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer shrink-0"
-              title="Télécharger"
-            >
-              <Download className="w-3.5 h-3.5" />
-            </button>
-
-            {/* Ouvrir dans l'espace d'étude avec IA */}
-            {setActivePreviewItem && (
-              <button
-                type="button"
-                onClick={() => setActivePreviewItem({ ...file, folderName: matiereName })}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50 shrink-0"
-                title="Ouvrir dans le Menu de création"
-              >
-                <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
-              </button>
-            )}
+              onDownload={() => handleDownload(file.url, file.name, file.id)}
+              onOpenStudySpace={setActivePreviewItem ? () => setActivePreviewItem({ ...file, folderName: matiereName }) : undefined}
+            />
 
             {/* Bouton de cadrage (uniquement pour vidéo) */}
             {fileType === 'video' && <ViewerFitButton />}

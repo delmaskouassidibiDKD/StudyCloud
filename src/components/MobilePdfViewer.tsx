@@ -664,6 +664,29 @@ export const MobilePdfViewer: React.FC<MobilePdfViewerProps> = ({
     return () => clearTimeout(timer);
   }, [activeSpeechLineIndex, isSpeaking]);
 
+  // Téléchargement direct du PDF
+  const handleDownload = async () => {
+    try {
+      let downloadUrl = url || file?.url;
+      if (!downloadUrl && fileId) {
+        const blob = await getFileBlob(fileId);
+        if (blob) {
+          downloadUrl = URL.createObjectURL(blob);
+        }
+      }
+      if (downloadUrl) {
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = file?.name || 'document.pdf';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (e) {
+      console.warn('Erreur de téléchargement:', e);
+    }
+  };
+
   // Largeur d'affichage CSS du canvas
   const containerW = containerRef.current?.clientWidth || verticalContainerRef.current?.clientWidth || (typeof window !== 'undefined' ? window.innerWidth : 360);
   const displayWidth = Math.round(Math.max(280, containerW - 20) * (zoomLevel / 100));
@@ -759,8 +782,17 @@ export const MobilePdfViewer: React.FC<MobilePdfViewerProps> = ({
           </button>
         </div>
 
-        {/* Contrôles du zoom */}
+        {/* Contrôles du zoom & Téléchargement (point rouge utilisateur) */}
         <div className="flex items-center gap-1">
+          <button
+            type="button"
+            onClick={handleDownload}
+            className="p-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-lg text-stone-600 dark:text-stone-400 active:scale-95 transition-all cursor-pointer"
+            title="Télécharger le fichier"
+          >
+            <Download className="w-4 h-4" />
+          </button>
+
           <button
             type="button"
             onClick={() => updateZoom(zoomLevel - 15)}
