@@ -50,7 +50,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
     try {
       const local = getDownloadedFiles();
       if (local && local.length > 0) return local;
-    } catch {}
+    } catch { }
     return [];
   });
   const [loading, setLoading] = useState(true);
@@ -77,7 +77,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
         if (items && items.length > 0) {
           setDownloadedList(items);
         }
-      } catch {}
+      } catch { }
       setLoading(false);
     }
   }, [serverDownloads]);
@@ -96,7 +96,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
             setResolvedBlobUrl(url);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     }
     return () => {
       isMounted = false;
@@ -146,9 +146,9 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
       setIsViewerMaximized(false);
     }
     showToast('Élément retiré de vos téléchargements');
-    await CloudStorageAPI.deleteDownload(id).catch(() => {});
-    invalidateCloudQueries.downloads().catch(() => {});
-    invalidateCloudQueries.overview().catch(() => {});
+    await CloudStorageAPI.deleteDownload(id).catch(() => { });
+    invalidateCloudQueries.downloads().catch(() => { });
+    invalidateCloudQueries.overview().catch(() => { });
   };
 
   const totalDownloadBytes = useMemo(() => {
@@ -193,11 +193,10 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
     const url = resolvedBlobUrl || cleanUrl || fallbackStream;
 
     return (
-      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        (viewerExpandLevel >= 2 || isViewerMaximized)
-          ? 'fixed inset-0 z-50 w-screen h-screen'
-          : ''
-      }`}>
+      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${(viewerExpandLevel >= 2 || isViewerMaximized)
+        ? 'fixed inset-0 z-50 w-screen h-screen'
+        : ''
+        }`}>
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[200px]" title={name}>
@@ -247,9 +246,8 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
                   setViewerExpandLevel(2);
                 }
               }}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                (isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
-              }`}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${(isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                }`}
               title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : 'Plein écran'}
             >
               {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
@@ -392,13 +390,12 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
       {/* DISPOSITION SPLIT */}
       <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
         {/* PANNEAU DE GAUCHE : LISTE */}
-        <div className={`overflow-y-auto px-3 sm:px-6 py-4 pb-64 ${
-          ((isViewerMaximized || viewerExpandLevel >= 1) && selectedItem)
-            ? 'hidden'
-            : selectedItem
-              ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-200'
-              : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
-        }`}>
+        <div className={`overflow-y-auto px-3 sm:px-6 py-4 pb-64 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedItem)
+          ? 'hidden'
+          : selectedItem
+            ? 'hidden md:block md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-200'
+            : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
+          }`}>
           {loading ? (
             <div className="py-20 text-center text-stone-500">
               <div className="w-8 h-8 border-2 border-sky-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
@@ -441,20 +438,18 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
                   <div
                     key={item.id}
                     onClick={() => setSelectedItem(item)}
-                    className={`flex flex-col sm:flex-row items-center justify-between aspect-[3/4] sm:aspect-auto p-2 sm:p-3 rounded-xl sm:rounded-2xl border transition-all cursor-pointer relative ${
-                      isSelected
-                        ? 'bg-sky-500/15 border-sky-400 shadow-md ring-1 ring-sky-400/30'
-                        : 'bg-[#0B101D] border-white/5 hover:border-sky-500/40'
-                    }`}
+                    className={`flex flex-col sm:flex-row items-center justify-between aspect-[3/4] sm:aspect-auto p-2 sm:p-3 rounded-xl sm:rounded-2xl border transition-all cursor-pointer relative ${isSelected
+                      ? 'bg-sky-500/15 border-sky-400 shadow-md ring-1 ring-sky-400/30'
+                      : 'bg-[#0B101D] border-white/5 hover:border-sky-500/40'
+                      }`}
                   >
                     <div className="flex flex-col sm:flex-row items-center gap-1.5 sm:gap-3 min-w-0 w-full flex-1 justify-center sm:justify-start">
                       <div className="w-10 h-10 sm:w-10 sm:h-10 rounded-xl bg-black border border-white/10 flex items-center justify-center shrink-0 my-auto sm:my-0">
                         {getItemIcon(item)}
                       </div>
                       <div className="min-w-0 w-full text-center sm:text-left mt-auto sm:mt-0">
-                        <p className={`text-[9px] sm:text-sm font-bold truncate ${
-                          isSelected ? 'text-sky-300' : 'text-white'
-                        }`}>
+                        <p className={`text-[9px] sm:text-sm font-bold truncate ${isSelected ? 'text-sky-300' : 'text-white'
+                          }`}>
                           {name}
                         </p>
                         <p className="text-[8px] sm:text-xs text-slate-400 mt-0.5 truncate">
@@ -488,7 +483,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
               ? 'fixed inset-0 z-50 w-screen h-screen'
               : (isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
           } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}>
             {renderReader(selectedItem)}
           </div>

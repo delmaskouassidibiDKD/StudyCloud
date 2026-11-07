@@ -55,6 +55,7 @@ import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '.
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
+import { ViewerHeaderActionsMenu } from './ViewerHeaderActionsMenu';
 import { parseSizeToBytes } from './HeaderMenuControls';
 
 const getDocumentTheme = (ext: string = 'PDF') => {
@@ -907,57 +908,40 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
           {/* Outils du lecteur à droite */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Bouton Déverrouiller rapide */}
-            <button
-              type="button"
-              onClick={() => {
-                handleRestore(file);
-                if (selectedFile?.id === file.id) setSelectedFile(null);
-              }}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm"
-              title="Déverrouiller vers l'emplacement d'origine"
+            {/* Menu 3 traits : Rassemble Télécharger, Déverrouiller, Mettre à la corbeille et Espace d'étude */}
+            <ViewerHeaderActionsMenu
+              onDownload={() => handleDownload(file)}
+              onOpenStudySpace={onOpenStudySpace ? () => onOpenStudySpace(file, 'Dossier sécurisé') : undefined}
             >
-              <Unlock className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Déverrouiller</span>
-            </button>
-
-            {/* Bouton Espace d'étude */}
-            {onOpenStudySpace && (
-              <button
-                type="button"
-                onClick={() => onOpenStudySpace(file, 'Dossier sécurisé')}
-                className="hidden sm:flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-sky-500/20 hover:bg-sky-500/30 text-sky-300 border border-sky-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm"
-                title="Ouvrir dans le Menu de création"
-              >
-                <BookOpen className="w-3.5 h-3.5" />
-                <span className="hidden md:inline">Étudier</span>
-              </button>
-            )}
-
-            {/* Bouton Télécharger */}
-            <button
-              type="button"
-              onClick={() => handleDownload(file)}
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm flex items-center gap-1"
-              title="Télécharger"
-            >
-              <Download className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Télécharger</span>
-            </button>
-
-            {/* Bouton Mettre à la corbeille */}
-            <button
-              type="button"
-              onClick={() => {
-                handleDeleteToTrash(file);
-                if (selectedFile?.id === file.id) setSelectedFile(null);
-              }}
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm flex items-center gap-1"
-              title="Mettre à la corbeille"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Corbeille</span>
-            </button>
+              {(close) => (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleRestore(file);
+                      if (selectedFile?.id === file.id) setSelectedFile(null);
+                      close();
+                    }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center gap-2.5 transition-colors border-t border-stone-100 dark:border-slate-800 cursor-pointer"
+                  >
+                    <Unlock className="w-4 h-4 text-emerald-500" />
+                    <span>Déverrouiller le fichier</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDeleteToTrash(file);
+                      if (selectedFile?.id === file.id) setSelectedFile(null);
+                      close();
+                    }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2.5 transition-colors border-t border-stone-100 dark:border-slate-800 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-500" />
+                    <span>Mettre à la corbeille</span>
+                  </button>
+                </>
+              )}
+            </ViewerHeaderActionsMenu>
 
             {/* Bouton d'agrandissement de cadre (uniquement pour vidéo) */}
             {fileType === 'video' && <ViewerFitButton />}
@@ -1603,7 +1587,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
   };
 
   return (
-    <div className="flex-1 flex flex-col w-full min-h-screen bg-stone-100 text-stone-900 select-none animate-in fade-in duration-200">
+    <div className={`flex-1 flex flex-col w-full ${selectedFile ? 'h-full flex-1 overflow-hidden bg-[#04060A] overscroll-none' : 'min-h-screen bg-stone-100'} text-stone-900 select-none animate-in fade-in duration-200`}>
       <input
         type="file"
         ref={fileInputRef}
@@ -1944,7 +1928,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
         </div>
       ) : (
         /* VUE DES FICHIERS PROTÉGÉS AVEC MODE SPLIT-SCREEN LATÉRAL (COMME DANS LA CORBEILLE) */
-        <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+        <div className={`flex-1 flex flex-col md:flex-row w-full ${selectedFile ? 'h-full flex-1 overflow-hidden bg-[#04060A]' : 'overflow-hidden min-h-[calc(100vh-120px)]'} relative`}>
           <main
             className={`overflow-y-auto bg-stone-100 py-4 pb-36 ${
               ((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
@@ -2109,7 +2093,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                   ? 'fixed inset-0 z-50 w-screen h-screen'
                   : (isViewerMaximized || viewerExpandLevel >= 1)
                     ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
+                    : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
               } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
             >
               {renderDedicatedReader(selectedFile)}

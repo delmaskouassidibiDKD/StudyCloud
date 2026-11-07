@@ -52,6 +52,7 @@ import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
+import { ViewerHeaderActionsMenu } from './ViewerHeaderActionsMenu';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes } from './HeaderMenuControls';
 
 const getDocumentTheme = (ext: string = 'PDF') => {
@@ -1301,27 +1302,35 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
           {/* Outils du lecteur à droite */}
           <div className="flex items-center gap-1.5 shrink-0">
-            {/* Bouton Restaurer rapide */}
-            <button
-              type="button"
-              onClick={() => handleRestore(file)}
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-full bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 border border-emerald-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm"
-              title="Restaurer cet élément"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Restaurer</span>
-            </button>
-
-            {/* Bouton Supprimer définitivement */}
-            <button
-              type="button"
-              onClick={() => handleDeletePermanently(file)}
-              className="p-1.5 sm:px-2.5 sm:py-1.5 rounded-full bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-sm flex items-center gap-1"
-              title="Supprimer définitivement"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">Supprimer</span>
-            </button>
+            {/* Menu 3 traits : Rassemble Restaurer et Supprimer définitivement */}
+            <ViewerHeaderActionsMenu>
+              {(close) => (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleRestore(file);
+                      close();
+                    }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center gap-2.5 transition-colors cursor-pointer"
+                  >
+                    <RotateCcw className="w-4 h-4 text-emerald-500" />
+                    <span>Restaurer l'élément</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      handleDeletePermanently(file);
+                      close();
+                    }}
+                    className="w-full text-left px-3.5 py-2 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2.5 transition-colors border-t border-stone-100 dark:border-slate-800 cursor-pointer"
+                  >
+                    <Trash2 className="w-4 h-4 text-rose-500" />
+                    <span>Supprimer définitivement</span>
+                  </button>
+                </>
+              )}
+            </ViewerHeaderActionsMenu>
 
             {/* Bouton d'agrandissement de cadre (uniquement pour vidéo) */}
             {fileType === 'video' && <ViewerFitButton />}
@@ -1481,7 +1490,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   };
 
   return (
-    <div ref={containerRef} className="w-full h-full flex flex-col bg-white text-stone-900 select-none overflow-hidden animate-in fade-in duration-200">
+    <div ref={containerRef} className={`w-full h-full flex flex-col ${selectedFile ? 'bg-[#04060A]' : 'bg-white'} text-stone-900 select-none overflow-hidden animate-in fade-in duration-200`}>
       {/* EN-TÊTE FIXE DU MENU CORBEILLE (TOUJOURS ANCRÉ EN HAUT, NE BOUGE PAS AU DÉFILEMENT) */}
       <header className={`shrink-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-1.5 sm:px-6 md:px-10 lg:px-12 py-1.5 sm:py-3 border-b border-stone-200 shadow-sm ${(isViewerMaximized && selectedFile) ? 'hidden' : (selectedFile ? 'hidden md:block' : '')}`}>
         <div className="w-full flex items-center justify-between gap-1 sm:gap-4">
@@ -1659,7 +1668,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       )}
 
       {/* CONTENU PRINCIPAL DE LA CORBEILLE AVEC MODE SPLIT-SCREEN LORSQU'UN FICHIER EST SÉLECTIONNÉ */}
-      <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden relative min-h-[calc(100vh-120px)]">
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedFile ? 'bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
         <main
           className={`overflow-y-auto bg-white py-5 pb-64 sm:pb-80 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
             ? 'hidden'
@@ -1815,7 +1824,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
                 ? 'fixed inset-0 z-50 w-screen h-screen'
                 : (isViewerMaximized || viewerExpandLevel >= 1)
                   ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                  : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
+                  : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-stone-200 md:border-stone-800'
             } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l md:border-t-0' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}

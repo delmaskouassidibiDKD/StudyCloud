@@ -1853,11 +1853,10 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
 
     return (
-      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        (viewerExpandLevel >= 2 || isViewerMaximized)
+      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${(viewerExpandLevel >= 2 || isViewerMaximized)
           ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
-      }`}>
+        }`}>
         {/* Barre supérieure du lecteur document (Image 3) */}
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -2247,12 +2246,11 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
 
         {/* PANNEAU DE DROITE : LECTEUR DOCUMENT DÉDIÉ (IMAGE 3) */}
         {selectedDoc && (
-          <div className={`flex flex-col bg-[#04060A] animate-in fade-in duration-150 ${
-            (viewerExpandLevel >= 2 || isViewerMaximized)
+          <div className={`flex flex-col bg-[#04060A] animate-in fade-in duration-150 ${(viewerExpandLevel >= 2 || isViewerMaximized)
               ? 'fixed inset-0 z-50 w-screen h-screen'
               : (isViewerMaximized || selectedDoc)
                 ? 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0'
-                : 'w-full md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] border-t md:border-t-0 md:border-l border-white/10'
+                : 'w-full flex-1 h-full min-h-[calc(100vh-140px)] md:min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10'
             } ${(!isViewerMaximized && viewerExpandLevel < 2) ? 'md:w-7/12 md:border-l md:border-t-0 border-white/10' : ''}`}>
             {renderDocumentReader(selectedDoc)}
           </div>
