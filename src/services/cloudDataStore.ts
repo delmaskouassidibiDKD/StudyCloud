@@ -1573,7 +1573,13 @@ export const CloudDataStore = {
               try { restoreUpsertNotifier(file.id, 'downloads', restored); } catch { }
             }
           } else {
+            const rawDocThumb = String((file as any).thumbnailUrl || meta.thumbnailUrl || '').trim();
+            const isValidDocThumb = rawDocThumb && !rawDocThumb.startsWith('blob:') && !rawDocThumb.includes('localhost') && (rawDocThumb.startsWith('data:image') || rawDocThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawDocThumb));
+            const serverDocThumb = file.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(file.id)}` : workingPreview;
+            const finalDocThumb = isValidDocThumb ? rawDocThumb : serverDocThumb;
             restored.category = 'documents';
+            restored.thumbnailUrl = finalDocThumb;
+            restored.previewUrl = finalDocThumb;
             newDocs = [restored, ...newDocs.filter(f => f.id !== file.id)];
             if (restoreUpsertNotifier) {
               try { restoreUpsertNotifier(file.id, 'documents', restored); } catch { }
@@ -1686,6 +1692,7 @@ export const CloudDataStore = {
       const isAud = origCat === 'audio';
       const isVid = origCat === 'videos';
       const isImg = origCat === 'images';
+      const isDoc = origCat === 'documents';
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const resolvedCover = (f as any).coverUrl
         || (f as any).thumbnailUrl
@@ -1696,6 +1703,11 @@ export const CloudDataStore = {
       const rawVidThumb = String((f as any).thumbnailUrl || (f as any).metadata?.thumbnailUrl || '').trim();
       const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith('blob:') && !rawVidThumb.includes('localhost') && (rawVidThumb.startsWith('data:image') || rawVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
       const vidThumb = isVid ? (isValidVidThumb ? rawVidThumb : (f.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(f.id)}` : undefined)) : undefined;
+
+      const rawDocThumb = String((f as any).thumbnailUrl || (f as any).metadata?.thumbnailUrl || ((f as any).previewUrl && !f.previewUrl?.endsWith('.pdf') && !f.previewUrl?.endsWith('.docx') ? f.previewUrl : '') || '').trim();
+      const isValidDocThumb = rawDocThumb && !rawDocThumb.startsWith('blob:') && !rawDocThumb.includes('localhost') && (rawDocThumb.startsWith('data:image') || rawDocThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawDocThumb));
+      const docThumb = isDoc ? (isValidDocThumb ? rawDocThumb : (f.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(f.id)}` : undefined)) : undefined;
+
       return {
         ...f,
         category: 'secure',
@@ -1708,8 +1720,8 @@ export const CloudDataStore = {
         audioUrl: isAud ? ((f as any).audioUrl || f.url) : undefined,
         videoUrl: isVid ? ((f as any).videoUrl || f.url) : undefined,
         coverUrl: isAud ? (resolvedCover || (f as any).coverUrl || undefined) : (f as any).coverUrl,
-        thumbnailUrl: isAud ? (resolvedCover || (f as any).thumbnailUrl || undefined) : isVid ? (vidThumb || (f as any).thumbnailUrl) : (f as any).thumbnailUrl,
-        previewUrl: isAud ? (resolvedCover || f.previewUrl) : isVid ? (vidThumb || f.previewUrl) : f.previewUrl,
+        thumbnailUrl: isAud ? (resolvedCover || (f as any).thumbnailUrl || undefined) : isVid ? (vidThumb || (f as any).thumbnailUrl) : isDoc ? (docThumb || (f as any).thumbnailUrl) : (f as any).thumbnailUrl,
+        previewUrl: isAud ? (resolvedCover || f.previewUrl) : isVid ? (vidThumb || f.previewUrl) : isDoc ? (docThumb || f.previewUrl) : f.previewUrl,
         artist: (f as any).artist || (f as any).metadata?.artist,
         title: (f as any).title || (f as any).metadata?.title || f.name,
         album: (f as any).album || (f as any).metadata?.album,
@@ -1832,9 +1844,14 @@ export const CloudDataStore = {
       }
 
       const isVid = origCat === 'videos';
+      const isDoc = origCat === 'documents';
       const rawVidThumb = String((file as any).thumbnailUrl || meta.thumbnailUrl || '').trim();
       const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith('blob:') && !rawVidThumb.includes('localhost') && (rawVidThumb.startsWith('data:image') || rawVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
       const resolvedVidThumb = isVid ? (isValidVidThumb ? rawVidThumb : (file.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(file.id)}` : workingPreview)) : '';
+
+      const rawDocThumb = String((file as any).thumbnailUrl || meta.thumbnailUrl || '').trim();
+      const isValidDocThumb = rawDocThumb && !rawDocThumb.startsWith('blob:') && !rawDocThumb.includes('localhost') && (rawDocThumb.startsWith('data:image') || rawDocThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawDocThumb));
+      const resolvedDocThumb = isDoc ? (isValidDocThumb ? rawDocThumb : (file.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(file.id)}` : workingPreview)) : '';
 
       const restored: any = {
         ...file,
@@ -1845,8 +1862,8 @@ export const CloudDataStore = {
         extension: fileExtStr || (file as any).extension,
         r2Key: r2Key || undefined,
         url: workingUrl,
-        previewUrl: isAud ? (resolvedCover || workingPreview) : isVid ? (resolvedVidThumb || workingPreview) : workingPreview,
-        thumbnailUrl: isAud ? (resolvedCover || undefined) : isVid ? (resolvedVidThumb || undefined) : ((file as any).thumbnailUrl || workingPreview),
+        previewUrl: isAud ? (resolvedCover || workingPreview) : isVid ? (resolvedVidThumb || workingPreview) : isDoc ? (resolvedDocThumb || workingPreview) : workingPreview,
+        thumbnailUrl: isAud ? (resolvedCover || undefined) : isVid ? (resolvedVidThumb || undefined) : isDoc ? (resolvedDocThumb || undefined) : ((file as any).thumbnailUrl || workingPreview),
         coverUrl: isAud ? (resolvedCover || (file as any).coverUrl || undefined) : (file as any).coverUrl,
         videoUrl: origCat === 'videos' ? workingUrl : undefined,
         audioUrl: origCat === 'audio' ? workingUrl : undefined,
@@ -1970,8 +1987,13 @@ export const CloudDataStore = {
       const isAud = realCategory === 'audio';
       const isVid = realCategory === 'videos';
       const isImg = realCategory === 'images';
+      const isDoc = realCategory === 'documents';
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const validCover = (f as any).coverUrl || (f as any).thumbnailUrl || (f as any).metadata?.coverUrl || (isAud && f.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(f.id)}` : undefined);
+
+      const rawDocThumb = String((f as any).thumbnailUrl || (f as any).metadata?.thumbnailUrl || ((f as any).previewUrl && !f.previewUrl?.endsWith('.pdf') && !f.previewUrl?.endsWith('.docx') ? f.previewUrl : '') || '').trim();
+      const isValidDocThumb = rawDocThumb && !rawDocThumb.startsWith('blob:') && !rawDocThumb.includes('localhost') && (rawDocThumb.startsWith('data:image') || rawDocThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawDocThumb));
+      const docThumb = isDoc ? (isValidDocThumb ? rawDocThumb : (f.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(f.id)}` : undefined)) : undefined;
 
       return {
         ...f,
@@ -1988,14 +2010,15 @@ export const CloudDataStore = {
         audioUrl: isAud ? ((f as any).audioUrl || f.url) : undefined,
         videoUrl: isVid ? ((f as any).videoUrl || f.url) : undefined,
         coverUrl: isAud ? (validCover || (f as any).coverUrl) : (f as any).coverUrl,
-        thumbnailUrl: isAud ? (validCover || (f as any).thumbnailUrl) : (f as any).thumbnailUrl,
-        previewUrl: isAud ? (validCover || f.previewUrl) : f.previewUrl,
+        thumbnailUrl: isAud ? (validCover || (f as any).thumbnailUrl) : isDoc ? (docThumb || (f as any).thumbnailUrl) : (f as any).thumbnailUrl,
+        previewUrl: isAud ? (validCover || f.previewUrl) : isDoc ? (docThumb || f.previewUrl) : f.previewUrl,
         date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
         metadata: {
           ...((f as any).metadata || {}),
           originalCategory: realCategory,
           sourceCategory: realCategory,
           coverUrl: isAud ? validCover : ((f as any).metadata?.coverUrl),
+          thumbnailUrl: isAud ? validCover : isDoc ? docThumb : ((f as any).metadata?.thumbnailUrl),
           artist: (f as any).artist || (f as any).metadata?.artist,
           title: (f as any).title || (f as any).metadata?.title || f.name,
           durationSec: (f as any).durationSec || (f as any).metadata?.durationSec || 0

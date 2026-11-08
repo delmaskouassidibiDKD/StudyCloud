@@ -7570,6 +7570,7 @@ a:hover{transform:translateY(-2px)}
         let targetR2Key = '';
         let targetCategory = 'videos';
         let fallbackDataUrl = '';
+        let dRow: any = null;
 
         if (env.DB) {
           try {
@@ -7637,15 +7638,23 @@ a:hover{transform:translateY(-2px)}
                 }
               }
 
-              let dRow: any = null;
+              dRow = null;
               if (reqUserId && reqUserId !== 'default-user') {
-                dRow = await env.DB.prepare('SELECT preview_url, r2_key, user_id FROM document_files WHERE id = ? AND user_id = ? LIMIT 1').bind(fileId, reqUserId).first();
+                dRow = await env.DB.prepare('SELECT preview_url, r2_key, user_id, name, extension FROM document_files WHERE id = ? AND user_id = ? LIMIT 1').bind(fileId, reqUserId).first();
               }
               if (!dRow) {
-                dRow = await env.DB.prepare('SELECT preview_url, r2_key, user_id FROM document_files WHERE id = ? LIMIT 1').bind(fileId).first();
+                dRow = await env.DB.prepare('SELECT preview_url, r2_key, user_id, name, extension FROM document_files WHERE id = ? LIMIT 1').bind(fileId).first();
               }
-              if (dRow && dRow.preview_url && !dRow.preview_url.includes('/api/cloud/thumbnail/')) {
-                fallbackDataUrl = dRow.preview_url;
+              if (dRow) {
+                targetCategory = 'documents';
+                const owner = dRow.user_id || (reqUserId !== 'default-user' ? reqUserId : '');
+                if (owner && !targetR2Key) {
+                  targetR2Key = `${owner}/thumbnails/${fileId}_thumb.jpg`;
+                }
+                if (dRow.preview_url && !dRow.preview_url.includes('/api/cloud/thumbnail/')) {
+                  const isImg = dRow.preview_url.startsWith('data:image') || /\.(jpe?g|png|webp|gif|svg|avif)(\?|$)/i.test(dRow.preview_url);
+                  if (isImg) fallbackDataUrl = dRow.preview_url;
+                }
               }
 
               let aRow: any = null;
@@ -7748,6 +7757,36 @@ a:hover{transform:translateY(-2px)}
             headers.set('Content-Type', mime);
             return new Response(u8.buffer, { status: 200, headers });
           } catch (e) {}
+        }
+
+        // Si c'est un document et qu'aucune image n'est trouvée dans R2, générer un poster SVG dynamique à la volée !
+        if (dRow || targetCategory === 'documents') {
+          const docName = (dRow?.name || 'Document').replace(/[<>&"]/g, '');
+          const docExt = (dRow?.extension || (docName.includes('.') ? docName.split('.').pop() : 'PDF') || 'PDF').toUpperCase();
+          const pCol = (docExt === 'PDF') ? '#dc2626' : (['XLS', 'XLSX', 'CSV'].includes(docExt)) ? '#16a34a' : (['PPT', 'PPTX'].includes(docExt)) ? '#ea580c' : '#2563eb';
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 480" width="100%" height="100%">
+            <rect width="360" height="480" fill="#f8fafc" />
+            <rect width="360" height="52" fill="${pCol}" />
+            <text x="18" y="33" fill="#ffffff" font-family="sans-serif" font-weight="bold" font-size="16">StudyCloud Document</text>
+            <rect x="285" y="14" width="58" height="24" rx="6" fill="rgba(255,255,255,0.25)" />
+            <text x="314" y="31" fill="#ffffff" font-family="monospace" font-weight="bold" font-size="12" text-anchor="middle">${docExt}</text>
+            <rect x="20" y="68" width="320" height="392" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+            <text x="38" y="104" fill="#0f172a" font-family="sans-serif" font-weight="bold" font-size="15">${docName.substring(0, 32)}</text>
+            <line x1="38" y1="120" x2="110" y2="120" stroke="${pCol}" stroke-width="2.5" />
+            <rect x="38" y="144" width="284" height="7" rx="3" fill="#cbd5e1" />
+            <rect x="38" y="162" width="256" height="7" rx="3" fill="#cbd5e1" />
+            <rect x="38" y="180" width="270" height="7" rx="3" fill="#94a3b8" />
+            <rect x="38" y="198" width="230" height="7" rx="3" fill="#cbd5e1" />
+            <rect x="38" y="216" width="284" height="7" rx="3" fill="#cbd5e1" />
+            <rect x="38" y="234" width="180" height="7" rx="3" fill="#94a3b8" />
+            <text x="38" y="446" fill="#94a3b8" font-family="sans-serif" font-size="10">Page 1</text>
+            <text x="322" y="446" fill="#94a3b8" font-family="sans-serif" font-size="10" text-anchor="end">StudyCloud Cloud Storage</text>
+          </svg>`;
+          const headers = new Headers();
+          headers.set('Access-Control-Allow-Origin', origin || '*');
+          headers.set('Cache-Control', 'public, max-age=86400');
+          headers.set('Content-Type', 'image/svg+xml; charset=utf-8');
+          return new Response(svg, { status: 200, headers });
         }
 
         return errorResponse('Aperçu non trouvé', 404, origin);
@@ -8473,6 +8512,7 @@ a:hover{transform:translateY(-2px)}
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
             } else if (finalCategory === 'documents') {
+              const docThumbToPersist = finalThumbnailUrl || `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId)}`;
               await env.DB.prepare(`
                 INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, date_formatted, r2_key, file_url, preview_url, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, 'COURS', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -8482,9 +8522,13 @@ a:hover{transform:translateY(-2px)}
                   size_bytes = excluded.size_bytes,
                   r2_key = excluded.r2_key,
                   file_url = excluded.file_url,
-                  preview_url = excluded.preview_url,
+                  preview_url = CASE
+                    WHEN excluded.preview_url IS NOT NULL AND excluded.preview_url != '' AND excluded.preview_url NOT LIKE '%.pdf' AND excluded.preview_url NOT LIKE '%.doc%'
+                    THEN excluded.preview_url
+                    ELSE document_files.preview_url
+                  END,
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, docThumbToPersist).run();
             } else if (finalCategory === 'classeur') {
               try {
                 await env.DB.prepare(`
@@ -10611,6 +10655,11 @@ a:hover{transform:translateY(-2px)}
               finalUrl = `${url.origin}/api/cloud/file/documents/${encodeURIComponent(d.r2_key)}`;
             }
 
+            const isImagePreview = (u?: string) => Boolean(u && !u.startsWith('blob:') && !u.includes('localhost') && (u.startsWith('data:image') || u.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg|avif)(\?|$)/i.test(u)));
+            const validThumb = isImagePreview(d.preview_url)
+              ? d.preview_url
+              : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(d.id)}?userId=${encodeURIComponent(d.user_id || reqUserId)}`;
+
             allList.push({
               id: d.id,
               userId: d.user_id,
@@ -10623,7 +10672,8 @@ a:hover{transform:translateY(-2px)}
               date: d.date_formatted || (d.created_at ? new Date(d.created_at).toLocaleDateString('fr-FR') : ''),
               source: d.source || 'StudyCloud',
               r2Key: d.r2_key || '',
-              previewUrl: d.preview_url || finalUrl,
+              thumbnailUrl: validThumb,
+              previewUrl: validThumb,
               url: finalUrl,
               category: 'documents',
               isNotepad: d.extension === 'txt' || Boolean(d.notepad_content),
@@ -10663,7 +10713,8 @@ a:hover{transform:translateY(-2px)}
               fileUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(id)}`;
             }
           }
-          const previewUrl = body.previewUrl || fileUrl;
+          const isDocThumbImg = body.thumbnailUrl || (body.previewUrl && !body.previewUrl.startsWith('blob:') && !body.previewUrl.endsWith('.pdf') && !body.previewUrl.endsWith('.doc') ? body.previewUrl : '');
+          const previewUrl = isDocThumbImg || `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(id)}?userId=${encodeURIComponent(reqUserId)}`;
 
           await env.DB.prepare(`
             INSERT INTO document_files (
@@ -10702,7 +10753,8 @@ a:hover{transform:translateY(-2px)}
             date: dateFormatted,
             source,
             r2Key,
-            previewUrl: previewUrl || fileUrl,
+            thumbnailUrl: previewUrl,
+            previewUrl: previewUrl,
             url: fileUrl,
             category: 'documents',
             isNotepad: extension === 'txt' || Boolean(body.notepadContent),
@@ -10752,7 +10804,12 @@ a:hover{transform:translateY(-2px)}
                 deleted_at = CURRENT_TIMESTAMP
             `).bind(
               file.id, reqUserId, file.name, file.size, file.size_bytes, file.extension,
-              JSON.stringify({ documentCategory: file.document_category || 'COURS', pageCount: file.page_count || 1 }),
+              JSON.stringify({
+                documentCategory: file.document_category || 'COURS',
+                pageCount: file.page_count || 1,
+                previewUrl: file.preview_url,
+                thumbnailUrl: (file.preview_url && !file.preview_url.endsWith('.pdf') ? file.preview_url : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(file.id)}?userId=${encodeURIComponent(reqUserId)}`)
+              }),
               file.date_formatted, resolvedR2Key, file.file_url
             ).run();
 
@@ -11011,10 +11068,16 @@ a:hover{transform:translateY(-2px)}
             const meta = s.metadata_json ? JSON.parse(s.metadata_json) : {};
             const isAud = s.original_category === 'audio' || s.category === 'audio';
             const isVid = s.original_category === 'videos' || s.category === 'videos';
+            const isDoc = s.original_category === 'documents' || s.category === 'documents' || /\.(pdf|docx?|xlsx?|pptx?|txt)$/i.test(s.name || '');
             const audioCover = meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith('blob:') && !meta.previewUrl.includes('.mp3') ? meta.previewUrl : '') || '';
             const rawVidThumb = String(meta.thumbnailUrl || meta.previewUrl || '').trim();
             const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith('blob:') && !rawVidThumb.includes('localhost') && (rawVidThumb.startsWith('data:image') || rawVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
             const vidThumb = isVid ? (isValidVidThumb ? rawVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(s.id)}?userId=${encodeURIComponent(s.user_id || reqUserId)}`) : '';
+
+            const rawDocThumb = String(meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.endsWith('.pdf') ? meta.previewUrl : '') || '').trim();
+            const isValidDocThumb = rawDocThumb && !rawDocThumb.startsWith('blob:') && !rawDocThumb.includes('localhost') && (rawDocThumb.startsWith('data:image') || rawDocThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawDocThumb));
+            const docThumb = isDoc ? (isValidDocThumb ? rawDocThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(s.id)}?userId=${encodeURIComponent(s.user_id || reqUserId)}`) : '';
+
             return {
               id: s.id,
               userId: s.user_id,
@@ -11030,9 +11093,9 @@ a:hover{transform:translateY(-2px)}
               r2Key: s.r2_key || '',
               url: s.file_url || '',
               videoUrl: isVid ? (s.file_url || '') : undefined,
-              previewUrl: isAud ? (audioCover || s.file_url || '') : isVid ? (vidThumb || s.file_url || '') : (s.file_url || ''),
+              previewUrl: isAud ? (audioCover || s.file_url || '') : isVid ? (vidThumb || s.file_url || '') : isDoc ? (docThumb || s.file_url || '') : (s.file_url || ''),
               coverUrl: isAud ? (audioCover || undefined) : undefined,
-              thumbnailUrl: isAud ? (audioCover || undefined) : isVid ? (vidThumb || undefined) : (s.file_url || undefined),
+              thumbnailUrl: isAud ? (audioCover || undefined) : isVid ? (vidThumb || undefined) : isDoc ? (docThumb || undefined) : (s.file_url || undefined),
               artist: meta.artist || undefined,
               title: meta.title || s.name,
               album: meta.album || undefined,
@@ -11133,13 +11196,13 @@ a:hover{transform:translateY(-2px)}
                 UNION ALL
                 SELECT id, user_id, name, size, size_bytes, extension, r2_key, video_url as file_url, 'videos' as found_cat FROM video_files WHERE id = ? AND user_id = ?
                 UNION ALL
-                SELECT id, user_id, name, size, size_bytes, 'mp3' as extension, r2_key, audio_url as file_url, 'audio' as found_cat FROM audio_files WHERE id = ? AND user_id = ?
+                SELECT id, user_id, name, size, size_bytes, 'mp3' as extension, r2_key, audio_url as file_url, cover_url as thumbnail_url, 'audio' as found_cat FROM audio_files WHERE id = ? AND user_id = ?
                 UNION ALL
-                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, 'documents' as found_cat FROM document_files WHERE id = ? AND user_id = ?
+                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, preview_url as thumbnail_url, 'documents' as found_cat FROM document_files WHERE id = ? AND user_id = ?
                 UNION ALL
-                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, 'classeur' as found_cat FROM classeur_files WHERE id = ? AND user_id = ?
+                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, preview_url as thumbnail_url, 'classeur' as found_cat FROM classeur_files WHERE id = ? AND user_id = ?
                 UNION ALL
-                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, 'mes-fichiers' as found_cat FROM files WHERE id = ? AND user_id = ?
+                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, thumbnail_url, 'mes-fichiers' as found_cat FROM files WHERE id = ? AND user_id = ?
                 LIMIT 1
               `).bind(id, reqUserId, id, reqUserId, id, reqUserId, id, reqUserId, id, reqUserId, id, reqUserId).first<any>();
             } catch (e) {}
@@ -11661,7 +11724,7 @@ a:hover{transform:translateY(-2px)}
                   secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes,
                   resolvedExt, meta.documentCategory || 'COURS', Number(meta.pageCount || 1),
                   secFile.date_formatted, meta.source || 'StudyCloud', resolvedR2Key,
-                  finalRestoredUrl, meta.previewUrl || finalRestoredUrl
+                  finalRestoredUrl, (meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.endsWith('.pdf') ? meta.previewUrl : '') || `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(secFile.id)}?userId=${encodeURIComponent(reqUserId)}`)
                 ).run();
                 try {
                   await env.DB.prepare(`
@@ -11685,10 +11748,15 @@ a:hover{transform:translateY(-2px)}
               const finalCategory = isFolder ? 'classeur_folder' : realCat;
               const isAudioFile = realCat === 'audio';
               const isVideoFile = realCat === 'videos';
+              const isDocFile = realCat === 'documents';
               const audioCoverUrl = isAudioFile ? (meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith('blob:') && !meta.previewUrl.includes('.mp3') ? meta.previewUrl : '') || '') : '';
               const rawSecVidThumb = isVideoFile ? String(meta.thumbnailUrl || meta.previewUrl || '').trim() : '';
               const isValidSecVidThumb = rawSecVidThumb && !rawSecVidThumb.startsWith('blob:') && !rawSecVidThumb.includes('localhost') && (rawSecVidThumb.startsWith('data:image') || rawSecVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawSecVidThumb));
               const videoThumbUrl = isVideoFile ? (isValidSecVidThumb ? rawSecVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(secFile.id)}?userId=${encodeURIComponent(reqUserId)}`) : '';
+
+              const rawSecDocThumb = isDocFile ? String(meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.endsWith('.pdf') ? meta.previewUrl : '') || '').trim() : '';
+              const isValidSecDocThumb = rawSecDocThumb && !rawSecDocThumb.startsWith('blob:') && !rawSecDocThumb.includes('localhost') && (rawSecDocThumb.startsWith('data:image') || rawSecDocThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawSecDocThumb));
+              const docThumbUrl = isDocFile ? (isValidSecDocThumb ? rawSecDocThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(secFile.id)}?userId=${encodeURIComponent(reqUserId)}`) : '';
 
               const restoredPayload = {
                 id: secFile.id,
@@ -11700,8 +11768,8 @@ a:hover{transform:translateY(-2px)}
                 date: secFile.date_formatted || new Date().toLocaleDateString('fr-FR'),
                 url: finalRestoredUrl,
                 videoUrl: isVideoFile ? finalRestoredUrl : undefined,
-                previewUrl: isAudioFile ? (audioCoverUrl || finalRestoredUrl) : isVideoFile ? (videoThumbUrl || finalRestoredUrl) : finalRestoredUrl,
-                thumbnailUrl: isAudioFile ? (audioCoverUrl || '') : isVideoFile ? (videoThumbUrl || finalRestoredUrl) : finalRestoredUrl,
+                previewUrl: isAudioFile ? (audioCoverUrl || finalRestoredUrl) : isVideoFile ? (videoThumbUrl || finalRestoredUrl) : isDocFile ? (docThumbUrl || finalRestoredUrl) : finalRestoredUrl,
+                thumbnailUrl: isAudioFile ? (audioCoverUrl || '') : isVideoFile ? (videoThumbUrl || finalRestoredUrl) : isDocFile ? (docThumbUrl || '') : finalRestoredUrl,
                 coverUrl: isAudioFile ? (audioCoverUrl || undefined) : undefined,
                 artist: isAudioFile ? (meta.artist || undefined) : undefined,
                 title: isAudioFile ? (meta.title || secFile.name) : undefined,
@@ -11754,11 +11822,12 @@ a:hover{transform:translateY(-2px)}
               finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(t.id)}`;
             }
             const isVidTrash = t.category === 'videos' || t.source_category === 'videos' || /\.(mp4|mkv|avi|mov|webm|3gp)$/i.test(t.name || '');
+            const isDocTrash = t.category === 'documents' || t.source_category === 'documents' || /\.(pdf|docx?|xlsx?|pptx?|txt)$/i.test(t.name || '');
             const rawTrashThumb = String(meta.thumbnailUrl || meta.previewUrl || '').trim();
             const isValidTrashThumb = rawTrashThumb && !rawTrashThumb.startsWith('blob:') && !rawTrashThumb.includes('localhost') && (rawTrashThumb.startsWith('data:image') || rawTrashThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawTrashThumb));
-            const trashThumbUrl = isVidTrash
-              ? (isValidTrashThumb ? rawTrashThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(t.id)}?userId=${encodeURIComponent(t.user_id || reqUserId)}`)
-              : (meta.coverUrl || finalUrl);
+            const vidTrashThumb = isVidTrash ? (isValidTrashThumb ? rawTrashThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(t.id)}?userId=${encodeURIComponent(t.user_id || reqUserId)}`) : '';
+            const docTrashThumb = isDocTrash ? (isValidTrashThumb ? rawTrashThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(t.id)}?userId=${encodeURIComponent(t.user_id || reqUserId)}`) : '';
+            const trashThumbUrl = isVidTrash ? vidTrashThumb : isDocTrash ? docTrashThumb : (meta.coverUrl || finalUrl);
             return {
               id: t.id,
               userId: t.user_id,
@@ -11774,7 +11843,7 @@ a:hover{transform:translateY(-2px)}
               metadata: meta,
               r2Key: t.r2_key || '',
               url: finalUrl,
-              previewUrl: isVidTrash ? trashThumbUrl : finalUrl,
+              previewUrl: isVidTrash ? vidTrashThumb : isDocTrash ? docTrashThumb : finalUrl,
               thumbnailUrl: trashThumbUrl,
               audioUrl: finalUrl,
               videoUrl: finalUrl,
@@ -12137,7 +12206,7 @@ a:hover{transform:translateY(-2px)}
                   item.id, reqUserId, item.name, item.size, item.size_bytes,
                   resolvedExt, meta.documentCategory || 'COURS', Number(meta.pageCount || 1),
                   item.date_formatted, meta.source || 'StudyCloud', resolvedR2Key,
-                  finalTrashRestoredUrl, meta.previewUrl || finalTrashRestoredUrl
+                  finalTrashRestoredUrl, (meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.endsWith('.pdf') ? meta.previewUrl : '') || `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(item.id)}?userId=${encodeURIComponent(reqUserId)}`)
                 ).run();
                 try {
                   await env.DB.prepare(`
@@ -12162,9 +12231,15 @@ a:hover{transform:translateY(-2px)}
               const finalCategory = (srcCat === 'classeur_folder' || item.category === 'folder') ? 'classeur_folder' : srcCat;
               const isFolderItem = finalCategory === 'classeur_folder';
               const isVideoItem = finalCategory === 'videos';
+              const isDocItem = finalCategory === 'documents';
               const rawSyncVidThumb = isVideoItem ? String(meta.thumbnailUrl || meta.previewUrl || '').trim() : '';
               const isValidSyncVidThumb = rawSyncVidThumb && !rawSyncVidThumb.startsWith('blob:') && !rawSyncVidThumb.includes('localhost') && (rawSyncVidThumb.startsWith('data:image') || rawSyncVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawSyncVidThumb));
               const syncVidThumb = isVideoItem ? (isValidSyncVidThumb ? rawSyncVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(item.id)}?userId=${encodeURIComponent(reqUserId)}`) : '';
+
+              const rawSyncDocThumb = isDocItem ? String(meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.endsWith('.pdf') ? meta.previewUrl : '') || '').trim() : '';
+              const isValidSyncDocThumb = rawSyncDocThumb && !rawSyncDocThumb.startsWith('blob:') && !rawSyncDocThumb.includes('localhost') && (rawSyncDocThumb.startsWith('data:image') || rawSyncDocThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawSyncDocThumb));
+              const syncDocThumb = isDocItem ? (isValidSyncDocThumb ? rawSyncDocThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(item.id)}?userId=${encodeURIComponent(reqUserId)}`) : '';
+
               const syncPayload = {
                 id: item.id,
                 name: item.name,
@@ -12176,8 +12251,8 @@ a:hover{transform:translateY(-2px)}
                 date: item.date_formatted || new Date().toLocaleDateString('fr-FR'),
                 url: finalTrashRestoredUrl || item.file_url || '',
                 videoUrl: isVideoItem ? (finalTrashRestoredUrl || item.file_url || '') : undefined,
-                previewUrl: isVideoItem ? syncVidThumb : (finalTrashRestoredUrl || item.file_url || ''),
-                thumbnailUrl: isVideoItem ? syncVidThumb : (finalTrashRestoredUrl || item.file_url || ''),
+                previewUrl: isVideoItem ? syncVidThumb : isDocItem ? syncDocThumb : (finalTrashRestoredUrl || item.file_url || ''),
+                thumbnailUrl: isVideoItem ? syncVidThumb : isDocItem ? syncDocThumb : (finalTrashRestoredUrl || item.file_url || ''),
                 folderId: origFolder || undefined,
                 originalFolderId: origFolder || undefined,
                 metadata: meta,

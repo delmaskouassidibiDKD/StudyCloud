@@ -16,6 +16,7 @@ import { StudyCloudAPI } from './api';
 import { getCurrentUserId } from './userSync';
 import {
   generatePdfThumbnail,
+  generateDocumentThumbnail,
   generateVideoThumbnail,
   extractAudioCover,
   extractAudioMetadataWithTags,
@@ -336,15 +337,14 @@ class UploadQueueManager {
         if (!previewDataUrl || !previewDataUrl.startsWith('data:image')) {
           previewDataUrl = null;
           if (category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/i)) {
-            previewDataUrl = getCachedMediaThumbnail(id) || await generateVideoThumbnail(file, id, fileName).catch(() => null);
-          } else if (normName.endsWith('.pdf')) {
-            previewDataUrl = getCachedMediaThumbnail(id) || await generatePdfThumbnail(file, id).catch(() => null);
+            previewDataUrl = await generateVideoThumbnail(file, id, fileName).catch(() => null);
+          } else if (category === 'documents' || normName.match(/\.(pdf|docx?|xlsx?|pptx?|txt|csv|rtf|odt|ods|odp)$/i)) {
+            previewDataUrl = await generateDocumentThumbnail(file, id, fileName).catch(() => null);
           }
         }
       }
 
       if (category !== 'images' && previewDataUrl && previewDataUrl.startsWith('data:image')) {
-        setCachedMediaThumbnail(id, previewDataUrl);
         CloudStorageAPI.saveMediaThumbnail(id, category, previewDataUrl, fileName).catch(() => { });
       }
 
@@ -524,8 +524,8 @@ class UploadQueueManager {
           previewUrl: (category === 'images' || (isSec && effectiveMediaCat === 'images'))
             ? (uploadUrl || task.fileItem.url)
             : ((category === 'audio' || (isSec && effectiveMediaCat === 'audio'))
-                ? (previewDataUrl || task.fileItem?.coverUrl || undefined)
-                : (previewDataUrl || uploadUrl || task.fileItem.previewUrl)),
+              ? (previewDataUrl || task.fileItem?.coverUrl || undefined)
+              : (previewDataUrl || uploadUrl || task.fileItem.previewUrl)),
           thumbnailUrl: (category === 'images' || (isSec && effectiveMediaCat === 'images'))
             ? (uploadUrl || task.fileItem.url)
             : (previewDataUrl || task.fileItem?.thumbnailUrl || undefined),

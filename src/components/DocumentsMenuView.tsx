@@ -49,7 +49,7 @@ import { DocumentCardPreview } from './DocumentCardPreview';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { getWorkerApiUrl } from '../services/api';
-import { generatePdfThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { generatePdfThumbnail, generateDocumentThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes, isItemPinned } from './HeaderMenuControls';
 import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio } from '../services/fileTypeValidator';
@@ -596,19 +596,15 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     // 2. Démarrage immédiat de la ligne de progression qui se remplit
     startSavingAnimation(newItems.map(it => it.id));
 
-    // 2.5. Extraction immédiate de la vignette PDF si possible
+    // 2.5. Extraction / Génération immédiate de la miniature réelle (PDF, Word, Excel, PPTX, etc.)
     newFiles.forEach(({ file, id }) => {
-      const isPdf = file.type?.includes('pdf') || file.name.toLowerCase().endsWith('.pdf');
-      if (isPdf) {
-        generatePdfThumbnail(file, id).then(thumbUrl => {
-          if (thumbUrl) {
-            setCachedMediaThumbnail(id, thumbUrl);
-            setDocumentsList(prev => prev.map(d => d.id === id ? { ...d, previewUrl: thumbUrl, thumbnailUrl: thumbUrl } : d));
-            CloudDataStore.updateFile(id, { previewUrl: thumbUrl, thumbnailUrl: thumbUrl });
-            CloudStorageAPI.saveMediaThumbnail(id, 'documents', thumbUrl, file.name).catch(() => { });
-          }
-        }).catch(() => { });
-      }
+      generateDocumentThumbnail(file, id, file.name).then(thumbUrl => {
+        if (thumbUrl) {
+          setDocumentsList(prev => prev.map(d => d.id === id ? { ...d, previewUrl: thumbUrl, thumbnailUrl: thumbUrl } : d));
+          CloudDataStore.updateFile(id, { previewUrl: thumbUrl, thumbnailUrl: thumbUrl });
+          CloudStorageAPI.saveMediaThumbnail(id, 'documents', thumbUrl, file.name).catch(() => { });
+        }
+      }).catch(() => { });
     });
 
     // 3. Ajout optimiste dans CloudDataStore

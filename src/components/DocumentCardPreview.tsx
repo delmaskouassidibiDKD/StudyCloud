@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, FileSpreadsheet, Presentation, FileCode, AlignLeft } from 'lucide-react';
 import { FileItem } from './Page1FilesMenuView';
+import { getWorkerApiUrl } from '../services/api';
 
 interface DocumentCardPreviewProps {
   doc: FileItem;
@@ -18,6 +19,11 @@ export const DocumentCardPreview: React.FC<DocumentCardPreviewProps> = ({ doc })
   const resolveThumb = () => {
     if (isImageThumbnailUrl(doc.thumbnailUrl)) return doc.thumbnailUrl!;
     if (isImageThumbnailUrl(doc.previewUrl)) return doc.previewUrl!;
+    if (doc.id) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const uid = (doc as any).userId || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || 'default-user';
+      return `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(doc.id)}?userId=${encodeURIComponent(uid)}`;
+    }
     return null;
   };
 

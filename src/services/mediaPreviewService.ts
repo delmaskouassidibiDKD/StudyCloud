@@ -336,11 +336,234 @@ export async function generatePdfThumbnail(
 
     const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
     if (cacheKey) {
+      if (previewMemoryCache.size > 10) {
+        const oldest = previewMemoryCache.keys().next().value;
+        if (oldest) previewMemoryCache.delete(oldest);
+      }
       previewMemoryCache.set(cacheKey, dataUrl);
     }
     return dataUrl;
   } catch (err) {
     // Si échec (ex: CORS ou PDF corrompu), on renvoie null pour fallback élégant
+    return null;
+  }
+}
+
+/**
+ * Génère une miniature visuelle haute fidélité pour n'importe quel document (PDF, Word, Excel, PowerPoint, Texte...)
+ */
+export async function generateDocumentThumbnail(
+  fileOrUrl: File | Blob | string,
+  cacheKey?: string,
+  fileName?: string
+): Promise<string | null> {
+  if (typeof window === 'undefined') return null;
+
+  const name = typeof fileOrUrl === 'string' ? fileOrUrl : (fileOrUrl as File).name || fileName || 'Document';
+  const ext = (name.includes('.') ? name.split('.').pop() || 'pdf' : 'pdf').toLowerCase();
+  const isPdf = ext === 'pdf' || (typeof fileOrUrl !== 'string' && (fileOrUrl as any).type?.includes('pdf'));
+
+  if (isPdf) {
+    try {
+      const pdfThumb = await generatePdfThumbnail(fileOrUrl, cacheKey);
+      if (pdfThumb) return pdfThumb;
+    } catch {}
+  }
+
+  // Pour Word, Excel, PPTX, TXT ou si le rendu PDF échoue : création d'une image de couverture de document nette et élégante
+  try {
+    const width = 360;
+    const height = 480;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return null;
+
+    // Couleurs selon le type
+    let primaryColor = '#2563eb'; // Bleu Word par défaut
+    let badgeText = 'DOC';
+    if (ext === 'pdf') {
+      primaryColor = '#dc2626'; // Rouge PDF
+      badgeText = 'PDF';
+    } else if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) {
+      primaryColor = '#16a34a'; // Vert Excel
+      badgeText = ext.toUpperCase();
+    } else if (['ppt', 'pptx', 'odp'].includes(ext)) {
+      primaryColor = '#ea580c'; // Orange PPT
+      badgeText = ext.toUpperCase();
+    } else if (['doc', 'docx', 'rtf', 'odt'].includes(ext)) {
+      primaryColor = '#2563eb'; // Bleu Word
+      badgeText = ext.toUpperCase();
+    } else {
+      primaryColor = '#475569'; // Gris ardoise texte
+      badgeText = ext.toUpperCase();
+    }
+
+    // Fond blanc avec légère teinte
+    ctx.fillStyle = '#f8fafc';
+    ctx.fillRect(0, 0, width, height);
+
+    // En-tête coloré élégant
+    ctx.fillStyle = primaryColor;
+    ctx.fillRect(0, 0, width, 52);
+
+    // Titre StudyCloud dans l'en-tête
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.fillText('StudyCloud Document', 18, 33);
+
+    // Badge d'extension dans l'en-tête
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.25)';
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(width - 75, 14, 58, 24, 6);
+    } else {
+      ctx.rect(width - 75, 14, 58, 24);
+    }
+    ctx.fill();
+    ctx.fillStyle = '#ffffff';
+    ctx.font = 'bold 12px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillText(badgeText, width - 46, 31);
+    ctx.textAlign = 'left';
+
+    // Corps de page : zone blanche stylisée (effet feuille A4)
+    const pageX = 20;
+    const pageY = 68;
+    const pageW = width - 40;
+    const pageH = height - 88;
+
+    ctx.fillStyle = '#ffffff';
+    ctx.shadowColor = 'rgba(0, 0, 0, 0.08)';
+    ctx.shadowBlur = 12;
+    ctx.shadowOffsetY = 4;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(pageX, pageY, pageW, pageH, 8);
+    } else {
+      ctx.rect(pageX, pageY, pageW, pageH);
+    }
+    ctx.fill();
+    ctx.shadowColor = 'transparent';
+
+    // Bordure fine
+    ctx.strokeStyle = '#e2e8f0';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Titre du document nettoyé
+    const cleanTitle = name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
+    ctx.fillStyle = '#0f172a';
+    ctx.font = 'bold 15px sans-serif';
+
+    // Retour à la ligne pour le titre
+    const words = cleanTitle.split(' ');
+    let line = '';
+    let currentY = pageY + 36;
+    for (let i = 0; i < words.length; i++) {
+      const testLine = line + words[i] + ' ';
+      const metrics = ctx.measureText(testLine);
+      if (metrics.width > pageW - 36 && i > 0) {
+        ctx.fillText(line.trim(), pageX + 18, currentY);
+        line = words[i] + ' ';
+        currentY += 20;
+        if (currentY > pageY + 80) break;
+      } else {
+        line = testLine;
+      }
+    }
+    if (line.trim()) {
+      ctx.fillText(line.trim(), pageX + 18, currentY);
+      currentY += 26;
+    }
+
+    // Ligne de séparation sous le titre
+    ctx.strokeStyle = primaryColor;
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(pageX + 18, currentY);
+    ctx.lineTo(pageX + 80, currentY);
+    ctx.stroke();
+    currentY += 24;
+
+    // Rendu visuel selon le format : Tableur vs Texte vs Présentation
+    if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) {
+      const gridX = pageX + 18;
+      const gridW = pageW - 36;
+      const cellH = 18;
+      const cols = 3;
+      const colW = gridW / cols;
+
+      ctx.fillStyle = '#dcfce7';
+      ctx.fillRect(gridX, currentY, gridW, cellH);
+      ctx.strokeStyle = '#86efac';
+      ctx.strokeRect(gridX, currentY, gridW, cellH);
+
+      for (let r = 0; r < 7; r++) {
+        const rowY = currentY + (r + 1) * cellH;
+        if (rowY + cellH > pageY + pageH - 40) break;
+        ctx.fillStyle = r % 2 === 0 ? '#f0fdf4' : '#ffffff';
+        ctx.fillRect(gridX, rowY, gridW, cellH);
+        ctx.strokeStyle = '#dcfce7';
+        ctx.strokeRect(gridX, rowY, gridW, cellH);
+
+        for (let c = 1; c < cols; c++) {
+          ctx.beginPath();
+          ctx.moveTo(gridX + c * colW, rowY);
+          ctx.lineTo(gridX + c * colW, rowY + cellH);
+          ctx.stroke();
+        }
+
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillRect(gridX + 8, rowY + 6, colW - 20, 6);
+      }
+    } else if (['ppt', 'pptx', 'odp'].includes(ext)) {
+      const slideX = pageX + 18;
+      const slideW = pageW - 36;
+      const slideH = 120;
+      ctx.fillStyle = '#fff7ed';
+      ctx.fillRect(slideX, currentY, slideW, slideH);
+      ctx.strokeStyle = '#fdba74';
+      ctx.strokeRect(slideX, currentY, slideW, slideH);
+
+      ctx.fillStyle = primaryColor;
+      ctx.fillRect(slideX + 16, currentY + 20, slideW - 50, 10);
+      ctx.fillStyle = '#cbd5e1';
+      ctx.fillRect(slideX + 16, currentY + 44, slideW - 32, 6);
+      ctx.fillRect(slideX + 16, currentY + 58, slideW - 60, 6);
+      ctx.fillRect(slideX + 16, currentY + 72, slideW - 40, 6);
+    } else {
+      const textX = pageX + 18;
+      const textW = pageW - 36;
+      const widths = [0.95, 0.9, 0.82, 0.65, 0.92, 0.88, 0.75, 0.9, 0.85, 0.4];
+
+      for (let l = 0; l < widths.length; l++) {
+        const lineY = currentY + l * 18;
+        if (lineY > pageY + pageH - 45) break;
+        ctx.fillStyle = l === 3 ? '#94a3b8' : '#cbd5e1';
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(textX, lineY, textW * widths[l], 7, 3);
+        } else {
+          ctx.rect(textX, lineY, textW * widths[l], 7);
+        }
+        ctx.fill();
+      }
+    }
+
+    // Pied de page : numéro de page et badge sécurisé
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '10px sans-serif';
+    ctx.fillText('Page 1', pageX + 18, pageY + pageH - 14);
+    ctx.textAlign = 'right';
+    ctx.fillText('StudyCloud Cloud Storage', pageX + pageW - 18, pageY + pageH - 14);
+    ctx.textAlign = 'left';
+
+    const thumbData = canvas.toDataURL('image/jpeg', 0.85);
+    return thumbData;
+  } catch (err) {
+    console.warn('[generateDocumentThumbnail] Échec canvas doc:', err);
     return null;
   }
 }
