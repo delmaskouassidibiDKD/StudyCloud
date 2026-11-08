@@ -1825,7 +1825,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   const renderImageViewer = (file: FileItem) => {
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
-        (viewerExpandLevel >= 2 || isViewerMaximized)
+        viewerExpandLevel >= 2
           ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
         }`}>
@@ -1882,20 +1882,20 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                const isExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 2);
+                const isExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 1);
                 if (isExpanded) {
                   setIsViewerMaximized(false);
                   resetViewerExpand();
                 } else {
                   setIsViewerMaximized(true);
-                  setViewerExpandLevel(2);
+                  setViewerExpandLevel(1);
                 }
               }}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${(isViewerMaximized || viewerExpandLevel >= 2) ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${(isViewerMaximized || viewerExpandLevel >= 1) ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
                 }`}
-              title={(isViewerMaximized || viewerExpandLevel >= 2) ? 'Réduire la vue' : 'Plein écran'}
+              title={(isViewerMaximized || viewerExpandLevel >= 1) ? 'Réduire la vue' : "Agrandir l'image"}
             >
-              {(isViewerMaximized || viewerExpandLevel >= 2) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+              {(isViewerMaximized || viewerExpandLevel >= 1) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
             <button
               type="button"
@@ -2155,7 +2155,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR IMAGE DÉDIÉ (IMAGE 5) */}
         {selectedImage && (
           <div className={`animate-in fade-in duration-150 flex flex-col bg-[#04060A] ${
-            (viewerExpandLevel >= 2 || isViewerMaximized)
+            viewerExpandLevel >= 2
               ? 'fixed inset-0 z-50 w-screen h-screen'
               : (isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'w-full flex-1 h-full min-h-0'

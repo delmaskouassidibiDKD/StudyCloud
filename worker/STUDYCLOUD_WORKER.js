@@ -5913,7 +5913,7 @@ a:hover{transform:translateY(-2px)}
           return jsonResponse({ success: true, data: { id, name } }, 201, origin);
         }
       }
-      if (path.startsWith("/api/files/") && path.endsWith("/favorite") && (method === "PATCH" || method === "PUT")) {
+      if (path.startsWith("/api/files/") && path.endsWith("/favorite") && (method === "PATCH" || method === "PUT" || method === "POST")) {
         if (env.DB) await ensureCloudMediaTables(env.DB);
         const id = path.split("/")[3];
         const body = await request.json().catch(() => ({}));
@@ -8419,22 +8419,33 @@ a:hover{transform:translateY(-2px)}
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          let trashedIdSet = /* @__PURE__ */ new Set();
-          try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            (trashList || []).forEach((t) => {
-              if (t.id) trashedIdSet.add(t.id);
-            });
-          } catch (e) {
-          }
-          let securedAudIdSet = /* @__PURE__ */ new Set();
-          try {
-            const { results: secList } = await env.DB.prepare(`SELECT id FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
-            (secList || []).forEach((s) => {
-              if (s.id) securedAudIdSet.add(s.id);
-            });
-          } catch (e) {
-          }
+          await env.DB.prepare(`
+            DELETE FROM audio_files 
+            WHERE user_id = ? AND (
+              r2_key LIKE '%/study/%' 
+              OR r2_key LIKE '%/classeur/%' 
+              OR id LIKE 'folder_%' 
+              OR id LIKE 'cf_folder_%' 
+              OR id LIKE 'cf-folder-%'
+              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM study_imported_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
+            )
+          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare(`
+            DELETE FROM files
+            WHERE user_id = ? AND matiere_id = 'menu-audio' AND (
+              r2_key IS NULL OR r2_key = ''
+              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM trash_files WHERE user_id = ?)
+            )
+          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
+          });
           const { results: auds } = await env.DB.prepare(`
             SELECT * FROM audio_files 
             WHERE user_id = ? 
@@ -8443,8 +8454,8 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
-              AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
-              AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              AND name NOT IN (SELECT name FROM study_imported_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all();
           let extraAuds = [];
@@ -8452,16 +8463,36 @@ a:hover{transform:translateY(-2px)}
             const { results: extra } = await env.DB.prepare(`
               SELECT * FROM files 
               WHERE user_id = ? 
-                AND (matiere_id = 'menu-audio' OR type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff'))
+                AND (matiere_id IS NULL OR matiere_id = 'menu-audio')
+                AND (type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff') OR matiere_id = 'menu-audio')
                 AND r2_key IS NOT NULL AND r2_key != ''
                 AND r2_key NOT LIKE '%/classeur/%'
+                AND r2_key NOT LIKE '%/mes-fichiers/%'
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
-                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
-                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
               ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId, reqUserId, reqUserId).all();
+            `).bind(reqUserId).all();
             extraAuds = extra || [];
+          } catch (e) {
+          }
+          let trashedIdSet = /* @__PURE__ */ new Set();
+          let trashedNameSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            (trashList || []).forEach((t) => {
+              if (t.id) trashedIdSet.add(t.id);
+              if (t.name) trashedNameSet.add(String(t.name).trim().toLowerCase());
+            });
+          } catch (e) {
+          }
+          let securedAudIdSet = /* @__PURE__ */ new Set();
+          let securedAudNameSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
+            (secList || []).forEach((s) => {
+              if (s.id) securedAudIdSet.add(s.id);
+              if (s.name) securedAudNameSet.add(String(s.name).trim().toLowerCase());
+            });
           } catch (e) {
           }
           let favAudSet = /* @__PURE__ */ new Set();
@@ -8477,12 +8508,17 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
           const seen = /* @__PURE__ */ new Set();
+          const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
           const addAud = (a) => {
             const id = a.id;
-            if (!id || trashedIdSet.has(id) || securedAudIdSet.has(id)) return;
-            if (seen.has(id)) return;
+            const name = a.name || "Audio";
+            const lowerName = name.trim().toLowerCase();
+            if (trashedIdSet.has(id) || trashedNameSet.has(lowerName) || securedAudIdSet.has(id) || securedAudNameSet.has(lowerName)) return;
+            const normKey = `${name.trim().toLowerCase()}_${a.size_bytes || a.size || 0}`;
+            if (seen.has(id) || seenNames.has(normKey)) return;
             seen.add(id);
+            seenNames.add(normKey);
             let finalUrl = a.audio_url || a.file_url || a.url || "";
             if (finalUrl.includes("localhost") || finalUrl.includes("127.0.0.1")) {
               try {

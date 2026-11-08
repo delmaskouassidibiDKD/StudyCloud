@@ -199,7 +199,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
   const viewerExpandLevel = useViewerExpandLevel();
-  const isPlayerExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 2);
+  const isPlayerExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 1);
 
   const handleCloseReader = useCallback(() => {
     setSelectedTrack(null);
@@ -1767,7 +1767,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               }}
             />
 
-            {/* Bouton Agrandir / Réduire (Masquer la barre supérieure robot bleu / plein écran) */}
+            {/* Bouton Agrandir / Réduire (Agrandissement central) */}
             <button
               type="button"
               onClick={() => {
@@ -1776,7 +1776,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                   resetViewerExpand();
                 } else {
                   setIsViewerMaximized(true);
-                  setViewerExpandLevel(2);
+                  setViewerExpandLevel(1);
                 }
               }}
               className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
@@ -1784,7 +1784,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                   ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
                   : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               }`}
-              title={isPlayerExpanded ? "Réduire la vue (Barres visibles)" : "Agrandir en masquant la barre supérieure (Robot Bleu)"}
+              title={isPlayerExpanded ? "Réduire la vue" : "Agrandir le lecteur audio"}
             >
               {isPlayerExpanded ? (
                 <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
@@ -2410,7 +2410,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         {/* PANNEAU DE DROITE : LECTEUR AUDIO DÉDIÉ OU ÉTAT VIDE (IMAGES 1 & 2) */}
         {selectedTrack ? (
           <div className={`flex flex-col bg-[#090D1A] animate-in fade-in duration-150 ${
-            (viewerExpandLevel >= 2 || isViewerMaximized)
+            viewerExpandLevel >= 2
               ? 'fixed inset-0 z-50 w-screen h-screen'
               : (isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'w-full flex-1 h-full min-h-0'
