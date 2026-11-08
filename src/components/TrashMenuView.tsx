@@ -44,6 +44,7 @@ import { AudioCardPreview } from './AudioCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { ImageCardPreview } from './ImageCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
+import { SkeletonCardGrid } from './SkeletonWave';
 import { Classeur3DFolderCard, TxtDocumentSVG } from './Folder3DModels';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
 import { ViewerFitButton } from './ViewerFitButton';
@@ -1639,10 +1640,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             }`}
         >
           {loading ? (
-            <div className="py-24 flex flex-col items-center justify-center gap-3">
-              <div className="w-10 h-10 border-3 border-rose-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-sm font-semibold text-stone-500">Chargement de la corbeille...</p>
-            </div>
+            <SkeletonCardGrid count={8} aspect="card" />
           ) : filteredTrash.length === 0 ? (
             <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
               <div className="w-20 h-20 rounded-3xl bg-rose-50 border border-rose-200 flex items-center justify-center mb-4 shadow-sm">

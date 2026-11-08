@@ -135,6 +135,7 @@ import { VideosMenuView } from './VideosMenuView';
 import { ImagesMenuView } from './ImagesMenuView';
 import { TrashMenuView } from './TrashMenuView';
 import { FavoritesMenuView } from './FavoritesMenuView';
+import { SkeletonWaveBox, SkeletonAudioList, SkeletonCardGrid } from './SkeletonWave';
 import { IncompatibleFormatModal } from './IncompatibleFormatModal';
 import { AppsMenuView } from './AppsMenuView';
 import { CloudSpaceMenuView } from './CloudSpaceMenuView';
@@ -5364,43 +5365,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       </div>
 
       {type === 'audio-list' ? (
-        <div className="space-y-2">
-          {[1, 2, 3, 4, 5, 6].map(i => (
-            <div key={i} className="h-16 rounded-2xl bg-gradient-to-r from-stone-200/60 to-stone-100/30 dark:from-[#0E1526] dark:to-[#070B14] border border-stone-300/40 dark:border-white/5 flex items-center px-4 gap-3 animate-pulse">
-              <div className="w-10 h-10 rounded-xl bg-amber-500/10 dark:bg-amber-400/10 shrink-0" />
-              <div className="flex-1 space-y-2">
-                <div className="h-3 w-1/3 rounded-full bg-stone-300/60 dark:bg-white/15" />
-                <div className="h-2 w-1/4 rounded-full bg-stone-300/40 dark:bg-white/10" />
-              </div>
-              <div className="w-12 h-3 rounded-full bg-stone-300/40 dark:bg-white/10 shrink-0" />
-            </div>
-          ))}
-        </div>
+        <SkeletonAudioList count={6} />
       ) : type === 'classeur-grid' ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 py-2">
           {[1, 2, 3, 4].map(i => (
-            <div key={i} className="h-44 rounded-3xl bg-[#0E1526]/80 border border-white/10 p-4 flex flex-col justify-between animate-pulse">
-              <div className="w-20 h-16 rounded-2xl bg-orange-500/20 mx-auto" />
-              <div className="space-y-1.5 pt-2">
-                <div className="h-3 w-3/4 rounded-full bg-white/15 mx-auto" />
-                <div className="h-2 w-1/2 rounded-full bg-white/10 mx-auto" />
+            <div key={i} className="h-44 rounded-3xl bg-white/70 dark:bg-stone-900/60 border border-stone-200/60 dark:border-white/5 p-4 flex flex-col justify-between overflow-hidden shadow-sm">
+              <SkeletonWaveBox className="w-20 h-16 rounded-2xl mx-auto" />
+              <div className="space-y-2 pt-2">
+                <SkeletonWaveBox className="h-3 w-3/4 rounded-full mx-auto" />
+                <SkeletonWaveBox className="h-2.5 w-1/2 rounded-full mx-auto" />
               </div>
             </div>
           ))}
         </div>
       ) : (
-        <div className={`grid gap-2.5 sm:gap-3.5 ${splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-          }`}>
-          {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-            <div key={i} className="aspect-square sm:aspect-auto sm:h-52 rounded-2xl bg-gradient-to-br from-stone-200/70 to-stone-100/40 dark:from-[#0E1526] dark:to-[#070B14] border border-stone-300/50 dark:border-white/10 p-3 flex flex-col justify-between overflow-hidden animate-pulse">
-              <div className="w-full h-28 rounded-xl bg-stone-300/40 dark:bg-white/10" />
-              <div className="space-y-1.5 pt-2">
-                <div className="h-3 w-4/5 rounded-full bg-stone-300/60 dark:bg-white/15" />
-                <div className="h-2 w-1/2 rounded-full bg-stone-300/40 dark:bg-white/10" />
-              </div>
-            </div>
-          ))}
-        </div>
+        <SkeletonCardGrid count={8} aspect="card" />
       )}
     </div>
   );
@@ -14061,11 +14040,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3 md:gap-3.5">
                       {[1, 2, 3, 4, 5, 6].map(i => (
-                        <div key={i} className="h-36 rounded-2xl bg-[#151C2C]/70 border border-slate-800/80 p-2 flex flex-col justify-between animate-pulse">
-                          <div className="w-full h-20 rounded-xl bg-white/5" />
+                        <div key={i} className="h-36 rounded-2xl bg-white/70 dark:bg-stone-900/60 border border-stone-200/60 dark:border-white/5 p-2 flex flex-col justify-between overflow-hidden shadow-sm">
+                          <SkeletonWaveBox className="w-full h-20 rounded-xl" />
                           <div className="space-y-1.5 pt-1">
-                            <div className="h-2.5 w-3/4 rounded-full bg-white/10" />
-                            <div className="h-2 w-1/2 rounded-full bg-white/5" />
+                            <SkeletonWaveBox className="h-2.5 w-3/4 rounded-full" />
+                            <SkeletonWaveBox className="h-2 w-1/2 rounded-full" />
                           </div>
                         </div>
                       ))}

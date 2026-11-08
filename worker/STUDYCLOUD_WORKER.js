@@ -2156,7 +2156,9 @@ async function getObjectFromAnyBucket(rawEnv, category, key, rangeOptions) {
     } catch {
     }
   }
-  const fileIdCandidate = decodedKey.match(/(cf-[a-zA-Z0-9_-]+|sec-[a-zA-Z0-9_-]+|f_[a-zA-Z0-9_-]+|img_[a-zA-Z0-9_-]+|vid_[a-zA-Z0-9_-]+|aud_[a-zA-Z0-9_-]+|doc-[a-zA-Z0-9_-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1] || (decodedKey.includes("/") ? decodedKey.split("/").pop()?.split("_")[0] : "");
+  const rawCandidate = decodedKey.match(/(cf-[a-zA-Z0-9_-]+|sec-[a-zA-Z0-9_-]+|f_[a-zA-Z0-9_-]+|img_[a-zA-Z0-9_-]+|vid_[a-zA-Z0-9_-]+|aud_[a-zA-Z0-9_-]+|doc-[a-zA-Z0-9_-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1];
+  const isExcludedCandidate = !rawCandidate || rawCandidate.startsWith("cf-folder-") || rawCandidate.startsWith("folder-") || rawCandidate.startsWith("note-");
+  const fileIdCandidate = isExcludedCandidate ? decodedKey.includes("/") ? decodedKey.split("/").pop()?.split("_")[0] : "" : rawCandidate;
   const cleanFileName = decodedKey.split("/").pop() || "";
   if (rawEnv.DB && (fileIdCandidate || cleanFileName)) {
     try {
@@ -6509,13 +6511,31 @@ a:hover{transform:translateY(-2px)}
       if (path.startsWith("/api/cloud/") && env.DB) {
         await ensureCloudMediaTables(env.DB);
       }
+      if (path === "/api/cloud/audio/duration" && (method === "POST" || method === "PUT")) {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const body = await request.json().catch(() => ({}));
+        const audId = String(body.id || "").trim();
+        const dur = Number(body.durationSec || 0);
+        if (!audId || !Number.isFinite(dur) || dur <= 0 || dur > 86400) {
+          return errorResponse("Param\xE8tres invalides", 400, origin);
+        }
+        const rounded = Math.round(dur * 100) / 100;
+        await env.DB.prepare("UPDATE audio_files SET duration_sec = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(rounded, audId, reqUserId).run().catch(() => {
+        });
+        return jsonResponse({ success: true, id: audId, durationSec: rounded }, 200, origin);
+      }
       if (path.startsWith("/api/cloud/thumbnail/") && method === "GET") {
         const fileId = decodeURIComponent(path.replace("/api/cloud/thumbnail/", "").trim());
         const reqUserId = await extractRequestUserId();
         if (!fileId) return errorResponse("ID de fichier manquant", 400, origin);
+        if (fileId.startsWith("note-") || fileId.endsWith(".txt") || fileId.includes("-note-")) {
+          return errorResponse("Les notes texte n'ont pas de miniature image", 404, origin);
+        }
         let targetR2Key = "";
         let targetCategory = "videos";
         let fallbackDataUrl = "";
+        let dRow = null;
         if (env.DB) {
           try {
             let thumbRow = null;
@@ -6558,24 +6578,44 @@ a:hover{transform:translateY(-2px)}
               if (!vRow) {
                 vRow = await env.DB.prepare("SELECT thumbnail_url, r2_key, user_id FROM video_files WHERE id = ? LIMIT 1").bind(fileId).first();
               }
+              if (!vRow) {
+                vRow = await env.DB.prepare("SELECT r2_key, user_id, metadata_json FROM secure_files WHERE id = ? LIMIT 1").bind(fileId).first().catch(() => null);
+              }
+              if (!vRow) {
+                vRow = await env.DB.prepare("SELECT r2_key, user_id, metadata_json FROM trash_files WHERE id = ? LIMIT 1").bind(fileId).first().catch(() => null);
+              }
               if (vRow) {
                 if (vRow.thumbnail_url && !vRow.thumbnail_url.includes("/api/cloud/thumbnail/")) {
                   fallbackDataUrl = vRow.thumbnail_url;
+                } else if (vRow.metadata_json) {
+                  try {
+                    const m = JSON.parse(vRow.metadata_json);
+                    if (m.thumbnailUrl && !m.thumbnailUrl.includes("/api/cloud/thumbnail/")) fallbackDataUrl = m.thumbnailUrl;
+                  } catch {
+                  }
                 }
-                if (!targetR2Key && vRow.r2_key) {
+                if (!targetR2Key) {
                   const owner = vRow.user_id || (reqUserId !== "default-user" ? reqUserId : "");
                   if (owner) targetR2Key = `${owner}/thumbnails/${fileId}_thumb.jpg`;
                 }
               }
-              let dRow = null;
+              dRow = null;
               if (reqUserId && reqUserId !== "default-user") {
-                dRow = await env.DB.prepare("SELECT preview_url, r2_key, user_id FROM document_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
+                dRow = await env.DB.prepare("SELECT preview_url, r2_key, user_id, name, extension FROM document_files WHERE id = ? AND user_id = ? LIMIT 1").bind(fileId, reqUserId).first();
               }
               if (!dRow) {
-                dRow = await env.DB.prepare("SELECT preview_url, r2_key, user_id FROM document_files WHERE id = ? LIMIT 1").bind(fileId).first();
+                dRow = await env.DB.prepare("SELECT preview_url, r2_key, user_id, name, extension FROM document_files WHERE id = ? LIMIT 1").bind(fileId).first();
               }
-              if (dRow && dRow.preview_url && !dRow.preview_url.includes("/api/cloud/thumbnail/")) {
-                fallbackDataUrl = dRow.preview_url;
+              if (dRow) {
+                targetCategory = "documents";
+                const owner = dRow.user_id || (reqUserId !== "default-user" ? reqUserId : "");
+                if (owner && !targetR2Key) {
+                  targetR2Key = `${owner}/thumbnails/${fileId}_thumb.jpg`;
+                }
+                if (dRow.preview_url && !dRow.preview_url.includes("/api/cloud/thumbnail/")) {
+                  const isImg = dRow.preview_url.startsWith("data:image") || /\.(jpe?g|png|webp|gif|svg|avif)(\?|$)/i.test(dRow.preview_url);
+                  if (isImg) fallbackDataUrl = dRow.preview_url;
+                }
               }
               let aRow = null;
               if (reqUserId && reqUserId !== "default-user") {
@@ -6584,11 +6624,24 @@ a:hover{transform:translateY(-2px)}
               if (!aRow) {
                 aRow = await env.DB.prepare("SELECT cover_url, r2_key, user_id FROM audio_files WHERE id = ? LIMIT 1").bind(fileId).first();
               }
+              if (!aRow) {
+                aRow = await env.DB.prepare("SELECT r2_key, user_id, metadata_json FROM secure_files WHERE id = ? LIMIT 1").bind(fileId).first().catch(() => null);
+              }
+              if (!aRow) {
+                aRow = await env.DB.prepare("SELECT r2_key, user_id, metadata_json FROM trash_files WHERE id = ? LIMIT 1").bind(fileId).first().catch(() => null);
+              }
               if (aRow) {
                 if (aRow.cover_url && !aRow.cover_url.includes("/api/cloud/thumbnail/")) {
                   fallbackDataUrl = aRow.cover_url;
+                } else if (aRow.metadata_json) {
+                  try {
+                    const m = JSON.parse(aRow.metadata_json);
+                    const cov = m.coverUrl || m.thumbnailUrl || m.previewUrl;
+                    if (cov && !cov.includes("/api/cloud/thumbnail/")) fallbackDataUrl = cov;
+                  } catch {
+                  }
                 }
-                if (!targetR2Key && aRow.r2_key) {
+                if (!targetR2Key) {
                   const owner = aRow.user_id || (reqUserId !== "default-user" ? reqUserId : "");
                   if (owner) targetR2Key = `${owner}/thumbnails/${fileId}_thumb.jpg`;
                 }
@@ -6659,6 +6712,34 @@ a:hover{transform:translateY(-2px)}
             return new Response(u8.buffer, { status: 200, headers });
           } catch (e) {
           }
+        }
+        if (dRow || targetCategory === "documents") {
+          const docName = (dRow?.name || "Document").replace(/[<>&"]/g, "");
+          const docExt = (dRow?.extension || (docName.includes(".") ? docName.split(".").pop() : "PDF") || "PDF").toUpperCase();
+          const pCol = docExt === "PDF" ? "#dc2626" : ["XLS", "XLSX", "CSV"].includes(docExt) ? "#16a34a" : ["PPT", "PPTX"].includes(docExt) ? "#ea580c" : "#2563eb";
+          const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 360 480" width="100%" height="100%">
+            <rect width="360" height="480" fill="#f8fafc" />
+            <rect width="360" height="52" fill="${pCol}" />
+            <text x="18" y="33" fill="#ffffff" font-family="sans-serif" font-weight="bold" font-size="16">StudyCloud Document</text>
+            <rect x="285" y="14" width="58" height="24" rx="6" fill="rgba(255,255,255,0.25)" />
+            <text x="314" y="31" fill="#ffffff" font-family="monospace" font-weight="bold" font-size="12" text-anchor="middle">${docExt}</text>
+            <rect x="20" y="68" width="320" height="392" rx="8" fill="#ffffff" stroke="#e2e8f0" stroke-width="1" />
+            <text x="38" y="104" fill="#0f172a" font-family="sans-serif" font-weight="bold" font-size="15">${docName.substring(0, 32)}</text>
+            <line x1="38" y1="120" x2="110" y2="120" stroke="${pCol}" stroke-width="2.5" />
+            <rect x="38" y="144" width="284" height="7" rx="3" fill="#cbd5e1" />
+            <rect x="38" y="162" width="256" height="7" rx="3" fill="#cbd5e1" />
+            <rect x="38" y="180" width="270" height="7" rx="3" fill="#94a3b8" />
+            <rect x="38" y="198" width="230" height="7" rx="3" fill="#cbd5e1" />
+            <rect x="38" y="216" width="284" height="7" rx="3" fill="#cbd5e1" />
+            <rect x="38" y="234" width="180" height="7" rx="3" fill="#94a3b8" />
+            <text x="38" y="446" fill="#94a3b8" font-family="sans-serif" font-size="10">Page 1</text>
+            <text x="322" y="446" fill="#94a3b8" font-family="sans-serif" font-size="10" text-anchor="end">StudyCloud Cloud Storage</text>
+          </svg>`;
+          const headers = new Headers();
+          headers.set("Access-Control-Allow-Origin", origin || "*");
+          headers.set("Cache-Control", "public, max-age=86400");
+          headers.set("Content-Type", "image/svg+xml; charset=utf-8");
+          return new Response(svg, { status: 200, headers });
         }
         return errorResponse("Aper\xE7u non trouv\xE9", 404, origin);
       }
@@ -7243,9 +7324,11 @@ a:hover{transform:translateY(-2px)}
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
             } else if (finalCategory === "audio") {
+              const uploadDurRaw = Number(url.searchParams.get("durationSec") || request.headers.get("x-duration-sec") || 0);
+              const uploadDurationSec = Number.isFinite(uploadDurRaw) && uploadDurRaw > 0 ? Math.round(uploadDurRaw * 100) / 100 : 0;
               await env.DB.prepare(`
-                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, cover_url, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, cover_url, duration_sec, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                   name = excluded.name,
                   title = excluded.title,
@@ -7253,6 +7336,7 @@ a:hover{transform:translateY(-2px)}
                   size_bytes = excluded.size_bytes,
                   r2_key = excluded.r2_key,
                   audio_url = excluded.audio_url,
+                  duration_sec = CASE WHEN excluded.duration_sec > 0 THEN excluded.duration_sec ELSE audio_files.duration_sec END,
                   artist = CASE
                     WHEN audio_files.artist IS NOT NULL AND audio_files.artist != '' AND audio_files.artist != 'Artiste inconnu'
                     THEN audio_files.artist
@@ -7264,8 +7348,9 @@ a:hover{transform:translateY(-2px)}
                     ELSE audio_files.cover_url
                   END,
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
+              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl, finalThumbnailUrl, uploadDurationSec).run();
             } else if (finalCategory === "documents") {
+              const docThumbToPersist = finalThumbnailUrl || `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId)}`;
               await env.DB.prepare(`
                 INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, date_formatted, r2_key, file_url, preview_url, created_at, updated_at)
                 VALUES (?, ?, ?, ?, ?, ?, 'COURS', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -7275,9 +7360,13 @@ a:hover{transform:translateY(-2px)}
                   size_bytes = excluded.size_bytes,
                   r2_key = excluded.r2_key,
                   file_url = excluded.file_url,
-                  preview_url = excluded.preview_url,
+                  preview_url = CASE
+                    WHEN excluded.preview_url IS NOT NULL AND excluded.preview_url != '' AND excluded.preview_url NOT LIKE '%.pdf' AND excluded.preview_url NOT LIKE '%.doc%'
+                    THEN excluded.preview_url
+                    ELSE document_files.preview_url
+                  END,
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, docThumbToPersist).run();
             } else if (finalCategory === "classeur") {
               try {
                 await env.DB.prepare(`
@@ -7484,7 +7573,7 @@ a:hover{transform:translateY(-2px)}
                 env.DB.prepare("SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category FROM document_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare("SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension FROM image_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare("SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec FROM video_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
-                env.DB.prepare("SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes FROM audio_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare("SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes, duration_sec FROM audio_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare("SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content FROM classeur_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare("SELECT id, name, size, size_bytes, file_url, type, extension FROM download_files WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare("SELECT id, item_id, category FROM user_favorites WHERE user_id = ?").bind(reqUserId).all().catch(() => ({ results: [] })),
@@ -8315,33 +8404,22 @@ a:hover{transform:translateY(-2px)}
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          await env.DB.prepare(`
-            DELETE FROM audio_files 
-            WHERE user_id = ? AND (
-              r2_key LIKE '%/study/%' 
-              OR r2_key LIKE '%/classeur/%' 
-              OR id LIKE 'folder_%' 
-              OR id LIKE 'cf_folder_%' 
-              OR id LIKE 'cf-folder-%'
-              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM study_imported_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
-          });
-          await env.DB.prepare(`
-            DELETE FROM files
-            WHERE user_id = ? AND matiere_id = 'menu-audio' AND (
-              r2_key IS NULL OR r2_key = ''
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
-          });
+          let trashedIdSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            (trashList || []).forEach((t) => {
+              if (t.id) trashedIdSet.add(t.id);
+            });
+          } catch (e) {
+          }
+          let securedAudIdSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
+            (secList || []).forEach((s) => {
+              if (s.id) securedAudIdSet.add(s.id);
+            });
+          } catch (e) {
+          }
           const { results: auds } = await env.DB.prepare(`
             SELECT * FROM audio_files 
             WHERE user_id = ? 
@@ -8350,8 +8428,8 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
-              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-              AND name NOT IN (SELECT name FROM study_imported_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all();
           let extraAuds = [];
@@ -8359,36 +8437,16 @@ a:hover{transform:translateY(-2px)}
             const { results: extra } = await env.DB.prepare(`
               SELECT * FROM files 
               WHERE user_id = ? 
-                AND (matiere_id IS NULL OR matiere_id = 'menu-audio')
-                AND (type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff') OR matiere_id = 'menu-audio')
+                AND (matiere_id = 'menu-audio' OR type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff'))
                 AND r2_key IS NOT NULL AND r2_key != ''
                 AND r2_key NOT LIKE '%/classeur/%'
-                AND r2_key NOT LIKE '%/mes-fichiers/%'
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
+                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
               ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId).all();
+            `).bind(reqUserId, reqUserId, reqUserId).all();
             extraAuds = extra || [];
-          } catch (e) {
-          }
-          let trashedIdSet = /* @__PURE__ */ new Set();
-          let trashedNameSet = /* @__PURE__ */ new Set();
-          try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            (trashList || []).forEach((t) => {
-              if (t.id) trashedIdSet.add(t.id);
-              if (t.name) trashedNameSet.add(String(t.name).trim().toLowerCase());
-            });
-          } catch (e) {
-          }
-          let securedAudIdSet = /* @__PURE__ */ new Set();
-          let securedAudNameSet = /* @__PURE__ */ new Set();
-          try {
-            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
-            (secList || []).forEach((s) => {
-              if (s.id) securedAudIdSet.add(s.id);
-              if (s.name) securedAudNameSet.add(String(s.name).trim().toLowerCase());
-            });
           } catch (e) {
           }
           let favAudSet = /* @__PURE__ */ new Set();
@@ -8404,17 +8462,13 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
           const seen = /* @__PURE__ */ new Set();
-          const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
           const addAud = (a) => {
             const id = a.id;
-            const name = a.name || "Audio";
-            const lowerName = name.trim().toLowerCase();
-            if (trashedIdSet.has(id) || trashedNameSet.has(lowerName) || securedAudIdSet.has(id) || securedAudNameSet.has(lowerName)) return;
-            const normKey = `${name.trim().toLowerCase()}_${a.size_bytes || a.size || 0}`;
-            if (seen.has(id) || seenNames.has(normKey)) return;
+            if (!id || trashedIdSet.has(id) || securedAudIdSet.has(id)) return;
+            if (seen.has(id)) return;
             seen.add(id);
-            seenNames.add(normKey);
+            const name = a.name || "Audio";
             let finalUrl = a.audio_url || a.file_url || a.url || "";
             if (finalUrl.includes("localhost") || finalUrl.includes("127.0.0.1")) {
               try {
@@ -8496,7 +8550,7 @@ a:hover{transform:translateY(-2px)}
               title = excluded.title,
               artist = excluded.artist,
               album = excluded.album,
-              duration_sec = excluded.duration_sec,
+              duration_sec = CASE WHEN excluded.duration_sec > 0 THEN excluded.duration_sec ELSE audio_files.duration_sec END,
               size = excluded.size,
               size_bytes = excluded.size_bytes,
               r2_key = COALESCE(NULLIF(excluded.r2_key, ''), audio_files.r2_key),
@@ -8652,33 +8706,22 @@ a:hover{transform:translateY(-2px)}
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          await env.DB.prepare(`
-            DELETE FROM image_files 
-            WHERE user_id = ? AND (
-              r2_key LIKE '%/study/%' 
-              OR r2_key LIKE '%/classeur/%' 
-              OR id LIKE 'folder_%' 
-              OR id LIKE 'cf_folder_%' 
-              OR id LIKE 'cf-folder-%'
-              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM study_imported_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
-          });
-          await env.DB.prepare(`
-            DELETE FROM files
-            WHERE user_id = ? AND matiere_id = 'menu-images' AND (
-              r2_key IS NULL OR r2_key = ''
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
-          });
+          let trashedImgIdSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            (trashList || []).forEach((t) => {
+              if (t.id) trashedImgIdSet.add(t.id);
+            });
+          } catch (e) {
+          }
+          let securedImgIdSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
+            (secList || []).forEach((s) => {
+              if (s.id) securedImgIdSet.add(s.id);
+            });
+          } catch (e) {
+          }
           const { results: imgs } = await env.DB.prepare(`
             SELECT * FROM image_files 
             WHERE user_id = ? 
@@ -8687,44 +8730,25 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
-              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId, reqUserId).all();
+          `).bind(reqUserId, reqUserId, reqUserId).all();
           let extraImgs = [];
           try {
             const { results: extra } = await env.DB.prepare(`
               SELECT * FROM files 
               WHERE user_id = ? 
-                AND (matiere_id IS NULL OR matiere_id = 'menu-images')
-                AND (type LIKE 'image/%' OR LOWER(extension) IN ('jpg','jpeg','png','webp','gif','svg','bmp','ico','tiff','tif','heic','avif'))
+                AND (matiere_id = 'menu-images' OR type LIKE 'image/%' OR LOWER(extension) IN ('jpg','jpeg','png','webp','gif','svg','bmp','ico','tiff','tif','heic','avif'))
                 AND r2_key IS NOT NULL AND r2_key != ''
                 AND r2_key NOT LIKE '%/classeur/%'
-                AND r2_key NOT LIKE '%/mes-fichiers/%'
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
+                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
               ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId).all();
+            `).bind(reqUserId, reqUserId, reqUserId).all();
             extraImgs = extra || [];
-          } catch (e) {
-          }
-          let trashedImgIdSet = /* @__PURE__ */ new Set();
-          let trashedImgNameSet = /* @__PURE__ */ new Set();
-          try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            (trashList || []).forEach((t) => {
-              if (t.id) trashedImgIdSet.add(t.id);
-              if (t.name) trashedImgNameSet.add(String(t.name).trim().toLowerCase());
-            });
-          } catch (e) {
-          }
-          let securedImgIdSet = /* @__PURE__ */ new Set();
-          let securedImgNameSet = /* @__PURE__ */ new Set();
-          try {
-            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
-            (secList || []).forEach((s) => {
-              if (s.id) securedImgIdSet.add(s.id);
-              if (s.name) securedImgNameSet.add(String(s.name).trim().toLowerCase());
-            });
           } catch (e) {
           }
           let favImgSet = /* @__PURE__ */ new Set();
@@ -8740,17 +8764,12 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
           const seen = /* @__PURE__ */ new Set();
-          const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
           const addImg = (img) => {
             const id = img.id;
-            const name = img.name || "Image";
-            const lowerName = name.trim().toLowerCase();
-            if (trashedImgIdSet.has(id) || trashedImgNameSet.has(lowerName) || securedImgIdSet.has(id) || securedImgNameSet.has(lowerName)) return;
-            const normKey = `${name.trim().toLowerCase()}_${img.size_bytes || img.size || 0}`;
-            if (seen.has(id) || seenNames.has(normKey)) return;
+            if (!id || trashedImgIdSet.has(id) || securedImgIdSet.has(id)) return;
+            if (seen.has(id)) return;
             seen.add(id);
-            seenNames.add(normKey);
             let finalUrl = "";
             if (img.r2_key) {
               finalUrl = `${url.origin}/api/cloud/file/images/${encodeURIComponent(img.r2_key)}`;
@@ -8957,32 +8976,22 @@ a:hover{transform:translateY(-2px)}
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          await env.DB.prepare(`
-            DELETE FROM video_files 
-            WHERE user_id = ? AND (
-              r2_key LIKE '%/study/%' 
-              OR r2_key LIKE '%/classeur/%' 
-              OR id LIKE 'folder_%' 
-              OR id LIKE 'cf_folder_%' 
-              OR id LIKE 'cf-folder-%'
-              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
-          });
-          await env.DB.prepare(`
-            DELETE FROM files
-            WHERE user_id = ? AND matiere_id = 'menu-videos' AND (
-              r2_key IS NULL OR r2_key = ''
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
-          });
+          let trashedVidIdSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            (trashList || []).forEach((t) => {
+              if (t.id) trashedVidIdSet.add(t.id);
+            });
+          } catch (e) {
+          }
+          let securedVidIdSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
+            (secList || []).forEach((s) => {
+              if (s.id) securedVidIdSet.add(s.id);
+            });
+          } catch (e) {
+          }
           const { results: vids } = await env.DB.prepare(`
             SELECT * FROM video_files 
             WHERE user_id = ? 
@@ -8991,44 +9000,25 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
-              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId, reqUserId).all();
+          `).bind(reqUserId, reqUserId, reqUserId).all();
           let extraVids = [];
           try {
             const { results: extra } = await env.DB.prepare(`
               SELECT * FROM files 
               WHERE user_id = ? 
-                AND (matiere_id IS NULL OR matiere_id = 'menu-videos')
-                AND (type LIKE 'video/%' OR LOWER(extension) IN ('mp4','mov','mkv','webm','avi','3gp','m4v','ts'))
+                AND (matiere_id = 'menu-videos' OR type LIKE 'video/%' OR LOWER(extension) IN ('mp4','mov','mkv','webm','avi','3gp','m4v','ts'))
                 AND r2_key IS NOT NULL AND r2_key != ''
                 AND r2_key NOT LIKE '%/classeur/%'
-                AND r2_key NOT LIKE '%/mes-fichiers/%'
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
+                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
               ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId).all();
+            `).bind(reqUserId, reqUserId, reqUserId).all();
             extraVids = extra || [];
-          } catch (e) {
-          }
-          let trashedVidIdSet = /* @__PURE__ */ new Set();
-          let trashedVidNameSet = /* @__PURE__ */ new Set();
-          try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            (trashList || []).forEach((t) => {
-              if (t.id) trashedVidIdSet.add(t.id);
-              if (t.name) trashedVidNameSet.add(String(t.name).trim().toLowerCase());
-            });
-          } catch (e) {
-          }
-          let securedVidIdSet = /* @__PURE__ */ new Set();
-          let securedVidNameSet = /* @__PURE__ */ new Set();
-          try {
-            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
-            (secList || []).forEach((s) => {
-              if (s.id) securedVidIdSet.add(s.id);
-              if (s.name) securedVidNameSet.add(String(s.name).trim().toLowerCase());
-            });
           } catch (e) {
           }
           let favVidSet = /* @__PURE__ */ new Set();
@@ -9044,21 +9034,19 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
           const seen = /* @__PURE__ */ new Set();
-          const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
           const addVid = (v) => {
             const id = v.id;
-            const name = v.name || "Vid\xE9o";
-            const lowerName = name.trim().toLowerCase();
-            if (trashedVidIdSet.has(id) || trashedVidNameSet.has(lowerName) || securedVidIdSet.has(id) || securedVidNameSet.has(lowerName)) return;
-            const normKey = `${name.trim().toLowerCase()}_${v.size_bytes || v.size || 0}`;
-            if (seen.has(id) || seenNames.has(normKey)) return;
+            if (!id || trashedVidIdSet.has(id) || securedVidIdSet.has(id)) return;
+            if (seen.has(id)) return;
             seen.add(id);
-            seenNames.add(normKey);
             let finalUrl = v.video_url || v.file_url || v.url || "";
-            if ((!finalUrl || finalUrl.startsWith("blob:")) && v.r2_key) {
+            if ((!finalUrl || finalUrl.startsWith("blob:") || finalUrl.includes("localhost")) && v.r2_key) {
               finalUrl = `${url.origin}/api/cloud/file/videos/${encodeURIComponent(v.r2_key)}`;
             }
+            const rawVThumb = String(v.thumbnail_url || "").trim();
+            const isValidVThumb = rawVThumb && !rawVThumb.startsWith("blob:") && !rawVThumb.includes("localhost") && (rawVThumb.startsWith("data:image") || rawVThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVThumb));
+            const resolvedVThumb = isValidVThumb ? rawVThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(v.id)}?userId=${encodeURIComponent(v.user_id || reqUserId)}`;
             allList.push({
               id: v.id,
               userId: v.user_id,
@@ -9072,7 +9060,8 @@ a:hover{transform:translateY(-2px)}
               r2Key: v.r2_key || "",
               videoUrl: finalUrl,
               url: finalUrl,
-              thumbnailUrl: v.thumbnail_url || finalUrl,
+              previewUrl: resolvedVThumb,
+              thumbnailUrl: resolvedVThumb,
               category: "videos",
               isVideo: true,
               isFavorite: Boolean(v.is_favorite || favVidSet.has(v.id)),
@@ -9102,7 +9091,9 @@ a:hover{transform:translateY(-2px)}
               videoUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(id)}`;
             }
           }
-          const thumbnailUrl = body.thumbnailUrl || videoUrl;
+          const rawBodyThumb = String(body.thumbnailUrl || body.previewUrl || "").trim();
+          const isValidBodyThumb = rawBodyThumb && !rawBodyThumb.startsWith("blob:") && !rawBodyThumb.includes("localhost") && (rawBodyThumb.startsWith("data:image") || rawBodyThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawBodyThumb));
+          const thumbnailUrl = isValidBodyThumb ? rawBodyThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(id)}?userId=${encodeURIComponent(reqUserId)}`;
           await env.DB.prepare(`
             INSERT INTO video_files (
               id, user_id, name, size, size_bytes, duration_sec, resolution, extension,
@@ -9119,7 +9110,11 @@ a:hover{transform:translateY(-2px)}
                 THEN video_files.video_url
                 ELSE excluded.video_url
               END,
-              thumbnail_url = COALESCE(excluded.thumbnail_url, video_files.thumbnail_url),
+              thumbnail_url = CASE
+                WHEN video_files.thumbnail_url IS NOT NULL AND video_files.thumbnail_url != '' AND (video_files.thumbnail_url LIKE '%/api/cloud/thumbnail%' OR video_files.thumbnail_url LIKE 'data:image%')
+                THEN video_files.thumbnail_url
+                ELSE COALESCE(excluded.thumbnail_url, video_files.thumbnail_url)
+              END,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id,
@@ -9212,6 +9207,9 @@ a:hover{transform:translateY(-2px)}
           }
           if (file) {
             const resolvedR2Key = file.r2_key && String(file.r2_key).trim() !== "" ? String(file.r2_key).trim() : extractR2Keys("", file.video_url || file.file_url || "")[0] || "";
+            const rawVidThumb = String(file.thumbnail_url || "").trim();
+            const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith("blob:") && !rawVidThumb.includes("localhost") && (rawVidThumb.startsWith("data:image") || rawVidThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
+            const thumbToSave = isValidVidThumb ? rawVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(file.id)}?userId=${encodeURIComponent(reqUserId)}`;
             await env.DB.prepare(`
               INSERT INTO trash_files (
                 id, user_id, name, size, size_bytes, category, extension,
@@ -9232,7 +9230,7 @@ a:hover{transform:translateY(-2px)}
               file.size,
               file.size_bytes,
               file.extension,
-              JSON.stringify({ durationSec: file.duration_sec || 0, resolution: file.resolution || "1080p" }),
+              JSON.stringify({ durationSec: file.duration_sec || 0, resolution: file.resolution || "1080p", thumbnailUrl: thumbToSave }),
               file.date_formatted,
               resolvedR2Key,
               file.video_url || file.file_url || ""
@@ -9255,27 +9253,22 @@ a:hover{transform:translateY(-2px)}
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          await env.DB.prepare(`
-            DELETE FROM document_files 
-            WHERE user_id = ? AND (
-              r2_key LIKE '%/study/%' 
-              OR r2_key LIKE '%/mes-fichiers/%' 
-              OR r2_key LIKE '%/classeur/%' 
-              OR id LIKE 'folder_%' 
-              OR id LIKE 'cf_folder_%' 
-              OR id LIKE 'cf-folder-%'
-              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId).run().catch(() => {
-          });
-          await env.DB.prepare(`
-            DELETE FROM trash_files 
-            WHERE user_id = ? AND (
-              r2_key LIKE '%/study/%' 
-              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId).run().catch(() => {
-          });
+          let trashedDocIdSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            (trashList || []).forEach((t) => {
+              if (t.id) trashedDocIdSet.add(t.id);
+            });
+          } catch (e) {
+          }
+          let securedDocIdSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
+            (secList || []).forEach((s) => {
+              if (s.id) securedDocIdSet.add(s.id);
+            });
+          } catch (e) {
+          }
           const { results: docs } = await env.DB.prepare(`
             SELECT * FROM document_files 
             WHERE user_id = ? 
@@ -9285,39 +9278,11 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
-              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId, reqUserId).all();
+          `).bind(reqUserId, reqUserId, reqUserId).all();
           let extraDocs = [];
-          let trashedDocIdSet = /* @__PURE__ */ new Set();
-          let trashedDocNameSet = /* @__PURE__ */ new Set();
-          try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            (trashList || []).forEach((t) => {
-              if (t.id) trashedDocIdSet.add(t.id);
-              if (t.name) trashedDocNameSet.add(String(t.name).trim().toLowerCase());
-            });
-          } catch (e) {
-          }
-          let securedDocIdSet = /* @__PURE__ */ new Set();
-          let securedDocNameSet = /* @__PURE__ */ new Set();
-          try {
-            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
-            (secList || []).forEach((s) => {
-              if (s.id) securedDocIdSet.add(s.id);
-              if (s.name) securedDocNameSet.add(String(s.name).trim().toLowerCase());
-            });
-          } catch (e) {
-          }
-          let studyNames = /* @__PURE__ */ new Set();
-          try {
-            const { results: sList } = await env.DB.prepare(`SELECT name, id FROM study_imported_files WHERE user_id = ?`).bind(reqUserId).all();
-            (sList || []).forEach((s) => {
-              if (s.name) studyNames.add(s.name.trim().toLowerCase());
-              if (s.id) trashedDocIdSet.add(s.id);
-            });
-          } catch (e) {
-          }
           let favDocSet = /* @__PURE__ */ new Set();
           try {
             const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
@@ -9331,26 +9296,22 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
           const seen = /* @__PURE__ */ new Set();
-          const seenNames = /* @__PURE__ */ new Set();
           const allList = [];
           const addDoc = (d) => {
             const id = d.id;
-            const docNameLower = String(d.name || "").trim().toLowerCase();
-            if (trashedDocIdSet.has(id) || trashedDocNameSet.has(docNameLower) || securedDocIdSet.has(id) || securedDocNameSet.has(docNameLower)) return;
+            if (!id || trashedDocIdSet.has(id) || securedDocIdSet.has(id)) return;
+            if (seen.has(id)) return;
+            seen.add(id);
             if (typeof id === "string" && (id.startsWith("cf-") || id.startsWith("cf_"))) return;
             if (d.r2_key && (d.r2_key.includes("/study/") || d.r2_key.includes("/classeur/") || d.r2_key.includes("/mes-fichiers/"))) return;
             if (d.folder_id && !["documents", "root", "default-folder"].includes(d.folder_id)) return;
             if (d.category === "study" || d.category === "classeur" || d.category === "mes-fichiers" || d.is_study_import || d.isStudyImport) return;
-            const name = d.name || "Document";
-            if (name && studyNames.has(name.trim().toLowerCase())) return;
-            const normKey = `${name.trim().toLowerCase()}_${d.size_bytes || d.size || 0}`;
-            if (seen.has(id) || seenNames.has(normKey)) return;
-            seen.add(id);
-            seenNames.add(normKey);
             let finalUrl = d.file_url || d.url || "";
             if ((!finalUrl || finalUrl.startsWith("blob:")) && d.r2_key) {
               finalUrl = `${url.origin}/api/cloud/file/documents/${encodeURIComponent(d.r2_key)}`;
             }
+            const isImagePreview = (u) => Boolean(u && !u.startsWith("blob:") && !u.includes("localhost") && (u.startsWith("data:image") || u.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg|avif)(\?|$)/i.test(u)));
+            const validThumb = isImagePreview(d.preview_url) ? d.preview_url : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(d.id)}?userId=${encodeURIComponent(d.user_id || reqUserId)}`;
             allList.push({
               id: d.id,
               userId: d.user_id,
@@ -9363,7 +9324,8 @@ a:hover{transform:translateY(-2px)}
               date: d.date_formatted || (d.created_at ? new Date(d.created_at).toLocaleDateString("fr-FR") : ""),
               source: d.source || "StudyCloud",
               r2Key: d.r2_key || "",
-              previewUrl: d.preview_url || finalUrl,
+              thumbnailUrl: validThumb,
+              previewUrl: validThumb,
               url: finalUrl,
               category: "documents",
               isNotepad: d.extension === "txt" || Boolean(d.notepad_content),
@@ -9400,7 +9362,8 @@ a:hover{transform:translateY(-2px)}
               fileUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(id)}`;
             }
           }
-          const previewUrl = body.previewUrl || fileUrl;
+          const isDocThumbImg = body.thumbnailUrl || (body.previewUrl && !body.previewUrl.startsWith("blob:") && !body.previewUrl.endsWith(".pdf") && !body.previewUrl.endsWith(".doc") ? body.previewUrl : "");
+          const previewUrl = isDocThumbImg || `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(id)}?userId=${encodeURIComponent(reqUserId)}`;
           await env.DB.prepare(`
             INSERT INTO document_files (
               id, user_id, name, size, size_bytes, extension, document_category,
@@ -9448,7 +9411,8 @@ a:hover{transform:translateY(-2px)}
             date: dateFormatted,
             source,
             r2Key,
-            previewUrl: previewUrl || fileUrl,
+            thumbnailUrl: previewUrl,
+            previewUrl,
             url: fileUrl,
             category: "documents",
             isNotepad: extension === "txt" || Boolean(body.notepadContent),
@@ -9496,7 +9460,12 @@ a:hover{transform:translateY(-2px)}
               file.size,
               file.size_bytes,
               file.extension,
-              JSON.stringify({ documentCategory: file.document_category || "COURS", pageCount: file.page_count || 1 }),
+              JSON.stringify({
+                documentCategory: file.document_category || "COURS",
+                pageCount: file.page_count || 1,
+                previewUrl: file.preview_url,
+                thumbnailUrl: file.preview_url && !file.preview_url.endsWith(".pdf") ? file.preview_url : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(file.id)}?userId=${encodeURIComponent(reqUserId)}`
+              }),
               file.date_formatted,
               resolvedR2Key,
               file.file_url
@@ -9728,7 +9697,15 @@ a:hover{transform:translateY(-2px)}
           const formatted = (results || []).map((s) => {
             const meta = s.metadata_json ? JSON.parse(s.metadata_json) : {};
             const isAud = s.original_category === "audio" || s.category === "audio";
+            const isVid = s.original_category === "videos" || s.category === "videos";
+            const isDoc = s.original_category === "documents" || s.category === "documents" || /\.(pdf|docx?|xlsx?|pptx?|txt)$/i.test(s.name || "");
             const audioCover = meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith("blob:") && !meta.previewUrl.includes(".mp3") ? meta.previewUrl : "") || "";
+            const rawVidThumb = String(meta.thumbnailUrl || meta.previewUrl || "").trim();
+            const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith("blob:") && !rawVidThumb.includes("localhost") && (rawVidThumb.startsWith("data:image") || rawVidThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
+            const vidThumb = isVid ? isValidVidThumb ? rawVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(s.id)}?userId=${encodeURIComponent(s.user_id || reqUserId)}` : "";
+            const rawDocThumb = String(meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.endsWith(".pdf") ? meta.previewUrl : "") || "").trim();
+            const isValidDocThumb = rawDocThumb && !rawDocThumb.startsWith("blob:") && !rawDocThumb.includes("localhost") && (rawDocThumb.startsWith("data:image") || rawDocThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawDocThumb));
+            const docThumb = isDoc ? isValidDocThumb ? rawDocThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(s.id)}?userId=${encodeURIComponent(s.user_id || reqUserId)}` : "";
             return {
               id: s.id,
               userId: s.user_id,
@@ -9743,9 +9720,10 @@ a:hover{transform:translateY(-2px)}
               metadata: meta,
               r2Key: s.r2_key || "",
               url: s.file_url || "",
-              previewUrl: isAud ? audioCover || s.file_url || "" : s.file_url || "",
+              videoUrl: isVid ? s.file_url || "" : void 0,
+              previewUrl: isAud ? audioCover || s.file_url || "" : isVid ? vidThumb || s.file_url || "" : isDoc ? docThumb || s.file_url || "" : s.file_url || "",
               coverUrl: isAud ? audioCover || void 0 : void 0,
-              thumbnailUrl: isAud ? audioCover || void 0 : s.file_url || void 0,
+              thumbnailUrl: isAud ? audioCover || void 0 : isVid ? vidThumb || void 0 : isDoc ? docThumb || void 0 : s.file_url || void 0,
               artist: meta.artist || void 0,
               title: meta.title || s.name,
               album: meta.album || void 0,
@@ -9766,10 +9744,17 @@ a:hover{transform:translateY(-2px)}
           const size = file.size || "0 o";
           const sizeBytes = Number(file.sizeBytes || 0);
           const extLower = (file.extension || (name.includes(".") ? name.split(".").pop() : "") || "").toLowerCase();
+          const rawFileName = (name || "").toLowerCase();
+          const fIdStr = String(id || "").toLowerCase();
+          const rawIncomingCat = String(fromCategory || file.category || file.originalCategory || file.sourceCategory || "").toLowerCase();
           let detectedNature = "";
-          if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff"].includes(extLower)) detectedNature = "images";
-          else if (["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv"].includes(extLower)) detectedNature = "videos";
-          else if (["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus"].includes(extLower)) detectedNature = "audio";
+          if (rawIncomingCat === "audio" || fIdStr.startsWith("aud-") || fIdStr.startsWith("aud_") || file.isAudio || Boolean(file.audioUrl) || rawFileName.includes("whatsapp audio") || ["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus", "wma", "amr", "weba", "aiff", "alac", "mid", "midi", "caf", "3ga"].includes(extLower)) {
+            detectedNature = "audio";
+          } else if (rawIncomingCat === "videos" || fIdStr.startsWith("vid-") || fIdStr.startsWith("video_") || file.isVideo || Boolean(file.videoUrl) || rawFileName.includes("whatsapp video") || ["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv", "m4v"].includes(extLower)) {
+            detectedNature = "videos";
+          } else if (rawIncomingCat === "images" || fIdStr.startsWith("img-") || fIdStr.startsWith("image_") || file.isImage || Boolean(file.imageUrl) || rawFileName.includes("whatsapp image") || ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff", "avif"].includes(extLower)) {
+            detectedNature = "images";
+          }
           const category = detectedNature || file.category || fromCategory || "documents";
           const extension = file.extension || extLower;
           const originalCategory = detectedNature || fromCategory || file.category || "documents";
@@ -9811,13 +9796,13 @@ a:hover{transform:translateY(-2px)}
                 UNION ALL
                 SELECT id, user_id, name, size, size_bytes, extension, r2_key, video_url as file_url, 'videos' as found_cat FROM video_files WHERE id = ? AND user_id = ?
                 UNION ALL
-                SELECT id, user_id, name, size, size_bytes, 'mp3' as extension, r2_key, audio_url as file_url, 'audio' as found_cat FROM audio_files WHERE id = ? AND user_id = ?
+                SELECT id, user_id, name, size, size_bytes, 'mp3' as extension, r2_key, audio_url as file_url, cover_url as thumbnail_url, 'audio' as found_cat FROM audio_files WHERE id = ? AND user_id = ?
                 UNION ALL
-                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, 'documents' as found_cat FROM document_files WHERE id = ? AND user_id = ?
+                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, preview_url as thumbnail_url, 'documents' as found_cat FROM document_files WHERE id = ? AND user_id = ?
                 UNION ALL
-                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, 'classeur' as found_cat FROM classeur_files WHERE id = ? AND user_id = ?
+                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, preview_url as thumbnail_url, 'classeur' as found_cat FROM classeur_files WHERE id = ? AND user_id = ?
                 UNION ALL
-                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, 'mes-fichiers' as found_cat FROM files WHERE id = ? AND user_id = ?
+                SELECT id, user_id, name, size, size_bytes, extension, r2_key, file_url, thumbnail_url, 'mes-fichiers' as found_cat FROM files WHERE id = ? AND user_id = ?
                 LIMIT 1
               `).bind(id, reqUserId, id, reqUserId, id, reqUserId, id, reqUserId, id, reqUserId, id, reqUserId).first();
             } catch (e) {
@@ -9943,13 +9928,16 @@ a:hover{transform:translateY(-2px)}
             if (action === "trash") {
               const fileExt = (secFile.extension || (secFile.name && secFile.name.includes(".") ? secFile.name.split(".").pop() : "") || "").toLowerCase();
               const rawName = (secFile.name || "").toLowerCase();
+              const fIdStr = String(secFile.id || "").toLowerCase();
+              const rawSecOrig = String(secFile.original_category || secFile.category || "").toLowerCase();
               let detectedCat = "";
-              if (rawName.includes("whatsapp video") || rawName.includes("vid-") || /\.(mp4|mkv|avi|mov|webm|3gp|flv|wmv)$/i.test(rawName)) detectedCat = "videos";
-              else if (rawName.includes("whatsapp audio") || rawName.includes("aud-") || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(rawName)) detectedCat = "audio";
-              else if (rawName.includes("whatsapp image") || rawName.includes("img-") || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|tiff)$/i.test(rawName)) detectedCat = "images";
-              else if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff"].includes(fileExt)) detectedCat = "images";
-              else if (["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv"].includes(fileExt)) detectedCat = "videos";
-              else if (["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus"].includes(fileExt)) detectedCat = "audio";
+              if (rawSecOrig === "audio" || fIdStr.startsWith("aud-") || fIdStr.startsWith("aud_") || meta.isAudio || Boolean(meta.audioUrl) || rawName.includes("whatsapp audio") || ["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus", "wma", "amr", "weba", "aiff", "alac", "mid", "midi", "caf", "3ga"].includes(fileExt)) {
+                detectedCat = "audio";
+              } else if (rawSecOrig === "videos" || fIdStr.startsWith("vid-") || fIdStr.startsWith("video_") || meta.isVideo || Boolean(meta.videoUrl) || rawName.includes("whatsapp video") || ["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv", "m4v"].includes(fileExt)) {
+                detectedCat = "videos";
+              } else if (rawSecOrig === "images" || fIdStr.startsWith("img-") || fIdStr.startsWith("image_") || meta.isImage || Boolean(meta.imageUrl) || rawName.includes("whatsapp image") || ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff", "avif"].includes(fileExt)) {
+                detectedCat = "images";
+              }
               let realCategory = detectedCat || secFile.original_category;
               if (detectedCat && (realCategory === "documents" || realCategory === "secure" || realCategory === "trash")) {
                 realCategory = detectedCat;
@@ -10028,15 +10016,18 @@ a:hover{transform:translateY(-2px)}
               await recordSyncItem(env.DB, reqUserId, secFile.id, "trash", { id: secFile.id, name: secFile.name, size: secFile.size, isTrash: true, category: realCategory }, 0);
               await recordSyncItem(env.DB, reqUserId, secFile.id, "secure", { id: secFile.id }, 1);
             } else {
-              const fileExt = (secFile.extension || (secFile.name.includes(".") ? secFile.name.split(".").pop() : "") || "").toLowerCase();
+              const fileExt = (secFile.extension || (secFile.name && secFile.name.includes(".") ? secFile.name.split(".").pop() : "") || "").toLowerCase();
               const rawName = (secFile.name || "").toLowerCase();
+              const fIdStr = String(secFile.id || "").toLowerCase();
+              const rawSecOrig = String(secFile.original_category || secFile.category || "").toLowerCase();
               let detectedCat = "";
-              if (rawName.includes("whatsapp video") || rawName.includes("vid-") || /\.(mp4|mkv|avi|mov|webm|3gp|flv|wmv)$/i.test(rawName)) detectedCat = "videos";
-              else if (rawName.includes("whatsapp audio") || rawName.includes("aud-") || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(rawName)) detectedCat = "audio";
-              else if (rawName.includes("whatsapp image") || rawName.includes("img-") || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|tiff)$/i.test(rawName)) detectedCat = "images";
-              else if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff"].includes(fileExt)) detectedCat = "images";
-              else if (["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv"].includes(fileExt)) detectedCat = "videos";
-              else if (["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus"].includes(fileExt)) detectedCat = "audio";
+              if (rawSecOrig === "audio" || fIdStr.startsWith("aud-") || fIdStr.startsWith("aud_") || meta.isAudio || Boolean(meta.audioUrl) || rawName.includes("whatsapp audio") || ["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus", "wma", "amr", "weba", "aiff", "alac", "mid", "midi", "caf", "3ga"].includes(fileExt)) {
+                detectedCat = "audio";
+              } else if (rawSecOrig === "videos" || fIdStr.startsWith("vid-") || fIdStr.startsWith("video_") || meta.isVideo || Boolean(meta.videoUrl) || rawName.includes("whatsapp video") || ["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv", "m4v"].includes(fileExt)) {
+                detectedCat = "videos";
+              } else if (rawSecOrig === "images" || fIdStr.startsWith("img-") || fIdStr.startsWith("image_") || meta.isImage || Boolean(meta.imageUrl) || rawName.includes("whatsapp image") || ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff", "avif"].includes(fileExt)) {
+                detectedCat = "images";
+              }
               let realCat = detectedCat || secFile.original_category;
               if (detectedCat && (realCat === "documents" || realCat === "secure" || realCat === "trash")) {
                 realCat = detectedCat;
@@ -10219,6 +10210,10 @@ a:hover{transform:translateY(-2px)}
                   `).bind(secFile.id, reqUserId, secFile.name, secFile.size_bytes || 0, r2KeyToRestore, finalRestoredUrl, Date.now()).run();
                 } catch (e) {
                 }
+                await env.DB.prepare("DELETE FROM video_files WHERE (id = ? OR name = ?) AND user_id = ?").bind(secFile.id, secFile.name, reqUserId).run().catch(() => {
+                });
+                await env.DB.prepare("DELETE FROM document_files WHERE (id = ? OR name = ?) AND user_id = ?").bind(secFile.id, secFile.name, reqUserId).run().catch(() => {
+                });
               } else if (realCat === "images") {
                 await env.DB.prepare(`
                   INSERT INTO image_files (id, user_id, name, size, size_bytes, extension, r2_key, image_url, thumbnail_url, date_formatted, updated_at)
@@ -10248,6 +10243,9 @@ a:hover{transform:translateY(-2px)}
                 } catch (e) {
                 }
               } else if (realCat === "videos") {
+                const rawVidThumb = String(meta.thumbnailUrl || meta.previewUrl || "").trim();
+                const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith("blob:") && !rawVidThumb.includes("localhost") && (rawVidThumb.startsWith("data:image") || rawVidThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
+                const restoredVidThumb = isValidVidThumb ? rawVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(secFile.id)}?userId=${encodeURIComponent(reqUserId)}`;
                 await env.DB.prepare(`
                   INSERT INTO video_files (id, user_id, name, size, size_bytes, duration_sec, resolution, extension, r2_key, video_url, thumbnail_url, date_formatted, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -10261,7 +10259,7 @@ a:hover{transform:translateY(-2px)}
                     thumbnail_url = excluded.thumbnail_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, Number(meta.durationSec || 0), meta.resolution || "1080p", resolvedExt, resolvedR2Key, finalRestoredUrl, finalRestoredUrl, secFile.date_formatted).run();
+                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, Number(meta.durationSec || 0), meta.resolution || "1080p", resolvedExt, resolvedR2Key, finalRestoredUrl, restoredVidThumb, secFile.date_formatted).run();
                 try {
                   await env.DB.prepare(`
                     INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
@@ -10302,7 +10300,7 @@ a:hover{transform:translateY(-2px)}
                   meta.source || "StudyCloud",
                   resolvedR2Key,
                   finalRestoredUrl,
-                  meta.previewUrl || finalRestoredUrl
+                  meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.endsWith(".pdf") ? meta.previewUrl : "") || `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(secFile.id)}?userId=${encodeURIComponent(reqUserId)}`
                 ).run();
                 try {
                   await env.DB.prepare(`
@@ -10325,7 +10323,15 @@ a:hover{transform:translateY(-2px)}
               }
               const finalCategory = isFolder ? "classeur_folder" : realCat;
               const isAudioFile = realCat === "audio";
+              const isVideoFile = realCat === "videos";
+              const isDocFile = realCat === "documents";
               const audioCoverUrl = isAudioFile ? meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith("blob:") && !meta.previewUrl.includes(".mp3") ? meta.previewUrl : "") || "" : "";
+              const rawSecVidThumb = isVideoFile ? String(meta.thumbnailUrl || meta.previewUrl || "").trim() : "";
+              const isValidSecVidThumb = rawSecVidThumb && !rawSecVidThumb.startsWith("blob:") && !rawSecVidThumb.includes("localhost") && (rawSecVidThumb.startsWith("data:image") || rawSecVidThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawSecVidThumb));
+              const videoThumbUrl = isVideoFile ? isValidSecVidThumb ? rawSecVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(secFile.id)}?userId=${encodeURIComponent(reqUserId)}` : "";
+              const rawSecDocThumb = isDocFile ? String(meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.endsWith(".pdf") ? meta.previewUrl : "") || "").trim() : "";
+              const isValidSecDocThumb = rawSecDocThumb && !rawSecDocThumb.startsWith("blob:") && !rawSecDocThumb.includes("localhost") && (rawSecDocThumb.startsWith("data:image") || rawSecDocThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawSecDocThumb));
+              const docThumbUrl = isDocFile ? isValidSecDocThumb ? rawSecDocThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(secFile.id)}?userId=${encodeURIComponent(reqUserId)}` : "";
               const restoredPayload = {
                 id: secFile.id,
                 name: secFile.name,
@@ -10335,8 +10341,9 @@ a:hover{transform:translateY(-2px)}
                 extension: resolvedExt,
                 date: secFile.date_formatted || (/* @__PURE__ */ new Date()).toLocaleDateString("fr-FR"),
                 url: finalRestoredUrl,
-                previewUrl: isAudioFile ? audioCoverUrl || finalRestoredUrl : finalRestoredUrl,
-                thumbnailUrl: isAudioFile ? audioCoverUrl || "" : finalRestoredUrl,
+                videoUrl: isVideoFile ? finalRestoredUrl : void 0,
+                previewUrl: isAudioFile ? audioCoverUrl || finalRestoredUrl : isVideoFile ? videoThumbUrl || finalRestoredUrl : isDocFile ? docThumbUrl || finalRestoredUrl : finalRestoredUrl,
+                thumbnailUrl: isAudioFile ? audioCoverUrl || "" : isVideoFile ? videoThumbUrl || finalRestoredUrl : isDocFile ? docThumbUrl || "" : finalRestoredUrl,
                 coverUrl: isAudioFile ? audioCoverUrl || void 0 : void 0,
                 artist: isAudioFile ? meta.artist || void 0 : void 0,
                 title: isAudioFile ? meta.title || secFile.name : void 0,
@@ -10379,6 +10386,13 @@ a:hover{transform:translateY(-2px)}
             if (!finalUrl || finalUrl.startsWith("blob:") || finalUrl.includes("localhost") || finalUrl.includes("127.0.0.1")) {
               finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(t.id)}`;
             }
+            const isVidTrash = t.category === "videos" || t.source_category === "videos" || /\.(mp4|mkv|avi|mov|webm|3gp)$/i.test(t.name || "");
+            const isDocTrash = t.category === "documents" || t.source_category === "documents" || /\.(pdf|docx?|xlsx?|pptx?|txt)$/i.test(t.name || "");
+            const rawTrashThumb = String(meta.thumbnailUrl || meta.previewUrl || "").trim();
+            const isValidTrashThumb = rawTrashThumb && !rawTrashThumb.startsWith("blob:") && !rawTrashThumb.includes("localhost") && (rawTrashThumb.startsWith("data:image") || rawTrashThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawTrashThumb));
+            const vidTrashThumb = isVidTrash ? isValidTrashThumb ? rawTrashThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(t.id)}?userId=${encodeURIComponent(t.user_id || reqUserId)}` : "";
+            const docTrashThumb = isDocTrash ? isValidTrashThumb ? rawTrashThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(t.id)}?userId=${encodeURIComponent(t.user_id || reqUserId)}` : "";
+            const trashThumbUrl = isVidTrash ? vidTrashThumb : isDocTrash ? docTrashThumb : meta.coverUrl || finalUrl;
             return {
               id: t.id,
               userId: t.user_id,
@@ -10394,7 +10408,8 @@ a:hover{transform:translateY(-2px)}
               metadata: meta,
               r2Key: t.r2_key || "",
               url: finalUrl,
-              previewUrl: finalUrl,
+              previewUrl: isVidTrash ? vidTrashThumb : isDocTrash ? docTrashThumb : finalUrl,
+              thumbnailUrl: trashThumbUrl,
               audioUrl: finalUrl,
               videoUrl: finalUrl,
               artist: meta.artist || "StudyCloud Audio",
@@ -10415,13 +10430,16 @@ a:hover{transform:translateY(-2px)}
               const meta = item.metadata_json ? JSON.parse(item.metadata_json) : {};
               const itemExt = (item.extension || (item.name.includes(".") ? item.name.split(".").pop() : "") || "").toLowerCase();
               const rawItemName = (item.name || "").toLowerCase();
+              const fIdStr = String(item.id || "").toLowerCase();
+              const rawSrc = String(item.source_category || item.category || meta.sourceCategory || meta.originalCategory || "").toLowerCase();
               let detectedSrcCat = "";
-              if (rawItemName.includes("whatsapp video") || rawItemName.includes("vid-") || /\.(mp4|mkv|avi|mov|webm|3gp|flv|wmv)$/i.test(rawItemName)) detectedSrcCat = "videos";
-              else if (rawItemName.includes("whatsapp audio") || rawItemName.includes("aud-") || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(rawItemName)) detectedSrcCat = "audio";
-              else if (rawItemName.includes("whatsapp image") || rawItemName.includes("img-") || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|tiff)$/i.test(rawItemName)) detectedSrcCat = "images";
-              else if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff"].includes(itemExt)) detectedSrcCat = "images";
-              else if (["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv"].includes(itemExt)) detectedSrcCat = "videos";
-              else if (["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus"].includes(itemExt)) detectedSrcCat = "audio";
+              if (rawSrc === "audio" || fIdStr.startsWith("aud-") || fIdStr.startsWith("aud_") || meta.isAudio || Boolean(meta.audioUrl) || rawItemName.includes("whatsapp audio") || ["mp3", "wav", "ogg", "m4a", "aac", "flac", "opus", "wma", "amr", "weba", "aiff", "alac", "mid", "midi", "caf", "3ga"].includes(itemExt)) {
+                detectedSrcCat = "audio";
+              } else if (rawSrc === "videos" || fIdStr.startsWith("vid-") || fIdStr.startsWith("video_") || meta.isVideo || Boolean(meta.videoUrl) || rawItemName.includes("whatsapp video") || ["mp4", "mkv", "avi", "mov", "webm", "3gp", "flv", "wmv", "m4v"].includes(itemExt)) {
+                detectedSrcCat = "videos";
+              } else if (rawSrc === "images" || fIdStr.startsWith("img-") || fIdStr.startsWith("image_") || meta.isImage || Boolean(meta.imageUrl) || rawItemName.includes("whatsapp image") || ["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg", "heic", "tiff", "avif"].includes(itemExt)) {
+                detectedSrcCat = "images";
+              }
               let srcCat = detectedSrcCat || item.source_category || item.category || "documents";
               if (srcCat === "secure" || srcCat === "trash") {
                 srcCat = meta.originalCategory || meta.sourceCategory || detectedSrcCat || "documents";
@@ -10671,6 +10689,10 @@ a:hover{transform:translateY(-2px)}
                   `).bind(item.id, reqUserId, item.name, item.size_bytes || 0, r2KeyToRestore, finalTrashRestoredUrl, Date.now()).run();
                 } catch (e) {
                 }
+                await env.DB.prepare("DELETE FROM video_files WHERE (id = ? OR name = ?) AND user_id = ?").bind(item.id, item.name, reqUserId).run().catch(() => {
+                });
+                await env.DB.prepare("DELETE FROM document_files WHERE (id = ? OR name = ?) AND user_id = ?").bind(item.id, item.name, reqUserId).run().catch(() => {
+                });
               } else if (srcCat === "images") {
                 await env.DB.prepare(`
                   INSERT INTO image_files (id, user_id, name, size, size_bytes, extension, r2_key, image_url, thumbnail_url, date_formatted, updated_at)
@@ -10700,6 +10722,9 @@ a:hover{transform:translateY(-2px)}
                 } catch (e) {
                 }
               } else if (srcCat === "videos") {
+                const rawTrashVidThumb = String(meta.thumbnailUrl || meta.previewUrl || "").trim();
+                const isValidTrashVidThumb = rawTrashVidThumb && !rawTrashVidThumb.startsWith("blob:") && !rawTrashVidThumb.includes("localhost") && (rawTrashVidThumb.startsWith("data:image") || rawTrashVidThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawTrashVidThumb));
+                const restoredTrashVidThumb = isValidTrashVidThumb ? rawTrashVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(item.id)}?userId=${encodeURIComponent(reqUserId)}`;
                 await env.DB.prepare(`
                   INSERT INTO video_files (id, user_id, name, size, size_bytes, duration_sec, resolution, extension, r2_key, video_url, thumbnail_url, date_formatted, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -10713,7 +10738,7 @@ a:hover{transform:translateY(-2px)}
                     thumbnail_url = excluded.thumbnail_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, Number(meta.durationSec || 0), meta.resolution || "1080p", resolvedExt, resolvedR2Key, finalTrashRestoredUrl, finalTrashRestoredUrl, item.date_formatted).run();
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, Number(meta.durationSec || 0), meta.resolution || "1080p", resolvedExt, resolvedR2Key, finalTrashRestoredUrl, restoredTrashVidThumb, item.date_formatted).run();
                 try {
                   await env.DB.prepare(`
                     INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
@@ -10754,7 +10779,7 @@ a:hover{transform:translateY(-2px)}
                   meta.source || "StudyCloud",
                   resolvedR2Key,
                   finalTrashRestoredUrl,
-                  meta.previewUrl || finalTrashRestoredUrl
+                  meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.endsWith(".pdf") ? meta.previewUrl : "") || `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(item.id)}?userId=${encodeURIComponent(reqUserId)}`
                 ).run();
                 try {
                   await env.DB.prepare(`
@@ -10777,6 +10802,14 @@ a:hover{transform:translateY(-2px)}
               }
               const finalCategory = srcCat === "classeur_folder" || item.category === "folder" ? "classeur_folder" : srcCat;
               const isFolderItem = finalCategory === "classeur_folder";
+              const isVideoItem = finalCategory === "videos";
+              const isDocItem = finalCategory === "documents";
+              const rawSyncVidThumb = isVideoItem ? String(meta.thumbnailUrl || meta.previewUrl || "").trim() : "";
+              const isValidSyncVidThumb = rawSyncVidThumb && !rawSyncVidThumb.startsWith("blob:") && !rawSyncVidThumb.includes("localhost") && (rawSyncVidThumb.startsWith("data:image") || rawSyncVidThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawSyncVidThumb));
+              const syncVidThumb = isVideoItem ? isValidSyncVidThumb ? rawSyncVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(item.id)}?userId=${encodeURIComponent(reqUserId)}` : "";
+              const rawSyncDocThumb = isDocItem ? String(meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.endsWith(".pdf") ? meta.previewUrl : "") || "").trim() : "";
+              const isValidSyncDocThumb = rawSyncDocThumb && !rawSyncDocThumb.startsWith("blob:") && !rawSyncDocThumb.includes("localhost") && (rawSyncDocThumb.startsWith("data:image") || rawSyncDocThumb.includes("/api/cloud/thumbnail") || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawSyncDocThumb));
+              const syncDocThumb = isDocItem ? isValidSyncDocThumb ? rawSyncDocThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(item.id)}?userId=${encodeURIComponent(reqUserId)}` : "";
               const syncPayload = {
                 id: item.id,
                 name: item.name,
@@ -10787,8 +10820,9 @@ a:hover{transform:translateY(-2px)}
                 r2Key: resolvedR2Key || void 0,
                 date: item.date_formatted || (/* @__PURE__ */ new Date()).toLocaleDateString("fr-FR"),
                 url: finalTrashRestoredUrl || item.file_url || "",
-                previewUrl: finalTrashRestoredUrl || item.file_url || "",
-                thumbnailUrl: finalTrashRestoredUrl || item.file_url || "",
+                videoUrl: isVideoItem ? finalTrashRestoredUrl || item.file_url || "" : void 0,
+                previewUrl: isVideoItem ? syncVidThumb : isDocItem ? syncDocThumb : finalTrashRestoredUrl || item.file_url || "",
+                thumbnailUrl: isVideoItem ? syncVidThumb : isDocItem ? syncDocThumb : finalTrashRestoredUrl || item.file_url || "",
                 folderId: origFolder || void 0,
                 originalFolderId: origFolder || void 0,
                 metadata: meta,
@@ -10893,33 +10927,56 @@ a:hover{transform:translateY(-2px)}
                 env.DB.prepare(`SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category, created_at FROM document_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
                 env.DB.prepare(`SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension, created_at FROM image_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
                 env.DB.prepare(`SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec, created_at FROM video_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
-                env.DB.prepare(`SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes, created_at FROM audio_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes, duration_sec, created_at FROM audio_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
                 env.DB.prepare(`SELECT id, name, model_id, primary_color, accent_color, icon_name, created_at FROM classeur_folders WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
                 env.DB.prepare(`SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content, created_at FROM classeur_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
                 env.DB.prepare(`SELECT id, name, size, size_bytes, file_url, type, extension, downloaded_at as created_at FROM download_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] }))
               ]);
-              const mapFile = (row, cat) => ({
-                id: row.id,
-                name: row.name || (row.title ? `${row.artist ? row.artist + " - " : ""}${row.title}` : "Sans titre"),
-                category: cat === "classeur_folder" ? "classeur" : cat,
-                size: row.size || (cat === "classeur_folder" ? "Dossier 3D" : "0 o"),
-                sizeBytes: row.size_bytes || 0,
-                url: row.file_url || row.image_url || row.video_url || row.audio_url || "",
-                previewUrl: row.preview_url || row.thumbnail_url || row.image_url || row.cover_url || "",
-                thumbnailUrl: row.thumbnail_url || row.preview_url || row.cover_url || "",
-                extension: row.extension || (cat === "classeur_folder" ? "DOSSIER" : ""),
-                date: row.created_at || "Aujourd'hui",
-                isFavorite: true,
-                folderId: row.folder_id,
-                isFolder: cat === "classeur_folder",
-                metadata: cat === "classeur_folder" ? {
-                  modelId: row.model_id || "1",
-                  primaryColor: row.primary_color || "#EA580C",
-                  accentColor: row.accent_color || "#F97316",
-                  iconName: row.icon_name || "Folder",
-                  isFavorite: true
-                } : void 0
-              });
+              const mapFile = (row, cat) => {
+                const isAud = cat === "audio";
+                const isVid = cat === "videos";
+                const isImg = cat === "images";
+                const validCover = isAud ? (row.cover_url && !row.cover_url.startsWith("blob:") && !row.cover_url.includes("localhost") ? row.cover_url : "") || `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(row.id)}` : void 0;
+                return {
+                  id: row.id,
+                  name: row.name || (row.title ? `${row.artist ? row.artist + " - " : ""}${row.title}` : "Sans titre"),
+                  category: cat === "classeur_folder" ? "classeur" : cat,
+                  sourceCategory: cat === "classeur_folder" ? "classeur" : cat,
+                  originalCategory: cat === "classeur_folder" ? "classeur" : cat,
+                  size: row.size || (cat === "classeur_folder" ? "Dossier 3D" : "0 o"),
+                  sizeBytes: row.size_bytes || 0,
+                  url: row.file_url || row.image_url || row.video_url || row.audio_url || "",
+                  previewUrl: validCover || row.preview_url || row.thumbnail_url || row.image_url || row.cover_url || "",
+                  thumbnailUrl: validCover || row.thumbnail_url || row.preview_url || row.cover_url || "",
+                  coverUrl: validCover || (isAud ? row.cover_url : void 0),
+                  extension: row.extension || (cat === "classeur_folder" ? "DOSSIER" : ""),
+                  date: row.created_at || "Aujourd'hui",
+                  isFavorite: true,
+                  isAudio: isAud,
+                  isVideo: isVid,
+                  isImage: isImg,
+                  audioUrl: isAud ? row.audio_url || row.file_url : void 0,
+                  videoUrl: isVid ? row.video_url || row.file_url : void 0,
+                  durationSec: (isAud || isVid) && row.duration_sec ? Number(row.duration_sec) : void 0,
+                  artist: row.artist || (isAud ? "Artiste inconnu" : void 0),
+                  title: row.title || row.name,
+                  album: row.album || void 0,
+                  folderId: row.folder_id,
+                  isFolder: cat === "classeur_folder",
+                  metadata: cat === "classeur_folder" ? {
+                    modelId: row.model_id || "1",
+                    primaryColor: row.primary_color || "#EA580C",
+                    accentColor: row.accent_color || "#F97316",
+                    iconName: row.icon_name || "Folder",
+                    isFavorite: true
+                  } : isAud ? {
+                    coverUrl: validCover,
+                    artist: row.artist,
+                    title: row.title,
+                    album: row.album
+                  } : void 0
+                };
+              };
               for (const d of docs?.results || []) items.push(mapFile(d, "documents"));
               for (const img of imgs?.results || []) items.push(mapFile(img, "images"));
               for (const v of vids?.results || []) items.push(mapFile(v, "videos"));
@@ -15421,6 +15478,254 @@ Lien vers le produit : ${productShareUrl}`;
           }
         }
         return errorResponse("Image de paiement introuvable", 404, origin);
+      }
+      if (path === "/api/ai/billing/config" && method === "GET") {
+        const targetDb = env.DB || env.MON_D1_STUDYCLOUD || env.DATABASE;
+        if (!targetDb) return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
+        let cfg = null;
+        try {
+          cfg = await targetDb.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first();
+        } catch (_) {
+        }
+        if (!cfg) {
+          cfg = {
+            tokens_per_credit: 1e3,
+            welcome_credits: 50,
+            daily_free_credits: 0,
+            is_daily_renewal_active: 0
+          };
+        }
+        return jsonResponse({ success: true, config: cfg }, 200, origin);
+      }
+      if (path === "/api/ai/user/credits" && method === "GET") {
+        const targetDb = env.DB || env.MON_D1_STUDYCLOUD || env.DATABASE;
+        if (!targetDb) return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
+        const targetUserId = (url.searchParams.get("userId") || request.headers.get("x-user-id") || "default-user").trim();
+        let cfg = null;
+        try {
+          cfg = await targetDb.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first();
+        } catch (_) {
+        }
+        const welcomeCredits = cfg?.welcome_credits !== void 0 ? Number(cfg.welcome_credits) : 50;
+        const dailyFreeCredits = cfg?.daily_free_credits !== void 0 ? Number(cfg.daily_free_credits) : 0;
+        const isDailyActive = Number(cfg?.is_daily_renewal_active) === 1 && dailyFreeCredits > 0;
+        const todayStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+        let userCredits = null;
+        try {
+          userCredits = await targetDb.prepare("SELECT * FROM user_ai_credits WHERE user_id = ?").bind(targetUserId).first();
+        } catch (_) {
+        }
+        if (!userCredits) {
+          try {
+            await targetDb.prepare(`
+              INSERT INTO user_ai_credits (
+                user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed,
+                plan_tier, remaining_credits, total_credits, used_credits,
+                gift_remaining, gift_initial, gift_type, purchased_remaining, last_daily_grant_date
+              )
+              VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0, ?, ?, 'welcome', 0.0, ?)
+            `).bind(targetUserId, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, todayStr).run();
+          } catch (_) {
+          }
+          userCredits = {
+            user_id: targetUserId,
+            credits_balance: welcomeCredits,
+            remaining_credits: welcomeCredits,
+            total_credits: welcomeCredits,
+            used_credits: 0,
+            total_credits_purchased: 0,
+            total_tokens_consumed: 0,
+            total_credits_consumed: 0,
+            gift_remaining: welcomeCredits,
+            gift_initial: welcomeCredits,
+            gift_type: "welcome",
+            purchased_remaining: 0,
+            last_daily_grant_date: todayStr,
+            plan_tier: "free"
+          };
+        }
+        const giftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
+        const giftInit = Math.max(Number(userCredits.gift_initial || 0), giftRem, welcomeCredits);
+        const giftType = userCredits.gift_type || "welcome";
+        const giftTitle = giftType === "daily" ? "Cadeau du jour" : "Cadeau de base";
+        const paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
+        const totalPurchased = Number(userCredits.total_credits_purchased || 0);
+        const referenceCredits = Math.max(giftInit + totalPurchased, Number(userCredits.reference_credits || 0), Number(userCredits.credits_balance || 0));
+        return jsonResponse({
+          success: true,
+          credits: {
+            balance: Number(userCredits.credits_balance || 0),
+            reference_credits: referenceCredits,
+            gift_remaining: giftRem,
+            gift_initial: giftInit,
+            gift_type: giftType,
+            gift_title: giftTitle,
+            purchased_remaining: paidRem,
+            totalPurchased,
+            tokensUsed: Number(userCredits.total_tokens_consumed || 0),
+            totalConsumed: Number(userCredits.total_credits_consumed || 0),
+            plan: totalPurchased > 0 ? "IA Pro \xC9tudiant" : "\xC9tudiant Gratuit",
+            daily_free_credits: dailyFreeCredits,
+            tokens_per_credit: Number(cfg?.tokens_per_credit || 1e3),
+            welcome_credits: welcomeCredits,
+            last_usage_at: userCredits.last_usage_at
+          }
+        }, 200, origin);
+      }
+      if (path === "/api/ai/user/deduct-credits" && method === "POST") {
+        const targetDb = env.DB || env.MON_D1_STUDYCLOUD || env.DATABASE;
+        if (!targetDb) return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
+        const body = await request.json().catch(() => ({}));
+        const targetUserId = (body.userId || body.user_id || request.headers.get("x-user-id") || "default-user").trim();
+        const tokens = Math.max(1, parseInt(body.tokens || 0, 10));
+        const model = body.model || "Delmas IA";
+        const actionType = body.actionType || body.action_type || "chat_deduction";
+        let cfg = null;
+        try {
+          cfg = await targetDb.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first();
+        } catch (_) {
+        }
+        const tokensPerCredit = Math.max(1, Number(cfg?.tokens_per_credit || 1e3));
+        const welcomeCredits = cfg?.welcome_credits !== void 0 ? Number(cfg.welcome_credits) : 50;
+        const dailyFreeCredits = cfg?.daily_free_credits !== void 0 ? Number(cfg.daily_free_credits) : 0;
+        const isDailyActive = Number(cfg?.is_daily_renewal_active) === 1 && dailyFreeCredits > 0;
+        const todayStr = (/* @__PURE__ */ new Date()).toISOString().slice(0, 10);
+        const rawCredits = body.explicitCredits || body.explicit_credits || tokens / tokensPerCredit;
+        const creditsDeducted = Math.max(0.01, +rawCredits.toFixed(2));
+        let userCredits = null;
+        try {
+          userCredits = await targetDb.prepare("SELECT * FROM user_ai_credits WHERE user_id = ?").bind(targetUserId).first();
+        } catch (_) {
+        }
+        if (!userCredits) {
+          try {
+            await targetDb.prepare(`
+              INSERT INTO user_ai_credits (
+                user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed,
+                plan_tier, remaining_credits, total_credits, used_credits,
+                gift_remaining, gift_initial, gift_type, purchased_remaining, last_daily_grant_date
+              )
+              VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0, ?, ?, 'welcome', 0.0, ?)
+            `).bind(targetUserId, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, todayStr).run();
+          } catch (_) {
+          }
+          userCredits = {
+            user_id: targetUserId,
+            credits_balance: welcomeCredits,
+            gift_remaining: welcomeCredits,
+            gift_initial: welcomeCredits,
+            gift_type: "welcome",
+            purchased_remaining: 0,
+            total_tokens_consumed: 0,
+            total_credits_consumed: 0,
+            total_credits_purchased: 0,
+            last_daily_grant_date: todayStr
+          };
+        } else {
+          if (userCredits.gift_remaining === null || userCredits.gift_remaining === void 0) {
+            const currentBal = Number(userCredits.credits_balance !== void 0 ? userCredits.credits_balance : welcomeCredits);
+            const totalPurchased = Number(userCredits.total_credits_purchased || 0);
+            if (totalPurchased === 0) {
+              userCredits.purchased_remaining = 0;
+              userCredits.gift_remaining = Math.max(0, currentBal);
+            } else {
+              if (currentBal >= totalPurchased) {
+                userCredits.purchased_remaining = totalPurchased;
+                userCredits.gift_remaining = Math.max(0, +(currentBal - totalPurchased).toFixed(2));
+              } else {
+                userCredits.purchased_remaining = Math.max(0, currentBal);
+                userCredits.gift_remaining = 0;
+              }
+            }
+            userCredits.gift_initial = welcomeCredits;
+            userCredits.gift_type = "welcome";
+          }
+          if (isDailyActive && userCredits.last_daily_grant_date !== todayStr) {
+            const currentGift = Number(userCredits.gift_remaining || 0);
+            if (currentGift <= 0 || userCredits.gift_type === "daily") {
+              userCredits.gift_remaining = dailyFreeCredits;
+              userCredits.gift_initial = dailyFreeCredits;
+              userCredits.gift_type = "daily";
+              userCredits.last_daily_grant_date = todayStr;
+            }
+          }
+        }
+        let giftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
+        let paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
+        let deductedFromGift = 0;
+        let deductedFromPaid = 0;
+        if (giftRem > 0) {
+          if (giftRem >= creditsDeducted) {
+            deductedFromGift = creditsDeducted;
+            giftRem = +(giftRem - creditsDeducted).toFixed(2);
+          } else {
+            deductedFromGift = giftRem;
+            const leftover = +(creditsDeducted - giftRem).toFixed(2);
+            giftRem = 0;
+            deductedFromPaid = Math.min(paidRem, leftover);
+            paidRem = Math.max(0, +(paidRem - leftover).toFixed(2));
+          }
+        } else {
+          deductedFromPaid = Math.min(paidRem, creditsDeducted);
+          paidRem = Math.max(0, +(paidRem - creditsDeducted).toFixed(2));
+        }
+        const newBalance = Math.max(0, +(giftRem + paidRem).toFixed(2));
+        const newTotalTokens = (userCredits.total_tokens_consumed || 0) + tokens;
+        const newTotalCreditsConsumed = +(Number(userCredits.total_credits_consumed || 0) + creditsDeducted).toFixed(2);
+        const giftInit = Math.max(Number(userCredits.gift_initial || 0), giftRem, welcomeCredits);
+        const giftType = userCredits.gift_type || "welcome";
+        const giftTitle = giftType === "daily" ? "Cadeau du jour" : "Cadeau de base";
+        try {
+          await targetDb.prepare(`
+            UPDATE user_ai_credits
+            SET credits_balance = ?,
+                remaining_credits = ?,
+                gift_remaining = ?,
+                gift_initial = ?,
+                gift_type = ?,
+                purchased_remaining = ?,
+                total_tokens_consumed = ?,
+                total_credits_consumed = ?,
+                last_daily_grant_date = ?,
+                last_usage_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+          `).bind(
+            newBalance,
+            newBalance,
+            giftRem,
+            giftInit,
+            giftType,
+            paidRem,
+            newTotalTokens,
+            newTotalCreditsConsumed,
+            userCredits.last_daily_grant_date || todayStr,
+            targetUserId
+          ).run();
+          const logId = "log_" + Date.now() + "_" + Math.random().toString(36).slice(2, 7);
+          await targetDb.prepare(`
+            INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
+            VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          `).bind(logId, targetUserId, actionType, tokens, creditsDeducted, newBalance, model).run();
+        } catch (_) {
+        }
+        return jsonResponse({
+          success: true,
+          credits_deducted: creditsDeducted,
+          deducted_from_gift: deductedFromGift,
+          deducted_from_paid: deductedFromPaid,
+          new_balance: newBalance,
+          remaining_balance: newBalance,
+          gift_remaining: giftRem,
+          gift_initial: giftInit,
+          gift_type: giftType,
+          gift_title: giftTitle,
+          purchased_remaining: paidRem,
+          total_purchased: Number(userCredits.total_credits_purchased || 0),
+          tokens_consumed: tokens,
+          total_tokens_consumed: newTotalTokens,
+          total_credits_consumed: newTotalCreditsConsumed
+        }, 200, origin);
       }
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);
     } catch (err) {

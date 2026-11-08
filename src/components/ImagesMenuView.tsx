@@ -43,6 +43,7 @@ import { setCachedMediaThumbnail, getCachedMediaThumbnail } from '../services/me
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
 import { ImageCardPreview } from './ImageCardPreview';
+import { SkeletonCardGrid } from './SkeletonWave';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes, isItemPinned } from './HeaderMenuControls';
@@ -427,6 +428,27 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       setLoading(false);
     }
   }, [serverImages]);
+
+  // Reconnexion automatique : rafraîchit immédiatement les images dès que le réseau revient
+  useEffect(() => {
+    const handleReconnected = () => {
+      invalidateCloudQueries.images().catch(() => {});
+      invalidateCloudQueries.overview().catch(() => {});
+      CloudDataStore.syncFromCloud(true).then(() => {
+        const storedImages = CloudDataStore.getState().images || [];
+        if (storedImages.length > 0) {
+          const cleanImages = storedImages.filter(i => !isItemDeleted(i.id) && !isExcludedFromImages(i));
+          setImagesList(prev => {
+            const map = new Map(cleanImages.map(img => [img.id, img]));
+            const pending = prev.filter(img => Boolean(img.isUploading) && !map.has(img.id));
+            return [...pending, ...cleanImages];
+          });
+        }
+      }).catch(() => {});
+    };
+    window.addEventListener('studycloud_online_reconnected', handleReconnected);
+    return () => window.removeEventListener('studycloud_online_reconnected', handleReconnected);
+  }, []);
 
   // Navigation image dans le lecteur split
   const handleNavigateImage = (direction: 'prev' | 'next') => {
@@ -2058,10 +2080,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             </div>
 
             {loading ? (
-              <div className="py-20 text-center text-stone-400">
-                <div className="w-8 h-8 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p className="text-xs">Chargement des images...</p>
-              </div>
+              <SkeletonCardGrid count={8} aspect="card" />
             ) : filteredImages.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                 {sortOption === 'pinned' ? (

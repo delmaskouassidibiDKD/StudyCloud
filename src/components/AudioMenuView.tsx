@@ -49,6 +49,7 @@ import { extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithT
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
 import { AudioCardPreview } from './AudioCardPreview';
+import { SkeletonAudioList } from './SkeletonWave';
 import { getWorkerApiUrl } from '../services/api';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
 import { HeaderMenuControls, applyFileSorting, type SortOption, parseSizeToBytes, isItemPinned } from './HeaderMenuControls';
@@ -98,31 +99,34 @@ const computeDuplicateName = (originalName: string, existingNames: string[]): st
 };
 
 const isExcludedFromAudio = (d: any): boolean => {
-  if (!d) return true;
-  // Exclusion stricte des fichiers importés pendant l'étude
-  if (d.category === 'study' || d.isStudyImport || d.is_study_import || d.isLeftMenuImport) return true;
-  if (d.uploadSource === 'left-menu-study' || (typeof d.uploadSource === 'string' && d.uploadSource.includes('study'))) return true;
-  if (d.folderName === 'Fichiers importés' || d.source === 'Espace détude' || d.source === "Espace d'étude") return true;
-  if (d.r2Key && d.r2Key.includes('/study/')) return true;
-  if (typeof d.id === 'string') {
-    try {
-      const studyRaw = localStorage.getItem('unifolder_study_imported_files');
-      if (studyRaw && studyRaw.includes(d.id)) return true;
-      const lmRaw = localStorage.getItem('unifolder_left_menu_general_imports');
-      if (lmRaw && lmRaw.includes(d.id)) return true;
-    } catch (e) { }
-  }
-  if (d.category === 'classeur' || d.category === 'classeur_folder' || d.category === 'mes-fichiers' || d.category === 'trash' || d.category === 'secure') return true;
-  const fId = d.folderId || d.folder_id || d.originalFolderId;
-  if (fId && !['audio', 'root', 'default-folder', 'menu-audio'].includes(fId)) return true;
-  if (typeof d.id === 'string' && (d.id.startsWith('folder_') || d.id.startsWith('cf_folder_') || d.id.startsWith('cf-folder-'))) return true;
-  if (d.r2Key && (d.r2Key.includes('/classeur/') || d.r2Key.includes('/mes-fichiers/'))) return true;
-  if ((d as any).uploadSource === 'mes-fichiers' || d.source === 'mes-fichiers' || d.source === 'Mes fichiers' || d.source === 'Classeur' || d.source === 'Dossier 3D') return true;
-  if (d.matiere && d.matiere !== 'Audio' && d.matiere !== 'menu-audio') return true;
-  if (d.matiereId && d.matiereId !== 'menu-audio' && d.matiereId !== 'audio' && !d.matiereId.startsWith('menu-audio')) return true;
-  if (d.folderName && !['Audio', 'root', 'default-folder', 'menu-audio'].includes(d.folderName)) return true;
+  if (!d || !d.id) return true;
+  if (isItemDeleted(d.id)) return true;
+  if (d.category === 'trash' || d.category === 'secure' || Boolean(d.isTrash) || Boolean(d.isSecure)) return true;
   if (d.isFolder || d.is_folder || d.isClasseurFolder) return true;
-  return false;
+  if (typeof d.id === 'string' && (d.id.startsWith('folder_') || d.id.startsWith('cf_folder_') || d.id.startsWith('cf-folder-'))) return true;
+
+  // Fichiers rattachés explicitement à un dossier du Classeur 3D
+  const fId = d.folderId || d.folder_id || d.originalFolderId;
+  if (fId && !['audio', 'root', 'default-folder', 'menu-audio', 'default'].includes(fId)) return true;
+  if (d.r2Key && d.r2Key.includes('/classeur/')) return true;
+  if (d.category === 'classeur' || d.category === 'classeur_folder') return true;
+
+  // Si c'est un fichier d'étude spécifique
+  if (d.category === 'study' || d.isStudyImport || d.is_study_import || d.isLeftMenuImport) return true;
+  if (d.r2Key && d.r2Key.includes('/study/')) return true;
+  if (d.folderName === 'Fichiers importés' || d.source === 'Espace détude' || d.source === "Espace d'étude") return true;
+
+  // Reconnaissance directe d'un son : extension, mime type ou catégorie
+  const ext = (d.extension || (d.name && d.name.includes('.') ? d.name.split('.').pop() : '') || '').toLowerCase();
+  const isAudioExt = /^(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(ext);
+  const isAudioMime = typeof d.type === 'string' && d.type.startsWith('audio/');
+  const isAudioNamed = typeof d.name === 'string' && /whatsapp audio/i.test(d.name);
+
+  if (d.category === 'audio' || d.isAudio || isAudioExt || isAudioMime || isAudioNamed) {
+    return false;
+  }
+
+  return true;
 };
 
 export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
@@ -262,10 +266,11 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       !isExcludedFromAudio(item) && (
         item.isUploading ||
         (savingProgress[item.id] !== undefined && savingProgress[item.id] < 100) ||
-        pendingAudioItemsRef.current.has(item.id)
+        pendingAudioItemsRef.current.has(item.id) ||
+        cleanServer.length === 0
       )
     );
-    const merged = [...pending, ...(cleanServer as FileItem[])];
+    const merged = cleanServer.length > 0 ? [...pending, ...(cleanServer as FileItem[])] : (pending.length > 0 ? pending : (cleanServer as FileItem[]));
     const seenIds = new Set<string>();
     const seenSigs = new Set<string>();
     return merged.filter(item => {
@@ -422,9 +427,20 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     };
     window.addEventListener('studycloud_file_uploaded', handleUploadedEvent);
 
+    const handleReconnected = () => {
+      CloudStorageAPI.getAudioList().then((data) => {
+        if (data && Array.isArray(data)) {
+          setAudioList(prev => mergeAudioWithPending(data, prev));
+          CloudDataStore.setAudio(data as any);
+        }
+      }).catch(() => { });
+    };
+    window.addEventListener('studycloud_online_reconnected', handleReconnected);
+
     return () => {
       unsubscribe();
       window.removeEventListener('studycloud_file_uploaded', handleUploadedEvent);
+      window.removeEventListener('studycloud_online_reconnected', handleReconnected);
       Object.values(savingIntervalsRef.current).forEach(int => clearInterval(int as any));
     };
   }, []);
@@ -2064,10 +2080,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
             {/* Pistes audio */}
             {loading ? (
-              <div className="py-20 text-center text-stone-400">
-                <div className="w-8 h-8 border-2 border-amber-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p className="text-xs">Chargement des sons...</p>
-              </div>
+              <SkeletonAudioList count={6} />
             ) : filteredAudio.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                 {sortOption === 'pinned' ? (
@@ -2221,7 +2234,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           <div className="flex items-center gap-2 mt-0.5 text-[10px] text-stone-400 dark:text-slate-500 font-medium">
                             <span>{track.size}</span>
                             <span>•</span>
-                            <span>{formatAudioTime(track.durationSec || 0)}</span>
+                            <span>{formatAudioTime((isSelected && duration > 0) ? duration : (track.durationSec || 0))}</span>
                           </div>
                         </div>
                       </div>

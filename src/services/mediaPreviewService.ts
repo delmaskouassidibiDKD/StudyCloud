@@ -301,7 +301,7 @@ export function setCachedMediaThumbnail(_key: string, _thumbUrl: string): void {
  * Lit la durée réelle d'un son (en secondes) en ne chargeant QUE les métadonnées.
  * Aucun stockage local : l'élément audio temporaire est détruit immédiatement après lecture.
  */
-export function probeAudioDuration(src: string, timeoutMs = 10000): Promise<number> {
+export function probeAudioDuration(src: string, timeoutMs = 12000): Promise<number> {
   return new Promise((resolve) => {
     if (typeof window === 'undefined' || !src) { resolve(0); return; }
     const el = document.createElement('audio');
@@ -314,6 +314,7 @@ export function probeAudioDuration(src: string, timeoutMs = 10000): Promise<numb
       if (timer) clearTimeout(timer);
       el.onloadedmetadata = null;
       el.ondurationchange = null;
+      el.onseeked = null;
       el.onerror = null;
       try {
         el.removeAttribute('src');
@@ -324,20 +325,34 @@ export function probeAudioDuration(src: string, timeoutMs = 10000): Promise<numb
 
     el.preload = 'metadata';
     el.muted = true;
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      el.crossOrigin = 'anonymous';
+    }
+
     el.onloadedmetadata = () => {
-      if (Number.isFinite(el.duration) && el.duration > 0) {
+      if (Number.isFinite(el.duration) && el.duration > 0 && el.duration !== Infinity) {
         finish(el.duration);
       } else {
-        // Certains formats (webm/opus/WhatsApp) annoncent une durée infinie : forcer le calcul
+        // Formats spéciaux (VBR, WhatsApp, opus, webm) annonçant une durée infinie
         el.ondurationchange = () => {
-          if (Number.isFinite(el.duration) && el.duration > 0) finish(el.duration);
+          if (Number.isFinite(el.duration) && el.duration > 0 && el.duration !== Infinity) finish(el.duration);
         };
-        try { el.currentTime = 1e7; } catch { finish(0); }
+        el.onseeked = () => {
+          if (Number.isFinite(el.duration) && el.duration > 0 && el.duration !== Infinity) finish(el.duration);
+        };
+        try {
+          el.currentTime = 1e7;
+        } catch {
+          finish(0);
+        }
       }
     };
     el.onerror = () => finish(0);
     timer = setTimeout(() => finish(0), timeoutMs);
     el.src = src;
+    try {
+      el.load();
+    } catch { }
   });
 }
 

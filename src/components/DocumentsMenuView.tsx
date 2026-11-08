@@ -46,6 +46,7 @@ import { compressFile } from '../utils/fileCompressor';
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
 import { DocumentCardPreview } from './DocumentCardPreview';
+import { SkeletonCardGrid } from './SkeletonWave';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { getWorkerApiUrl } from '../services/api';
@@ -454,6 +455,27 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       setLoading(false);
     }
   }, [serverDocuments]);
+
+  // Reconnexion automatique : rafraîchit immédiatement les documents dès que le réseau revient
+  useEffect(() => {
+    const handleReconnected = () => {
+      invalidateCloudQueries.documents().catch(() => {});
+      invalidateCloudQueries.overview().catch(() => {});
+      CloudDataStore.syncFromCloud(true).then(() => {
+        const storedDocs = CloudDataStore.getState().documents || [];
+        if (storedDocs.length > 0) {
+          const cleanDocs = storedDocs.filter(d => !isItemDeleted(d.id) && !isExcludedFromDocuments(d));
+          setDocumentsList(prev => {
+            const map = new Map(cleanDocs.map(d => [d.id, d]));
+            const pending = prev.filter(d => Boolean(d.isUploading) && !map.has(d.id));
+            return [...pending, ...cleanDocs];
+          });
+        }
+      }).catch(() => {});
+    };
+    window.addEventListener('studycloud_online_reconnected', handleReconnected);
+    return () => window.removeEventListener('studycloud_online_reconnected', handleReconnected);
+  }, []);
 
   // Résolution légère de l'URL de streaming Cloudflare R2 (sans copie locale IndexedDB)
   useEffect(() => {
@@ -2179,10 +2201,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
             </div>
 
             {loading ? (
-              <div className="py-20 text-center text-stone-400">
-                <div className="w-8 h-8 border-2 border-blue-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p className="text-xs">Chargement des documents...</p>
-              </div>
+              <SkeletonCardGrid count={8} aspect="card" />
             ) : filteredDocuments.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                 {sortOption === 'pinned' ? (

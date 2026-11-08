@@ -43,6 +43,7 @@ import { generateVideoThumbnail, setCachedMediaThumbnail, getCachedMediaThumbnai
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
 import { VideoCardPreview } from './VideoCardPreview';
+import { SkeletonCardGrid } from './SkeletonWave';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { getWorkerApiUrl } from '../services/api';
 import { ClasseurCreatedFolder, lightenColor } from './Folder3DModels';
@@ -407,6 +408,27 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       setLoading(false);
     }
   }, [serverVideos]);
+
+  // Reconnexion automatique : rafraîchit immédiatement les vidéos dès que le réseau revient
+  useEffect(() => {
+    const handleReconnected = () => {
+      invalidateCloudQueries.videos().catch(() => {});
+      invalidateCloudQueries.overview().catch(() => {});
+      CloudDataStore.syncFromCloud(true).then(() => {
+        const storedVideos = CloudDataStore.getState().videos || [];
+        if (storedVideos.length > 0) {
+          const cleanVideos = storedVideos.filter(v => !isItemDeleted(v.id) && !isExcludedFromVideos(v));
+          setVideosList(prev => {
+            const map = new Map(cleanVideos.map(vid => [vid.id, vid]));
+            const pending = prev.filter(vid => Boolean(vid.isUploading) && !map.has(vid.id));
+            return [...pending, ...cleanVideos];
+          });
+        }
+      }).catch(() => {});
+    };
+    window.addEventListener('studycloud_online_reconnected', handleReconnected);
+    return () => window.removeEventListener('studycloud_online_reconnected', handleReconnected);
+  }, []);
 
   useEffect(() => {
     const unsub = CloudDataStore.subscribe((state) => {
@@ -2070,10 +2092,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             </div>
 
             {loading ? (
-              <div className="py-20 text-center text-stone-400">
-                <div className="w-8 h-8 border-2 border-purple-400 border-t-transparent rounded-full animate-spin mx-auto mb-2" />
-                <p className="text-xs">Chargement des vidéos...</p>
-              </div>
+              <SkeletonCardGrid count={8} aspect="card" />
             ) : filteredVideos.length === 0 ? (
               <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                 {sortOption === 'pinned' ? (

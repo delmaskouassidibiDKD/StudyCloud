@@ -50,6 +50,7 @@ if (typeof window !== 'undefined') {
 import { sanitizeFoldersForStorage } from './utils/sanitizeFolders';
 export { sanitizeFoldersForStorage } from './utils/sanitizeFolders';
 import { invalidateCloudQueries } from './services/queryClient';
+import { CloudDataStore } from './services/cloudDataStore';
 import { useBackHandler } from './services/backNavigation';
 import { useStagingShareFiles } from './hooks/useCloudQueries';
 
@@ -236,6 +237,43 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tous');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [networkBanner, setNetworkBanner] = useState<{ type: 'online' | 'offline'; message: string } | null>(null);
+
+  // Détection en temps réel de la reconnexion réseau & synchronisation automatique sans rafraîchir manuellement l'application
+  useEffect(() => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const handleOnline = () => {
+      invalidateCloudQueries.all().catch(() => {});
+      CloudDataStore.syncFromCloud(true).catch(() => {});
+      window.dispatchEvent(new CustomEvent('studycloud_online_reconnected'));
+      setNetworkBanner({
+        type: 'online',
+        message: '🟢 Connexion rétablie • Synchronisation automatique des données...',
+      });
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        setNetworkBanner(null);
+      }, 3800);
+    };
+
+    const handleOffline = () => {
+      if (timer) clearTimeout(timer);
+      setNetworkBanner({
+        type: 'offline',
+        message: '🔴 Connexion interrompue • Mode hors ligne actif',
+      });
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      if (timer) clearTimeout(timer);
+    };
+  }, []);
 
   // Écouter les clics sur les notifications push du Service Worker
   useEffect(() => {
@@ -1830,6 +1868,21 @@ export default function App() {
 
   return (
     <div className={`min-h-dvh ${currentTab === 'folders' ? 'h-dvh max-h-dvh overflow-hidden' : ''} ${isCloudSkyTab ? 'studycloud-clouds-bg' : isProfileTab ? 'studycloud-profile-bg' : currentTab === 'library' ? 'bg-[#DDDDDD]' : currentTab === 'folders' ? 'bg-[#0a0e17]' : 'bg-[#E9D7C9]'} dark:bg-[#0b0f19] flex flex-col md:flex-row font-sans text-stone-900 dark:text-slate-100 transition-colors duration-200`}>
+      {/* Bannière flottante de statut réseau / reconnexion automatique */}
+      {networkBanner && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[999999] px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-md border text-xs sm:text-sm font-semibold flex items-center gap-2 pointer-events-none transition-all duration-300 animate-in fade-in slide-in-from-top-4 ${
+            networkBanner.type === 'online'
+              ? 'bg-emerald-600/95 text-white border-emerald-400/50 shadow-emerald-500/25'
+              : 'bg-rose-600/95 text-white border-rose-400/50 shadow-rose-500/25'
+          }`}
+        >
+          <span>{networkBanner.message}</span>
+        </div>
+      )}
+
       {/* Sidebar (Desktop & Mobile Nav) */}
       <Sidebar
         currentTab={currentTab}

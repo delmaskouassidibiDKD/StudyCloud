@@ -9607,32 +9607,21 @@ a:hover{transform:translateY(-2px)}
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
         if (method === 'GET') {
-          await env.DB.prepare(`
-            DELETE FROM audio_files 
-            WHERE user_id = ? AND (
-              r2_key LIKE '%/study/%' 
-              OR r2_key LIKE '%/classeur/%' 
-              OR id LIKE 'folder_%' 
-              OR id LIKE 'cf_folder_%' 
-              OR id LIKE 'cf-folder-%'
-              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM study_imported_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {});
+          let trashedIdSet = new Set<string>();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all<any>();
+            (trashList || []).forEach(t => {
+              if (t.id) trashedIdSet.add(t.id);
+            });
+          } catch (e) {}
 
-          await env.DB.prepare(`
-            DELETE FROM files
-            WHERE user_id = ? AND matiere_id = 'menu-audio' AND (
-              r2_key IS NULL OR r2_key = ''
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {});
+          let securedAudIdSet = new Set<string>();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id FROM secure_files WHERE user_id = ?`).bind(reqUserId).all<any>();
+            (secList || []).forEach(s => {
+              if (s.id) securedAudIdSet.add(s.id);
+            });
+          } catch (e) {}
 
           const { results: auds } = await env.DB.prepare(`
             SELECT * FROM audio_files 
@@ -9642,8 +9631,8 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
-              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-              AND name NOT IN (SELECT name FROM study_imported_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all<any>();
 
@@ -9652,37 +9641,17 @@ a:hover{transform:translateY(-2px)}
             const { results: extra } = await env.DB.prepare(`
               SELECT * FROM files 
               WHERE user_id = ? 
-                AND (matiere_id IS NULL OR matiere_id = 'menu-audio')
-                AND (type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff') OR matiere_id = 'menu-audio')
+                AND (matiere_id = 'menu-audio' OR type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff'))
                 AND r2_key IS NOT NULL AND r2_key != ''
                 AND r2_key NOT LIKE '%/classeur/%'
-                AND r2_key NOT LIKE '%/mes-fichiers/%'
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
+                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
               ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId).all<any>();
+            `).bind(reqUserId, reqUserId, reqUserId).all<any>();
             extraAuds = extra || [];
           } catch(e) {}
-
-          let trashedIdSet = new Set<string>();
-          let trashedNameSet = new Set<string>();
-          try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all<any>();
-            (trashList || []).forEach(t => {
-              if (t.id) trashedIdSet.add(t.id);
-              if (t.name) trashedNameSet.add(String(t.name).trim().toLowerCase());
-            });
-          } catch (e) {}
-
-          let securedAudIdSet = new Set<string>();
-          let securedAudNameSet = new Set<string>();
-          try {
-            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all<any>();
-            (secList || []).forEach(s => {
-              if (s.id) securedAudIdSet.add(s.id);
-              if (s.name) securedAudNameSet.add(String(s.name).trim().toLowerCase());
-            });
-          } catch (e) {}
 
           let favAudSet = new Set<string>();
           try {
@@ -9697,18 +9666,15 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {}
 
           const seen = new Set<string>();
-          const seenNames = new Set<string>();
           const allList: any[] = [];
 
           const addAud = (a: any) => {
             const id = a.id;
-            const name = a.name || 'Audio';
-            const lowerName = name.trim().toLowerCase();
-            if (trashedIdSet.has(id) || trashedNameSet.has(lowerName) || securedAudIdSet.has(id) || securedAudNameSet.has(lowerName)) return;
-            const normKey = `${name.trim().toLowerCase()}_${a.size_bytes || a.size || 0}`;
-            if (seen.has(id) || seenNames.has(normKey)) return;
+            if (!id || trashedIdSet.has(id) || securedAudIdSet.has(id)) return;
+            if (seen.has(id)) return;
             seen.add(id);
-            seenNames.add(normKey);
+
+            const name = a.name || 'Audio';
 
             let finalUrl = a.audio_url || a.file_url || a.url || '';
             if (finalUrl.includes('localhost') || finalUrl.includes('127.0.0.1')) {
@@ -9948,32 +9914,21 @@ a:hover{transform:translateY(-2px)}
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
         if (method === 'GET') {
-          await env.DB.prepare(`
-            DELETE FROM image_files 
-            WHERE user_id = ? AND (
-              r2_key LIKE '%/study/%' 
-              OR r2_key LIKE '%/classeur/%' 
-              OR id LIKE 'folder_%' 
-              OR id LIKE 'cf_folder_%' 
-              OR id LIKE 'cf-folder-%'
-              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM study_imported_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {});
+          let trashedImgIdSet = new Set<string>();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all<any>();
+            (trashList || []).forEach(t => {
+              if (t.id) trashedImgIdSet.add(t.id);
+            });
+          } catch (e) {}
 
-          await env.DB.prepare(`
-            DELETE FROM files
-            WHERE user_id = ? AND matiere_id = 'menu-images' AND (
-              r2_key IS NULL OR r2_key = ''
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {});
+          let securedImgIdSet = new Set<string>();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id FROM secure_files WHERE user_id = ?`).bind(reqUserId).all<any>();
+            (secList || []).forEach(s => {
+              if (s.id) securedImgIdSet.add(s.id);
+            });
+          } catch (e) {}
 
           const { results: imgs } = await env.DB.prepare(`
             SELECT * FROM image_files 
@@ -9983,46 +9938,27 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
-              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId, reqUserId).all<any>();
+          `).bind(reqUserId, reqUserId, reqUserId).all<any>();
 
           let extraImgs: any[] = [];
           try {
             const { results: extra } = await env.DB.prepare(`
               SELECT * FROM files 
               WHERE user_id = ? 
-                AND (matiere_id IS NULL OR matiere_id = 'menu-images')
-                AND (type LIKE 'image/%' OR LOWER(extension) IN ('jpg','jpeg','png','webp','gif','svg','bmp','ico','tiff','tif','heic','avif'))
+                AND (matiere_id = 'menu-images' OR type LIKE 'image/%' OR LOWER(extension) IN ('jpg','jpeg','png','webp','gif','svg','bmp','ico','tiff','tif','heic','avif'))
                 AND r2_key IS NOT NULL AND r2_key != ''
                 AND r2_key NOT LIKE '%/classeur/%'
-                AND r2_key NOT LIKE '%/mes-fichiers/%'
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
+                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
               ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId).all<any>();
+            `).bind(reqUserId, reqUserId, reqUserId).all<any>();
             extraImgs = extra || [];
           } catch(e) {}
-
-          let trashedImgIdSet = new Set<string>();
-          let trashedImgNameSet = new Set<string>();
-          try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all<any>();
-            (trashList || []).forEach(t => {
-              if (t.id) trashedImgIdSet.add(t.id);
-              if (t.name) trashedImgNameSet.add(String(t.name).trim().toLowerCase());
-            });
-          } catch (e) {}
-
-          let securedImgIdSet = new Set<string>();
-          let securedImgNameSet = new Set<string>();
-          try {
-            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all<any>();
-            (secList || []).forEach(s => {
-              if (s.id) securedImgIdSet.add(s.id);
-              if (s.name) securedImgNameSet.add(String(s.name).trim().toLowerCase());
-            });
-          } catch (e) {}
 
           let favImgSet = new Set<string>();
           try {
@@ -10037,18 +9973,13 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {}
 
           const seen = new Set<string>();
-          const seenNames = new Set<string>();
           const allList: any[] = [];
 
           const addImg = (img: any) => {
             const id = img.id;
-            const name = img.name || 'Image';
-            const lowerName = name.trim().toLowerCase();
-            if (trashedImgIdSet.has(id) || trashedImgNameSet.has(lowerName) || securedImgIdSet.has(id) || securedImgNameSet.has(lowerName)) return;
-            const normKey = `${name.trim().toLowerCase()}_${img.size_bytes || img.size || 0}`;
-            if (seen.has(id) || seenNames.has(normKey)) return;
+            if (!id || trashedImgIdSet.has(id) || securedImgIdSet.has(id)) return;
+            if (seen.has(id)) return;
             seen.add(id);
-            seenNames.add(normKey);
 
             // Pour les images : l'image enregistrée dans Cloudflare R2 EST l'aperçu lui-même.
             // On résout dynamiquement l'URL absolue vers Cloudflare R2 pour cet environnement (aucun localhost figé)
@@ -10260,31 +10191,21 @@ a:hover{transform:translateY(-2px)}
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
         if (method === 'GET') {
-          await env.DB.prepare(`
-            DELETE FROM video_files 
-            WHERE user_id = ? AND (
-              r2_key LIKE '%/study/%' 
-              OR r2_key LIKE '%/classeur/%' 
-              OR id LIKE 'folder_%' 
-              OR id LIKE 'cf_folder_%' 
-              OR id LIKE 'cf-folder-%'
-              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {});
+          let trashedVidIdSet = new Set<string>();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all<any>();
+            (trashList || []).forEach(t => {
+              if (t.id) trashedVidIdSet.add(t.id);
+            });
+          } catch (e) {}
 
-          await env.DB.prepare(`
-            DELETE FROM files
-            WHERE user_id = ? AND matiere_id = 'menu-videos' AND (
-              r2_key IS NULL OR r2_key = ''
-              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
-              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
-              OR name IN (SELECT name FROM trash_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {});
+          let securedVidIdSet = new Set<string>();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id FROM secure_files WHERE user_id = ?`).bind(reqUserId).all<any>();
+            (secList || []).forEach(s => {
+              if (s.id) securedVidIdSet.add(s.id);
+            });
+          } catch (e) {}
 
           const { results: vids } = await env.DB.prepare(`
             SELECT * FROM video_files 
@@ -10294,46 +10215,27 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
-              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId, reqUserId).all<any>();
+          `).bind(reqUserId, reqUserId, reqUserId).all<any>();
 
           let extraVids: any[] = [];
           try {
             const { results: extra } = await env.DB.prepare(`
               SELECT * FROM files 
               WHERE user_id = ? 
-                AND (matiere_id IS NULL OR matiere_id = 'menu-videos')
-                AND (type LIKE 'video/%' OR LOWER(extension) IN ('mp4','mov','mkv','webm','avi','3gp','m4v','ts'))
+                AND (matiere_id = 'menu-videos' OR type LIKE 'video/%' OR LOWER(extension) IN ('mp4','mov','mkv','webm','avi','3gp','m4v','ts'))
                 AND r2_key IS NOT NULL AND r2_key != ''
                 AND r2_key NOT LIKE '%/classeur/%'
-                AND r2_key NOT LIKE '%/mes-fichiers/%'
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
+                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
               ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId).all<any>();
+            `).bind(reqUserId, reqUserId, reqUserId).all<any>();
             extraVids = extra || [];
           } catch(e) {}
-
-          let trashedVidIdSet = new Set<string>();
-          let trashedVidNameSet = new Set<string>();
-          try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all<any>();
-            (trashList || []).forEach(t => {
-              if (t.id) trashedVidIdSet.add(t.id);
-              if (t.name) trashedVidNameSet.add(String(t.name).trim().toLowerCase());
-            });
-          } catch (e) {}
-
-          let securedVidIdSet = new Set<string>();
-          let securedVidNameSet = new Set<string>();
-          try {
-            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all<any>();
-            (secList || []).forEach(s => {
-              if (s.id) securedVidIdSet.add(s.id);
-              if (s.name) securedVidNameSet.add(String(s.name).trim().toLowerCase());
-            });
-          } catch (e) {}
 
           let favVidSet = new Set<string>();
           try {
@@ -10348,18 +10250,13 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {}
 
           const seen = new Set<string>();
-          const seenNames = new Set<string>();
           const allList: any[] = [];
 
           const addVid = (v: any) => {
             const id = v.id;
-            const name = v.name || 'Vidéo';
-            const lowerName = name.trim().toLowerCase();
-            if (trashedVidIdSet.has(id) || trashedVidNameSet.has(lowerName) || securedVidIdSet.has(id) || securedVidNameSet.has(lowerName)) return;
-            const normKey = `${name.trim().toLowerCase()}_${v.size_bytes || v.size || 0}`;
-            if (seen.has(id) || seenNames.has(normKey)) return;
+            if (!id || trashedVidIdSet.has(id) || securedVidIdSet.has(id)) return;
+            if (seen.has(id)) return;
             seen.add(id);
-            seenNames.add(normKey);
 
             let finalUrl = v.video_url || v.file_url || v.url || '';
             if ((!finalUrl || finalUrl.startsWith('blob:') || finalUrl.includes('localhost')) && v.r2_key) {
@@ -10580,27 +10477,21 @@ a:hover{transform:translateY(-2px)}
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
         if (method === 'GET') {
-          // Nettoyage proactif de tout fichier d'étude, mes-fichiers ou classeur qui aurait pu être inséré par erreur
-          await env.DB.prepare(`
-            DELETE FROM document_files 
-            WHERE user_id = ? AND (
-              r2_key LIKE '%/study/%' 
-              OR r2_key LIKE '%/mes-fichiers/%' 
-              OR r2_key LIKE '%/classeur/%' 
-              OR id LIKE 'folder_%' 
-              OR id LIKE 'cf_folder_%' 
-              OR id LIKE 'cf-folder-%'
-              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId).run().catch(() => {});
+          let trashedDocIdSet = new Set<string>();
+          try {
+            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all<any>();
+            (trashList || []).forEach(t => {
+              if (t.id) trashedDocIdSet.add(t.id);
+            });
+          } catch (e) {}
 
-          await env.DB.prepare(`
-            DELETE FROM trash_files 
-            WHERE user_id = ? AND (
-              r2_key LIKE '%/study/%' 
-              OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
-            )
-          `).bind(reqUserId, reqUserId).run().catch(() => {});
+          let securedDocIdSet = new Set<string>();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id FROM secure_files WHERE user_id = ?`).bind(reqUserId).all<any>();
+            (secList || []).forEach(s => {
+              if (s.id) securedDocIdSet.add(s.id);
+            });
+          } catch (e) {}
 
           const { results: docs } = await env.DB.prepare(`
             SELECT * FROM document_files 
@@ -10611,41 +10502,13 @@ a:hover{transform:translateY(-2px)}
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
               AND id NOT LIKE 'cf-folder-%'
-              AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
+              AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId, reqUserId).all<any>();
+          `).bind(reqUserId, reqUserId, reqUserId).all<any>();
 
           // ISOLATION TOTALE : Le menu Documents ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraDocs: any[] = [];
-
-          let trashedDocIdSet = new Set<string>();
-          let trashedDocNameSet = new Set<string>();
-          try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all<any>();
-            (trashList || []).forEach(t => {
-              if (t.id) trashedDocIdSet.add(t.id);
-              if (t.name) trashedDocNameSet.add(String(t.name).trim().toLowerCase());
-            });
-          } catch (e) {}
-
-          let securedDocIdSet = new Set<string>();
-          let securedDocNameSet = new Set<string>();
-          try {
-            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all<any>();
-            (secList || []).forEach(s => {
-              if (s.id) securedDocIdSet.add(s.id);
-              if (s.name) securedDocNameSet.add(String(s.name).trim().toLowerCase());
-            });
-          } catch (e) {}
-
-          let studyNames = new Set<string>();
-          try {
-            const { results: sList } = await env.DB.prepare(`SELECT name, id FROM study_imported_files WHERE user_id = ?`).bind(reqUserId).all<any>();
-            (sList || []).forEach(s => {
-              if (s.name) studyNames.add(s.name.trim().toLowerCase());
-              if (s.id) trashedDocIdSet.add(s.id);
-            });
-          } catch (e) {}
 
           let favDocSet = new Set<string>();
           try {
@@ -10660,23 +10523,18 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {}
 
           const seen = new Set<string>();
-          const seenNames = new Set<string>();
           const allList: any[] = [];
 
           const addDoc = (d: any) => {
             const id = d.id;
-            const docNameLower = String(d.name || '').trim().toLowerCase();
-            if (trashedDocIdSet.has(id) || trashedDocNameSet.has(docNameLower) || securedDocIdSet.has(id) || securedDocNameSet.has(docNameLower)) return;
+            if (!id || trashedDocIdSet.has(id) || securedDocIdSet.has(id)) return;
+            if (seen.has(id)) return;
+            seen.add(id);
+
             if (typeof id === 'string' && (id.startsWith('cf-') || id.startsWith('cf_'))) return;
             if (d.r2_key && (d.r2_key.includes('/study/') || d.r2_key.includes('/classeur/') || d.r2_key.includes('/mes-fichiers/'))) return;
             if (d.folder_id && !['documents', 'root', 'default-folder'].includes(d.folder_id)) return;
             if (d.category === 'study' || d.category === 'classeur' || d.category === 'mes-fichiers' || d.is_study_import || d.isStudyImport) return;
-            const name = d.name || 'Document';
-            if (name && studyNames.has(name.trim().toLowerCase())) return;
-            const normKey = `${name.trim().toLowerCase()}_${d.size_bytes || d.size || 0}`;
-            if (seen.has(id) || seenNames.has(normKey)) return;
-            seen.add(id);
-            seenNames.add(normKey);
 
             let finalUrl = d.file_url || d.url || '';
             if ((!finalUrl || finalUrl.startsWith('blob:')) && d.r2_key) {

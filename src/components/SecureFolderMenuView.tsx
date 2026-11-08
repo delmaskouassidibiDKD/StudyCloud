@@ -47,6 +47,7 @@ import { AudioCardPreview } from './AudioCardPreview';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { ImageCardPreview } from './ImageCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
+import { SkeletonCardGrid } from './SkeletonWave';
 import { Classeur3DFolderCard } from './Folder3DModels';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
@@ -2095,10 +2096,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
             )}
 
             {isSecureQueryLoading && secureFiles.length === 0 ? (
-              <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
-                <div className="w-10 h-10 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-4" />
-                <p className="text-sm font-semibold text-stone-600">Chargement sécurisé de vos fichiers...</p>
-              </div>
+              <SkeletonCardGrid count={6} aspect="card" />
             ) : displayedFiles.length === 0 ? (
               <div className="py-24 flex flex-col items-center justify-center text-center max-w-md mx-auto">
                 <div className="w-20 h-20 rounded-3xl bg-white border border-stone-200 flex items-center justify-center mb-4 shadow-sm">
