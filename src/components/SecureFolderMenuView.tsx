@@ -432,7 +432,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       setSelectedFile(null);
     }
 
-    CloudDataStore.restoreFromSecure([file]);
+    try { CloudDataStore.restoreFromSecure([file]); } catch { }
     await CloudStorageAPI.restoreFromSecureFolder(file.id).catch(() => { });
     invalidateCloudQueries.secure().catch(() => { });
     invalidateCloudQueries.all().catch(() => { });
@@ -451,7 +451,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       setSelectedFile(null);
     }
 
-    CloudDataStore.deleteSecureToTrash([file]);
+    try { CloudDataStore.deleteSecureToTrash([file]); } catch { }
     await CloudStorageAPI.deleteSecureFilesToTrash(file.id).catch(() => { });
     invalidateCloudQueries.secure().catch(() => { });
     invalidateCloudQueries.trash().catch(() => { });
@@ -517,7 +517,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     }
     setSelectedIds(new Set());
 
-    CloudDataStore.restoreFromSecure(filesToRestore);
+    try { CloudDataStore.restoreFromSecure(filesToRestore); } catch { }
     await CloudStorageAPI.restoreFromSecureFolder(ids).catch(() => { });
     invalidateCloudQueries.secure().catch(() => { });
     invalidateCloudQueries.all().catch(() => { });
@@ -535,7 +535,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     }
     setSelectedIds(new Set());
 
-    CloudDataStore.deleteSecureToTrash(filesToTrash);
+    try { CloudDataStore.deleteSecureToTrash(filesToTrash); } catch { }
     await CloudStorageAPI.deleteSecureFilesToTrash(ids).catch(() => { });
     invalidateCloudQueries.secure().catch(() => { });
     invalidateCloudQueries.trash().catch(() => { });

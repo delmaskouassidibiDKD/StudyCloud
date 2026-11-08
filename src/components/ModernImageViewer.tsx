@@ -62,9 +62,10 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
       typeof src === 'string' &&
       src.trim() &&
       !src.startsWith('blob:') &&
-      !src.includes('/api/cloud/file/secure/')
+      !src.includes('/api/cloud/file/secure/') &&
+      !src.includes('/api/cloud/file/trash/')
     ) {
-      let finalSrc = src.trim();
+      let finalSrc = src.trim().replace(/%252F/gi, '%2F');
       if (finalSrc.includes('localhost') && !baseUrl.includes('localhost')) {
         const parts = finalSrc.split('/api/cloud/');
         if (parts.length > 1) {
@@ -78,7 +79,15 @@ export const ModernImageViewer: React.FC<ModernImageViewerProps> = ({
 
     // Priorité 2 : Clé R2 directe
     if (r2Key) {
-      const r2Url = `${baseUrl}/api/cloud/file/images/${encodeURIComponent(r2Key)}`;
+      let cleanKey = String(r2Key).trim();
+      try {
+        while (cleanKey.includes('%')) {
+          const next = decodeURIComponent(cleanKey);
+          if (next === cleanKey) break;
+          cleanKey = next;
+        }
+      } catch { }
+      const r2Url = `${baseUrl}/api/cloud/file/images/${encodeURIComponent(cleanKey)}`;
       triedUrlsRef.current.add(r2Url);
       setResolvedSrc(r2Url);
       return;

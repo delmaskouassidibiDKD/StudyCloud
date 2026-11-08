@@ -365,10 +365,11 @@ export async function detectFileCategoryWithMagic(
 /**
  * Détection synchrone de la nature d'un fichier (heuristique basée sur le nom, l'extension et le MIME).
  */
-export function detectFileCategory(file: { name?: string; type?: string }): 'images' | 'videos' | 'audio' | 'documents' | 'apps' {
+export function detectFileCategory(file: { name?: string; type?: string; extension?: string }): 'images' | 'videos' | 'audio' | 'documents' | 'apps' {
   const normName = ((file && file.name) || '').toLowerCase().trim();
   const mime = ((file && file.type) || '').toLowerCase().trim();
-  const ext = normName.includes('.') ? (normName.split('.').pop() || '').toLowerCase().trim() : '';
+  const rawExt = ((file && file.extension) || '').toLowerCase().replace(/^\./, '').trim();
+  const ext = (normName.includes('.') ? (normName.split('.').pop() || '').toLowerCase().trim() : '') || rawExt;
 
   // 1. DÉTECTION EXPLICITE WHATSAPP & FICHIERS MOBILES (AUDIO PRIORITAIRE)
   if (isWhatsAppAudio(normName, mime)) {

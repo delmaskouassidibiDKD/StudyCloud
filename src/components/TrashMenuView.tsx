@@ -220,15 +220,24 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     if (!serverTrash || !Array.isArray(serverTrash)) return;
     const validServer = serverTrash.filter(f => !deletedTrashIdsRef.current.has(f.id) && !isTrashItemPermanentlyDeleted(f.id));
     setTrashList(prev => {
+      const serverById = new Map(validServer.map(f => [f.id, f]));
+      const mergedExisting = prev.map(localItem => {
+        const srv = serverById.get(localItem.id);
+        if (!srv) return localItem;
+        return {
+          ...localItem,
+          ...srv,
+          r2Key: (srv as any).r2Key || (localItem as any).r2Key,
+          url: srv.url || localItem.url,
+          previewUrl: srv.previewUrl || srv.url || localItem.previewUrl,
+          category: srv.category || localItem.category,
+          sourceCategory: srv.sourceCategory || localItem.sourceCategory,
+          extension: srv.extension || localItem.extension,
+        };
+      });
       const localIds = new Set(prev.map(f => f.id));
       const genuinelyNew = validServer.filter(f => !localIds.has(f.id));
-      if (genuinelyNew.length === 0) {
-        if (prev.length > 0 && CloudDataStore.getState().trash.length === 0) {
-          queueMicrotask(() => CloudDataStore.setTrashFiles(prev));
-        }
-        return prev;
-      }
-      const updated = [...prev, ...genuinelyNew];
+      const updated = [...mergedExisting, ...genuinelyNew];
       queueMicrotask(() => CloudDataStore.setTrashFiles(updated));
       return updated;
     });

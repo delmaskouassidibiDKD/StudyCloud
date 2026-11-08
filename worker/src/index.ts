@@ -2637,7 +2637,11 @@ async function getObjectFromAnyBucket(rawEnv: any, category: string, key: string
 
   let decodedKey = key;
   try {
-    decodedKey = decodeURIComponent(key);
+    while (decodedKey.includes('%')) {
+      const next = decodeURIComponent(decodedKey);
+      if (next === decodedKey) break;
+      decodedKey = next;
+    }
   } catch {}
 
   const primaryKeys = Array.from(new Set([
@@ -2787,11 +2791,16 @@ function extractR2Keys(primaryKey?: string, urlStr?: string): string[] {
     if (!k || typeof k !== 'string') return;
     const clean = k.trim();
     if (!clean || clean.startsWith('data:') || clean.startsWith('blob:')) return;
-    keys.add(clean);
+    let dec = clean;
     try {
-      const dec = decodeURIComponent(clean);
-      if (dec && dec !== clean) keys.add(dec);
+      while (dec.includes('%')) {
+        const next = decodeURIComponent(dec);
+        if (next === dec) break;
+        dec = next;
+      }
     } catch {}
+    if (dec) keys.add(dec);
+    if (clean !== dec) keys.add(clean);
   };
 
   add(primaryKey);
@@ -7192,7 +7201,14 @@ a:hover{transform:translateY(-2px)}
         const pathParts = path.replace('/api/cloud/file/', '').split('/');
         const category = pathParts[0];
         const rawKey = pathParts.slice(1).join('/');
-        const key = decodeURIComponent(rawKey);
+        let key = rawKey;
+        try {
+          while (key.includes('%')) {
+            const next = decodeURIComponent(key);
+            if (next === key) break;
+            key = next;
+          }
+        } catch {}
 
         const categoryBucket = getBucketForCategory(rawEnv, category);
         if (!categoryBucket) {
@@ -9769,6 +9785,13 @@ a:hover{transform:translateY(-2px)}
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, ?, ?, 'audio', 'mp3', 'audio', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                category = excluded.category,
+                source_category = excluded.source_category,
+                extension = excluded.extension,
+                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), trash_files.r2_key),
+                file_url = excluded.file_url,
+                deleted_at = CURRENT_TIMESTAMP
             `).bind(
               file.id, reqUserId, file.name, file.size, file.size_bytes,
               JSON.stringify({ artist: file.artist || 'Artiste inconnu', durationSec: file.duration_sec || 0, coverUrl: file.cover_url || '' }),
@@ -9781,7 +9804,6 @@ a:hover{transform:translateY(-2px)}
           const targetId = file ? file.id : fileId;
           if (targetId) {
             await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {});
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {});
             await recordSyncItem(env.DB, reqUserId, targetId, 'audio', { id: targetId }, 1);
             await cleanUserFavoriteOnDelete(env.DB, reqUserId, targetId);
           }
@@ -10045,6 +10067,13 @@ a:hover{transform:translateY(-2px)}
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, ?, ?, 'images', ?, 'images', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                category = excluded.category,
+                source_category = excluded.source_category,
+                extension = excluded.extension,
+                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), trash_files.r2_key),
+                file_url = excluded.file_url,
+                deleted_at = CURRENT_TIMESTAMP
             `).bind(
               file.id, reqUserId, file.name, file.size, file.size_bytes, file.extension,
               JSON.stringify({ width: file.width || 0, height: file.height || 0 }),
@@ -10057,7 +10086,6 @@ a:hover{transform:translateY(-2px)}
           const targetId = file ? file.id : fileId;
           if (targetId) {
             await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {});
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {});
             await recordSyncItem(env.DB, reqUserId, targetId, 'images', { id: targetId }, 1);
             await cleanUserFavoriteOnDelete(env.DB, reqUserId, targetId);
           }
@@ -10314,6 +10342,13 @@ a:hover{transform:translateY(-2px)}
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, ?, ?, 'videos', ?, 'videos', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                category = excluded.category,
+                source_category = excluded.source_category,
+                extension = excluded.extension,
+                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), trash_files.r2_key),
+                file_url = excluded.file_url,
+                deleted_at = CURRENT_TIMESTAMP
             `).bind(
               file.id, reqUserId, file.name, file.size, file.size_bytes, file.extension,
               JSON.stringify({ durationSec: file.duration_sec || 0, resolution: file.resolution || '1080p' }),
@@ -10326,7 +10361,6 @@ a:hover{transform:translateY(-2px)}
           const targetId = file ? file.id : fileId;
           if (targetId) {
             await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {});
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {});
             await recordSyncItem(env.DB, reqUserId, targetId, 'videos', { id: targetId }, 1);
             await cleanUserFavoriteOnDelete(env.DB, reqUserId, targetId);
           }
@@ -10564,6 +10598,13 @@ a:hover{transform:translateY(-2px)}
                 source_category, original_folder_id, metadata_json, date_formatted,
                 r2_key, file_url, deleted_at
               ) VALUES (?, ?, ?, ?, ?, 'documents', ?, 'documents', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                category = excluded.category,
+                source_category = excluded.source_category,
+                extension = excluded.extension,
+                r2_key = COALESCE(NULLIF(excluded.r2_key, ''), trash_files.r2_key),
+                file_url = excluded.file_url,
+                deleted_at = CURRENT_TIMESTAMP
             `).bind(
               file.id, reqUserId, file.name, file.size, file.size_bytes, file.extension,
               JSON.stringify({ documentCategory: file.document_category || 'COURS', pageCount: file.page_count || 1 }),
@@ -10575,7 +10616,6 @@ a:hover{transform:translateY(-2px)}
 
           const targetId = file ? file.id : fileId;
           if (targetId) {
-            await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(targetId, reqUserId).run().catch(() => {});
             await recordSyncItem(env.DB, reqUserId, targetId, 'documents', { id: targetId }, 1);
             await cleanUserFavoriteOnDelete(env.DB, reqUserId, targetId);
           }
@@ -11033,19 +11073,33 @@ a:hover{transform:translateY(-2px)}
 
             if (action === 'trash') {
               // Mettre le fichier protégé dans la corbeille
-              const fileExt = (secFile.extension || secFile.name.split('.').pop() || '').toLowerCase();
+              const fileExt = (secFile.extension || (secFile.name && secFile.name.includes('.') ? secFile.name.split('.').pop() : '') || '').toLowerCase();
+              const rawName = (secFile.name || '').toLowerCase();
               let detectedCat = '';
-              if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff'].includes(fileExt)) detectedCat = 'images';
+              if (rawName.includes('whatsapp video') || rawName.includes('vid-') || /\.(mp4|mkv|avi|mov|webm|3gp|flv|wmv)$/i.test(rawName)) detectedCat = 'videos';
+              else if (rawName.includes('whatsapp audio') || rawName.includes('aud-') || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(rawName)) detectedCat = 'audio';
+              else if (rawName.includes('whatsapp image') || rawName.includes('img-') || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|tiff)$/i.test(rawName)) detectedCat = 'images';
+              else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff'].includes(fileExt)) detectedCat = 'images';
               else if (['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv'].includes(fileExt)) detectedCat = 'videos';
               else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'].includes(fileExt)) detectedCat = 'audio';
 
               let realCategory = detectedCat || secFile.original_category;
+              if (detectedCat && (realCategory === 'documents' || realCategory === 'secure' || realCategory === 'trash')) {
+                realCategory = detectedCat;
+              }
               if (!realCategory || realCategory === 'secure' || realCategory === 'trash') {
                 realCategory = secFile.category && secFile.category !== 'secure' ? secFile.category : (detectedCat || 'documents');
               }
               let resolvedR2Key = (secFile.r2_key && String(secFile.r2_key).trim() !== '')
                 ? String(secFile.r2_key).trim()
                 : (meta.r2Key || (extractR2Keys('', secFile.file_url || '')[0] || ''));
+              try {
+                while (resolvedR2Key.includes('%')) {
+                  const next = decodeURIComponent(resolvedR2Key);
+                  if (next === resolvedR2Key) break;
+                  resolvedR2Key = next;
+                }
+              } catch {}
               if (!resolvedR2Key) {
                 const rec: any = await env.DB.prepare(`
                   SELECT r2_key FROM files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
@@ -11094,6 +11148,9 @@ a:hover{transform:translateY(-2px)}
               ).run();
 
               await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId).run();
+              if (realCategory === 'images' || realCategory === 'videos' || realCategory === 'audio') {
+                await env.DB.prepare(`DELETE FROM document_files WHERE id = ? AND user_id = ?`).bind(secFile.id, reqUserId).run().catch(() => {});
+              }
               await recordSyncItem(env.DB, reqUserId, secFile.id, 'trash', { id: secFile.id, name: secFile.name, size: secFile.size, isTrash: true, category: realCategory }, 0);
               await recordSyncItem(env.DB, reqUserId, secFile.id, 'secure', { id: secFile.id }, 1);
             } else {
@@ -11136,6 +11193,13 @@ a:hover{transform:translateY(-2px)}
                 if (rec?.r2_key) resolvedR2Key = rec.r2_key;
               }
               const resolvedExt = secFile.extension || (secFile.name.includes('.') ? secFile.name.split('.').pop() : '') || fileExt || '';
+              try {
+                while (resolvedR2Key.includes('%')) {
+                  const next = decodeURIComponent(resolvedR2Key);
+                  if (next === resolvedR2Key) break;
+                  resolvedR2Key = next;
+                }
+              } catch {}
 
               let finalRestoredUrl = '';
               if (resolvedR2Key) {
@@ -11176,7 +11240,14 @@ a:hover{transform:translateY(-2px)}
                   Number(meta.positionY || meta.position_y || 0), Number(meta.displayOrder || meta.display_order || 0),
                   Number(meta.zoomLevel || meta.zoom_level || 10), meta.isPinned ? 1 : 0
                 ).run();
-              } else if (origFolder) {
+              } else if (
+                origFolder &&
+                !['images', 'videos', 'audio', 'documents', 'default-folder', 'root', 'menu-images', 'menu-videos', 'menu-audio', 'menu-documents', 'default'].includes(origFolder) &&
+                realCat !== 'images' &&
+                realCat !== 'videos' &&
+                realCat !== 'audio' &&
+                !detectedCat
+              ) {
                 await env.DB.prepare(`
                   INSERT INTO classeur_files (
                     id, user_id, folder_id, name, size, size_bytes, category, extension,
@@ -11350,6 +11421,9 @@ a:hover{transform:translateY(-2px)}
               }
 
               await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId).run();
+              if (realCat === 'images' || realCat === 'videos' || realCat === 'audio') {
+                await env.DB.prepare(`DELETE FROM document_files WHERE id = ? AND user_id = ?`).bind(secFile.id, reqUserId).run().catch(() => {});
+              }
 
               const finalCategory = isFolder ? 'classeur_folder' : realCat;
               const isAudioFile = realCat === 'audio';
@@ -11495,6 +11569,13 @@ a:hover{transform:translateY(-2px)}
               }
               const resolvedExt = item.extension || (item.name.includes('.') ? item.name.split('.').pop() : '') || itemExt || '';
               const origFolder = item.original_folder_id || '';
+              try {
+                while (resolvedR2Key.includes('%')) {
+                  const next = decodeURIComponent(resolvedR2Key);
+                  if (next === resolvedR2Key) break;
+                  resolvedR2Key = next;
+                }
+              } catch {}
 
               let finalTrashRestoredUrl = '';
               if (resolvedR2Key) {
@@ -11590,7 +11671,13 @@ a:hover{transform:translateY(-2px)}
                     await cleanUserFavoriteOnDelete(env.DB, reqUserId, cFile.id);
                   }
                 }
-              } else if ((origFolder || srcCat === 'classeur') && srcCat !== 'videos' && srcCat !== 'images' && srcCat !== 'audio' && !detectedSrcCat) {
+              } else if (
+                ((origFolder && !['images', 'videos', 'audio', 'documents', 'default-folder', 'root', 'menu-images', 'menu-videos', 'menu-audio', 'menu-documents', 'default'].includes(origFolder)) || srcCat === 'classeur') &&
+                srcCat !== 'videos' &&
+                srcCat !== 'images' &&
+                srcCat !== 'audio' &&
+                !detectedSrcCat
+              ) {
                 await env.DB.prepare(`
                   INSERT INTO classeur_files (
                     id, user_id, folder_id, name, size, size_bytes, category, extension,
@@ -11764,8 +11851,11 @@ a:hover{transform:translateY(-2px)}
                 } catch (e) {}
               }
 
-              // Supprimer de la table de corbeille
+              // Supprimer de la table de corbeille (et de document_files si c'est un média mal classé auparavant)
               await env.DB.prepare('DELETE FROM trash_files WHERE id = ? AND user_id = ?').bind(tid, reqUserId).run();
+              if (srcCat === 'images' || srcCat === 'videos' || srcCat === 'audio') {
+                await env.DB.prepare('DELETE FROM document_files WHERE id = ? AND user_id = ?').bind(tid, reqUserId).run().catch(() => {});
+              }
 
               const finalCategory = (srcCat === 'classeur_folder' || item.category === 'folder') ? 'classeur_folder' : srcCat;
               const isFolderItem = finalCategory === 'classeur_folder';
@@ -11775,11 +11865,12 @@ a:hover{transform:translateY(-2px)}
                 size: item.size || '0 o',
                 sizeBytes: Number(item.size_bytes || 0),
                 category: finalCategory,
-                extension: item.extension || '',
+                extension: resolvedExt || item.extension || '',
+                r2Key: resolvedR2Key || undefined,
                 date: item.date_formatted || new Date().toLocaleDateString('fr-FR'),
-                url: item.file_url || '',
-                previewUrl: item.file_url || '',
-                thumbnailUrl: item.file_url || '',
+                url: finalTrashRestoredUrl || item.file_url || '',
+                previewUrl: finalTrashRestoredUrl || item.file_url || '',
+                thumbnailUrl: finalTrashRestoredUrl || item.file_url || '',
                 folderId: origFolder || undefined,
                 originalFolderId: origFolder || undefined,
                 metadata: meta,
@@ -11842,11 +11933,13 @@ a:hover{transform:translateY(-2px)}
             await deleteR2ObjectAndThumbnails(rawEnv, reqUserId, item.id, item.r2_key, item.file_url, item.category || item.source_category || 'trash');
           }
 
-          // Balayer et purger tous les fichiers orphelins résiduels de cet utilisateur dans R2
-          try {
-            await purgeUserOrphanedR2Files(env, rawEnv, reqUserId);
-          } catch (e: any) {
-            console.warn('[Trash purge] Orphan sweep warning:', e?.message || e);
+          // Balayer et purger les fichiers orphelins uniquement lors d'un vidage complet de la corbeille
+          if (isEmptyAll) {
+            try {
+              await purgeUserOrphanedR2Files(env, rawEnv, reqUserId);
+            } catch (e: any) {
+              console.warn('[Trash purge] Orphan sweep warning:', e?.message || e);
+            }
           }
 
           recalculateAndSaveUserStorage(env.DB, reqUserId).catch(() => {});

@@ -13,20 +13,35 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
   const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
   const triedUrlsRef = useRef<Set<string>>(new Set());
 
+  const getCleanR2Url = () => {
+    if (!img.r2Key) return '';
+    let cleanKey = String(img.r2Key).trim();
+    try {
+      while (cleanKey.includes('%')) {
+        const next = decodeURIComponent(cleanKey);
+        if (next === cleanKey) break;
+        cleanKey = next;
+      }
+    } catch { }
+    return `${baseUrl}/api/cloud/file/images/${encodeURIComponent(cleanKey)}`;
+  };
+
   const computeInitialSrc = () => {
-    const directUrl = img.previewUrl || img.url;
+    const directUrl = (img.previewUrl || img.url || '').trim();
     if (directUrl && directUrl.startsWith('data:')) return directUrl;
     if (
       directUrl &&
       directUrl.startsWith('http') &&
       !directUrl.includes('localhost') &&
       !directUrl.startsWith('blob:') &&
-      !directUrl.includes('/api/cloud/file/secure/')
+      !directUrl.includes('/api/cloud/file/secure/') &&
+      !directUrl.includes('/api/cloud/file/trash/')
     ) {
-      return directUrl;
+      return directUrl.replace(/%252F/gi, '%2F');
     }
-    if (img.r2Key) {
-      return `${baseUrl}/api/cloud/file/images/${encodeURIComponent(img.r2Key)}`;
+    const r2Url = getCleanR2Url();
+    if (r2Url) {
+      return r2Url;
     }
     if (img.id) {
       return `${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}`;
@@ -50,7 +65,7 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
 
   const handleError = () => {
     const candidates = [
-      img.r2Key ? `${baseUrl}/api/cloud/file/images/${encodeURIComponent(img.r2Key)}` : '',
+      getCleanR2Url(),
       img.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}` : '',
       img.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(img.id)}` : '',
     ].filter(Boolean);
