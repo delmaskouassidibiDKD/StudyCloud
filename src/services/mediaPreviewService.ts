@@ -298,6 +298,50 @@ export function setCachedMediaThumbnail(_key: string, _thumbUrl: string): void {
 }
 
 /**
+ * Lit la durée réelle d'un son (en secondes) en ne chargeant QUE les métadonnées.
+ * Aucun stockage local : l'élément audio temporaire est détruit immédiatement après lecture.
+ */
+export function probeAudioDuration(src: string, timeoutMs = 10000): Promise<number> {
+  return new Promise((resolve) => {
+    if (typeof window === 'undefined' || !src) { resolve(0); return; }
+    const el = document.createElement('audio');
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+
+    const finish = (value: number) => {
+      if (settled) return;
+      settled = true;
+      if (timer) clearTimeout(timer);
+      el.onloadedmetadata = null;
+      el.ondurationchange = null;
+      el.onerror = null;
+      try {
+        el.removeAttribute('src');
+        el.load();
+      } catch { }
+      resolve(Number.isFinite(value) && value > 0 ? value : 0);
+    };
+
+    el.preload = 'metadata';
+    el.muted = true;
+    el.onloadedmetadata = () => {
+      if (Number.isFinite(el.duration) && el.duration > 0) {
+        finish(el.duration);
+      } else {
+        // Certains formats (webm/opus/WhatsApp) annoncent une durée infinie : forcer le calcul
+        el.ondurationchange = () => {
+          if (Number.isFinite(el.duration) && el.duration > 0) finish(el.duration);
+        };
+        try { el.currentTime = 1e7; } catch { finish(0); }
+      }
+    };
+    el.onerror = () => finish(0);
+    timer = setTimeout(() => finish(0), timeoutMs);
+    el.src = src;
+  });
+}
+
+/**
  * Génère la miniature réelle de la première page d'un PDF
  */
 export async function generatePdfThumbnail(

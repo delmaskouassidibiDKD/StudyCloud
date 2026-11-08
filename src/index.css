@@ -737,11 +737,6 @@ p.brand-tagline,
   scrollbar-width: none;
   -ms-overflow-style: none;
   isolation: isolate;
-  background-color: #0B101D;
-  border: 2px solid rgba(71, 85, 105, 0.9);
-  border-radius: 0.75rem;
-  box-shadow: 0 25px 60px rgba(0, 0, 0, 0.98), 0 0 25px rgba(59, 130, 246, 0.25);
-  color: #e2e8f0;
   overflow-y: auto;
   overscroll-behavior: contain;
   max-height: calc(100vh - 90px);

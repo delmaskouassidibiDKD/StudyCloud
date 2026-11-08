@@ -33,6 +33,7 @@ export interface FileItem {
   coverUrl?: string;
   artist?: string;
   album?: string;
+  durationSec?: number;
   extension?: string;
   content?: string;
   noteTitle?: string;

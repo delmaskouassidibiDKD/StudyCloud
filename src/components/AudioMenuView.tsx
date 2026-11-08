@@ -44,7 +44,7 @@ import { useAudioList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { compressFile } from '../utils/fileCompressor';
-import { extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, getCachedMediaThumbnail, setCachedMediaThumbnail, isRealEmbeddedArtwork } from '../services/mediaPreviewService';
+import { extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, getCachedMediaThumbnail, setCachedMediaThumbnail, isRealEmbeddedArtwork, probeAudioDuration } from '../services/mediaPreviewService';
 
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
@@ -533,6 +533,43 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     };
   }, [audioList.length]);
 
+  // Auto-guérison intelligente des durées des sons (ex: sons importés précédemment avec 00:00)
+  const probedDurationRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!audioList || audioList.length === 0) return;
+
+    let isMounted = true;
+    const tracksNeedDuration = audioList.filter(
+      t => (!t.durationSec || t.durationSec <= 0) && !probedDurationRef.current.has(t.id)
+    );
+
+    if (tracksNeedDuration.length === 0) return;
+
+    const batch = tracksNeedDuration.slice(0, 5);
+    batch.forEach(t => probedDurationRef.current.add(t.id));
+
+    (async () => {
+      for (const track of batch) {
+        if (!isMounted) break;
+        try {
+          const probeSrc = track.audioUrl || track.url || CloudStorageAPI.getFileUrl(track.id);
+          if (!probeSrc) continue;
+          const dur = await probeAudioDuration(probeSrc);
+          if (dur > 0 && isMounted) {
+            const roundedDur = Math.round(dur * 100) / 100;
+            setAudioList(prev => prev.map(item => item.id === track.id ? { ...item, durationSec: roundedDur } : item));
+            CloudDataStore.updateFile(track.id, { durationSec: roundedDur });
+            CloudStorageAPI.saveAudioDuration(track.id, roundedDur).catch(() => {});
+          }
+        } catch { }
+      }
+    })();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [audioList]);
+
 
   // Lecture et contrôles audio synchronisés universellement via GlobalAudioProvider
 
@@ -588,10 +625,15 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         ? `${(f.size / (1024 * 1024)).toFixed(1)} Mo`
         : `${Math.round(f.size / 1024)} Ko`;
 
-      // 2. Extraction ultra-rapide des tags réels (titre, artiste, pochette chanteur)
+      // 2. Extraction ultra-rapide des tags réels (titre, artiste, pochette chanteur) et durée réelle
       let meta: any = {};
       try {
         meta = await extractAudioMetadataWithTags(f);
+      } catch { }
+
+      let probedDur = 0;
+      try {
+        probedDur = await probeAudioDuration(localBlobUrl);
       } catch { }
 
       const hasRealCover = meta.coverUrl && isRealEmbeddedArtwork(meta.coverUrl);
@@ -619,6 +661,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         source: 'Audio',
         artist: songArtist,
         album: meta.album,
+        durationSec: probedDur > 0 ? Math.round(probedDur * 100) / 100 : undefined,
         size: sizeFormatted,
         sizeBytes: f.size,
         date: "Aujourd'hui",

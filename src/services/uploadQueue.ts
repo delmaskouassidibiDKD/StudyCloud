@@ -428,7 +428,8 @@ class UploadQueueManager {
           (pct) => {
             task.progress = Math.max(10, Math.min(99, pct));
             this.notify();
-          }
+          },
+          Number((task.fileItem as any)?.durationSec || 0) || undefined
         );
 
         if (!res || res.success === false) {

@@ -7562,6 +7562,22 @@ a:hover{transform:translateY(-2px)}
       // ----------------------------------------------------------------------
 
       // 1. Distribution de la miniature d'un fichier (/api/cloud/thumbnail/:fileId)
+      // Mise à jour légère de la durée réelle d'un son (POST /api/cloud/audio/duration)
+      if (path === '/api/cloud/audio/duration' && (method === 'POST' || method === 'PUT')) {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+        const body: any = await request.json().catch(() => ({}));
+        const audId = String(body.id || '').trim();
+        const dur = Number(body.durationSec || 0);
+        if (!audId || !Number.isFinite(dur) || dur <= 0 || dur > 86400) {
+          return errorResponse('Paramètres invalides', 400, origin);
+        }
+        const rounded = Math.round(dur * 100) / 100;
+        await env.DB.prepare('UPDATE audio_files SET duration_sec = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?')
+          .bind(rounded, audId, reqUserId).run().catch(() => {});
+        return jsonResponse({ success: true, id: audId, durationSec: rounded }, 200, origin);
+      }
+
       if (path.startsWith('/api/cloud/thumbnail/') && method === 'GET') {
         const fileId = decodeURIComponent(path.replace('/api/cloud/thumbnail/', '').trim());
         const reqUserId = await extractRequestUserId();
@@ -8489,9 +8505,11 @@ a:hover{transform:translateY(-2px)}
                   updated_at = CURRENT_TIMESTAMP
               `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
             } else if (finalCategory === 'audio') {
+              const uploadDurRaw = Number(url.searchParams.get('durationSec') || request.headers.get('x-duration-sec') || 0);
+              const uploadDurationSec = Number.isFinite(uploadDurRaw) && uploadDurRaw > 0 ? Math.round(uploadDurRaw * 100) / 100 : 0;
               await env.DB.prepare(`
-                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, cover_url, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, cover_url, duration_sec, created_at, updated_at)
+                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                   name = excluded.name,
                   title = excluded.title,
@@ -8499,6 +8517,7 @@ a:hover{transform:translateY(-2px)}
                   size_bytes = excluded.size_bytes,
                   r2_key = excluded.r2_key,
                   audio_url = excluded.audio_url,
+                  duration_sec = CASE WHEN excluded.duration_sec > 0 THEN excluded.duration_sec ELSE audio_files.duration_sec END,
                   artist = CASE
                     WHEN audio_files.artist IS NOT NULL AND audio_files.artist != '' AND audio_files.artist != 'Artiste inconnu'
                     THEN audio_files.artist
@@ -8510,7 +8529,7 @@ a:hover{transform:translateY(-2px)}
                     ELSE audio_files.cover_url
                   END,
                   updated_at = CURRENT_TIMESTAMP
-              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl, finalThumbnailUrl).run();
+              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl, finalThumbnailUrl, uploadDurationSec).run();
             } else if (finalCategory === 'documents') {
               const docThumbToPersist = finalThumbnailUrl || `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${encodeURIComponent(reqUserId)}`;
               await env.DB.prepare(`
@@ -8737,7 +8756,7 @@ a:hover{transform:translateY(-2px)}
                 env.DB.prepare('SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category FROM document_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare('SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension FROM image_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare('SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec FROM video_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
-                env.DB.prepare('SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes FROM audio_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+                env.DB.prepare('SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes, duration_sec FROM audio_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare('SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content FROM classeur_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare('SELECT id, name, size, size_bytes, file_url, type, extension FROM download_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
                 env.DB.prepare('SELECT id, item_id, category FROM user_favorites WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
@@ -9768,7 +9787,7 @@ a:hover{transform:translateY(-2px)}
               title = excluded.title,
               artist = excluded.artist,
               album = excluded.album,
-              duration_sec = excluded.duration_sec,
+              duration_sec = CASE WHEN excluded.duration_sec > 0 THEN excluded.duration_sec ELSE audio_files.duration_sec END,
               size = excluded.size,
               size_bytes = excluded.size_bytes,
               r2_key = COALESCE(NULLIF(excluded.r2_key, ''), audio_files.r2_key),
@@ -12379,7 +12398,7 @@ a:hover{transform:translateY(-2px)}
                 env.DB.prepare(`SELECT id, name, size, size_bytes, file_url, preview_url, extension, document_category, created_at FROM document_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
                 env.DB.prepare(`SELECT id, name, size, size_bytes, image_url, thumbnail_url, extension, created_at FROM image_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
                 env.DB.prepare(`SELECT id, name, size, size_bytes, video_url, thumbnail_url, duration_sec, created_at FROM video_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
-                env.DB.prepare(`SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes, created_at FROM audio_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
+                env.DB.prepare(`SELECT id, name, title, artist, album, audio_url, cover_url, size, size_bytes, duration_sec, created_at FROM audio_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
                 env.DB.prepare(`SELECT id, name, model_id, primary_color, accent_color, icon_name, created_at FROM classeur_folders WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
                 env.DB.prepare(`SELECT id, folder_id, name, size, size_bytes, category, extension, is_notepad, notepad_title, notepad_content, created_at FROM classeur_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] })),
                 env.DB.prepare(`SELECT id, name, size, size_bytes, file_url, type, extension, downloaded_at as created_at FROM download_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] }))
@@ -12413,6 +12432,7 @@ a:hover{transform:translateY(-2px)}
                   isImage: isImg,
                   audioUrl: isAud ? (row.audio_url || row.file_url) : undefined,
                   videoUrl: isVid ? (row.video_url || row.file_url) : undefined,
+                  durationSec: (isAud || isVid) && row.duration_sec ? Number(row.duration_sec) : undefined,
                   artist: row.artist || (isAud ? 'Artiste inconnu' : undefined),
                   title: row.title || row.name,
                   album: row.album || undefined,

@@ -909,6 +909,21 @@ export const CloudStorageAPI = {
     }
   },
 
+  async saveAudioDuration(fileId: string, durationSec: number): Promise<boolean> {
+    if (!fileId || !Number.isFinite(durationSec) || durationSec <= 0) return false;
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/audio/duration?userId=${getUserIdParam()}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ id: fileId, durationSec }),
+      });
+      return res.ok;
+    } catch {
+      return false;
+    }
+  },
+
   getThumbnailUrl(fileId: string): string {
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
     return `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(fileId)}?userId=${getUserIdParam()}`;
@@ -970,7 +985,8 @@ export const CloudStorageAPI = {
     originalSizeBytes?: number,
     originalSizeFormatted?: string,
     fileId?: string,
-    onProgress?: (percent: number) => void
+    onProgress?: (percent: number) => void,
+    durationSec?: number
   ): Promise<{ 
     success: boolean; 
     category?: string; 
@@ -987,7 +1003,8 @@ export const CloudStorageAPI = {
         const sourceQuery = uploadSource ? `&source=${encodeURIComponent(uploadSource)}` : '';
         const origSizeParam = originalSizeBytes ? `&originalSizeBytes=${encodeURIComponent(String(originalSizeBytes))}` : '';
         const idParam = fileId ? `&id=${encodeURIComponent(fileId)}` : '';
-        const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}${sourceQuery}${origSizeParam}${idParam}`;
+        const durParam = durationSec && Number.isFinite(durationSec) && durationSec > 0 ? `&durationSec=${encodeURIComponent(String(Math.round(durationSec * 100) / 100))}` : '';
+        const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}${sourceQuery}${origSizeParam}${idParam}${durParam}`;
 
         const xhr = new XMLHttpRequest();
         xhr.open('POST', uploadUrl, true);
