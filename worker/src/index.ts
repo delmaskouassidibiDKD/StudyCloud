@@ -4336,7 +4336,7 @@ async function processReferralAttribution(
 // Gestionnaire Principal du Worker
 // ============================================================================
 export default {
-  async fetch(request: Request, rawEnv: Env): Promise<Response> {
+  async fetch(request: Request, rawEnv: Env, ctx?: any): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
@@ -7276,7 +7276,8 @@ a:hover{transform:translateY(-2px)}
               const decompressedStream = new Blob([rawBuf]).stream().pipeThrough(ds);
               const decompressedBuf = await new Response(decompressedStream).arrayBuffer();
               if (found.bucket) {
-                ctx.waitUntil(found.bucket.put(key, decompressedBuf, { httpMetadata: { contentType: headers.get('Content-Type') || 'application/pdf' } }).catch(() => {}));
+                const putPromise = found.bucket.put(key, decompressedBuf, { httpMetadata: { contentType: headers.get('Content-Type') || 'application/pdf' } }).catch(() => {});
+                if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(putPromise);
               }
               headers.set('Content-Length', String(decompressedBuf.byteLength));
               return new Response(decompressedBuf, { status: 200, headers });
@@ -7523,7 +7524,8 @@ a:hover{transform:translateY(-2px)}
               const decompressedStream = new Blob([rawBuf]).stream().pipeThrough(ds);
               const decompressedBuf = await new Response(decompressedStream).arrayBuffer();
               if (found.bucket) {
-                ctx.waitUntil(found.bucket.put(foundRecord.r2_key, decompressedBuf, { httpMetadata: { contentType: headers.get('Content-Type') || 'application/pdf' } }).catch(() => {}));
+                const putPromise = found.bucket.put(foundRecord.r2_key, decompressedBuf, { httpMetadata: { contentType: headers.get('Content-Type') || 'application/pdf' } }).catch(() => {});
+                if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(putPromise);
               }
               headers.set('Content-Length', String(decompressedBuf.byteLength));
               return new Response(decompressedBuf, { status: 200, headers });

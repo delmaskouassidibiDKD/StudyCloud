@@ -236,13 +236,15 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               delete savingIntervalsRef.current[task.id];
             }
             // Mise à jour immédiate dès la confirmation d'enregistrement en base
-            if (task.uploadUrl || task.r2Key) {
+            const uploadedUrl = task.fileItem?.url || (task as any).uploadUrl;
+            const uploadedR2Key = task.fileItem?.r2Key || (task as any).r2Key;
+            if (uploadedUrl || uploadedR2Key) {
               setImagesList(prev => prev.map(img => img.id === task.id ? {
                 ...img,
-                url: task.uploadUrl || img.url,
-                previewUrl: task.uploadUrl || img.previewUrl,
-                thumbnailUrl: task.uploadUrl || (img as any).thumbnailUrl,
-                r2Key: task.r2Key || img.r2Key,
+                url: uploadedUrl || img.url,
+                previewUrl: uploadedUrl || img.previewUrl,
+                thumbnailUrl: uploadedUrl || (img as any).thumbnailUrl,
+                r2Key: uploadedR2Key || img.r2Key,
               } : img));
             }
             CloudStorageAPI.getImagesList().then((data) => {

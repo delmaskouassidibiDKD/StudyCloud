@@ -3699,7 +3699,7 @@ async function processReferralAttribution(db, referralCode, newUserId, newUserNa
   }
 }
 var index_default = {
-  async fetch(request, rawEnv) {
+  async fetch(request, rawEnv, ctx) {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
@@ -6232,8 +6232,9 @@ a:hover{transform:translateY(-2px)}
               const decompressedStream = new Blob([rawBuf]).stream().pipeThrough(ds);
               const decompressedBuf = await new Response(decompressedStream).arrayBuffer();
               if (found.bucket) {
-                ctx.waitUntil(found.bucket.put(key, decompressedBuf, { httpMetadata: { contentType: headers.get("Content-Type") || "application/pdf" } }).catch(() => {
-                }));
+                const putPromise = found.bucket.put(key, decompressedBuf, { httpMetadata: { contentType: headers.get("Content-Type") || "application/pdf" } }).catch(() => {
+                });
+                if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(putPromise);
               }
               headers.set("Content-Length", String(decompressedBuf.byteLength));
               return new Response(decompressedBuf, { status: 200, headers });
@@ -6480,8 +6481,9 @@ a:hover{transform:translateY(-2px)}
               const decompressedStream = new Blob([rawBuf]).stream().pipeThrough(ds);
               const decompressedBuf = await new Response(decompressedStream).arrayBuffer();
               if (found.bucket) {
-                ctx.waitUntil(found.bucket.put(foundRecord.r2_key, decompressedBuf, { httpMetadata: { contentType: headers.get("Content-Type") || "application/pdf" } }).catch(() => {
-                }));
+                const putPromise = found.bucket.put(foundRecord.r2_key, decompressedBuf, { httpMetadata: { contentType: headers.get("Content-Type") || "application/pdf" } }).catch(() => {
+                });
+                if (ctx && typeof ctx.waitUntil === "function") ctx.waitUntil(putPromise);
               }
               headers.set("Content-Length", String(decompressedBuf.byteLength));
               return new Response(decompressedBuf, { status: 200, headers });
@@ -15301,7 +15303,7 @@ Lien vers le produit : ${productShareUrl}`;
     }
   },
   // Handler CRON Cloudflare : exécution périodique automatique pour nettoyer les interactions de plus de 30 jours
-  async scheduled(event, env, ctx2) {
+  async scheduled(event, env, ctx) {
     if (env && env.DB) {
       try {
         await env.DB.prepare(`
