@@ -1290,8 +1290,10 @@ export const CloudDataStore = {
       localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet).slice(-500)));
     } catch { }
 
-    const fileNameSet = new Set(arr.map(f => (f.name || '').trim().toLowerCase()).filter(Boolean));
-    const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id) && !fileNameSet.has((f.name || '').trim().toLowerCase()));
+    const nonFolderItems = arr.filter(f => f.category !== 'classeur_folder' && f.category !== 'folder' && !(f as any).model && f.sourceCategory !== 'classeur_folder');
+    const nonFolderIdSet = new Set(nonFolderItems.map(f => f.id));
+    const nonFolderFileNameSet = new Set(nonFolderItems.map(f => (f.name || '').trim().toLowerCase()).filter(Boolean));
+    const filterFn = (list: FileItem[]) => list.filter(f => !nonFolderIdSet.has(f.id) && !nonFolderFileNameSet.has((f.name || '').trim().toLowerCase()));
     const clearFavFn = (list: FileItem[]) => list.map(f => idSet.has(f.id) ? { ...f, isFavorite: false } : f);
 
     const updatedMap = { ...currentState.folderFilesMap };
@@ -1386,6 +1388,9 @@ export const CloudDataStore = {
           isFavorite: false, // Définitivement non-favori
         };
         newFolders = [restoredFolder, ...newFolders.filter(f => f.id !== file.id)];
+        if (meta.containedFiles && Array.isArray(meta.containedFiles) && meta.containedFiles.length > 0) {
+          updatedMap[file.id] = meta.containedFiles;
+        }
         if (restoreUpsertNotifier) {
           try { restoreUpsertNotifier(file.id, 'classeur_folder', restoredFolder); } catch { }
         }
@@ -1753,6 +1758,7 @@ export const CloudDataStore = {
     if (arr.length === 0) return;
     const idSet = new Set(arr.map(f => f.id));
     const newSecure = currentState.secure.filter(s => !idSet.has(s.id));
+    let newFolders = [...currentState.classeurFolders];
     let newDocs = [...currentState.documents];
     let newImgs = [...currentState.images];
     let newVids = [...currentState.videos];
@@ -1765,6 +1771,44 @@ export const CloudDataStore = {
       const rawNameLower = (file.name || '').toLowerCase();
       const rawOrig = ((file as any).originalCategory || (file as any).sourceCategory || file.category || '').toLowerCase();
       const fIdStr = String(file.id || '').toLowerCase();
+
+      const isFolder = rawOrig === 'classeur_folder' || file.category === 'classeur_folder' || (file as any).isFolder || (file as any).model;
+      if (isFolder) {
+        const meta = (file as any).metadata || {};
+        const folderModel = Number(meta.model || meta.modelId || meta.model_id || 1);
+        const validModel: 1 | 2 | 3 | 4 = (folderModel >= 1 && folderModel <= 4) ? (folderModel as 1 | 2 | 3 | 4) : 1;
+        const restoredFolder: ClasseurCreatedFolder = {
+          id: file.id,
+          name: file.name || 'Dossier',
+          model: validModel,
+          modelId: meta.modelId || meta.model_id || String(validModel),
+          primaryColor: meta.primaryColor || meta.primary_color || '#EA580C',
+          accentColor: meta.accentColor || meta.accent_color || '#F97316',
+          secondaryColor: meta.secondaryColor || meta.secondary_color,
+          badge: meta.badge,
+          iconType: meta.iconType || meta.icon_type,
+          iconName: meta.iconName || meta.icon_name || 'Folder',
+          textDark: Boolean(meta.textDark ?? meta.text_dark),
+          dateText: meta.dateText || meta.date_text || file.date || new Date().toLocaleDateString('fr-FR'),
+          createdAt: Number(meta.createdAt || Date.now()),
+          positionX: Number(meta.positionX ?? meta.position_x ?? 0),
+          positionY: Number(meta.positionY ?? meta.position_y ?? 0),
+          displayOrder: Number(meta.displayOrder ?? meta.display_order ?? 0),
+          zoomLevel: Number(meta.zoomLevel ?? meta.zoom_level ?? 10),
+          parentId: meta.parentId || meta.parent_id || undefined,
+          isPinned: Boolean(meta.isPinned ?? meta.is_pinned),
+          isFavorite: false,
+        };
+        newFolders = [restoredFolder, ...newFolders.filter(f => f.id !== file.id)];
+        if (meta.containedFiles && Array.isArray(meta.containedFiles) && meta.containedFiles.length > 0) {
+          updatedMap[file.id] = meta.containedFiles;
+        }
+        if (restoreUpsertNotifier) {
+          try { restoreUpsertNotifier(file.id, 'classeur_folder', restoredFolder); } catch { }
+        }
+        return;
+      }
+
       const detectedByExt = detectFileCategory({ name: file.name, type: (file as any).type, extension: fileExtStr });
       const isMediaExt =
         /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name || '') ||
@@ -1916,6 +1960,7 @@ export const CloudDataStore = {
     currentState = {
       ...currentState,
       secure: newSecure,
+      classeurFolders: newFolders,
       documents: newDocs,
       images: newImgs,
       videos: newVids,

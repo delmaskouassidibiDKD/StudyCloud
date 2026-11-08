@@ -462,7 +462,19 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
   // Filtrage selon catégorie et recherche
   const filteredTrash = useMemo(() => {
-    let list = trashList;
+    // Si un dossier parent est présent dans la corbeille, ses fichiers enfants ne doivent pas être dispersés au niveau racine
+    const trashedFolderIds = new Set(
+      trashList
+        .filter(f => f.category === 'folder' || f.category === 'classeur_folder' || (f as any).model || (f.sourceCategory === 'classeur_folder'))
+        .map(f => f.id)
+    );
+
+    // Ne conserver au niveau racine que les éléments autonomes (les fichiers d'un dossier corbeille restent dans leur dossier)
+    let list = trashList.filter(f => {
+      const origFId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id;
+      if (origFId && trashedFolderIds.has(origFId)) return false;
+      return true;
+    });
 
     if (activeFilter !== 'all') {
       list = list.filter(f => {
@@ -1102,6 +1114,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       const folderData = {
         id: file.id,
         name: file.name,
+        model: Number(file.metadata?.model || file.metadata?.modelId || file.metadata?.model_id || 1),
         modelId: file.metadata?.model_id || file.metadata?.modelId || '1',
         primaryColor: file.metadata?.primary_color || file.metadata?.primaryColor || '#EA580C',
         accentColor: file.metadata?.accent_color || file.metadata?.accentColor || '#F97316',
@@ -1109,7 +1122,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         textDark: Boolean(file.metadata?.text_dark ?? file.metadata?.textDark),
         displayOrder: file.metadata?.display_order || 0,
         zoomLevel: file.metadata?.zoom_level || 10,
-        itemCount: 0,
+        itemCount: file.metadata?.itemCount || file.metadata?.containedFiles?.length || 0,
       };
 
       return (
@@ -1122,7 +1135,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
               setSelectedFile(file);
             }
           }}
-          className={`group relative rounded-2xl transition-all duration-200 flex flex-col justify-between shadow-lg select-none cursor-pointer bg-[#0A0D18] border p-2 sm:p-2.5 ${isChecked
+          className={`group relative aspect-[3/4] rounded-2xl transition-all duration-200 flex flex-col justify-between shadow-lg select-none cursor-pointer bg-[#0A0D18] border p-2 sm:p-2.5 ${isChecked
             ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
             : isSelected
               ? 'border-orange-400 ring-2 ring-orange-400/90 shadow-2xl scale-[1.02] z-20'
@@ -1156,19 +1169,21 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
           </div>
 
           {/* Rendu 3D conforme et interactif du dossier */}
-          <div className="w-full flex-1 flex items-center justify-center py-2 pointer-events-none min-h-[105px]">
-            <div className="w-24 sm:w-28 drop-shadow-lg group-hover:scale-105 transition-transform duration-200">
+          <div className="w-full flex-1 flex items-center justify-center py-1 pointer-events-none min-h-0 overflow-hidden">
+            <div className="w-20 sm:w-24 drop-shadow-lg group-hover:scale-105 transition-transform duration-200">
               <Classeur3DFolderCard folder={folderData as any} />
             </div>
           </div>
 
           {/* Barre basse : Nom & Bouton restaurer (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
-          <div className="relative z-10 p-2 bg-black/75 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-between gap-2 mt-1">
+          <div className="relative z-10 p-1.5 bg-black/75 backdrop-blur-md border border-white/10 rounded-xl flex items-center justify-between gap-2 mt-1">
             <div className="min-w-0 flex-1">
               <p className="text-xs font-black text-white truncate group-hover:text-orange-300 transition-colors" title={file.name}>
                 {file.name}
               </p>
-              <p className="text-[9px] text-slate-400">Dossier corbeille</p>
+              <p className="text-[9px] text-slate-400">
+                {file.size || (folderData.itemCount > 0 ? `${folderData.itemCount} élément${folderData.itemCount > 1 ? 's' : ''}` : 'Dossier corbeille')}
+              </p>
             </div>
 
             <button

@@ -558,11 +558,23 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     return '0 Mo';
   }, [totalSecureBytes]);
 
-  // 11. Filtrage par recherche
+  // 11. Filtrage par recherche et exclusion des enfants de dossiers sécurisés
   const filteredFiles = useMemo(() => {
-    if (!searchQuery.trim()) return secureFiles;
+    const securedFolderIds = new Set(
+      secureFiles
+        .filter(f => (f as any).isFolder || f.category === 'classeur_folder' || f.category === 'folder' || (f as any).sourceCategory === 'classeur_folder' || (f as any).originalCategory === 'classeur_folder')
+        .map(f => f.id)
+    );
+
+    let list = secureFiles.filter(f => {
+      const origFId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id;
+      if (origFId && securedFolderIds.has(origFId)) return false;
+      return true;
+    });
+
+    if (!searchQuery.trim()) return list;
     const q = searchQuery.toLowerCase().trim();
-    return secureFiles.filter(f =>
+    return list.filter(f =>
       (f.name || '').toLowerCase().includes(q) ||
       (f.extension || '').toLowerCase().includes(q)
     );
@@ -1550,7 +1562,20 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     const isMenuOpen = activeMenuFileId === file.id;
     const isChecked = selectedIds.has(file.id);
     const isCurrentViewer = selectedFile?.id === file.id;
-    const folderData = (file as any).folderData || file;
+    const meta = (file as any).metadata || {};
+    const folderData = {
+      id: file.id,
+      name: file.name,
+      model: Number(meta.model || meta.modelId || meta.model_id || 1),
+      modelId: meta.model_id || meta.modelId || '1',
+      primaryColor: meta.primary_color || meta.primaryColor || '#2563EB',
+      accentColor: meta.accent_color || meta.accentColor || '#3B82F6',
+      iconName: meta.icon_name || meta.iconName || 'Folder',
+      textDark: Boolean(meta.text_dark ?? meta.textDark),
+      displayOrder: meta.display_order || 0,
+      zoomLevel: meta.zoom_level || 10,
+      itemCount: meta.itemCount || meta.containedFiles?.length || 0,
+    };
 
     return (
       <div
@@ -1623,14 +1648,19 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
         </div>
 
         {/* Représentation 3D du dossier */}
-        <div className="pt-2 pb-1 w-full px-2 flex items-center justify-center my-auto">
-          <Classeur3DFolderCard folder={folderData as any} />
+        <div className="w-full flex-1 flex items-center justify-center py-1 pointer-events-none min-h-0 overflow-hidden">
+          <div className="w-20 sm:w-24 drop-shadow-lg group-hover:scale-105 transition-transform duration-200">
+            <Classeur3DFolderCard folder={folderData as any} />
+          </div>
         </div>
 
         {/* Nom du dossier en bas (z-10 pour ne JAMAIS chevaucher le menu déroulant z-[150]) */}
-        <div className="relative z-10 p-2 bg-black/70 backdrop-blur-md border-t border-white/10 text-center">
+        <div className="relative z-10 p-1.5 bg-black/70 backdrop-blur-md border-t border-white/10 text-center">
           <p className="text-xs font-bold text-white truncate" title={file.name}>
             {file.name}
+          </p>
+          <p className="text-[9px] text-slate-400">
+            {file.size || (folderData.itemCount > 0 ? `${folderData.itemCount} élément${folderData.itemCount > 1 ? 's' : ''}` : 'Dossier sécurisé')}
           </p>
         </div>
       </div>

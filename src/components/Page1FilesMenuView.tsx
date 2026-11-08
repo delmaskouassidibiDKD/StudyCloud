@@ -1387,34 +1387,38 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const toDeleteIds = getDescendantFolderIds(folderId, prev);
       setFolderFilesMap(mapPrev => {
         const next = { ...mapPrev };
-        const deletedFolderFiles: FileItem[] = [];
-        toDeleteIds.forEach(id => {
-          if (next[id] && next[id].length > 0) {
-            deletedFolderFiles.push(...next[id].map(f => ({ ...f, originalFolderId: id, isTrash: true, sourceCategory: 'classeur', source: 'Classeur' })));
-            delete next[id];
-          }
-        });
+        // Conserver les fichiers dans les métadonnées du dossier sans les déverser en vrac dans la corbeille
         const folderTrashItems: FileItem[] = toDeleteIds.map(fId => {
           const fObj = prev.find(pf => pf.id === fId) || (fId === targetFolder?.id ? targetFolder : null);
+          const contained = next[fId] || [];
           return {
             id: fId,
             name: fObj?.name || 'Dossier',
-            category: 'documents' as const,
+            category: 'classeur_folder' as const,
             source: 'Classeur',
             sourceCategory: 'classeur_folder',
-            size: '1 dossier 3D',
+            originalCategory: 'classeur_folder',
+            size: contained.length > 0 ? `${contained.length} élément${contained.length > 1 ? 's' : ''}` : 'Dossier 3D',
             sizeBytes: 2048,
             date: fObj?.dateText || new Date().toLocaleDateString('fr-FR'),
             isTrash: true,
-            metadata: fObj
+            metadata: {
+              ...(fObj || {}),
+              containedFiles: contained,
+              itemCount: contained.length,
+            }
           } as FileItem;
         });
-        setTrashFiles(tPrev => [...folderTrashItems, ...deletedFolderFiles, ...tPrev.filter(t => !toDeleteIds.includes(t.id))]);
+
         toDeleteIds.forEach(id => {
+          delete next[id];
           LocalSyncReplication.recordLocalDeletion(id, 'classeur_folder');
           CloudDataStore.removeFolder(id);
         });
-        CloudDataStore.moveToTrash([...folderTrashItems, ...deletedFolderFiles] as any);
+
+        // Seul le dossier apparaît dans la corbeille (ses fichiers restent encapsulés à l'intérieur)
+        setTrashFiles(tPrev => [...folderTrashItems, ...tPrev.filter(t => !toDeleteIds.includes(t.id))]);
+        CloudDataStore.moveToTrash(folderTrashItems as any);
         invalidateCloudQueries.trash().catch(() => { });
         invalidateCloudQueries.overview().catch(() => { });
         return next;
@@ -2045,7 +2049,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleRestoreFromTrash = (file: FileItem) => {
     unmarkFileLocallyDeleted(file.id);
     setTrashFiles(prev => prev.filter(f => f.id !== file.id));
-    if (file.category === 'folder' || (file as any).sourceCategory === 'classeur_folder') {
+    if (file.category === 'folder' || file.category === 'classeur_folder' || (file as any).sourceCategory === 'classeur_folder') {
       const meta = (file as any).metadata || {};
       const restoredFolder: ClasseurCreatedFolder = {
         id: file.id,
@@ -2065,6 +2069,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         parentId: meta.parentId || undefined
       };
       setClasseur3DFolders(prev => prev.some(f => f.id === file.id) ? prev : [restoredFolder, ...prev]);
+      if (meta.containedFiles && Array.isArray(meta.containedFiles) && meta.containedFiles.length > 0) {
+        setFolderFilesMap(prevMap => ({
+          ...prevMap,
+          [file.id]: meta.containedFiles
+        }));
+      }
     } else if (file.originalFolderId) {
       setFolderFilesMap(prev => ({
         ...prev,
@@ -2096,7 +2106,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const itemsToRestore = trashFiles.filter(f => selectedItemIds.includes(f.id));
     itemsToRestore.forEach(file => {
       unmarkFileLocallyDeleted(file.id);
-      if (file.category === 'folder' || (file as any).sourceCategory === 'classeur_folder') {
+      if (file.category === 'folder' || file.category === 'classeur_folder' || (file as any).sourceCategory === 'classeur_folder') {
         const meta = (file as any).metadata || {};
         const restoredFolder: ClasseurCreatedFolder = {
           id: file.id,
@@ -2116,6 +2126,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           parentId: meta.parentId || undefined
         };
         setClasseur3DFolders(prev => prev.some(f => f.id === file.id) ? prev : [restoredFolder, ...prev]);
+        if (meta.containedFiles && Array.isArray(meta.containedFiles) && meta.containedFiles.length > 0) {
+          setFolderFilesMap(prevMap => ({
+            ...prevMap,
+            [file.id]: meta.containedFiles
+          }));
+        }
       } else if (file.originalFolderId) {
         setFolderFilesMap(prev => ({
           ...prev,
@@ -3283,7 +3299,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const origCat = (file as any).originalCategory || file.category;
       const origSource = (file as any).originalSource || 'StudyCloud';
 
-      if (origCat === 'classeur_folder' || file.category === 'folder') {
+      if (origCat === 'classeur_folder' || file.category === 'classeur_folder' || file.category === 'folder') {
         const meta = (file as any).metadata || {};
         const restoredFolder: ClasseurCreatedFolder = {
           id: file.id,
@@ -3303,6 +3319,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           parentId: meta.parentId || undefined
         };
         setClasseur3DFolders(prev => prev.some(f => f.id === file.id) ? prev : [restoredFolder, ...prev]);
+        if (meta.containedFiles && Array.isArray(meta.containedFiles) && meta.containedFiles.length > 0) {
+          setFolderFilesMap(prevMap => ({
+            ...prevMap,
+            [file.id]: meta.containedFiles
+          }));
+        }
       } else {
         const meta = (file as any).metadata || {};
         const isAud = origCat === 'audio';
@@ -6707,21 +6729,32 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
 
       case 'lock_folder': {
+        const contained = folderFilesMap[folder.id] || [];
         const securedFile: FileItem = {
           id: folder.id,
           name: folder.name,
-          category: 'documents',
+          category: 'classeur_folder',
           source: 'Dossier Sécurisé',
           originalCategory: 'classeur_folder',
-          size: '1 dossier 3D',
+          sourceCategory: 'classeur_folder',
+          size: contained.length > 0 ? `${contained.length} élément${contained.length > 1 ? 's' : ''}` : 'Dossier 3D',
           sizeBytes: 2048,
           date: folder.dateText,
           isSecure: true,
-          metadata: folder,
+          metadata: {
+            ...folder,
+            containedFiles: contained,
+            itemCount: contained.length,
+          },
         };
-        setSecureFolderFiles(prev => [securedFile, ...prev]);
+        setSecureFolderFiles(prev => [securedFile, ...prev.filter(f => f.id !== folder.id)]);
         setClasseur3DFolders(prev => prev.filter(f => f.id !== folder.id));
         setClasseurFolders(prev => prev.filter(f => f.name !== folder.name));
+        setFolderFilesMap(prev => {
+          const next = { ...prev };
+          delete next[folder.id];
+          return next;
+        });
         if (opened3DFolder?.id === folder.id) {
           setOpened3DFolder(null);
         }
