@@ -2700,8 +2700,12 @@ async function getObjectFromAnyBucket(rawEnv: any, category: string, key: string
   }
 
   // 2. Recherche assistée par la base D1 si le fichier a été enregistré sous une autre clé
-  const fileIdCandidate = decodedKey.match(/(cf-[a-zA-Z0-9_-]+|sec-[a-zA-Z0-9_-]+|f_[a-zA-Z0-9_-]+|img_[a-zA-Z0-9_-]+|vid_[a-zA-Z0-9_-]+|aud_[a-zA-Z0-9_-]+|doc-[a-zA-Z0-9_-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1]
-    || (decodedKey.includes('/') ? decodedKey.split('/').pop()?.split('_')[0] : '');
+  const rawCandidate = decodedKey.match(/(cf-[a-zA-Z0-9_-]+|sec-[a-zA-Z0-9_-]+|f_[a-zA-Z0-9_-]+|img_[a-zA-Z0-9_-]+|vid_[a-zA-Z0-9_-]+|aud_[a-zA-Z0-9_-]+|doc-[a-zA-Z0-9_-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1];
+  // Exclure formellement les préfixes de dossiers (cf-folder-) et de notes (note-) pour éviter qu'un fichier vole le fichier d'un dossier
+  const isExcludedCandidate = !rawCandidate || rawCandidate.startsWith('cf-folder-') || rawCandidate.startsWith('folder-') || rawCandidate.startsWith('note-');
+  const fileIdCandidate = isExcludedCandidate
+    ? (decodedKey.includes('/') ? decodedKey.split('/').pop()?.split('_')[0] : '')
+    : rawCandidate;
   const cleanFileName = decodedKey.split('/').pop() || '';
 
   if (rawEnv.DB && (fileIdCandidate || cleanFileName)) {
@@ -7582,6 +7586,11 @@ a:hover{transform:translateY(-2px)}
         const fileId = decodeURIComponent(path.replace('/api/cloud/thumbnail/', '').trim());
         const reqUserId = await extractRequestUserId();
         if (!fileId) return errorResponse('ID de fichier manquant', 400, origin);
+
+        // Les notes texte n'ont pas de miniatures images : éviter tout vol d'aperçu d'autres fichiers
+        if (fileId.startsWith('note-') || fileId.endsWith('.txt') || fileId.includes('-note-')) {
+          return errorResponse('Les notes texte n\'ont pas de miniature image', 404, origin);
+        }
 
         let targetR2Key = '';
         let targetCategory = 'videos';

@@ -8128,7 +8128,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             handleSelectFile(img);
           }
         }}
-        className={`group relative aspect-square sm:aspect-[4/5] rounded-2xl bg-[#151C2C] border transition-all duration-200 ${isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
+        className={`group relative aspect-[3/4] rounded-2xl bg-[#151C2C] border transition-all duration-200 ${isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
           } ${isChecked
             ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
             : isSelected
@@ -8265,7 +8265,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             handleSelectFile(vid);
           }
         }}
-        className={`group relative aspect-[4/5] rounded-2xl bg-[#0A0E18] border transition-all duration-200 ${isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
+        className={`group relative aspect-[3/4] rounded-2xl bg-[#0A0E18] border transition-all duration-200 ${isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
           } ${isChecked
             ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
             : isSelected
@@ -8405,7 +8405,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             handleSelectFile(aud);
           }
         }}
-        className={`group relative aspect-square rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 ${isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
+        className={`group relative aspect-[3/4] rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 ${isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
           } ${isChecked
             ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
             : isSelected

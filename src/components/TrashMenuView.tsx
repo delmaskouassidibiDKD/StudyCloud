@@ -893,7 +893,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             setSelectedFile(file);
           }
         }}
-        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${isChecked
+        className={`group relative aspect-[3/4] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${isChecked
           ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02] cursor-pointer'
           : isSelected
             ? 'border-emerald-500 ring-4 ring-emerald-500/50 shadow-2xl scale-[1.02] cursor-pointer'
@@ -997,7 +997,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
             setSelectedFile(file);
           }
         }}
-        className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${isChecked
+        className={`group relative aspect-[3/4] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none ${isChecked
           ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02] cursor-pointer'
           : isSelected
             ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02] cursor-pointer'
@@ -1187,84 +1187,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       );
     }
 
-    // 2. Rendu conforme de la Note TXT du Classeur (avec TxtDocumentSVG identique à l'original)
-    if (isNote) {
-      return (
-        <div
-          key={file.id}
-          onClick={() => {
-            if (isSelectionMode) {
-              toggleSelect(file.id);
-            } else {
-              setSelectedFile(file);
-            }
-          }}
-          className={`group relative bg-[#0E1526] hover:bg-[#141E34] border rounded-2xl p-2 sm:p-2.5 shadow-lg transition-all duration-200 flex flex-col justify-between select-none cursor-pointer ${isChecked
-            ? 'border-amber-400 ring-4 ring-amber-400/40 shadow-2xl'
-            : isSelected
-              ? 'border-cyan-400 ring-2 ring-cyan-400/90 shadow-2xl scale-[1.02] z-20'
-              : isMenuOpen
-                ? 'border-rose-500 ring-2 ring-rose-500/50 shadow-2xl z-[100] relative overflow-visible'
-                : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1 z-10 overflow-hidden'
-            }`}
-        >
-          {/* Haut de carte : Badge TXT et Bouton 3 traits */}
-          <div className={`flex items-center justify-between ${isMenuOpen ? 'relative z-[80]' : 'relative z-20'}`}>
-            <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
-              TXT
-            </span>
-
-            <div className={`relative studycloud-trash-menu-trigger ${isMenuOpen ? 'z-[90]' : 'z-10'}`}>
-              <button
-                type="button"
-                id={`trash-menu-trigger-${file.id}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setActiveMenuFileId(prev => prev === file.id ? null : file.id);
-                }}
-                className={`p-1.5 rounded-lg bg-black/80 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 shadow-md ${isMenuOpen ? 'border-rose-400 ring-2 ring-rose-400/50 bg-black' : 'border-white/20'
-                  }`}
-                title="Options corbeille"
-              >
-                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-              </button>
-              {isMenuOpen && renderOptionsMenu(file, document.getElementById(`trash-menu-trigger-${file.id}`))}
-            </div>
-          </div>
-
-          {/* Illustration TXT Conforme strictement au Classeur (TxtDocumentSVG) */}
-          <div className="w-full flex-1 flex items-center justify-center py-2 min-h-[110px] pointer-events-none">
-            <div className="w-24 sm:w-28 drop-shadow-md group-hover:scale-105 transition-transform duration-200">
-              <TxtDocumentSVG />
-            </div>
-          </div>
-
-          {/* Bas de carte : Titre et bouton restauration rapide (z-10) */}
-          <div className="p-1.5 flex items-center justify-between bg-black/40 border border-white/10 rounded-xl mt-1.5 gap-2 relative z-10">
-            <div className="min-w-0 flex-1">
-              <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={file.name}>
-                {file.name}
-              </p>
-              <p className="text-[9px] text-slate-400">{file.size || '0 o'}</p>
-            </div>
-
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleRestore(file);
-              }}
-              className="p-1.5 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 border border-emerald-500/30 transition-all cursor-pointer active:scale-95 shrink-0"
-              title="Restaurer immédiatement"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      );
-    }
-
-    // 3. Autre document importé dans le classeur
+    // 2. Documents & Notes importés ou créés dans le classeur (rendu conforme à l'original avec aspect-[3/4])
     return renderDocumentCard(file, index);
   };
 
