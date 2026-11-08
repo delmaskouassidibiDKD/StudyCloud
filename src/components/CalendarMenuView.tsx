@@ -315,51 +315,56 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-2 sm:px-4 py-6 overflow-y-auto min-h-[calc(100vh-66px)] flex flex-col transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-slate-50 dark:bg-[#070a13] text-slate-800 dark:text-slate-100 overflow-y-auto flex flex-col transition-colors duration-300">
       
-      {/* Header Bar */}
-      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none">
+      {/* Modern Sticky Header */}
+      <div className="sticky top-0 z-40 px-3 sm:px-6 py-2.5 bg-white/95 dark:bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between shadow-xs">
         <button
           onClick={onBack}
-          className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:text-white dark:border-[#334155] font-bold text-xs rounded-xl border-2 border-[#2D4A3E] shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95"
         >
-          <ArrowLeft className="w-4 h-4 text-[#2D4A3E] dark:text-white" />
+          <ArrowLeft className="w-3.5 h-3.5" />
           <span>Retour</span>
         </button>
 
+        <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight">
+          Calendrier
+        </h1>
+
         <button
           onClick={() => handleOpenAddModal()}
-          className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#18568A] hover:bg-[#13436D] text-white font-bold text-xs rounded-xl border-2 border-stone-900 dark:border-blue-500 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer active:scale-95 whitespace-nowrap"
         >
-          <Plus className="w-4 h-4" />
-          <span>Créer un événement</span>
+          <Plus className="w-3.5 h-3.5" />
+          <span className="hidden sm:inline">Créer un événement</span>
+          <span className="sm:hidden">Créer</span>
         </button>
       </div>
 
       {/* Main Container */}
-      <div className="w-full max-w-6xl mx-auto pt-11 sm:pt-12 pb-12 flex-1 flex flex-col">
+      <div className="w-full max-w-6xl mx-auto px-3 sm:px-6 py-4 pb-24 md:pb-8 flex-1 flex flex-col">
         
         {/* Title & Quick Jump Toolbar */}
-        <div className="mb-4 bg-white/90 dark:bg-[#111a2e] backdrop-blur-sm p-4 rounded-2xl border-2 border-stone-900 dark:border-[#1e293b] shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none flex flex-col sm:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-[#18568A] text-white flex items-center justify-center border-2 border-stone-900 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none">
+        <div className="mb-4 bg-white dark:bg-[#0c1222] p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-indigo-600/10 text-indigo-600 dark:text-indigo-400 flex items-center justify-center border border-indigo-500/20 shadow-2xs">
               <CalendarIcon className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#2D4A3E] dark:text-white">Calendrier</h1>
-              <p className="text-xs text-[#5C6B5A] dark:text-slate-400">Consultez et planifiez vos tâches & événements</p>
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">Planification</h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">Consultez et planifiez vos événements et échéances</p>
             </div>
           </div>
 
           {/* Jump to Decade / Year / Month controls */}
           <div className="flex items-center gap-2 flex-wrap justify-center">
-            <span className="text-xs font-semibold text-stone-700 dark:text-slate-300 hidden md:inline">Accès rapide :</span>
+            <span className="text-xs font-semibold text-slate-600 dark:text-slate-300 hidden md:inline">Accès rapide :</span>
             
             {/* Month Select */}
             <select
               value={jumpMonth}
               onChange={(e) => handleJumpToDate(jumpYear, parseInt(e.target.value))}
-              className="px-2.5 py-1.5 bg-[#FDFBF7] dark:bg-[#070a13] text-stone-900 dark:text-white font-semibold text-xs rounded-xl border-2 border-stone-900 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none focus:outline-none cursor-pointer"
+              className="px-2.5 py-1.5 bg-slate-50 dark:bg-[#070a13] text-slate-800 dark:text-white font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs focus:border-indigo-500 focus:outline-none cursor-pointer"
             >
               {monthsNames.map((m, idx) => (
                 <option key={idx} value={idx}>{m}</option>
@@ -370,7 +375,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
             <select
               value={jumpYear}
               onChange={(e) => handleJumpToDate(parseInt(e.target.value), jumpMonth)}
-              className="px-2.5 py-1.5 bg-[#FDFBF7] dark:bg-[#070a13] text-stone-900 dark:text-white font-semibold text-xs rounded-xl border-2 border-stone-900 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none focus:outline-none cursor-pointer"
+              className="px-2.5 py-1.5 bg-slate-50 dark:bg-[#070a13] text-slate-800 dark:text-white font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs focus:border-indigo-500 focus:outline-none cursor-pointer"
             >
               {yearsOptions.map((y) => (
                 <option key={y} value={y}>{y}</option>
@@ -383,7 +388,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
                 const today = new Date();
                 handleJumpToDate(today.getFullYear(), today.getMonth());
               }}
-              className="px-2.5 py-1.5 bg-[#E8DFD0] dark:bg-[#1e293b] hover:bg-[#D4C9B5] dark:hover:bg-[#283852] text-stone-900 dark:text-white font-bold text-xs rounded-xl border-2 border-stone-900 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95"
             >
               Aujourd'hui
             </button>
@@ -391,7 +396,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
         </div>
 
         {/* FullCalendar Wrapper */}
-        <div className="flex-1 bg-white dark:bg-[#070a13] p-2 sm:p-4 rounded-2xl border-2 border-stone-900 dark:border-[#1e293b] shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none overflow-hidden min-h-[550px] custom-fullcalendar-container">
+        <div className="flex-1 bg-white dark:bg-[#0c1222] p-2 sm:p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs overflow-hidden min-h-[550px] custom-fullcalendar-container">
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}

@@ -569,7 +569,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-6 overflow-y-auto transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-slate-50 dark:bg-[#070a13] text-slate-800 dark:text-slate-100 overflow-y-auto transition-colors duration-300 pb-24 md:pb-8">
       <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
         <defs>
           {trimesterData.map((item, idx) => {
@@ -612,54 +612,78 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
         </defs>
       </svg>
 
-      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] grid grid-cols-3 items-start z-40 pointer-events-none">
-        <div className="flex flex-col items-start gap-1.5 pointer-events-auto justify-self-start">
+      {/* Modern Sticky Header */}
+      <div className="sticky top-0 z-40 px-3 sm:px-6 py-2.5 bg-white/95 dark:bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between shadow-xs">
+        <div className="flex items-center gap-2">
           <button
             onClick={onBack}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:text-white dark:border-[#334155] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95"
           >
-            <ArrowLeft className="w-3 h-3 text-[#2D4A3E] dark:text-white" />
+            <ArrowLeft className="w-3.5 h-3.5" />
             <span>Retour</span>
           </button>
+        </div>
 
+        <div className="flex items-center gap-2">
+          <span className="font-bold text-xs sm:text-sm text-slate-800 dark:text-white capitalize px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs whitespace-nowrap">
+            {selectedAnalysis}
+          </span>
+        </div>
+
+        <button
+          onClick={() => setIsRightDrawerOpen(true)}
+          className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95 flex items-center justify-center"
+          title="Choisir le type d'analyse"
+        >
+          <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+            <line x1="9" y1="4" x2="9" y2="20" />
+            <line x1="15" y1="4" x2="15" y2="20" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Sub-toolbar for analysis filters (trimestres & subjects) */}
+      {(selectedAnalysis === 'analyse par matière' || selectedAnalysis === 'analyse par note') && (
+        <div className="px-3 sm:px-6 py-2 bg-slate-100/90 dark:bg-[#11192e] border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
           {selectedAnalysis === 'analyse par matière' && (
-            <div className="flex flex-row items-center gap-1 mt-0.5 whitespace-nowrap">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Trimestre :</span>
               {(['1', '2', '3'] as const).map((t) => (
                 <button
                   key={t}
                   onClick={() => setSubjectTrimestre(t)}
-                  className={`px-2.5 py-1 text-xs font-bold rounded-lg border border-[#2D4A3E] dark:border-slate-700 transition-all cursor-pointer shadow-xs ${subjectTrimestre === t ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0] dark:bg-slate-800 text-[#2D4A3E] dark:text-slate-200 hover:bg-[#D4C9B5] dark:hover:bg-slate-700'}`}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-2xs ${subjectTrimestre === t ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'}`}
                 >
-                  Trimestre {t}
+                  T{t}
                 </button>
               ))}
             </div>
           )}
 
           {selectedAnalysis === 'analyse par note' && (
-            <div className="flex flex-col gap-1.5 mt-0.5">
-              <div className="flex flex-row items-center gap-1 whitespace-nowrap">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="flex items-center gap-1.5">
+                <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Trimestre :</span>
                 {(['1', '2', '3'] as const).map((t) => (
                   <button
                     key={t}
                     onClick={() => setNoteTrimestre(t)}
-                    className={`px-2.5 py-1 text-xs font-bold rounded-lg border border-[#2D4A3E] dark:border-slate-700 transition-all cursor-pointer shadow-xs ${noteTrimestre === t ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0] dark:bg-slate-800 text-[#2D4A3E] dark:text-slate-200 hover:bg-[#D4C9B5] dark:hover:bg-slate-700'}`}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-2xs ${noteTrimestre === t ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'}`}
                   >
-                    Trimestre {t}
+                    T{t}
                   </button>
                 ))}
               </div>
-              <div className="flex relative">
+              <div className="relative">
                 <button
                   onClick={() => setIsNoteSubjectDropdownOpen(!isNoteSubjectDropdownOpen)}
-                  className="px-2.5 py-1 text-xs font-bold rounded-lg border border-[#2D4A3E] dark:border-slate-700 bg-[#E8DFD0] dark:bg-slate-800 hover:bg-[#D4C9B5] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200 transition-all cursor-pointer shadow-xs flex items-center gap-1.5 whitespace-nowrap"
-                  title="Sélectionner la matière"
+                  className="px-3 py-1 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-2xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <span>Matière : {currentNoteSubject}</span>
                   <svg className={`w-3 h-3 transition-transform ${isNoteSubjectDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9"/></svg>
                 </button>
                 {isNoteSubjectDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-[#F5F0E8] dark:bg-[#1e293b] border-2 border-[#2D4A3E] dark:border-slate-700 rounded-lg shadow-lg z-50 min-w-[140px] py-1 max-h-48 overflow-y-auto">
+                  <div className="absolute top-full left-0 mt-1 bg-white dark:bg-[#11192e] border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 min-w-[160px] py-1 max-h-48 overflow-y-auto">
                     {noteSubjects.map((sub, idx) => (
                       <button
                         key={idx}
@@ -667,7 +691,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                           setSelectedNoteSubject(sub);
                           setIsNoteSubjectDropdownOpen(false);
                         }}
-                        className={`w-full text-left px-3 py-1.5 text-xs font-bold hover:bg-[#E8DFD0] dark:hover:bg-slate-700 transition-colors ${currentNoteSubject === sub ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'text-[#2D4A3E] dark:text-slate-200'}`}
+                        className={`w-full text-left px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors ${currentNoteSubject === sub ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-bold' : 'text-slate-700 dark:text-slate-200'}`}
                       >
                         {sub}
                       </button>
@@ -678,36 +702,16 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
             </div>
           )}
         </div>
+      )}
 
-        <div className="flex justify-center pointer-events-auto justify-self-center pt-0.5">
-          <span className="font-serif font-bold text-xs sm:text-sm text-[#2D4A3E] dark:text-slate-100 capitalize px-2.5 py-1 bg-[#E8DFD0]/80 dark:bg-slate-800/80 rounded-lg border border-[#2D4A3E]/30 dark:border-slate-700 shadow-xs whitespace-nowrap">
-            {selectedAnalysis}
-          </span>
-        </div>
-
-        <div className="flex justify-end pointer-events-auto justify-self-end">
-          <button
-            onClick={() => setIsRightDrawerOpen(true)}
-            className="p-2 bg-[#E8DFD0] dark:bg-slate-800 hover:bg-[#D4C9B5] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200 rounded-lg border-2 border-[#2D4A3E] dark:border-slate-700 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
-            title="Menu"
-          >
-            {/* Three vertical lines icon representation */}
-            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-              <line x1="9" y1="4" x2="9" y2="20" />
-              <line x1="15" y1="4" x2="15" y2="20" />
-            </svg>
-          </button>
-        </div>
-      </div>
-
-      <div className="w-full h-[calc(100vh-100px)] px-2 sm:px-4 pt-11 sm:pt-12 flex flex-col">
+      <div className="w-full px-2 sm:px-4 py-4 flex flex-col">
         {selectedAnalysis === 'analyse globale' ? (
           <div className="w-full h-full py-4 overflow-y-auto">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 h-auto min-h-full pb-10">
               {/* Radar Chart: Capabilities Profile */}
-              <div className="bg-[#E8DFD0]/40 dark:bg-[#161f30] rounded-xl p-4 border border-[#2D4A3E]/10 dark:border-slate-800 flex flex-col items-center justify-center min-h-[350px]">
-                <h3 className="font-serif font-bold text-[#2D4A3E] dark:text-slate-100 mb-2 text-center">Profil de Compétences</h3>
-                <p className="text-xs text-[#5C6B5A] dark:text-slate-400 mb-4 text-center">Moyenne par matière sur l'année</p>
+              <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col items-center justify-center min-h-[350px]">
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1 text-center">Profil de Compétences</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 text-center">Moyenne par matière sur l'année</p>
                 <div className="w-full h-[250px]">
                   <ResponsiveContainer width="100%" height="100%">
                     <RadarChart cx="50%" cy="50%" outerRadius="70%" data={globalSubjectData}>
@@ -725,9 +729,9 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
               </div>
 
               {/* Pie Chart: Consistency */}
-              <div className="bg-[#E8DFD0]/40 dark:bg-[#161f30] rounded-xl p-4 border border-[#2D4A3E]/10 dark:border-slate-800 flex flex-col items-center justify-center min-h-[350px]">
-                <h3 className="font-serif font-bold text-[#2D4A3E] dark:text-slate-100 mb-2 text-center">Régularité des Notes</h3>
-                <p className="text-xs text-[#5C6B5A] dark:text-slate-400 mb-4 text-center">Répartition de toutes les notes</p>
+              <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col items-center justify-center min-h-[350px]">
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1 text-center">Régularité des Notes</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 text-center">Répartition de toutes les notes</p>
                 {gradeDistributionData.length > 0 ? (
                   <div className="w-full flex-1 flex flex-col items-center justify-center min-h-[250px]">
                     <div className="w-full h-[200px]">
@@ -770,9 +774,9 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
               </div>
 
               {/* Area Chart: Progression */}
-              <div className="bg-[#E8DFD0]/40 dark:bg-[#161f30] rounded-xl p-4 border border-[#2D4A3E]/10 dark:border-slate-800 flex flex-col items-center justify-center min-h-[350px] md:col-span-2">
-                <h3 className="font-serif font-bold text-[#2D4A3E] dark:text-slate-100 mb-2 text-center">Progression Annuelle</h3>
-                <p className="text-xs text-[#5C6B5A] dark:text-slate-400 mb-4 text-center">Évolution de la moyenne globale</p>
+              <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col items-center justify-center min-h-[350px] md:col-span-2">
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1 text-center">Progression Annuelle</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 text-center">Évolution de la moyenne globale</p>
                 <div className="w-full h-[250px] max-w-2xl">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart data={globalProgressData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>

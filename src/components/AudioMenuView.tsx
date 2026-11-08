@@ -44,7 +44,7 @@ import { useAudioList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob, storeThumbnailData } from '../services/localFileStorage';
 import { compressFile } from '../utils/fileCompressor';
-import { extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, getCachedMediaThumbnail, setCachedMediaThumbnail, isRealEmbeddedArtwork, probeAudioDuration } from '../services/mediaPreviewService';
+import { extractAudioCover, generateAudioCreatorCover, extractAudioMetadataWithTags, getCachedMediaThumbnail, setCachedMediaThumbnail, isRealEmbeddedArtwork, probeAudioDuration, getAudioBlobDuration } from '../services/mediaPreviewService';
 
 import { FileItem } from './Page1FilesMenuView';
 import { UploadQueue } from '../services/uploadQueue';
@@ -561,16 +561,24 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
     if (tracksNeedDuration.length === 0) return;
 
-    const batch = tracksNeedDuration.slice(0, 5);
+    const batch = tracksNeedDuration.slice(0, 10);
     batch.forEach(t => probedDurationRef.current.add(t.id));
 
     (async () => {
       for (const track of batch) {
         if (!isMounted) break;
         try {
-          const probeSrc = track.audioUrl || track.url || CloudStorageAPI.getFileUrl(track.id);
-          if (!probeSrc) continue;
-          const dur = await probeAudioDuration(probeSrc);
+          let dur = 0;
+          const blob = await getFileBlob(track.id);
+          if (blob) {
+            dur = await getAudioBlobDuration(blob);
+          }
+          if (dur <= 0) {
+            const probeSrc = track.audioUrl || track.url || CloudStorageAPI.getFileUrl(track.id);
+            if (probeSrc) {
+              dur = await probeAudioDuration(probeSrc);
+            }
+          }
           if (dur > 0 && isMounted) {
             const roundedDur = Math.round(dur * 100) / 100;
             setAudioList(prev => prev.map(item => item.id === track.id ? { ...item, durationSec: roundedDur } : item));
@@ -647,10 +655,17 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         meta = await extractAudioMetadataWithTags(f);
       } catch { }
 
-      let probedDur = 0;
-      try {
-        probedDur = await probeAudioDuration(localBlobUrl);
-      } catch { }
+      let probedDur = meta.durationSec || 0;
+      if (!probedDur) {
+        try {
+          probedDur = await getAudioBlobDuration(f);
+        } catch { }
+      }
+      if (!probedDur) {
+        try {
+          probedDur = await probeAudioDuration(localBlobUrl);
+        } catch { }
+      }
 
       const hasRealCover = meta.coverUrl && isRealEmbeddedArtwork(meta.coverUrl);
       const songTitle = meta.title || f.name;

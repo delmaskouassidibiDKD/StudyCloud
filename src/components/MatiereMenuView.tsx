@@ -20,6 +20,7 @@ import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { handleNativeShare } from '../utils/nativeShare';
 import { UploadQueue } from '../services/uploadQueue';
 import { CloudDataStore, isItemDeleted, markItemDeleted } from '../services/cloudDataStore';
+import { CloudStorageAPI } from '../services/cloudStorageService';
 import { compressFile } from '../utils/fileCompressor';
 import { useMatiereFilesList, useMatieresList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries, queryClient, QUERY_KEYS } from '../services/queryClient';
@@ -44,6 +45,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   const storageKey = `unifolder_matiere_files_${matiereName}`;
   const currentKeyRef = useRef(storageKey);
   const deletedFileIdsRef = useRef<Set<string>>(new Set());
+  const pendingFavoriteOverridesRef = useRef<Map<string, boolean>>(new Map());
   const { data: serverMatiereFiles = [], isLoading: isMatiereQueryLoading } = useMatiereFilesList(matiereName);
   const { data: serverMatieres } = useMatieresList();
   
@@ -1028,7 +1030,12 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       setImportedFiles(prev => {
         const cleanServerFiles = serverMatiereFiles.filter(f =>
           !deletedFileIdsRef.current.has(f.id) && !isItemDeleted(f.id)
-        );
+        ).map(f => {
+          if (pendingFavoriteOverridesRef.current.has(f.id)) {
+            return { ...f, isFavorite: pendingFavoriteOverridesRef.current.get(f.id)! };
+          }
+          return f;
+        });
         const serverMap = new Map<string, ImportedItem>();
         cleanServerFiles.forEach(f => serverMap.set(f.id, f));
 
@@ -1176,14 +1183,17 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     });
   };
 
-  const handleToggleFavorite = (id: string) => {
+  const handleToggleFavorite = async (id: string) => {
     const file = importedFiles.find(item => item.id === id);
     const newFav = file ? !file.isFavorite : true;
+
+    // 1. Verrouiller immédiatement l'état optimiste
+    pendingFavoriteOverridesRef.current.set(id, newFav);
     setImportedFiles(prev => prev.map(item => item.id === id ? { ...item, isFavorite: newFav } : item));
     setSelectedFile(prev => prev && prev.id === id ? { ...prev, isFavorite: newFav } : prev);
     setOpenMenuId(null);
 
-    // Mettre à jour dans "Mes fichiers"
+    // 2. Mettre à jour dans le cache local
     try {
       const directSaved = localStorage.getItem('unifolder_files_menu_items');
       if (directSaved) {
@@ -1191,33 +1201,67 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         const updated = parsed.map(item => item.id === id ? { ...item, isFavorite: newFav } : item);
         safeLocalStorageSet('unifolder_files_menu_items', updated);
       }
+      const directMatiereSaved = localStorage.getItem(storageKey);
+      if (directMatiereSaved) {
+        const parsed: ImportedItem[] = JSON.parse(directMatiereSaved);
+        const updated = parsed.map(item => item.id === id ? { ...item, isFavorite: newFav } : item);
+        safeLocalStorageSet(storageKey, updated);
+      }
     } catch (e) {}
 
-    StudyCloudAPI.toggleFileFavorite(id, newFav).catch(() => {
-      if (file) {
-        const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-        const targetMat = savedMatieres.find(m => m.name.toLowerCase() === matiereName.toLowerCase() || m.id === matiereName);
-        const resolvedMatiereId = targetMat?.id || file.matiere || matiereName;
-        StudyCloudAPI.registerFileMetadata({
-          id: file.id,
-          userId,
-          matiereId: resolvedMatiereId,
-          name: file.name,
-          size: file.size,
-          type: file.type,
-          extension: file.extension,
-          r2Key: (file as any).r2Key || null,
-          fileUrl: file.url,
-          isFavorite: newFav,
-          isImported: true,
-          lastImported: typeof file.importedAt === 'number' ? file.importedAt : Date.now()
-        }).catch(() => {});
-      }
-    });
+    // 3. Mettre à jour TanStack Query cache immédiatement
+    const userId = (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    if (userId && userId !== 'default-user') {
+      queryClient.setQueryData(QUERY_KEYS.matiereFiles(matiereName, userId), (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((item: any) => item.id === id ? { ...item, isFavorite: newFav } : item);
+      });
+      queryClient.setQueryData(QUERY_KEYS.filesMenu(userId), (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((item: any) => item.id === id ? { ...item, isFavorite: newFav } : item);
+      });
+    }
 
-    invalidateCloudQueries.matiereFiles(matiereName);
-    invalidateCloudQueries.filesMenu();
-    invalidateCloudQueries.favorites();
+    // 4. Synchroniser avec CloudDataStore et CloudStorageAPI
+    CloudDataStore.toggleFavorite(id, newFav);
+    if (newFav) {
+      CloudStorageAPI.addFavorite(id, 'mes-fichiers').catch(() => {});
+    } else {
+      CloudStorageAPI.removeFavorite(id).catch(() => {});
+    }
+
+    // 5. Persister sur Cloudflare D1
+    try {
+      if (userId && userId !== 'default-user') {
+        const targetMat = savedMatieres.find(m => m.name.toLowerCase() === matiereName.toLowerCase() || m.id === matiereName);
+        const resolvedMatiereId = targetMat?.id || file?.matiere || matiereName;
+        await StudyCloudAPI.toggleFileFavorite(id, newFav).catch(async () => {
+          if (file) {
+            await StudyCloudAPI.registerFileMetadata({
+              id: file.id,
+              userId,
+              matiereId: resolvedMatiereId,
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              extension: file.extension,
+              r2Key: (file as any).r2Key || null,
+              fileUrl: file.url,
+              isFavorite: newFav,
+              isImported: true,
+              lastImported: typeof file.importedAt === 'number' ? file.importedAt : Date.now()
+            }).catch(() => {});
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[MatiereMenuView] Erreur persistance favori:', e);
+    } finally {
+      setTimeout(() => {
+        pendingFavoriteOverridesRef.current.delete(id);
+      }, 2500);
+      invalidateCloudQueries.favorites().catch(() => {});
+    }
 
     window.dispatchEvent(new Event('unifolder_files_updated'));
   };

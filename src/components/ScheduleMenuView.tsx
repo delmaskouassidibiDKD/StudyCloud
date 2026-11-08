@@ -596,33 +596,33 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
   };
 
   return (
-    <div className="absolute inset-x-0 md:left-64 md:right-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] z-30 w-full md:w-[calc(100%-16rem)] bg-[#FDFBF7] dark:bg-[#0b0f19] text-stone-900 dark:text-slate-100 flex flex-col overflow-hidden transition-colors duration-300">
+    <div className="absolute inset-x-0 md:left-64 md:right-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] z-30 w-full md:w-[calc(100%-16rem)] bg-slate-50 dark:bg-[#070a13] text-slate-800 dark:text-slate-100 flex flex-col overflow-hidden transition-colors duration-300">
       {/* Top Header Bar */}
-      <div className="flex-none px-3 py-2 bg-[#FDFBF7] dark:bg-[#070a13] backdrop-blur-md border-b border-stone-200 dark:border-[#1e293b] flex items-center justify-between z-40 shadow-sm">
+      <div className="flex-none px-3 sm:px-5 py-2.5 bg-white/95 dark:bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between z-40 shadow-xs">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 px-2.5 py-1 bg-[#E8DFD0] dark:bg-[#1e293b] hover:bg-[#D4C9B5] dark:hover:bg-[#334155] text-[#2D4A3E] dark:text-white font-bold text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Retour</span>
         </button>
-        <div className="text-center flex-1 mx-2 flex items-center justify-center gap-2 sm:gap-3">
-          <h1 className="text-base sm:text-lg font-serif font-bold text-[#2D4A3E] dark:text-white truncate">Mon emploi du temps</h1>
+        <div className="text-center flex-1 mx-2 flex items-center justify-center gap-2 sm:gap-3 min-w-0">
+          <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white truncate">Mon emploi du temps</h1>
           <button
             type="button"
             onClick={handleDownloadPdf}
             disabled={isGeneratingPdf}
-            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 bg-[#E8DFD0] dark:bg-[#1e293b] hover:bg-[#D4C9B5] dark:hover:bg-[#334155] text-[#2D4A3E] dark:text-emerald-300 font-bold text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-emerald-600/50 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 disabled:opacity-60 whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-semibold text-xs rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 shadow-2xs transition-all cursor-pointer active:scale-95 disabled:opacity-60 whitespace-nowrap shrink-0"
             title="Télécharger l'emploi du temps en PDF"
           >
             {isGeneratingPdf ? (
               <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-[#2D4A3E] dark:text-emerald-300" />
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-indigo-600 dark:text-indigo-400" />
                 <span className="hidden sm:inline">Génération...</span>
               </>
             ) : (
               <>
-                <Download className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-emerald-300" />
+                <Download className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
                 <span className="hidden sm:inline">Télécharger</span>
                 <span className="sm:hidden">PDF</span>
               </>
@@ -631,7 +631,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
         </div>
         <button
           onClick={addHourRow}
-          className="flex items-center gap-1 px-2.5 py-1 bg-[#2D4A3E] dark:bg-emerald-600 hover:bg-[#20342b] dark:hover:bg-emerald-500 text-white font-bold text-xs rounded-lg shadow transition-all cursor-pointer whitespace-nowrap"
+          className="flex items-center gap-1.5 px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer whitespace-nowrap active:scale-95 shrink-0"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>+ Heure</span>
@@ -640,7 +640,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
 
       {/* Scrollable Schedule Grid Container (Both Horizontal & Vertical) */}
       <div 
-        className="flex-1 overflow-auto p-4 sm:p-6 pb-4 sm:pb-6 touch-pan-x touch-pan-y"
+        className="flex-1 overflow-auto p-4 sm:p-6 pb-24 md:pb-8 touch-pan-x touch-pan-y"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
@@ -648,25 +648,25 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       >
         <div 
           ref={tableRef}
-          className="min-w-[900px] max-w-full mx-auto bg-white dark:bg-[#070a13] rounded-xl shadow-lg border-2 border-stone-800 dark:border-[#1e293b] overflow-hidden"
+          className="min-w-[900px] max-w-full mx-auto bg-white dark:bg-[#0c1222] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden"
           style={{ zoom: `${zoomLevel}%` }}
         >
           {/* Header title inside the table area */}
-          <div className="bg-[#F5F0E8] dark:bg-[#111a2e] py-3 px-4 border-b-2 border-stone-800 dark:border-[#1e293b] flex items-center justify-between flex-wrap gap-2">
+          <div className="bg-slate-50 dark:bg-[#111a2e] py-3 px-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
-                <Calendar className="w-5 h-5 text-[#2D4A3E] dark:text-emerald-400" />
-                <span className="font-serif font-bold text-base text-[#2D4A3E] dark:text-white">Emploi du temps hebdomadaire</span>
+                <Calendar className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="font-bold text-sm text-slate-800 dark:text-white">Emploi du temps hebdomadaire</span>
               </div>
               {/* Zoom Controls */}
-              <div className="flex items-center gap-1 bg-white dark:bg-[#070a13] border border-stone-300 dark:border-[#1e293b] rounded-lg p-1 shadow-xs">
+              <div className="flex items-center gap-1 bg-white dark:bg-[#070a13] border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => changeZoom(-1)}
                   title="Dézoomer (réduire)"
-                  className="p-1 hover:bg-stone-100 dark:hover:bg-[#1e293b] rounded text-stone-700 dark:text-slate-200 transition-colors cursor-pointer"
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                 >
-                  <ZoomOut className="w-4 h-4" />
+                  <ZoomOut className="w-3.5 h-3.5" />
                 </button>
                 <button
                   type="button"
@@ -675,7 +675,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                     try { localStorage.setItem('user_schedule_zoom', '100'); } catch(e) {}
                   }}
                   title="Réinitialiser le zoom (100%)"
-                  className="px-2 py-0.5 text-xs font-bold text-[#2D4A3E] dark:text-white hover:bg-stone-100 dark:hover:bg-[#1e293b] rounded transition-colors cursor-pointer"
+                  className="px-2 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
                 >
                   {zoomLevel}%
                 </button>
@@ -683,28 +683,28 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                   type="button"
                   onClick={() => changeZoom(1)}
                   title="Zoomer (agrandir)"
-                  className="p-1 hover:bg-stone-100 dark:hover:bg-[#1e293b] rounded text-stone-700 dark:text-slate-200 transition-colors cursor-pointer"
+                  className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
                 >
-                  <ZoomIn className="w-4 h-4" />
+                  <ZoomIn className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
-            <span className="text-xs text-stone-600 dark:text-slate-300 bg-stone-200/70 dark:bg-[#1e293b] px-2.5 py-1 rounded-full font-medium">Glissez horizontalement et verticalement • Cliquez sur les jours et heures pour les renommer</span>
+            <span className="text-xs text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-full font-medium">Glissez horizontalement et verticalement • Cliquez sur les jours et heures pour les renommer</span>
           </div>
 
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-xs sm:text-sm table-fixed">
             <thead>
-              <tr className="bg-[#E8DFD0] dark:bg-[#162033] text-[#2D4A3E] dark:text-white border-b-2 border-stone-800 dark:border-[#1e293b]">
+              <tr className="bg-slate-100 dark:bg-[#162033] text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-800">
                 {/* Diagonal Split Top-Left Corner Box */}
-                <th className="relative border-r-2 border-stone-800 dark:border-[#1e293b] w-32 h-16 p-0 overflow-hidden bg-[#E8DFD0] dark:bg-[#162033]">
+                <th className="relative border-r border-slate-200 dark:border-slate-800 w-32 h-14 p-0 overflow-hidden bg-slate-100 dark:bg-[#162033]">
                   <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none" viewBox="0 0 100 100">
-                    <line x1="0" y1="0" x2="100" y2="100" stroke="currentColor" className="text-stone-800 dark:text-[#334155]" strokeWidth="2" />
+                    <line x1="0" y1="0" x2="100" y2="100" stroke="currentColor" className="text-slate-300 dark:text-slate-700" strokeWidth="1.5" />
                   </svg>
-                  <div className="absolute top-1 right-2 text-[11px] font-bold uppercase tracking-wider text-[#2D4A3E] dark:text-white">
+                  <div className="absolute top-1.5 right-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                     Jours
                   </div>
-                  <div className="absolute bottom-1 left-2 text-[11px] font-bold uppercase tracking-wider text-[#2D4A3E] dark:text-white">
+                  <div className="absolute bottom-1.5 left-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                     Heures
                   </div>
                 </th>
@@ -712,12 +712,12 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                   <th
                     key={day}
                     onClick={() => handleHeaderClick('day', dIdx)}
-                    className="py-3 px-3 font-bold border-r border-stone-800 dark:border-[#1e293b] text-center uppercase tracking-wider last:border-r-0 cursor-pointer hover:bg-[#dfd4c0] dark:hover:bg-[#1e293b] transition-colors group relative"
+                    className="py-3 px-3 font-semibold border-r border-slate-200 dark:border-slate-800 text-center uppercase tracking-wider last:border-r-0 cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition-colors group relative text-xs"
                     title="Cliquer pour modifier ce jour"
                   >
                     <div className="flex items-center justify-center gap-1">
                       <span>{day}</span>
-                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-[#2D4A3E] dark:text-slate-300 transition-opacity" />
+                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
                     </div>
                   </th>
                 ))}
@@ -725,15 +725,15 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
             </thead>
             <tbody>
               {hours.map((hour, hIdx) => (
-                <tr key={`${hour}-${hIdx}`} className="border-b border-stone-300 dark:border-[#1e293b] hover:bg-stone-50/50 dark:hover:bg-[#111a2e]/40 transition-colors">
+                <tr key={`${hour}-${hIdx}`} className="border-b border-slate-200 dark:border-slate-800/80 hover:bg-slate-50/60 dark:hover:bg-slate-850/40 transition-colors">
                   <td
                     onClick={() => handleHeaderClick('hour', hIdx)}
-                    className="py-3 px-2 font-bold text-stone-800 dark:text-white bg-[#F9F6F0] dark:bg-[#0c1424] border-r-2 border-stone-800 dark:border-[#1e293b] text-center whitespace-nowrap cursor-pointer hover:bg-[#f0e8dc] dark:hover:bg-[#162033] transition-colors group"
+                    className="py-3 px-2 font-semibold text-slate-700 dark:text-slate-300 bg-slate-50/80 dark:bg-[#0c1424] border-r border-slate-200 dark:border-slate-800 text-center whitespace-nowrap cursor-pointer hover:bg-slate-100 dark:hover:bg-[#162033] transition-colors group text-xs"
                     title="Cliquer pour modifier cette heure"
                   >
                     <div className="flex items-center justify-center gap-1">
                       <span>{hour}</span>
-                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-stone-600 dark:text-slate-300 transition-opacity" />
+                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
                     </div>
                   </td>
                   {days.map((day) => {
@@ -745,7 +745,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                       <td
                         key={day}
                         onClick={() => openSlot(day, hour)}
-                        className={`p-2 border-r border-stone-300 dark:border-[#1e293b] last:border-r-0 cursor-pointer transition-all hover:bg-stone-100 dark:hover:bg-[#111a2e] relative group align-top ${
+                        className={`p-2 border-r border-slate-200 dark:border-slate-800/80 last:border-r-0 cursor-pointer transition-all hover:bg-slate-100/60 dark:hover:bg-slate-800/40 relative group align-top ${
                           entry ? colorStyle.bg + ' ' + colorStyle.border + ' border-l-4' : 'h-16 dark:bg-[#070a13]'
                         }`}
                       >
@@ -802,7 +802,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                             )}
                           </div>
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center opacity-0 group-hover:opacity-40 text-stone-400 dark:text-slate-500">
+                          <div className="w-full h-full flex items-center justify-center opacity-0 group-hover:opacity-40 text-slate-400 dark:text-slate-500">
                             <Plus className="w-4 h-4" />
                           </div>
                         )}
@@ -819,30 +819,30 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
 
       {/* Edit Header Modal */}
       {editingHeader && (
-        <div className="fixed inset-0 z-50 bg-stone-900/60 dark:bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-md w-full p-6 sm:p-7 shadow-2xl border-2 border-stone-900 dark:border-[#1e293b] animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between mb-5 pb-3 border-b-2 border-stone-200 dark:border-[#1e293b]">
-              <h3 className="font-serif font-bold text-lg text-[#2D4A3E] dark:text-white">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200 dark:border-slate-800">
+              <h3 className="font-bold text-base text-slate-900 dark:text-white">
                 Modifier {editingHeader.type === 'day' ? 'le jour' : "l'heure"}
               </h3>
               <button
                 onClick={() => setEditingHeader(null)}
-                className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-[#1e293b] text-stone-700 dark:text-slate-300 cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer transition-colors"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <div className="space-y-5">
+            <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-stone-800 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                   Nouveau nom *
                 </label>
                 <input
                   type="text"
                   value={editingHeader.value}
                   onChange={(e) => setEditingHeader({ ...editingHeader, value: e.target.value })}
-                  className="w-full px-3.5 py-2.5 border-2 border-stone-400 dark:border-[#334155] rounded-xl focus:border-[#2D4A3E] dark:focus:border-blue-500 focus:outline-none text-sm font-bold text-stone-900 dark:text-white bg-stone-50 dark:bg-[#070a13]"
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none text-sm font-semibold text-slate-900 dark:text-white bg-slate-50 dark:bg-[#070a13]"
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') saveHeaderEdit();
@@ -850,26 +850,26 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                 />
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-3">
+              <div className="flex items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setEditingHeader(null)}
-                  className="px-4 py-2.5 bg-stone-100 dark:bg-[#1e293b] hover:bg-stone-200 dark:hover:bg-[#283852] text-stone-800 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                  className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl transition-all cursor-pointer"
                 >
                   Annuler
                 </button>
                 <button
                   type="button"
                   onClick={saveHeaderEdit}
-                  className="px-5 py-2.5 bg-[#2D4A3E] dark:bg-emerald-600 hover:bg-[#20342b] dark:hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
                 >
                   Enregistrer
                 </button>
               </div>
 
               {editingHeader.type === 'hour' && (
-                <div className="pt-4 border-t-2 border-stone-200 dark:border-[#1e293b] space-y-2">
-                  <label className="block text-xs font-bold text-stone-800 dark:text-slate-300 uppercase tracking-wider mb-1">
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1">
                     Gestion de la ligne
                   </label>
                   <div className="grid grid-cols-2 gap-2">
@@ -885,18 +885,18 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                         setShowDeleteConfirm(true);
                       }}
                       title="Supprimer toute la ligne"
-                      className="px-3 py-2.5 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border-2 border-rose-300 dark:border-rose-800 font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                      className="px-3 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 font-semibold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
                     >
-                      <Trash2 className="w-4 h-4" />
+                      <Trash2 className="w-3.5 h-3.5" />
                       <span>Supprimer la ligne</span>
                     </button>
                     <button
                       type="button"
                       onClick={promptAddHourRow}
                       title="Ajouter une ligne en bas"
-                      className="px-3 py-2.5 bg-stone-100 dark:bg-[#1e293b] hover:bg-stone-200 dark:hover:bg-[#283852] text-stone-800 dark:text-slate-200 border-2 border-stone-300 dark:border-[#334155] font-bold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                      className="px-3 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 font-semibold text-xs rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-2xs"
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-3.5 h-3.5" />
                       <span>+ Ajouter ligne</span>
                     </button>
                   </div>
@@ -909,33 +909,33 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
 
       {/* Confirmation Modal for Adding Row */}
       {showAddConfirm && (
-        <div className="fixed inset-0 z-60 bg-stone-900/70 dark:bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-sm w-full p-6 shadow-2xl border-2 border-stone-900 dark:border-[#1e293b] animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-[#2D4A3E]/10 dark:bg-emerald-950/50 flex items-center justify-center text-[#2D4A3E] dark:text-emerald-400 shrink-0">
+              <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
                 <Plus className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-serif font-bold text-base text-stone-900 dark:text-white">
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">
                   Créer une nouvelle ligne ?
                 </h3>
-                <p className="text-xs text-stone-600 dark:text-slate-300 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Une nouvelle ligne d'horaire sera ajoutée en dessous de celle-ci.
                 </p>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-200 dark:border-[#1e293b]">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setShowAddConfirm(false)}
-                className="px-4 py-2 bg-stone-100 dark:bg-[#1e293b] hover:bg-stone-200 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs rounded-xl transition-all cursor-pointer"
               >
                 Annuler
               </button>
               <button
                 type="button"
                 onClick={confirmAddHourRow}
-                className="px-4 py-2 bg-[#2D4A3E] dark:bg-emerald-600 hover:bg-[#20342b] dark:hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
               >
                 Ajouter
               </button>
@@ -946,49 +946,49 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
 
       {/* Success Toast Notification */}
       {successMessage && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] bg-emerald-600 dark:bg-emerald-700 text-white px-5 py-3 rounded-2xl shadow-xl border-2 border-white/80 flex items-center gap-2.5 animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-none">
-          <Check className="w-5 h-5 text-white shrink-0" />
-          <span className="text-xs sm:text-sm font-bold">{successMessage}</span>
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] bg-emerald-600 text-white px-4 py-2.5 rounded-2xl shadow-lg border border-emerald-500 flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-300 pointer-events-none">
+          <Check className="w-4 h-4 text-white shrink-0" />
+          <span className="text-xs sm:text-sm font-semibold">{successMessage}</span>
         </div>
       )}
 
       {/* Error Toast Notification */}
       {errorMessage && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] bg-rose-600 text-white px-5 py-3 rounded-2xl shadow-xl border-2 border-white flex items-center gap-2.5 animate-in fade-in slide-in-from-top-4 duration-300">
-          <X className="w-5 h-5 text-white shrink-0" />
-          <span className="text-xs sm:text-sm font-bold">{errorMessage}</span>
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] bg-rose-600 text-white px-4 py-2.5 rounded-2xl shadow-lg border border-rose-500 flex items-center gap-2 animate-in fade-in slide-in-from-top-4 duration-300">
+          <X className="w-4 h-4 text-white shrink-0" />
+          <span className="text-xs sm:text-sm font-semibold">{errorMessage}</span>
         </div>
       )}
 
       {/* Confirmation Modal for Deleting Row */}
       {showDeleteConfirm && (
-        <div className="fixed inset-0 z-60 bg-stone-900/70 dark:bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-sm w-full p-6 shadow-2xl border-2 border-stone-900 dark:border-[#1e293b] animate-in fade-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950/50 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
                 <Trash2 className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-serif font-bold text-base text-stone-900 dark:text-white">
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">
                   Supprimer cette ligne ?
                 </h3>
-                <p className="text-xs text-stone-600 dark:text-slate-300 mt-0.5">
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                   Toute la ligne et tout ce qu'elle contient (cours, notes, salles) seront définitivement effacés.
                 </p>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-stone-200 dark:border-[#1e293b]">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
-                className="px-4 py-2 bg-stone-100 dark:bg-[#1e293b] hover:bg-stone-200 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs rounded-xl transition-all cursor-pointer"
               >
                 Annuler
               </button>
               <button
                 type="button"
                 onClick={deleteHourRow}
-                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
               >
                 Confirmer
               </button>
@@ -999,26 +999,26 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
 
       {/* Edit/Add Modal */}
       {activeSlot && (
-        <div className="fixed inset-0 z-50 bg-stone-900/60 dark:bg-black/70 flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-md w-full p-6 shadow-2xl border-2 border-stone-900 dark:border-[#1e293b] animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b-2 border-stone-200 dark:border-[#1e293b]">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <Clock className="w-5 h-5 text-[#2D4A3E] dark:text-emerald-400" />
-                <h3 className="font-serif font-bold text-lg text-[#2D4A3E] dark:text-white">
+                <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <h3 className="font-bold text-base text-slate-900 dark:text-white">
                   {activeSlot.day} à {activeSlot.hour}
                 </h3>
               </div>
               <button
                 onClick={() => setActiveSlot(null)}
-                className="p-1.5 rounded-lg hover:bg-stone-100 dark:hover:bg-[#1e293b] text-stone-700 dark:text-slate-300 cursor-pointer"
+                className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer transition-colors"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-bold text-stone-800 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                   Matière / Cours *
                 </label>
                 <input
@@ -1026,14 +1026,14 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                   value={subjectInput}
                   onChange={(e) => setSubjectInput(e.target.value)}
                   placeholder="Ex: Mathématiques, Physique..."
-                  className="w-full px-3.5 py-2.5 border-2 border-stone-400 dark:border-[#334155] rounded-xl focus:border-[#2D4A3E] dark:focus:border-blue-500 focus:outline-none text-sm font-bold text-stone-900 dark:text-white bg-stone-50 dark:bg-[#070a13]"
+                  className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none text-sm font-semibold text-slate-900 dark:text-white bg-slate-50 dark:bg-[#070a13]"
                   autoFocus
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-stone-800 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                     Salle (optionnel)
                   </label>
                   <input
@@ -1041,11 +1041,11 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                     value={roomInput}
                     onChange={(e) => setRoomInput(e.target.value)}
                     placeholder="Ex: Salle 204"
-                    className="w-full px-3.5 py-2.5 border-2 border-stone-400 dark:border-[#334155] rounded-xl focus:border-[#2D4A3E] dark:focus:border-blue-500 focus:outline-none text-sm font-bold text-stone-900 dark:text-white bg-stone-50 dark:bg-[#070a13]"
+                    className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none text-sm font-semibold text-slate-900 dark:text-white bg-slate-50 dark:bg-[#070a13]"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-bold text-stone-800 dark:text-slate-300 uppercase tracking-wider mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-1.5">
                     Note / Prof
                   </label>
                   <input
@@ -1053,13 +1053,13 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                     value={noteInput}
                     onChange={(e) => setNoteInput(e.target.value)}
                     placeholder="Ex: M. Dupont"
-                    className="w-full px-3.5 py-2.5 border-2 border-stone-400 dark:border-[#334155] rounded-xl focus:border-[#2D4A3E] dark:focus:border-blue-500 focus:outline-none text-sm font-bold text-stone-900 dark:text-white bg-stone-50 dark:bg-[#070a13]"
+                    className="w-full px-3.5 py-2.5 border border-slate-300 dark:border-slate-700 rounded-xl focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 focus:outline-none text-sm font-semibold text-slate-900 dark:text-white bg-slate-50 dark:bg-[#070a13]"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-stone-800 dark:text-slate-300 uppercase tracking-wider mb-2">
+                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-2">
                   Couleur du créneau
                 </label>
                 <div className="flex items-center gap-2">
@@ -1070,23 +1070,23 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                         key={c.name}
                         type="button"
                         onClick={() => setSelectedColor(c.bg)}
-                        className={`w-8 h-8 rounded-full ${c.bg} border-2 ${
-                          isSelected ? 'border-stone-900 dark:border-white scale-110 shadow-md' : 'border-stone-300 dark:border-stone-600'
+                        className={`w-7 h-7 rounded-full ${c.bg} border-2 ${
+                          isSelected ? 'border-slate-900 dark:border-white scale-110 shadow-sm' : 'border-slate-200 dark:border-slate-700'
                         } transition-all cursor-pointer flex items-center justify-center`}
                       >
-                        {isSelected && <Check className="w-4 h-4 text-stone-900 dark:text-white" />}
+                        {isSelected && <Check className="w-3.5 h-3.5 text-slate-900 dark:text-white" />}
                       </button>
                     );
                   })}
                 </div>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-4 border-t-2 border-stone-200 dark:border-[#1e293b]">
+              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
                 {scheduleData[`${activeSlot.day}_${activeSlot.hour}`] && (
                   <button
                     type="button"
                     onClick={deleteSlot}
-                    className="px-4 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 font-bold text-xs rounded-xl border border-rose-300 dark:border-rose-800 transition-all flex items-center gap-1.5 cursor-pointer mr-auto"
+                    className="px-3.5 py-2 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/50 text-rose-700 dark:text-rose-300 font-semibold text-xs rounded-xl border border-rose-200 dark:border-rose-800 transition-all flex items-center gap-1.5 cursor-pointer mr-auto"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Effacer</span>
@@ -1095,14 +1095,14 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                 <button
                   type="button"
                   onClick={() => setActiveSlot(null)}
-                  className="px-4 py-2 bg-stone-100 dark:bg-[#1e293b] hover:bg-stone-200 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 font-bold text-xs rounded-xl transition-all cursor-pointer"
+                  className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl transition-all cursor-pointer"
                 >
                   Annuler
                 </button>
                 <button
                   type="button"
                   onClick={saveEntry}
-                  className="px-5 py-2 bg-[#2D4A3E] dark:bg-emerald-600 hover:bg-[#20342b] dark:hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
                 >
                   Enregistrer
                 </button>

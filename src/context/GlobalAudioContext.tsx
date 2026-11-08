@@ -475,7 +475,19 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
         playsInline
         loop={isAudioRepeat === 'one'}
         onLoadedMetadata={() => {
-          if (audioRef.current && audioRef.current.duration && !isNaN(audioRef.current.duration) && audioRef.current.duration > 0) {
+          if (audioRef.current && audioRef.current.duration && !isNaN(audioRef.current.duration) && audioRef.current.duration > 0 && audioRef.current.duration !== Infinity) {
+            const d = Math.floor(audioRef.current.duration);
+            setDuration(d);
+            const tr = currentTrackRef.current;
+            if (tr && tr.id && (!tr.durationSec || tr.durationSec <= 0)) {
+              tr.durationSec = d;
+              CloudDataStore.updateFile(tr.id, { durationSec: d });
+              CloudStorageAPI.saveAudioDuration(tr.id, d).catch(() => {});
+            }
+          }
+        }}
+        onDurationChange={() => {
+          if (audioRef.current && audioRef.current.duration && !isNaN(audioRef.current.duration) && audioRef.current.duration > 0 && audioRef.current.duration !== Infinity) {
             const d = Math.floor(audioRef.current.duration);
             setDuration(d);
             const tr = currentTrackRef.current;

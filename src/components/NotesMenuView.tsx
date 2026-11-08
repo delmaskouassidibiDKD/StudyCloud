@@ -506,13 +506,13 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     <>
       <div 
         style={{ backgroundColor: editorColor }}
-        className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 w-full md:w-[calc(100%-16rem)] text-white overflow-y-auto flex-col min-h-[calc(100vh-66px)] select-none transition-all duration-300 ease-in-out flex ${viewMode === 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
+        className={`absolute inset-x-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] md:left-64 w-full md:w-[calc(100%-16rem)] text-white overflow-y-auto flex-col select-none transition-all duration-300 ease-in-out flex ${viewMode === 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
       >
         {/* Floating Fixed Buttons Toolbar */}
-        <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-50 pointer-events-none">
+        <div className="fixed top-[66px] md:top-[70px] left-3 right-3 md:left-[17.5rem] md:right-8 flex items-center justify-between z-50 pointer-events-none">
           <button
             onClick={handleSaveAndBack}
-            className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-xs rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white font-semibold text-xs rounded-xl border border-white/25 backdrop-blur-md shadow-sm transition-all cursor-pointer active:scale-95"
           >
             <ArrowLeft className="w-4 h-4" />
             <span>Retour</span>
@@ -719,34 +719,44 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
       {/* ---------------- RENDER MAIN NOTES LIST VIEW ---------------- */}
       <div 
         ref={listContainerRef} 
-        className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto flex-col min-h-[calc(100vh-66px)] select-none transition-all duration-300 ease-in-out flex ${viewMode !== 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
+        className={`absolute inset-x-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] md:left-64 w-full md:w-[calc(100%-16rem)] bg-slate-50 dark:bg-[#070a13] text-slate-800 dark:text-slate-100 overflow-y-auto flex-col select-none transition-all duration-300 ease-in-out flex ${viewMode !== 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
       >
       
-      {/* Fixed 3D Header */}
-      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none">
+      {/* Modern Sticky Header */}
+      <div className="sticky top-0 z-40 px-3 sm:px-6 py-2.5 bg-white/95 dark:bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between shadow-xs">
         <button
           onClick={onBack}
-          className="pointer-events-auto flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95"
         >
-          <ArrowLeft className="w-3 h-3 text-[#2D4A3E] dark:text-white" />
+          <ArrowLeft className="w-3.5 h-3.5" />
           <span>Retour</span>
         </button>
 
-        <h1 
-          className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] dark:text-white bg-[#E8DFD0] dark:bg-[#070a13] px-3 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs text-center"
-          dangerouslySetInnerHTML={{ __html: 'Bloc-notes' }}
-        />
+        <div className="flex items-center gap-2">
+          <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight">
+            Bloc-notes
+          </h1>
+          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+            {notes.length}
+          </span>
+        </div>
 
-        <div className="w-16"></div>
+        <button
+          onClick={openCreateNote}
+          className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer active:scale-95"
+        >
+          <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+          <span className="hidden sm:inline">Nouvelle note</span>
+        </button>
       </div>
 
       {/* Main Content Area */}
-      <div className="w-full px-3 sm:px-6 pt-11 sm:pt-12">
+      <div className="w-full px-3 sm:px-6 pt-4 sm:pt-6">
         <div className="pt-1 pb-32 max-w-4xl mx-auto">
           {notes.length === 0 ? (
-            <div className="text-center py-20 text-[#5C6B5A]">
+            <div className="text-center py-20 text-slate-400">
               <p className="text-sm font-medium mb-2">Aucune note enregistrée</p>
-              <p className="text-xs">Cliquez sur le bouton ci-dessous pour créer votre première note.</p>
+              <p className="text-xs text-slate-500">Cliquez sur « Nouvelle note » pour rédiger votre premier mémo.</p>
             </div>
           ) : (
             <div className="space-y-6">
@@ -819,13 +829,13 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
       )}
 
       {/* Floating Create Button */}
-      <div className="fixed bottom-20 right-4 sm:right-8 z-40">
+      <div className="fixed bottom-20 md:bottom-8 right-4 sm:right-8 z-40">
         <button
           onClick={openCreateNote}
-          className="bg-[#2D4A3E] hover:bg-[#1e332a] text-white font-bold rounded-2xl px-4 sm:px-5 py-3 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+          className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-2xl px-4 sm:px-5 py-3 shadow-lg shadow-amber-500/20 border border-amber-400/40 transition-all cursor-pointer flex items-center gap-2 active:scale-95"
         >
-          <Plus className="w-5 h-5 stroke-[2.5]" />
-          <span className="text-xs sm:text-sm font-bold tracking-wide" dangerouslySetInnerHTML={{ __html: 'Créer une note' }} />
+          <Plus className="w-4 h-4 stroke-[2.5]" />
+          <span className="text-xs sm:text-sm font-bold tracking-wide">Créer une note</span>
         </button>
       </div>
     </div>
@@ -844,7 +854,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         data-note-id={note.id}
         onPointerDown={(e) => handlePointerDownCard(e, note)}
         style={{ backgroundColor: cardBg } as any}
-        className={`group relative rounded-2xl p-4 border-2 border-stone-900 shadow-[3px_3px_0px_0px_#1c1917] hover:translate-x-0.5 hover:translate-y-0.5 hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex flex-col justify-between overflow-hidden select-none touch-pan-y ${
+        className={`group relative rounded-2xl p-4 border border-white/10 dark:border-white/5 shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col justify-between overflow-hidden select-none touch-pan-y ${
           isBeingDragged ? 'opacity-20 scale-95 border-dashed border-stone-600 cursor-grabbing' : ''
         }`}
       >

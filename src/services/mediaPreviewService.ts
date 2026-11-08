@@ -13,6 +13,7 @@ export interface AudioMetadataResult {
   artist?: string;
   album?: string;
   coverUrl?: string;
+  durationSec?: number;
 }
 
 function decodeTextFrame(bytes: Uint8Array, encoding: number): string {
@@ -266,6 +267,14 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
     console.warn('[mediaPreviewService] Extraction métadonnées audio:', e);
   }
 
+  // 3. Extraction systématique et précise de la durée du son (en secondes)
+  try {
+    const dur = await getAudioBlobDuration(fileOrBlob);
+    if (dur > 0) {
+      result.durationSec = Math.round(dur * 100) / 100;
+    }
+  } catch {}
+
   return result;
 }
 
@@ -298,6 +307,45 @@ export function setCachedMediaThumbnail(_key: string, _thumbUrl: string): void {
 }
 
 /**
+ * Détermine la durée réelle d'un blob audio (File ou Blob) avec une fiabilité maximale
+ * en combinant l'élément Audio et le Web Audio API (decodeAudioData).
+ */
+export async function getAudioBlobDuration(fileOrBlob: File | Blob): Promise<number> {
+  if (typeof window === 'undefined' || !fileOrBlob) return 0;
+
+  // Méthode 1 : Audio element via Blob URL
+  try {
+    const url = URL.createObjectURL(fileOrBlob);
+    try {
+      const d = await probeAudioDuration(url, 4000);
+      if (d > 0) return d;
+    } finally {
+      URL.revokeObjectURL(url);
+    }
+  } catch {}
+
+  // Méthode 2 : Décodage Web Audio API (parfait pour WhatsApp Opus, AAC, MP3 avec métadonnées tronquées)
+  try {
+    const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+    if (AudioCtx) {
+      const ctx = new AudioCtx();
+      try {
+        const sliceSize = Math.min(fileOrBlob.size, 8 * 1024 * 1024);
+        const ab = await fileOrBlob.slice(0, sliceSize).arrayBuffer();
+        const decoded = await ctx.decodeAudioData(ab);
+        if (decoded && Number.isFinite(decoded.duration) && decoded.duration > 0) {
+          return decoded.duration;
+        }
+      } finally {
+        ctx.close().catch(() => {});
+      }
+    }
+  } catch {}
+
+  return 0;
+}
+
+/**
  * Lit la durée réelle d'un son (en secondes) en ne chargeant QUE les métadonnées.
  * Aucun stockage local : l'élément audio temporaire est détruit immédiatement après lecture.
  */
@@ -315,38 +363,58 @@ export function probeAudioDuration(src: string, timeoutMs = 12000): Promise<numb
       el.onloadedmetadata = null;
       el.ondurationchange = null;
       el.onseeked = null;
+      el.ontimeupdate = null;
+      el.oncanplay = null;
       el.onerror = null;
       try {
         el.removeAttribute('src');
         el.load();
       } catch { }
-      resolve(Number.isFinite(value) && value > 0 ? value : 0);
+      resolve(Number.isFinite(value) && value > 0 && value !== Infinity ? value : 0);
     };
 
     el.preload = 'metadata';
     el.muted = true;
-    if (src.startsWith('http://') || src.startsWith('https://')) {
-      el.crossOrigin = 'anonymous';
-    }
+    // NOTE : On ne force JAMAIS el.crossOrigin = 'anonymous' ici car cela bloque
+    // la lecture des métadonnées dès qu'un serveur/CDN omet ou filtre les en-têtes CORS.
 
-    el.onloadedmetadata = () => {
+    const checkDuration = () => {
       if (Number.isFinite(el.duration) && el.duration > 0 && el.duration !== Infinity) {
         finish(el.duration);
-      } else {
-        // Formats spéciaux (VBR, WhatsApp, opus, webm) annonçant une durée infinie
-        el.ondurationchange = () => {
-          if (Number.isFinite(el.duration) && el.duration > 0 && el.duration !== Infinity) finish(el.duration);
-        };
-        el.onseeked = () => {
-          if (Number.isFinite(el.duration) && el.duration > 0 && el.duration !== Infinity) finish(el.duration);
-        };
-        try {
-          el.currentTime = 1e7;
-        } catch {
-          finish(0);
+        return true;
+      }
+      return false;
+    };
+
+    el.onloadedmetadata = () => {
+      if (!checkDuration()) {
+        // Formats spéciaux (VBR, WhatsApp, opus, webm) annonçant une durée infinie initialement
+        if (el.duration === Infinity) {
+          try {
+            el.currentTime = 1e6;
+          } catch {}
         }
       }
     };
+
+    el.ondurationchange = () => {
+      checkDuration();
+    };
+
+    el.onseeked = () => {
+      if (!checkDuration() && Number.isFinite(el.currentTime) && el.currentTime > 0) {
+        finish(el.currentTime);
+      }
+    };
+
+    el.ontimeupdate = () => {
+      checkDuration();
+    };
+
+    el.oncanplay = () => {
+      checkDuration();
+    };
+
     el.onerror = () => finish(0);
     timer = setTimeout(() => finish(0), timeoutMs);
     el.src = src;

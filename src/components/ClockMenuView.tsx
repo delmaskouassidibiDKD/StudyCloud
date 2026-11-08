@@ -441,29 +441,35 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-3 sm:px-6 py-6 overflow-y-auto min-h-[calc(100vh-66px)] flex flex-col transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-slate-50 dark:bg-[#070a13] text-slate-800 dark:text-slate-100 overflow-y-auto flex flex-col transition-colors duration-300">
       
-      {/* Top Header */}
-      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none">
+      {/* Modern Sticky Header */}
+      <div className="sticky top-0 z-40 px-3 sm:px-6 py-2.5 bg-white/95 dark:bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between shadow-xs">
         <button
           onClick={onBack}
-          className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:text-white dark:border-[#334155] font-bold text-xs rounded-xl border-2 border-[#2D4A3E] shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95"
         >
-          <ArrowLeft className="w-4 h-4 text-[#2D4A3E] dark:text-white" />
+          <ArrowLeft className="w-3.5 h-3.5" />
           <span>Retour</span>
         </button>
+
+        <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight">
+          Horloge & Outils
+        </h1>
+
+        <div className="w-16"></div>
       </div>
 
-      <div className="w-full max-w-4xl mx-auto pt-11 sm:pt-12 pb-12 flex-1 flex flex-col">
+      <div className="w-full max-w-4xl mx-auto px-3 sm:px-6 py-4 pb-24 md:pb-8 flex-1 flex flex-col">
         
         {/* Navigation Tabs */}
-        <div className="mb-6 bg-white/90 backdrop-blur-sm p-1.5 rounded-2xl border-2 border-stone-900 shadow-[3px_3px_0px_0px_#1c1917] flex items-center justify-between gap-1 overflow-x-auto">
+        <div className="mb-6 bg-slate-200/70 dark:bg-slate-800/60 p-1 rounded-2xl flex items-center justify-between gap-1 overflow-x-auto">
           <button
             onClick={() => setActiveTab('clock')}
-            className={`flex-1 min-w-[90px] flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs sm:text-sm border-2 transition-all cursor-pointer ${
+            className={`flex-1 min-w-[85px] flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
               activeTab === 'clock'
-                ? 'bg-[#18568A] text-white border-stone-900 shadow-[2px_2px_0px_0px_#1c1917]'
-                : 'bg-transparent text-stone-700 border-transparent hover:bg-stone-100'
+                ? 'bg-white dark:bg-[#11192e] text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <ClockIcon className="w-4 h-4" />
@@ -472,10 +478,10 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
 
           <button
             onClick={() => setActiveTab('alarm')}
-            className={`flex-1 min-w-[90px] flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs sm:text-sm border-2 transition-all cursor-pointer ${
+            className={`flex-1 min-w-[85px] flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
               activeTab === 'alarm'
-                ? 'bg-[#18568A] text-white border-stone-900 shadow-[2px_2px_0px_0px_#1c1917]'
-                : 'bg-transparent text-stone-700 border-transparent hover:bg-stone-100'
+                ? 'bg-white dark:bg-[#11192e] text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Bell className="w-4 h-4" />
@@ -484,10 +490,10 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
 
           <button
             onClick={() => setActiveTab('stopwatch')}
-            className={`flex-1 min-w-[90px] flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs sm:text-sm border-2 transition-all cursor-pointer ${
+            className={`flex-1 min-w-[85px] flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
               activeTab === 'stopwatch'
-                ? 'bg-[#18568A] text-white border-stone-900 shadow-[2px_2px_0px_0px_#1c1917]'
-                : 'bg-transparent text-stone-700 border-transparent hover:bg-stone-100'
+                ? 'bg-white dark:bg-[#11192e] text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <Watch className="w-4 h-4" />
@@ -496,10 +502,10 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
 
           <button
             onClick={() => setActiveTab('timer')}
-            className={`flex-1 min-w-[90px] flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs sm:text-sm border-2 transition-all cursor-pointer ${
+            className={`flex-1 min-w-[85px] flex items-center justify-center gap-2 py-2 px-3 rounded-xl font-bold text-xs sm:text-sm transition-all cursor-pointer ${
               activeTab === 'timer'
-                ? 'bg-[#18568A] text-white border-stone-900 shadow-[2px_2px_0px_0px_#1c1917]'
-                : 'bg-transparent text-stone-700 border-transparent hover:bg-stone-100'
+                ? 'bg-white dark:bg-[#11192e] text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <TimerIcon className="w-4 h-4" />
@@ -511,12 +517,12 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
         {activeTab === 'clock' && (
           <div className="space-y-6">
             {/* Main Giant Clock Card */}
-            <div className="bg-stone-900 text-white p-8 rounded-3xl border-3 border-stone-900 shadow-[5px_5px_0px_0px_#1c1917] flex flex-col items-center justify-center text-center relative overflow-hidden">
-              <div className="absolute -top-10 -right-10 w-40 h-40 bg-[#18568A]/20 rounded-full blur-2xl" />
-              <div className="text-5xl sm:text-7xl font-mono font-bold tracking-tight mb-2 text-[#F7C858]">
+            <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 text-white p-8 rounded-3xl border border-indigo-500/20 shadow-xl flex flex-col items-center justify-center text-center relative overflow-hidden">
+              <div className="absolute -top-10 -right-10 w-40 h-40 bg-indigo-500/15 rounded-full blur-2xl" />
+              <div className="text-5xl sm:text-7xl font-mono font-bold tracking-tight mb-2 text-amber-400 drop-shadow-[0_0_20px_rgba(251,191,36,0.3)]">
                 {now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
               </div>
-              <div className="text-sm sm:text-base font-semibold text-stone-300 uppercase tracking-widest">
+              <div className="text-xs sm:text-sm font-semibold text-slate-300 uppercase tracking-widest">
                 {now.toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
               </div>
             </div>

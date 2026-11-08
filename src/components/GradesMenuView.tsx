@@ -431,85 +431,81 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#f1f5f9] dark:bg-[#0b0f19] text-stone-900 dark:text-slate-100 flex flex-col overflow-hidden transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-slate-50 dark:bg-[#070a13] text-slate-800 dark:text-slate-100 flex flex-col overflow-hidden transition-colors duration-300">
       {/* Sticky Header Group */}
-      <div className="sticky top-0 z-40 flex flex-col w-full shadow-md shrink-0">
+      <div className="sticky top-0 z-40 flex flex-col w-full shrink-0 bg-slate-50/90 dark:bg-[#070a13]/90 backdrop-blur-md pb-1">
         {/* Top Navigation Bar with Back & Add */}
-        <div className="bg-[#1e40af] dark:bg-[#0f172a] px-4 py-2.5 flex items-center justify-between text-white shadow-md">
+        <div className="bg-white/95 dark:bg-[#0c1222]/95 px-4 py-2.5 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800/80 shadow-xs">
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white/10 hover:bg-white/20 text-white font-medium text-xs rounded-lg transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="w-3.5 h-3.5" />
             <span>Retour</span>
           </button>
 
-          <span className="text-xs sm:text-sm font-semibold tracking-wide uppercase text-blue-100 dark:text-blue-200">
+          <span className="text-xs sm:text-sm font-bold tracking-wide uppercase text-slate-800 dark:text-slate-100">
             Mes notes d'évaluation
           </span>
 
           <button
             onClick={handleOpenAdd}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-white text-blue-900 font-bold text-xs rounded-lg shadow hover:bg-blue-50 transition-colors cursor-pointer"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer active:scale-95"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-3.5 h-3.5" />
             <span>Ajouter</span>
           </button>
         </div>
 
-        {/* General Average Hero Banner (Reduced height/spacing) */}
-        <div className="bg-[#1d4ed8] dark:bg-[#1e3a8a] text-white py-3 px-4 shadow-md flex items-center justify-between px-6">
-          <div className="text-2xl sm:text-4xl font-sans font-bold tracking-tight mx-auto flex items-center gap-2">
+        {/* General Average Hero Banner */}
+        <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 text-white py-3 px-4 sm:px-6 shadow-sm flex items-center justify-between mx-3 sm:mx-6 mt-2.5 rounded-2xl">
+          <div className="text-xl sm:text-3xl font-bold tracking-tight mx-auto flex items-center gap-2">
             <span>{generalAverage !== null ? `${generalAverage.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note'}</span>
-            <span className="text-xs sm:text-sm font-normal uppercase tracking-wider text-blue-200">
+            <span className="text-xs sm:text-sm font-normal uppercase tracking-wider text-blue-100">
               • Moyenne générale
             </span>
           </div>
           <button
             onClick={() => setShowCalcStepsModal(true)}
-            className="text-xs bg-blue-700/80 hover:bg-blue-600 text-blue-100 px-3 py-1.5 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 border border-blue-500/40 shadow-2xs font-medium"
+            className="text-xs bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 border border-white/25 shadow-2xs font-semibold backdrop-blur-xs"
             title="Voir la logique de calcul pas à pas"
           >
-            <Calculator className="w-4 h-4" />
+            <Calculator className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">Étapes de calcul</span>
           </button>
         </div>
 
         {/* Trimester Tabs */}
-        <div className="bg-[#1e40af] dark:bg-[#0f172a] text-white flex justify-center border-t border-blue-800 dark:border-slate-800 shadow-inner">
-          <div className="flex w-full">
-            {[
-              { id: '1', label: 'TRIMESTRE 1' },
-              { id: '2', label: 'TRIMESTRE 2' },
-              { id: '3', label: 'TRIMESTRE 3' },
-            ].map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTrimestre(tab.id as '1' | '2' | '3')}
-                className={`flex-1 py-3 text-center text-xs sm:text-sm font-bold tracking-wider transition-all cursor-pointer border-b-4 ${
-                  activeTrimestre === tab.id
-                    ? 'bg-blue-900/40 dark:bg-blue-600/30 border-white text-white'
-                    : 'border-transparent text-blue-200/70 dark:text-slate-400 hover:text-white hover:bg-blue-900/20 dark:hover:bg-slate-800/40'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
+        <div className="mx-3 sm:mx-6 mt-2.5 bg-slate-200/70 dark:bg-slate-800/60 p-1 rounded-xl flex gap-1">
+          {[
+            { id: '1', label: 'TRIMESTRE 1' },
+            { id: '2', label: 'TRIMESTRE 2' },
+            { id: '3', label: 'TRIMESTRE 3' },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTrimestre(tab.id as '1' | '2' | '3')}
+              className={`flex-1 py-1.5 text-center text-xs sm:text-sm font-bold tracking-wider rounded-lg transition-all cursor-pointer ${
+                activeTrimestre === tab.id
+                  ? 'bg-white dark:bg-[#11192e] text-indigo-600 dark:text-indigo-400 shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {/* Table Headers Bar */}
-        <div className="bg-[#e2e8f0] dark:bg-[#161f30] border-b border-stone-300 dark:border-slate-800 transition-colors">
-          <div className="w-full max-w-6xl xl:max-w-7xl mx-auto text-stone-700 dark:text-slate-200 font-bold text-xs sm:text-sm md:text-base uppercase tracking-wider px-4 md:px-8 py-3 md:py-4 grid grid-cols-12 items-center">
-            <div className="col-span-6">Matière</div>
-            <div className="col-span-2 text-center">Coefficient</div>
-            <div className="col-span-4 text-right pr-2 md:pr-4">Moyenne</div>
-          </div>
+        <div className="mx-3 sm:mx-6 mt-2 bg-slate-100/90 dark:bg-[#11192e] rounded-xl border border-slate-200/70 dark:border-slate-800/70 text-slate-500 dark:text-slate-400 font-semibold text-xs uppercase tracking-wider px-4 py-2.5 grid grid-cols-12 items-center">
+          <div className="col-span-6">Matière</div>
+          <div className="col-span-2 text-center">Coefficient</div>
+          <div className="col-span-4 text-right pr-2 md:pr-4">Moyenne</div>
         </div>
       </div>
 
       {/* Rows Container - Stacked white cards on background (Scrollable) */}
-      <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-2.5 md:space-y-4 max-w-6xl xl:max-w-7xl w-full mx-auto pb-20">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-2.5 md:space-y-3 max-w-6xl xl:max-w-7xl w-full mx-auto pb-24 md:pb-8">
         {isLoading ? (
           <div className="bg-white dark:bg-[#161f30] rounded-xl md:rounded-2xl p-12 md:p-16 text-center text-stone-500 dark:text-slate-400 shadow-sm border border-stone-200 dark:border-slate-800 flex flex-col items-center justify-center gap-3 transition-colors">
             <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>

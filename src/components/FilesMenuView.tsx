@@ -23,6 +23,7 @@ import { handleNativeShare } from '../utils/nativeShare';
 import { getCurrentUserId } from '../services/userSync';
 import { useFilesMenuList, useMatieresList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries, queryClient, QUERY_KEYS } from '../services/queryClient';
+import { CloudStorageAPI } from '../services/cloudStorageService';
 import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
 import { validateFilesForMesFichiersAsync } from '../services/fileTypeValidator';
 import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
@@ -345,6 +346,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [incompatibleAlertInfo, setIncompatibleAlertInfo] = useState<IncompatibleAlertInfo | null>(null);
   const deletedFileIdsRef = useRef<Set<string>>(new Set());
+  const pendingFavoriteOverridesRef = useRef<Map<string, boolean>>(new Map());
   const { data: serverFiles = [], isLoading: isFilesQueryLoading } = useFilesMenuList();
   const { data: serverMatieres } = useMatieresList();
   const [importedFiles, setImportedFiles] = useState<ImportedItem[]>(() => loadAllUserFiles());
@@ -393,7 +395,12 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       setImportedFiles(prev => {
         const cleanServerFiles = serverFiles.filter(f =>
           !deletedFileIdsRef.current.has(f.id) && !isItemDeleted(f.id)
-        );
+        ).map(f => {
+          if (pendingFavoriteOverridesRef.current.has(f.id)) {
+            return { ...f, isFavorite: pendingFavoriteOverridesRef.current.get(f.id)! };
+          }
+          return f;
+        });
         const serverMap = new Map<string, ImportedItem>();
         cleanServerFiles.forEach(f => serverMap.set(f.id, f));
 
@@ -1526,14 +1533,17 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   };
 
 
-  const handleToggleFavorite = (id: string) => {
+  const handleToggleFavorite = async (id: string) => {
     const file = importedFiles.find(item => item.id === id);
     const newFav = file ? !file.isFavorite : true;
+
+    // 1. Verrouiller immédiatement l'état optimiste pour éviter toute annulation par un refetch serveur
+    pendingFavoriteOverridesRef.current.set(id, newFav);
     setImportedFiles(prev => prev.map(item => item.id === id ? { ...item, isFavorite: newFav } : item));
     setSelectedFile(prev => prev && prev.id === id ? { ...prev, isFavorite: newFav } : prev);
     setOpenMenuId(null);
 
-    // Mettre à jour dans le cache local
+    // 2. Mettre à jour immédiatement dans le cache local
     try {
       const directSaved = localStorage.getItem('unifolder_files_menu_items');
       if (directSaved) {
@@ -1543,33 +1553,61 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       }
     } catch (e) {}
 
-    if (file) {
-      const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
-      if (userId && userId !== 'default-user') {
-        const resolvedMat = savedMatieres.find(m => m.name === file.matiere || m.id === file.matiereId || m.id === file.matiere);
-        const resolvedMatiereId = file.matiereId || resolvedMat?.id || file.matiere || null;
-        StudyCloudAPI.toggleFileFavorite(id, newFav).catch(() => {
-          StudyCloudAPI.registerFileMetadata({
-            id: file.id,
-            userId,
-            matiereId: resolvedMatiereId,
-            name: file.name,
-            size: file.size,
-            type: file.type,
-            extension: file.extension,
-            r2Key: (file as any).r2Key || null,
-            fileUrl: file.url,
-            isFavorite: newFav,
-            isImported: true,
-            lastImported: typeof file.importedAt === 'number' ? file.importedAt : Date.now()
-          }).catch(() => {});
+    // 3. Mettre à jour directement le cache TanStack Query
+    const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    if (userId && userId !== 'default-user') {
+      queryClient.setQueryData(QUERY_KEYS.filesMenu(userId), (old: any) => {
+        if (!Array.isArray(old)) return old;
+        return old.map((item: any) => item.id === id ? { ...item, isFavorite: newFav } : item);
+      });
+      if (file?.matiere) {
+        queryClient.setQueryData(QUERY_KEYS.matiereFiles(file.matiere, userId), (old: any) => {
+          if (!Array.isArray(old)) return old;
+          return old.map((item: any) => item.id === id ? { ...item, isFavorite: newFav } : item);
         });
       }
     }
 
-    invalidateCloudQueries.filesMenu();
-    invalidateCloudQueries.favorites();
-    if (file?.matiere) invalidateCloudQueries.matiereFiles(file.matiere);
+    // 4. Synchroniser avec CloudDataStore et CloudStorageAPI
+    CloudDataStore.toggleFavorite(id, newFav);
+    if (newFav) {
+      CloudStorageAPI.addFavorite(id, 'mes-fichiers').catch(() => {});
+    } else {
+      CloudStorageAPI.removeFavorite(id).catch(() => {});
+    }
+
+    // 5. Persister sur Cloudflare D1
+    try {
+      if (userId && userId !== 'default-user') {
+        const resolvedMat = savedMatieres.find(m => m.name === file?.matiere || m.id === file?.matiereId || m.id === file?.matiere);
+        const resolvedMatiereId = file?.matiereId || resolvedMat?.id || file?.matiere || null;
+        await StudyCloudAPI.toggleFileFavorite(id, newFav).catch(async () => {
+          if (file) {
+            await StudyCloudAPI.registerFileMetadata({
+              id: file.id,
+              userId,
+              matiereId: resolvedMatiereId,
+              name: file.name,
+              size: file.size,
+              type: file.type,
+              extension: file.extension,
+              r2Key: (file as any).r2Key || null,
+              fileUrl: file.url,
+              isFavorite: newFav,
+              isImported: true,
+              lastImported: typeof file.importedAt === 'number' ? file.importedAt : Date.now()
+            }).catch(() => {});
+          }
+        });
+      }
+    } catch (e) {
+      console.warn('[FilesMenuView] Erreur persistance favori:', e);
+    } finally {
+      setTimeout(() => {
+        pendingFavoriteOverridesRef.current.delete(id);
+      }, 2500);
+      invalidateCloudQueries.favorites().catch(() => {});
+    }
   };
 
   // Demande de confirmation avant suppression d'un fichier
