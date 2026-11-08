@@ -77,27 +77,22 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
       return;
     }
     StudyCloudAPI.getFiles(userId, undefined, undefined, true)
-      .then(async (res) => {
+      .then((res) => {
         if (res && res.success && Array.isArray(res.data)) {
-          const filesWithUrls = await Promise.all(
-            res.data.map(async (row: any) => {
-              const localBlobUrl = await getFileBlobUrl(row.id);
-              return {
-                id: row.id,
-                name: row.name,
-                size: row.size || 0,
-                type: row.type || 'Fichier',
-                extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-                url: localBlobUrl || row.file_url || '',
-                isFavorite: true,
-                matiere: row.matiere_id && row.matiere_id !== 'Mes fichiers' ? row.matiere_id : '',
-                importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-                createdAt: row.created_at,
-                timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-                isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
-              };
-            })
-          );
+          const filesWithUrls = res.data.map((row: any) => ({
+            id: row.id,
+            name: row.name,
+            size: row.size || 0,
+            type: row.type || 'Fichier',
+            extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+            url: row.file_url || '',
+            isFavorite: true,
+            matiere: row.matiere_id && row.matiere_id !== 'Mes fichiers' ? row.matiere_id : '',
+            importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+            createdAt: row.created_at,
+            timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+            isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
+          }));
           setFavoriteFiles(filesWithUrls);
         } else {
           setFavoriteFiles([]);

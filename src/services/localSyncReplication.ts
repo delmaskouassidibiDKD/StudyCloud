@@ -1,26 +1,12 @@
 /**
- * StudyCloud - Local-First Sync & Replication Service (Architecture RxDB / Cloudflare D1)
+ * StudyCloud - Direct Server Sync Service (Zéro accumulation locale)
  *
- * Principes clés :
- * 1. Local-First : L'application lit et écrit instantanément dans CloudDataStore (RAM + IndexedDB).
- * 2. Suivi temporel & Tombstones :
- *    - Chaque suppression génère un "tombstone" (is_deleted: true, updated_at).
- *    - Le serveur D1 conserve l'état dans sync_items(id, user_id, category, content, updated_at, is_deleted).
- * 3. Réplication en arrière-plan :
- *    - PUSH : Envoie les mutations et suppressions locales vers /api/cloud/replication.
- *    - PULL : Récupère les modifications distantes depuis le checkpoint (updated_at > lastPulledAt).
- * 4. Élimination des fantômes inter-appareils :
- *    - Dès qu'un appareil B reçoit is_deleted: true, l'élément est définitivement purgé du cache
- *      et enregistré dans la liste locale des tombstones afin d'empêcher toute résurrection.
+ * Toutes les actions (favoris, corbeille, dossier sécurisé, suppression, restauration)
+ * communiquent directement avec Cloudflare D1 / R2 via CloudStorageAPI et TanStack Query.
+ * Aucune file d'attente locale, aucun tombstone persistant ni boucle de réplication en arrière-plan
+ * ne sont stockés sur le téléphone afin d'éliminer définitivement les plantages mémoire ("Aïe aïe aïe").
  */
 
-import { getWorkerApiUrl } from './api';
-import { getCurrentUserId } from './userSync';
-import { CloudDataStore, FileItem, setTombstoneChecker, setTombstoneRemover, unmarkItemDeleted, setRestoreUpsertNotifier, setFavoriteSyncNotifier, isStudyItem } from './cloudDataStore';
-import { ClasseurCreatedFolder } from '../components/Folder3DModels';
-import { removeDownloadedFile } from './downloadsManager';
-import { deleteFileBlob } from './localFileStorage';
-import { setCachedMediaThumbnail } from './mediaPreviewService';
 import { invalidateCloudQueries } from './queryClient';
 
 export interface SyncDocument {
@@ -42,99 +28,9 @@ export interface ReplicationStatus {
   lastError: string | null;
 }
 
-// Clés de stockage
-const CHECKPOINT_KEY_PREFIX = 'studycloud_sync_cp_';
-const OUTGOING_KEY_PREFIX   = 'studycloud_sync_out_';
-const TOMBSTONES_KEY_PREFIX = 'studycloud_sync_tombstones_';
-
-function getUserId(): string {
-  return getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';
-}
-
-function getCheckpointKey(): string {
-  return `${CHECKPOINT_KEY_PREFIX}${getUserId()}`;
-}
-
-function getOutgoingKey(): string {
-  return `${OUTGOING_KEY_PREFIX}${getUserId()}`;
-}
-
-function getTombstonesKey(): string {
-  return `${TOMBSTONES_KEY_PREFIX}${getUserId()}`;
-}
-
-// Cache mémoire des tombstones pour des vérifications instantanées O(1)
-const inMemoryTombstones = new Set<string>();
-
-function loadTombstones(): Set<string> {
-  try {
-    const raw = localStorage.getItem(getTombstonesKey());
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        arr.forEach(id => inMemoryTombstones.add(id));
-      }
-    }
-  } catch {}
-  return inMemoryTombstones;
-}
-
-function saveTombstones() {
-  try {
-    const arr = Array.from(inMemoryTombstones).slice(-2000);
-    localStorage.setItem(getTombstonesKey(), JSON.stringify(arr));
-  } catch {}
-}
-
-function getCheckpoint(): number {
-  try {
-    const val = localStorage.getItem(getCheckpointKey());
-    return val ? Number(val) || 0 : 0;
-  } catch {
-    return 0;
-  }
-}
-
-function saveCheckpoint(ts: number) {
-  try {
-    localStorage.setItem(getCheckpointKey(), String(ts));
-  } catch {}
-}
-
-function getOutgoingQueue(): SyncDocument[] {
-  try {
-    const raw = localStorage.getItem(getOutgoingKey());
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      return Array.isArray(parsed) ? parsed : [];
-    }
-  } catch {}
-  return [];
-}
-
-function saveOutgoingQueue(queue: SyncDocument[]) {
-  try {
-    localStorage.setItem(getOutgoingKey(), JSON.stringify(queue.slice(-500)));
-  } catch {}
-}
-
-function getAuthHeaders(): Record<string, string> {
-  const userId = getUserId();
-  const token = localStorage.getItem('sc_auth_token') || localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token') || '';
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json',
-    'x-user-id': userId,
-  };
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
-  return headers;
-}
-
-// État observable ultra-léger sans RxJS
 let _currentStatus: ReplicationStatus = {
   isReplicating: false,
-  lastReplicatedAt: 0,
+  lastReplicatedAt: Date.now(),
   pendingPushCount: 0,
   lastError: null,
 };
@@ -146,34 +42,38 @@ const replicationStatus$ = {
   getValue: () => _currentStatus,
   next: (newStatus: ReplicationStatus) => {
     _currentStatus = newStatus;
-    statusListeners.forEach(fn => { try { fn(newStatus); } catch {} });
+    statusListeners.forEach(fn => {
+      try {
+        fn(newStatus);
+      } catch {}
+    });
   },
   asObservable: () => ({
     subscribe: (fn: (status: ReplicationStatus) => void) => {
       statusListeners.add(fn);
       fn(_currentStatus);
       return { unsubscribe: () => statusListeners.delete(fn) };
-    }
-  })
+    },
+  }),
 };
 
 const onSyncEvents$ = {
   next: (event: { type: 'pull' | 'push'; count: number }) => {
-    eventListeners.forEach(fn => { try { fn(event); } catch {} });
+    eventListeners.forEach(fn => {
+      try {
+        fn(event);
+      } catch {}
+    });
   },
   asObservable: () => ({
     subscribe: (fn: (event: { type: 'pull' | 'push'; count: number }) => void) => {
       eventListeners.add(fn);
       return { unsubscribe: () => eventListeners.delete(fn) };
-    }
-  })
+    },
+  }),
 };
 
-// Initialiser les tombstones
-loadTombstones();
-
-let isReplicating = false;
-let replicationInterval: any = null;
+const emptyTombstones = new Set<string>();
 let isStarted = false;
 
 export const LocalSyncReplication = {
@@ -184,511 +84,50 @@ export const LocalSyncReplication = {
     return replicationStatus$.getValue();
   },
 
-  isTombstone(id: string): boolean {
-    if (!id) return false;
-    return inMemoryTombstones.has(id);
+  isTombstone(_id: string): boolean {
+    return false;
   },
 
   getAllTombstones(): Set<string> {
-    return inMemoryTombstones;
+    return emptyTombstones;
   },
 
-  removeTombstone(id: string) {
-    if (!id) return;
-    inMemoryTombstones.delete(id);
-    saveTombstones();
-    const queue = getOutgoingQueue().filter(item => item.id !== id);
-    saveOutgoingQueue(queue);
+  removeTombstone(_id: string) {
+    // No-op : aucun tombstone local
   },
 
-  /**
-   * Enregistrer immédiatement une suppression locale (Tombstone).
-   * L'élément est retiré immédiatement du cache et mis en file d'attente pour push instantané.
-   */
-  recordLocalDeletion(id: string, category: string = 'documents') {
-    if (!id) return;
-    inMemoryTombstones.add(id);
-    saveTombstones();
-
-    const queue = getOutgoingQueue();
-    // Retirer tout doublon de cet ID
-    const nextQueue = queue.filter(item => item.id !== id);
-    nextQueue.push({
-      id,
-      category,
-      updated_at: Date.now(),
-      is_deleted: true,
-    });
-    saveOutgoingQueue(nextQueue);
-
-    replicationStatus$.next({
-      ...replicationStatus$.getValue(),
-      pendingPushCount: nextQueue.length,
-    });
-
-    // Invalider immédiatement le cache TanStack Query correspondant
-    try {
-      if (category === 'audio') invalidateCloudQueries.audio();
-      else if (category === 'videos') invalidateCloudQueries.videos();
-      else if (category === 'images') invalidateCloudQueries.images();
-      else if (category === 'documents') invalidateCloudQueries.documents();
-      else if (category.includes('classeur')) {
-        invalidateCloudQueries.classeurFolders();
-        invalidateCloudQueries.classeurFiles();
-      }
-      invalidateCloudQueries.overview();
-      invalidateCloudQueries.favorites();
-    } catch {}
-
-    // Déclencher la synchronisation si en ligne
-    this.replicate().catch(() => {});
+  recordLocalDeletion(_id: string, _category: string = 'documents') {
+    // No-op : les suppressions passent directement par le serveur D1
   },
 
-  recordLocalDeletions(ids: string[], category: string = 'documents') {
-    if (!ids || ids.length === 0) return;
-    const now = Date.now();
-    ids.forEach(id => inMemoryTombstones.add(id));
-    saveTombstones();
-
-    const idSet = new Set(ids);
-    const queue = getOutgoingQueue().filter(item => !idSet.has(item.id));
-    ids.forEach(id => {
-      queue.push({
-        id,
-        category,
-        updated_at: now,
-        is_deleted: true,
-      });
-    });
-    saveOutgoingQueue(queue);
-
-    replicationStatus$.next({
-      ...replicationStatus$.getValue(),
-      pendingPushCount: queue.length,
-    });
-
-    this.replicate().catch(() => {});
+  recordLocalDeletions(_ids: string[], _category: string = 'documents') {
+    // No-op : les suppressions passent directement par le serveur D1
   },
 
-  /**
-   * Enregistrer une création ou modification locale pour réplication
-   */
-  recordLocalUpsert(id: string, category: string, content: any) {
-    if (!id) return;
-    // Si l'élément avait été supprimé précédemment, retirer le tombstone
-    inMemoryTombstones.delete(id);
-    saveTombstones();
-
-    const queue = getOutgoingQueue().filter(item => item.id !== id);
-    queue.push({
-      id,
-      category,
-      content,
-      updated_at: Date.now(),
-      is_deleted: false,
-    });
-    saveOutgoingQueue(queue);
-
-    replicationStatus$.next({
-      ...replicationStatus$.getValue(),
-      pendingPushCount: queue.length,
-    });
-
-    // Invalider immédiatement le cache TanStack Query correspondant
-    try {
-      if (category === 'audio') invalidateCloudQueries.audio();
-      else if (category === 'videos') invalidateCloudQueries.videos();
-      else if (category === 'images') invalidateCloudQueries.images();
-      else if (category === 'documents') invalidateCloudQueries.documents();
-      else if (category.includes('classeur')) {
-        invalidateCloudQueries.classeurFolders();
-        invalidateCloudQueries.classeurFiles();
-      }
-      invalidateCloudQueries.overview();
-      invalidateCloudQueries.favorites();
-    } catch {}
-
-    this.replicate().catch(() => {});
+  recordLocalUpsert(_id: string, _category: string, _content: any) {
+    // No-op : les créations/modifications passent directement par le serveur D1
   },
 
-  /**
-   * Cycle de réplication complet :
-   * 1. PUSH des mutations et tombstones vers Cloudflare D1
-   * 2. PULL des nouveaux changements depuis le dernier checkpoint
-   * 3. Application des suppressions et des mises à jour dans CloudDataStore
-   */
   async replicate(): Promise<boolean> {
-    if (isReplicating) return false;
-    isReplicating = true;
-
-    replicationStatus$.next({
-      ...replicationStatus$.getValue(),
-      isReplicating: true,
-      lastError: null,
-    });
-
-    try {
-      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const userId = getUserId();
-      const currentCheckpoint = getCheckpoint();
-      const outgoingDocs = getOutgoingQueue();
-
-      const payload = {
-        checkpoint: { updated_at: currentCheckpoint },
-        documents: outgoingDocs,
-      };
-
-      const response = await fetch(`${baseUrl}/api/cloud/replication?userId=${encodeURIComponent(userId)}`, {
-        method: 'POST',
-        headers: getAuthHeaders(),
-        body: JSON.stringify(payload),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Replication HTTP error: ${response.status}`);
-      }
-
-      const resJson = await response.json();
-      if (!resJson.success) {
-        throw new Error(resJson.error || 'Erreur lors de la réplication');
-      }
-
-      // Si le push a réussi, vider les documents envoyés
-      if (outgoingDocs.length > 0) {
-        const remaining = getOutgoingQueue();
-        const sentIdSet = new Set(outgoingDocs.map(d => d.id));
-        const updatedQueue = remaining.filter(d => !sentIdSet.has(d.id));
-        saveOutgoingQueue(updatedQueue);
-        onSyncEvents$.next({ type: 'push', count: outgoingDocs.length });
-      }
-
-      const incomingDocs: SyncDocument[] = Array.isArray(resJson.documents) ? resJson.documents : [];
-      let deletedCount = 0;
-      let upsertCount = 0;
-
-      const state = CloudDataStore.getState();
-      let nextImages = [...state.images];
-      let nextVideos = [...state.videos];
-      let nextAudio = [...state.audio];
-      let nextDocuments = [...state.documents];
-      let nextDownloads = [...(state.downloads || [])];
-      let nextTrash = [...state.trash];
-      let nextClasseurFolders = [...state.classeurFolders];
-      const nextFolderFilesMap: Record<string, FileItem[]> = {};
-      for (const k of Object.keys(state.folderFilesMap || {})) {
-        nextFolderFilesMap[k] = [...state.folderFilesMap[k]];
-      }
-
-      let imagesChanged = false;
-      let videosChanged = false;
-      let audioChanged = false;
-      let documentsChanged = false;
-      let downloadsChanged = false;
-      let trashChanged = false;
-      let foldersChanged = false;
-      let folderFilesChanged = false;
-
-      for (const doc of incomingDocs) {
-        if (!doc || !doc.id) continue;
-
-        let parsedContent: any = doc.content;
-        if (typeof doc.content === 'string') {
-          try {
-            parsedContent = JSON.parse(doc.content);
-          } catch {
-            parsedContent = { id: doc.id };
-          }
-        }
-
-        if (doc.is_deleted) {
-          // ── GESTION DES FAVORIS ET ÉPINGLÉS (DÉCOCHÉS) ──
-          if (doc.category === 'favorites') {
-            const favItemId = parsedContent?.itemId || doc.content?.itemId || doc.id.replace(/^fav_[^_]+_/, '');
-            if (favItemId) {
-              CloudDataStore.toggleFavorite(favItemId, false);
-            }
-            deletedCount++;
-            continue;
-          }
-          if (doc.category === 'pinned') {
-            const pinItemId = parsedContent?.itemId || doc.content?.itemId || doc.id.replace(/^pin_[^_]+_/, '');
-            if (pinItemId) {
-              CloudDataStore.togglePin(pinItemId, false);
-            }
-            deletedCount++;
-            continue;
-          }
-
-          // ── SUPPRESSION MULTI-APPAREILS SANS RÉSUSCITATION ──
-          CloudDataStore.toggleFavorite(doc.id, false);
-
-          if (doc.category === 'trash') {
-            inMemoryTombstones.add(doc.id);
-            saveTombstones();
-            CloudDataStore.permanentlyRemoveTrashFile(doc.id);
-            removeDownloadedFile(doc.id);
-            deleteFileBlob(doc.id).catch(() => {});
-            deletedCount++;
-          } else {
-            CloudDataStore.removeFileFromCategory(doc.id, doc.category);
-            if (doc.category === 'classeur_folder') {
-              CloudDataStore.removeFolder(doc.id);
-            }
-            deletedCount++;
-          }
-        } else {
-          // ── FAVORIS ET ÉPINGLÉS MIS À JOUR PAR UN AUTRE APPAREIL ──
-          if (doc.category === 'favorites') {
-            const favItemId = parsedContent?.itemId || doc.content?.itemId || doc.id.replace(/^fav_[^_]+_/, '');
-            if (favItemId) {
-              CloudDataStore.toggleFavorite(favItemId, true);
-            }
-            upsertCount++;
-            continue;
-          }
-          if (doc.category === 'pinned') {
-            const pinItemId = parsedContent?.itemId || doc.content?.itemId || doc.id.replace(/^pin_[^_]+_/, '');
-            if (pinItemId) {
-              CloudDataStore.togglePin(pinItemId, true);
-            }
-            upsertCount++;
-            continue;
-          }
-
-          // ── ÉLÉMENT CRÉÉ OU MIS À JOUR PAR UN AUTRE APPAREIL ──
-          if (doc.category === 'trash') {
-            inMemoryTombstones.delete(doc.id);
-          } else {
-            inMemoryTombstones.delete(doc.id);
-            saveTombstones();
-            unmarkItemDeleted(doc.id);
-            CloudDataStore.removeTrashFileQuietly(doc.id);
-          }
-
-          if (doc.category === 'deleted_recent') {
-            const targetId = parsedContent?.fileId || doc.id.replace(/^deleted_recent_/, '');
-            try {
-              const raw = localStorage.getItem('studycloud_deleted_recent_ids');
-              const set = new Set(raw ? JSON.parse(raw) : []);
-              if (targetId) set.add(targetId);
-              localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(set).slice(-500)));
-            } catch {}
-            CloudDataStore.setRecentFiles(CloudDataStore.getState().recentFiles.filter(f => f.id !== targetId));
-            continue;
-          }
-
-          if (parsedContent && typeof parsedContent === 'object') {
-            if (doc.category === 'study' || parsedContent.category === 'study' || isStudyItem(parsedContent)) {
-              continue;
-            }
-            const cat = doc.category || parsedContent.category || 'documents';
-            const fileItem: FileItem = {
-              ...parsedContent,
-              id: doc.id,
-              category: cat as any,
-              date: parsedContent.date || parsedContent.date_formatted || new Date(doc.updated_at).toLocaleDateString('fr-FR'),
-              size: parsedContent.size || '0 o',
-            };
-
-            // Mise en cache de l'aperçu / vignette si disponible (URL externe sûre)
-            const thumbUrl = (fileItem.previewUrl && !fileItem.previewUrl.startsWith('blob:')) 
-              ? fileItem.previewUrl 
-              : (fileItem.thumbnailUrl && !fileItem.thumbnailUrl.startsWith('blob:')) 
-                ? fileItem.thumbnailUrl 
-                : null;
-            if (thumbUrl) {
-              setCachedMediaThumbnail(doc.id, thumbUrl);
-            }
-
-            // Insérer ou mettre à jour dans la liste en mémoire (batching)
-            if (cat === 'images') {
-              const idx = nextImages.findIndex(x => x.id === doc.id);
-              if (idx < 0) nextImages.unshift(fileItem);
-              else nextImages[idx] = { ...nextImages[idx], ...fileItem };
-              imagesChanged = true;
-            } else if (cat === 'videos') {
-              const idx = nextVideos.findIndex(x => x.id === doc.id);
-              if (idx < 0) nextVideos.unshift(fileItem);
-              else nextVideos[idx] = { ...nextVideos[idx], ...fileItem };
-              videosChanged = true;
-            } else if (cat === 'audio') {
-              const idx = nextAudio.findIndex(x => x.id === doc.id);
-              if (idx < 0) nextAudio.unshift(fileItem);
-              else nextAudio[idx] = { ...nextAudio[idx], ...fileItem };
-              audioChanged = true;
-            } else if (cat === 'downloads') {
-              const idx = nextDownloads.findIndex(x => x.id === doc.id);
-              if (idx < 0) nextDownloads.unshift(fileItem as any);
-              else nextDownloads[idx] = { ...nextDownloads[idx], ...fileItem } as any;
-              downloadsChanged = true;
-            } else if (cat === 'documents') {
-              const idx = nextDocuments.findIndex(x => x.id === doc.id);
-              if (idx < 0) nextDocuments.unshift(fileItem);
-              else nextDocuments[idx] = { ...nextDocuments[idx], ...fileItem };
-              documentsChanged = true;
-            } else if (cat === 'trash') {
-              const idx = nextTrash.findIndex(x => x.id === doc.id);
-              if (idx < 0) nextTrash.unshift(fileItem);
-              else nextTrash[idx] = { ...nextTrash[idx], ...fileItem };
-              trashChanged = true;
-            } else if (cat === 'classeur_folder') {
-              const meta = parsedContent.metadata || parsedContent;
-              const folderModel = Number(parsedContent.model || meta.model || parsedContent.modelId || meta.modelId || parsedContent.model_id || meta.model_id || 1);
-              const validModel: 1 | 2 | 3 | 4 = (folderModel >= 1 && folderModel <= 4) ? (folderModel as 1 | 2 | 3 | 4) : 1;
-              const folder: ClasseurCreatedFolder = {
-                id: doc.id,
-                name: parsedContent.name || meta.name || 'Dossier',
-                model: validModel,
-                modelId: parsedContent.modelId || meta.modelId || parsedContent.model_id || meta.model_id || String(validModel),
-                primaryColor: parsedContent.primaryColor || meta.primaryColor || parsedContent.primary_color || meta.primary_color || '#EA580C',
-                accentColor: parsedContent.accentColor || meta.accentColor || parsedContent.accent_color || meta.accent_color || '#F97316',
-                secondaryColor: parsedContent.secondaryColor || meta.secondaryColor || parsedContent.secondary_color || meta.secondary_color,
-                badge: parsedContent.badge || meta.badge,
-                iconType: parsedContent.iconType || meta.iconType || parsedContent.icon_type || meta.icon_type,
-                iconName: parsedContent.iconName || meta.iconName || parsedContent.icon_name || meta.icon_name || 'Folder',
-                textDark: Boolean(parsedContent.textDark ?? meta.textDark ?? parsedContent.text_dark ?? meta.text_dark),
-                dateText: parsedContent.dateText || meta.dateText || parsedContent.date_text || meta.date_text || (parsedContent.createdAt ? new Date(parsedContent.createdAt).toLocaleDateString('fr-FR') : new Date(doc.updated_at).toLocaleDateString('fr-FR')),
-                createdAt: Number(parsedContent.createdAt || meta.createdAt || doc.updated_at || Date.now()),
-                parentId: parsedContent.parentId || meta.parentId || parsedContent.parent_id || meta.parent_id || undefined,
-                positionX: Number(parsedContent.positionX ?? meta.positionX ?? parsedContent.position_x ?? meta.position_x ?? 0),
-                positionY: Number(parsedContent.positionY ?? meta.positionY ?? parsedContent.position_y ?? meta.position_y ?? 0),
-                displayOrder: Number(parsedContent.displayOrder ?? meta.displayOrder ?? parsedContent.display_order ?? meta.display_order ?? 0),
-                zoomLevel: Number(parsedContent.zoomLevel ?? meta.zoomLevel ?? parsedContent.zoom_level ?? meta.zoom_level ?? 10),
-                isPinned: Boolean(parsedContent.isPinned ?? meta.isPinned ?? parsedContent.is_pinned ?? meta.is_pinned),
-                isFavorite: Boolean(parsedContent.isFavorite ?? meta.isFavorite ?? parsedContent.is_favorite ?? meta.is_favorite),
-              };
-              const fIdx = nextClasseurFolders.findIndex(f => f.id === folder.id);
-              if (fIdx < 0) nextClasseurFolders.unshift(folder);
-              else nextClasseurFolders[fIdx] = { ...nextClasseurFolders[fIdx], ...folder };
-              foldersChanged = true;
-            } else if (cat === 'classeur') {
-              const folderId = parsedContent.folderId || parsedContent.folder_id || fileItem.folderId || fileItem.originalFolderId;
-              if (folderId) {
-                if (!nextFolderFilesMap[folderId]) nextFolderFilesMap[folderId] = [];
-                const list = nextFolderFilesMap[folderId];
-                const itemIdx = list.findIndex(f => f.id === fileItem.id);
-                const fullItem = { ...fileItem, folderId, originalFolderId: folderId, category: 'classeur' as const };
-                if (itemIdx < 0) list.unshift(fullItem);
-                else list[itemIdx] = { ...list[itemIdx], ...fullItem };
-                folderFilesChanged = true;
-              }
-            }
-            upsertCount++;
-          }
-        }
-      }
-
-      // Appliquer les mises à jour groupées une seule fois (élimine les centaines de notify)
-      if (imagesChanged) CloudDataStore.setImages(nextImages);
-      if (videosChanged) CloudDataStore.setVideos(nextVideos);
-      if (audioChanged) CloudDataStore.setAudio(nextAudio);
-      if (documentsChanged) CloudDataStore.setDocuments(nextDocuments);
-      if (downloadsChanged) CloudDataStore.setDownloads(nextDownloads as any);
-      if (trashChanged) CloudDataStore.setTrashFiles(nextTrash);
-      if (foldersChanged) CloudDataStore.setClasseurFolders(nextClasseurFolders);
-      if (folderFilesChanged) CloudDataStore.setFolderFilesMap(nextFolderFilesMap);
-
-      if (deletedCount > 0) {
-        saveTombstones();
-      }
-
-      // Mettre à jour le checkpoint (toujours progresser si des documents ont été reçus)
-      const serverCheckpoint = Number(resJson.checkpoint?.updated_at || 0);
-      const maxIncomingTs = incomingDocs.reduce((max, d) => Math.max(max, Number(d.updated_at) || 0), 0);
-      const targetCheckpoint = Math.max(serverCheckpoint, maxIncomingTs);
-
-      if (targetCheckpoint > currentCheckpoint) {
-        saveCheckpoint(targetCheckpoint);
-      } else if (incomingDocs.length > 0) {
-        saveCheckpoint(Math.max(currentCheckpoint + 1, Date.now()));
-      }
-
-      if (incomingDocs.length > 0) {
-        onSyncEvents$.next({ type: 'pull', count: incomingDocs.length });
-      }
-
-      replicationStatus$.next({
-        isReplicating: false,
-        lastReplicatedAt: Date.now(),
-        pendingPushCount: getOutgoingQueue().length,
-        lastError: null,
-      });
-
-      return true;
-    } catch (err: any) {
-      console.warn('[LocalSyncReplication] Replication error:', err.message || err);
-      replicationStatus$.next({
-        ...replicationStatus$.getValue(),
-        isReplicating: false,
-        lastError: err.message || 'Erreur réseau de réplication',
-      });
-      return false;
-    } finally {
-      isReplicating = false;
-    }
+    return true;
   },
 
-  /**
-   * Démarrer le démon de réplication automatique
-   */
   startAutoReplication(): () => void {
     if (isStarted) return () => {};
     isStarted = true;
 
-    // Réplication dès que l'onglet redevient visible (invalidation intelligente TanStack Query)
-    const onVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        invalidateCloudQueries.all().catch(() => {});
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
-
-    // Réplication dès que la connexion internet revient
     const onOnline = () => {
       invalidateCloudQueries.all().catch(() => {});
     };
     window.addEventListener('online', onOnline);
 
     return () => {
-      document.removeEventListener('visibilitychange', onVisibilityChange);
       window.removeEventListener('online', onOnline);
       isStarted = false;
     };
   },
 
-  /**
-   * Réinitialiser le checkpoint (par exemple lors d'un changement de compte)
-   */
   resetCheckpoint() {
-    saveCheckpoint(0);
-    inMemoryTombstones.clear();
-    saveTombstones();
-    saveOutgoingQueue([]);
-  }
+    // No-op
+  },
 };
-
-// Relier le vérificateur et le destructeur de tombstones à CloudDataStore
-setTombstoneChecker((id: string) => LocalSyncReplication.isTombstone(id));
-setTombstoneRemover((id: string) => LocalSyncReplication.removeTombstone(id));
-
-// Notifier la réplication lors d'une restauration depuis la corbeille
-setRestoreUpsertNotifier((item: any, category: string) => {
-  if (item && item.id) {
-    LocalSyncReplication.recordLocalUpsert(item.id, category, item);
-  }
-});
-
-// Synchroniser immédiatement les favoris vers tous les appareils
-setFavoriteSyncNotifier((favId: string, itemId: string, isFav: boolean, category?: string) => {
-  if (isFav) {
-    LocalSyncReplication.recordLocalUpsert(favId, 'favorites', { itemId, category: category || 'documents' });
-  } else {
-    LocalSyncReplication.recordLocalDeletion(favId, 'favorites');
-  }
-});
-
-// Écouter toutes les suppressions locales de CloudDataStore pour réplication immédiate
-CloudDataStore.onDelete((id: string, category?: string) => {
-  LocalSyncReplication.recordLocalDeletion(id, category || 'documents');
-});
-

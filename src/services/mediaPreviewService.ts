@@ -277,44 +277,24 @@ if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.wor
 const previewMemoryCache = new Map<string, string>();
 
 /**
- * Récupère un aperçu en mémoire vive par sa clé (id, url, nom)
+ * Récupère un aperçu en mémoire vive par sa clé — DÉSACTIVÉ pour éviter l'accumulation Base64 en RAM
  */
-export function getCachedMediaThumbnail(key: string): string | null {
-  if (!key) return null;
-  return previewMemoryCache.get(key) || null;
-}
-
-/**
- * Récupère un aperçu de façon asynchrone (RAM + IndexedDB)
- */
-export async function getAsyncMediaThumbnail(key: string): Promise<string | null> {
-  if (!key) return null;
-  const inMem = previewMemoryCache.get(key);
-  if (inMem) return inMem;
-  try {
-    const inIdb = await getThumbnailData(key);
-    if (inIdb) {
-      previewMemoryCache.set(key, inIdb);
-      return inIdb;
-    }
-  } catch {}
+export function getCachedMediaThumbnail(_key: string): string | null {
   return null;
 }
 
 /**
- * Enregistre un aperçu dans le cache mémoire et IndexedDB
+ * Récupère un aperçu de façon asynchrone — DÉSACTIVÉ pour éviter l'accumulation locale
  */
-export function setCachedMediaThumbnail(key: string, thumbUrl: string): void {
-  if (!key || !thumbUrl) return;
-  // Limite stricte pour éviter l'épuisement de mémoire vive (max 60 vignettes)
-  if (previewMemoryCache.size > 60) {
-    const firstKey = previewMemoryCache.keys().next().value;
-    if (firstKey) previewMemoryCache.delete(firstKey);
-  }
-  previewMemoryCache.set(key, thumbUrl);
-  if (thumbUrl.startsWith('data:image') || thumbUrl.includes('/api/cloud/thumbnail')) {
-    storeThumbnailData(key, thumbUrl).catch(() => {});
-  }
+export async function getAsyncMediaThumbnail(_key: string): Promise<string | null> {
+  return null;
+}
+
+/**
+ * Enregistre un aperçu — DÉSACTIVÉ pour éviter la duplication Base64 en RAM et IndexedDB
+ */
+export function setCachedMediaThumbnail(_key: string, _thumbUrl: string): void {
+  return;
 }
 
 /**

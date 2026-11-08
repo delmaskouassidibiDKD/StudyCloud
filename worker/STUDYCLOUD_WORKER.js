@@ -2098,127 +2098,131 @@ async function getObjectFromAnyBucket(rawEnv, category, key, rangeOptions) {
   for (const b of candidates) {
     if (b && !bucketsToTry.includes(b)) bucketsToTry.push(b);
   }
-  const keysToTry = [];
-  const addKeyVariant = (k) => {
-    if (k && !keysToTry.includes(k)) keysToTry.push(k);
-  };
-  addKeyVariant(key);
+  let decodedKey = key;
   try {
-    const decoded = decodeURIComponent(key);
-    addKeyVariant(decoded);
+    decodedKey = decodeURIComponent(key);
   } catch {
   }
-  addKeyVariant(key.replace(/ /g, "_"));
-  addKeyVariant(key.replace(/_/g, " "));
-  addKeyVariant(key.replace(/%20/g, "_"));
-  addKeyVariant(key.replace(/%20/g, " "));
-  if (key.includes("/")) {
-    const fileNameOnly = key.split("/").pop() || "";
-    addKeyVariant(fileNameOnly);
-    addKeyVariant(fileNameOnly.replace(/ /g, "_"));
-    addKeyVariant(fileNameOnly.replace(/_/g, " "));
-    const withoutUser = key.split("/").slice(1).join("/");
-    addKeyVariant(withoutUser);
-    addKeyVariant(withoutUser.replace(/ /g, "_"));
-    addKeyVariant(withoutUser.replace(/_/g, " "));
-    const knownCats = ["study", "documents", "mes-fichiers", "classeur", "images", "videos", "audio"];
-    for (const c of knownCats) {
-      if (key.includes(`/${c}/`)) {
-        for (const otherC of knownCats) {
-          if (otherC !== c) {
-            const rep = key.replace(`/${c}/`, `/${otherC}/`);
-            addKeyVariant(rep);
-            addKeyVariant(rep.replace(/ /g, "_"));
-            addKeyVariant(withoutUser.replace(`${c}/`, `${otherC}/`));
-            addKeyVariant(withoutUser.replace(`${c}/`, `${otherC}/`).replace(/ /g, "_"));
-          }
-        }
-      }
-    }
-  }
-  for (const k of keysToTry) {
-    for (const bucket of bucketsToTry) {
-      if (!bucket || typeof bucket.get !== "function") continue;
+  const primaryKeys = Array.from(new Set([
+    key,
+    decodedKey,
+    decodedKey.replace(/ /g, "_"),
+    decodedKey.replace(/%20/g, "_")
+  ].filter(Boolean)));
+  const fastBuckets = [categoryBucket, mainBucket].filter(Boolean);
+  for (const b of fastBuckets) {
+    for (const k of primaryKeys) {
       try {
-        let obj = null;
         if (rangeOptions) {
           try {
-            obj = await bucket.get(k, rangeOptions);
-          } catch (re) {
+            const obj2 = await b.get(k, rangeOptions);
+            if (obj2) return { object: obj2, bucket: b };
+          } catch {
           }
         }
-        if (!obj) {
-          try {
-            obj = await bucket.get(k);
-          } catch (ne) {
-          }
-        }
-        if (obj) return { object: obj, bucket };
-      } catch (e) {
+        const obj = await b.get(k);
+        if (obj) return { object: obj, bucket: b };
+      } catch {
       }
     }
   }
-  const fileIdCandidate = key.match(/(f_[a-zA-Z0-9_-]+|doc-[a-zA-Z0-9_-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1] || (key.includes("/") ? key.split("/").pop()?.split("_")[0] : "");
-  const cleanFileName = key.split("/").pop() || "";
+  const catBucketPairs = [
+    { cat: "images", bucket: rawEnv.BUCKET_IMAGES || rawEnv.MON_R2_IMAGES || mainBucket },
+    { cat: "videos", bucket: rawEnv.BUCKET_VIDEOS || rawEnv.MON_R2_VIDEOS || mainBucket },
+    { cat: "audio", bucket: rawEnv.BUCKET_AUDIO || rawEnv.MON_R2_AUDIO || mainBucket },
+    { cat: "documents", bucket: rawEnv.BUCKET_DOCUMENTS || rawEnv.MON_R2_DOCUMENTS || mainBucket },
+    { cat: "mes-fichiers", bucket: rawEnv.BUCKET_MES_FICHIERS || rawEnv.MON_R2_MES_FICHIERS || mainBucket },
+    { cat: "classeur", bucket: rawEnv.BUCKET_CLASSEUR || rawEnv.MON_R2_CLASSEUR || mainBucket },
+    { cat: "secure", bucket: rawEnv.BUCKET_SECURE || mainBucket },
+    { cat: "study", bucket: rawEnv.BUCKET_STUDY || rawEnv.BUCKET_DOCUMENTS || mainBucket }
+  ];
+  const knownCats = ["study", "documents", "mes-fichiers", "classeur", "images", "videos", "audio", "secure"];
+  const matchedCatInKey = knownCats.find((c) => decodedKey.includes(`/${c}/`));
+  for (const { cat: targetCat, bucket } of catBucketPairs) {
+    if (!bucket || typeof bucket.get !== "function") continue;
+    const candidateKey = matchedCatInKey ? decodedKey.replace(`/${matchedCatInKey}/`, `/${targetCat}/`) : decodedKey;
+    try {
+      const obj = await bucket.get(candidateKey);
+      if (obj) return { object: obj, bucket };
+      const underKey = candidateKey.replace(/ /g, "_");
+      if (underKey !== candidateKey) {
+        const obj2 = await bucket.get(underKey);
+        if (obj2) return { object: obj2, bucket };
+      }
+    } catch {
+    }
+  }
+  const fileIdCandidate = decodedKey.match(/(cf-[a-zA-Z0-9_-]+|sec-[a-zA-Z0-9_-]+|f_[a-zA-Z0-9_-]+|img_[a-zA-Z0-9_-]+|vid_[a-zA-Z0-9_-]+|aud_[a-zA-Z0-9_-]+|doc-[a-zA-Z0-9_-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1] || (decodedKey.includes("/") ? decodedKey.split("/").pop()?.split("_")[0] : "");
+  const cleanFileName = decodedKey.split("/").pop() || "";
   if (rawEnv.DB && (fileIdCandidate || cleanFileName)) {
     try {
       const qTerm = fileIdCandidate || cleanFileName;
       const row = await rawEnv.DB.prepare(`
-        SELECT r2_key FROM study_imported_files WHERE id = ? OR name = ? OR r2_key LIKE ?
-        UNION ALL SELECT r2_key FROM document_files WHERE id = ? OR name = ? OR r2_key LIKE ?
-        UNION ALL SELECT r2_key FROM files WHERE id = ? OR name = ? OR r2_key LIKE ?
-        UNION ALL SELECT r2_key FROM classeur_files WHERE id = ? OR name = ? OR r2_key LIKE ?
+        SELECT r2_key FROM image_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
+        UNION ALL SELECT r2_key FROM video_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
+        UNION ALL SELECT r2_key FROM audio_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
+        UNION ALL SELECT r2_key FROM document_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
+        UNION ALL SELECT r2_key FROM files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
+        UNION ALL SELECT r2_key FROM classeur_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
+        UNION ALL SELECT r2_key FROM secure_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
+        UNION ALL SELECT r2_key FROM trash_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
+        UNION ALL SELECT r2_key FROM study_imported_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
         LIMIT 1
-      `).bind(qTerm, qTerm, `%${qTerm}%`, qTerm, qTerm, `%${qTerm}%`, qTerm, qTerm, `%${qTerm}%`, qTerm, qTerm, `%${qTerm}%`).first();
+      `).bind(
+        qTerm,
+        qTerm,
+        `%${qTerm}%`,
+        qTerm,
+        qTerm,
+        `%${qTerm}%`,
+        qTerm,
+        qTerm,
+        `%${qTerm}%`,
+        qTerm,
+        qTerm,
+        `%${qTerm}%`,
+        qTerm,
+        qTerm,
+        `%${qTerm}%`,
+        qTerm,
+        qTerm,
+        `%${qTerm}%`,
+        qTerm,
+        qTerm,
+        `%${qTerm}%`,
+        qTerm,
+        qTerm,
+        `%${qTerm}%`,
+        qTerm,
+        qTerm,
+        `%${qTerm}%`
+      ).first();
       if (row && row.r2_key) {
         for (const bucket of bucketsToTry) {
           if (!bucket || typeof bucket.get !== "function") continue;
           try {
-            let obj = null;
-            if (rangeOptions) {
-              try {
-                obj = await bucket.get(row.r2_key, rangeOptions);
-              } catch (re) {
-              }
-            }
-            if (!obj) {
-              try {
-                obj = await bucket.get(row.r2_key);
-              } catch (ne) {
-              }
-            }
+            const obj = await bucket.get(row.r2_key);
             if (obj) return { object: obj, bucket };
-          } catch (e) {
+          } catch {
           }
         }
       }
-    } catch (d1Err) {
+    } catch {
     }
   }
-  if (fileIdCandidate && fileIdCandidate.length >= 6) {
+  const userPrefix = decodedKey.includes("/") ? `${decodedKey.split("/")[0]}/` : void 0;
+  if (fileIdCandidate && fileIdCandidate.length >= 5) {
     for (const bucket of bucketsToTry) {
       if (!bucket || typeof bucket.list !== "function") continue;
       try {
-        const listed = await bucket.list({ limit: 100 });
+        const listed = await bucket.list(userPrefix ? { prefix: userPrefix, limit: 250 } : { limit: 150 });
         for (const o of listed?.objects || []) {
           if (o.key && o.key.includes(fileIdCandidate)) {
-            let obj = null;
-            if (rangeOptions) {
-              try {
-                obj = await bucket.get(o.key, rangeOptions);
-              } catch (re) {
-              }
-            }
-            if (!obj) {
-              try {
-                obj = await bucket.get(o.key);
-              } catch (ne) {
-              }
-            }
+            const obj = await bucket.get(o.key);
             if (obj) return { object: obj, bucket };
           }
         }
-      } catch (le) {
+      } catch {
       }
     }
   }
@@ -6236,35 +6240,40 @@ a:hover{transform:translateY(-2px)}
         }
       }
       if (path.startsWith("/api/cloud/stream/") && method === "GET") {
-        const fileId = path.replace("/api/cloud/stream/", "").trim();
+        const rawFileId = path.replace("/api/cloud/stream/", "").trim();
+        let fileId = rawFileId;
+        try {
+          fileId = decodeURIComponent(rawFileId);
+        } catch {
+        }
         if (!fileId || !env.DB) return errorResponse("ID de fichier manquant ou DB inaccessible", 400, origin);
-        let foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, "study" as category FROM study_imported_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        let foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "study" as category FROM study_imported_files WHERE id = ? LIMIT 1').bind(fileId).first();
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, "documents" as category FROM document_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "documents" as category FROM document_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, video_url as file_url, "videos" as category FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, video_url as file_url, "videos" as category FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, audio_url as file_url, "audio" as category FROM audio_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, audio_url as file_url, "audio" as category FROM audio_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, image_url as file_url, "images" as category FROM image_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, image_url as file_url, "images" as category FROM image_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, "classeur" as category FROM classeur_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "classeur" as category FROM classeur_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, "mes-fichiers" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "mes-fichiers" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, file_type as extension, title as name, file_url, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, file_type as extension, title as name, file_url, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, COALESCE(source_category, category, "audio") as category FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(source_category, category, "audio") as category FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, file_url, COALESCE(original_category, category, "audio") as category FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(original_category, category, "audio") as category FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord || !foundRecord.r2_key) {
           let recoveredKey = "";
@@ -6309,38 +6318,52 @@ a:hover{transform:translateY(-2px)}
             }
           }
           if (!foundRecord || !foundRecord.r2_key) {
-            const allBuckets = getAllBuckets(rawEnv);
             const searchTarget = (foundRecord?.name || fileId).replace(/[^a-zA-Z0-9._-]/g, "_");
-            for (const b of allBuckets) {
-              try {
-                const listRes = await b.list({ limit: 500 });
-                if (listRes && Array.isArray(listRes.objects)) {
-                  const matched = listRes.objects.find(
-                    (o) => o.key.includes(fileId) || searchTarget && o.key.includes(searchTarget) || foundRecord?.name && o.key.toLowerCase().includes(foundRecord.name.toLowerCase())
-                  );
-                  if (matched) {
-                    recoveredKey = matched.key;
-                    if (!foundRecord) {
-                      const detectedExt = (matched.key.split(".").pop() || "").toLowerCase();
-                      let cat = "documents";
-                      if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(detectedExt)) cat = "images";
-                      else if (["mp4", "mkv", "avi", "mov", "webm"].includes(detectedExt)) cat = "videos";
-                      else if (["mp3", "wav", "ogg", "m4a", "aac", "flac"].includes(detectedExt)) cat = "audio";
-                      foundRecord = { id: fileId, name: matched.key.split("/").pop() || fileId, category: cat, r2_key: matched.key, extension: detectedExt };
-                    } else {
-                      foundRecord.r2_key = matched.key;
+            const recordUserId = foundRecord?.user_id || "";
+            if (recordUserId && foundRecord?.name) {
+              const candidateKey = `${recordUserId}/${foundRecord.category || "images"}/${fileId}_${searchTarget}`;
+              const testFound = await getObjectFromAnyBucket(rawEnv, foundRecord.category || "images", candidateKey);
+              if (testFound && testFound.object) {
+                recoveredKey = candidateKey;
+                foundRecord.r2_key = candidateKey;
+              }
+            }
+            if (!recoveredKey) {
+              const allBuckets = getAllBuckets(rawEnv);
+              for (const b of allBuckets) {
+                try {
+                  const listRes = await b.list(recordUserId ? { prefix: `${recordUserId}/`, limit: 500 } : { limit: 500 });
+                  if (listRes && Array.isArray(listRes.objects)) {
+                    const matched = listRes.objects.find(
+                      (o) => o.key.includes(fileId) || searchTarget && o.key.includes(searchTarget) || foundRecord?.name && o.key.toLowerCase().includes(foundRecord.name.toLowerCase())
+                    );
+                    if (matched) {
+                      recoveredKey = matched.key;
+                      if (!foundRecord) {
+                        const detectedExt = (matched.key.split(".").pop() || "").toLowerCase();
+                        let cat = "documents";
+                        if (["jpg", "jpeg", "png", "gif", "webp", "bmp", "svg"].includes(detectedExt)) cat = "images";
+                        else if (["mp4", "mkv", "avi", "mov", "webm"].includes(detectedExt)) cat = "videos";
+                        else if (["mp3", "wav", "ogg", "m4a", "aac", "flac"].includes(detectedExt)) cat = "audio";
+                        foundRecord = { id: fileId, name: matched.key.split("/").pop() || fileId, category: cat, r2_key: matched.key, extension: detectedExt };
+                      } else {
+                        foundRecord.r2_key = matched.key;
+                      }
+                      break;
                     }
-                    try {
-                      if (foundRecord.category === "images") await env.DB.prepare("UPDATE image_files SET r2_key = ? WHERE id = ?").bind(matched.key, fileId).run();
-                      else if (foundRecord.category === "videos") await env.DB.prepare("UPDATE video_files SET r2_key = ? WHERE id = ?").bind(matched.key, fileId).run();
-                      else if (foundRecord.category === "documents") await env.DB.prepare("UPDATE document_files SET r2_key = ? WHERE id = ?").bind(matched.key, fileId).run();
-                      else if (foundRecord.category === "audio") await env.DB.prepare("UPDATE audio_files SET r2_key = ? WHERE id = ?").bind(matched.key, fileId).run();
-                    } catch {
-                    }
-                    break;
                   }
+                } catch (le) {
                 }
-              } catch (le) {
+              }
+            }
+            if (recoveredKey && foundRecord) {
+              try {
+                if (foundRecord.category === "images") await env.DB.prepare("UPDATE image_files SET r2_key = ? WHERE id = ?").bind(recoveredKey, fileId).run();
+                else if (foundRecord.category === "videos") await env.DB.prepare("UPDATE video_files SET r2_key = ? WHERE id = ?").bind(recoveredKey, fileId).run();
+                else if (foundRecord.category === "documents") await env.DB.prepare("UPDATE document_files SET r2_key = ? WHERE id = ?").bind(recoveredKey, fileId).run();
+                else if (foundRecord.category === "audio") await env.DB.prepare("UPDATE audio_files SET r2_key = ? WHERE id = ?").bind(recoveredKey, fileId).run();
+                await env.DB.prepare("UPDATE files SET r2_key = ? WHERE id = ?").bind(recoveredKey, fileId).run();
+              } catch {
               }
             }
           }

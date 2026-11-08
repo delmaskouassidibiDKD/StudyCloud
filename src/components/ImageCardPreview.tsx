@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FileItem } from './Page1FilesMenuView';
 import { getWorkerApiUrl } from '../services/api';
-import { getFileBlobUrl, getThumbnailData } from '../services/localFileStorage';
 import { Image as ImageIcon } from 'lucide-react';
 
 interface ImageCardPreviewProps {
@@ -12,10 +11,18 @@ interface ImageCardPreviewProps {
 
 export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, className, alt }) => {
   const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-  const [src, setSrc] = useState<string>(() => {
+  const triedUrlsRef = useRef<Set<string>>(new Set());
+
+  const computeInitialSrc = () => {
     const directUrl = img.previewUrl || img.url;
     if (directUrl && directUrl.startsWith('data:')) return directUrl;
-    if (directUrl && directUrl.startsWith('http') && !directUrl.includes('localhost') && !directUrl.startsWith('blob:')) {
+    if (
+      directUrl &&
+      directUrl.startsWith('http') &&
+      !directUrl.includes('localhost') &&
+      !directUrl.startsWith('blob:') &&
+      !directUrl.includes('/api/cloud/file/secure/')
+    ) {
       return directUrl;
     }
     if (img.r2Key) {
@@ -28,92 +35,34 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
       return directUrl;
     }
     return '';
-  });
+  };
 
+  const [src, setSrc] = useState<string>(computeInitialSrc);
   const [hasFailed, setHasFailed] = useState(false);
-  const attemptIndexRef = useRef(0);
 
-  // Synchronisation et tentative de résolution depuis IndexedDB pour les blobs
   useEffect(() => {
-    let isMounted = true;
-    const directUrl = img.previewUrl || img.url;
+    triedUrlsRef.current.clear();
+    const nextSrc = computeInitialSrc();
+    if (nextSrc) triedUrlsRef.current.add(nextSrc);
+    setSrc(nextSrc);
+    setHasFailed(false);
+  }, [img.id, img.r2Key, img.previewUrl, img.url]);
 
-    // Si on a un blob URL (susceptible d'être expiré) ou pas d'URL, récupérer le vrai blob depuis IndexedDB
-    if (!directUrl || directUrl.startsWith('blob:') || !src) {
-      getFileBlobUrl(img.id).then((freshBlob) => {
-        if (isMounted && freshBlob) {
-          setSrc(freshBlob);
-          setHasFailed(false);
-        }
-      }).catch(() => {});
+  const handleError = () => {
+    const candidates = [
+      img.r2Key ? `${baseUrl}/api/cloud/file/images/${encodeURIComponent(img.r2Key)}` : '',
+      img.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}` : '',
+      img.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(img.id)}` : '',
+    ].filter(Boolean);
 
-      getThumbnailData(img.id).then((thumb) => {
-        if (isMounted && thumb && (!src || src.startsWith('blob:'))) {
-          setSrc(thumb);
-          setHasFailed(false);
-        }
-      }).catch(() => {});
+    for (const candidate of candidates) {
+      if (!triedUrlsRef.current.has(candidate) && candidate !== src) {
+        triedUrlsRef.current.add(candidate);
+        setSrc(candidate);
+        return;
+      }
     }
 
-    return () => {
-      isMounted = false;
-    };
-  }, [img.id, img.previewUrl, img.url]);
-
-  const handleError = async () => {
-    const attempt = attemptIndexRef.current;
-    attemptIndexRef.current += 1;
-
-    try {
-      // Étape 1 : Récupérer depuis IndexedDB
-      if (attempt === 0 && img.id) {
-        const freshBlob = await getFileBlobUrl(img.id);
-        if (freshBlob && freshBlob !== src) {
-          setSrc(freshBlob);
-          return;
-        }
-      }
-
-      // Étape 2 : Récupérer miniature sauvegardée
-      if (attempt <= 1 && img.id) {
-        const thumb = await getThumbnailData(img.id);
-        if (thumb && thumb !== src) {
-          setSrc(thumb);
-          return;
-        }
-      }
-
-      // Étape 3 : Tenter l'URL R2 Cloudflare
-      if (attempt <= 2 && img.r2Key) {
-        const r2Url = `${baseUrl}/api/cloud/file/images/${encodeURIComponent(img.r2Key)}`;
-        if (r2Url !== src) {
-          setSrc(r2Url);
-          return;
-        }
-      }
-
-      // Étape 4 : Tenter le stream universel
-      if (attempt <= 3 && img.id) {
-        const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}`;
-        if (streamUrl !== src) {
-          setSrc(streamUrl);
-          return;
-        }
-      }
-
-      // Étape 5 : Tenter la miniature du Worker
-      if (attempt <= 4 && img.id) {
-        const thumbUrl = `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(img.id)}`;
-        if (thumbUrl !== src) {
-          setSrc(thumbUrl);
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn('[ImageCardPreview] Fallback error for', img.name, e);
-    }
-
-    // Si toutes les tentatives ont échoué, marquer comme échoué pour afficher le placeholder esthétique
     setHasFailed(true);
   };
 

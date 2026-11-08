@@ -209,38 +209,35 @@ export function useFilesMenuList(userId?: string) {
           } catch (_) {}
         }
 
-        const filesWithUrls: ImportedItem[] = await Promise.all(
-          nonStudyRows.map(async (row: any) => {
-            const localBlobUrl = await getFileBlobUrl(row.id);
-            const mId = row.matiere_id && row.matiere_id !== 'Mes fichiers' && row.matiere_id !== 'root' ? row.matiere_id : '';
-            const matchedMat = matieresList.find((m: any) => m.id === mId || m.name === mId);
-            const matName = matchedMat ? matchedMat.name : (mId || '');
-            const matUniqueId = matchedMat ? matchedMat.id : (mId || undefined);
+        const filesWithUrls: ImportedItem[] = nonStudyRows.map((row: any) => {
+          const mId = row.matiere_id && row.matiere_id !== 'Mes fichiers' && row.matiere_id !== 'root' ? row.matiere_id : '';
+          const matchedMat = matieresList.find((m: any) => m.id === mId || m.name === mId);
+          const matName = matchedMat ? matchedMat.name : (mId || '');
+          const matUniqueId = matchedMat ? matchedMat.id : (mId || undefined);
 
-            const thumbUrl = row.thumbnail_url || row.preview_url || localBlobUrl || '';
-            const previewUrl = row.preview_url || row.thumbnail_url || localBlobUrl || row.file_url || '';
+          const thumbUrl = row.thumbnail_url || row.preview_url || '';
+          const previewUrl = row.preview_url || row.thumbnail_url || row.file_url || '';
 
-            return {
-              id: row.id,
-              name: row.name,
-              size: row.size || 0,
-              type: row.type || 'Fichier',
-              extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-              url: localBlobUrl || row.file_url || '',
-              thumbnailUrl: thumbUrl,
-              previewUrl: previewUrl,
-              r2Key: row.r2_key,
-              isFavorite: !!row.is_favorite,
-              matiere: matName,
-              matiereId: matUniqueId,
-              folderName: matName || 'Mes fichiers',
-              importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-              createdAt: row.created_at,
-              timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-              isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
-            };
-          })
-        );
+          return {
+            id: row.id,
+            name: row.name,
+            size: row.size || 0,
+            type: row.type || 'Fichier',
+            extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+            url: row.file_url || '',
+            thumbnailUrl: thumbUrl,
+            previewUrl: previewUrl,
+            r2Key: row.r2_key,
+            isFavorite: !!row.is_favorite,
+            matiere: matName,
+            matiereId: matUniqueId,
+            folderName: matName || 'Mes fichiers',
+            importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+            createdAt: row.created_at,
+            timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+            isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
+          };
+        });
         return filesWithUrls;
       }
       return [];
@@ -270,27 +267,22 @@ export function useMatiereFilesList(matiereName: string, userId?: string) {
 
       const res = await StudyCloudAPI.getFiles(currentUid, queryId);
       if (res && res.success && Array.isArray(res.data)) {
-        const filesWithUrls: ImportedItem[] = await Promise.all(
-          res.data.map(async (row: any) => {
-            const localBlobUrl = await getFileBlobUrl(row.id);
-            return {
-              id: row.id,
-              name: row.name,
-              size: row.size || 0,
-              type: row.type || 'Fichier',
-              extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-              url: localBlobUrl || row.file_url || '',
-              r2Key: row.r2_key,
-              isFavorite: !!row.is_favorite,
-              matiere: matchedMat?.name || matiereName,
-              matiereId: matchedMat?.id || undefined,
-              importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-              createdAt: row.created_at,
-              timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-              isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
-            };
-          })
-        );
+        const filesWithUrls: ImportedItem[] = res.data.map((row: any) => ({
+          id: row.id,
+          name: row.name,
+          size: row.size || 0,
+          type: row.type || 'Fichier',
+          extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+          url: row.file_url || '',
+          r2Key: row.r2_key,
+          isFavorite: !!row.is_favorite,
+          matiere: matchedMat?.name || matiereName,
+          matiereId: matchedMat?.id || undefined,
+          importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+          createdAt: row.created_at,
+          timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+          isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
+        }));
         return filesWithUrls;
       }
       return [];

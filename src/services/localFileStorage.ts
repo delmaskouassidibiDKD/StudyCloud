@@ -114,39 +114,19 @@ export async function storeFileBlob(_id: string, _blob: Blob | File): Promise<vo
 }
 
 /**
- * Récupère le Blob d'un fichier par son ID (téléchargement à la demande depuis le serveur si nécessaire)
+ * Récupère le Blob d'un fichier par son ID - DÉSACTIVÉ pour les listes et cartes
+ * afin d'éviter le téléchargement binaire en arrière-plan et les plantages mémoire ("Aïe aïe aïe").
  */
-export async function getFileBlob(id: string): Promise<Blob | null> {
-  if (!id) return null;
-  try {
-    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-    const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('sc_auth_token') || localStorage.getItem('studycloud_token')) : null;
-    const headers: Record<string, string> = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    const res = await fetch(`${baseUrl}/api/cloud/stream/${encodeURIComponent(id)}`, { headers });
-    if (res.ok) {
-      const b = await res.blob();
-      return await ensureDecompressedBlob(b);
-    }
-  } catch (err) {
-    console.warn('[LocalFileStorage] Erreur lecture stream distant:', err);
-  }
+export async function getFileBlob(_id: string): Promise<Blob | null> {
   return null;
 }
 
 /**
- * Récupère une URL objet (`blob:...`) utilisable par iframe / img / video / audio
+ * Récupère une URL objet (`blob:...`) - DÉSACTIVÉ pour éviter la création de Blobs en RAM.
+ * Tous les composants utilisent désormais directement les URLs de streaming du serveur Cloudflare R2.
  */
-export async function getFileBlobUrl(id: string, forceMimeType?: string): Promise<string | null> {
-  const blob = await getFileBlob(id);
-  if (!blob) return null;
-  try {
-    const finalBlob = forceMimeType ? await ensureDecompressedBlob(blob, forceMimeType) : blob;
-    return URL.createObjectURL(finalBlob);
-  } catch (e) {
-    return null;
-  }
+export async function getFileBlobUrl(_id: string, _forceMimeType?: string): Promise<string | null> {
+  return null;
 }
 
 /**
@@ -323,12 +303,21 @@ export async function clearAllLocalCaches(): Promise<void> {
     if (typeof window !== 'undefined' && window.indexedDB) {
       try { window.indexedDB.deleteDatabase('StudyCloudFilesDB'); } catch {}
       try { window.indexedDB.deleteDatabase('StudyCloudCacheDB'); } catch {}
+      try { window.indexedDB.deleteDatabase('StudyCloudDataStoreDB'); } catch {}
     }
     if (typeof localStorage !== 'undefined') {
       const keysToRemove: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
-        if (k && (k.startsWith('sc_fallback_') || k.startsWith('studycloud_sync_') || k.startsWith('cached_media_') || k.startsWith('thumb_'))) {
+        if (
+          k && (
+            k.startsWith('sc_fallback_') ||
+            k.startsWith('studycloud_sync_') ||
+            k.startsWith('cached_media_') ||
+            k.startsWith('thumb_') ||
+            k === 'studycloud_deleted_file_ids'
+          )
+        ) {
           keysToRemove.push(k);
         }
       }

@@ -260,56 +260,8 @@ export function isRecentDismissed(id: string): boolean {
   return dismissedRecentSet.has(id) || getDeletedRecentIds().has(id);
 }
 
-// Hydratation async depuis IndexedDB (Tier 2 avec isolation utilisateur)
+// Hydratation async depuis IndexedDB — DÉSACTIVÉE pour que tout vienne en direct du serveur Cloudflare D1
 async function hydrateFromIndexedDB(): Promise<boolean> {
-  try {
-    const key = getCacheKey();
-    getDeletedRecentIds();
-    // Strictement le cache de l'utilisateur actif - JAMAIS de fallback sur un autre compte
-    const parsed = await idbGet(key);
-    if (parsed && typeof parsed === 'object') {
-      if (Array.isArray(parsed.dismissedRecentIds)) {
-        parsed.dismissedRecentIds.forEach((id: string) => dismissedRecentSet.add(id));
-      }
-
-      currentState = {
-        ...currentState,
-        overview: parsed.overview || null,
-        classeurFolders: Array.isArray(parsed.classeurFolders) ? parsed.classeurFolders : [],
-        folderFilesMap: parsed.folderFilesMap || {},
-        documents: (Array.isArray(parsed.documents) ? parsed.documents : []).filter((d: any) => !isStudyItem(d) && !isFolderBoundItem(d)),
-        images: (Array.isArray(parsed.images) ? parsed.images : []).filter((i: any) => !isStudyItem(i) && !isFolderBoundItem(i)),
-        videos: (Array.isArray(parsed.videos) ? parsed.videos : []).filter((v: any) => !isStudyItem(v) && !isFolderBoundItem(v)),
-        audio: (Array.isArray(parsed.audio) ? parsed.audio : []).filter((a: any) => !isStudyItem(a) && !isFolderBoundItem(a)),
-        downloads: Array.isArray(parsed.downloads) ? parsed.downloads : [],
-        secure: Array.isArray(parsed.secure) ? parsed.secure : [],
-        trash: Array.isArray(parsed.trash) ? parsed.trash : [],
-        favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
-        favIdSet: new Set(Array.isArray(parsed.favIds) ? parsed.favIds : []),
-        pinIdSet: new Set(Array.isArray(parsed.pinIds) ? parsed.pinIds : []),
-        recentFiles: (Array.isArray(parsed.recentFiles) ? parsed.recentFiles : []).filter((f: any) => f && f.id && !dismissedRecentSet.has(f.id) && isRecentEligible(f)),
-        isLoaded: true,
-        lastSyncTime: Number(parsed.lastSyncTime) || 0,
-      };
-
-      try {
-        const rawLocal = localStorage.getItem('studycloud_pinned_ids');
-        if (rawLocal) {
-          const arr = JSON.parse(rawLocal);
-          if (Array.isArray(arr)) {
-            arr.forEach((id: string) => currentState.pinIdSet.add(id));
-          }
-        }
-        localStorage.setItem('studycloud_pinned_ids', JSON.stringify(Array.from(currentState.pinIdSet)));
-      } catch { }
-
-      try { localStorage.setItem(LS_FLAG_KEY, '1'); } catch { }
-      hydrationResolve?.();
-      return true;
-    }
-  } catch (e) {
-    console.warn('[CloudDataStore] Hydration error:', e);
-  }
   hydrationResolve?.();
   return false;
 }
@@ -329,21 +281,7 @@ export function setTombstoneChecker(fn: (id: string) => boolean) {
 const deletionListeners = new Set<(id: string, category?: string) => void>();
 
 function getLocallyDeletedFileIds(): Set<string> {
-  const result = new Set<string>();
-  try {
-    const raw = localStorage.getItem('studycloud_deleted_file_ids');
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        arr.forEach(item => {
-          if (typeof item === 'string' && item.trim().length > 0) {
-            result.add(item);
-          }
-        });
-      }
-    }
-  } catch { }
-  return result;
+  return new Set<string>();
 }
 
 let tombstoneRemover: ((id: string) => void) | null = null;
@@ -385,69 +323,20 @@ export function notifyFavoriteChange(itemId: string, isFav: boolean, category?: 
   }
 }
 
-export function markItemDeleted(id: string) {
-  if (!id) return;
-  try {
-    const raw = localStorage.getItem('studycloud_deleted_file_ids');
-    const arr = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(arr) && !arr.includes(id)) {
-      arr.push(id);
-      localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(arr.slice(-500)));
-    }
-  } catch { }
+export function markItemDeleted(_id: string) {
+  // No-op : pas d'accumulation locale
 }
 
-export function unmarkItemDeleted(id: string) {
-  if (!id) return;
-  try {
-    const raw = localStorage.getItem('studycloud_deleted_file_ids');
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        const next = arr.filter((x: any) => x !== id);
-        localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(next));
-      }
-    }
-  } catch { }
-  try {
-    const rawRecent = localStorage.getItem('studycloud_deleted_recent_ids');
-    if (rawRecent) {
-      const arrRecent = JSON.parse(rawRecent);
-      if (Array.isArray(arrRecent)) {
-        const nextRecent = arrRecent.filter((x: any) => x !== id);
-        localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(nextRecent));
-      }
-    }
-  } catch { }
-  if (tombstoneRemover) {
-    try { tombstoneRemover(id); } catch { }
-  }
+export function unmarkItemDeleted(_id: string) {
+  // No-op : pas d'accumulation locale
 }
 
-export function markTrashItemPermanentlyDeleted(id: string) {
-  if (!id) return;
-  try {
-    const raw = localStorage.getItem('studycloud_permanently_deleted_trash_ids');
-    const arr = raw ? JSON.parse(raw) : [];
-    if (Array.isArray(arr) && !arr.includes(id)) {
-      arr.push(id);
-      localStorage.setItem('studycloud_permanently_deleted_trash_ids', JSON.stringify(arr.slice(-500)));
-    }
-  } catch { }
+export function markTrashItemPermanentlyDeleted(_id: string) {
+  // No-op : pas d'accumulation locale
 }
 
-export function unmarkTrashItemPermanentlyDeleted(id: string) {
-  if (!id) return;
-  try {
-    const raw = localStorage.getItem('studycloud_permanently_deleted_trash_ids');
-    if (raw) {
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        const next = arr.filter((x: any) => x !== id);
-        localStorage.setItem('studycloud_permanently_deleted_trash_ids', JSON.stringify(next));
-      }
-    }
-  } catch { }
+export function unmarkTrashItemPermanentlyDeleted(_id: string) {
+  // No-op : pas d'accumulation locale
 }
 
 export function isTrashItemPermanentlyDeleted(id: string): boolean {

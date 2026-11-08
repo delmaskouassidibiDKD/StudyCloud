@@ -1760,18 +1760,6 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                           type="button"
                           onClick={() => {
                             setIsHeaderMenuOpen(false);
-                            fileInputRef.current?.click();
-                          }}
-                          className="w-full px-3 py-2 flex items-center gap-2.5 text-blue-400 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
-                        >
-                          <Plus className="w-4 h-4 text-blue-400" />
-                          <span>Ajouter des fichiers confidentiels</span>
-                        </button>
-
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsHeaderMenuOpen(false);
                             setShowChangePinModal(true);
                           }}
                           className="w-full px-3 py-2 flex items-center gap-2.5 text-slate-300 hover:bg-white/10 transition-colors cursor-pointer text-left"
@@ -2025,18 +2013,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 <p className="text-xs sm:text-sm text-stone-500 mb-6 leading-relaxed">
                   {searchQuery
                     ? `Aucun fichier ne correspond à votre recherche "${searchQuery}".`
-                    : 'Importez ou déplacez vos documents confidentiels, relevés ou notes secrètes ici.'}
+                    : 'Déplacez vos documents confidentiels, photos, vidéos ou notes secrètes ici depuis vos menus.'}
                 </p>
-                {!searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="px-5 py-2.5 rounded-full bg-blue-500 hover:bg-blue-400 text-black font-black text-sm shadow-lg shadow-blue-500/20 transition-all cursor-pointer active:scale-95 flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4 stroke-[3]" />
-                    <span>Ajouter un fichier confidentiel</span>
-                  </button>
-                )}
               </div>
             ) : (
               <>
