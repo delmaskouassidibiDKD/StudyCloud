@@ -14201,17 +14201,18 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
     }
 
     const giftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
-    const giftInit = Number(userCredits.gift_initial || welcomeCredits);
+    const giftInit = Math.max(Number(userCredits.gift_initial || 0), giftRem, welcomeCredits);
     const giftType = userCredits.gift_type || 'welcome';
     const giftTitle = giftType === 'daily' ? 'Cadeau du jour' : 'Cadeau de base';
     const paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
     const totalPurchased = Number(userCredits.total_credits_purchased || 0);
+    const referenceCredits = Math.max(giftInit + totalPurchased, Number(userCredits.reference_credits || 0), Number(userCredits.credits_balance || 0));
 
     return new Response(JSON.stringify({
       success: true,
       credits: {
         balance: Number(userCredits.credits_balance || 0),
-        reference_credits: Number(userCredits.reference_credits || userCredits.credits_balance || 50),
+        reference_credits: referenceCredits,
         gift_remaining: giftRem,
         gift_initial: giftInit,
         gift_type: giftType,

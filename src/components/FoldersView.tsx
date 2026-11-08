@@ -1083,7 +1083,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         return null;
     }
 
-    const isMobileOnlyApp = id === 'storage' || id === 'ai-subscriptions';
+    const isMobileOnlyApp = id === 'ai-subscriptions';
 
     return (
       <div
@@ -1096,13 +1096,13 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           }
           defaultAction();
         }}
-        className={`${isMobileOnlyApp ? 'flex md:hidden' : 'flex'} group flex-col items-center cursor-pointer w-full max-w-[76px] sm:max-w-[84px] md:w-24 lg:w-26 md:shrink-0 transition-transform duration-200 select-none`}
+        className={`${isMobileOnlyApp ? 'flex md:hidden' : 'flex'} group flex-col items-center cursor-pointer w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full transition-transform duration-200 select-none`}
       >
-        <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-24 md:h-24 lg:w-26 lg:h-26 flex items-center justify-center transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_10px_24px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_14px_28px_rgba(0,0,0,0.28)] group-hover:scale-110 active:scale-95">
+        <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 lg:w-20 lg:h-20 flex items-center justify-center transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_10px_24px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_14px_28px_rgba(0,0,0,0.28)] group-hover:scale-110 active:scale-95">
           {iconContent}
         </div>
-        <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center px-0.5 leading-tight md:leading-snug tracking-tight w-full line-clamp-2 transition-colors ${dashboardWallpaper && viewMode === 'home'
-            ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] bg-black/45 px-1.5 md:px-2 py-0.5 rounded-full border border-white/10'
+        <span className={`text-[8.5px] sm:text-[9.5px] md:text-[10.5px] font-bold mt-1 md:mt-1.5 text-center px-0.5 leading-tight tracking-tight w-full line-clamp-2 transition-colors ${dashboardWallpaper && viewMode === 'home'
+            ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] bg-black/45 px-1 md:px-1.5 py-0.5 rounded-full border border-white/10'
             : 'text-stone-900 dark:text-stone-100'
           }`}>{label}</span>
       </div>
@@ -2041,9 +2041,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 transition: isDragging ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
               }}
             >
-              {/* PAGE 0 : Page 1 à gauche avec applications 3D (4 par ligne sur mobile, identique à Page 2) */}
+              {/* PAGE 0 : Page 1 à gauche avec applications 3D (4 par ligne sur mobile, 10 par ligne sur ordinateur) */}
               <div className="w-1/2 shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start">
-                <div className="grid grid-cols-4 md:flex md:flex-wrap md:items-start md:justify-start items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-4 lg:gap-6 gap-x-1.5 sm:gap-x-3 md:gap-4 lg:gap-6">
+                <div className="grid grid-cols-4 md:grid md:grid-cols-10 md:w-full items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-x-2.5 lg:gap-x-4 md:gap-y-4 gap-x-1.5 sm:gap-x-3">
                   {/* Application Fichiers 3D Espace Cloud */}
                   <div
                     onClick={(e) => {
@@ -2055,10 +2055,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       setActivePageIndex(0);
                       setViewMode('page1-files-menu');
                     }}
-                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:w-24 lg:w-26 md:shrink-0"
+                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full"
                   >
                     {/* Dossier 3D Espace Cloud avec Nuage Orange au milieu - Même taille que Page 2 */}
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-24 md:h-24 lg:w-26 lg:h-26 transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_10px_24px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_14px_28px_rgba(249,115,22,0.35)] group-hover:scale-110 active:scale-95 flex items-center justify-center">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 lg:w-20 lg:h-20 transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_10px_24px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_14px_28px_rgba(249,115,22,0.35)] group-hover:scale-110 active:scale-95 flex items-center justify-center">
                       <svg className="w-full h-full" viewBox="0 0 100 90" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <defs>
                           {/* Dégradé Onglet arrière */}
@@ -2187,8 +2187,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       </svg>
                     </div>
 
-                    <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper
-                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1.5 md:px-2.5 py-0.5 rounded-full border border-white/10'
+                    <span className={`text-[8.5px] sm:text-[9.5px] md:text-[10.5px] font-bold mt-1 md:mt-1.5 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper
+                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1 md:px-1.5 py-0.5 rounded-full border border-white/10'
                         : 'text-stone-900 dark:text-stone-100'
                       }`}>
                       Espace Cloud
@@ -2206,21 +2206,21 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       setActivePageIndex(0);
                       setViewMode('red-robot-menu');
                     }}
-                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:w-24 lg:w-26 md:shrink-0"
+                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full"
                     title="Ouvrir l'application"
                   >
                     {/* Conteneur avec taille équivalente à Page 2 */}
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-24 md:h-24 lg:w-26 lg:h-26 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_16px_rgba(220,38,38,0.3)] dark:drop-shadow-[0_10px_24px_rgba(239,68,68,0.45)] group-hover:drop-shadow-[0_14px_28px_rgba(239,68,68,0.6)] group-hover:scale-110 active:scale-95 transition-all duration-300">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 lg:w-20 lg:h-20 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_16px_rgba(220,38,38,0.3)] dark:drop-shadow-[0_10px_24px_rgba(239,68,68,0.45)] group-hover:drop-shadow-[0_14px_28px_rgba(239,68,68,0.6)] group-hover:scale-110 active:scale-95 transition-all duration-300">
                       <div className="flex md:hidden items-center justify-center">
                         <DelmasRobot size={54} variant="red" floating />
                       </div>
                       <div className="hidden md:flex items-center justify-center">
-                        <DelmasRobot size={68} variant="red" floating />
+                        <DelmasRobot size={60} variant="red" floating />
                       </div>
                     </div>
 
-                    <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper
-                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1.5 md:px-2.5 py-0.5 rounded-full border border-white/10'
+                    <span className={`text-[8.5px] sm:text-[9.5px] md:text-[10.5px] font-bold mt-1 md:mt-1.5 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper
+                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1 md:px-1.5 py-0.5 rounded-full border border-white/10'
                         : 'text-stone-900 dark:text-stone-100'
                       }`}>
                       Robot Rouge
@@ -2237,16 +2237,16 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       }
                       onOpenStudySpace?.();
                     }}
-                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:w-24 lg:w-26 md:shrink-0"
+                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full"
                     title="Ouvrir le Menu de création"
                   >
                     {/* Conteneur avec taille équivalente à Page 2 */}
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-24 md:h-24 lg:w-26 lg:h-26 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_16px_rgba(2,132,199,0.3)] dark:drop-shadow-[0_10px_24px_rgba(56,189,248,0.45)] group-hover:drop-shadow-[0_14px_28px_rgba(56,189,248,0.6)] group-hover:scale-110 active:scale-95 transition-all duration-300">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 lg:w-20 lg:h-20 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_16px_rgba(2,132,199,0.3)] dark:drop-shadow-[0_10px_24px_rgba(56,189,248,0.45)] group-hover:drop-shadow-[0_14px_28px_rgba(56,189,248,0.6)] group-hover:scale-110 active:scale-95 transition-all duration-300">
                       <CreationMenuBookIcon className="w-full h-full" />
                     </div>
 
-                    <span className={`text-[10px] sm:text-xs md:text-sm font-black mt-1.5 md:mt-2 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper
-                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1.5 md:px-2.5 py-0.5 rounded-full border border-white/10'
+                    <span className={`text-[8.5px] sm:text-[9.5px] md:text-[10.5px] font-bold mt-1 md:mt-1.5 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper
+                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1 md:px-1.5 py-0.5 rounded-full border border-white/10'
                         : 'text-stone-900 dark:text-stone-100'
                       }`}>
                       Menu de création
@@ -2257,8 +2257,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
               {/* PAGE 1 : Écran d'accueil principal à droite */}
               <div className="w-1/2 shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start">
-                {/* Sur mobile : 4 blocs par ligne (inclut Mon stockage et Abonnements IA) | Sur desktop : 9 colonnes centrées avec accès stockage et IA sur la barre latérale gauche */}
-                <div className="grid grid-cols-4 md:grid-cols-9 gap-y-3.5 sm:gap-y-5 md:gap-4 lg:gap-6 gap-x-1.5 sm:gap-x-3 md:gap-4 lg:gap-6 justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">
+                {/* Sur mobile : 4 blocs par ligne (inclut Abonnements IA) | Sur desktop : 10 colonnes régulières parfaitement alignées */}
+                <div className="grid grid-cols-4 md:grid md:grid-cols-10 md:w-full items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-x-2.5 lg:gap-x-4 md:gap-y-4 gap-x-1.5 sm:gap-x-3">
                   {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'ai-subscriptions'].map((id, index) => renderBlock(id, index))}
                 </div>
               </div>

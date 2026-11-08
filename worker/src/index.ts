@@ -17509,6 +17509,279 @@ a:hover{transform:translateY(-2px)}
         return errorResponse('Image de paiement introuvable', 404, origin);
       }
 
+      // ==============================================================================
+      // ROUTE GET : /api/ai/billing/config
+      // ==============================================================================
+      if (path === '/api/ai/billing/config' && method === 'GET') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        let cfg: any = null;
+        try {
+          cfg = await targetDb.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first();
+        } catch (_) {}
+
+        if (!cfg) {
+          cfg = {
+            tokens_per_credit: 1000,
+            welcome_credits: 50.0,
+            daily_free_credits: 0.0,
+            is_daily_renewal_active: 0
+          };
+        }
+
+        return jsonResponse({ success: true, config: cfg }, 200, origin);
+      }
+
+      // ==============================================================================
+      // ROUTE GET : /api/ai/user/credits
+      // ==============================================================================
+      if (path === '/api/ai/user/credits' && method === 'GET') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        const targetUserId = (url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
+        let cfg: any = null;
+        try {
+          cfg = await targetDb.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first();
+        } catch (_) {}
+        const welcomeCredits = cfg?.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
+        const dailyFreeCredits = cfg?.daily_free_credits !== undefined ? Number(cfg.daily_free_credits) : 0.0;
+        const isDailyActive = Number(cfg?.is_daily_renewal_active) === 1 && dailyFreeCredits > 0;
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        let userCredits: any = null;
+        try {
+          userCredits = await targetDb.prepare("SELECT * FROM user_ai_credits WHERE user_id = ?").bind(targetUserId).first();
+        } catch (_) {}
+
+        if (!userCredits) {
+          try {
+            await targetDb.prepare(`
+              INSERT INTO user_ai_credits (
+                user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed,
+                plan_tier, remaining_credits, total_credits, used_credits,
+                gift_remaining, gift_initial, gift_type, purchased_remaining, last_daily_grant_date
+              )
+              VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0, ?, ?, 'welcome', 0.0, ?)
+            `).bind(targetUserId, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, todayStr).run();
+          } catch (_) {}
+
+          userCredits = {
+            user_id: targetUserId,
+            credits_balance: welcomeCredits,
+            remaining_credits: welcomeCredits,
+            total_credits: welcomeCredits,
+            used_credits: 0,
+            total_credits_purchased: 0,
+            total_tokens_consumed: 0,
+            total_credits_consumed: 0,
+            gift_remaining: welcomeCredits,
+            gift_initial: welcomeCredits,
+            gift_type: 'welcome',
+            purchased_remaining: 0,
+            last_daily_grant_date: todayStr,
+            plan_tier: 'free'
+          };
+        }
+
+        const giftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
+        const giftInit = Math.max(Number(userCredits.gift_initial || 0), giftRem, welcomeCredits);
+        const giftType = userCredits.gift_type || 'welcome';
+        const giftTitle = giftType === 'daily' ? 'Cadeau du jour' : 'Cadeau de base';
+        const paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
+        const totalPurchased = Number(userCredits.total_credits_purchased || 0);
+        const referenceCredits = Math.max(giftInit + totalPurchased, Number(userCredits.reference_credits || 0), Number(userCredits.credits_balance || 0));
+
+        return jsonResponse({
+          success: true,
+          credits: {
+            balance: Number(userCredits.credits_balance || 0),
+            reference_credits: referenceCredits,
+            gift_remaining: giftRem,
+            gift_initial: giftInit,
+            gift_type: giftType,
+            gift_title: giftTitle,
+            purchased_remaining: paidRem,
+            totalPurchased: totalPurchased,
+            tokensUsed: Number(userCredits.total_tokens_consumed || 0),
+            totalConsumed: Number(userCredits.total_credits_consumed || 0),
+            plan: totalPurchased > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit',
+            daily_free_credits: dailyFreeCredits,
+            tokens_per_credit: Number(cfg?.tokens_per_credit || 1000),
+            welcome_credits: welcomeCredits,
+            last_usage_at: userCredits.last_usage_at
+          }
+        }, 200, origin);
+      }
+
+      // ==============================================================================
+      // ROUTE POST : /api/ai/user/deduct-credits
+      // ==============================================================================
+      if (path === '/api/ai/user/deduct-credits' && method === 'POST') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        const body: any = await request.json().catch(() => ({}));
+        const targetUserId = (body.userId || body.user_id || request.headers.get('x-user-id') || 'default-user').trim();
+        const tokens = Math.max(1, parseInt(body.tokens || 0, 10));
+        const model = body.model || 'Delmas IA';
+        const actionType = body.actionType || body.action_type || 'chat_deduction';
+
+        let cfg: any = null;
+        try {
+          cfg = await targetDb.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first();
+        } catch (_) {}
+        const tokensPerCredit = Math.max(1, Number(cfg?.tokens_per_credit || 1000));
+        const welcomeCredits = cfg?.welcome_credits !== undefined ? Number(cfg.welcome_credits) : 50.0;
+        const dailyFreeCredits = cfg?.daily_free_credits !== undefined ? Number(cfg.daily_free_credits) : 0.0;
+        const isDailyActive = Number(cfg?.is_daily_renewal_active) === 1 && dailyFreeCredits > 0;
+        const todayStr = new Date().toISOString().slice(0, 10);
+
+        const rawCredits = body.explicitCredits || body.explicit_credits || (tokens / tokensPerCredit);
+        const creditsDeducted = Math.max(0.01, +(rawCredits).toFixed(2));
+
+        let userCredits: any = null;
+        try {
+          userCredits = await targetDb.prepare("SELECT * FROM user_ai_credits WHERE user_id = ?").bind(targetUserId).first();
+        } catch (_) {}
+
+        if (!userCredits) {
+          try {
+            await targetDb.prepare(`
+              INSERT INTO user_ai_credits (
+                user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed,
+                plan_tier, remaining_credits, total_credits, used_credits,
+                gift_remaining, gift_initial, gift_type, purchased_remaining, last_daily_grant_date
+              )
+              VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0, ?, ?, 'welcome', 0.0, ?)
+            `).bind(targetUserId, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, todayStr).run();
+          } catch (_) {}
+          userCredits = {
+            user_id: targetUserId,
+            credits_balance: welcomeCredits,
+            gift_remaining: welcomeCredits,
+            gift_initial: welcomeCredits,
+            gift_type: 'welcome',
+            purchased_remaining: 0,
+            total_tokens_consumed: 0,
+            total_credits_consumed: 0,
+            total_credits_purchased: 0,
+            last_daily_grant_date: todayStr
+          };
+        } else {
+          if (userCredits.gift_remaining === null || userCredits.gift_remaining === undefined) {
+            const currentBal = Number(userCredits.credits_balance !== undefined ? userCredits.credits_balance : welcomeCredits);
+            const totalPurchased = Number(userCredits.total_credits_purchased || 0);
+            if (totalPurchased === 0) {
+              userCredits.purchased_remaining = 0;
+              userCredits.gift_remaining = Math.max(0, currentBal);
+            } else {
+              if (currentBal >= totalPurchased) {
+                userCredits.purchased_remaining = totalPurchased;
+                userCredits.gift_remaining = Math.max(0, +(currentBal - totalPurchased).toFixed(2));
+              } else {
+                userCredits.purchased_remaining = Math.max(0, currentBal);
+                userCredits.gift_remaining = 0;
+              }
+            }
+            userCredits.gift_initial = welcomeCredits;
+            userCredits.gift_type = 'welcome';
+          }
+
+          if (isDailyActive && userCredits.last_daily_grant_date !== todayStr) {
+            const currentGift = Number(userCredits.gift_remaining || 0);
+            if (currentGift <= 0 || userCredits.gift_type === 'daily') {
+              userCredits.gift_remaining = dailyFreeCredits;
+              userCredits.gift_initial = dailyFreeCredits;
+              userCredits.gift_type = 'daily';
+              userCredits.last_daily_grant_date = todayStr;
+            }
+          }
+        }
+
+        let giftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
+        let paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
+        let deductedFromGift = 0;
+        let deductedFromPaid = 0;
+
+        if (giftRem > 0) {
+          if (giftRem >= creditsDeducted) {
+            deductedFromGift = creditsDeducted;
+            giftRem = +(giftRem - creditsDeducted).toFixed(2);
+          } else {
+            deductedFromGift = giftRem;
+            const leftover = +(creditsDeducted - giftRem).toFixed(2);
+            giftRem = 0;
+            deductedFromPaid = Math.min(paidRem, leftover);
+            paidRem = Math.max(0, +(paidRem - leftover).toFixed(2));
+          }
+        } else {
+          deductedFromPaid = Math.min(paidRem, creditsDeducted);
+          paidRem = Math.max(0, +(paidRem - creditsDeducted).toFixed(2));
+        }
+
+        const newBalance = Math.max(0, +(giftRem + paidRem).toFixed(2));
+        const newTotalTokens = (userCredits.total_tokens_consumed || 0) + tokens;
+        const newTotalCreditsConsumed = +(Number(userCredits.total_credits_consumed || 0) + creditsDeducted).toFixed(2);
+        const giftInit = Math.max(Number(userCredits.gift_initial || 0), giftRem, welcomeCredits);
+        const giftType = userCredits.gift_type || 'welcome';
+        const giftTitle = giftType === 'daily' ? 'Cadeau du jour' : 'Cadeau de base';
+
+        try {
+          await targetDb.prepare(`
+            UPDATE user_ai_credits
+            SET credits_balance = ?,
+                remaining_credits = ?,
+                gift_remaining = ?,
+                gift_initial = ?,
+                gift_type = ?,
+                purchased_remaining = ?,
+                total_tokens_consumed = ?,
+                total_credits_consumed = ?,
+                last_daily_grant_date = ?,
+                last_usage_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+          `).bind(
+            newBalance,
+            newBalance,
+            giftRem,
+            giftInit,
+            giftType,
+            paidRem,
+            newTotalTokens,
+            newTotalCreditsConsumed,
+            userCredits.last_daily_grant_date || todayStr,
+            targetUserId
+          ).run();
+
+          const logId = 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+          await targetDb.prepare(`
+            INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
+            VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          `).bind(logId, targetUserId, actionType, tokens, creditsDeducted, newBalance, model).run();
+        } catch (_) {}
+
+        return jsonResponse({
+          success: true,
+          credits_deducted: creditsDeducted,
+          deducted_from_gift: deductedFromGift,
+          deducted_from_paid: deductedFromPaid,
+          new_balance: newBalance,
+          remaining_balance: newBalance,
+          gift_remaining: giftRem,
+          gift_initial: giftInit,
+          gift_type: giftType,
+          gift_title: giftTitle,
+          purchased_remaining: paidRem,
+          total_purchased: Number(userCredits.total_credits_purchased || 0),
+          tokens_consumed: tokens,
+          total_tokens_consumed: newTotalTokens,
+          total_credits_consumed: newTotalCreditsConsumed
+        }, 200, origin);
+      }
+
       // Route 404 par défaut
       return errorResponse(`Route non trouvée : ${method} ${path}`, 404, origin);
 

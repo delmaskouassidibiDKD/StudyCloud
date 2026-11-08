@@ -177,14 +177,14 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
         const serverBalance = Number(cred.balance);
         const serverRef = cred.reference_credits !== undefined ? Number(cred.reference_credits) : undefined;
 
-        // Détection de recharge automatique : le nouveau solde total devient la référence de départ
+        // Détection de recharge automatique ou de référence de départ issue de D1
         let activeReference = referenceCredits;
-        if (serverBalance > prevBalanceRef.current) {
+        if (serverRef !== undefined && serverRef > 0) {
+          activeReference = Math.max(serverRef, serverBalance);
+        } else if (serverBalance > prevBalanceRef.current) {
           activeReference = serverBalance;
-        } else if (serverRef !== undefined && serverRef >= serverBalance && serverRef < 300) {
-          activeReference = serverRef;
-        } else if (referenceCredits < serverBalance || referenceCredits >= 300) {
-          activeReference = serverBalance;
+        } else if (activeReference <= 0) {
+          activeReference = Math.max(serverBalance, Number(cred.welcome_credits || 50));
         }
 
         setReferenceCredits(activeReference);
@@ -412,7 +412,9 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   // Type et titre du cadeau (Bienvenue ou Cadeau du jour qui le remplace)
   const giftType = userCredits.gift_type || 'welcome';
   const giftTitle = userCredits.gift_title || (giftType === 'daily' ? 'Cadeau du jour' : 'Cadeau de base');
-  const giftInitial = userCredits.gift_initial !== undefined ? Number(userCredits.gift_initial) : welcomeCredits;
+  const rawGiftInitial = userCredits.gift_initial !== undefined ? Number(userCredits.gift_initial) : welcomeCredits;
+  const giftRemainingD1 = userCredits.gift_remaining !== undefined ? Number(userCredits.gift_remaining) : undefined;
+  const giftInitial = Math.max(rawGiftInitial, giftRemainingD1 || 0);
 
   // Solde restant réel (issu directement de Cloudflare D1)
   const serverBalance = Number(userCredits.balance || 0);
@@ -421,8 +423,8 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   // 1. Le cadeau est consommé en premier jusqu'à épuisement complet (décroît vers 0).
   // 2. Les crédits payés restent 100% préservés tant que le cadeau > 0.
   // 3. Quand le cadeau est à 0, les crédits payés commencent à diminuer.
-  const giftRemaining = userCredits.gift_remaining !== undefined
-    ? Number(userCredits.gift_remaining)
+  const giftRemaining = giftRemainingD1 !== undefined
+    ? giftRemainingD1
     : Math.max(0, +(giftInitial - consumedCredits).toFixed(2));
 
   const paidRemaining = userCredits.purchased_remaining !== undefined
@@ -434,12 +436,15 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     ? +(giftRemaining + paidRemaining).toFixed(2)
     : (serverBalance > 0 ? serverBalance : Math.max(0, +(welcomeCredits + purchasedCredits - consumedCredits).toFixed(2)));
 
-  // Référence de départ dynamique : lors d'une recharge, le solde total obtenu devient le 100% de référence
-  const totalMaxCredits = Math.max(
-    referenceCredits > 0 ? referenceCredits : creditsRemaining,
+  // Référence de départ dynamique : La dotation de départ issue de D1 = cadeau initial + crédits achetés
+  const startingReference = Math.max(
+    giftInitial + purchasedCredits,
+    Number(userCredits.reference_credits || 0),
+    Number(referenceCredits || 0),
     creditsRemaining,
     0.01
   );
+  const totalMaxCredits = +startingReference.toFixed(2);
 
   // Pourcentage de la jauge (démarre plein au départ, et se vide progressivement vers la gauche)
   const creditsPercentage = totalMaxCredits > 0

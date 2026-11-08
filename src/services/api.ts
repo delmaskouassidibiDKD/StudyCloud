@@ -673,19 +673,19 @@ export async function sendChatMessageToAi(params: {
     : (typeof data.credits === 'number' && data.credits < (data.tokens || Infinity) && data.credits < 30 ? data.credits : undefined);
 
   // Émission d'événement en temps réel directement avec les données de la base de données D1 (PAS DE LOCAL)
-  if (typeof data.remaining_credits === 'number' || typeof respCreditsDeducted === 'number') {
+  if (typeof data.remaining_credits === 'number') {
     try {
       window.dispatchEvent(new CustomEvent('studycloud_user_credits_updated', {
         detail: {
           userId: currentUserId,
           credits_deducted: respCreditsDeducted || 0,
-          remaining_balance: typeof data.remaining_credits === 'number' ? Number(data.remaining_credits) : undefined,
+          remaining_balance: Number(data.remaining_credits),
           tokens_consumed: data.tokens || 0
         }
       }));
     } catch {}
-  } else if (!isAsyncBackground && currentUserId && currentUserId !== 'default-user') {
-    // Si la route appelée n'a pas inclus de déduction serveur, on déclenche la déduction D1
+  } else if (!isAsyncBackground && currentUserId) {
+    // Si la route appelée n'a pas inclus de déduction serveur D1, on déclenche la déduction réelle en base D1 !
     const promptLen = (params.prompt || params.message || '').length;
     const estimatedTokens = typeof data.tokens === 'number' ? data.tokens : Math.max(35, Math.ceil((promptLen + (finalResponse || '').length) / 3.8));
     deductUserAiCredits({
@@ -694,7 +694,8 @@ export async function sendChatMessageToAi(params: {
       model: data.model || 'Delmas IA',
       promptPreview: (params.prompt || params.message || '').substring(0, 100),
       responsePreview: (finalResponse || '').substring(0, 150),
-      operationType: 'chat'
+      operationType: 'chat',
+      explicitCredits: respCreditsDeducted
     }).catch(e => console.warn('[StudyCloud AI] Erreur déduction D1:', e));
   }
 
@@ -875,6 +876,19 @@ export async function generateDirectAiCreation(params: {
           questions: rawQs.slice(0, 18)
         };
       }
+    }
+
+    if (currentUserId) {
+      const promptLen = (params.prompt || params.docName || '').length;
+      const estTokens = Math.max(60, Math.ceil((promptLen + (rawTextCandidate || '').length) / 3.5));
+      deductUserAiCredits({
+        userId: currentUserId,
+        tokens: estTokens,
+        model: modelName || 'Delmas IA Créations',
+        promptPreview: (params.prompt || params.docName || '').substring(0, 100),
+        responsePreview: (finalTitle || '').substring(0, 150),
+        operationType: 'creation'
+      }).catch(() => {});
     }
 
     return {
