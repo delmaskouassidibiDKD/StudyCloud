@@ -7655,11 +7655,23 @@ a:hover{transform:translateY(-2px)}
               if (!aRow) {
                 aRow = await env.DB.prepare('SELECT cover_url, r2_key, user_id FROM audio_files WHERE id = ? LIMIT 1').bind(fileId).first();
               }
+              if (!aRow) {
+                aRow = await env.DB.prepare('SELECT r2_key, user_id, metadata_json FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
+              }
+              if (!aRow) {
+                aRow = await env.DB.prepare('SELECT r2_key, user_id, metadata_json FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
+              }
               if (aRow) {
                 if (aRow.cover_url && !aRow.cover_url.includes('/api/cloud/thumbnail/')) {
                   fallbackDataUrl = aRow.cover_url;
+                } else if (aRow.metadata_json) {
+                  try {
+                    const m = JSON.parse(aRow.metadata_json);
+                    const cov = m.coverUrl || m.thumbnailUrl || m.previewUrl;
+                    if (cov && !cov.includes('/api/cloud/thumbnail/')) fallbackDataUrl = cov;
+                  } catch {}
                 }
-                if (!targetR2Key && aRow.r2_key) {
+                if (!targetR2Key) {
                   const owner = aRow.user_id || (reqUserId !== 'default-user' ? reqUserId : '');
                   if (owner) targetR2Key = `${owner}/thumbnails/${fileId}_thumb.jpg`;
                 }
@@ -11046,10 +11058,42 @@ a:hover{transform:translateY(-2px)}
           const sizeBytes = Number(file.sizeBytes || 0);
 
           const extLower = (file.extension || (name.includes('.') ? name.split('.').pop() : '') || '').toLowerCase();
+          const rawFileName = (name || '').toLowerCase();
+          const fIdStr = String(id || '').toLowerCase();
+          const rawIncomingCat = String(fromCategory || file.category || file.originalCategory || file.sourceCategory || '').toLowerCase();
+
           let detectedNature = '';
-          if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff'].includes(extLower)) detectedNature = 'images';
-          else if (['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv'].includes(extLower)) detectedNature = 'videos';
-          else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'].includes(extLower)) detectedNature = 'audio';
+          if (
+            rawIncomingCat === 'audio' ||
+            fIdStr.startsWith('aud-') ||
+            fIdStr.startsWith('aud_') ||
+            file.isAudio ||
+            Boolean(file.audioUrl) ||
+            rawFileName.includes('whatsapp audio') ||
+            ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(extLower)
+          ) {
+            detectedNature = 'audio';
+          } else if (
+            rawIncomingCat === 'videos' ||
+            fIdStr.startsWith('vid-') ||
+            fIdStr.startsWith('video_') ||
+            file.isVideo ||
+            Boolean(file.videoUrl) ||
+            rawFileName.includes('whatsapp video') ||
+            ['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv', 'm4v'].includes(extLower)
+          ) {
+            detectedNature = 'videos';
+          } else if (
+            rawIncomingCat === 'images' ||
+            fIdStr.startsWith('img-') ||
+            fIdStr.startsWith('image_') ||
+            file.isImage ||
+            Boolean(file.imageUrl) ||
+            rawFileName.includes('whatsapp image') ||
+            ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'avif'].includes(extLower)
+          ) {
+            detectedNature = 'images';
+          }
 
           const category = detectedNature || file.category || fromCategory || 'documents';
           const extension = file.extension || extLower;
@@ -11227,13 +11271,41 @@ a:hover{transform:translateY(-2px)}
               // Mettre le fichier protégé dans la corbeille
               const fileExt = (secFile.extension || (secFile.name && secFile.name.includes('.') ? secFile.name.split('.').pop() : '') || '').toLowerCase();
               const rawName = (secFile.name || '').toLowerCase();
+              const fIdStr = String(secFile.id || '').toLowerCase();
+              const rawSecOrig = String(secFile.original_category || secFile.category || '').toLowerCase();
+
               let detectedCat = '';
-              if (rawName.includes('whatsapp video') || rawName.includes('vid-') || /\.(mp4|mkv|avi|mov|webm|3gp|flv|wmv)$/i.test(rawName)) detectedCat = 'videos';
-              else if (rawName.includes('whatsapp audio') || rawName.includes('aud-') || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(rawName)) detectedCat = 'audio';
-              else if (rawName.includes('whatsapp image') || rawName.includes('img-') || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|tiff)$/i.test(rawName)) detectedCat = 'images';
-              else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff'].includes(fileExt)) detectedCat = 'images';
-              else if (['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv'].includes(fileExt)) detectedCat = 'videos';
-              else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'].includes(fileExt)) detectedCat = 'audio';
+              if (
+                rawSecOrig === 'audio' ||
+                fIdStr.startsWith('aud-') ||
+                fIdStr.startsWith('aud_') ||
+                meta.isAudio ||
+                Boolean(meta.audioUrl) ||
+                rawName.includes('whatsapp audio') ||
+                ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(fileExt)
+              ) {
+                detectedCat = 'audio';
+              } else if (
+                rawSecOrig === 'videos' ||
+                fIdStr.startsWith('vid-') ||
+                fIdStr.startsWith('video_') ||
+                meta.isVideo ||
+                Boolean(meta.videoUrl) ||
+                rawName.includes('whatsapp video') ||
+                ['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv', 'm4v'].includes(fileExt)
+              ) {
+                detectedCat = 'videos';
+              } else if (
+                rawSecOrig === 'images' ||
+                fIdStr.startsWith('img-') ||
+                fIdStr.startsWith('image_') ||
+                meta.isImage ||
+                Boolean(meta.imageUrl) ||
+                rawName.includes('whatsapp image') ||
+                ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'avif'].includes(fileExt)
+              ) {
+                detectedCat = 'images';
+              }
 
               let realCategory = detectedCat || secFile.original_category;
               if (detectedCat && (realCategory === 'documents' || realCategory === 'secure' || realCategory === 'trash')) {
@@ -11307,15 +11379,43 @@ a:hover{transform:translateY(-2px)}
               await recordSyncItem(env.DB, reqUserId, secFile.id, 'secure', { id: secFile.id }, 1);
             } else {
               // Action 'restore' : renvoyer dans son menu d'origine
-              const fileExt = (secFile.extension || (secFile.name.includes('.') ? secFile.name.split('.').pop() : '') || '').toLowerCase();
+              const fileExt = (secFile.extension || (secFile.name && secFile.name.includes('.') ? secFile.name.split('.').pop() : '') || '').toLowerCase();
               const rawName = (secFile.name || '').toLowerCase();
+              const fIdStr = String(secFile.id || '').toLowerCase();
+              const rawSecOrig = String(secFile.original_category || secFile.category || '').toLowerCase();
+
               let detectedCat = '';
-              if (rawName.includes('whatsapp video') || rawName.includes('vid-') || /\.(mp4|mkv|avi|mov|webm|3gp|flv|wmv)$/i.test(rawName)) detectedCat = 'videos';
-              else if (rawName.includes('whatsapp audio') || rawName.includes('aud-') || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(rawName)) detectedCat = 'audio';
-              else if (rawName.includes('whatsapp image') || rawName.includes('img-') || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|tiff)$/i.test(rawName)) detectedCat = 'images';
-              else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff'].includes(fileExt)) detectedCat = 'images';
-              else if (['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv'].includes(fileExt)) detectedCat = 'videos';
-              else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'].includes(fileExt)) detectedCat = 'audio';
+              if (
+                rawSecOrig === 'audio' ||
+                fIdStr.startsWith('aud-') ||
+                fIdStr.startsWith('aud_') ||
+                meta.isAudio ||
+                Boolean(meta.audioUrl) ||
+                rawName.includes('whatsapp audio') ||
+                ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(fileExt)
+              ) {
+                detectedCat = 'audio';
+              } else if (
+                rawSecOrig === 'videos' ||
+                fIdStr.startsWith('vid-') ||
+                fIdStr.startsWith('video_') ||
+                meta.isVideo ||
+                Boolean(meta.videoUrl) ||
+                rawName.includes('whatsapp video') ||
+                ['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv', 'm4v'].includes(fileExt)
+              ) {
+                detectedCat = 'videos';
+              } else if (
+                rawSecOrig === 'images' ||
+                fIdStr.startsWith('img-') ||
+                fIdStr.startsWith('image_') ||
+                meta.isImage ||
+                Boolean(meta.imageUrl) ||
+                rawName.includes('whatsapp image') ||
+                ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'avif'].includes(fileExt)
+              ) {
+                detectedCat = 'images';
+              }
 
               let realCat = detectedCat || secFile.original_category;
               if (detectedCat && (realCat === 'documents' || realCat === 'secure' || realCat === 'trash')) {
@@ -11484,6 +11584,8 @@ a:hover{transform:translateY(-2px)}
                       updated_at = CURRENT_TIMESTAMP
                   `).bind(secFile.id, reqUserId, secFile.name, secFile.size_bytes || 0, r2KeyToRestore, finalRestoredUrl, Date.now()).run();
                 } catch (e) {}
+                await env.DB.prepare('DELETE FROM video_files WHERE (id = ? OR name = ?) AND user_id = ?').bind(secFile.id, secFile.name, reqUserId).run().catch(() => {});
+                await env.DB.prepare('DELETE FROM document_files WHERE (id = ? OR name = ?) AND user_id = ?').bind(secFile.id, secFile.name, reqUserId).run().catch(() => {});
               } else if (realCat === 'images') {
                 await env.DB.prepare(`
                   INSERT INTO image_files (id, user_id, name, size, size_bytes, extension, r2_key, image_url, thumbnail_url, date_formatted, updated_at)
@@ -11699,13 +11801,41 @@ a:hover{transform:translateY(-2px)}
               const meta = item.metadata_json ? JSON.parse(item.metadata_json) : {};
               const itemExt = (item.extension || (item.name.includes('.') ? item.name.split('.').pop() : '') || '').toLowerCase();
               const rawItemName = (item.name || '').toLowerCase();
+              const fIdStr = String(item.id || '').toLowerCase();
+              const rawSrc = String(item.source_category || item.category || meta.sourceCategory || meta.originalCategory || '').toLowerCase();
+
               let detectedSrcCat = '';
-              if (rawItemName.includes('whatsapp video') || rawItemName.includes('vid-') || /\.(mp4|mkv|avi|mov|webm|3gp|flv|wmv)$/i.test(rawItemName)) detectedSrcCat = 'videos';
-              else if (rawItemName.includes('whatsapp audio') || rawItemName.includes('aud-') || /\.(mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(rawItemName)) detectedSrcCat = 'audio';
-              else if (rawItemName.includes('whatsapp image') || rawItemName.includes('img-') || /\.(jpg|jpeg|png|gif|webp|bmp|svg|heic|tiff)$/i.test(rawItemName)) detectedSrcCat = 'images';
-              else if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff'].includes(itemExt)) detectedSrcCat = 'images';
-              else if (['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv'].includes(itemExt)) detectedSrcCat = 'videos';
-              else if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus'].includes(itemExt)) detectedSrcCat = 'audio';
+              if (
+                rawSrc === 'audio' ||
+                fIdStr.startsWith('aud-') ||
+                fIdStr.startsWith('aud_') ||
+                meta.isAudio ||
+                Boolean(meta.audioUrl) ||
+                rawItemName.includes('whatsapp audio') ||
+                ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(itemExt)
+              ) {
+                detectedSrcCat = 'audio';
+              } else if (
+                rawSrc === 'videos' ||
+                fIdStr.startsWith('vid-') ||
+                fIdStr.startsWith('video_') ||
+                meta.isVideo ||
+                Boolean(meta.videoUrl) ||
+                rawItemName.includes('whatsapp video') ||
+                ['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv', 'm4v'].includes(itemExt)
+              ) {
+                detectedSrcCat = 'videos';
+              } else if (
+                rawSrc === 'images' ||
+                fIdStr.startsWith('img-') ||
+                fIdStr.startsWith('image_') ||
+                meta.isImage ||
+                Boolean(meta.imageUrl) ||
+                rawItemName.includes('whatsapp image') ||
+                ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'avif'].includes(itemExt)
+              ) {
+                detectedSrcCat = 'images';
+              }
 
               let srcCat = detectedSrcCat || item.source_category || item.category || 'documents';
               if (srcCat === 'secure' || srcCat === 'trash') {
@@ -11930,6 +12060,8 @@ a:hover{transform:translateY(-2px)}
                       updated_at = CURRENT_TIMESTAMP
                   `).bind(item.id, reqUserId, item.name, item.size_bytes || 0, r2KeyToRestore, finalTrashRestoredUrl, Date.now()).run();
                 } catch (e) {}
+                await env.DB.prepare('DELETE FROM video_files WHERE (id = ? OR name = ?) AND user_id = ?').bind(item.id, item.name, reqUserId).run().catch(() => {});
+                await env.DB.prepare('DELETE FROM document_files WHERE (id = ? OR name = ?) AND user_id = ?').bind(item.id, item.name, reqUserId).run().catch(() => {});
               } else if (srcCat === 'images') {
                 await env.DB.prepare(`
                   INSERT INTO image_files (id, user_id, name, size, size_bytes, extension, r2_key, image_url, thumbnail_url, date_formatted, updated_at)
@@ -12178,28 +12310,53 @@ a:hover{transform:translateY(-2px)}
                 env.DB.prepare(`SELECT id, name, size, size_bytes, file_url, type, extension, downloaded_at as created_at FROM download_files WHERE user_id = ? AND id IN (${placeholders})`).bind(reqUserId, ...chunk).all().catch(() => ({ results: [] }))
               ]);
 
-              const mapFile = (row: any, cat: string) => ({
-                id: row.id,
-                name: row.name || (row.title ? `${row.artist ? row.artist + ' - ' : ''}${row.title}` : 'Sans titre'),
-                category: cat === 'classeur_folder' ? 'classeur' : cat,
-                size: row.size || (cat === 'classeur_folder' ? 'Dossier 3D' : '0 o'),
-                sizeBytes: row.size_bytes || 0,
-                url: row.file_url || row.image_url || row.video_url || row.audio_url || '',
-                previewUrl: row.preview_url || row.thumbnail_url || row.image_url || row.cover_url || '',
-                thumbnailUrl: row.thumbnail_url || row.preview_url || row.cover_url || '',
-                extension: row.extension || (cat === 'classeur_folder' ? 'DOSSIER' : ''),
-                date: row.created_at || "Aujourd'hui",
-                isFavorite: true,
-                folderId: row.folder_id,
-                isFolder: cat === 'classeur_folder',
-                metadata: cat === 'classeur_folder' ? {
-                  modelId: row.model_id || '1',
-                  primaryColor: row.primary_color || '#EA580C',
-                  accentColor: row.accent_color || '#F97316',
-                  iconName: row.icon_name || 'Folder',
-                  isFavorite: true
-                } : undefined
-              });
+              const mapFile = (row: any, cat: string) => {
+                const isAud = cat === 'audio';
+                const isVid = cat === 'videos';
+                const isImg = cat === 'images';
+                const validCover = isAud ? (
+                  (row.cover_url && !row.cover_url.startsWith('blob:') && !row.cover_url.includes('localhost') ? row.cover_url : '') ||
+                  `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(row.id)}`
+                ) : undefined;
+                return {
+                  id: row.id,
+                  name: row.name || (row.title ? `${row.artist ? row.artist + ' - ' : ''}${row.title}` : 'Sans titre'),
+                  category: cat === 'classeur_folder' ? 'classeur' : cat,
+                  sourceCategory: cat === 'classeur_folder' ? 'classeur' : cat,
+                  originalCategory: cat === 'classeur_folder' ? 'classeur' : cat,
+                  size: row.size || (cat === 'classeur_folder' ? 'Dossier 3D' : '0 o'),
+                  sizeBytes: row.size_bytes || 0,
+                  url: row.file_url || row.image_url || row.video_url || row.audio_url || '',
+                  previewUrl: validCover || row.preview_url || row.thumbnail_url || row.image_url || row.cover_url || '',
+                  thumbnailUrl: validCover || row.thumbnail_url || row.preview_url || row.cover_url || '',
+                  coverUrl: validCover || (isAud ? row.cover_url : undefined),
+                  extension: row.extension || (cat === 'classeur_folder' ? 'DOSSIER' : ''),
+                  date: row.created_at || "Aujourd'hui",
+                  isFavorite: true,
+                  isAudio: isAud,
+                  isVideo: isVid,
+                  isImage: isImg,
+                  audioUrl: isAud ? (row.audio_url || row.file_url) : undefined,
+                  videoUrl: isVid ? (row.video_url || row.file_url) : undefined,
+                  artist: row.artist || (isAud ? 'Artiste inconnu' : undefined),
+                  title: row.title || row.name,
+                  album: row.album || undefined,
+                  folderId: row.folder_id,
+                  isFolder: cat === 'classeur_folder',
+                  metadata: cat === 'classeur_folder' ? {
+                    modelId: row.model_id || '1',
+                    primaryColor: row.primary_color || '#EA580C',
+                    accentColor: row.accent_color || '#F97316',
+                    iconName: row.icon_name || 'Folder',
+                    isFavorite: true
+                  } : (isAud ? {
+                    coverUrl: validCover,
+                    artist: row.artist,
+                    title: row.title,
+                    album: row.album
+                  } : undefined)
+                };
+              };
 
               for (const d of docs?.results || []) items.push(mapFile(d, 'documents'));
               for (const img of imgs?.results || []) items.push(mapFile(img, 'images'));

@@ -570,24 +570,50 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
   // Détection du type de média
   const getFileType = (f: FileItem): 'audio' | 'video' | 'image' | 'folder' | 'document' => {
+    const rawName = (f.name || '').toLowerCase();
+    const origCat = ((f as any).originalCategory || (f as any).sourceCategory || f.category || '').toLowerCase();
+    const fId = String(f.id || '').toLowerCase();
+    const ext = String(f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop() : '') || '').toLowerCase();
+
+    // 1. Audio prioritaire (ne jamais confondre avec une vidéo même si l'extension ou conteneur est mp4)
     if (
+      origCat === 'audio' ||
       f.category === 'audio' ||
       (f as any).isAudio ||
       Boolean((f as any).audioUrl) ||
+      fId.startsWith('aud-') ||
+      fId.startsWith('aud_') ||
+      rawName.includes('whatsapp audio') ||
+      ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(ext) ||
       /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(f.name)
     ) return 'audio';
+
+    // 2. Vidéo
     if (
+      origCat === 'videos' ||
       f.category === 'videos' ||
       (f as any).isVideo ||
       Boolean((f as any).videoUrl) ||
+      fId.startsWith('vid-') ||
+      fId.startsWith('video_') ||
+      rawName.includes('whatsapp video') ||
+      ['mp4', 'webm', 'mkv', 'mov', 'avi', 'flv', 'wmv', 'm4v', '3gp'].includes(ext) ||
       /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(f.name)
     ) return 'video';
+
+    // 3. Image
     if (
+      origCat === 'images' ||
       f.category === 'images' ||
       (f as any).isImage ||
       Boolean((f as any).imageUrl) ||
+      fId.startsWith('img-') ||
+      fId.startsWith('image_') ||
+      rawName.includes('whatsapp image') ||
+      ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif', 'ico', 'bmp', 'tiff'].includes(ext) ||
       /\.(jpe?g|png|webp|gif|svg|avif|ico|bmp|tiff)$/i.test(f.name)
     ) return 'image';
+
     if (
       (f as any).isFolder ||
       f.category === 'classeur' ||
@@ -1001,6 +1027,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
                 fileSize={file.size}
                 artist={file.artist || 'StudyCloud Sécurisé'}
                 autoPlay={true}
+                file={file}
                 className="w-full h-full border-0 rounded-none shadow-none"
               />
             </div>

@@ -247,7 +247,17 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     const validItems = (items || []).filter(item => item && item.id && !trashIds.has(item.id) && !isItemDeleted(item.id));
     if (validItems.length > 0) {
       validItems.forEach(item => {
-        const withFav = { ...item, isFavorite: true, isTrash: false };
+        const existingAudio = s.audio?.find(a => a.id === item.id);
+        const resolvedCover = item.coverUrl || item.thumbnailUrl || existingAudio?.coverUrl || existingAudio?.thumbnailUrl;
+        const withFav = {
+          ...item,
+          isFavorite: true,
+          isTrash: false,
+          coverUrl: resolvedCover,
+          thumbnailUrl: resolvedCover || item.thumbnailUrl,
+          artist: item.artist || existingAudio?.artist,
+          title: (item as any).title || (existingAudio as any)?.title || item.name
+        };
         if (item.category === 'classeur' || item.isFolder) {
           CloudDataStore.addClasseurFolder(withFav as any);
         } else {
@@ -306,9 +316,50 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
 
   // Type de fichier
   const getFileType = (f: FileItem): 'audio' | 'video' | 'image' | 'note' | 'document' | 'folder' => {
-    if (f.category === 'audio' || f.isAudio || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(f.name)) return 'audio';
-    if (f.category === 'videos' || f.isVideo || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(f.name)) return 'video';
-    if (f.category === 'images' || f.isImage || /\.(jpe?g|png|webp|gif|svg|avif|ico|bmp|tiff)$/i.test(f.name)) return 'image';
+    const rawName = (f.name || '').toLowerCase();
+    const fId = String(f.id || '').toLowerCase();
+    const origCat = ((f as any).originalCategory || (f as any).sourceCategory || f.category || '').toLowerCase();
+    const ext = String(f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop() : '') || '').toLowerCase();
+
+    // 1. Audio prioritaire
+    if (
+      origCat === 'audio' ||
+      f.category === 'audio' ||
+      f.isAudio ||
+      Boolean((f as any).audioUrl) ||
+      fId.startsWith('aud-') ||
+      fId.startsWith('aud_') ||
+      rawName.includes('whatsapp audio') ||
+      ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(ext) ||
+      /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(f.name)
+    ) return 'audio';
+
+    // 2. Vidéo
+    if (
+      origCat === 'videos' ||
+      f.category === 'videos' ||
+      f.isVideo ||
+      Boolean((f as any).videoUrl) ||
+      fId.startsWith('vid-') ||
+      fId.startsWith('video_') ||
+      rawName.includes('whatsapp video') ||
+      ['mp4', 'webm', 'mkv', 'mov', 'avi', 'flv', 'wmv', 'm4v', '3gp'].includes(ext) ||
+      /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(f.name)
+    ) return 'video';
+
+    // 3. Image
+    if (
+      origCat === 'images' ||
+      f.category === 'images' ||
+      f.isImage ||
+      Boolean((f as any).imageUrl) ||
+      fId.startsWith('img-') ||
+      fId.startsWith('image_') ||
+      rawName.includes('whatsapp image') ||
+      ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif', 'ico', 'bmp', 'tiff'].includes(ext) ||
+      /\.(jpe?g|png|webp|gif|svg|avif|ico|bmp|tiff)$/i.test(f.name)
+    ) return 'image';
+
     if (f.category === 'notes' || f.isNotepad || f.name.toLowerCase().endsWith('.txt') || f.type === 'text/plain') return 'note';
     if ((f as any).isFolder || f.category === 'classeur') return 'folder';
     return 'document';
@@ -465,7 +516,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         {/* Arrière-plan : aperçu audio haute fidélité */}
         <div className="absolute inset-0 z-0 overflow-hidden rounded-2xl pointer-events-none">
           <AudioCardPreview track={file} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-          <div className="absolute inset-0 bg-gradient-to-t from-black via-black/40 to-black/60 pointer-events-none" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/20 to-black/30 pointer-events-none" />
         </div>
 
         {/* Logo mélodie central en filigrane */}
@@ -975,6 +1026,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                 fileSize={file.size}
                 artist={file.artist || 'StudyCloud Favoris'}
                 autoPlay={true}
+                file={file}
                 className="w-full h-full border-0 rounded-none shadow-none"
               />
             </div>

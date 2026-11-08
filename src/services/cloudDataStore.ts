@@ -948,10 +948,23 @@ export const CloudDataStore = {
         videos: [file, ...currentState.videos.filter(f => f.id !== file.id)]
       };
     } else if (cat === 'audio') {
+      const existingAudio = currentState.audio.find(f => f.id === file.id);
+      const mergedAudio = existingAudio ? {
+        ...existingAudio,
+        ...file,
+        coverUrl: file.coverUrl || (file as any).thumbnailUrl || existingAudio.coverUrl,
+        thumbnailUrl: (file as any).thumbnailUrl || file.coverUrl || existingAudio.thumbnailUrl,
+        previewUrl: file.previewUrl || existingAudio.previewUrl,
+        artist: file.artist || existingAudio.artist,
+        title: (file as any).title || (existingAudio as any).title || file.name,
+        isAudio: true,
+        isVideo: false,
+        category: 'audio' as const
+      } : file;
       currentState = {
         ...currentState,
         recentFiles: recent,
-        audio: [file, ...currentState.audio.filter(f => f.id !== file.id)]
+        audio: [mergedAudio, ...currentState.audio.filter(f => f.id !== file.id)]
       };
     } else if (cat === 'mes-fichiers') {
       // mes-fichiers n'apparaît JAMAIS dans les récents
@@ -1425,8 +1438,39 @@ export const CloudDataStore = {
             try { restoreUpsertNotifier(file.id, 'classeur', restored); } catch { }
           }
         } else {
+          const fileIdStr = String(file.id || '').toLowerCase();
           let detectedCat = rawCat;
-          if (isMediaExt && detectedByExt) {
+          if (
+            rawCat === 'audio' ||
+            fileIdStr.startsWith('aud-') ||
+            fileIdStr.startsWith('aud_') ||
+            (file as any).isAudio ||
+            Boolean((file as any).audioUrl) ||
+            rawNameLower.includes('whatsapp audio') ||
+            ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(fileExtStr)
+          ) {
+            detectedCat = 'audio';
+          } else if (
+            rawCat === 'videos' ||
+            fileIdStr.startsWith('vid-') ||
+            fileIdStr.startsWith('video_') ||
+            (file as any).isVideo ||
+            Boolean((file as any).videoUrl) ||
+            rawNameLower.includes('whatsapp video') ||
+            ['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv', 'm4v'].includes(fileExtStr)
+          ) {
+            detectedCat = 'videos';
+          } else if (
+            rawCat === 'images' ||
+            fileIdStr.startsWith('img-') ||
+            fileIdStr.startsWith('image_') ||
+            (file as any).isImage ||
+            Boolean((file as any).imageUrl) ||
+            rawNameLower.includes('whatsapp image') ||
+            ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'avif'].includes(fileExtStr)
+          ) {
+            detectedCat = 'images';
+          } else if (isMediaExt && detectedByExt) {
             detectedCat = detectedByExt;
           } else if (!detectedCat || detectedCat === 'trash' || detectedCat === 'folder' || detectedCat === 'secure' || (detectedByExt !== 'documents' && detectedCat === 'documents')) {
             detectedCat = detectedByExt || 'documents';
@@ -1472,9 +1516,36 @@ export const CloudDataStore = {
           restored.thumbnailUrl = workingPreview;
           if (fileExtStr) restored.extension = fileExtStr;
 
-          if (detectedCat === 'images' || (file as any).isImage) {
+          if (detectedCat === 'audio' || (file as any).isAudio || (file.id && String(file.id).toLowerCase().startsWith('aud-'))) {
+            const rawCover = String((file as any).coverUrl || (file as any).thumbnailUrl || meta.coverUrl || meta.thumbnailUrl || '').trim();
+            const validCover = rawCover && !rawCover.startsWith('blob:') && !rawCover.includes('localhost')
+              ? rawCover
+              : (file.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(file.id)}` : undefined);
+            restored.category = 'audio';
+            restored.sourceCategory = 'audio';
+            restored.originalCategory = 'audio';
+            (restored as any).isAudio = true;
+            (restored as any).isVideo = false;
+            (restored as any).isImage = false;
+            delete (restored as any).videoUrl;
+            restored.audioUrl = workingUrl;
+            restored.coverUrl = validCover;
+            restored.thumbnailUrl = validCover;
+            restored.previewUrl = validCover || workingUrl;
+            restored.artist = (file as any).artist || meta.artist || 'Artiste inconnu';
+            restored.album = (file as any).album || meta.album || '';
+            (restored as any).durationSec = Number((file as any).durationSec || meta.durationSec || 0);
+            newAuds = [restored, ...newAuds.filter(f => f.id !== file.id)];
+            newVids = newVids.filter(f => f.id !== file.id);
+            newDocs = newDocs.filter(f => f.id !== file.id);
+            if (restoreUpsertNotifier) {
+              try { restoreUpsertNotifier(file.id, 'audio', restored); } catch { }
+            }
+          } else if (detectedCat === 'images' || (file as any).isImage) {
             restored.category = 'images';
             (restored as any).isImage = true;
+            (restored as any).isVideo = false;
+            (restored as any).isAudio = false;
             newImgs = [restored, ...newImgs.filter(f => f.id !== file.id)];
             newDocs = newDocs.filter(f => f.id !== file.id);
             if (restoreUpsertNotifier) {
@@ -1486,6 +1557,7 @@ export const CloudDataStore = {
             const serverVidThumb = file.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(file.id)}` : workingPreview;
             restored.category = 'videos';
             (restored as any).isVideo = true;
+            (restored as any).isAudio = false;
             restored.videoUrl = workingUrl;
             restored.thumbnailUrl = isValidVidThumb ? rawVidThumb : serverVidThumb;
             restored.previewUrl = restored.thumbnailUrl;
@@ -1493,15 +1565,6 @@ export const CloudDataStore = {
             newDocs = newDocs.filter(f => f.id !== file.id);
             if (restoreUpsertNotifier) {
               try { restoreUpsertNotifier(file.id, 'videos', restored); } catch { }
-            }
-          } else if (detectedCat === 'audio' || !!file.audioUrl || (file as any).isAudio) {
-            restored.category = 'audio';
-            (restored as any).isAudio = true;
-            restored.audioUrl = workingUrl;
-            newAuds = [restored, ...newAuds.filter(f => f.id !== file.id)];
-            newDocs = newDocs.filter(f => f.id !== file.id);
-            if (restoreUpsertNotifier) {
-              try { restoreUpsertNotifier(file.id, 'audio', restored); } catch { }
             }
           } else if (detectedCat === 'downloads') {
             restored.category = 'downloads';
@@ -1571,6 +1634,8 @@ export const CloudDataStore = {
     const lockedItems = arr.map(f => {
       const fileExtStr = String((f as any).extension || (f.name && f.name.includes('.') ? f.name.split('.').pop() : '') || '').toLowerCase().replace(/^\./, '');
       const rawNameLower = (f.name || '').toLowerCase();
+      const rawOrig = ((f as any).originalCategory || (f as any).sourceCategory || f.category || '').toLowerCase();
+      const fIdStr = String(f.id || '').toLowerCase();
       const detectedByExt = detectFileCategory({ name: f.name, type: (f as any).type, extension: fileExtStr });
       const isMediaExt =
         /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(f.name || '') ||
@@ -1581,19 +1646,52 @@ export const CloudDataStore = {
         rawNameLower.startsWith('img-') ||
         rawNameLower.startsWith('vid-') ||
         rawNameLower.startsWith('aud-');
-      let origCat = (f as any).originalCategory || f.category;
-      if (isMediaExt && detectedByExt) {
+
+      let origCat = rawOrig;
+      if (
+        rawOrig === 'audio' ||
+        fIdStr.startsWith('aud-') ||
+        fIdStr.startsWith('aud_') ||
+        (f as any).isAudio ||
+        Boolean((f as any).audioUrl) ||
+        rawNameLower.includes('whatsapp audio') ||
+        ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(fileExtStr)
+      ) {
+        origCat = 'audio';
+      } else if (
+        rawOrig === 'videos' ||
+        fIdStr.startsWith('vid-') ||
+        fIdStr.startsWith('video_') ||
+        (f as any).isVideo ||
+        Boolean((f as any).videoUrl) ||
+        rawNameLower.includes('whatsapp video') ||
+        ['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv', 'm4v'].includes(fileExtStr)
+      ) {
+        origCat = 'videos';
+      } else if (
+        rawOrig === 'images' ||
+        fIdStr.startsWith('img-') ||
+        fIdStr.startsWith('image_') ||
+        (f as any).isImage ||
+        Boolean((f as any).imageUrl) ||
+        rawNameLower.includes('whatsapp image') ||
+        ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'avif'].includes(fileExtStr)
+      ) {
+        origCat = 'images';
+      } else if (isMediaExt && detectedByExt) {
         origCat = detectedByExt;
       } else if (!origCat || origCat === 'secure' || origCat === 'trash' || (detectedByExt !== 'documents' && origCat === 'documents')) {
         origCat = detectedByExt || 'documents';
       }
       const isAud = origCat === 'audio';
       const isVid = origCat === 'videos';
+      const isImg = origCat === 'images';
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const resolvedCover = (f as any).coverUrl
         || (f as any).thumbnailUrl
         || (f as any).metadata?.coverUrl
         || (isAud && f.previewUrl && !f.previewUrl.startsWith('blob:') && !f.previewUrl.includes('.mp3') ? f.previewUrl : '')
+        || (isAud && f.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(f.id)}` : '')
         || '';
       const rawVidThumb = String((f as any).thumbnailUrl || (f as any).metadata?.thumbnailUrl || '').trim();
       const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith('blob:') && !rawVidThumb.includes('localhost') && (rawVidThumb.startsWith('data:image') || rawVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
@@ -1602,15 +1700,20 @@ export const CloudDataStore = {
         ...f,
         category: 'secure',
         originalCategory: origCat,
+        sourceCategory: origCat,
         isSecure: true,
+        isAudio: isAud,
+        isVideo: isVid,
+        isImage: isImg,
+        audioUrl: isAud ? ((f as any).audioUrl || f.url) : undefined,
+        videoUrl: isVid ? ((f as any).videoUrl || f.url) : undefined,
         coverUrl: isAud ? (resolvedCover || (f as any).coverUrl || undefined) : (f as any).coverUrl,
         thumbnailUrl: isAud ? (resolvedCover || (f as any).thumbnailUrl || undefined) : isVid ? (vidThumb || (f as any).thumbnailUrl) : (f as any).thumbnailUrl,
         previewUrl: isAud ? (resolvedCover || f.previewUrl) : isVid ? (vidThumb || f.previewUrl) : f.previewUrl,
-        videoUrl: isVid ? ((f as any).videoUrl || f.url) : (f as any).videoUrl,
-        artist: (f as any).artist,
-        title: (f as any).title || f.name,
-        album: (f as any).album,
-        durationSec: (f as any).durationSec || 0,
+        artist: (f as any).artist || (f as any).metadata?.artist,
+        title: (f as any).title || (f as any).metadata?.title || f.name,
+        album: (f as any).album || (f as any).metadata?.album,
+        durationSec: (f as any).durationSec || (f as any).metadata?.durationSec || 0,
         lyricsSnippet: (f as any).lyricsSnippet || '',
         fullLyrics: (f as any).fullLyrics || []
       };
@@ -1647,6 +1750,8 @@ export const CloudDataStore = {
     arr.forEach(file => {
       const fileExtStr = String((file as any).extension || (file.name && file.name.includes('.') ? file.name.split('.').pop() : '') || '').toLowerCase().replace(/^\./, '');
       const rawNameLower = (file.name || '').toLowerCase();
+      const rawOrig = ((file as any).originalCategory || (file as any).sourceCategory || file.category || '').toLowerCase();
+      const fIdStr = String(file.id || '').toLowerCase();
       const detectedByExt = detectFileCategory({ name: file.name, type: (file as any).type, extension: fileExtStr });
       const isMediaExt =
         /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name || '') ||
@@ -1657,22 +1762,54 @@ export const CloudDataStore = {
         rawNameLower.startsWith('img-') ||
         rawNameLower.startsWith('vid-') ||
         rawNameLower.startsWith('aud-');
-      let origCat = (file as any).originalCategory || file.category;
-      if (isMediaExt && detectedByExt) {
+
+      let origCat = rawOrig;
+      if (
+        rawOrig === 'audio' ||
+        fIdStr.startsWith('aud-') ||
+        fIdStr.startsWith('aud_') ||
+        (file as any).isAudio ||
+        Boolean((file as any).audioUrl) ||
+        rawNameLower.includes('whatsapp audio') ||
+        ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(fileExtStr)
+      ) {
+        origCat = 'audio';
+      } else if (
+        rawOrig === 'videos' ||
+        fIdStr.startsWith('vid-') ||
+        fIdStr.startsWith('video_') ||
+        (file as any).isVideo ||
+        Boolean((file as any).videoUrl) ||
+        rawNameLower.includes('whatsapp video') ||
+        ['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv', 'm4v'].includes(fileExtStr)
+      ) {
+        origCat = 'videos';
+      } else if (
+        rawOrig === 'images' ||
+        fIdStr.startsWith('img-') ||
+        fIdStr.startsWith('image_') ||
+        (file as any).isImage ||
+        Boolean((file as any).imageUrl) ||
+        rawNameLower.includes('whatsapp image') ||
+        ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'avif'].includes(fileExtStr)
+      ) {
+        origCat = 'images';
+      } else if (isMediaExt && detectedByExt) {
         origCat = detectedByExt;
       } else if (!origCat || origCat === 'secure' || origCat === 'trash' || (detectedByExt !== 'documents' && origCat === 'documents')) {
         origCat = detectedByExt || 'documents';
       }
       const meta = (file as any).metadata || {};
       const isAud = origCat === 'audio';
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const resolvedCover = (file as any).coverUrl
         || (file as any).thumbnailUrl
         || meta.coverUrl
         || meta.thumbnailUrl
         || (isAud && (file as any).previewUrl && !(file as any).previewUrl.startsWith('blob:') && !(file as any).previewUrl.includes('.mp3') ? (file as any).previewUrl : '')
+        || (isAud && file.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(file.id)}` : '')
         || '';
 
-      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const streamFallback = file.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}` : '';
       let r2Key = String((file as any).r2Key || (file as any).r2_key || meta.r2Key || '').trim();
       try {
@@ -1704,14 +1841,15 @@ export const CloudDataStore = {
         isSecure: false,
         category: origCat,
         originalCategory: origCat,
+        sourceCategory: origCat,
         extension: fileExtStr || (file as any).extension,
         r2Key: r2Key || undefined,
         url: workingUrl,
         previewUrl: isAud ? (resolvedCover || workingPreview) : isVid ? (resolvedVidThumb || workingPreview) : workingPreview,
         thumbnailUrl: isAud ? (resolvedCover || undefined) : isVid ? (resolvedVidThumb || undefined) : ((file as any).thumbnailUrl || workingPreview),
         coverUrl: isAud ? (resolvedCover || (file as any).coverUrl || undefined) : (file as any).coverUrl,
-        videoUrl: origCat === 'videos' ? workingUrl : (file as any).videoUrl,
-        audioUrl: origCat === 'audio' ? workingUrl : (file as any).audioUrl,
+        videoUrl: origCat === 'videos' ? workingUrl : undefined,
+        audioUrl: origCat === 'audio' ? workingUrl : undefined,
         isImage: origCat === 'images',
         isVideo: origCat === 'videos',
         isAudio: origCat === 'audio',
@@ -1741,12 +1879,15 @@ export const CloudDataStore = {
       } else if (origCat === 'images') {
         newImgs = [restored, ...newImgs.filter(f => f.id !== file.id)];
         newDocs = newDocs.filter(f => f.id !== file.id);
+        newVids = newVids.filter(f => f.id !== file.id);
       } else if (origCat === 'videos') {
         newVids = [restored, ...newVids.filter(f => f.id !== file.id)];
         newDocs = newDocs.filter(f => f.id !== file.id);
+        newAuds = newAuds.filter(f => f.id !== file.id);
       } else if (origCat === 'audio') {
         newAuds = [restored, ...newAuds.filter(f => f.id !== file.id)];
         newDocs = newDocs.filter(f => f.id !== file.id);
+        newVids = newVids.filter(f => f.id !== file.id);
       } else if (origCat === 'downloads') {
         newDls = [restored as any, ...newDls.filter(f => f.id !== file.id)];
       } else {
@@ -1776,6 +1917,8 @@ export const CloudDataStore = {
     const trashedItems = arr.map(f => {
       const fileExtStr = String((f as any).extension || (f.name && f.name.includes('.') ? f.name.split('.').pop() : '') || '').toLowerCase().replace(/^\./, '');
       const rawNameLower = (f.name || '').toLowerCase();
+      const rawOrig = ((f as any).originalCategory || (f as any).sourceCategory || f.category || '').toLowerCase();
+      const fIdStr = String(f.id || '').toLowerCase();
       const detectedByExt = detectFileCategory({ name: f.name, type: (f as any).type, extension: fileExtStr });
       const isMediaExt =
         /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(f.name || '') ||
@@ -1786,12 +1929,50 @@ export const CloudDataStore = {
         rawNameLower.startsWith('img-') ||
         rawNameLower.startsWith('vid-') ||
         rawNameLower.startsWith('aud-');
-      let realCategory = (f as any).originalCategory || f.category;
-      if (isMediaExt && detectedByExt) {
+
+      let realCategory = rawOrig;
+      if (
+        rawOrig === 'audio' ||
+        fIdStr.startsWith('aud-') ||
+        fIdStr.startsWith('aud_') ||
+        (f as any).isAudio ||
+        Boolean((f as any).audioUrl) ||
+        rawNameLower.includes('whatsapp audio') ||
+        ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'opus', 'wma', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(fileExtStr)
+      ) {
+        realCategory = 'audio';
+      } else if (
+        rawOrig === 'videos' ||
+        fIdStr.startsWith('vid-') ||
+        fIdStr.startsWith('video_') ||
+        (f as any).isVideo ||
+        Boolean((f as any).videoUrl) ||
+        rawNameLower.includes('whatsapp video') ||
+        ['mp4', 'mkv', 'avi', 'mov', 'webm', '3gp', 'flv', 'wmv', 'm4v'].includes(fileExtStr)
+      ) {
+        realCategory = 'videos';
+      } else if (
+        rawOrig === 'images' ||
+        fIdStr.startsWith('img-') ||
+        fIdStr.startsWith('image_') ||
+        (f as any).isImage ||
+        Boolean((f as any).imageUrl) ||
+        rawNameLower.includes('whatsapp image') ||
+        ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'svg', 'heic', 'tiff', 'avif'].includes(fileExtStr)
+      ) {
+        realCategory = 'images';
+      } else if (isMediaExt && detectedByExt) {
         realCategory = detectedByExt;
       } else if (!realCategory || realCategory === 'secure' || realCategory === 'trash' || (detectedByExt !== 'documents' && realCategory === 'documents')) {
         realCategory = detectedByExt || 'documents';
       }
+
+      const isAud = realCategory === 'audio';
+      const isVid = realCategory === 'videos';
+      const isImg = realCategory === 'images';
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const validCover = (f as any).coverUrl || (f as any).thumbnailUrl || (f as any).metadata?.coverUrl || (isAud && f.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(f.id)}` : undefined);
+
       return {
         ...f,
         category: realCategory,
@@ -1801,7 +1982,24 @@ export const CloudDataStore = {
         isTrash: true,
         isFavorite: false,
         isSecure: false,
-        date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })
+        isAudio: isAud,
+        isVideo: isVid,
+        isImage: isImg,
+        audioUrl: isAud ? ((f as any).audioUrl || f.url) : undefined,
+        videoUrl: isVid ? ((f as any).videoUrl || f.url) : undefined,
+        coverUrl: isAud ? (validCover || (f as any).coverUrl) : (f as any).coverUrl,
+        thumbnailUrl: isAud ? (validCover || (f as any).thumbnailUrl) : (f as any).thumbnailUrl,
+        previewUrl: isAud ? (validCover || f.previewUrl) : f.previewUrl,
+        date: new Date().toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }),
+        metadata: {
+          ...((f as any).metadata || {}),
+          originalCategory: realCategory,
+          sourceCategory: realCategory,
+          coverUrl: isAud ? validCover : ((f as any).metadata?.coverUrl),
+          artist: (f as any).artist || (f as any).metadata?.artist,
+          title: (f as any).title || (f as any).metadata?.title || f.name,
+          durationSec: (f as any).durationSec || (f as any).metadata?.durationSec || 0
+        }
       };
     });
     const newTrash = [...trashedItems, ...currentState.trash.filter(t => !idSet.has(t.id))];
