@@ -4216,8 +4216,33 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setSelectedItemIds([]);
   };
 
-  // SÉLECTION D'UN ÉLÉMENT : DÉCLENCHE LA DIVISION EN DEUX (SPLIT SCREEN)
-  const handleSelectFile = (file: FileItem) => {
+  // SÉLECTION D'UN ÉLÉMENT : DÉCLENCHE LA DIVISION EN DEUX (SPLIT SCREEN) OU DÉSÉLECTIONNE SI DÉJÀ ACTIF
+  const handleSelectFile = (file: FileItem, forceOpen?: boolean) => {
+    if (
+      !forceOpen &&
+      (splitSelectedFile?.id === file.id ||
+        selectedDocFile?.id === file.id ||
+        selectedVideoFile?.id === file.id ||
+        selectedImageFile?.id === file.id ||
+        selectedAudioTrack?.id === file.id ||
+        selectedDownloadFile?.id === file.id ||
+        selectedClasseurFile?.id === file.id ||
+        selectedCollectionFile?.id === file.id)
+    ) {
+      resetViewerExpand();
+      setIsViewerMaximized(false);
+      setSelectedDocFile(null);
+      setSelectedVideoFile(null);
+      setSelectedImageFile(null);
+      setSelectedAudioTrack(null);
+      setSelectedDownloadFile(null);
+      setSelectedClasseurFile(null);
+      setSelectedCollectionFile(null);
+      setSplitSelectedFile(null);
+      setIsMobilePlayerOpen(false);
+      setIsAudioPlaying(false);
+      return;
+    }
     const ext = (file.name || '').includes('.') ? (file.name || '').split('.').pop()?.toLowerCase() || '' : '';
     const isAud = Boolean(
       file.category === 'audio' ||
@@ -4445,7 +4470,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       color: targetColor
     });
 
-    handleSelectFile(file);
+    handleSelectFile(file, true);
   };
 
   // Filtrage selon la recherche (strictement 6 éléments maximum sur l'accueil, sans notes ni fichiers effacés)
@@ -10633,7 +10658,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const nextDoc = list[newIndex];
     if (nextDoc) {
       if (opened3DFolder && selectedClasseurFile) {
-        handleSelectFile(nextDoc);
+        handleSelectFile(nextDoc, true);
       } else {
         setSelectedDocFile(nextDoc);
         setSplitSelectedFile(nextDoc);
@@ -10662,7 +10687,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const nextVideo = list[newIndex];
     if (nextVideo) {
       if (opened3DFolder && selectedClasseurFile) {
-        handleSelectFile(nextVideo);
+        handleSelectFile(nextVideo, true);
       } else {
         setSelectedVideoFile(nextVideo);
         setSplitSelectedFile(nextVideo);
@@ -10688,7 +10713,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const nextImage = list[newIndex];
     if (nextImage) {
       if (opened3DFolder && selectedClasseurFile) {
-        handleSelectFile(nextImage);
+        handleSelectFile(nextImage, true);
       } else {
         setSelectedImageFile(nextImage);
         setSplitSelectedFile(nextImage);
@@ -10701,7 +10726,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return (
       <div className={`w-full h-full min-h-full flex-1 flex flex-col bg-[#04060A] text-white overflow-hidden select-text ${(viewerExpandLevel >= 2 || isViewerMaximized)
         ? 'fixed inset-0 z-50 w-screen h-screen'
-        : ''
+        : 'max-md:pb-16'
         }`}>
         {/* Barre supérieure dédiée à la page d'écriture (SANS bouton horizontal/vertical, SANS zoom) */}
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0 select-none">
@@ -10876,7 +10901,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${(viewerExpandLevel >= 2 || isViewerMaximized)
         ? 'fixed inset-0 z-50 w-screen h-screen'
-        : ''
+        : 'max-md:pb-16'
         }`}>
         {/* Barre supérieure du lecteur document (Image 1) */}
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
@@ -11448,7 +11473,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${isPlayerExpanded
         ? 'fixed inset-0 z-[99999] w-screen h-screen'
-        : ''
+        : 'max-md:pb-16'
         }`}>
         {/* Barre supérieure du lecteur vidéo (Image 4) */}
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-6 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 sm:gap-3 shadow-md shrink-0">
@@ -11568,7 +11593,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${(viewerExpandLevel >= 2 || isViewerMaximized)
         ? 'fixed inset-0 z-50 w-screen h-screen'
-        : ''
+        : 'max-md:pb-16'
         }`}>
         {/* Barre supérieure du lecteur image (Image 5) */}
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
@@ -11760,7 +11785,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
       onDrop={handleGlobalDrop}
-      className={`animate-in fade-in duration-150 ${(selectedDocFile || selectedVideoFile || selectedImageFile || selectedAudioTrack || selectedDownloadFile || selectedClasseurFile || selectedCollectionFile || splitSelectedFile) ? 'bg-[#04060A] overflow-hidden' : (activeDedicatedMenu === 'secure-folder' || activeDedicatedMenu === 'trash') ? 'bg-[#04060A] overflow-hidden' : 'bg-[#F4F6F8] dark:bg-[#0C111D] overflow-y-auto'} text-stone-900 dark:text-slate-100 flex flex-col selection:bg-blue-600 selection:text-white ${isFullscreen
+      className={`animate-in fade-in duration-150 ${(selectedDocFile || selectedVideoFile || selectedImageFile || selectedAudioTrack || selectedDownloadFile || selectedClasseurFile || selectedCollectionFile || splitSelectedFile) ? 'max-md:bg-[#04060A] bg-[#F4F6F8] dark:bg-[#0C111D] overflow-hidden' : (activeDedicatedMenu === 'secure-folder' || activeDedicatedMenu === 'trash') ? 'max-md:bg-[#04060A] bg-[#F4F6F8] dark:bg-[#0C111D] overflow-hidden' : 'bg-[#F4F6F8] dark:bg-[#0C111D] overflow-y-auto'} text-stone-900 dark:text-slate-100 flex flex-col selection:bg-blue-600 selection:text-white ${isFullscreen
         ? 'fixed inset-0 z-[1000] w-screen h-screen'
         : 'fixed top-[64px] md:top-[68px] bottom-0 left-0 md:left-64 right-0 z-30'
         }`}>
@@ -11915,7 +11940,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           onToggleFullscreen={() => setIsFullscreen(!isFullscreen)}
         />
       ) : currentSubView ? (
-        <div className={`flex-1 flex flex-col w-full animate-in fade-in duration-200 ${(selectedDocFile || selectedVideoFile || selectedImageFile || selectedAudioTrack || selectedDownloadFile || selectedClasseurFile || selectedCollectionFile || splitSelectedFile) ? 'h-full flex-1 overflow-hidden bg-[#04060A] overscroll-none' : 'min-h-screen'}`}>
+        <div className={`flex-1 flex flex-col w-full animate-in fade-in duration-200 ${(selectedDocFile || selectedVideoFile || selectedImageFile || selectedAudioTrack || selectedDownloadFile || selectedClasseurFile || selectedCollectionFile || splitSelectedFile) ? 'h-full flex-1 overflow-hidden max-md:bg-[#04060A] overscroll-none' : 'min-h-screen'}`}>
 
           {/* EN-TÊTE DU SOUS-MENU */}
           <div className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-xs ${isViewerMaximized ? 'hidden' : ((selectedDocFile || selectedVideoFile || selectedImageFile || selectedAudioTrack || selectedDownloadFile || selectedClasseurFile || selectedCollectionFile || splitSelectedFile) ? 'hidden md:block' : '')
@@ -12461,7 +12486,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 1. MENU DOCUMENTS : LAYOUT ET LECTEUR DOCUMENT DÉDIÉ (IMAGE 1) */}
           {(currentSubView?.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedDocFile ? 'bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedDocFile ? 'max-md:bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
               {/* PANNEAU DE GAUCHE : LISTE DES DOCUMENTS */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${(isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'hidden'
@@ -12534,7 +12559,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 2. MENU AUDIO : LAYOUT ET LECTEUR AUDIO DÉDIÉ (IMAGE 2 & IMAGE 3) */}
           {(currentSubView?.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedAudioTrack ? 'bg-[#04060A]' : ''} h-full min-h-0`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedAudioTrack ? 'max-md:bg-[#04060A]' : ''} h-full min-h-0`}>
               {/* PANNEAU DE GAUCHE : LISTE DES SONS */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-28 ${selectedAudioTrack
                 ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
@@ -12600,8 +12625,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             onClick={() => {
                               if (isSelectionMode) {
                                 toggleItemSelection(track.id);
+                              } else if (isSelected) {
+                                handleCloseReader();
                               } else {
-                                handleSelectFile(track);
+                                handleSelectFile(track, true);
                                 setIsMobilePlayerOpen(true);
                               }
                             }}
@@ -12863,7 +12890,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 4. MENU IMAGES : LAYOUT ET LECTEUR IMAGE DÉDIÉ (IMAGE 5) */}
           {(currentSubView?.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedImageFile ? 'bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedImageFile ? 'max-md:bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
               {/* PANNEAU DE GAUCHE : LISTE DES IMAGES */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${(isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'hidden'
@@ -12935,7 +12962,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 5. MENU TÉLÉCHARGEMENTS : LAYOUT ET LECTEUR INDÉPENDANT */}
           {(currentSubView?.id === 'studycloud-category-downloads' || (isCloudView && cloudActiveTab === 'downloads')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedDownloadFile ? 'bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedDownloadFile ? 'max-md:bg-[#04060A]' : ''} min-h-[calc(100vh-120px)]`}>
               {/* PANNEAU DE GAUCHE : LISTE DES TÉLÉCHARGEMENTS */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${(isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'hidden'
@@ -13064,7 +13091,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 6. CLASSEUR : DOSSIERS 3D ET FICHIERS DU DOSSIER OUVERT */}
           {(currentSubView?.id === 'studycloud-classeur-classeur' || currentSubView?.id?.startsWith('studycloud-classeur-') || (isCloudView && cloudActiveTab === 'classeur')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${(opened3DFolder && selectedClasseurFile) ? 'h-full min-h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${(opened3DFolder && selectedClasseurFile) ? 'h-full min-h-full flex-1 min-h-0 max-md:bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
               {/* PANNEAU DE GAUCHE : ARBORESCENCE & FICHIERS */}
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${(isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'hidden'
@@ -13416,7 +13443,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 8. DOSSIER SÉCURISÉ */}
           {(currentSubView?.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedCollectionFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedCollectionFile ? 'h-full flex-1 min-h-0 max-md:bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${isViewerMaximized
                 ? 'hidden'
                 : selectedCollectionFile
@@ -13484,7 +13511,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 9. FAVORIS */}
           {(currentSubView?.id === 'studycloud-collection-favorites' || (isCloudView && cloudActiveTab === 'favorites')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedCollectionFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedCollectionFile ? 'h-full flex-1 min-h-0 max-md:bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${(isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'hidden'
                 : selectedCollectionFile
@@ -13570,7 +13597,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
           {/* 10. CORBEILLE */}
           {(currentSubView?.id === 'studycloud-collection-trash' || (isCloudView && cloudActiveTab === 'trash')) && (
-            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedCollectionFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
+            <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedCollectionFile ? 'h-full flex-1 min-h-0 max-md:bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
               <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${(isViewerMaximized || viewerExpandLevel >= 1)
                 ? 'hidden'
                 : selectedCollectionFile

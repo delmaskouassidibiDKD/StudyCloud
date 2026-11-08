@@ -195,7 +195,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${(viewerExpandLevel >= 2 || isViewerMaximized)
         ? 'fixed inset-0 z-50 w-screen h-screen'
-        : ''
+        : 'max-md:pb-16'
         }`}>
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
           <div className="flex items-center gap-2 min-w-0">
@@ -263,7 +263,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
           </div>
         </div>
 
-        <div className="flex-1 w-full h-full flex items-center justify-center p-2 overflow-hidden">
+        <div className="flex-1 w-full h-full min-h-0 flex items-center justify-center p-2 overflow-hidden">
           {isVid ? (
             <ModernVideoPlayer
               src={url}
@@ -388,7 +388,7 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
       </header>
 
       {/* DISPOSITION SPLIT */}
-      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedItem ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedItem ? 'h-full flex-1 min-h-0 max-md:bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
         {/* PANNEAU DE GAUCHE : LISTE */}
         <div className={`overflow-y-auto px-3 sm:px-6 py-4 pb-64 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedItem)
           ? 'hidden'
@@ -437,7 +437,13 @@ export const DownloadsMenuView: React.FC<DownloadsMenuViewProps> = ({
                 return (
                   <div
                     key={item.id}
-                    onClick={() => setSelectedItem(item)}
+                    onClick={() => {
+                      if (selectedItem?.id === item.id) {
+                        handleCloseReader();
+                      } else {
+                        setSelectedItem(item);
+                      }
+                    }}
                     className={`flex flex-col sm:flex-row items-center justify-between aspect-[3/4] sm:aspect-auto p-2 sm:p-3 rounded-xl sm:rounded-2xl border transition-all cursor-pointer relative ${isSelected
                       ? 'bg-sky-500/15 border-sky-400 shadow-md ring-1 ring-sky-400/30'
                       : 'bg-[#0B101D] border-white/5 hover:border-sky-500/40'

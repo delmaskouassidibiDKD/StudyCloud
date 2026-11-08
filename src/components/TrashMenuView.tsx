@@ -690,6 +690,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         onClick={() => {
           if (isSelectionMode) {
             toggleSelect(file.id);
+          } else if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
           } else {
             setSelectedFile(file);
           }
@@ -790,6 +794,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         onClick={() => {
           if (isSelectionMode) {
             toggleSelect(file.id);
+          } else if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
           } else {
             setSelectedFile(file);
           }
@@ -877,6 +885,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         onClick={() => {
           if (isSelectionMode) {
             toggleSelect(file.id);
+          } else if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
           } else {
             setSelectedFile(file);
           }
@@ -977,6 +989,10 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         onClick={() => {
           if (isSelectionMode) {
             toggleSelect(file.id);
+          } else if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
           } else {
             setSelectedFile(file);
           }
@@ -1261,7 +1277,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${(viewerExpandLevel >= 2 || isViewerMaximized)
           ? 'fixed inset-0 z-50 w-screen h-screen'
-          : ''
+          : 'max-md:pb-16'
         }`}>
         {/* Barre supérieure du lecteur */}
         <div className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
@@ -1390,7 +1406,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
         </div>
 
         {/* Corps du lecteur selon le type */}
-        <div className="flex-1 w-full h-full overflow-hidden flex flex-col relative bg-[#04060A]">
+        <div className="flex-1 w-full h-full min-h-0 overflow-hidden flex flex-col relative bg-[#04060A]">
           {fileType === 'audio' && (
             <div className="w-full h-full flex flex-col justify-center bg-[#090D1A]">
               <ModernAudioPlayer
@@ -1409,7 +1425,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
           )}
 
           {fileType === 'video' && (
-            <div className="w-full h-full flex flex-col justify-center bg-black">
+            <div className="w-full h-full min-h-0 flex flex-col justify-center bg-black">
               <ModernVideoPlayer
                 fileId={file.id}
                 src={file.url}
@@ -1497,7 +1513,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
   };
 
   return (
-    <div ref={containerRef} className={`w-full h-full flex flex-col ${selectedFile ? 'bg-[#04060A]' : 'bg-white'} text-stone-900 select-none overflow-hidden animate-in fade-in duration-200`}>
+    <div ref={containerRef} className={`w-full h-full flex flex-col ${selectedFile ? 'max-md:bg-[#04060A] bg-white' : 'bg-white'} text-stone-900 select-none overflow-hidden animate-in fade-in duration-200`}>
       {/* EN-TÊTE FIXE DU MENU CORBEILLE (TOUJOURS ANCRÉ EN HAUT, NE BOUGE PAS AU DÉFILEMENT) */}
       <header className={`shrink-0 z-30 w-full bg-stone-100/95 backdrop-blur-md px-1.5 sm:px-6 md:px-10 lg:px-12 py-1.5 sm:py-3 border-b border-stone-200 shadow-sm ${(isViewerMaximized && selectedFile) ? 'hidden' : (selectedFile ? 'hidden md:block' : '')}`}>
         <div className="w-full flex items-center justify-between gap-1 sm:gap-4">
@@ -1675,7 +1691,7 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
       )}
 
       {/* CONTENU PRINCIPAL DE LA CORBEILLE AVEC MODE SPLIT-SCREEN LORSQU'UN FICHIER EST SÉLECTIONNÉ */}
-      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedFile ? 'h-full flex-1 min-h-0 max-md:bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
         <main
           className={`overflow-y-auto bg-white py-5 pb-64 sm:pb-80 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
             ? 'hidden'

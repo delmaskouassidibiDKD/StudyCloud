@@ -1639,6 +1639,8 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               : [...selectedItemIds, doc.id];
             setSelectedItemIds(next);
             if (next.length === 0) setIsSelectionMode(false);
+          } else if (selectedDoc?.id === doc.id) {
+            handleCloseReader();
           } else {
             setSelectedDoc(doc);
           }
@@ -1856,7 +1858,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${(viewerExpandLevel >= 2 || isViewerMaximized)
           ? 'fixed inset-0 z-50 w-screen h-screen'
-          : ''
+          : 'max-md:pb-16'
         }`}>
         {/* Barre supérieure du lecteur document (Image 3) */}
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
@@ -2164,7 +2166,7 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
       </header>
 
       {/* DISPOSITION SPLIT (IMAGE 3) */}
-      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedDoc ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedDoc ? 'h-full flex-1 min-h-0 max-md:bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
         {/* PANNEAU DE GAUCHE : LISTE DES DOCUMENTS */}
         <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${isViewerMaximized && selectedDoc
           ? 'hidden'

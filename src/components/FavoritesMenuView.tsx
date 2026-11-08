@@ -441,7 +441,15 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     return (
       <div
         key={file.id}
-        onClick={() => setSelectedFile(file)}
+        onClick={() => {
+          if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
+          } else {
+            setSelectedFile(file);
+          }
+        }}
         className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${isMenuOpen
           ? 'z-[100] relative overflow-visible'
           : isSelected
@@ -538,7 +546,15 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     return (
       <div
         key={file.id}
-        onClick={() => setSelectedFile(file)}
+        onClick={() => {
+          if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
+          } else {
+            setSelectedFile(file);
+          }
+        }}
         className={`group aspect-[3/4] rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${isMenuOpen
           ? 'z-[100] relative overflow-visible'
           : isSelected
@@ -609,7 +625,15 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       <div
         key={file.id}
         style={{ background: theme.bg }}
-        onClick={() => setSelectedFile(file)}
+        onClick={() => {
+          if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
+          } else {
+            setSelectedFile(file);
+          }
+        }}
         className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none cursor-pointer ${isSelected
           ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
           : isMenuOpen
@@ -689,7 +713,15 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     return (
       <div
         key={file.id}
-        onClick={() => setSelectedFile(file)}
+        onClick={() => {
+          if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
+          } else {
+            setSelectedFile(file);
+          }
+        }}
         className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${isSelected
           ? 'border-emerald-500 ring-4 ring-emerald-500/50 shadow-2xl scale-[1.02]'
           : isMenuOpen
@@ -761,7 +793,15 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     return (
       <div
         key={file.id}
-        onClick={() => setSelectedFile(file)}
+        onClick={() => {
+          if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
+          } else {
+            setSelectedFile(file);
+          }
+        }}
         className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${isSelected
           ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]'
           : isMenuOpen
@@ -839,7 +879,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     return (
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white ${(viewerExpandLevel >= 2 || isViewerMaximized)
         ? 'fixed inset-0 z-50 w-screen h-screen'
-        : ''
+        : 'max-md:pb-16'
         }`}>
         {/* Barre d'en-tête du lecteur */}
         <div className="px-4 py-3 bg-[#0A0E1A] border-b border-stone-800 flex items-center justify-between gap-3 shrink-0">
@@ -925,7 +965,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         </div>
 
         {/* Corps du lecteur selon le type */}
-        <div className="flex-1 w-full h-full overflow-hidden flex flex-col relative bg-[#04060A]">
+        <div className="flex-1 w-full h-full min-h-0 overflow-hidden flex flex-col relative bg-[#04060A]">
           {fileType === 'audio' && (
             <div className="w-full h-full flex flex-col justify-center bg-[#070B14]">
               <ModernAudioPlayer
@@ -941,7 +981,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           )}
 
           {fileType === 'video' && (
-            <div className="w-full h-full flex flex-col justify-center bg-black">
+            <div className="w-full h-full min-h-0 flex flex-col justify-center bg-black">
               <ModernVideoPlayer
                 fileId={file.id}
                 src={file.url}
@@ -1024,7 +1064,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   };
 
   return (
-    <div className={`flex-1 flex flex-col w-full ${selectedFile ? 'h-full flex-1 overflow-hidden bg-[#04060A] overscroll-none' : 'min-h-screen bg-stone-100 dark:bg-[#070A13]'} text-stone-900 dark:text-slate-100 select-none animate-in fade-in duration-150`}>
+    <div className={`flex-1 flex flex-col w-full ${selectedFile ? 'h-full flex-1 overflow-hidden max-md:bg-[#04060A] bg-stone-100 dark:bg-[#070A13] overscroll-none' : 'min-h-screen bg-stone-100 dark:bg-[#070A13]'} text-stone-900 dark:text-slate-100 select-none animate-in fade-in duration-150`}>
       {/* EN-TÊTE FIXE DU MENU FAVORIS */}
       <header className={`sticky top-0 z-30 w-full bg-stone-100/95 dark:bg-[#070A13]/95 backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 dark:border-white/10 shadow-sm ${(isViewerMaximized && selectedFile) ? 'hidden' : (selectedFile ? 'hidden md:block' : '')}`}>
         <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
@@ -1110,7 +1150,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       </header>
 
       {/* DISPOSITION SPLIT (COMME DANS LE MENU CORBEILLE ET DOCUMENTS) */}
-      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedFile ? 'h-full flex-1 min-h-0 max-md:bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
         {/* PANNEAU DE GAUCHE : LISTE DES FAVORIS */}
         <main
           className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)

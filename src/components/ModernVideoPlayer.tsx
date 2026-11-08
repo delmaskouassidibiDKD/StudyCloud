@@ -207,6 +207,16 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
     setCurrentTime(newTime);
   };
 
+  const handleTouchSeek = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (!videoRef.current || !progressRef.current || !duration || !e.touches[0]) return;
+    const rect = progressRef.current.getBoundingClientRect();
+    const pos = Math.max(0, Math.min(1, (e.touches[0].clientX - rect.left) / rect.width));
+    const newTime = pos * duration;
+    videoRef.current.currentTime = newTime;
+    setCurrentTime(newTime);
+    handleMouseMove();
+  };
+
   const handleProgressMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
     if (!progressRef.current || !duration) return;
     const rect = progressRef.current.getBoundingClientRect();
@@ -450,11 +460,12 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
       ref={containerRef}
       onMouseMove={handleMouseMove}
       onMouseLeave={handleMouseLeave}
-      className={`group relative w-full h-full min-h-full flex-1 flex flex-col items-center justify-center bg-black overflow-hidden select-none font-sans rounded-2xl ${className}`}
+      onTouchStart={handleMouseMove}
+      className={`group relative w-full h-full min-h-0 max-h-full flex-1 flex flex-col items-center justify-center bg-black overflow-hidden select-none font-sans rounded-2xl ${className}`}
     >
       {/* 1. ÉLÉMENT VIDÉO PRINCIPAL AVEC CADRAGE PLEIN ÉCRAN & ZOOM */}
       {resolvedSrc ? (
-        <div className="relative w-full h-full min-h-full flex-1 flex items-center justify-center overflow-hidden min-h-0 bg-black">
+        <div className="relative w-full h-full min-h-0 max-h-full flex-1 flex items-center justify-center overflow-hidden bg-black">
           <video
             ref={videoRef}
             src={resolvedSrc}
@@ -537,7 +548,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
               setIsBuffering(false);
               setErrorMessage("Impossible de lire ce fichier vidéo. Vérifiez que le format est supporté par votre appareil.");
             }}
-            className={`w-full h-full max-w-full max-h-full cursor-pointer transition-all duration-300 ${getObjectFitClass()}`}
+            className={`w-full h-full min-h-0 max-w-full max-h-full cursor-pointer transition-all duration-300 ${getObjectFitClass()}`}
           />
         </div>
       ) : null}
@@ -596,16 +607,18 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
 
       {/* 6. BARRE DE CONTRÔLE COMPLÈTE EN BAS */}
       <div
-        className={`absolute bottom-0 inset-x-0 p-2 sm:p-4 pb-3 sm:pb-4 bg-gradient-to-t from-black/95 via-black/80 to-transparent flex flex-col gap-1.5 sm:gap-2 transition-opacity duration-300 z-20 ${showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
+        className={`absolute bottom-0 inset-x-0 p-2 sm:p-4 pb-2.5 sm:pb-4 bg-gradient-to-t from-black/95 via-black/85 to-transparent flex flex-col gap-1.5 sm:gap-2 transition-opacity duration-300 z-20 ${showControls || !isPlaying ? 'opacity-100' : 'opacity-0 pointer-events-none'
           }`}
       >
         {/* BARRE DE PROGRESSION INTERACTIVE */}
         <div
           ref={progressRef}
           onClick={handleSeek}
+          onTouchStart={handleTouchSeek}
+          onTouchMove={handleTouchSeek}
           onMouseMove={handleProgressMouseMove}
           onMouseLeave={handleProgressMouseLeave}
-          className="relative w-full h-2 hover:h-3.5 bg-white/20 rounded-full cursor-pointer transition-all group/progress flex items-center"
+          className="relative w-full h-2.5 sm:h-2 hover:h-3.5 bg-white/25 rounded-full cursor-pointer transition-all group/progress flex items-center touch-none"
         >
           {/* Buffer chargé */}
           <div
@@ -619,9 +632,9 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
             style={{ width: `${progressPercent}%` }}
           />
 
-          {/* Curseur de tête de lecture */}
+          {/* Curseur de tête de lecture (toujours visible sur téléphone pour faciliter le glissement) */}
           <div
-            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-md scale-0 group-hover/progress:scale-100 transition-transform pointer-events-none"
+            className="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-3.5 h-3.5 bg-white rounded-full shadow-md scale-100 sm:scale-0 sm:group-hover/progress:scale-100 transition-transform pointer-events-none"
             style={{ left: `${progressPercent}%` }}
           />
 
@@ -636,8 +649,8 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
           )}
         </div>
 
-        {/* RANGÉE DES CONTRÔLES (Boutons compacts adaptés au mobile) */}
-        <div className="flex items-center justify-between gap-1 sm:gap-2 pt-0.5 sm:pt-1 text-white">
+        {/* RANGÉE DES CONTRÔLES (Boutons compacts adaptés au mobile et ordinateur) */}
+        <div className="flex items-center justify-between flex-wrap gap-1 sm:gap-2 pt-0.5 sm:pt-1 text-white">
           {/* GAUCHE : Précédent, Play/Pause, Suivant, Recul 10s, Avance 10s, Volume, Temps */}
           <div className="flex items-center gap-0.5 sm:gap-1.5 min-w-0">
             {/* Vidéo précédente */}
@@ -696,7 +709,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
               <RotateCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
-            {/* Volume & Mute (slider réservé aux grands écrans pour préserver la largeur sur téléphone) */}
+            {/* Volume & Mute */}
             <div className="flex items-center gap-0.5 sm:gap-1 group/vol shrink-0">
               <button
                 type="button"
@@ -719,7 +732,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                 step="0.05"
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
-                className="hidden sm:block w-12 sm:w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                className="block w-8 sm:w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-purple-500"
                 title="Régler le volume"
               />
             </div>
@@ -732,8 +745,8 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
             </div>
           </div>
 
-          {/* DROITE : Qualité, Vitesse, Cadrage, Répétition, PiP, Plein écran */}
-          <div className="flex items-center gap-1 sm:gap-1.5 relative shrink-0">
+          {/* DROITE : Qualité, Vitesse, Répétition, PiP, Téléchargement, Plein écran */}
+          <div className="flex items-center gap-1 sm:gap-1.5 relative shrink-0 ml-auto">
             {/* SÉLECTEUR DE QUALITÉ VIDÉO */}
             <div className="relative">
               <button
@@ -743,19 +756,14 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                   setShowSpeedMenu(false);
                 }}
                 className={`px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-all cursor-pointer border flex items-center gap-1 ${quality !== 'auto'
-                    ? 'bg-purple-600/30 text-purple-300 border-purple-500/50 shadow-sm'
-                    : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-white/10'
+                  ? 'bg-purple-600/30 text-purple-300 border-purple-500/50 shadow-sm'
+                  : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-white/10'
                   }`}
                 title="Régler la qualité vidéo"
               >
                 <Sliders className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-purple-400" />
                 <span className="uppercase font-mono text-[9px] sm:text-[11px]">
-                  {quality === 'auto' ? (
-                    <>
-                      <span className="hidden sm:inline">Auto ({networkInfo.recommendedQuality})</span>
-                      <span className="sm:hidden">Auto</span>
-                    </>
-                  ) : quality}
+                  {quality === 'auto' ? `Auto (${networkInfo.recommendedQuality})` : quality}
                 </span>
               </button>
 
@@ -804,9 +812,9 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                   setShowSpeedMenu(!showSpeedMenu);
                   setShowQualityMenu(false);
                 }}
-                className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${playbackRate !== 1
-                    ? 'bg-purple-600/30 text-purple-300 border-purple-500/50'
-                    : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-transparent'
+                className={`px-1.5 py-0.5 sm:px-2 sm:py-1 rounded-lg text-[10px] sm:text-xs font-bold transition-colors cursor-pointer border ${playbackRate !== 1
+                  ? 'bg-purple-600/30 text-purple-300 border-purple-500/50'
+                  : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-transparent'
                   }`}
                 title="Vitesse de lecture"
               >
@@ -851,15 +859,15 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
               <Tv className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
-            {/* Télécharger la vidéo (affiché sur grand écran ; déjà présent dans la barre du haut sur mobile) */}
+            {/* Télécharger la vidéo */}
             {resolvedSrc && (
               <a
                 href={resolvedSrc}
                 download={fileName || 'video.mp4'}
-                className="hidden sm:flex p-1.5 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors shrink-0"
+                className="flex p-1 sm:p-1.5 rounded-lg sm:rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white cursor-pointer transition-colors shrink-0"
                 title="Télécharger la vidéo"
               >
-                <Download className="w-4 h-4" />
+                <Download className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </a>
             )}
 

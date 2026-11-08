@@ -1604,6 +1604,8 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               : [...selectedItemIds, img.id];
             setSelectedItemIds(next);
             if (next.length === 0) setIsSelectionMode(false);
+          } else if (selectedImage?.id === img.id) {
+            handleCloseReader();
           } else {
             setSelectedImage(img);
           }
@@ -2019,7 +2021,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       </header>
 
       {/* DISPOSITION SPLIT (IMAGE 5) */}
-      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedImage ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${selectedImage ? 'h-full flex-1 min-h-0 max-md:bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-120px)]'}`}>
         {/* PANNEAU DE GAUCHE : LISTE DES IMAGES (IMAGE 1) */}
         <div className={`overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedImage)
             ? 'hidden'

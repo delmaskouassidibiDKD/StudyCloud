@@ -2082,10 +2082,12 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           showToast("Enregistrement échoué. Utilisez la croix pour retirer ou le bouton Réessayer.");
                           return;
                         }
-                        setSelectedTrack(track);
-                        if (!isSelected) {
-                          globalPlayTrack(track, filteredAudio);
+                        if (isSelected) {
+                          handleCloseReader();
+                          return;
                         }
+                        setSelectedTrack(track);
+                        globalPlayTrack(track, filteredAudio);
                         // Clic sur la carte/le son : ouvre le lecteur complet
                         setIsMobilePlayerOpen(true);
                       }}

@@ -1304,7 +1304,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     return (
       <div
         key={doc.id}
-        onClick={() => setViewerFile(doc)}
+        onClick={() => {
+          if (viewerFile?.id === doc.id) {
+            handleCloseReader();
+          } else {
+            setViewerFile(doc);
+          }
+        }}
         className={`aspect-[3/4] ${theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
           isMenuOpen
             ? 'overflow-visible z-[100] ring-2 ring-amber-400 border-amber-300'
@@ -1393,7 +1399,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     return (
       <div
         key={img.id}
-        onClick={() => setViewerFile(img)}
+        onClick={() => {
+          if (viewerFile?.id === img.id) {
+            handleCloseReader();
+          } else {
+            setViewerFile(img);
+          }
+        }}
         className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${
           isSelected
             ? 'border-emerald-500 ring-4 ring-emerald-500/50 shadow-2xl scale-[1.02]'
@@ -1453,7 +1465,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     return (
       <div
         key={vid.id}
-        onClick={() => setViewerFile(vid)}
+        onClick={() => {
+          if (viewerFile?.id === vid.id) {
+            handleCloseReader();
+          } else {
+            setViewerFile(vid);
+          }
+        }}
         className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${
           isSelected
             ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]'
@@ -1523,8 +1541,13 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       <div
         key={aud.id}
         onClick={() => {
-          setViewerFile(aud);
-          setPlayingAudioId(aud.id);
+          if (viewerFile?.id === aud.id) {
+            handleCloseReader();
+            setPlayingAudioId(null);
+          } else {
+            setViewerFile(aud);
+            setPlayingAudioId(aud.id);
+          }
         }}
         className={`aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md relative group select-none cursor-pointer ${
           isMenuOpen
@@ -1831,7 +1854,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
         (viewerExpandLevel >= 2 || isViewerMaximized)
           ? 'fixed inset-0 z-50 w-screen h-screen'
-          : ''
+          : 'max-md:pb-16'
       }`}>
         {/* Barre supérieure du lecteur ("l'écriture qui apparaît à droite") */}
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
@@ -1953,7 +1976,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         </div>
 
         {/* Corps du lecteur selon le format (Images, Vidéos, Audio, Documents) */}
-        <div className="flex-1 w-full h-full flex flex-col items-center justify-center relative overflow-hidden p-1 sm:p-2 bg-black/95">
+        <div className="flex-1 w-full h-full min-h-0 flex flex-col items-center justify-center relative overflow-hidden p-1 sm:p-2 bg-black/95">
           {isVideo ? (
             <ModernVideoPlayer
               fileId={file.id}
@@ -2194,7 +2217,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       {/* =========================================================================
           3. DISPOSITION SPLIT-SCREEN : LISTE À GAUCHE & LECTEUR À DROITE
           ========================================================================= */}
-      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${viewerFile ? 'h-full flex-1 min-h-0 bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-140px)]'}`}>
+      <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${viewerFile ? 'h-full flex-1 min-h-0 max-md:bg-[#04060A] overscroll-none' : 'min-h-[calc(100vh-140px)]'}`}>
         {/* PANNEAU DE GAUCHE : CONTENU DYNAMIQUE SELON L'ONGLET */}
         <main className={`overflow-y-auto px-3 sm:px-6 py-5 pb-32 bg-stone-100 ${
           ((isViewerMaximized || viewerExpandLevel >= 1) && viewerFile)

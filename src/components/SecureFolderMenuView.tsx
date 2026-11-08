@@ -855,10 +855,10 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     const fileType = getFileType(file);
 
     return (
-      <div className={`w-full h-full min-h-full flex-1 flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
+      <div className={`w-full h-full min-h-0 flex-1 flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
         (viewerExpandLevel >= 2 || isViewerMaximized)
           ? 'fixed inset-0 z-50 w-screen h-screen'
-          : ''
+          : 'max-md:pb-16'
         }`}>
         {/* Barre supérieure du lecteur */}
         <div className="sticky top-0 z-30 w-full bg-[#0A0E1A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
@@ -991,9 +991,9 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
         </div>
 
         {/* Corps du lecteur selon le type */}
-        <div className="flex-1 w-full h-full min-h-full overflow-hidden flex flex-col relative bg-[#04060A]">
+        <div className="flex-1 w-full h-full min-h-0 overflow-hidden flex flex-col relative bg-[#04060A]">
           {fileType === 'audio' && (
-            <div className="w-full h-full min-h-full flex-1 flex flex-col justify-center bg-[#070B14]">
+            <div className="w-full h-full min-h-0 flex-1 flex flex-col justify-center bg-[#070B14]">
               <ModernAudioPlayer
                 fileId={file.id}
                 src={file.url}
@@ -1007,7 +1007,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
           )}
 
           {fileType === 'video' && (
-            <div className="w-full h-full min-h-full flex-1 flex flex-col justify-center bg-black">
+            <div className="w-full h-full min-h-0 flex-1 flex flex-col justify-center bg-black">
               <ModernVideoPlayer
                 fileId={file.id}
                 src={file.url}
@@ -1096,7 +1096,15 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     return (
       <div
         key={file.id}
-        onClick={() => setSelectedFile(file)}
+        onClick={() => {
+          if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
+          } else {
+            setSelectedFile(file);
+          }
+        }}
         className={`group relative aspect-[3/4] rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 cursor-pointer select-none shadow-md ${isChecked
           ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
           : isCurrentViewer
@@ -1206,7 +1214,15 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     return (
       <div
         key={file.id}
-        onClick={() => setSelectedFile(file)}
+        onClick={() => {
+          if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
+          } else {
+            setSelectedFile(file);
+          }
+        }}
         className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${isChecked
           ? 'border-emerald-400 ring-4 ring-emerald-400/90 shadow-2xl scale-[1.02]'
           : isCurrentViewer
@@ -1288,7 +1304,15 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     return (
       <div
         key={file.id}
-        onClick={() => setSelectedFile(file)}
+        onClick={() => {
+          if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
+          } else {
+            setSelectedFile(file);
+          }
+        }}
         className={`group relative aspect-[4/5] rounded-xl sm:rounded-2xl bg-[#0A0E18] border transition-all duration-200 select-none cursor-pointer ${isChecked
           ? 'border-purple-400 ring-4 ring-purple-400/90 shadow-2xl scale-[1.02]'
           : isCurrentViewer
@@ -1379,7 +1403,15 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       <div
         key={file.id}
         style={{ background: theme.bg }}
-        onClick={() => setSelectedFile(file)}
+        onClick={() => {
+          if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
+          } else {
+            setSelectedFile(file);
+          }
+        }}
         className={`group aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative select-none cursor-pointer ${isChecked
           ? 'ring-4 ring-white/90 shadow-2xl scale-[1.02] z-20'
           : isCurrentViewer
@@ -1496,7 +1528,15 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     return (
       <div
         key={file.id}
-        onClick={() => setSelectedFile(file)}
+        onClick={() => {
+          if (selectedFile?.id === file.id) {
+            setSelectedFile(null);
+            setIsViewerMaximized(false);
+            resetViewerExpand();
+          } else {
+            setSelectedFile(file);
+          }
+        }}
         className={`group aspect-[3/4] rounded-2xl bg-[#0A0D18] border transition-all flex flex-col justify-between shadow-md select-none cursor-pointer ${isMenuOpen
           ? 'z-[100] relative overflow-visible'
           : isChecked
@@ -1585,7 +1625,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
   };
 
   return (
-    <div className={`flex-1 flex flex-col w-full ${selectedFile ? 'h-full min-h-full flex-1 overflow-hidden bg-[#04060A] overscroll-none' : 'min-h-screen bg-stone-100'} text-stone-900 select-none animate-in fade-in duration-200`}>
+    <div className={`flex-1 flex flex-col w-full ${selectedFile ? 'h-full min-h-full flex-1 overflow-hidden max-md:bg-[#04060A] bg-stone-100 overscroll-none' : 'min-h-screen bg-stone-100'} text-stone-900 select-none animate-in fade-in duration-200`}>
       <input
         type="file"
         ref={fileInputRef}
@@ -1903,7 +1943,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
         </div>
       ) : (
         /* VUE DES FICHIERS PROTÉGÉS AVEC MODE SPLIT-SCREEN LATÉRAL (COMME DANS LA CORBEILLE) */
-        <div className={`flex-1 flex flex-col md:flex-row w-full ${selectedFile ? 'h-full min-h-full flex-1 overflow-hidden bg-[#04060A]' : 'overflow-hidden flex-1'} relative`}>
+        <div className={`flex-1 flex flex-col md:flex-row w-full ${selectedFile ? 'h-full min-h-full flex-1 overflow-hidden max-md:bg-[#04060A]' : 'overflow-hidden flex-1'} relative`}>
           <main
             className={`overflow-y-auto bg-stone-100 py-4 pb-36 ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedFile)
                 ? 'hidden'
