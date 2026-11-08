@@ -14,6 +14,7 @@ export interface GlobalAudioContextType {
   resolvedAudioUrl: string;
   audioRef: React.RefObject<HTMLAudioElement | null>;
   playTrack: (track: FileItem, newPlaylist?: FileItem[]) => Promise<void>;
+  updateCurrentTrack: (updater: FileItem | null | ((prev: FileItem | null) => FileItem | null)) => void;
   togglePlayPause: () => void;
   playAudio: () => void;
   pauseAudio: () => void;
@@ -160,19 +161,46 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
     }
   }, [isAudioPlaying, pauseAudio, playAudio]);
 
+  const updateCurrentTrack = useCallback((updater: FileItem | null | ((prev: FileItem | null) => FileItem | null)) => {
+    setCurrentTrack(prev => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      currentTrackRef.current = next;
+      return next;
+    });
+  }, []);
+
   const playTrack = useCallback(async (track: FileItem, newPlaylist?: FileItem[]) => {
     if (!track) return;
-    isChangingTrackRef.current = true;
-    desiredPlaybackStateRef.current = true;
-    setCurrentTime(0);
-    setCurrentTrack(track);
-    currentTrackRef.current = track;
+
+    const isSameTrack = Boolean(
+      currentTrackRef.current &&
+      (currentTrackRef.current.id === track.id ||
+        (currentTrackRef.current.name &&
+          currentTrackRef.current.name === track.name &&
+          currentTrackRef.current.size === track.size))
+    );
 
     if (newPlaylist && Array.isArray(newPlaylist) && newPlaylist.length > 0) {
       setPlaylist(newPlaylist);
       playlistRef.current = newPlaylist;
       prefetchPlaylist(newPlaylist);
     }
+
+    // Si la piste est déjà en cours/chargée, on ne coupe pas et on ne remet jamais currentTime à 0
+    if (isSameTrack && audioRef.current && audioRef.current.src && !audioRef.current.error) {
+      setCurrentTrack(track);
+      currentTrackRef.current = track;
+      if (audioRef.current.paused) {
+        playAudio();
+      }
+      return;
+    }
+
+    isChangingTrackRef.current = true;
+    desiredPlaybackStateRef.current = true;
+    setCurrentTime(0);
+    setCurrentTrack(track);
+    currentTrackRef.current = track;
 
     // Résolution synchrone prioritaire pour démarrage immédiat
     const syncUrl = getSyncTrackUrl(track);
@@ -214,7 +242,7 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
     // En tâche de fond, pré-résoudre le blob local si ce n'est pas déjà fait
     prefetchTrackBlob(track);
-  }, [getSyncTrackUrl, prefetchPlaylist, prefetchTrackBlob, updateMediaSession]);
+  }, [getSyncTrackUrl, playAudio, prefetchPlaylist, prefetchTrackBlob, updateMediaSession]);
 
   const handleAudioNext = useCallback(() => {
     const list = playlistRef.current.length > 0 ? playlistRef.current : (currentTrackRef.current ? [currentTrackRef.current] : []);
@@ -424,6 +452,7 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
         resolvedAudioUrl,
         audioRef,
         playTrack,
+        updateCurrentTrack,
         togglePlayPause,
         playAudio,
         pauseAudio,

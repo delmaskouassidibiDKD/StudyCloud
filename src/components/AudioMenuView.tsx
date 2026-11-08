@@ -163,6 +163,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
     isAudioRepeat,
     isAudioShuffle,
     playTrack: globalPlayTrack,
+    updateCurrentTrack,
     togglePlayPause,
     playAudio,
     pauseAudio,
@@ -177,17 +178,17 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
 
   const selectedTrack = globalCurrentTrack;
   const setSelectedTrack = (t: FileItem | null | ((prev: FileItem | null) => FileItem | null)) => {
-    if (typeof t === 'function') {
-      const next = t(globalCurrentTrack);
-      if (!next) {
-        globalStopAndClose();
-      } else {
-        globalPlayTrack(next, filteredAudio);
-      }
-    } else if (!t) {
+    const next = typeof t === 'function' ? t(globalCurrentTrack) : t;
+    if (!next) {
       globalStopAndClose();
+    } else if (
+      globalCurrentTrack &&
+      (globalCurrentTrack.id === next.id ||
+        (globalCurrentTrack.name && globalCurrentTrack.name === next.name && globalCurrentTrack.size === next.size))
+    ) {
+      updateCurrentTrack(next);
     } else {
-      globalPlayTrack(t, filteredAudio);
+      globalPlayTrack(next, filteredAudio);
     }
   };
   const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
@@ -1903,7 +1904,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       />
 
       {/* EN-TÊTE FIXE DU MENU AUDIO */}
-      <header className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedTrack) ? 'hidden' : (selectedTrack ? 'hidden md:block' : '')}`}>
+      <header className={`sticky top-0 z-30 w-full bg-white backdrop-blur-md px-2 sm:px-6 md:px-10 lg:px-12 py-2 sm:py-2.5 border-b border-stone-200 shadow-sm ${((isViewerMaximized || viewerExpandLevel >= 1) && selectedTrack) ? 'hidden' : ((selectedTrack && isMobilePlayerOpen) ? 'hidden md:block' : '')}`}>
         <div className="w-full flex items-center justify-between gap-1.5 sm:gap-4">
           {/* GAUCHE : Bouton Retour et Titre Audio */}
           <div className="flex items-center gap-1.5 sm:gap-3 shrink-0">
@@ -2083,10 +2084,12 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           return;
                         }
                         if (isSelected) {
-                          handleCloseReader();
+                          setIsMobilePlayerOpen(true);
+                          if (!isAudioPlaying) {
+                            playAudio();
+                          }
                           return;
                         }
-                        setSelectedTrack(track);
                         globalPlayTrack(track, filteredAudio);
                         // Clic sur la carte/le son : ouvre le lecteur complet
                         setIsMobilePlayerOpen(true);
@@ -2243,7 +2246,6 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedTrack(track);
                             if (isSelected) {
                               togglePlayPause();
                             } else {
