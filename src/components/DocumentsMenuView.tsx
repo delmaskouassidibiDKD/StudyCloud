@@ -837,16 +837,17 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
           originalSource: doc.source || 'Documents',
           source: 'Dossier Sécurisé'
         };
-        setDocumentsList(prev => prev.filter(d => d.id !== doc.id));
+        const targetNameLower = (doc.name || '').trim().toLowerCase();
+        setDocumentsList(prev => prev.filter(d => d.id !== doc.id && (d.name || '').trim().toLowerCase() !== targetNameLower));
         if (selectedDoc?.id === doc.id) {
           setSelectedDoc(null);
           setIsViewerMaximized(false);
         }
         CloudDataStore.moveToSecure(securedFile as any);
-        CloudStorageAPI.moveToSecureFolder(doc, 'documents').catch(console.error);
-        invalidateCloudQueries.documents();
-        invalidateCloudQueries.secure();
         showToast(`"${doc.name}" verrouillé dans le dossier sécurisé !`);
+        await CloudStorageAPI.moveToSecureFolder(doc, 'documents').catch(console.error);
+        invalidateCloudQueries.documents().catch(() => { });
+        invalidateCloudQueries.secure().catch(() => { });
         break;
       }
 

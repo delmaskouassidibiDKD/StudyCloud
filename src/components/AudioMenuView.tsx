@@ -890,8 +890,9 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           thumbnailUrl: validCover,
           previewUrl: validCover || track.previewUrl
         };
+        const targetNameLower = (track.name || '').trim().toLowerCase();
         pendingAudioItemsRef.current.delete(track.id);
-        setAudioList(prev => prev.filter(t => t.id !== track.id));
+        setAudioList(prev => prev.filter(t => t.id !== track.id && (t.name || '').trim().toLowerCase() !== targetNameLower));
         if (selectedTrack?.id === track.id) {
           setSelectedTrack(null);
           pauseAudio();
@@ -899,10 +900,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
         setSelectedItemIds(prev => prev.filter(id => id !== track.id));
 
         CloudDataStore.moveToSecure(securedFile as any);
-        CloudStorageAPI.moveToSecureFolder(securedFile, 'audio').catch(console.error);
-        invalidateCloudQueries.audio();
-        invalidateCloudQueries.secure();
         showToast(`"${track.name}" verrouillé dans le dossier sécurisé !`);
+        await CloudStorageAPI.moveToSecureFolder(securedFile, 'audio').catch(console.error);
+        invalidateCloudQueries.audio().catch(() => { });
+        invalidateCloudQueries.secure().catch(() => { });
         break;
       }
 

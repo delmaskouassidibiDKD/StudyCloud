@@ -8325,8 +8325,22 @@ a:hover{transform:translateY(-2px)}
               OR id LIKE 'cf-folder-%'
               OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
               OR name IN (SELECT name FROM study_imported_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
             )
-          `).bind(reqUserId, reqUserId, reqUserId).run().catch(() => {
+          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare(`
+            DELETE FROM files
+            WHERE user_id = ? AND matiere_id = 'menu-audio' AND (
+              r2_key IS NULL OR r2_key = ''
+              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM trash_files WHERE user_id = ?)
+            )
+          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
           });
           const { results: auds } = await env.DB.prepare(`
             SELECT * FROM audio_files 
@@ -8347,8 +8361,9 @@ a:hover{transform:translateY(-2px)}
               WHERE user_id = ? 
                 AND (matiere_id IS NULL OR matiere_id = 'menu-audio')
                 AND (type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff') OR matiere_id = 'menu-audio')
-                AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
-                AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
+                AND r2_key IS NOT NULL AND r2_key != ''
+                AND r2_key NOT LIKE '%/classeur/%'
+                AND r2_key NOT LIKE '%/mes-fichiers/%'
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
               ORDER BY last_imported DESC, created_at DESC
@@ -8357,9 +8372,23 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
           let trashedIdSet = /* @__PURE__ */ new Set();
+          let trashedNameSet = /* @__PURE__ */ new Set();
           try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            trashedIdSet = new Set((trashList || []).map((t) => t.id));
+            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            (trashList || []).forEach((t) => {
+              if (t.id) trashedIdSet.add(t.id);
+              if (t.name) trashedNameSet.add(String(t.name).trim().toLowerCase());
+            });
+          } catch (e) {
+          }
+          let securedAudIdSet = /* @__PURE__ */ new Set();
+          let securedAudNameSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
+            (secList || []).forEach((s) => {
+              if (s.id) securedAudIdSet.add(s.id);
+              if (s.name) securedAudNameSet.add(String(s.name).trim().toLowerCase());
+            });
           } catch (e) {
           }
           let favAudSet = /* @__PURE__ */ new Set();
@@ -8379,8 +8408,9 @@ a:hover{transform:translateY(-2px)}
           const allList = [];
           const addAud = (a) => {
             const id = a.id;
-            if (trashedIdSet.has(id)) return;
             const name = a.name || "Audio";
+            const lowerName = name.trim().toLowerCase();
+            if (trashedIdSet.has(id) || trashedNameSet.has(lowerName) || securedAudIdSet.has(id) || securedAudNameSet.has(lowerName)) return;
             const normKey = `${name.trim().toLowerCase()}_${a.size_bytes || a.size || 0}`;
             if (seen.has(id) || seenNames.has(normKey)) return;
             seen.add(id);
@@ -8632,8 +8662,22 @@ a:hover{transform:translateY(-2px)}
               OR id LIKE 'cf-folder-%'
               OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
               OR name IN (SELECT name FROM study_imported_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
             )
-          `).bind(reqUserId, reqUserId, reqUserId).run().catch(() => {
+          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare(`
+            DELETE FROM files
+            WHERE user_id = ? AND matiere_id = 'menu-images' AND (
+              r2_key IS NULL OR r2_key = ''
+              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM trash_files WHERE user_id = ?)
+            )
+          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
           });
           const { results: imgs } = await env.DB.prepare(`
             SELECT * FROM image_files 
@@ -8653,8 +8697,9 @@ a:hover{transform:translateY(-2px)}
               WHERE user_id = ? 
                 AND (matiere_id IS NULL OR matiere_id = 'menu-images')
                 AND (type LIKE 'image/%' OR LOWER(extension) IN ('jpg','jpeg','png','webp','gif','svg','bmp','ico','tiff','tif','heic','avif'))
-                AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
-                AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
+                AND r2_key IS NOT NULL AND r2_key != ''
+                AND r2_key NOT LIKE '%/classeur/%'
+                AND r2_key NOT LIKE '%/mes-fichiers/%'
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
               ORDER BY last_imported DESC, created_at DESC
@@ -8663,9 +8708,23 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
           let trashedImgIdSet = /* @__PURE__ */ new Set();
+          let trashedImgNameSet = /* @__PURE__ */ new Set();
           try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            trashedImgIdSet = new Set((trashList || []).map((t) => t.id));
+            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            (trashList || []).forEach((t) => {
+              if (t.id) trashedImgIdSet.add(t.id);
+              if (t.name) trashedImgNameSet.add(String(t.name).trim().toLowerCase());
+            });
+          } catch (e) {
+          }
+          let securedImgIdSet = /* @__PURE__ */ new Set();
+          let securedImgNameSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
+            (secList || []).forEach((s) => {
+              if (s.id) securedImgIdSet.add(s.id);
+              if (s.name) securedImgNameSet.add(String(s.name).trim().toLowerCase());
+            });
           } catch (e) {
           }
           let favImgSet = /* @__PURE__ */ new Set();
@@ -8685,8 +8744,9 @@ a:hover{transform:translateY(-2px)}
           const allList = [];
           const addImg = (img) => {
             const id = img.id;
-            if (trashedImgIdSet.has(id)) return;
             const name = img.name || "Image";
+            const lowerName = name.trim().toLowerCase();
+            if (trashedImgIdSet.has(id) || trashedImgNameSet.has(lowerName) || securedImgIdSet.has(id) || securedImgNameSet.has(lowerName)) return;
             const normKey = `${name.trim().toLowerCase()}_${img.size_bytes || img.size || 0}`;
             if (seen.has(id) || seenNames.has(normKey)) return;
             seen.add(id);
@@ -8906,8 +8966,22 @@ a:hover{transform:translateY(-2px)}
               OR id LIKE 'cf_folder_%' 
               OR id LIKE 'cf-folder-%'
               OR id IN (SELECT id FROM study_imported_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
             )
-          `).bind(reqUserId, reqUserId).run().catch(() => {
+          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
+          });
+          await env.DB.prepare(`
+            DELETE FROM files
+            WHERE user_id = ? AND matiere_id = 'menu-videos' AND (
+              r2_key IS NULL OR r2_key = ''
+              OR id IN (SELECT id FROM secure_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM secure_files WHERE user_id = ?)
+              OR id IN (SELECT id FROM trash_files WHERE user_id = ?)
+              OR name IN (SELECT name FROM trash_files WHERE user_id = ?)
+            )
+          `).bind(reqUserId, reqUserId, reqUserId, reqUserId, reqUserId).run().catch(() => {
           });
           const { results: vids } = await env.DB.prepare(`
             SELECT * FROM video_files 
@@ -8927,8 +9001,9 @@ a:hover{transform:translateY(-2px)}
               WHERE user_id = ? 
                 AND (matiere_id IS NULL OR matiere_id = 'menu-videos')
                 AND (type LIKE 'video/%' OR LOWER(extension) IN ('mp4','mov','mkv','webm','avi','3gp','m4v','ts'))
-                AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
-                AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
+                AND r2_key IS NOT NULL AND r2_key != ''
+                AND r2_key NOT LIKE '%/classeur/%'
+                AND r2_key NOT LIKE '%/mes-fichiers/%'
                 AND id NOT LIKE 'cf-%'
                 AND id NOT LIKE 'cf_%'
               ORDER BY last_imported DESC, created_at DESC
@@ -8937,9 +9012,23 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
           let trashedVidIdSet = /* @__PURE__ */ new Set();
+          let trashedVidNameSet = /* @__PURE__ */ new Set();
           try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            trashedVidIdSet = new Set((trashList || []).map((t) => t.id));
+            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            (trashList || []).forEach((t) => {
+              if (t.id) trashedVidIdSet.add(t.id);
+              if (t.name) trashedVidNameSet.add(String(t.name).trim().toLowerCase());
+            });
+          } catch (e) {
+          }
+          let securedVidIdSet = /* @__PURE__ */ new Set();
+          let securedVidNameSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
+            (secList || []).forEach((s) => {
+              if (s.id) securedVidIdSet.add(s.id);
+              if (s.name) securedVidNameSet.add(String(s.name).trim().toLowerCase());
+            });
           } catch (e) {
           }
           let favVidSet = /* @__PURE__ */ new Set();
@@ -8959,8 +9048,9 @@ a:hover{transform:translateY(-2px)}
           const allList = [];
           const addVid = (v) => {
             const id = v.id;
-            if (trashedVidIdSet.has(id)) return;
             const name = v.name || "Vid\xE9o";
+            const lowerName = name.trim().toLowerCase();
+            if (trashedVidIdSet.has(id) || trashedVidNameSet.has(lowerName) || securedVidIdSet.has(id) || securedVidNameSet.has(lowerName)) return;
             const normKey = `${name.trim().toLowerCase()}_${v.size_bytes || v.size || 0}`;
             if (seen.has(id) || seenNames.has(normKey)) return;
             seen.add(id);
@@ -9200,9 +9290,23 @@ a:hover{transform:translateY(-2px)}
           `).bind(reqUserId, reqUserId).all();
           let extraDocs = [];
           let trashedDocIdSet = /* @__PURE__ */ new Set();
+          let trashedDocNameSet = /* @__PURE__ */ new Set();
           try {
-            const { results: trashList } = await env.DB.prepare(`SELECT id FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
-            trashedDocIdSet = new Set((trashList || []).map((t) => t.id));
+            const { results: trashList } = await env.DB.prepare(`SELECT id, name FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            (trashList || []).forEach((t) => {
+              if (t.id) trashedDocIdSet.add(t.id);
+              if (t.name) trashedDocNameSet.add(String(t.name).trim().toLowerCase());
+            });
+          } catch (e) {
+          }
+          let securedDocIdSet = /* @__PURE__ */ new Set();
+          let securedDocNameSet = /* @__PURE__ */ new Set();
+          try {
+            const { results: secList } = await env.DB.prepare(`SELECT id, name FROM secure_files WHERE user_id = ?`).bind(reqUserId).all();
+            (secList || []).forEach((s) => {
+              if (s.id) securedDocIdSet.add(s.id);
+              if (s.name) securedDocNameSet.add(String(s.name).trim().toLowerCase());
+            });
           } catch (e) {
           }
           let studyNames = /* @__PURE__ */ new Set();
@@ -9231,7 +9335,8 @@ a:hover{transform:translateY(-2px)}
           const allList = [];
           const addDoc = (d) => {
             const id = d.id;
-            if (trashedDocIdSet.has(id)) return;
+            const docNameLower = String(d.name || "").trim().toLowerCase();
+            if (trashedDocIdSet.has(id) || trashedDocNameSet.has(docNameLower) || securedDocIdSet.has(id) || securedDocNameSet.has(docNameLower)) return;
             if (typeof id === "string" && (id.startsWith("cf-") || id.startsWith("cf_"))) return;
             if (d.r2_key && (d.r2_key.includes("/study/") || d.r2_key.includes("/classeur/") || d.r2_key.includes("/mes-fichiers/"))) return;
             if (d.folder_id && !["documents", "root", "default-folder"].includes(d.folder_id)) return;
@@ -9781,21 +9886,42 @@ a:hover{transform:translateY(-2px)}
             resolvedR2Key,
             fileUrl
           ).run();
-          if (fromFolderId) {
-            await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
-          } else if (originalCategory === "classeur_folder" || category === "folder") {
-            await env.DB.prepare("DELETE FROM classeur_folders WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
-          } else if (originalCategory === "downloads") {
-            await env.DB.prepare("DELETE FROM download_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
-          } else if (originalCategory === "audio") {
-            await env.DB.prepare("DELETE FROM audio_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
-          } else if (originalCategory === "images") {
-            await env.DB.prepare("DELETE FROM image_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
-          } else if (originalCategory === "videos") {
-            await env.DB.prepare("DELETE FROM video_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
-          } else if (originalCategory === "documents") {
-            await env.DB.prepare("DELETE FROM document_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
+          const isRealFromFolder = Boolean(fromFolderId) && !["images", "videos", "audio", "documents", "default-folder", "root", "menu-images", "menu-videos", "menu-audio", "menu-documents", "default"].includes(fromFolderId);
+          if (isRealFromFolder) {
+            await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run().catch(() => {
+            });
           }
+          if (originalCategory === "classeur_folder" || category === "folder") {
+            await env.DB.prepare("DELETE FROM classeur_folders WHERE id = ? AND user_id = ?").bind(id, reqUserId).run().catch(() => {
+            });
+          }
+          if (originalCategory === "downloads" || category === "downloads") {
+            await env.DB.prepare("DELETE FROM download_files WHERE (id = ? OR name = ?) AND user_id = ?").bind(id, name, reqUserId).run().catch(() => {
+            });
+          }
+          if (originalCategory === "audio" || category === "audio") {
+            await env.DB.prepare("DELETE FROM audio_files WHERE (id = ? OR name = ?) AND user_id = ?").bind(id, name, reqUserId).run().catch(() => {
+            });
+          }
+          if (originalCategory === "images" || category === "images") {
+            await env.DB.prepare("DELETE FROM image_files WHERE (id = ? OR name = ?) AND user_id = ?").bind(id, name, reqUserId).run().catch(() => {
+            });
+          }
+          if (originalCategory === "videos" || category === "videos") {
+            await env.DB.prepare("DELETE FROM video_files WHERE (id = ? OR name = ?) AND user_id = ?").bind(id, name, reqUserId).run().catch(() => {
+            });
+          }
+          if (originalCategory === "documents" || category === "documents") {
+            await env.DB.prepare("DELETE FROM document_files WHERE (id = ? OR name = ?) AND user_id = ?").bind(id, name, reqUserId).run().catch(() => {
+            });
+          }
+          await env.DB.prepare(`
+            DELETE FROM files WHERE user_id = ? AND (
+              id = ?
+              OR (name = ? AND (matiere_id IS NULL OR matiere_id IN ('menu-images', 'menu-videos', 'menu-audio', 'menu-documents')))
+            )
+          `).bind(reqUserId, id, name).run().catch(() => {
+          });
           const syncCat = originalCategory === "classeur_folder" || category === "folder" ? "classeur_folder" : originalCategory;
           await recordSyncItem(env.DB, reqUserId, id, syncCat, { id }, 1);
           await cleanUserFavoriteOnDelete(env.DB, reqUserId, id);

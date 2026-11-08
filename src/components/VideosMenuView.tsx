@@ -783,16 +783,17 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
           originalSource: vid.source || 'Vidéos',
           source: 'Dossier Sécurisé'
         };
-        setVideosList(prev => prev.filter(v => v.id !== vid.id));
+        const targetNameLower = (vid.name || '').trim().toLowerCase();
+        setVideosList(prev => prev.filter(v => v.id !== vid.id && (v.name || '').trim().toLowerCase() !== targetNameLower));
         if (selectedVideo?.id === vid.id) {
           setSelectedVideo(null);
           setIsViewerMaximized(false);
         }
         CloudDataStore.moveToSecure(securedFile as any);
-        CloudStorageAPI.moveToSecureFolder(vid, 'videos').catch(console.error);
-        invalidateCloudQueries.videos();
-        invalidateCloudQueries.secure();
         showToast(`"${vid.name}" verrouillé dans le dossier sécurisé !`);
+        await CloudStorageAPI.moveToSecureFolder(vid, 'videos').catch(console.error);
+        invalidateCloudQueries.videos().catch(() => { });
+        invalidateCloudQueries.secure().catch(() => { });
         break;
       }
 

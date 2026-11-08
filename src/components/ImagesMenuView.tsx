@@ -395,14 +395,27 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   useEffect(() => {
     if (serverImages && Array.isArray(serverImages)) {
       setImagesList(prev => {
-        const cleanServer = serverImages.filter(i => !isItemDeleted(i.id) && !isExcludedFromImages(i));
+        const st = CloudDataStore.getState();
+        const blockedIds = new Set([
+          ...(st.secure || []).map(s => s.id),
+          ...(st.trash || []).map(t => t.id),
+        ]);
+        const blockedNames = new Set([
+          ...(st.secure || []).map(s => (s.name || '').trim().toLowerCase()),
+          ...(st.trash || []).map(t => (t.name || '').trim().toLowerCase()),
+        ].filter(Boolean));
+        const cleanServer = serverImages.filter(
+          i => !isItemDeleted(i.id) && !isExcludedFromImages(i) && !blockedIds.has(i.id) && !blockedNames.has((i.name || '').trim().toLowerCase())
+        );
         const serverIds = new Set(cleanServer.map(i => i.id));
-        const pending = prev.filter(i => !serverIds.has(i.id) && Boolean(i.isUploading) && !isItemDeleted(i.id) && !isExcludedFromImages(i));
+        const pending = prev.filter(
+          i => !serverIds.has(i.id) && Boolean(i.isUploading) && !isItemDeleted(i.id) && !isExcludedFromImages(i) && !blockedIds.has(i.id) && !blockedNames.has((i.name || '').trim().toLowerCase())
+        );
         const merged = [...pending, ...cleanServer];
         const seenIds = new Set<string>();
         const seenSigs = new Set<string>();
         return merged.filter(i => {
-          if (!i || !i.id || isItemDeleted(i.id)) return false;
+          if (!i || !i.id || isItemDeleted(i.id) || blockedIds.has(i.id) || blockedNames.has((i.name || '').trim().toLowerCase())) return false;
           if (seenIds.has(i.id)) return false;
           const sig = `${(i.name || '').trim().toLowerCase()}_${i.sizeBytes || i.size || 0}`;
           if (seenSigs.has(sig)) return false;
@@ -587,7 +600,8 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
       source: 'Images'
     };
 
-    setImagesList(prev => prev.filter(i => i.id !== img.id));
+    const targetNameLower = (img.name || '').trim().toLowerCase();
+    setImagesList(prev => prev.filter(i => i.id !== img.id && (i.name || '').trim().toLowerCase() !== targetNameLower));
     if (selectedImage?.id === img.id) {
       setSelectedImage(null);
     }
@@ -643,11 +657,20 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
 
   // Filtrage et tri (selon l'option sélectionnée)
   const filteredImages = useMemo(() => {
-    let list = imagesList.filter(i => !isItemDeleted(i.id));
+    const st = CloudDataStore.getState();
+    const blockedIds = new Set([
+      ...(st.secure || []).map(s => s.id),
+      ...(st.trash || []).map(t => t.id),
+    ]);
+    const blockedNames = new Set([
+      ...(st.secure || []).map(s => (s.name || '').trim().toLowerCase()),
+      ...(st.trash || []).map(t => (t.name || '').trim().toLowerCase()),
+    ].filter(Boolean));
+    let list = imagesList.filter(i => !isItemDeleted(i.id) && !blockedIds.has(i.id) && !blockedNames.has((i.name || '').trim().toLowerCase()));
     const seenIds = new Set<string>();
     const seenSigs = new Set<string>();
     list = list.filter(item => {
-      if (!item || !item.id || isItemDeleted(item.id)) return false;
+      if (!item || !item.id || isItemDeleted(item.id) || blockedIds.has(item.id) || blockedNames.has((item.name || '').trim().toLowerCase())) return false;
       if (seenIds.has(item.id)) return false;
       const sig = `${(item.name || '').trim().toLowerCase()}_${item.sizeBytes || item.size || 0}`;
       if (seenSigs.has(sig)) return false;
@@ -775,15 +798,16 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
           originalSource: img.source || 'Images',
           source: 'Dossier Sécurisé'
         };
-        setImagesList(prev => prev.filter(i => i.id !== img.id));
+        const targetNameLower = (img.name || '').trim().toLowerCase();
+        setImagesList(prev => prev.filter(i => i.id !== img.id && (i.name || '').trim().toLowerCase() !== targetNameLower));
         if (selectedImage?.id === img.id) {
           setSelectedImage(null);
         }
         CloudDataStore.moveToSecure(securedFile as any);
-        CloudStorageAPI.moveToSecureFolder(img, 'images').catch(console.error);
-        invalidateCloudQueries.images();
-        invalidateCloudQueries.secure();
         showToast(`"${img.name}" verrouillée dans le dossier sécurisé !`);
+        await CloudStorageAPI.moveToSecureFolder(img, 'images').catch(console.error);
+        invalidateCloudQueries.images().catch(() => { });
+        invalidateCloudQueries.secure().catch(() => { });
         break;
       }
 

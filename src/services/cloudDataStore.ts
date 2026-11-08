@@ -1276,12 +1276,13 @@ export const CloudDataStore = {
       localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet).slice(-500)));
     } catch { }
 
-    const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
+    const fileNameSet = new Set(arr.map(f => (f.name || '').trim().toLowerCase()).filter(Boolean));
+    const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id) && !fileNameSet.has((f.name || '').trim().toLowerCase()));
     const clearFavFn = (list: FileItem[]) => list.map(f => idSet.has(f.id) ? { ...f, isFavorite: false } : f);
 
     const updatedMap = { ...currentState.folderFilesMap };
     for (const k of Object.keys(updatedMap)) {
-      updatedMap[k] = filterFn(updatedMap[k]);
+      updatedMap[k] = updatedMap[k].filter(f => !idSet.has(f.id));
     }
     const trashedItems = arr.map(f => ({ ...f, isTrash: true, isFavorite: false }));
     const existingTrash = currentState.trash.filter(t => !idSet.has(t.id));
@@ -1556,10 +1557,11 @@ export const CloudDataStore = {
     const arr = (Array.isArray(items) ? items : [items]).filter(Boolean);
     if (arr.length === 0) return;
     const idSet = new Set(arr.map(f => f.id));
-    const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id));
+    const nameSet = new Set(arr.map(f => (f.name || '').trim().toLowerCase()).filter(Boolean));
+    const filterFn = (list: FileItem[]) => list.filter(f => !idSet.has(f.id) && !nameSet.has((f.name || '').trim().toLowerCase()));
     const updatedMap = { ...currentState.folderFilesMap };
     for (const k of Object.keys(updatedMap)) {
-      updatedMap[k] = filterFn(updatedMap[k]);
+      updatedMap[k] = updatedMap[k].filter(f => !idSet.has(f.id));
     }
     const lockedItems = arr.map(f => {
       const fileExtStr = String((f as any).extension || (f.name && f.name.includes('.') ? f.name.split('.').pop() : '') || '').toLowerCase().replace(/^\./, '');
@@ -1617,8 +1619,6 @@ export const CloudDataStore = {
     };
     persistToIndexedDB().catch(() => { });
     notify();
-    invalidateCloudQueries.secure().catch(() => { });
-    invalidateCloudQueries.all().catch(() => { });
   },
 
   restoreFromSecure(items: FileItem | FileItem[]) {
@@ -1750,8 +1750,6 @@ export const CloudDataStore = {
     };
     persistToIndexedDB().catch(() => { });
     notify();
-    invalidateCloudQueries.secure().catch(() => { });
-    invalidateCloudQueries.all().catch(() => { });
   },
 
   deleteSecureToTrash(items: FileItem | FileItem[]) {
