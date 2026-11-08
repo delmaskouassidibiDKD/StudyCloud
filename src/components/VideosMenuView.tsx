@@ -375,11 +375,20 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
     };
   }, []);
 
-  // Synchronisation continue ultra-légère avec TanStack Query
+  // Synchronisation continue ultra-légère avec TanStack Query & CloudDataStore
   useEffect(() => {
     if (serverVideos && Array.isArray(serverVideos)) {
       setVideosList(prev => {
-        const cleanServer = serverVideos.filter(v => !isItemDeleted(v.id) && !isExcludedFromVideos(v));
+        const prevMap = new Map<string, FileItem>(prev.map(p => [p.id, p]));
+        const cleanServer = serverVideos
+          .filter(v => !isItemDeleted(v.id) && !isExcludedFromVideos(v))
+          .map(v => {
+            const existing = prevMap.get(v.id);
+            if (existing?.thumbnailUrl?.startsWith('data:image') && (!v.thumbnailUrl || v.thumbnailUrl.endsWith('.mp4'))) {
+              return { ...v, thumbnailUrl: existing.thumbnailUrl, previewUrl: existing.previewUrl || existing.thumbnailUrl };
+            }
+            return v;
+          });
         const serverIds = new Set(cleanServer.map(v => v.id));
         const pending = prev.filter(v => !serverIds.has(v.id) && Boolean(v.isUploading) && !isItemDeleted(v.id) && !isExcludedFromVideos(v));
         const merged = [...pending, ...cleanServer];
@@ -398,6 +407,26 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
       setLoading(false);
     }
   }, [serverVideos]);
+
+  useEffect(() => {
+    const unsub = CloudDataStore.subscribe((state) => {
+      if (state.videos && Array.isArray(state.videos)) {
+        const clean = state.videos.filter(v => !isItemDeleted(v.id) && !isExcludedFromVideos(v));
+        setVideosList(prev => {
+          if (clean.length === 0 && prev.length === 0) return prev;
+          const prevMap = new Map<string, FileItem>(prev.map(p => [p.id, p]));
+          return clean.map(v => {
+            const existing = prevMap.get(v.id);
+            if (existing?.thumbnailUrl?.startsWith('data:image') && (!v.thumbnailUrl || v.thumbnailUrl.endsWith('.mp4'))) {
+              return { ...v, thumbnailUrl: existing.thumbnailUrl, previewUrl: existing.previewUrl || existing.thumbnailUrl };
+            }
+            return v;
+          });
+        });
+      }
+    });
+    return () => unsub();
+  }, []);
 
   // Navigation vidéo dans le lecteur split
   const handleNavigateVideo = (direction: 'prev' | 'next') => {

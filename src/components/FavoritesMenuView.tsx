@@ -1287,10 +1287,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
         {selectedFile && (
           <aside
             className={`flex flex-col bg-[#04060A] text-white overflow-hidden shadow-2xl animate-in fade-in duration-150 ${(viewerExpandLevel >= 2 || isViewerMaximized)
-                ? 'fixed inset-0 z-50 w-screen h-screen'
-                : (isViewerMaximized || viewerExpandLevel >= 1)
-                  ? 'w-full flex-1 h-full min-h-0'
-                  : 'w-full flex-1 h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
+              ? 'fixed inset-0 z-50 w-screen h-screen'
+              : (isViewerMaximized || viewerExpandLevel >= 1)
+                ? 'w-full flex-1 h-full min-h-0'
+                : 'w-full flex-1 h-full min-h-0 md:w-7/12 lg:w-7/12 xl:w-7/12 border-0 md:border-l border-white/10'
               } ${(!isViewerMaximized && viewerExpandLevel < 1) ? 'md:w-7/12 md:border-l' : ''}`}
           >
             {renderDedicatedReader(selectedFile)}

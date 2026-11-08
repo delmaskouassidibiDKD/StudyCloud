@@ -7616,11 +7616,22 @@ a:hover{transform:translateY(-2px)}
               if (!vRow) {
                 vRow = await env.DB.prepare('SELECT thumbnail_url, r2_key, user_id FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first();
               }
+              if (!vRow) {
+                vRow = await env.DB.prepare('SELECT r2_key, user_id, metadata_json FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
+              }
+              if (!vRow) {
+                vRow = await env.DB.prepare('SELECT r2_key, user_id, metadata_json FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
+              }
               if (vRow) {
                 if (vRow.thumbnail_url && !vRow.thumbnail_url.includes('/api/cloud/thumbnail/')) {
                   fallbackDataUrl = vRow.thumbnail_url;
+                } else if (vRow.metadata_json) {
+                  try {
+                    const m = JSON.parse(vRow.metadata_json);
+                    if (m.thumbnailUrl && !m.thumbnailUrl.includes('/api/cloud/thumbnail/')) fallbackDataUrl = m.thumbnailUrl;
+                  } catch {}
                 }
-                if (!targetR2Key && vRow.r2_key) {
+                if (!targetR2Key) {
                   const owner = vRow.user_id || (reqUserId !== 'default-user' ? reqUserId : '');
                   if (owner) targetR2Key = `${owner}/thumbnails/${fileId}_thumb.jpg`;
                 }
@@ -10267,9 +10278,14 @@ a:hover{transform:translateY(-2px)}
             seenNames.add(normKey);
 
             let finalUrl = v.video_url || v.file_url || v.url || '';
-            if ((!finalUrl || finalUrl.startsWith('blob:')) && v.r2_key) {
+            if ((!finalUrl || finalUrl.startsWith('blob:') || finalUrl.includes('localhost')) && v.r2_key) {
               finalUrl = `${url.origin}/api/cloud/file/videos/${encodeURIComponent(v.r2_key)}`;
             }
+            const rawVThumb = String(v.thumbnail_url || '').trim();
+            const isValidVThumb = rawVThumb && !rawVThumb.startsWith('blob:') && !rawVThumb.includes('localhost') && (rawVThumb.startsWith('data:image') || rawVThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVThumb));
+            const resolvedVThumb = isValidVThumb
+              ? rawVThumb
+              : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(v.id)}?userId=${encodeURIComponent(v.user_id || reqUserId)}`;
 
             allList.push({
               id: v.id,
@@ -10284,7 +10300,8 @@ a:hover{transform:translateY(-2px)}
               r2Key: v.r2_key || '',
               videoUrl: finalUrl,
               url: finalUrl,
-              thumbnailUrl: v.thumbnail_url || finalUrl,
+              previewUrl: resolvedVThumb,
+              thumbnailUrl: resolvedVThumb,
               category: 'videos',
               isVideo: true,
               isFavorite: Boolean(v.is_favorite || favVidSet.has(v.id)),
@@ -10317,7 +10334,9 @@ a:hover{transform:translateY(-2px)}
               videoUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(id)}`;
             }
           }
-          const thumbnailUrl = body.thumbnailUrl || videoUrl;
+          const rawBodyThumb = String(body.thumbnailUrl || body.previewUrl || '').trim();
+          const isValidBodyThumb = rawBodyThumb && !rawBodyThumb.startsWith('blob:') && !rawBodyThumb.includes('localhost') && (rawBodyThumb.startsWith('data:image') || rawBodyThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawBodyThumb));
+          const thumbnailUrl = isValidBodyThumb ? rawBodyThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(id)}?userId=${encodeURIComponent(reqUserId)}`;
 
           await env.DB.prepare(`
             INSERT INTO video_files (
@@ -10335,7 +10354,11 @@ a:hover{transform:translateY(-2px)}
                 THEN video_files.video_url
                 ELSE excluded.video_url
               END,
-              thumbnail_url = COALESCE(excluded.thumbnail_url, video_files.thumbnail_url),
+              thumbnail_url = CASE
+                WHEN video_files.thumbnail_url IS NOT NULL AND video_files.thumbnail_url != '' AND (video_files.thumbnail_url LIKE '%/api/cloud/thumbnail%' OR video_files.thumbnail_url LIKE 'data:image%')
+                THEN video_files.thumbnail_url
+                ELSE COALESCE(excluded.thumbnail_url, video_files.thumbnail_url)
+              END,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             id, reqUserId, name, size, sizeBytes, durationSec, resolution, extension,
@@ -10428,6 +10451,9 @@ a:hover{transform:translateY(-2px)}
             const resolvedR2Key = (file.r2_key && String(file.r2_key).trim() !== '')
               ? String(file.r2_key).trim()
               : (extractR2Keys('', file.video_url || file.file_url || '')[0] || '');
+            const rawVidThumb = String(file.thumbnail_url || '').trim();
+            const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith('blob:') && !rawVidThumb.includes('localhost') && (rawVidThumb.startsWith('data:image') || rawVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
+            const thumbToSave = isValidVidThumb ? rawVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(file.id)}?userId=${encodeURIComponent(reqUserId)}`;
             await env.DB.prepare(`
               INSERT INTO trash_files (
                 id, user_id, name, size, size_bytes, category, extension,
@@ -10443,7 +10469,7 @@ a:hover{transform:translateY(-2px)}
                 deleted_at = CURRENT_TIMESTAMP
             `).bind(
               file.id, reqUserId, file.name, file.size, file.size_bytes, file.extension,
-              JSON.stringify({ durationSec: file.duration_sec || 0, resolution: file.resolution || '1080p' }),
+              JSON.stringify({ durationSec: file.duration_sec || 0, resolution: file.resolution || '1080p', thumbnailUrl: thumbToSave }),
               file.date_formatted, resolvedR2Key, file.video_url || file.file_url || ''
             ).run();
 
@@ -10972,7 +10998,11 @@ a:hover{transform:translateY(-2px)}
           const formatted = (results || []).map((s: any) => {
             const meta = s.metadata_json ? JSON.parse(s.metadata_json) : {};
             const isAud = s.original_category === 'audio' || s.category === 'audio';
+            const isVid = s.original_category === 'videos' || s.category === 'videos';
             const audioCover = meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith('blob:') && !meta.previewUrl.includes('.mp3') ? meta.previewUrl : '') || '';
+            const rawVidThumb = String(meta.thumbnailUrl || meta.previewUrl || '').trim();
+            const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith('blob:') && !rawVidThumb.includes('localhost') && (rawVidThumb.startsWith('data:image') || rawVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
+            const vidThumb = isVid ? (isValidVidThumb ? rawVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(s.id)}?userId=${encodeURIComponent(s.user_id || reqUserId)}`) : '';
             return {
               id: s.id,
               userId: s.user_id,
@@ -10987,9 +11017,10 @@ a:hover{transform:translateY(-2px)}
               metadata: meta,
               r2Key: s.r2_key || '',
               url: s.file_url || '',
-              previewUrl: isAud ? (audioCover || s.file_url || '') : (s.file_url || ''),
+              videoUrl: isVid ? (s.file_url || '') : undefined,
+              previewUrl: isAud ? (audioCover || s.file_url || '') : isVid ? (vidThumb || s.file_url || '') : (s.file_url || ''),
               coverUrl: isAud ? (audioCover || undefined) : undefined,
-              thumbnailUrl: isAud ? (audioCover || undefined) : (s.file_url || undefined),
+              thumbnailUrl: isAud ? (audioCover || undefined) : isVid ? (vidThumb || undefined) : (s.file_url || undefined),
               artist: meta.artist || undefined,
               title: meta.title || s.name,
               album: meta.album || undefined,
@@ -11481,6 +11512,9 @@ a:hover{transform:translateY(-2px)}
                   `).bind(secFile.id, reqUserId, secFile.name, secFile.size_bytes || 0, resolvedExt, resolvedExt.toUpperCase(), resolvedR2Key, finalRestoredUrl, Date.now()).run();
                 } catch (e) {}
               } else if (realCat === 'videos') {
+                const rawVidThumb = String(meta.thumbnailUrl || meta.previewUrl || '').trim();
+                const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith('blob:') && !rawVidThumb.includes('localhost') && (rawVidThumb.startsWith('data:image') || rawVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
+                const restoredVidThumb = isValidVidThumb ? rawVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(secFile.id)}?userId=${encodeURIComponent(reqUserId)}`;
                 await env.DB.prepare(`
                   INSERT INTO video_files (id, user_id, name, size, size_bytes, duration_sec, resolution, extension, r2_key, video_url, thumbnail_url, date_formatted, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -11494,7 +11528,7 @@ a:hover{transform:translateY(-2px)}
                     thumbnail_url = excluded.thumbnail_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, Number(meta.durationSec || 0), meta.resolution || '1080p', resolvedExt, resolvedR2Key, finalRestoredUrl, finalRestoredUrl, secFile.date_formatted).run();
+                `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, Number(meta.durationSec || 0), meta.resolution || '1080p', resolvedExt, resolvedR2Key, finalRestoredUrl, restoredVidThumb, secFile.date_formatted).run();
                 try {
                   await env.DB.prepare(`
                     INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
@@ -11548,7 +11582,11 @@ a:hover{transform:translateY(-2px)}
 
               const finalCategory = isFolder ? 'classeur_folder' : realCat;
               const isAudioFile = realCat === 'audio';
+              const isVideoFile = realCat === 'videos';
               const audioCoverUrl = isAudioFile ? (meta.coverUrl || meta.thumbnailUrl || (meta.previewUrl && !meta.previewUrl.startsWith('blob:') && !meta.previewUrl.includes('.mp3') ? meta.previewUrl : '') || '') : '';
+              const rawSecVidThumb = isVideoFile ? String(meta.thumbnailUrl || meta.previewUrl || '').trim() : '';
+              const isValidSecVidThumb = rawSecVidThumb && !rawSecVidThumb.startsWith('blob:') && !rawSecVidThumb.includes('localhost') && (rawSecVidThumb.startsWith('data:image') || rawSecVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawSecVidThumb));
+              const videoThumbUrl = isVideoFile ? (isValidSecVidThumb ? rawSecVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(secFile.id)}?userId=${encodeURIComponent(reqUserId)}`) : '';
 
               const restoredPayload = {
                 id: secFile.id,
@@ -11559,8 +11597,9 @@ a:hover{transform:translateY(-2px)}
                 extension: resolvedExt,
                 date: secFile.date_formatted || new Date().toLocaleDateString('fr-FR'),
                 url: finalRestoredUrl,
-                previewUrl: isAudioFile ? (audioCoverUrl || finalRestoredUrl) : finalRestoredUrl,
-                thumbnailUrl: isAudioFile ? (audioCoverUrl || '') : finalRestoredUrl,
+                videoUrl: isVideoFile ? finalRestoredUrl : undefined,
+                previewUrl: isAudioFile ? (audioCoverUrl || finalRestoredUrl) : isVideoFile ? (videoThumbUrl || finalRestoredUrl) : finalRestoredUrl,
+                thumbnailUrl: isAudioFile ? (audioCoverUrl || '') : isVideoFile ? (videoThumbUrl || finalRestoredUrl) : finalRestoredUrl,
                 coverUrl: isAudioFile ? (audioCoverUrl || undefined) : undefined,
                 artist: isAudioFile ? (meta.artist || undefined) : undefined,
                 title: isAudioFile ? (meta.title || secFile.name) : undefined,
@@ -11612,6 +11651,12 @@ a:hover{transform:translateY(-2px)}
             if (!finalUrl || finalUrl.startsWith('blob:') || finalUrl.includes('localhost') || finalUrl.includes('127.0.0.1')) {
               finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(t.id)}`;
             }
+            const isVidTrash = t.category === 'videos' || t.source_category === 'videos' || /\.(mp4|mkv|avi|mov|webm|3gp)$/i.test(t.name || '');
+            const rawTrashThumb = String(meta.thumbnailUrl || meta.previewUrl || '').trim();
+            const isValidTrashThumb = rawTrashThumb && !rawTrashThumb.startsWith('blob:') && !rawTrashThumb.includes('localhost') && (rawTrashThumb.startsWith('data:image') || rawTrashThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawTrashThumb));
+            const trashThumbUrl = isVidTrash
+              ? (isValidTrashThumb ? rawTrashThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(t.id)}?userId=${encodeURIComponent(t.user_id || reqUserId)}`)
+              : (meta.coverUrl || finalUrl);
             return {
               id: t.id,
               userId: t.user_id,
@@ -11627,7 +11672,8 @@ a:hover{transform:translateY(-2px)}
               metadata: meta,
               r2Key: t.r2_key || '',
               url: finalUrl,
-              previewUrl: finalUrl,
+              previewUrl: isVidTrash ? trashThumbUrl : finalUrl,
+              thumbnailUrl: trashThumbUrl,
               audioUrl: finalUrl,
               videoUrl: finalUrl,
               artist: meta.artist || 'StudyCloud Audio',
@@ -11912,6 +11958,9 @@ a:hover{transform:translateY(-2px)}
                   `).bind(item.id, reqUserId, item.name, item.size_bytes || 0, resolvedExt, resolvedExt.toUpperCase(), resolvedR2Key, finalTrashRestoredUrl, Date.now()).run();
                 } catch (e) {}
               } else if (srcCat === 'videos') {
+                const rawTrashVidThumb = String(meta.thumbnailUrl || meta.previewUrl || '').trim();
+                const isValidTrashVidThumb = rawTrashVidThumb && !rawTrashVidThumb.startsWith('blob:') && !rawTrashVidThumb.includes('localhost') && (rawTrashVidThumb.startsWith('data:image') || rawTrashVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawTrashVidThumb));
+                const restoredTrashVidThumb = isValidTrashVidThumb ? rawTrashVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(item.id)}?userId=${encodeURIComponent(reqUserId)}`;
                 await env.DB.prepare(`
                   INSERT INTO video_files (id, user_id, name, size, size_bytes, duration_sec, resolution, extension, r2_key, video_url, thumbnail_url, date_formatted, updated_at)
                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -11925,7 +11974,7 @@ a:hover{transform:translateY(-2px)}
                     thumbnail_url = excluded.thumbnail_url,
                     date_formatted = excluded.date_formatted,
                     updated_at = CURRENT_TIMESTAMP
-                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, Number(meta.durationSec || 0), meta.resolution || '1080p', resolvedExt, resolvedR2Key, finalTrashRestoredUrl, finalTrashRestoredUrl, item.date_formatted).run();
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, Number(meta.durationSec || 0), meta.resolution || '1080p', resolvedExt, resolvedR2Key, finalTrashRestoredUrl, restoredTrashVidThumb, item.date_formatted).run();
                 try {
                   await env.DB.prepare(`
                     INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, created_at, updated_at)
@@ -11980,6 +12029,10 @@ a:hover{transform:translateY(-2px)}
 
               const finalCategory = (srcCat === 'classeur_folder' || item.category === 'folder') ? 'classeur_folder' : srcCat;
               const isFolderItem = finalCategory === 'classeur_folder';
+              const isVideoItem = finalCategory === 'videos';
+              const rawSyncVidThumb = isVideoItem ? String(meta.thumbnailUrl || meta.previewUrl || '').trim() : '';
+              const isValidSyncVidThumb = rawSyncVidThumb && !rawSyncVidThumb.startsWith('blob:') && !rawSyncVidThumb.includes('localhost') && (rawSyncVidThumb.startsWith('data:image') || rawSyncVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawSyncVidThumb));
+              const syncVidThumb = isVideoItem ? (isValidSyncVidThumb ? rawSyncVidThumb : `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(item.id)}?userId=${encodeURIComponent(reqUserId)}`) : '';
               const syncPayload = {
                 id: item.id,
                 name: item.name,
@@ -11990,8 +12043,9 @@ a:hover{transform:translateY(-2px)}
                 r2Key: resolvedR2Key || undefined,
                 date: item.date_formatted || new Date().toLocaleDateString('fr-FR'),
                 url: finalTrashRestoredUrl || item.file_url || '',
-                previewUrl: finalTrashRestoredUrl || item.file_url || '',
-                thumbnailUrl: finalTrashRestoredUrl || item.file_url || '',
+                videoUrl: isVideoItem ? (finalTrashRestoredUrl || item.file_url || '') : undefined,
+                previewUrl: isVideoItem ? syncVidThumb : (finalTrashRestoredUrl || item.file_url || ''),
+                thumbnailUrl: isVideoItem ? syncVidThumb : (finalTrashRestoredUrl || item.file_url || ''),
                 folderId: origFolder || undefined,
                 originalFolderId: origFolder || undefined,
                 metadata: meta,

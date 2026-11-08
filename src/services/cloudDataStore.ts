@@ -1481,9 +1481,14 @@ export const CloudDataStore = {
               try { restoreUpsertNotifier(file.id, 'images', restored); } catch { }
             }
           } else if (detectedCat === 'videos' || !!file.videoUrl || (file as any).isVideo) {
+            const rawVidThumb = String((file as any).thumbnailUrl || meta.thumbnailUrl || '').trim();
+            const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith('blob:') && !rawVidThumb.includes('localhost') && (rawVidThumb.startsWith('data:image') || rawVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
+            const serverVidThumb = file.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(file.id)}` : workingPreview;
             restored.category = 'videos';
             (restored as any).isVideo = true;
             restored.videoUrl = workingUrl;
+            restored.thumbnailUrl = isValidVidThumb ? rawVidThumb : serverVidThumb;
+            restored.previewUrl = restored.thumbnailUrl;
             newVids = [restored, ...newVids.filter(f => f.id !== file.id)];
             newDocs = newDocs.filter(f => f.id !== file.id);
             if (restoreUpsertNotifier) {
@@ -1583,19 +1588,25 @@ export const CloudDataStore = {
         origCat = detectedByExt || 'documents';
       }
       const isAud = origCat === 'audio';
+      const isVid = origCat === 'videos';
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const resolvedCover = (f as any).coverUrl
         || (f as any).thumbnailUrl
         || (f as any).metadata?.coverUrl
         || (isAud && f.previewUrl && !f.previewUrl.startsWith('blob:') && !f.previewUrl.includes('.mp3') ? f.previewUrl : '')
         || '';
+      const rawVidThumb = String((f as any).thumbnailUrl || (f as any).metadata?.thumbnailUrl || '').trim();
+      const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith('blob:') && !rawVidThumb.includes('localhost') && (rawVidThumb.startsWith('data:image') || rawVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
+      const vidThumb = isVid ? (isValidVidThumb ? rawVidThumb : (f.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(f.id)}` : undefined)) : undefined;
       return {
         ...f,
         category: 'secure',
         originalCategory: origCat,
         isSecure: true,
         coverUrl: isAud ? (resolvedCover || (f as any).coverUrl || undefined) : (f as any).coverUrl,
-        thumbnailUrl: isAud ? (resolvedCover || (f as any).thumbnailUrl || undefined) : (f as any).thumbnailUrl,
-        previewUrl: isAud ? (resolvedCover || f.previewUrl) : f.previewUrl,
+        thumbnailUrl: isAud ? (resolvedCover || (f as any).thumbnailUrl || undefined) : isVid ? (vidThumb || (f as any).thumbnailUrl) : (f as any).thumbnailUrl,
+        previewUrl: isAud ? (resolvedCover || f.previewUrl) : isVid ? (vidThumb || f.previewUrl) : f.previewUrl,
+        videoUrl: isVid ? ((f as any).videoUrl || f.url) : (f as any).videoUrl,
         artist: (f as any).artist,
         title: (f as any).title || f.name,
         album: (f as any).album,
@@ -1683,6 +1694,11 @@ export const CloudDataStore = {
         workingPreview = workingUrl || streamFallback;
       }
 
+      const isVid = origCat === 'videos';
+      const rawVidThumb = String((file as any).thumbnailUrl || meta.thumbnailUrl || '').trim();
+      const isValidVidThumb = rawVidThumb && !rawVidThumb.startsWith('blob:') && !rawVidThumb.includes('localhost') && (rawVidThumb.startsWith('data:image') || rawVidThumb.includes('/api/cloud/thumbnail') || /\.(jpe?g|png|webp|gif|svg)(\?|$)/i.test(rawVidThumb));
+      const resolvedVidThumb = isVid ? (isValidVidThumb ? rawVidThumb : (file.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(file.id)}` : workingPreview)) : '';
+
       const restored: any = {
         ...file,
         isSecure: false,
@@ -1691,8 +1707,8 @@ export const CloudDataStore = {
         extension: fileExtStr || (file as any).extension,
         r2Key: r2Key || undefined,
         url: workingUrl,
-        previewUrl: isAud ? (resolvedCover || workingPreview) : workingPreview,
-        thumbnailUrl: isAud ? (resolvedCover || undefined) : ((file as any).thumbnailUrl || workingPreview),
+        previewUrl: isAud ? (resolvedCover || workingPreview) : isVid ? (resolvedVidThumb || workingPreview) : workingPreview,
+        thumbnailUrl: isAud ? (resolvedCover || undefined) : isVid ? (resolvedVidThumb || undefined) : ((file as any).thumbnailUrl || workingPreview),
         coverUrl: isAud ? (resolvedCover || (file as any).coverUrl || undefined) : (file as any).coverUrl,
         videoUrl: origCat === 'videos' ? workingUrl : (file as any).videoUrl,
         audioUrl: origCat === 'audio' ? workingUrl : (file as any).audioUrl,
