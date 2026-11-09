@@ -7,6 +7,8 @@ import { useNotesQuery } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { safeLocalStorageSet, safeLocalStorageGet } from '../utils/safeStorage';
 import { compressNoteImage } from '../services/imageUtils';
+import { IncompatibleFormatModal, IncompatibleAlertInfo } from './IncompatibleFormatModal';
+import { validateFilesForMenuAsync, CATEGORY_LABELS, isWhatsAppAudio, isAppFile } from '../services/fileTypeValidator';
 
 interface NotesMenuViewProps {
   onBack: () => void;
@@ -117,6 +119,9 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
 
   const imageInputRef = useRef<HTMLInputElement>(null);
   const listContainerRef = useRef<HTMLDivElement>(null);
+
+  // État du modal de sécurité rouge pour formats incompatibles (bloque applications, logiciels, vidéos, etc.)
+  const [incompatibleAlertInfo, setIncompatibleAlertInfo] = useState<IncompatibleAlertInfo | null>(null);
 
   // Mise à jour de l'état local dès que TanStack Query charge les données serveur
   useEffect(() => {
@@ -301,7 +306,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
 
       setDragState(initialDragState);
       if (typeof navigator !== 'undefined' && navigator.vibrate) {
-        try { navigator.vibrate(35); } catch (e) {}
+        try { navigator.vibrate(35); } catch (e) { }
       }
       return;
     }
@@ -461,7 +466,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
           trashItem,
           ...trashList.filter((t: any) => t.id !== id),
         ]);
-      } catch {}
+      } catch { }
     }
 
     const updated = notes.filter((n) => n.id !== id);
@@ -481,20 +486,65 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     setViewMode('list');
   };
 
-  // Téléversement d'image avec compression automatique (résolution adaptée et poids < 50 Ko)
+  // Traitement sécurisé d'une image avec validation binaire stricte (Magic Numbers)
+  const processImageFile = async (file: File) => {
+    // 1. Validation de sécurité stricte : bloque .exe, .apk, .bat, scripts, vidéos, audios, documents, etc.
+    const { validFiles, rejectedFiles } = await validateFilesForMenuAsync([file], 'images');
+
+    if (rejectedFiles.length > 0) {
+      const first = rejectedFiles[0];
+      const isWa = isWhatsAppAudio(first.file.name, first.file.type);
+      const isApp = isAppFile(first.file.name, first.file.type) || first.detectedCategory === 'apps';
+      const detectedLabel = isApp 
+        ? 'Application (APK / Logiciel)' 
+        : isWa 
+          ? 'Audio (WhatsApp / Vocal)' 
+          : (CATEGORY_LABELS[first.detectedCategory] || first.detectedCategory);
+
+      const dedicated = isApp
+        ? 'Applications'
+        : first.detectedCategory === 'videos'
+          ? 'Vidéos'
+          : (first.detectedCategory === 'audio' || isWa)
+            ? 'Audio'
+            : first.detectedCategory === 'documents'
+              ? 'Documents'
+              : 'Accueil';
+
+      // Affichage du modal rouge d'incompatibilité au centre de l'écran
+      setIncompatibleAlertInfo({
+        fileName: first.file.name,
+        detectedCategory: detectedLabel,
+        menuLabel: 'Bloc-notes',
+        dedicatedMenu: dedicated,
+        reason: isApp
+          ? "Le bouton image du Bloc-notes n'accepte strictement que des images. Pour vos applications et logiciels, utilisez le menu dédié Applications ou le bouton + Importer sur la page d'accueil."
+          : `Le bouton image du Bloc-notes n'accepte que des images (PNG, JPEG, WEBP, GIF, SVG...). Les fichiers de type ${detectedLabel} ne sont pas autorisés ici.`,
+      });
+      return; // Blocage total : aucun upload ni insertion
+    }
+
+    if (validFiles.length === 0) return;
+
+    const validFile = validFiles[0];
+    try {
+      const compressed = await compressNoteImage(validFile, 800, 800, 0.75);
+      setEditorImage(compressed);
+    } catch (err) {
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        setEditorImage(event.target?.result as string);
+      };
+      reader.readAsDataURL(validFile);
+    }
+  };
+
+  // Téléversement d'image via le bouton dédié avec validation de sécurité
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      try {
-        const compressed = await compressNoteImage(file, 800, 800, 0.75);
-        setEditorImage(compressed);
-      } catch (err) {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          setEditorImage(event.target?.result as string);
-        };
-        reader.readAsDataURL(file);
-      }
+      if (imageInputRef.current) imageInputRef.current.value = '';
+      await processImageFile(file);
     }
   };
 
@@ -504,7 +554,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
   // ---------------- RENDER MAIN NOTES LIST VIEW & FULL NOTE EDITOR PAGE ----------------
   return (
     <>
-      <div 
+      <div
         style={{ backgroundColor: editorColor }}
         className={`absolute inset-x-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] md:left-64 w-full md:w-[calc(100%-16rem)] text-white overflow-y-auto flex-col select-none transition-all duration-300 ease-in-out flex ${viewMode === 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
       >
@@ -523,11 +573,10 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
             <button
               type="button"
               onClick={() => setEditorPinned((p) => !p)}
-              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${
-                editorPinned
-                  ? 'bg-amber-500 text-stone-900 font-bold shadow-xs'
-                  : 'text-stone-300 hover:text-white hover:bg-white/10'
-              }`}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${editorPinned
+                ? 'bg-amber-500 text-stone-900 font-bold shadow-xs'
+                : 'text-stone-300 hover:text-white hover:bg-white/10'
+                }`}
               title={editorPinned ? 'Détacher la note' : 'Épingler en haut'}
             >
               <Pin className={`w-4 h-4 ${editorPinned ? 'fill-current' : ''}`} />
@@ -556,11 +605,10 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
                         setShowColorPicker(false);
                       }}
                       style={{ backgroundColor: opt.bg }}
-                      className={`w-6 h-6 rounded-full border-2 transition-transform cursor-pointer ${
-                        editorColor === opt.bg
-                          ? 'border-white scale-110 shadow-md ring-2 ring-white/50'
-                          : 'border-stone-600 hover:scale-105'
-                      }`}
+                      className={`w-6 h-6 rounded-full border-2 transition-transform cursor-pointer ${editorColor === opt.bg
+                        ? 'border-white scale-110 shadow-md ring-2 ring-white/50'
+                        : 'border-stone-600 hover:scale-105'
+                        }`}
                       title={opt.label}
                     />
                   ))}
@@ -568,10 +616,13 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
               )}
             </div>
 
-            {/* Bouton Image */}
+            {/* Bouton Image avec réinitialisation et accept explicite */}
             <button
               type="button"
-              onClick={() => imageInputRef.current?.click()}
+              onClick={() => {
+                if (imageInputRef.current) imageInputRef.current.value = '';
+                imageInputRef.current?.click();
+              }}
               className="p-1.5 rounded-lg text-stone-300 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
               title="Ajouter une image"
             >
@@ -580,7 +631,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
             <input
               type="file"
               ref={imageInputRef}
-              accept="image/*"
+              accept="image/*,image/png,image/jpeg,image/jpg,image/webp,image/gif,image/svg+xml"
               className="hidden"
               onChange={handleImageUpload}
             />
@@ -601,11 +652,11 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
 
         {/* Modal Confirmation de Suppression */}
         {showDeleteConfirm && (
-          <div 
+          <div
             className="fixed inset-0 z-[9999] bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn pointer-events-auto"
             onClick={() => setShowDeleteConfirm(false)}
           >
-            <div 
+            <div
               className="bg-[#222326] text-white rounded-2xl p-6 w-full max-w-xs sm:max-w-sm shadow-2xl border-2 border-stone-700 space-y-4 text-center relative"
               onClick={(e) => e.stopPropagation()}
             >
@@ -648,7 +699,25 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         )}
 
         {/* Editor Main Canvas Body */}
-        <div className="flex-1 w-full max-w-5xl mx-auto p-4 sm:p-6 pt-16 flex flex-col space-y-4 pb-20">
+        <div 
+          className="flex-1 w-full max-w-5xl mx-auto p-4 sm:p-6 pt-16 flex flex-col space-y-4 pb-20"
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onDrop={async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              await processImageFile(e.dataTransfer.files[0]);
+            }
+          }}
+          onPaste={async (e) => {
+            if (e.clipboardData.files && e.clipboardData.files.length > 0) {
+              await processImageFile(e.clipboardData.files[0]);
+            }
+          }}
+        >
           {/* Image Attachment Preview */}
           {editorImage && (
             <div className="relative rounded-2xl overflow-hidden max-h-72 border border-white/20 bg-black/30">
@@ -667,7 +736,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
           {/* Title Textarea */}
           <div className="relative w-full">
             {!editorTitle && (
-              <span 
+              <span
                 className="absolute top-0 left-0 pointer-events-none font-black text-xl sm:text-2xl text-stone-400 tracking-wide select-none uppercase"
                 dangerouslySetInnerHTML={{ __html: 'TITRE' }}
               />
@@ -701,7 +770,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
           {/* Content Textarea */}
           <div className="relative w-full flex-1 flex flex-col min-h-[450px]">
             {!editorContent && (
-              <span 
+              <span
                 className="absolute top-0 left-0 pointer-events-none text-sm sm:text-base text-stone-400 font-normal select-none"
                 dangerouslySetInnerHTML={{ __html: 'Note...' }}
               />
@@ -717,128 +786,134 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
       </div>
 
       {/* ---------------- RENDER MAIN NOTES LIST VIEW ---------------- */}
-      <div 
-        ref={listContainerRef} 
+      <div
+        ref={listContainerRef}
         className={`absolute inset-x-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] md:left-64 w-full md:w-[calc(100%-16rem)] bg-slate-50 dark:bg-[#070a13] text-slate-800 dark:text-slate-100 overflow-y-auto flex-col select-none transition-all duration-300 ease-in-out flex ${viewMode !== 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
       >
-      
-      {/* Modern Sticky Header */}
-      <div className="sticky top-0 z-40 px-3 sm:px-6 py-2.5 bg-white/95 dark:bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between shadow-xs">
-        <button
-          onClick={onBack}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95"
-        >
-          <ArrowLeft className="w-3.5 h-3.5" />
-          <span>Retour</span>
-        </button>
 
-        <div className="flex items-center gap-2">
-          <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight">
-            Bloc-notes
-          </h1>
-          <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
-            {notes.length}
-          </span>
+        {/* Modern Sticky Header */}
+        <div className="sticky top-0 z-40 px-3 sm:px-6 py-2.5 bg-white/95 dark:bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between shadow-xs">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" />
+            <span>Retour</span>
+          </button>
+
+          <div className="flex items-center gap-2">
+            <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white tracking-tight">
+              Bloc-notes
+            </h1>
+            <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+              {notes.length}
+            </span>
+          </div>
+
+          <button
+            onClick={openCreateNote}
+            className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer active:scale-95"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span className="hidden sm:inline">Nouvelle note</span>
+          </button>
         </div>
 
-        <button
-          onClick={openCreateNote}
-          className="flex items-center gap-1 px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-semibold text-xs rounded-xl shadow-xs transition-all cursor-pointer active:scale-95"
-        >
-          <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-          <span className="hidden sm:inline">Nouvelle note</span>
-        </button>
-      </div>
+        {/* Main Content Area */}
+        <div className="w-full px-3 sm:px-6 pt-4 sm:pt-6">
+          <div className="pt-1 pb-32 max-w-4xl mx-auto">
+            {notes.length === 0 ? (
+              <div className="text-center py-20 text-slate-400">
+                <p className="text-sm font-medium mb-2">Aucune note enregistrée</p>
+                <p className="text-xs text-slate-500">Cliquez sur « Nouvelle note » pour rédiger votre premier mémo.</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                {/* Pinned Section */}
+                {pinnedNotes.length > 0 && (
+                  <div>
+                    <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D4A3E] dark:text-emerald-400 mb-3 px-1">
+                      Épinglées
+                    </h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+                      {pinnedNotes.map((note) => renderNoteCard(note))}
+                    </div>
+                  </div>
+                )}
 
-      {/* Main Content Area */}
-      <div className="w-full px-3 sm:px-6 pt-4 sm:pt-6">
-        <div className="pt-1 pb-32 max-w-4xl mx-auto">
-          {notes.length === 0 ? (
-            <div className="text-center py-20 text-slate-400">
-              <p className="text-sm font-medium mb-2">Aucune note enregistrée</p>
-              <p className="text-xs text-slate-500">Cliquez sur « Nouvelle note » pour rédiger votre premier mémo.</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {/* Pinned Section */}
-              {pinnedNotes.length > 0 && (
+                {/* Others Section */}
                 <div>
-                  <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D4A3E] dark:text-emerald-400 mb-3 px-1">
-                    Épinglées
-                  </h3>
+                  {pinnedNotes.length > 0 && (
+                    <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D4A3E] dark:text-emerald-400 mb-3 px-1">
+                      Autres notes
+                    </h3>
+                  )}
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                    {pinnedNotes.map((note) => renderNoteCard(note))}
+                    {unpinnedNotes.map((note) => renderNoteCard(note))}
                   </div>
                 </div>
-              )}
-
-              {/* Others Section */}
-              <div>
-                {pinnedNotes.length > 0 && (
-                  <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D4A3E] dark:text-emerald-400 mb-3 px-1">
-                    Autres notes
-                  </h3>
-                )}
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
-                  {unpinnedNotes.map((note) => renderNoteCard(note))}
-                </div>
               </div>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Floating Drag Overlay Card */}
-      {dragState && (
-        <div
-          style={{
-            position: 'fixed',
-            left: dragState.x - dragState.offsetX,
-            top: dragState.y - dragState.offsetY,
-            width: dragState.width,
-            height: dragState.height,
-            pointerEvents: 'none',
-            zIndex: 9999,
-            backgroundColor: dragState.note.color || '#25272C',
-          }}
-          className="rounded-2xl p-4 border-2 border-blue-500 ring-4 ring-blue-500/80 shadow-[0_20px_50px_rgba(0,0,0,0.6)] scale-105 transition-transform select-none text-white overflow-hidden"
-        >
-          {dragState.note.isPinned && (
-            <div className="absolute top-3 right-3 text-amber-400">
-              <Pin className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
-            </div>
-          )}
-          <div>
-            {dragState.note.imageUrl && (
-              <div className="mb-3 -mx-4 -mt-4 rounded-t-xl overflow-hidden max-h-36 bg-black/40 border-b border-stone-800">
-                <img src={dragState.note.imageUrl} alt={dragState.note.title} className="w-full h-full object-cover" />
-              </div>
-            )}
-            {dragState.note.title && (
-              <h4 className="font-extrabold text-xs sm:text-sm text-white mb-2 leading-snug line-clamp-3 pr-4 tracking-wide">
-                {dragState.note.title}
-              </h4>
-            )}
-            {dragState.note.content && (
-              <p className="text-[11px] sm:text-xs text-stone-100 font-normal leading-relaxed whitespace-pre-line line-clamp-10 opacity-95">
-                {dragState.note.content}
-              </p>
             )}
           </div>
         </div>
-      )}
 
-      {/* Floating Create Button */}
-      <div className="fixed bottom-20 md:bottom-8 right-4 sm:right-8 z-40">
-        <button
-          onClick={openCreateNote}
-          className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-2xl px-4 sm:px-5 py-3 shadow-lg shadow-amber-500/20 border border-amber-400/40 transition-all cursor-pointer flex items-center gap-2 active:scale-95"
-        >
-          <Plus className="w-4 h-4 stroke-[2.5]" />
-          <span className="text-xs sm:text-sm font-bold tracking-wide">Créer une note</span>
-        </button>
+        {/* Floating Drag Overlay Card */}
+        {dragState && (
+          <div
+            style={{
+              position: 'fixed',
+              left: dragState.x - dragState.offsetX,
+              top: dragState.y - dragState.offsetY,
+              width: dragState.width,
+              height: dragState.height,
+              pointerEvents: 'none',
+              zIndex: 9999,
+              backgroundColor: dragState.note.color || '#25272C',
+            }}
+            className="rounded-2xl p-4 border-2 border-blue-500 ring-4 ring-blue-500/80 shadow-[0_20px_50px_rgba(0,0,0,0.6)] scale-105 transition-transform select-none text-white overflow-hidden"
+          >
+            {dragState.note.isPinned && (
+              <div className="absolute top-3 right-3 text-amber-400">
+                <Pin className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+              </div>
+            )}
+            <div>
+              {dragState.note.imageUrl && (
+                <div className="mb-3 -mx-4 -mt-4 rounded-t-xl overflow-hidden max-h-36 bg-black/40 border-b border-stone-800">
+                  <img src={dragState.note.imageUrl} alt={dragState.note.title} className="w-full h-full object-cover" />
+                </div>
+              )}
+              {dragState.note.title && (
+                <h4 className="font-extrabold text-xs sm:text-sm text-white mb-2 leading-snug line-clamp-3 pr-4 tracking-wide">
+                  {dragState.note.title}
+                </h4>
+              )}
+              {dragState.note.content && (
+                <p className="text-[11px] sm:text-xs text-stone-100 font-normal leading-relaxed whitespace-pre-line line-clamp-10 opacity-95">
+                  {dragState.note.content}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Floating Create Button */}
+        <div className="fixed bottom-20 md:bottom-8 right-4 sm:right-8 z-40">
+          <button
+            onClick={openCreateNote}
+            className="bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-slate-950 font-bold rounded-2xl px-4 sm:px-5 py-3 shadow-lg shadow-amber-500/20 border border-amber-400/40 transition-all cursor-pointer flex items-center gap-2 active:scale-95"
+          >
+            <Plus className="w-4 h-4 stroke-[2.5]" />
+            <span className="text-xs sm:text-sm font-bold tracking-wide">Créer une note</span>
+          </button>
+        </div>
       </div>
-    </div>
+
+    {/* MODAL DE SÉCURITÉ FORMAT NON COMPATIBLE AU MILIEU DE L'ÉCRAN */}
+    <IncompatibleFormatModal
+      info={incompatibleAlertInfo}
+      onClose={() => setIncompatibleAlertInfo(null)}
+    />
     </>
   );
 
@@ -854,9 +929,8 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         data-note-id={note.id}
         onPointerDown={(e) => handlePointerDownCard(e, note)}
         style={{ backgroundColor: cardBg } as any}
-        className={`group relative rounded-2xl p-4 border border-white/10 dark:border-white/5 shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col justify-between overflow-hidden select-none touch-pan-y ${
-          isBeingDragged ? 'opacity-20 scale-95 border-dashed border-stone-600 cursor-grabbing' : ''
-        }`}
+        className={`group relative rounded-2xl p-4 border border-white/10 dark:border-white/5 shadow-md hover:shadow-xl hover:-translate-y-0.5 transition-all duration-200 cursor-pointer flex flex-col justify-between overflow-hidden select-none touch-pan-y ${isBeingDragged ? 'opacity-20 scale-95 border-dashed border-stone-600 cursor-grabbing' : ''
+          }`}
       >
         {/* Pin Icon indicator */}
         {note.isPinned && (

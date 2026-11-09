@@ -1028,6 +1028,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                   </div>
                 </div>
               )}
+            </div>
           </div>
         ) : (
           <div className="text-center py-24">
