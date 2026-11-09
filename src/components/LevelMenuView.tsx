@@ -36,7 +36,7 @@ export function parseSubGrade(s: any): SubGradeDetail | null {
 
 export function getItemAverage(item: any, standardScale: number = 20): { average: number; hasGrade: boolean; subGradeCount: number } {
   if (!item) return { average: 0, hasGrade: false, subGradeCount: 0 };
-  
+
   const subs = Array.isArray(item.subGrades) ? item.subGrades : [];
   const validSubs: SubGradeDetail[] = [];
   for (const s of subs) {
@@ -80,7 +80,7 @@ const getStandardScale = () => {
   try {
     const s = localStorage.getItem('user_grades_standard_scale');
     if (s) return parseFloat(s) || 20;
-  } catch (e) {}
+  } catch (e) { }
   return 20;
 };
 
@@ -108,7 +108,7 @@ const formatGradesDataFromD1 = (d1Rows: any[] = []): Record<string, any[]> => {
         });
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   // 2. Fusionner les notes réelles récupérées depuis Cloudflare D1
   if (Array.isArray(d1Rows) && d1Rows.length > 0) {
@@ -122,7 +122,7 @@ const formatGradesDataFromD1 = (d1Rows: any[] = []): Record<string, any[]> => {
         } else if (Array.isArray(row.sub_grades_json)) {
           subs = row.sub_grades_json;
         }
-      } catch (e) {}
+      } catch (e) { }
 
       const subjectName = (row.subject_name || row.subject || 'Matière').trim();
       const existingIdx = result[trimKey].findIndex((item: any) =>
@@ -207,7 +207,7 @@ const getSubjectsList = (trimKey: string, data: Record<string, any[]>) => {
         });
       }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   const list = Array.from(subjectsSet);
   return list.length > 0 ? list : ['Mathématiques', 'Physique', 'Anglais'];
@@ -422,21 +422,21 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
   const t3Avg = useMemo(() => getTrimesterAverage('3', standardScale, gradesData), [standardScale, gradesData]);
 
   const trimesterData = useMemo(() => [
-    { 
-      name: 'Trimestre 1', 
-      count: t1Avg !== null ? t1Avg : 0, 
+    {
+      name: 'Trimestre 1',
+      count: t1Avg !== null ? t1Avg : 0,
       hasNote: t1Avg !== null,
       displayLabel: t1Avg !== null ? `${t1Avg.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note',
     },
-    { 
-      name: 'Trimestre 2', 
-      count: t2Avg !== null ? t2Avg : 0, 
+    {
+      name: 'Trimestre 2',
+      count: t2Avg !== null ? t2Avg : 0,
       hasNote: t2Avg !== null,
       displayLabel: t2Avg !== null ? `${t2Avg.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note',
     },
-    { 
-      name: 'Trimestre 3', 
-      count: t3Avg !== null ? t3Avg : 0, 
+    {
+      name: 'Trimestre 3',
+      count: t3Avg !== null ? t3Avg : 0,
       hasNote: t3Avg !== null,
       displayLabel: t3Avg !== null ? `${t3Avg.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note',
     },
@@ -680,7 +680,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                   className="px-3 py-1 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-2xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <span>Matière : {currentNoteSubject}</span>
-                  <svg className={`w-3 h-3 transition-transform ${isNoteSubjectDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+                  <svg className={`w-3 h-3 transition-transform ${isNoteSubjectDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
                 </button>
                 {isNoteSubjectDropdownOpen && (
                   <div className="absolute top-full left-0 mt-1 bg-white dark:bg-[#11192e] border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 min-w-[160px] py-1 max-h-48 overflow-y-auto">
@@ -704,7 +704,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
         </div>
       )}
 
-      <div className="w-full px-2 sm:px-4 py-4 flex flex-col">
+      <div className="w-full px-2 sm:px-4 py-4 flex flex-col flex-1 min-h-[500px]">
         {selectedAnalysis === 'analyse globale' ? (
           <div className="w-full h-full py-4 overflow-y-auto">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 h-auto min-h-full pb-10">
@@ -719,7 +719,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                       <PolarAngleAxis dataKey="subject" tick={{ fill: '#2D4A3E', fontSize: 10, fontWeight: 'bold' }} />
                       <PolarRadiusAxis angle={30} domain={[0, standardScale]} tick={{ fill: '#2D4A3E', fontSize: 10 }} />
                       <Radar name="Moyenne" dataKey="A" stroke="#2D4A3E" fill="#2D4A3E" fillOpacity={0.5} />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
                         formatter={(value: any, name: any, item: any) => [`${Number(value).toFixed(2).replace('.', ',')} / ${standardScale}`, item.payload.fullSubject || 'Moyenne']}
                       />
@@ -750,7 +750,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                               <Cell key={`cell-${index}`} fill={entry.color} />
                             ))}
                           </Pie>
-                          <Tooltip 
+                          <Tooltip
                             contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
                             formatter={(value: any) => [`${value} notes`, 'Quantité']}
                           />
@@ -782,14 +782,14 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                     <AreaChart data={globalProgressData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorAvg" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#2D4A3E" stopOpacity={0.8}/>
-                          <stop offset="95%" stopColor="#2D4A3E" stopOpacity={0}/>
+                          <stop offset="5%" stopColor="#2D4A3E" stopOpacity={0.8} />
+                          <stop offset="95%" stopColor="#2D4A3E" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="#2D4A3E/15" />
                       <XAxis dataKey="name" stroke="#2D4A3E" tick={{ fill: '#2D4A3E', fontWeight: 'bold', fontSize: 11 }} />
                       <YAxis stroke="#2D4A3E" domain={[0, standardScale]} tick={<CustomYTick />} ticks={ticks} />
-                      <Tooltip 
+                      <Tooltip
                         contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
                         formatter={(value: any, name: any, item: any) => item.payload.hasNote ? [`${Number(value).toFixed(2).replace('.', ',')} / ${standardScale}`, 'Moyenne'] : ['Pas de note', 'Moyenne']}
                       />
@@ -801,72 +801,21 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
             </div>
           </div>
         ) : selectedAnalysis === 'analyse par trimestre' ? (
-          <div className="w-full h-full py-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <RechartsBarChart data={trimesterData} margin={{ top: 20, right: 10, left: 15, bottom: 10 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#2D4A3E/15" />
-                <XAxis dataKey="name" stroke="#2D4A3E" tick={{ fill: '#2D4A3E', fontWeight: 'bold', fontSize: 11 }} />
-                <YAxis stroke="#2D4A3E" tick={<CustomYTick />} domain={[0, standardScale]} ticks={ticks} />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
-                  formatter={(value: any, name: any, item: any) => {
-                    const val = Number(value);
-                    const hasNote = item?.payload?.hasNote || val > 0;
-                    return [
-                      hasNote ? `${val.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note',
-                      'Moyenne'
-                    ];
-                  }}
-                />
-                <Bar 
-                  dataKey="count" 
-                  activeBar={false}
-                  radius={[8, 8, 0, 0]} 
-                  label={{ 
-                    position: 'top', 
-                    content: (props: any) => { 
-                      const { x, y, width } = props; 
-                      const item = props.payload || (typeof props.index === 'number' ? trimesterData[props.index] : null); 
-                      const val = Number(props.value ?? item?.count ?? 0);
-                      const hasNote = Boolean(item?.hasNote || val > 0);
-                      if (!hasNote && val <= 0) return null;
-                      const labelText = hasNote 
-                        ? (item?.displayLabel && !item.displayLabel.includes('Pas de note') 
-                            ? item.displayLabel 
-                            : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
-                        : 'Pas de note';
-                      return (
-                        <text 
-                          x={x + width / 2} 
-                          y={y - 8} 
-                          fill={hasNote ? '#2D4A3E' : '#ef4444'} 
-                          textAnchor="middle" 
-                          fontSize="11" 
-                          fontWeight="bold"
-                        >
-                          {labelText}
-                        </text>
-                      ); 
-                    } 
-                  }} 
-                >
-                  {trimesterData.map((_, index) => (
-                    <Cell key={`cell-trim-${index}`} fill={`url(#trimGradient-${index})`} />
-                  ))}
-                </Bar>
-              </RechartsBarChart>
-            </ResponsiveContainer>
-          </div>
-         ) : selectedAnalysis === 'analyse par matière' ? (
-          <div className="w-full h-full py-2 flex flex-col">
-            <div className="w-full flex-1 overflow-auto">
-              <div style={{ width: subjectData.length <= 3 ? Math.max(250, subjectData.length * 80) : Math.max(500, subjectData.length * 85), height: '100%', minHeight: '300px' }}>
+          <div className="w-full max-w-4xl mx-auto py-2">
+            <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col min-h-[460px] h-[calc(100vh-220px)] max-h-[620px]">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+                <div>
+                  <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Moyenne par Trimestre</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Évolution comparative des trimestres 1, 2 et 3</p>
+                </div>
+              </div>
+              <div className="w-full flex-1 min-h-[350px]">
                 <ResponsiveContainer width="100%" height="100%">
-                  <RechartsBarChart data={subjectData} margin={{ top: 25, right: 20, left: 10, bottom: 25 }}>
+                  <RechartsBarChart data={trimesterData} margin={{ top: 20, right: 15, left: 15, bottom: 10 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="#2D4A3E/15" />
-                    <XAxis dataKey="name" stroke="#2D4A3E" tick={{ fill: '#2D4A3E', fontWeight: 'bold', fontSize: 10 }} interval={0} angle={-15} textAnchor="end" height={40} />
+                    <XAxis dataKey="name" stroke="#2D4A3E" tick={{ fill: '#2D4A3E', fontWeight: 'bold', fontSize: 11 }} />
                     <YAxis stroke="#2D4A3E" tick={<CustomYTick />} domain={[0, standardScale]} ticks={ticks} />
-                    <Tooltip 
+                    <Tooltip
                       contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
                       formatter={(value: any, name: any, item: any) => {
                         const val = Number(value);
@@ -877,97 +826,22 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                         ];
                       }}
                     />
-                    <Bar 
-                      dataKey="count" 
+                    <Bar
+                      dataKey="count"
                       activeBar={false}
                       radius={[8, 8, 0, 0]} 
                       label={{ 
                         position: 'top', 
                         content: (props: any) => { 
                           const { x, y, width } = props; 
-                          const item = props.payload || (typeof props.index === 'number' ? subjectData[props.index] : null); 
+                          const item = props.payload || (typeof props.index === 'number' ? trimesterData[props.index] : null); 
                           const val = Number(props.value ?? item?.count ?? 0);
                           const hasNote = Boolean(item?.hasNote || val > 0);
                           if (!hasNote && val <= 0) return null;
-                          const labelText = hasNote 
-                            ? (item?.displayLabel && !item.displayLabel.includes('Pas de note') 
-                                ? item.displayLabel 
-                                : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
-                            : 'Pas de note';
-                          return (
-                            <text 
-                              x={x + width / 2} 
-                              y={y - 8} 
-                              fill={hasNote ? '#2D4A3E' : '#ef4444'} 
-                              textAnchor="middle" 
-                              fontSize="10" 
-                              fontWeight="bold"
-                            >
-                              {labelText}
-                            </text>
-                          ); 
-                        } 
-                      }} 
-                    >
-                      {subjectData.map((_, index) => (
-                        <Cell key={`cell-sub-${index}`} fill={`url(#subGradient-${index})`} />
-                      ))}
-                    </Bar>
-                  </RechartsBarChart>
-                </ResponsiveContainer>
-              </div>
-            </div>
-          </div>
-        ) : selectedAnalysis === 'analyse par note' ? (
-          <div className="w-full h-full py-2 flex flex-col">
-            {noteData.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full min-h-[300px] gap-3">
-                <svg className="w-14 h-14 text-[#2D4A3E]/30 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
-                <p className="text-sm font-bold text-[#5C6B5A] dark:text-slate-400 italic text-center">
-                  Aucune note pour <span className="text-[#2D4A3E] dark:text-slate-200 not-italic">{currentNoteSubject}</span><br />
-                  <span className="text-xs font-normal">au Trimestre {noteTrimestre}. Ajoutez des notes dans le menu Notes.</span>
-                </p>
-              </div>
-            ) : (
-            <div className="w-full flex-1 overflow-auto">
-              <div style={{ width: noteData.length <= 2 ? Math.max(180, noteData.length * 80) : Math.max(280, noteData.length * 55), height: '100%', minHeight: '300px' }}>
-                <ResponsiveContainer width="100%" height="100%">
-                  <RechartsBarChart data={noteData} margin={{ top: 25, right: 20, left: 10, bottom: 25 }} barCategoryGap="10%">
-                    <CartesianGrid strokeDasharray="3 3" stroke="#2D4A3E/15" />
-                    <XAxis 
-                      dataKey="name" 
-                      stroke="#2D4A3E" 
-                      tick={{ fill: '#2D4A3E', fontWeight: 'bold', fontSize: 11 }} 
-                    />
-                    <YAxis stroke="#2D4A3E" tick={<CustomYTick />} domain={[0, standardScale]} ticks={ticks} />
-                    <Tooltip 
-                      contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
-                      formatter={(value: any, name: any, item: any) => {
-                        const val = Number(value);
-                        const hasNote = item?.payload?.hasNote || val > 0;
-                        return [
-                          hasNote ? `${val.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note',
-                          'Note'
-                        ];
-                      }}
-                    />
-                    <Bar 
-                      dataKey="count" 
-                      activeBar={false}
-                      barSize={28}
-                      radius={[0, 0, 0, 0]} 
-                      label={{ 
-                        position: 'top', 
-                        content: (props: any) => { 
-                          const { x, y, width } = props; 
-                          const item = props.payload || (typeof props.index === 'number' ? noteData[props.index] : null); 
-                          const val = Number(props.value ?? item?.count ?? 0);
-                          const hasNote = Boolean(item?.hasNote || val > 0);
-                          if (!hasNote && val <= 0) return null;
-                          const labelText = hasNote 
-                            ? (item?.displayLabel && !item.displayLabel.includes('Pas de note') 
-                                ? item.displayLabel 
-                                : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
+                          const labelText = hasNote
+                            ? (item?.displayLabel && !item.displayLabel.includes('Pas de note')
+                              ? item.displayLabel
+                              : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
                             : 'Pas de note';
                           return (
                             <text 
@@ -980,19 +854,180 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                             >
                               {labelText}
                             </text>
-                          ); 
-                        } 
-                      }} 
+                          );
+                        }
+                      }}
                     >
-                      {noteData.map((entry, index) => (
-                        <Cell key={`cell-note-${index}`} fill={getNoteSolidColor(entry.count, standardScale)} />
+                      {trimesterData.map((_, index) => (
+                        <Cell key={`cell-trim-${index}`} fill={`url(#trimGradient-${index})`} />
                       ))}
                     </Bar>
                   </RechartsBarChart>
                 </ResponsiveContainer>
               </div>
             </div>
-            )}
+          </div>
+         ) : selectedAnalysis === 'analyse par matière' ? (
+          <div className="w-full max-w-5xl mx-auto py-2">
+            <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col min-h-[480px] h-[calc(100vh-240px)] max-h-[650px]">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+                <div>
+                  <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Moyennes par Matière — Trimestre {subjectTrimestre}</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Performances détaillées par discipline</p>
+                </div>
+              </div>
+              {subjectData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center flex-1 min-h-[300px] gap-3">
+                  <svg className="w-14 h-14 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" /></svg>
+                  <p className="text-sm font-bold text-slate-500 dark:text-slate-400 italic text-center">
+                    Aucune matière pour le Trimestre {subjectTrimestre}.<br />
+                    <span className="text-xs font-normal">Ajoutez des matières et des notes dans le menu Notes.</span>
+                  </p>
+                </div>
+              ) : (
+                <div className="w-full flex-1 overflow-x-auto min-h-[350px]">
+                  <div style={{ width: subjectData.length <= 3 ? Math.max(300, subjectData.length * 90) : Math.max(500, subjectData.length * 85), height: '100%', minHeight: '350px' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsBarChart data={subjectData} margin={{ top: 25, right: 20, left: 10, bottom: 25 }}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2D4A3E/15" />
+                        <XAxis dataKey="name" stroke="#2D4A3E" tick={{ fill: '#2D4A3E', fontWeight: 'bold', fontSize: 10 }} interval={0} angle={-15} textAnchor="end" height={40} />
+                        <YAxis stroke="#2D4A3E" tick={<CustomYTick />} domain={[0, standardScale]} ticks={ticks} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
+                          formatter={(value: any, name: any, item: any) => {
+                            const val = Number(value);
+                            const hasNote = item?.payload?.hasNote || val > 0;
+                            return [
+                              hasNote ? `${val.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note',
+                              'Moyenne'
+                            ];
+                          }}
+                        />
+                        <Bar 
+                          dataKey="count" 
+                          activeBar={false}
+                          radius={[8, 8, 0, 0]} 
+                          label={{ 
+                            position: 'top', 
+                            content: (props: any) => { 
+                              const { x, y, width } = props; 
+                              const item = props.payload || (typeof props.index === 'number' ? subjectData[props.index] : null); 
+                              const val = Number(props.value ?? item?.count ?? 0);
+                              const hasNote = Boolean(item?.hasNote || val > 0);
+                              if (!hasNote && val <= 0) return null;
+                              const labelText = hasNote 
+                                ? (item?.displayLabel && !item.displayLabel.includes('Pas de note') 
+                                    ? item.displayLabel 
+                                    : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
+                                : 'Pas de note';
+                              return (
+                                <text 
+                                  x={x + width / 2} 
+                                  y={y - 8} 
+                                  fill={hasNote ? '#2D4A3E' : '#ef4444'} 
+                                  textAnchor="middle" 
+                                  fontSize="10" 
+                                  fontWeight="bold"
+                                >
+                                  {labelText}
+                                </text>
+                              ); 
+                            } 
+                          }} 
+                        >
+                          {subjectData.map((_, index) => (
+                            <Cell key={`cell-sub-${index}`} fill={`url(#subGradient-${index})`} />
+                          ))}
+                        </Bar>
+                      </RechartsBarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        ) : selectedAnalysis === 'analyse par note' ? (
+          <div className="w-full max-w-4xl mx-auto py-2">
+            <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col min-h-[480px] h-[calc(100vh-240px)] max-h-[650px]">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+                <div>
+                  <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Détail des Notes — {currentNoteSubject}</h3>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">Notes enregistrées au Trimestre {noteTrimestre}</p>
+                </div>
+              </div>
+              {noteData.length === 0 ? (
+                <div className="flex flex-col items-center justify-center flex-1 min-h-[300px] gap-3">
+                  <svg className="w-14 h-14 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                  <p className="text-sm font-bold text-slate-500 dark:text-slate-400 italic text-center">
+                    Aucune note pour <span className="text-indigo-600 dark:text-indigo-400 not-italic">{currentNoteSubject}</span><br />
+                    <span className="text-xs font-normal">au Trimestre {noteTrimestre}. Ajoutez des notes dans le menu Notes.</span>
+                  </p>
+                </div>
+              ) : (
+                <div className="w-full flex-1 overflow-x-auto min-h-[350px]">
+                  <div style={{ width: noteData.length <= 2 ? Math.max(220, noteData.length * 90) : Math.max(300, noteData.length * 60), height: '100%', minHeight: '350px' }}>
+                    <ResponsiveContainer width="100%" height="100%">
+                      <RechartsBarChart data={noteData} margin={{ top: 25, right: 20, left: 10, bottom: 25 }} barCategoryGap="10%">
+                        <CartesianGrid strokeDasharray="3 3" stroke="#2D4A3E/15" />
+                        <XAxis 
+                          dataKey="name" 
+                          stroke="#2D4A3E" 
+                          tick={{ fill: '#2D4A3E', fontWeight: 'bold', fontSize: 11 }} 
+                        />
+                        <YAxis stroke="#2D4A3E" tick={<CustomYTick />} domain={[0, standardScale]} ticks={ticks} />
+                        <Tooltip 
+                          contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
+                          formatter={(value: any, name: any, item: any) => {
+                            const val = Number(value);
+                            const hasNote = item?.payload?.hasNote || val > 0;
+                            return [
+                              hasNote ? `${val.toFixed(2).replace('.', ',')} / ${standardScale}` : 'Pas de note',
+                              'Note'
+                            ];
+                          }}
+                        />
+                        <Bar 
+                          dataKey="count" 
+                          activeBar={false}
+                          barSize={28}
+                          radius={[0, 0, 0, 0]} 
+                          label={{ 
+                            position: 'top', 
+                            content: (props: any) => { 
+                              const { x, y, width } = props; 
+                              const item = props.payload || (typeof props.index === 'number' ? noteData[props.index] : null); 
+                              const val = Number(props.value ?? item?.count ?? 0);
+                              const hasNote = Boolean(item?.hasNote || val > 0);
+                              if (!hasNote && val <= 0) return null;
+                              const labelText = hasNote 
+                                ? (item?.displayLabel && !item.displayLabel.includes('Pas de note') 
+                                    ? item.displayLabel 
+                                    : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
+                                : 'Pas de note';
+                              return (
+                                <text 
+                                  x={x + width / 2} 
+                                  y={y - 8} 
+                                  fill={hasNote ? '#2D4A3E' : '#ef4444'} 
+                                  textAnchor="middle" 
+                                  fontSize="11" 
+                                  fontWeight="bold"
+                                >
+                                  {labelText}
+                                </text>
+                              ); 
+                            } 
+                          }} 
+                        >
+                          {noteData.map((entry, index) => (
+                            <Cell key={`cell-note-${index}`} fill={getNoteSolidColor(entry.count, standardScale)} />
+                          ))}
+                        </Bar>
+                      </RechartsBarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
           </div>
         ) : (
           <div className="text-center py-24">
@@ -1036,7 +1071,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                 </div>
 
                 <div className="space-y-2.5 font-sans text-xs">
-                  <button 
+                  <button
                     onClick={() => {
                       setSelectedAnalysis('analyse globale');
                       setIsRightDrawerOpen(false);
@@ -1046,7 +1081,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                     <BarChart2 className="w-4 h-4" />
                     <span>Analyse globale</span>
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
                       setSelectedAnalysis('analyse par trimestre');
                       setIsRightDrawerOpen(false);
@@ -1056,7 +1091,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                     <Calendar className="w-4 h-4" />
                     <span>Analyse par trimestre</span>
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
                       setSelectedAnalysis('analyse par matière');
                       setIsRightDrawerOpen(false);
@@ -1066,7 +1101,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                     <FolderTree className="w-4 h-4" />
                     <span>Analyse par matière</span>
                   </button>
-                  <button 
+                  <button
                     onClick={() => {
                       setSelectedAnalysis('analyse par note');
                       setIsRightDrawerOpen(false);
