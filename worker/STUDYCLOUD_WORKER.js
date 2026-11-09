@@ -3720,7 +3720,7 @@ var index_default = {
       });
     }
     try {
-      let sanitizeUser = function(user) {
+      let sanitizeUser = function (user) {
         if (!user) return null;
         const { password_hash: _ph, security_answer_1_hash: _s1, security_answer_2_hash: _s2, ...rest } = user;
         return {
@@ -3730,20 +3730,20 @@ var index_default = {
             user.security_answer_1_hash && typeof user.security_answer_1_hash === "string" && user.security_answer_1_hash.trim().length > 0 && user.security_answer_2_hash && typeof user.security_answer_2_hash === "string" && user.security_answer_2_hash.trim().length > 0
           )
         };
-      }, generateId = function() {
+      }, generateId = function () {
         return crypto.randomUUID();
-      }, isValidEmail = function(email) {
+      }, isValidEmail = function (email) {
         if (!email || typeof email !== "string") return false;
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         return emailRegex.test(email.trim());
-      }, validatePasswordFormat = function(pwd) {
+      }, validatePasswordFormat = function (pwd) {
         if (!pwd || typeof pwd !== "string") return { valid: false, error: "Mot de passe requis" };
         if (pwd.length < 6) return { valid: false, error: "Le mot de passe doit comporter au moins 6 caract\xE8res" };
         if (!/[a-zA-Z]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir des lettres" };
         if (!/[0-9]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir des chiffres" };
         if (!/[^a-zA-Z0-9]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir au moins un caract\xE8re sp\xE9cial (ex: @, #, $, !, etc.)" };
         return { valid: true };
-      }, generateEmailAvatar = function(email, name) {
+      }, generateEmailAvatar = function (email, name) {
         const cleanEmail = (email || "").trim().toLowerCase();
         const cleanName = (name || "").trim();
         let initials = "SC";
@@ -3761,7 +3761,7 @@ var index_default = {
         const color = colors[Math.abs(hash) % colors.length];
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"><rect width="128" height="128" rx="28" fill="${color}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${initials.length > 1 ? "48" : "58"}" font-weight="700">${initials}</text></svg>`;
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-      }, htmlResponse = function(title, message, success, userId, token) {
+      }, htmlResponse = function (title, message, success, userId, token) {
         const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -10933,8 +10933,8 @@ a:hover{transform:translateY(-2px)}
                     itemsToDelete.push(cItem);
                     await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(cItem.id, reqUserId).run();
                   }
-                  await env.DB.prepare("DELETE FROM classeur_files WHERE folder_id = ? AND user_id = ?").bind(tid, reqUserId).run().catch(() => {});
-                  await env.DB.prepare("DELETE FROM classeur_folders WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run().catch(() => {});
+                  await env.DB.prepare("DELETE FROM classeur_files WHERE folder_id = ? AND user_id = ?").bind(tid, reqUserId).run().catch(() => { });
+                  await env.DB.prepare("DELETE FROM classeur_folders WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run().catch(() => { });
                 }
               }
             }
@@ -15620,27 +15620,16 @@ Lien vers le produit : ${productShareUrl}`;
           };
         }
         const giftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
-        const totalCreds = Number(userCredits.total_credits || 0);
-        const currentBal = Number(userCredits.credits_balance || 0);
-        let activeRef = Number(userCredits.reference_credits || 0);
-        let giftInit = Number(userCredits.gift_initial || 0);
-
-        if (activeRef <= 0 || totalCreds > activeRef || currentBal > activeRef) {
-          activeRef = Math.max(activeRef, totalCreds, currentBal, welcomeCredits);
-        }
-        if (giftInit <= 0 || totalCreds > giftInit || giftRem > giftInit) {
-          giftInit = Math.max(giftInit, totalCreds, giftRem, welcomeCredits);
-        }
-
+        const giftInit = Math.max(Number(userCredits.gift_initial || 0), giftRem, welcomeCredits);
         const giftType = userCredits.gift_type || "welcome";
         const giftTitle = giftType === "daily" ? "Cadeau du jour" : "Cadeau de base";
         const paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
         const totalPurchased = Number(userCredits.total_credits_purchased || 0);
-        const referenceCredits = Math.max(activeRef, giftInit + totalPurchased, welcomeCredits);
+        const referenceCredits = Math.max(giftInit + totalPurchased, Number(userCredits.reference_credits || 0), Number(userCredits.credits_balance || 0));
         return jsonResponse({
           success: true,
           credits: {
-            balance: currentBal,
+            balance: Number(userCredits.credits_balance || 0),
             reference_credits: referenceCredits,
             gift_remaining: giftRem,
             gift_initial: giftInit,

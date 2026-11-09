@@ -473,10 +473,20 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     ? '#f59e0b'
     : '#ef4444';
 
-  // Arc SVG pour la jauge circulaire
+  // Jauge en arc de cercle moderne (260° — Style Compteur d'Énergie / Tachymètre)
+  // Démarre en bas à gauche (140°) et s'étend vers le bas à droite (40°)
+  // Se vide de droite à gauche lors de l'utilisation, exactement synchronisée avec le trait horizontal
   const radius = 54;
-  const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (Math.min(precisePercentage, 100) / 100) * circumference;
+  const arcSpanDeg = 260;
+  const arcLength = +(arcSpanDeg * (Math.PI / 180) * radius).toFixed(3); // 245.044
+  const clampedPercent = Math.min(100, Math.max(0, precisePercentage));
+  const strokeDashoffset = +(arcLength * (1 - clampedPercent / 100)).toFixed(2);
+
+  // Position en temps réel du curseur lumineux à la pointe de l'arc
+  const tipAngleDeg = 140 + (clampedPercent / 100) * arcSpanDeg;
+  const tipAngleRad = (tipAngleDeg * Math.PI) / 180;
+  const tipX = +(70 + radius * Math.cos(tipAngleRad)).toFixed(2);
+  const tipY = +(70 + radius * Math.sin(tipAngleRad)).toFixed(2);
 
   // Si l'utilisateur clique sur "Recharger", afficher le menu officiel de tarification
   if (showPricingView) {
@@ -565,40 +575,59 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
             {/* JAUGE CIRCULAIRE — colonne gauche (Stable, fluide et temps réel) */}
             <div className="lg:col-span-1 flex items-center justify-center">
               <div className="relative flex flex-col items-center">
-                {/* SVG Arc */}
-                <svg width="140" height="140" viewBox="0 0 140 140" className="drop-shadow-lg">
-                  {/* Fond gris de l'arc */}
-                  <circle
-                    cx="70" cy="70" r={radius}
+                {/* JAUGE EN ARC MODERNE (260°) — Dynamique, visible et synchronisée avec le trait horizontal */}
+                <svg width="140" height="140" viewBox="0 0 140 140" className="drop-shadow-lg select-none">
+                  {/* Fond gris de l'arc (piste de progression complète) */}
+                  <path
+                    d="M 28.63 104.71 A 54 54 0 1 1 111.37 104.71"
                     fill="none"
-                    stroke="rgba(255,255,255,0.15)"
-                    strokeWidth="14"
+                    stroke="rgba(255,255,255,0.18)"
+                    strokeWidth="12"
                     strokeLinecap="round"
                   />
-                  {/* Arc coloré */}
-                  <circle
-                    cx="70" cy="70" r={radius}
+                  {/* Arc coloré actif (se vide visiblement de droite à gauche, comme le trait en bas) */}
+                  <path
+                    d="M 28.63 104.71 A 54 54 0 1 1 111.37 104.71"
                     fill="none"
                     stroke={gaugeColor}
-                    strokeWidth="14"
+                    strokeWidth="12"
                     strokeLinecap="round"
-                    strokeDasharray={circumference}
+                    strokeDasharray={arcLength}
                     strokeDashoffset={strokeDashoffset}
-                    transform="rotate(-90 70 70)"
-                    style={{ transition: 'stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.4s ease' }}
+                    style={{
+                      transition: 'stroke-dashoffset 0.6s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.4s ease',
+                      filter: `drop-shadow(0 0 6px ${gaugeColor}88)`
+                    }}
                   />
-                  {/* Texte central : toujours visible immédiatement */}
-                  <text x="70" y="64" textAnchor="middle" className="font-black" fill="white" fontSize="22" fontWeight="900">
+                  {/* Point curseur lumineux à la pointe active pour voir le recul dès le premier centième de crédit */}
+                  {clampedPercent > 0 && (
+                    <circle
+                      cx={tipX}
+                      cy={tipY}
+                      r="4.5"
+                      fill="#ffffff"
+                      stroke={gaugeColor}
+                      strokeWidth="2.5"
+                      style={{ transition: 'cx 0.6s cubic-bezier(0.4, 0, 0.2, 1), cy 0.6s cubic-bezier(0.4, 0, 0.2, 1)' }}
+                      className="drop-shadow-[0_2px_4px_rgba(0,0,0,0.5)]"
+                    />
+                  )}
+                  {/* Texte central : Solde disponible restant */}
+                  <text x="70" y="58" textAnchor="middle" className="font-black" fill="white" fontSize="22" fontWeight="900">
                     {creditsRemaining}
                   </text>
-                  <text x="70" y="82" textAnchor="middle" fill="rgba(255,255,255,0.75)" fontSize="10">
+                  <text x="70" y="75" textAnchor="middle" fill="rgba(255,255,255,0.75)" fontSize="10" fontWeight="600">
                     disponibles
+                  </text>
+                  {/* Pourcentage restant au centre de l'ouverture */}
+                  <text x="70" y="96" textAnchor="middle" fill={gaugeColor} fontSize="11" fontWeight="800">
+                    {Math.round(clampedPercent)}%
                   </text>
                 </svg>
                 <p className="text-white/80 text-xs mt-1 font-medium text-center">
-                  {creditsRemaining} Crédits restants
+                  <span className="font-bold text-white">{creditsRemaining}</span> Crédits restants
                   <span className="text-white/50"> / </span>
-                  {totalMaxCredits} Crédits au départ
+                  <span className="text-white/90">{totalMaxCredits}</span> Crédits au départ
                 </p>
               </div>
             </div>
