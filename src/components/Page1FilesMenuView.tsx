@@ -114,7 +114,6 @@ import { MobilePdfViewer } from './MobilePdfViewer';
 import { CloudDataStore, isRecentEligible, isItemDeleted, unmarkItemDeleted, isMesFichiersItem } from '../services/cloudDataStore';
 import { LocalSyncReplication } from '../services/localSyncReplication';
 import { UploadQueue } from '../services/uploadQueue';
-import { UploadQueueWidget } from './UploadQueueWidget';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { compressFile } from '../utils/fileCompressor';
 import {
