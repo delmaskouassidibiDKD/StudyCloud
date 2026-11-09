@@ -13970,9 +13970,18 @@ function renderDashboardHtml(data) {
               ? ('<span class="text-emerald-400 font-bold">+' + Math.abs(deducted).toFixed(2) + '</span>')
               : ('<span class="text-rose-400 font-bold">-' + deducted.toFixed(2) + '</span>');
 
+            const userObj = (allUsers || []).find(u => (u.user?.id || u.id) === l.user_id);
+            const displayName = userObj ? (userObj.user?.name || userObj.name || 'Étudiant') : (l.user_id || 'Étudiant');
+            const displaySub = userObj ? (userObj.user?.email || userObj.user?.phone || '') : '';
+
             html += '<tr class="hover:bg-slate-800/30">';
-            html += '<td class="py-2 px-3 text-slate-400">' + dateStr + '</td>';
-            html += '<td class="py-2 px-3 font-bold text-white truncate max-w-[120px]">' + (l.user_id || '').replace(/</g, '&lt;') + '</td>';
+            html += '<td class="py-2 px-3 text-slate-400 whitespace-nowrap">' + dateStr + '</td>';
+            html += '<td class="py-2 px-3">';
+            html += '  <div class="font-bold text-white text-xs truncate max-w-[130px]">' + displayName.replace(/</g, '&lt;') + '</div>';
+            if (displaySub) {
+              html += '  <div class="text-[9px] text-slate-400 font-mono truncate max-w-[130px]">' + displaySub.replace(/</g, '&lt;') + '</div>';
+            }
+            html += '</td>';
             html += '<td class="py-2 px-3 text-slate-300 truncate max-w-[160px]">' + ((l.model_used || l.action_type || '').replace(/</g, '&lt;')) + '</td>';
             html += '<td class="py-2 px-3 text-center text-slate-300">' + (l.total_tokens || 0) + '</td>';
             html += '<td class="py-2 px-3 text-center">' + creditBadge + '</td>';
@@ -14168,16 +14177,35 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
         }
       }
 
-      const finalGiftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
-      const finalPaidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
-      const calculatedBalance = +(finalGiftRem + finalPaidRem).toFixed(2);
+      let finalGiftRem = Math.max(0, Number(userCredits.gift_remaining !== null && userCredits.gift_remaining !== undefined ? userCredits.gift_remaining : currentBal));
+      let finalPaidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
+      const sumBefore = +(finalGiftRem + finalPaidRem).toFixed(2);
+
+      // Si le solde en base est inférieur (consommation IA effectuée côté worker IA ou API)
+      if (currentBal < sumBefore) {
+        const spent = +(sumBefore - currentBal).toFixed(2);
+        if (finalGiftRem >= spent) {
+          finalGiftRem = +(finalGiftRem - spent).toFixed(2);
+        } else {
+          const leftover = +(spent - finalGiftRem).toFixed(2);
+          finalGiftRem = 0;
+          finalPaidRem = Math.max(0, +(finalPaidRem - leftover).toFixed(2));
+        }
+      } else if (currentBal > sumBefore && userCredits.gift_remaining !== null && userCredits.gift_remaining !== undefined) {
+        // Des crédits ont été ajoutés directement
+        const added = +(currentBal - sumBefore).toFixed(2);
+        finalGiftRem = +(finalGiftRem + added).toFixed(2);
+      }
+
+      const calculatedBalance = Math.max(0, +(finalGiftRem + finalPaidRem).toFixed(2));
       userCredits.credits_balance = calculatedBalance;
       userCredits.remaining_credits = calculatedBalance;
+      userCredits.gift_remaining = finalGiftRem;
+      userCredits.purchased_remaining = finalPaidRem;
 
       await safeRun(db, `
         UPDATE user_ai_credits
         SET credits_balance = ?,
-
             remaining_credits = ?,
             gift_remaining = ?,
             gift_initial = ?,

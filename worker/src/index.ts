@@ -17518,13 +17518,31 @@ a:hover{transform:translateY(-2px)}
           };
         }
 
-        const giftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
+        const currentBal = Number(userCredits.credits_balance !== undefined ? userCredits.credits_balance : welcomeCredits);
+        let giftRem = Math.max(0, Number(userCredits.gift_remaining !== null && userCredits.gift_remaining !== undefined ? userCredits.gift_remaining : currentBal));
+        let paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
+        const sumBefore = +(giftRem + paidRem).toFixed(2);
+
+        if (currentBal < sumBefore) {
+          const spent = +(sumBefore - currentBal).toFixed(2);
+          if (giftRem >= spent) {
+            giftRem = +(giftRem - spent).toFixed(2);
+          } else {
+            const leftover = +(spent - giftRem).toFixed(2);
+            giftRem = 0;
+            paidRem = Math.max(0, +(paidRem - leftover).toFixed(2));
+          }
+        } else if (currentBal > sumBefore && userCredits.gift_remaining !== null && userCredits.gift_remaining !== undefined) {
+          const added = +(currentBal - sumBefore).toFixed(2);
+          giftRem = +(giftRem + added).toFixed(2);
+        }
+
+        const calculatedBalance = Math.max(0, +(giftRem + paidRem).toFixed(2));
         const giftInit = Math.max(Number(userCredits.gift_initial || 0), giftRem, welcomeCredits);
         const giftType = userCredits.gift_type || 'welcome';
         const giftTitle = giftType === 'daily' ? 'Cadeau du jour' : 'Cadeau de base';
-        const paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
         const totalPurchased = Number(userCredits.total_credits_purchased || 0);
-        const referenceCredits = Math.max(giftInit + totalPurchased, Number(userCredits.reference_credits || 0), Number(userCredits.credits_balance || 0));
+        const referenceCredits = Math.max(giftInit + totalPurchased, Number(userCredits.reference_credits || 0), calculatedBalance);
 
         return jsonResponse({
           success: true,

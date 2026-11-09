@@ -127,6 +127,7 @@ export async function sendAgentChatMessage(params: {
   history?: Array<{ role: string; content: string }>;
   docContent?: string;
   signal?: AbortSignal;
+  userId?: string;
 }): Promise<{
   success: boolean;
   response: string;
@@ -138,11 +139,17 @@ export async function sendAgentChatMessage(params: {
   hasDrawing?: boolean;
 }> {
   const agentUrl = getStudyAgentUrl();
+  const currentUserId = params.userId || (typeof localStorage !== 'undefined' ? (localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id')) : '') || 'default-user';
 
   const res = await fetch(`${agentUrl}/api/ai/chat`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': currentUserId
+    },
     body: JSON.stringify({
+      userId: currentUserId,
+      user_id: currentUserId,
       message: params.message,
       history: params.history || [],
       attachedFileContent: params.docContent || '',

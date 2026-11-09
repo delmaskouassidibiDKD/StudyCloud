@@ -1210,6 +1210,9 @@ export default {
         total_credits_purchased: Number(userRow.total_credits_purchased) || 0,
         total_credits_consumed: Number(userRow.total_credits_consumed) || 0,
         plan_tier: userRow.plan_tier || 'gratuit',
+        gift_remaining: userRow.gift_remaining !== null && userRow.gift_remaining !== undefined ? Number(userRow.gift_remaining) : bal,
+        purchased_remaining: Number(userRow.purchased_remaining) || 0,
+        is_blocked: Number(userRow.is_blocked) || 0,
         last_daily_grant_date: userRow.last_daily_grant_date || todayStr,
         last_usage_at: userRow.last_usage_at
       };
@@ -1401,8 +1404,12 @@ export default {
           if (userId && userId !== "default-user") {
             userBilling = await getUserAiCredits(db, userId, billingConfig);
 
-            // Vérification stricte du solde : si 0 crédit restant, refus immédiat de la requête
-            if (userBilling.credits_balance <= 0) {
+            // Vérification stricte du solde : si 0 crédit restant ou compte bloqué, refus immédiat de la requête
+            if (userBilling.credits_balance <= 0 || (userBilling as any).is_blocked === 1) {
+              const isBlocked = (userBilling as any).is_blocked === 1;
+              const errorMsg = isBlocked
+                ? "Votre compte a été suspendu par l'administration StudyCloud. Veuillez contacter le support."
+                : "Votre solde de crédits IA est épuisé (0 crédit restant). Veuillez recharger vos crédits depuis le menu « Mes Crédits IA » pour continuer à interagir avec l'IA.";
               if (creationId && db && isAsync) {
                 try {
                   await db.prepare(`
@@ -1419,7 +1426,7 @@ export default {
                     convId || null,
                     requestedType,
                     creationTitle,
-                    JSON.stringify({ status: "insufficient_credits", error: "Crédit insuffisant", title: creationTitle, toolType: requestedType }),
+                    JSON.stringify({ status: "insufficient_credits", error: isBlocked ? "Compte suspendu" : "Crédit insuffisant", title: creationTitle, toolType: requestedType }),
                     docName || null,
                     Date.now(),
                     Date.now()
@@ -1428,10 +1435,10 @@ export default {
               }
               return new Response(JSON.stringify({
                 success: false,
-                error: "Votre solde de crédits IA est épuisé (0 crédit restant). Veuillez recharger vos crédits depuis le menu « Mes Crédits IA » pour continuer à interagir avec l'IA.",
-                code: "INSUFFICIENT_CREDITS",
-                credits_balance: 0,
-                remaining_credits: 0
+                error: errorMsg,
+                code: isBlocked ? "ACCOUNT_BLOCKED" : "INSUFFICIENT_CREDITS",
+                credits_balance: userBilling.credits_balance,
+                remaining_credits: userBilling.credits_balance
               }), {
                 status: 402,
                 headers: { "Content-Type": "application/json", ...corsHeaders }
@@ -1919,11 +1926,22 @@ CONSIGNES STRICTES DE CONTINUATION :
           const totalChars = (userPrompt || '').length + (answerText || '').length + (audioTranscript || '').length + (docContent || '').slice(0, 4000).length;
           const calculatedTokens = Math.max(90, Math.ceil(totalChars / 3.8));
 
-          // Déduction proportionnelle aux tokens (Formule 2 demandée par l'administrateur)
-          const tokensPerCredit = Math.max(1, billingConfig?.tokens_per_credit || 1000);
-          const rawCreditsDeducted = calculatedTokens / tokensPerCredit;
-          const creditsDeducted = Math.max(0.01, +(rawCreditsDeducted).toFixed(2));
-          let remainingCredits = Math.max(0, +((userBilling?.credits_balance || 50) - creditsDeducted).toFixed(2));
+          // Déduction FIFO stricte du cadeau puis des crédits achetés
+          let giftRem = Math.max(0, Number(userBilling?.gift_remaining !== undefined ? userBilling.gift_remaining : (userBilling?.credits_balance || 50)));
+          let paidRem = Math.max(0, Number(userBilling?.purchased_remaining || 0));
+
+          if (giftRem > 0) {
+            if (giftRem >= creditsDeducted) {
+              giftRem = +(giftRem - creditsDeducted).toFixed(2);
+            } else {
+              const leftover = +(creditsDeducted - giftRem).toFixed(2);
+              giftRem = 0;
+              paidRem = Math.max(0, +(paidRem - leftover).toFixed(2));
+            }
+          } else {
+            paidRem = Math.max(0, +(paidRem - creditsDeducted).toFixed(2));
+          }
+          let remainingCredits = Math.max(0, +(giftRem + paidRem).toFixed(2));
 
           if (db && userId && userId !== "default-user") {
             try {
@@ -1931,12 +1949,15 @@ CONSIGNES STRICTES DE CONTINUATION :
               UPDATE user_ai_credits
               SET
                 credits_balance = ?,
+                remaining_credits = ?,
+                gift_remaining = ?,
+                purchased_remaining = ?,
                 total_tokens_consumed = total_tokens_consumed + ?,
                 total_credits_consumed = ROUND(total_credits_consumed + ?, 2),
                 last_usage_at = datetime('now'),
                 updated_at = datetime('now')
               WHERE user_id = ?
-            `).bind(remainingCredits, calculatedTokens, creditsDeducted, userId).run().catch(() => { });
+            `).bind(remainingCredits, remainingCredits, giftRem, paidRem, calculatedTokens, creditsDeducted, userId).run().catch(() => { });
 
               const logId = `tx-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
               await db.prepare(`

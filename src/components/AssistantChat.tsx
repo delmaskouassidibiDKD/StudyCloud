@@ -6795,6 +6795,10 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
   }, []);
 
   const handleSend = () => {
+    if (isCreditInsufficient) {
+      handleOpenAiSubscriptions();
+      return;
+    }
     const activeConvId = currentConversationIdRef.current;
     if (!inputValue.trim() || inFlightConvsRef.current[activeConvId] || waitingConvIds[activeConvId]) return;
     sendMessage(inputValue);
