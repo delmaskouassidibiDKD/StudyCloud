@@ -1,6 +1,7 @@
 name = "studycloud-worker"
 main = "src/index.ts"
 compatibility_date = "2024-03-01"
+workers_dev = true
 
 # ==============================================================================
 # Domaine Personnalisé Cloudflare
