@@ -199,7 +199,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
   const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
   const viewerExpandLevel = useViewerExpandLevel();
-  const isPlayerExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 1);
+  const isMobileScreen = typeof window !== 'undefined' ? window.innerWidth < 768 : false;
+  const isPlayerExpanded = isMobileScreen ? viewerExpandLevel >= 2 : Boolean(isViewerMaximized || viewerExpandLevel >= 1);
 
   const handleCloseReader = useCallback(() => {
     setSelectedTrack(null);
@@ -1771,12 +1772,14 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                if (isPlayerExpanded) {
+                const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+                const isExpanded = isMobile ? viewerExpandLevel >= 2 : Boolean(isViewerMaximized || viewerExpandLevel >= 1);
+                if (isExpanded) {
                   setIsViewerMaximized(false);
                   resetViewerExpand();
                 } else {
                   setIsViewerMaximized(true);
-                  setViewerExpandLevel(1);
+                  setViewerExpandLevel(isMobile ? 2 : 1);
                 }
               }}
               className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
@@ -1784,7 +1787,7 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                   ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
                   : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               }`}
-              title={isPlayerExpanded ? "Réduire la vue" : "Agrandir le lecteur audio"}
+              title={isPlayerExpanded ? "Réduire la vue" : (typeof window !== 'undefined' && window.innerWidth < 768 ? "Agrandir en plein écran" : "Agrandir le lecteur audio")}
             >
               {isPlayerExpanded ? (
                 <Minimize2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />

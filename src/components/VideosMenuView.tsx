@@ -1827,16 +1827,17 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   // RENDU DU LECTEUR VIDÉO DÉDIÉ (IMAGE 4)
   // =========================================================================
   const renderVideoPlayer = (file: FileItem) => {
-    const isPlayerExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 1);
+    const isMobileScreen = typeof window !== 'undefined' && window.innerWidth < 768;
+    const isPlayerExpanded = isMobileScreen ? viewerExpandLevel >= 2 : Boolean(isViewerMaximized || viewerExpandLevel >= 1);
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
     const fallbackStreamUrl = file.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(file.id)}` : '';
     const videoSrc = file.videoUrl || file.url || fallbackStreamUrl;
 
     return (
-      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
+      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none max-md:pb-16 ${
         viewerExpandLevel >= 2
           ? 'fixed inset-0 z-50 w-screen h-screen'
-          : 'max-md:pb-16'
+          : ''
       }`}>
         {/* Barre supérieure du lecteur vidéo */}
         <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-6 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 sm:gap-3 shadow-md shrink-0">
@@ -1894,12 +1895,14 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                if (isPlayerExpanded) {
+                const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+                const isExpanded = isMobile ? viewerExpandLevel >= 2 : Boolean(isViewerMaximized || viewerExpandLevel >= 1);
+                if (isExpanded) {
                   setIsViewerMaximized(false);
                   resetViewerExpand();
                 } else {
                   setIsViewerMaximized(true);
-                  setViewerExpandLevel(1);
+                  setViewerExpandLevel(isMobile ? 2 : 1);
                 }
               }}
               className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
@@ -1907,7 +1910,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
                   ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
                   : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
               }`}
-              title={isPlayerExpanded ? 'Réduire la vue (Échap)' : 'Agrandir la vidéo'}
+              title={isPlayerExpanded ? 'Réduire la vue (Échap)' : (typeof window !== 'undefined' && window.innerWidth < 768 ? 'Agrandir en plein écran' : 'Agrandir la vidéo')}
             >
               {isPlayerExpanded ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>

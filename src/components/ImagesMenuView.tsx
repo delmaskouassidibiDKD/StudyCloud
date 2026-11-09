@@ -1824,7 +1824,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   // =========================================================================
   const renderImageViewer = (file: FileItem) => {
     return (
-      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none ${
+      <div className={`w-full h-full flex flex-col bg-[#04060A] text-white overflow-hidden select-none max-md:pb-16 ${
         viewerExpandLevel >= 2
           ? 'fixed inset-0 z-50 w-screen h-screen'
           : ''
@@ -1882,20 +1882,24 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                const isExpanded = Boolean(isViewerMaximized || viewerExpandLevel >= 1);
+                const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+                const isExpanded = isMobile ? viewerExpandLevel >= 2 : Boolean(isViewerMaximized || viewerExpandLevel >= 1);
                 if (isExpanded) {
                   setIsViewerMaximized(false);
                   resetViewerExpand();
                 } else {
                   setIsViewerMaximized(true);
-                  setViewerExpandLevel(1);
+                  setViewerExpandLevel(isMobile ? 2 : 1);
                 }
               }}
-              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${(isViewerMaximized || viewerExpandLevel >= 1) ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40' : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
-                }`}
-              title={(isViewerMaximized || viewerExpandLevel >= 1) ? 'Réduire la vue' : "Agrandir l'image"}
+              className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                (typeof window !== 'undefined' && window.innerWidth < 768 ? viewerExpandLevel >= 2 : (isViewerMaximized || viewerExpandLevel >= 1))
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
+                  : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+              }`}
+              title={(typeof window !== 'undefined' && window.innerWidth < 768 ? viewerExpandLevel >= 2 : (isViewerMaximized || viewerExpandLevel >= 1)) ? 'Réduire la vue' : (typeof window !== 'undefined' && window.innerWidth < 768 ? "Agrandir en plein écran" : "Agrandir l'image")}
             >
-              {(isViewerMaximized || viewerExpandLevel >= 1) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
+              {(typeof window !== 'undefined' && window.innerWidth < 768 ? viewerExpandLevel >= 2 : (isViewerMaximized || viewerExpandLevel >= 1)) ? <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" /> : <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />}
             </button>
             <button
               type="button"
