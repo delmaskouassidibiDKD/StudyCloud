@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { UploadQueue, UploadQueueState, UploadTask } from '../services/uploadQueue';
 import {
   CheckCircle2,
@@ -100,17 +100,16 @@ export const UploadQueueWidget: React.FC = () => {
   const { completedCount, errorCount, totalCount, isProcessing, tasks } = state;
 
   // Somme continue réelle de tous les téléchargements (0 à 100%)
-  const totalSumPercent = useMemo(() => {
-    if (totalCount === 0) return 0;
-    const currentTasks = tasks || [];
-    const sum = currentTasks.reduce((acc, t) => {
-      if (t.status === 'completed') return acc + 100;
-      if (t.status === 'uploading') return acc + Math.max(0, Math.min(100, t.progress || 0));
-      if (t.status === 'error') return acc + 0;
-      return acc; // pending
-    }, 0);
-    return Math.min(100, Math.max(0, Math.round(sum / totalCount)));
-  }, [tasks, totalCount]);
+  const currentTasks = tasks || [];
+  const sumProgress = currentTasks.reduce((acc, t) => {
+    if (t.status === 'completed') return acc + 100;
+    if (t.status === 'uploading') return acc + Math.max(0, Math.min(100, t.progress || 0));
+    if (t.status === 'error') return acc + 0;
+    return acc; // pending
+  }, 0);
+  const totalSumPercent = totalCount > 0
+    ? Math.min(100, Math.max(0, Math.round(sumProgress / totalCount)))
+    : 0;
 
   const allCompleted = !isProcessing && completedCount > 0 && errorCount === 0;
 
