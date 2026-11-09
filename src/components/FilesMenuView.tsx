@@ -2862,7 +2862,13 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                     const isImg = f.isImage || ['JPG', 'JPEG', 'PNG', 'WEBP', 'SVG', 'GIF'].includes(ext);
                     const theme = getDocumentTheme(ext);
                     const isSelected = selectedFileIds.includes(f.id);
-                    const isReaderSelected = selectedFile?.id === f.id;
+                    const isReaderSelected = Boolean(
+                      selectedFile && (
+                        (selectedFile.id && f.id && selectedFile.id === f.id) ||
+                        (selectedFile.name && f.name && selectedFile.name === f.name) ||
+                        (selectedFile.url && f.url && selectedFile.url === f.url)
+                      )
+                    );
                     const isSaving = savingFileProgress[f.id] !== undefined;
                     const progressVal = savingFileProgress[f.id] || 0;
                     const formattedSize = typeof f.size === 'number' ? formatFileSize(f.size) : (f.size || '0 Ko');
@@ -2883,17 +2889,21 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                             setSelectedFileIds(prev => 
                               isSelected ? prev.filter(i => i !== f.id) : [...prev, f.id]
                             );
+                          } else if (isReaderSelected) {
+                            setSelectedFile(null);
+                            setIsViewerMaximized(false);
+                            resetViewerExpand();
                           } else {
                             setSelectedFile(f);
                           }
                         }}
-                        className={`aspect-[3/4] ${theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
+                        className={`aspect-[3/4] ${isReaderSelected ? '!border-amber-400' : theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
                           isSaving
                             ? 'border-emerald-500/40 cursor-wait'
                             : isSelected
                               ? 'ring-4 ring-amber-400 shadow-2xl scale-[1.02] cursor-pointer'
                               : isReaderSelected
-                                ? 'ring-4 ring-white/95 dark:ring-amber-400 shadow-2xl scale-[1.02] cursor-pointer z-20'
+                                ? 'ring-4 ring-amber-500 dark:ring-amber-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 shadow-[0_0_25px_rgba(245,158,11,0.7)] scale-[1.03] cursor-pointer z-20'
                                 : 'hover:scale-[1.01] shadow-md cursor-pointer active:scale-98'
                         } ${isMenuOpen ? 'z-50 relative overflow-visible' : isReaderSelected ? 'z-20 relative' : 'z-10 overflow-hidden'}`}
                       >
@@ -3213,7 +3223,13 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                     else if (isImg) bgColor = 'bg-purple-600';
 
                     const isSelected = selectedFileIds.includes(f.id);
-                    const isReaderSelected = selectedFile?.id === f.id;
+                    const isReaderSelected = Boolean(
+                      selectedFile && (
+                        (selectedFile.id && f.id && selectedFile.id === f.id) ||
+                        (selectedFile.name && f.name && selectedFile.name === f.name) ||
+                        (selectedFile.url && f.url && selectedFile.url === f.url)
+                      )
+                    );
                     const isSaving = savingFileProgress[f.id] !== undefined;
                     const progressVal = savingFileProgress[f.id] || 0;
 
@@ -3231,6 +3247,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                             setSelectedFileIds(prev => 
                               isSelected ? prev.filter(i => i !== f.id) : [...prev, f.id]
                             );
+                          } else if (isReaderSelected) {
+                            setSelectedFile(null);
+                            setIsViewerMaximized(false);
+                            resetViewerExpand();
                           } else {
                             setSelectedFile(f);
                           }
@@ -3437,7 +3457,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                         })()}
 
                         <div className={`w-full aspect-[3/4] ${bgColor} rounded-xl shadow-[3px_3px_0px_0px_#1c1917] flex flex-col items-center justify-between p-3 text-white relative overflow-hidden transition-all ${
-                          isReaderSelected ? 'ring-4 ring-white/95 dark:ring-amber-400 scale-[1.03]' : ''
+                          isReaderSelected ? 'ring-4 ring-amber-500 dark:ring-amber-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 shadow-[0_0_25px_rgba(245,158,11,0.7)] scale-[1.03]' : ''
                         } ${
                           isSaving ? '' : 'group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917]'
                         }`}>

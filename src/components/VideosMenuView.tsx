@@ -1592,7 +1592,13 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
   // RENDU D'UNE CARTE VIDÉO (IMAGE 1 & 2 AVEC SUIVI ENREGISTREMENT ET ERREUR ROUGE)
   // =========================================================================
   const renderVideoCard = (vid: FileItem, index: number) => {
-    const isSelected = selectedVideo?.id === vid.id;
+    const isSelected = Boolean(
+      selectedVideo && (
+        (selectedVideo.id && vid.id && selectedVideo.id === vid.id) ||
+        (selectedVideo.name && vid.name && selectedVideo.name === vid.name) ||
+        (selectedVideo.url && vid.url && selectedVideo.url === vid.url)
+      )
+    );
     const isMenuOpen = activeMenuVideoId === vid.id;
     const isChecked = selectedItemIds.includes(vid.id);
 
@@ -1621,7 +1627,7 @@ export const VideosMenuView: React.FC<VideosMenuViewProps> = ({
               : [...selectedItemIds, vid.id];
             setSelectedItemIds(next);
             if (next.length === 0) setIsSelectionMode(false);
-          } else if (selectedVideo?.id === vid.id) {
+          } else if (isSelected) {
             handleCloseReader();
           } else {
             setSelectedVideo(vid);

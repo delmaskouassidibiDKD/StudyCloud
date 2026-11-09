@@ -1627,7 +1627,13 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
   // =========================================================================
   const renderDocumentCard = (doc: FileItem, index: number) => {
     const theme = getDocumentTheme(doc.extension || 'PDF');
-    const isSelected = selectedDoc?.id === doc.id;
+    const isSelected = Boolean(
+      selectedDoc && (
+        (selectedDoc.id && doc.id && selectedDoc.id === doc.id) ||
+        (selectedDoc.name && doc.name && selectedDoc.name === doc.name) ||
+        (selectedDoc.url && doc.url && selectedDoc.url === doc.url)
+      )
+    );
     const isMenuOpen = activeMenuDocId === doc.id;
     const isChecked = selectedItemIds.includes(doc.id);
 
@@ -1657,22 +1663,22 @@ export const DocumentsMenuView: React.FC<DocumentsMenuViewProps> = ({
               : [...selectedItemIds, doc.id];
             setSelectedItemIds(next);
             if (next.length === 0) setIsSelectionMode(false);
-          } else if (selectedDoc?.id === doc.id) {
+          } else if (isSelected) {
             handleCloseReader();
           } else {
             setSelectedDoc(doc);
           }
         }}
-        className={`aspect-[3/4] ${theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${hasFailed
+        className={`aspect-[3/4] ${isSelected ? '!border-amber-400' : theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${hasFailed
           ? 'border-rose-500 ring-4 ring-rose-500/50 shadow-2xl bg-rose-950/40 cursor-default'
           : isSaving
             ? 'border-emerald-500/40 cursor-wait'
             : isChecked
               ? 'ring-4 ring-amber-400 shadow-2xl scale-[1.02] cursor-pointer'
               : isSelected
-                ? 'ring-4 ring-white shadow-2xl scale-[1.02] cursor-pointer'
+                ? 'ring-4 ring-amber-500 dark:ring-amber-400 ring-offset-2 ring-offset-white dark:ring-offset-slate-900 shadow-[0_0_25px_rgba(245,158,11,0.7)] scale-[1.03] cursor-pointer z-20'
                 : 'hover:scale-[1.01] shadow-md cursor-pointer active:scale-98'
-          } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
+          } ${isMenuOpen ? 'z-50 relative overflow-visible' : isSelected ? 'z-20 relative' : 'z-10 overflow-hidden'}`}
       >
         {/* 1. Trait en haut collé au document qui se remplit pendant l'enregistrement */}
         {isSaving && !hasFailed && (

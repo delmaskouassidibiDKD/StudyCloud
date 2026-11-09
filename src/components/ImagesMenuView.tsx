@@ -1597,7 +1597,13 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
   // RENDU D'UNE CARTE IMAGE (IMAGE 1 & 2 AVEC SUIVI ENREGISTREMENT ET ERREUR ROUGE)
   // =========================================================================
   const renderImageCard = (img: FileItem, index: number) => {
-    const isSelected = selectedImage?.id === img.id;
+    const isSelected = Boolean(
+      selectedImage && (
+        (selectedImage.id && img.id && selectedImage.id === img.id) ||
+        (selectedImage.name && img.name && selectedImage.name === img.name) ||
+        (selectedImage.url && img.url && selectedImage.url === img.url)
+      )
+    );
     const isMenuOpen = activeMenuImageId === img.id;
     const isChecked = selectedItemIds.includes(img.id);
 
@@ -1626,7 +1632,7 @@ export const ImagesMenuView: React.FC<ImagesMenuViewProps> = ({
               : [...selectedItemIds, img.id];
             setSelectedItemIds(next);
             if (next.length === 0) setIsSelectionMode(false);
-          } else if (selectedImage?.id === img.id) {
+          } else if (isSelected) {
             handleCloseReader();
           } else {
             setSelectedImage(img);
