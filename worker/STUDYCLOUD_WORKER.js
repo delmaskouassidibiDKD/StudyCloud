@@ -7691,9 +7691,9 @@ a:hover{transform:translateY(-2px)}
         const totalBytes = Number(cFilesStat?.totalBytes || 0) + Number(audioStat?.totalBytes || 0) + Number(imageStat?.totalBytes || 0) + Number(videoStat?.totalBytes || 0) + Number(docStat?.totalBytes || 0) + Number(downloadStat?.totalBytes || 0) + Number(secureStat?.totalBytes || 0);
         const [recentDocs, recentImages, recentAudio, recentVideos] = await Promise.all([
           env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM document_files WHERE user_id = ? AND (name NOT LIKE "%.txt") AND (r2_key NOT LIKE "%/study/%" OR r2_key IS NULL) AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId, reqUserId).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM image_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM audio_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM video_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all()
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM image_files WHERE user_id = ? AND (r2_key NOT LIKE "%/study/%" OR r2_key IS NULL) AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM audio_files WHERE user_id = ? AND (r2_key NOT LIKE "%/study/%" OR r2_key IS NULL) AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM video_files WHERE user_id = ? AND (r2_key NOT LIKE "%/study/%" OR r2_key IS NULL) AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all()
         ]);
         const parseDateMs = (d) => {
           if (!d) return 0;
@@ -8439,6 +8439,7 @@ a:hover{transform:translateY(-2px)}
             SELECT * FROM audio_files 
             WHERE user_id = ? 
               AND (r2_key NOT LIKE '%/study/%' OR r2_key IS NULL)
+              AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
@@ -8447,23 +8448,9 @@ a:hover{transform:translateY(-2px)}
               AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all();
+
+          // ISOLATION TOTALE : Le menu Audio ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraAuds = [];
-          try {
-            const { results: extra } = await env.DB.prepare(`
-              SELECT * FROM files 
-              WHERE user_id = ? 
-                AND (matiere_id = 'menu-audio' OR type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff'))
-                AND r2_key IS NOT NULL AND r2_key != ''
-                AND r2_key NOT LIKE '%/classeur/%'
-                AND id NOT LIKE 'cf-%'
-                AND id NOT LIKE 'cf_%'
-                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
-                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
-              ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId, reqUserId, reqUserId).all();
-            extraAuds = extra || [];
-          } catch (e) {
-          }
           let favAudSet = /* @__PURE__ */ new Set();
           try {
             const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
@@ -8483,6 +8470,12 @@ a:hover{transform:translateY(-2px)}
             if (!id || trashedIdSet.has(id) || securedAudIdSet.has(id)) return;
             if (seen.has(id)) return;
             seen.add(id);
+
+            if (typeof id === "string" && (id.startsWith("cf-") || id.startsWith("cf_"))) return;
+            if (a.r2_key && (a.r2_key.includes("/study/") || a.r2_key.includes("/classeur/") || a.r2_key.includes("/mes-fichiers/"))) return;
+            if (a.folder_id && !["audio", "root", "default-folder", "menu-audio"].includes(a.folder_id)) return;
+            if (a.category === "study" || a.category === "classeur" || a.category === "mes-fichiers" || a.is_study_import || a.isStudyImport) return;
+
             const name = a.name || "Audio";
             let finalUrl = a.audio_url || a.file_url || a.url || "";
             if (finalUrl.includes("localhost") || finalUrl.includes("127.0.0.1")) {
@@ -8741,6 +8734,7 @@ a:hover{transform:translateY(-2px)}
             SELECT * FROM image_files 
             WHERE user_id = ? 
               AND (r2_key NOT LIKE '%/study/%' OR r2_key IS NULL)
+              AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
@@ -8749,23 +8743,9 @@ a:hover{transform:translateY(-2px)}
               AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all();
+
+          // ISOLATION TOTALE : Le menu Images ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraImgs = [];
-          try {
-            const { results: extra } = await env.DB.prepare(`
-              SELECT * FROM files 
-              WHERE user_id = ? 
-                AND (matiere_id = 'menu-images' OR type LIKE 'image/%' OR LOWER(extension) IN ('jpg','jpeg','png','webp','gif','svg','bmp','ico','tiff','tif','heic','avif'))
-                AND r2_key IS NOT NULL AND r2_key != ''
-                AND r2_key NOT LIKE '%/classeur/%'
-                AND id NOT LIKE 'cf-%'
-                AND id NOT LIKE 'cf_%'
-                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
-                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
-              ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId, reqUserId, reqUserId).all();
-            extraImgs = extra || [];
-          } catch (e) {
-          }
           let favImgSet = /* @__PURE__ */ new Set();
           try {
             const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
@@ -8785,6 +8765,11 @@ a:hover{transform:translateY(-2px)}
             if (!id || trashedImgIdSet.has(id) || securedImgIdSet.has(id)) return;
             if (seen.has(id)) return;
             seen.add(id);
+
+            if (typeof id === "string" && (id.startsWith("cf-") || id.startsWith("cf_"))) return;
+            if (img.r2_key && (img.r2_key.includes("/study/") || img.r2_key.includes("/classeur/") || img.r2_key.includes("/mes-fichiers/"))) return;
+            if (img.folder_id && !["images", "root", "default-folder", "menu-images"].includes(img.folder_id)) return;
+            if (img.category === "study" || img.category === "classeur" || img.category === "mes-fichiers" || img.is_study_import || img.isStudyImport) return;
             let finalUrl = "";
             if (img.r2_key) {
               finalUrl = `${url.origin}/api/cloud/file/images/${encodeURIComponent(img.r2_key)}`;
@@ -9011,6 +8996,7 @@ a:hover{transform:translateY(-2px)}
             SELECT * FROM video_files 
             WHERE user_id = ? 
               AND (r2_key NOT LIKE '%/study/%' OR r2_key IS NULL)
+              AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
@@ -9019,23 +9005,9 @@ a:hover{transform:translateY(-2px)}
               AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all();
+
+          // ISOLATION TOTALE : Le menu Vidéos ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraVids = [];
-          try {
-            const { results: extra } = await env.DB.prepare(`
-              SELECT * FROM files 
-              WHERE user_id = ? 
-                AND (matiere_id = 'menu-videos' OR type LIKE 'video/%' OR LOWER(extension) IN ('mp4','mov','mkv','webm','avi','3gp','m4v','ts'))
-                AND r2_key IS NOT NULL AND r2_key != ''
-                AND r2_key NOT LIKE '%/classeur/%'
-                AND id NOT LIKE 'cf-%'
-                AND id NOT LIKE 'cf_%'
-                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
-                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
-              ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId, reqUserId, reqUserId).all();
-            extraVids = extra || [];
-          } catch (e) {
-          }
           let favVidSet = /* @__PURE__ */ new Set();
           try {
             const { results: fList } = await env.DB.prepare(`SELECT item_id FROM user_favorites WHERE user_id = ?`).bind(reqUserId).all();
@@ -9055,6 +9027,11 @@ a:hover{transform:translateY(-2px)}
             if (!id || trashedVidIdSet.has(id) || securedVidIdSet.has(id)) return;
             if (seen.has(id)) return;
             seen.add(id);
+
+            if (typeof id === "string" && (id.startsWith("cf-") || id.startsWith("cf_"))) return;
+            if (v.r2_key && (v.r2_key.includes("/study/") || v.r2_key.includes("/classeur/") || v.r2_key.includes("/mes-fichiers/"))) return;
+            if (v.folder_id && !["videos", "root", "default-folder", "menu-videos"].includes(v.folder_id)) return;
+            if (v.category === "study" || v.category === "classeur" || v.category === "mes-fichiers" || v.is_study_import || v.isStudyImport) return;
             let finalUrl = v.video_url || v.file_url || v.url || "";
             if ((!finalUrl || finalUrl.startsWith("blob:") || finalUrl.includes("localhost")) && v.r2_key) {
               finalUrl = `${url.origin}/api/cloud/file/videos/${encodeURIComponent(v.r2_key)}`;

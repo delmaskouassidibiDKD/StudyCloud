@@ -33,7 +33,7 @@ import {
   UserCheck
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { CloudDataStore, isItemDeleted, markItemDeleted, unmarkItemDeleted } from '../services/cloudDataStore';
+import { CloudDataStore, isItemDeleted, markItemDeleted, unmarkItemDeleted, isMesFichiersItem } from '../services/cloudDataStore';
 import { LocalSyncReplication } from '../services/localSyncReplication';
 import { useImagesList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
@@ -87,6 +87,7 @@ const computeDuplicateName = (originalName: string, existingNames: string[]): st
 
 const isExcludedFromImages = (d: any): boolean => {
   if (!d) return true;
+  if (isMesFichiersItem(d)) return true;
   // Exclusion stricte des fichiers importés pendant l'étude
   if (d.category === 'study' || d.isStudyImport || d.is_study_import || d.isLeftMenuImport) return true;
   if (d.uploadSource === 'left-menu-study' || (typeof d.uploadSource === 'string' && d.uploadSource.includes('study'))) return true;

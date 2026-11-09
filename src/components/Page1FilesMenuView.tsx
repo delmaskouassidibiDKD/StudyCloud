@@ -111,7 +111,7 @@ import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { MobilePdfViewer } from './MobilePdfViewer';
-import { CloudDataStore, isRecentEligible, isItemDeleted, unmarkItemDeleted } from '../services/cloudDataStore';
+import { CloudDataStore, isRecentEligible, isItemDeleted, unmarkItemDeleted, isMesFichiersItem } from '../services/cloudDataStore';
 import { LocalSyncReplication } from '../services/localSyncReplication';
 import { UploadQueue } from '../services/uploadQueue';
 import { UploadQueueWidget } from './UploadQueueWidget';
@@ -4742,7 +4742,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste des documents pour le sous-menu Documents (Image 1) - Filtrage strict par nature
   const filteredDocuments = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id);
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id) && !isMesFichiersItem(f);
     const isDoc = (f: FileItem) => (f.category === 'documents' || detectFileCategory({ name: f.name, type: f.type || '' }) === 'documents') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'images';
 
     const mergedDocs = [...documentsList, ...cloudRecentFiles.filter(f => isDoc(f) && !documentsList.some(s => s.id === f.id))];
@@ -4766,7 +4766,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste des images pour le sous-menu Images (Image 2) - Filtrage strict par nature
   const filteredImages = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id);
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id) && !isMesFichiersItem(f);
     const isImg = (f: FileItem) => (f.category === 'images' || Boolean(f.previewUrl && !f.videoUrl && !f.audioUrl) || f.isImage || detectFileCategory({ name: f.name, type: f.type || '' }) === 'images') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'documents';
 
     const mergedImgs = [...imagesList, ...cloudRecentFiles.filter(f => isImg(f) && !imagesList.some(s => s.id === f.id))];
@@ -4790,7 +4790,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste des vidéos pour le sous-menu Vidéos (Image 3) - FILTRAGE STRICT : AUCUN AUDIO NE PEUT APPARAÎTRE
   const filteredVideos = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id);
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id) && !isMesFichiersItem(f);
     const isVid = (f: FileItem) => {
       // Reconnaissance explicite des vidéos WhatsApp (ex: WhatsApp Video 2026-..., VID-...)
       if (isWhatsAppVideo(f.name, f.type)) {
@@ -4824,7 +4824,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Liste audio pour le sous-menu Audio (Image 4) - ACCEPTE TOUS LES AUDIOS ET NOTES VOCALES WHATSAPP
   const filteredAudio = useMemo(() => {
     const delLocal = getLocallyDeletedFileIds();
-    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id);
+    const isClean = (f: FileItem) => !delLocal.has(f.id) && !isItemDeleted(f.id) && !isMesFichiersItem(f);
     const isAud = (f: FileItem) => {
       // Une vidéo WhatsApp ou mobile ne doit JAMAIS apparaître dans le menu Audio
       if (isWhatsAppVideo(f.name, f.type)) {
@@ -4972,6 +4972,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (!item || !item.id || seen.has(item.id)) return;
       // EXCLURE TOUT DOSSIER : seuls les fichiers réels s'affichent
       if (item.isFolder || item.category === 'classeur_folder' || item.category === 'folder' || item.type === 'folder' || item.size === 'Dossier 3D') return;
+      // ISOLATION ABSOLUE : Les fichiers de "Mes fichiers" / Matières ne doivent JAMAIS apparaître dans la recherche générale de Page 1
+      if (isMesFichiersItem(item)) return;
       seen.add(item.id);
       list.push({
         ...item,
@@ -5015,7 +5017,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const q = searchQuery.trim().toLowerCase();
     if (!q) return [];
     return allGlobalSearchableFiles.filter(f => {
-      if ((f as any).isFolder || f.category === 'classeur_folder' || f.category === 'folder' || (f as any).type === 'folder' || f.size === 'Dossier 3D') {
+      if ((f as any).isFolder || f.category === 'classeur_folder' || f.category === 'folder' || (f as any).type === 'folder' || f.size === 'Dossier 3D' || isMesFichiersItem(f)) {
         return false;
       }
 

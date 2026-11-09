@@ -38,7 +38,7 @@ import {
   FolderArchive
 } from 'lucide-react';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { CloudDataStore, isItemDeleted, markItemDeleted, unmarkItemDeleted } from '../services/cloudDataStore';
+import { CloudDataStore, isItemDeleted, markItemDeleted, unmarkItemDeleted, isMesFichiersItem } from '../services/cloudDataStore';
 import { LocalSyncReplication } from '../services/localSyncReplication';
 import { useAudioList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
@@ -100,6 +100,7 @@ const computeDuplicateName = (originalName: string, existingNames: string[]): st
 
 const isExcludedFromAudio = (d: any): boolean => {
   if (!d || !d.id) return true;
+  if (isMesFichiersItem(d)) return true;
   if (isItemDeleted(d.id)) return true;
   if (d.category === 'trash' || d.category === 'secure' || Boolean(d.isTrash) || Boolean(d.isSecure)) return true;
   if (d.isFolder || d.is_folder || d.isClasseurFolder) return true;

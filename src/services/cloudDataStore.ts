@@ -161,9 +161,29 @@ export const isStudyItem = (item: any): boolean => {
   return false;
 };
 
+export const isMesFichiersItem = (item: any): boolean => {
+  if (!item) return false;
+  if (item.category === 'mes-fichiers' || item.uploadSource === 'mes-fichiers') return true;
+  if (item.source === 'Mes fichiers' || item.source === 'WhatsApp Images' || item.source === 'Classeur StudyCloud') return true;
+  if (item.r2Key && item.r2Key.includes('/mes-fichiers/')) return true;
+  if (item.folderName === 'Mes fichiers') return true;
+  if (item.matiere && !['Documents', 'Images', 'Vidéos', 'Audio', 'menu-documents', 'menu-images', 'menu-videos', 'menu-audio'].includes(item.matiere)) return true;
+  if (item.id && typeof item.id === 'string') {
+    if (item.id.startsWith('mat-') || item.id.startsWith('mf-')) return true;
+    try {
+      const mfRaw = localStorage.getItem('unifolder_files_menu_items');
+      if (mfRaw && mfRaw.includes(item.id)) return true;
+      const matRaw = localStorage.getItem('unifolder_matiere_files');
+      if (matRaw && matRaw.includes(item.id)) return true;
+    } catch {}
+  }
+  return false;
+};
+
 export const isRecentEligible = (file: any): boolean => {
   if (!file || !file.name) return false;
   if (isStudyItem(file)) return false;
+  if (isMesFichiersItem(file)) return false;
 
   // 1. Exclure formellement les dossiers (3D, classeur, etc.)
   if (file.isFolder || file.is_folder || file.isClasseurFolder) return false;
@@ -211,6 +231,7 @@ export const isRecentEligible = (file: any): boolean => {
 export const isFolderBoundItem = (item: any): boolean => {
   if (!item) return false;
   if (isStudyItem(item)) return true;
+  if (isMesFichiersItem(item)) return true;
   if (item.category === 'classeur' || item.category === 'classeur_folder') return true;
   const fId = item.folderId || item.folder_id || item.originalFolderId;
   if (fId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(fId)) return true;

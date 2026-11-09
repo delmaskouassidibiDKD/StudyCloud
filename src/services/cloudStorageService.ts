@@ -10,6 +10,7 @@ import { getCurrentUserId } from './userSync';
 import { FileItem } from '../components/Page1FilesMenuView';
 import { ClasseurCreatedFolder } from '../components/Folder3DModels';
 import { invalidateCloudQueries } from './queryClient';
+import { isMesFichiersItem } from './cloudDataStore';
 
 // En-têtes d'authentification pour garantir l'isolation des données
 export function getAuthHeaders(): Record<string, string> {
@@ -304,7 +305,7 @@ export const CloudStorageAPI = {
       });
       if (!res.ok) return [];
       const json = await res.json();
-      return json.success && Array.isArray(json.data) ? json.data : [];
+      return json.success && Array.isArray(json.data) ? json.data.filter((img: any) => !isMesFichiersItem(img)) : [];
     } catch (e) {
       console.warn('[CloudStorageAPI] getClasseurFiles error:', e);
       return [];
@@ -406,7 +407,7 @@ export const CloudStorageAPI = {
       if (!res.ok) return [];
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        return json.data.map((a: any) => {
+        return json.data.filter((a: any) => !isMesFichiersItem(a)).map((a: any) => {
           const rawCover = a.coverUrl || a.thumbnailUrl || a.previewUrl || '';
           const isAudioStream = typeof rawCover === 'string' && rawCover.match(/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i);
           const validCover = (rawCover && !isAudioStream && !rawCover.startsWith('blob:')) ? rawCover : '';
@@ -468,7 +469,7 @@ export const CloudStorageAPI = {
       });
       if (!res.ok) return [];
       const json = await res.json();
-      return json.success && Array.isArray(json.data) ? json.data : [];
+      return json.success && Array.isArray(json.data) ? json.data.filter((img: any) => !isMesFichiersItem(img)) : [];
     } catch (e) {
       console.warn('[CloudStorageAPI] getImagesList error:', e);
       return [];
@@ -519,7 +520,7 @@ export const CloudStorageAPI = {
       if (!res.ok) return [];
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        return json.data.map((v: any) => {
+        return json.data.filter((v: any) => !isMesFichiersItem(v)).map((v: any) => {
           const isRealThumb = v.thumbnailUrl && !v.thumbnailUrl.endsWith('.mp4') && !v.thumbnailUrl.endsWith('.webm') && !v.thumbnailUrl.endsWith('.mov') && !v.thumbnailUrl.endsWith('.avi');
           const thumb = isRealThumb ? v.thumbnailUrl : (v.previewUrl && !v.previewUrl.endsWith('.mp4') ? v.previewUrl : '');
           return {
@@ -579,7 +580,7 @@ export const CloudStorageAPI = {
       });
       if (!res.ok) return [];
       const json = await res.json();
-      return json.success && Array.isArray(json.data) ? json.data : [];
+      return json.success && Array.isArray(json.data) ? json.data.filter((img: any) => !isMesFichiersItem(img)) : [];
     } catch (e) {
       console.warn('[CloudStorageAPI] getDocumentsList error:', e);
       return [];
@@ -629,7 +630,7 @@ export const CloudStorageAPI = {
       });
       if (!res.ok) return [];
       const json = await res.json();
-      return json.success && Array.isArray(json.data) ? json.data : [];
+      return json.success && Array.isArray(json.data) ? json.data.filter((img: any) => !isMesFichiersItem(img)) : [];
     } catch (e) {
       console.warn('[CloudStorageAPI] getDownloadsList error:', e);
       return [];
@@ -737,7 +738,7 @@ export const CloudStorageAPI = {
       });
       if (!res.ok) return [];
       const json = await res.json();
-      return json.success && Array.isArray(json.data) ? json.data : [];
+      return json.success && Array.isArray(json.data) ? json.data.filter((img: any) => !isMesFichiersItem(img)) : [];
     } catch (e) {
       console.warn('[CloudStorageAPI] getSecureFiles error:', e);
       return [];
@@ -803,7 +804,7 @@ export const CloudStorageAPI = {
       });
       if (!res.ok) return [];
       const json = await res.json();
-      return json.success && Array.isArray(json.data) ? json.data : [];
+      return json.success && Array.isArray(json.data) ? json.data.filter((img: any) => !isMesFichiersItem(img)) : [];
     } catch (e) {
       console.warn('[CloudStorageAPI] getTrashFiles error:', e);
       return [];

@@ -8909,9 +8909,9 @@ a:hover{transform:translateY(-2px)}
         // Récupérer les fichiers récents STRICTEMENT pour les 4 menus autorisés : images, vidéos, audio, documents (sans classeur, dossiers, notes ou téléchargements)
         const [recentDocs, recentImages, recentAudio, recentVideos] = await Promise.all([
           env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM document_files WHERE user_id = ? AND (name NOT LIKE "%.txt") AND (r2_key NOT LIKE "%/study/%" OR r2_key IS NULL) AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) AND id NOT IN (SELECT id FROM study_imported_files WHERE user_id = ?) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId, reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM image_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM audio_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM video_files WHERE user_id = ? ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM image_files WHERE user_id = ? AND (r2_key NOT LIKE "%/study/%" OR r2_key IS NULL) AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM audio_files WHERE user_id = ? AND (r2_key NOT LIKE "%/study/%" OR r2_key IS NULL) AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, COALESCE(created_at, updated_at, datetime("now")) as created_at FROM video_files WHERE user_id = ? AND (r2_key NOT LIKE "%/study/%" OR r2_key IS NULL) AND (r2_key NOT LIKE "%/mes-fichiers/%" OR r2_key IS NULL) ORDER BY COALESCE(created_at, updated_at, datetime("now")) DESC LIMIT 6').bind(reqUserId).all<any>(),
         ]);
 
         const parseDateMs = (d: any): number => {
@@ -9643,6 +9643,7 @@ a:hover{transform:translateY(-2px)}
             SELECT * FROM audio_files 
             WHERE user_id = ? 
               AND (r2_key NOT LIKE '%/study/%' OR r2_key IS NULL)
+              AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
@@ -9652,22 +9653,8 @@ a:hover{transform:translateY(-2px)}
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all<any>();
 
+          // ISOLATION TOTALE : Le menu Audio ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraAuds: any[] = [];
-          try {
-            const { results: extra } = await env.DB.prepare(`
-              SELECT * FROM files 
-              WHERE user_id = ? 
-                AND (matiere_id = 'menu-audio' OR type LIKE 'audio/%' OR LOWER(extension) IN ('mp3','wav','ogg','m4a','aac','flac','wma','opus','alac','aiff'))
-                AND r2_key IS NOT NULL AND r2_key != ''
-                AND r2_key NOT LIKE '%/classeur/%'
-                AND id NOT LIKE 'cf-%'
-                AND id NOT LIKE 'cf_%'
-                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
-                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
-              ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId, reqUserId, reqUserId).all<any>();
-            extraAuds = extra || [];
-          } catch(e) {}
 
           let favAudSet = new Set<string>();
           try {
@@ -9689,6 +9676,11 @@ a:hover{transform:translateY(-2px)}
             if (!id || trashedIdSet.has(id) || securedAudIdSet.has(id)) return;
             if (seen.has(id)) return;
             seen.add(id);
+
+            if (typeof id === 'string' && (id.startsWith('cf-') || id.startsWith('cf_'))) return;
+            if (a.r2_key && (a.r2_key.includes('/study/') || a.r2_key.includes('/classeur/') || a.r2_key.includes('/mes-fichiers/'))) return;
+            if (a.folder_id && !['audio', 'root', 'default-folder', 'menu-audio'].includes(a.folder_id)) return;
+            if (a.category === 'study' || a.category === 'classeur' || a.category === 'mes-fichiers' || a.is_study_import || a.isStudyImport) return;
 
             const name = a.name || 'Audio';
 
@@ -9950,6 +9942,7 @@ a:hover{transform:translateY(-2px)}
             SELECT * FROM image_files 
             WHERE user_id = ? 
               AND (r2_key NOT LIKE '%/study/%' OR r2_key IS NULL)
+              AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
@@ -9959,22 +9952,8 @@ a:hover{transform:translateY(-2px)}
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all<any>();
 
+          // ISOLATION TOTALE : Le menu Images ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraImgs: any[] = [];
-          try {
-            const { results: extra } = await env.DB.prepare(`
-              SELECT * FROM files 
-              WHERE user_id = ? 
-                AND (matiere_id = 'menu-images' OR type LIKE 'image/%' OR LOWER(extension) IN ('jpg','jpeg','png','webp','gif','svg','bmp','ico','tiff','tif','heic','avif'))
-                AND r2_key IS NOT NULL AND r2_key != ''
-                AND r2_key NOT LIKE '%/classeur/%'
-                AND id NOT LIKE 'cf-%'
-                AND id NOT LIKE 'cf_%'
-                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
-                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
-              ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId, reqUserId, reqUserId).all<any>();
-            extraImgs = extra || [];
-          } catch(e) {}
 
           let favImgSet = new Set<string>();
           try {
@@ -9996,6 +9975,11 @@ a:hover{transform:translateY(-2px)}
             if (!id || trashedImgIdSet.has(id) || securedImgIdSet.has(id)) return;
             if (seen.has(id)) return;
             seen.add(id);
+
+            if (typeof id === 'string' && (id.startsWith('cf-') || id.startsWith('cf_'))) return;
+            if (img.r2_key && (img.r2_key.includes('/study/') || img.r2_key.includes('/classeur/') || img.r2_key.includes('/mes-fichiers/'))) return;
+            if (img.folder_id && !['images', 'root', 'default-folder', 'menu-images'].includes(img.folder_id)) return;
+            if (img.category === 'study' || img.category === 'classeur' || img.category === 'mes-fichiers' || img.is_study_import || img.isStudyImport) return;
 
             // Pour les images : l'image enregistrée dans Cloudflare R2 EST l'aperçu lui-même.
             // On résout dynamiquement l'URL absolue vers Cloudflare R2 pour cet environnement (aucun localhost figé)
@@ -10227,6 +10211,7 @@ a:hover{transform:translateY(-2px)}
             SELECT * FROM video_files 
             WHERE user_id = ? 
               AND (r2_key NOT LIKE '%/study/%' OR r2_key IS NULL)
+              AND (r2_key NOT LIKE '%/mes-fichiers/%' OR r2_key IS NULL)
               AND (r2_key NOT LIKE '%/classeur/%' OR r2_key IS NULL)
               AND id NOT LIKE 'folder_%'
               AND id NOT LIKE 'cf_folder_%'
@@ -10236,22 +10221,8 @@ a:hover{transform:translateY(-2px)}
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all<any>();
 
+          // ISOLATION TOTALE : Le menu Vidéos ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraVids: any[] = [];
-          try {
-            const { results: extra } = await env.DB.prepare(`
-              SELECT * FROM files 
-              WHERE user_id = ? 
-                AND (matiere_id = 'menu-videos' OR type LIKE 'video/%' OR LOWER(extension) IN ('mp4','mov','mkv','webm','avi','3gp','m4v','ts'))
-                AND r2_key IS NOT NULL AND r2_key != ''
-                AND r2_key NOT LIKE '%/classeur/%'
-                AND id NOT LIKE 'cf-%'
-                AND id NOT LIKE 'cf_%'
-                AND id NOT IN (SELECT id FROM secure_files WHERE user_id = ?)
-                AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
-              ORDER BY last_imported DESC, created_at DESC
-            `).bind(reqUserId, reqUserId, reqUserId).all<any>();
-            extraVids = extra || [];
-          } catch(e) {}
 
           let favVidSet = new Set<string>();
           try {
@@ -10273,6 +10244,11 @@ a:hover{transform:translateY(-2px)}
             if (!id || trashedVidIdSet.has(id) || securedVidIdSet.has(id)) return;
             if (seen.has(id)) return;
             seen.add(id);
+
+            if (typeof id === 'string' && (id.startsWith('cf-') || id.startsWith('cf_'))) return;
+            if (v.r2_key && (v.r2_key.includes('/study/') || v.r2_key.includes('/classeur/') || v.r2_key.includes('/mes-fichiers/'))) return;
+            if (v.folder_id && !['videos', 'root', 'default-folder', 'menu-videos'].includes(v.folder_id)) return;
+            if (v.category === 'study' || v.category === 'classeur' || v.category === 'mes-fichiers' || v.is_study_import || v.isStudyImport) return;
 
             let finalUrl = v.video_url || v.file_url || v.url || '';
             if ((!finalUrl || finalUrl.startsWith('blob:') || finalUrl.includes('localhost')) && v.r2_key) {
