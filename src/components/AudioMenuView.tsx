@@ -361,11 +361,12 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
               if (data && Array.isArray(data)) {
                 setAudioList(prev => mergeAudioWithPending(data, prev));
                 CloudDataStore.setAudio(data as any);
-                setSelectedTrack(curr => {
-                  if (!curr) return null;
-                  const updated = data.find(x => x.id === curr.id || x.name === curr.name);
-                  return updated || curr;
-                });
+                if (globalCurrentTrack) {
+                  const updated = data.find(x => x.id === globalCurrentTrack.id || x.name === globalCurrentTrack.name);
+                  if (updated) {
+                    updateCurrentTrack(updated);
+                  }
+                }
               }
             }).catch(() => { });
           } else if (task.status === 'error') {
@@ -418,11 +419,12 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
           if (data && Array.isArray(data)) {
             setAudioList(prev => mergeAudioWithPending(data, prev));
             CloudDataStore.setAudio(data as any);
-            setSelectedTrack(curr => {
-              if (!curr) return null;
-              const updated = data.find(x => x.id === curr.id || x.name === curr.name);
-              return updated || curr;
-            });
+            if (globalCurrentTrack) {
+              const updated = data.find(x => x.id === globalCurrentTrack.id || x.name === globalCurrentTrack.name);
+              if (updated) {
+                updateCurrentTrack(updated);
+              }
+            }
           }
         }).catch(() => { });
       }
@@ -731,8 +733,8 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
       CloudDataStore.addOptimisticFile(item as any);
     });
 
-    // 4. Sélection automatique si aucun son n'était joué
-    setSelectedTrack(curr => curr || newItems[0]);
+    // 4. Aucune lecture automatique pendant l'enregistrement : la musique ne doit pas chanter
+    // (L'utilisateur choisira lui-même s'il souhaite écouter le son une fois disponible)
 
     if (fileInputRef.current) fileInputRef.current.value = '';
     showToast(`${newItems.length} son(s) en cours d'enregistrement...`);
@@ -2158,6 +2160,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           showToast("Enregistrement échoué. Utilisez la croix pour retirer ou le bouton Réessayer.");
                           return;
                         }
+                        if (isSaving || track.isUploading) {
+                          showToast("Ce son est encore en cours d'enregistrement, veuillez patienter...");
+                          return;
+                        }
                         if (isSelected) {
                           setIsMobilePlayerOpen(true);
                           if (!isAudioPlaying) {
@@ -2321,6 +2327,10 @@ export const AudioMenuView: React.FC<AudioMenuViewProps> = ({
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
+                            if (isSaving || track.isUploading) {
+                              showToast("Ce son est encore en cours d'enregistrement, veuillez patienter...");
+                              return;
+                            }
                             if (isSelected) {
                               togglePlayPause();
                             } else {

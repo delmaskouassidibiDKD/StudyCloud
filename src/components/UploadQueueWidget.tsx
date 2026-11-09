@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { UploadQueue, UploadQueueState, UploadTask } from '../services/uploadQueue';
 import {
   CheckCircle2,
@@ -17,8 +17,11 @@ import {
 
 export const UploadQueueWidget: React.FC = () => {
   const [state, setState] = useState<UploadQueueState>(UploadQueue.getState());
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Par défaut plié quand plusieurs téléchargements, ou même au départ pour ne pas envahir l'écran
+  const [isExpanded, setIsExpanded] = useState(false);
   const [isDismissed, setIsDismissed] = useState(false);
+  const prevTotalCountRef = useRef(0);
+
   // IDs des tâches dont la barre a terminé et qui doivent s'effacer
   const [fadingTaskIds, setFadingTaskIds] = useState<Set<string>>(new Set());
   const [hiddenTaskIds, setHiddenTaskIds] = useState<Set<string>>(new Set());
@@ -55,6 +58,12 @@ export const UploadQueueWidget: React.FC = () => {
         }
       }
 
+      // Quand de nouveaux téléchargements démarrent avec plusieurs fichiers, replier par défaut
+      if (newState.totalCount > prevTotalCountRef.current && newState.totalCount > 1) {
+        setIsExpanded(false);
+      }
+      prevTotalCountRef.current = newState.totalCount;
+
       // Planifier l'effacement de chaque tâche terminée
       (newState.tasks || []).forEach((task: UploadTask) => {
         if (task.status === 'completed') {
@@ -84,13 +93,25 @@ export const UploadQueueWidget: React.FC = () => {
         autoDismissTimer.current = null;
       }, 2800);
     }
-    // Si erreurs : ne pas auto-fermer, l'utilisateur doit agir
   }, [state]);
 
   if (state.totalCount === 0 || isDismissed) return null;
 
   const { completedCount, errorCount, totalCount, isProcessing, tasks } = state;
-  const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  // Somme continue réelle de tous les téléchargements (0 à 100%)
+  const totalSumPercent = useMemo(() => {
+    if (totalCount === 0) return 0;
+    const currentTasks = tasks || [];
+    const sum = currentTasks.reduce((acc, t) => {
+      if (t.status === 'completed') return acc + 100;
+      if (t.status === 'uploading') return acc + Math.max(0, Math.min(100, t.progress || 0));
+      if (t.status === 'error') return acc + 0;
+      return acc; // pending
+    }, 0);
+    return Math.min(100, Math.max(0, Math.round(sum / totalCount)));
+  }, [tasks, totalCount]);
+
   const allCompleted = !isProcessing && completedCount > 0 && errorCount === 0;
 
   const visibleTasks = (tasks as UploadTask[])
@@ -102,11 +123,11 @@ export const UploadQueueWidget: React.FC = () => {
 
   const getCategoryIcon = (category: string) => {
     switch (category) {
-      case 'audio': return <Music className="w-4 h-4 text-amber-400" />;
-      case 'videos': return <Film className="w-4 h-4 text-purple-400" />;
-      case 'images': return <ImageIcon className="w-4 h-4 text-emerald-400" />;
-      case 'classeur': return <Folder className="w-4 h-4 text-orange-400" />;
-      default: return <FileText className="w-4 h-4 text-blue-400" />;
+      case 'audio': return <Music className="w-3.5 h-3.5 text-amber-400" />;
+      case 'videos': return <Film className="w-3.5 h-3.5 text-purple-400" />;
+      case 'images': return <ImageIcon className="w-3.5 h-3.5 text-emerald-400" />;
+      case 'classeur': return <Folder className="w-3.5 h-3.5 text-orange-400" />;
+      default: return <FileText className="w-3.5 h-3.5 text-blue-400" />;
     }
   };
 
@@ -130,39 +151,39 @@ export const UploadQueueWidget: React.FC = () => {
     }
   };
 
-  // ─── Render ───────────────────────────────────────────────────────────────
-
   return (
     <aside
       aria-label="Progression de l'enregistrement des fichiers"
-      className="fixed top-4 left-1/2 -translate-x-1/2 z-[100000] w-[95%] sm:w-[520px] max-w-xl rounded-2xl bg-[#090D16]/95 dark:bg-[#070A10]/95 backdrop-blur-2xl border border-white/20 shadow-[0_20px_60px_rgba(0,0,0,0.6)] overflow-hidden transition-all duration-300 animate-in fade-in slide-in-from-top-4 font-sans select-none"
+      className="fixed top-3 sm:top-4 left-1/2 -translate-x-1/2 z-[100000] w-[92%] sm:w-[420px] max-w-md rounded-2xl bg-[#090D16]/95 dark:bg-[#070A10]/95 backdrop-blur-2xl border border-white/20 shadow-[0_12px_40px_rgba(0,0,0,0.65)] overflow-hidden transition-all duration-300 font-sans select-none"
     >
-      {/* ── En-tête ──────────────────────────────────────────────────────── */}
+      {/* ── En-tête (cliquable pour déplier/replier les détails) ──────────── */}
       <div
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-[#0F172A] via-[#1E293B] to-[#0F172A] border-b border-white/10 cursor-pointer"
+        onClick={() => setIsExpanded(prev => !prev)}
+        className="flex items-center justify-between px-3 py-2 sm:px-4 sm:py-2.5 bg-gradient-to-r from-[#0F172A] via-[#1E293B] to-[#0F172A] cursor-pointer hover:bg-white/[0.02] transition-colors"
       >
-        <div className="flex items-center space-x-3 min-w-0">
+        <div className="flex items-center space-x-2.5 min-w-0">
           <div className="relative shrink-0">
             {isProcessing ? (
-              <div className="w-8 h-8 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
-                <Loader2 className="w-4 h-4 animate-spin" />
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-blue-500/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
+                <Loader2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 animate-spin" />
               </div>
             ) : errorCount > 0 ? (
-              <div className="w-8 h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
-                <AlertCircle className="w-4 h-4" />
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-400">
+                <AlertCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               </div>
             ) : (
-              <div className="w-8 h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
-                <CheckCircle2 className="w-4 h-4 stroke-[2.5]" />
+              <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center text-emerald-400">
+                <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.5]" />
               </div>
             )}
           </div>
 
           <div className="truncate">
-            <div className="text-xs sm:text-sm font-black text-white truncate">
+            <div className="text-[12px] sm:text-xs font-bold text-white truncate">
               {isProcessing ? (
-                <span>Enregistrement en cours ({completedCount}/{totalCount})</span>
+                <span>
+                  Enregistrement en cours {totalCount > 1 ? `(${completedCount}/${totalCount} • ` : '('}{totalSumPercent}%)
+                </span>
               ) : allCompleted ? (
                 <span className="text-emerald-400">
                   {totalCount} fichier{totalCount > 1 ? 's' : ''} enregistré{totalCount > 1 ? 's' : ''} avec succès !
@@ -173,9 +194,9 @@ export const UploadQueueWidget: React.FC = () => {
                 <span>{completedCount} fichier{completedCount > 1 ? 's' : ''} enregistré{completedCount > 1 ? 's' : ''}</span>
               )}
             </div>
-            <div className="text-[11px] text-slate-400 truncate">
+            <div className="text-[10px] sm:text-[11px] text-slate-400 truncate">
               {isProcessing
-                ? 'Distribution dans leurs menus respectifs...'
+                ? (totalCount > 1 ? 'Distribution dans leurs menus respectifs...' : (visibleTasks[0]?.fileName || 'Distribution dans son menu respectif...'))
                 : allCompleted
                   ? 'Vos fichiers sont disponibles dans leurs menus'
                   : 'Téléversement terminé'}
@@ -183,15 +204,21 @@ export const UploadQueueWidget: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center space-x-1 shrink-0">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-            className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-slate-300 hover:text-white"
-            title={isExpanded ? 'Réduire les détails' : 'Afficher les détails'}
-          >
-            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-          </button>
+        <div className="flex items-center space-x-1.5 shrink-0">
+          {visibleTasks.length > 0 && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsExpanded(prev => !prev);
+              }}
+              className="px-2 py-0.5 sm:px-2.5 sm:py-1 bg-white/10 hover:bg-white/15 text-slate-200 hover:text-white rounded-lg text-[10px] sm:text-xs font-medium transition-all flex items-center gap-1 cursor-pointer border border-white/10 shrink-0"
+              title={isExpanded ? 'Replier les détails' : 'Déplier pour voir chaque fichier'}
+            >
+              <span>{isExpanded ? 'Replier' : `Détails (${visibleTasks.length})`}</span>
+              {isExpanded ? <ChevronUp className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> : <ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5" />}
+            </button>
+          )}
           <button
             type="button"
             onClick={(e) => {
@@ -199,16 +226,16 @@ export const UploadQueueWidget: React.FC = () => {
               setIsDismissed(true);
               if (!isProcessing) UploadQueue.clearCompleted();
             }}
-            className="p-1.5 hover:bg-white/10 rounded-lg transition-colors text-slate-300 hover:text-white"
+            className="p-1 sm:p-1.5 hover:bg-white/10 rounded-lg transition-colors text-slate-400 hover:text-white cursor-pointer"
             title="Fermer la notification"
           >
-            <X className="w-4 h-4" />
+            <X className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           </button>
         </div>
       </div>
 
-      {/* ── Barre de progression globale ─────────────────────────────────── */}
-      <div className="h-1.5 w-full bg-white/10 overflow-hidden relative">
+      {/* ── Grande ligne qui montre la somme continue des téléchargements ── */}
+      <div className="h-1.5 sm:h-2 w-full bg-white/10 overflow-hidden relative">
         <div
           className={`h-full transition-all duration-300 ease-out ${
             allCompleted
@@ -217,13 +244,13 @@ export const UploadQueueWidget: React.FC = () => {
                 ? 'bg-amber-400'
                 : 'bg-gradient-to-r from-blue-500 via-teal-400 to-emerald-400'
           }`}
-          style={{ width: `${Math.max(progressPercent, isProcessing ? 12 : 100)}%` }}
+          style={{ width: `${allCompleted ? 100 : Math.max(totalSumPercent, isProcessing ? 6 : 100)}%` }}
         />
       </div>
 
-      {/* ── Liste des fichiers ───────────────────────────────────────────── */}
+      {/* ── Liste individuelle dépliée à la demande ──────────────────────── */}
       {isExpanded && visibleTasks.length > 0 && (
-        <div className="max-h-72 overflow-y-auto divide-y divide-white/5 p-2 space-y-1">
+        <div className="max-h-48 sm:max-h-60 overflow-y-auto divide-y divide-white/5 p-1.5 sm:p-2 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200">
           {visibleTasks.map((task: UploadTask) => {
             const isDone = task.status === 'completed';
             const isUploading = task.status === 'uploading';
@@ -235,21 +262,21 @@ export const UploadQueueWidget: React.FC = () => {
             return (
               <div
                 key={task.id}
-                className={`p-2.5 rounded-xl text-xs flex flex-col gap-1.5 bg-black/20 transition-all duration-250 ${
+                className={`p-2 rounded-xl text-xs flex flex-col gap-1.5 bg-white/[0.04] border border-white/5 transition-all duration-200 ${
                   isFading ? 'opacity-0 scale-95 pointer-events-none' : 'opacity-100 scale-100'
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   {/* Info fichier */}
-                  <div className="flex items-center space-x-2.5 min-w-0 flex-1">
-                    <div className="w-7 h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
+                  <div className="flex items-center space-x-2 min-w-0 flex-1">
+                    <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-white/5 border border-white/10 flex items-center justify-center shrink-0">
                       {getCategoryIcon(task.category)}
                     </div>
                     <div className="truncate flex-1">
-                      <div className="font-bold text-white truncate max-w-[200px] sm:max-w-[280px]" title={task.fileName}>
+                      <div className="font-semibold text-white truncate max-w-[150px] sm:max-w-[230px] text-[11px] sm:text-xs" title={task.fileName}>
                         {task.fileName}
                       </div>
-                      <div className="text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
+                      <div className="text-[9px] sm:text-[10px] text-slate-400 flex items-center gap-1.5 mt-0.5">
                         <span>{task.fileItem.size || 'Taille inconnue'}</span>
                         <span>•</span>
                         <span className={`px-1.5 py-0.2 rounded border text-[9px] font-semibold ${getCategoryBadgeClass(task.category)}`}>
@@ -262,19 +289,19 @@ export const UploadQueueWidget: React.FC = () => {
                   {/* État */}
                   <div className="flex items-center shrink-0">
                     {isUploading && (
-                      <div className="flex items-center space-x-1 text-blue-400 font-bold text-[11px]">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <div className="flex items-center space-x-1 text-blue-400 font-bold text-[10px] sm:text-[11px]">
+                        <Loader2 className="w-3 h-3 animate-spin" />
                         <span>{task.progress}%</span>
                       </div>
                     )}
                     {isPending && (
-                      <span className="text-[10px] text-slate-400 bg-white/5 border border-white/10 px-2 py-0.5 rounded-full font-medium">
+                      <span className="text-[9px] sm:text-[10px] text-slate-400 bg-white/5 border border-white/10 px-1.5 py-0.5 rounded-full font-medium">
                         En attente...
                       </span>
                     )}
                     {isDone && (
-                      <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span className="inline-flex items-center gap-1 text-[10px] sm:text-[11px] font-bold text-emerald-400">
+                        <CheckCircle2 className="w-3 h-3" />
                         <span>Enregistré</span>
                       </span>
                     )}
@@ -295,7 +322,7 @@ export const UploadQueueWidget: React.FC = () => {
                 </div>
 
                 {/* Barre de progression individuelle */}
-                <div className="w-full bg-white/10 rounded-full h-1.5 overflow-hidden">
+                <div className="w-full bg-white/10 rounded-full h-1 overflow-hidden">
                   <div
                     className={`h-full rounded-full transition-all duration-300 ease-out ${
                       isDone
@@ -313,16 +340,16 @@ export const UploadQueueWidget: React.FC = () => {
         </div>
       )}
 
-      {/* ── Pied de widget : uniquement affiché en cas d'erreurs ─────────── */}
+      {/* ── Pied de widget : en cas d'erreurs (déplié) ────────────────────── */}
       {isExpanded && errorCount > 0 && (
-        <div className="px-4 py-2.5 bg-black/40 border-t border-white/10 flex items-center justify-between text-xs">
-          <span className="text-amber-400 font-medium text-[11px]">
-            ⚠️ {errorCount} fichier{errorCount > 1 ? 's' : ''} n'ont pas pu être synchronisés
+        <div className="px-3 py-2 bg-black/40 border-t border-white/10 flex items-center justify-between text-xs">
+          <span className="text-amber-400 font-medium text-[10px] sm:text-[11px]">
+            ⚠️ {errorCount} fichier{errorCount > 1 ? 's' : ''} non synchronisé{errorCount > 1 ? 's' : ''}
           </span>
           <button
             type="button"
             onClick={() => UploadQueue.retryAllFailed()}
-            className="px-2.5 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-[11px] font-bold transition-all flex items-center space-x-1"
+            className="px-2 py-0.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 rounded-lg text-[10px] font-bold transition-all flex items-center space-x-1"
           >
             <RotateCw className="w-3 h-3" />
             <span>Réessayer</span>
@@ -330,10 +357,10 @@ export const UploadQueueWidget: React.FC = () => {
         </div>
       )}
 
-      {/* Légende en cours (sans erreurs) */}
+      {/* Légende en cours (dépliée sans erreurs) */}
       {isExpanded && !errorCount && isProcessing && (
-        <div className="px-4 py-2 bg-black/30 border-t border-white/10">
-          <span className="text-slate-400 text-[11px]">
+        <div className="px-3 py-1.5 bg-black/30 border-t border-white/10">
+          <span className="text-slate-400 text-[10px] sm:text-[11px]">
             Traitement en cours • 2 fichiers en simultané max
           </span>
         </div>

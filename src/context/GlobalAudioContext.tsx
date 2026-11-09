@@ -172,6 +172,10 @@ export const GlobalAudioProvider: React.FC<{ children: React.ReactNode }> = ({ c
 
   const playTrack = useCallback(async (track: FileItem, newPlaylist?: FileItem[]) => {
     if (!track) return;
+    if (track.isUploading) {
+      console.warn("Son en cours de téléversement/enregistrement, lecture bloquée.");
+      return;
+    }
 
     const isSameTrack = Boolean(
       currentTrackRef.current &&
