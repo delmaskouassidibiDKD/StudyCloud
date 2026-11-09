@@ -245,33 +245,75 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
     setLoading(false);
   }, [serverTrash]);
 
+  // Helper pour identifier les fichiers enfants d'un ensemble de dossiers dans la corbeille
+  const getFolderChildIds = (folderIds: Set<string>, list: FileItem[]) => {
+    const childIds = new Set<string>();
+    const childFiles: FileItem[] = [];
+    list.forEach(f => {
+      const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+      if (pId && folderIds.has(pId)) {
+        childIds.add(f.id);
+        childFiles.push(f);
+      }
+    });
+    list.forEach(f => {
+      if (folderIds.has(f.id)) {
+        const meta = (f as any).metadata || {};
+        if (meta.containedFiles && Array.isArray(meta.containedFiles)) {
+          meta.containedFiles.forEach((cf: any) => {
+            if (cf?.id && !childIds.has(cf.id)) {
+              childIds.add(cf.id);
+              childFiles.push(cf);
+            }
+          });
+        }
+      }
+    });
+    return { childIds, childFiles };
+  };
+
   // Restaurer un fichier individuel
   const handleRestore = async (file: FileItem) => {
-    if (selectedFile?.id === file.id) {
+    const isFolder = file.category === 'folder' || file.category === 'classeur_folder' || (file as any).model || (file as any).isFolder || file.sourceCategory === 'classeur_folder';
+    const folderIds = new Set(isFolder ? [file.id] : []);
+    const { childIds, childFiles } = getFolderChildIds(folderIds, trashList);
+
+    const allRestoredIds = [file.id, ...Array.from(childIds)];
+    const allRestoredIdSet = new Set(allRestoredIds);
+
+    if (selectedFile && allRestoredIdSet.has(selectedFile.id)) {
       setSelectedFile(null);
       setIsViewerMaximized(false);
     }
-    deletedTrashIdsRef.current.delete(file.id);
-    unmarkTrashItemPermanentlyDeleted(file.id);
-    unmarkItemDeleted(file.id);
 
-    const isFolder = file.category === 'folder' || file.category === 'classeur_folder' || (file as any).model;
-    const restoredFolderId = isFolder ? file.id : null;
+    allRestoredIds.forEach(id => {
+      deletedTrashIdsRef.current.delete(id);
+      unmarkTrashItemPermanentlyDeleted(id);
+      unmarkItemDeleted(id);
+    });
 
     setTrashList(prev => prev.filter(f => {
-      if (f.id === file.id) return false;
-      if (restoredFolderId && (f.folderId === restoredFolderId || (f as any).original_folder_id === restoredFolderId)) {
-        return false;
+      if (allRestoredIdSet.has(f.id)) return false;
+      if (isFolder) {
+        const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+        if (pId === file.id) return false;
       }
       return true;
     }));
 
     queryClient.setQueryData<FileItem[]>(QUERY_KEYS.trash, (old) =>
-      Array.isArray(old) ? old.filter(f => f.id !== file.id) : []
+      Array.isArray(old) ? old.filter(f => {
+        if (allRestoredIdSet.has(f.id)) return false;
+        if (isFolder) {
+          const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+          if (pId === file.id) return false;
+        }
+        return true;
+      }) : []
     );
 
-    CloudDataStore.restoreFromTrash(file as any);
-    await CloudStorageAPI.restoreTrashItem(file.id).catch(() => { });
+    CloudDataStore.restoreFromTrash([file as any, ...childFiles]);
+    await CloudStorageAPI.restoreMultipleTrash(allRestoredIds).catch(() => { });
     invalidateCloudQueries.trash().catch(() => { });
     invalidateCloudQueries.all().catch(() => { });
     window.dispatchEvent(new Event('unifolder_data_restored'));
@@ -280,34 +322,55 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
   // Supprimer définitivement un fichier
   const handleDeletePermanently = async (file: FileItem) => {
-    if (selectedFile?.id === file.id) {
+    const isFolder = file.category === 'folder' || file.category === 'classeur_folder' || (file as any).model || (file as any).isFolder || file.sourceCategory === 'classeur_folder';
+    const folderIds = new Set(isFolder ? [file.id] : []);
+    const { childIds } = getFolderChildIds(folderIds, trashList);
+
+    const allDeleteIds = [file.id, ...Array.from(childIds)];
+    const allDeleteIdSet = new Set(allDeleteIds);
+
+    if (selectedFile && allDeleteIdSet.has(selectedFile.id)) {
       setSelectedFile(null);
       setIsViewerMaximized(false);
     }
 
     // 1. Bloquer définitivement toute résurrection immédiate ou future
-    deletedTrashIdsRef.current.add(file.id);
-    markTrashItemPermanentlyDeleted(file.id);
-    markItemDeleted(file.id);
-    LocalSyncReplication.recordLocalDeletion(file.id, 'trash');
+    allDeleteIds.forEach(id => {
+      deletedTrashIdsRef.current.add(id);
+      markTrashItemPermanentlyDeleted(id);
+      markItemDeleted(id);
+      CloudDataStore.permanentlyRemoveTrashFile(id);
+      deleteFileBlob(id).catch(() => { });
+    });
+    LocalSyncReplication.recordLocalDeletions(allDeleteIds, 'trash');
 
     // 2. Retirer instantanément de la vue sans impacter les autres fichiers
-    setTrashList(prev => prev.filter(f => f.id !== file.id));
+    setTrashList(prev => prev.filter(f => {
+      if (allDeleteIdSet.has(f.id)) return false;
+      if (isFolder) {
+        const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+        if (pId === file.id) return false;
+      }
+      return true;
+    }));
 
     // 3. Mettre à jour directement le cache TanStack Query
     queryClient.setQueryData<FileItem[]>(QUERY_KEYS.trash, (old) =>
-      Array.isArray(old) ? old.filter(f => f.id !== file.id) : []
+      Array.isArray(old) ? old.filter(f => {
+        if (allDeleteIdSet.has(f.id)) return false;
+        if (isFolder) {
+          const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+          if (pId === file.id) return false;
+        }
+        return true;
+      }) : []
     );
-
-    // 4. Supprimer de CloudDataStore et supprimer le blob local
-    CloudDataStore.permanentlyRemoveTrashFile(file.id);
-    deleteFileBlob(file.id).catch(() => { });
 
     showToast(`"${file.name}" a été supprimé définitivement`);
 
-    // 5. Envoyer la suppression permanente sur le serveur Cloudflare D1/R2
+    // 4. Envoyer la suppression permanente sur le serveur Cloudflare D1/R2
     try {
-      await CloudStorageAPI.deleteTrashPermanently([file.id]);
+      await CloudStorageAPI.deleteTrashPermanently(allDeleteIds);
     } catch (e) {
       console.warn('[Trash] deleteTrashPermanently error:', e);
     }
@@ -356,38 +419,53 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
   // Restaurer les éléments sélectionnés
   const handleRestoreSelected = async () => {
-    if (selectedFile && selectedIds.includes(selectedFile.id)) {
+    const toRestore = trashList.filter(f => selectedIds.includes(f.id));
+    if (toRestore.length === 0) return;
+
+    const folderIds = new Set(
+      toRestore
+        .filter(f => f.category === 'folder' || f.category === 'classeur_folder' || (f as any).model || (f as any).isFolder || f.sourceCategory === 'classeur_folder')
+        .map(f => f.id)
+    );
+    const { childIds, childFiles } = getFolderChildIds(folderIds, trashList);
+
+    const allRestoredIds = Array.from(new Set([...selectedIds, ...Array.from(childIds)]));
+    const allRestoredIdSet = new Set(allRestoredIds);
+
+    if (selectedFile && allRestoredIdSet.has(selectedFile.id)) {
       setSelectedFile(null);
       setIsViewerMaximized(false);
     }
-    const toRestore = trashList.filter(f => selectedIds.includes(f.id));
-    const idsToRestore = toRestore.map(f => f.id);
-    idsToRestore.forEach(id => {
+
+    allRestoredIds.forEach(id => {
       deletedTrashIdsRef.current.delete(id);
       unmarkTrashItemPermanentlyDeleted(id);
       unmarkItemDeleted(id);
     });
 
-    const restoredFolderIds = new Set(
-      toRestore
-        .filter(f => f.category === 'folder' || f.category === 'classeur_folder' || (f as any).model)
-        .map(f => f.id)
-    );
-
     setTrashList(prev => prev.filter(f => {
-      if (selectedIds.includes(f.id)) return false;
-      if (restoredFolderIds.size > 0 && ((f.folderId && restoredFolderIds.has(f.folderId)) || ((f as any).original_folder_id && restoredFolderIds.has((f as any).original_folder_id)))) {
-        return false;
+      if (allRestoredIdSet.has(f.id)) return false;
+      if (folderIds.size > 0) {
+        const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+        if (pId && folderIds.has(pId)) return false;
       }
       return true;
     }));
 
     queryClient.setQueryData<FileItem[]>(QUERY_KEYS.trash, (old) =>
-      Array.isArray(old) ? old.filter(f => !idsToRestore.includes(f.id)) : []
+      Array.isArray(old) ? old.filter(f => {
+        if (allRestoredIdSet.has(f.id)) return false;
+        if (folderIds.size > 0) {
+          const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+          if (pId && folderIds.has(pId)) return false;
+        }
+        return true;
+      }) : []
     );
 
-    CloudDataStore.restoreFromTrash(toRestore as any);
-    await CloudStorageAPI.restoreMultipleTrash(idsToRestore).catch(() => { });
+    const allToRestoreItems = [...toRestore, ...childFiles.filter(c => !selectedIds.includes(c.id))];
+    CloudDataStore.restoreFromTrash(allToRestoreItems as any);
+    await CloudStorageAPI.restoreMultipleTrash(allRestoredIds).catch(() => { });
     invalidateCloudQueries.trash().catch(() => { });
     invalidateCloudQueries.all().catch(() => { });
     window.dispatchEvent(new Event('unifolder_data_restored'));
@@ -398,38 +476,59 @@ export const TrashMenuView: React.FC<TrashMenuViewProps> = ({
 
   // Supprimer définitivement les éléments sélectionnés
   const handleDeleteSelected = async () => {
-    if (selectedFile && selectedIds.includes(selectedFile.id)) {
+    const toDelete = trashList.filter(f => selectedIds.includes(f.id));
+    if (toDelete.length === 0) return;
+
+    const folderIds = new Set(
+      toDelete
+        .filter(f => f.category === 'folder' || f.category === 'classeur_folder' || (f as any).model || (f as any).isFolder || f.sourceCategory === 'classeur_folder')
+        .map(f => f.id)
+    );
+    const { childIds } = getFolderChildIds(folderIds, trashList);
+
+    const allDeleteIds = Array.from(new Set([...selectedIds, ...Array.from(childIds)]));
+    const allDeleteIdSet = new Set(allDeleteIds);
+
+    if (selectedFile && allDeleteIdSet.has(selectedFile.id)) {
       setSelectedFile(null);
       setIsViewerMaximized(false);
     }
-    const idsToDelete = [...selectedIds];
-    const toDelete = trashList.filter(f => idsToDelete.includes(f.id));
-    if (toDelete.length === 0) return;
 
-    idsToDelete.forEach(id => {
+    allDeleteIds.forEach(id => {
       deletedTrashIdsRef.current.add(id);
       markTrashItemPermanentlyDeleted(id);
       markItemDeleted(id);
-    });
-    LocalSyncReplication.recordLocalDeletions(idsToDelete, 'trash');
-
-    setTrashList(prev => prev.filter(f => !idsToDelete.includes(f.id)));
-
-    queryClient.setQueryData<FileItem[]>(QUERY_KEYS.trash, (old) =>
-      Array.isArray(old) ? old.filter(f => !idsToDelete.includes(f.id)) : []
-    );
-
-    idsToDelete.forEach(id => {
       CloudDataStore.permanentlyRemoveTrashFile(id);
       deleteFileBlob(id).catch(() => { });
     });
+    LocalSyncReplication.recordLocalDeletions(allDeleteIds, 'trash');
+
+    setTrashList(prev => prev.filter(f => {
+      if (allDeleteIdSet.has(f.id)) return false;
+      if (folderIds.size > 0) {
+        const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+        if (pId && folderIds.has(pId)) return false;
+      }
+      return true;
+    }));
+
+    queryClient.setQueryData<FileItem[]>(QUERY_KEYS.trash, (old) =>
+      Array.isArray(old) ? old.filter(f => {
+        if (allDeleteIdSet.has(f.id)) return false;
+        if (folderIds.size > 0) {
+          const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+          if (pId && folderIds.has(pId)) return false;
+        }
+        return true;
+      }) : []
+    );
 
     setSelectedIds([]);
     setIsSelectionMode(false);
     showToast(`${toDelete.length} élément(s) supprimé(s) définitivement`);
 
     try {
-      await CloudStorageAPI.deleteTrashPermanently(idsToDelete);
+      await CloudStorageAPI.deleteTrashPermanently(allDeleteIds);
     } catch (e) {
       console.warn('[Trash] deleteTrashPermanently selected error:', e);
     }

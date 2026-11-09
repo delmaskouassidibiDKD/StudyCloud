@@ -443,23 +443,70 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   };
 
   const handleRestoreFromTrash = (file: FileItem) => {
-    CloudDataStore.restoreFromTrash(file);
-    CloudStorageAPI.restoreTrashItem(file.id).catch(() => {});
+    const isFolder = file.category === 'folder' || file.category === 'classeur_folder' || (file as any).model || (file as any).isFolder || file.sourceCategory === 'classeur_folder';
+    const folderId = isFolder ? file.id : null;
+    const childFiles: FileItem[] = [];
+    if (folderId) {
+      (storeData.trash || []).forEach(f => {
+        const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+        if (pId === folderId) childFiles.push(f);
+      });
+      if (file.metadata?.containedFiles && Array.isArray(file.metadata.containedFiles)) {
+        file.metadata.containedFiles.forEach((cf: any) => {
+          if (cf?.id && !childFiles.some(c => c.id === cf.id)) childFiles.push(cf);
+        });
+      }
+    }
+    const allIds = [file.id, ...childFiles.map(c => c.id)];
+    CloudDataStore.restoreFromTrash([file, ...childFiles]);
+    CloudStorageAPI.restoreMultipleTrash(allIds).catch(() => {});
     window.dispatchEvent(new Event('unifolder_data_restored'));
     showToast(`"${file.name}" restauré avec succès`);
   };
 
   const handlePermanentDelete = (file: FileItem) => {
-    CloudDataStore.removeFile(file.id);
-    deleteFileBlob(file.id).catch(() => {});
-    CloudStorageAPI.deleteTrashPermanently([file.id]).catch(() => {});
+    const isFolder = file.category === 'folder' || file.category === 'classeur_folder' || (file as any).model || (file as any).isFolder || file.sourceCategory === 'classeur_folder';
+    const folderId = isFolder ? file.id : null;
+    const childIds: string[] = [];
+    if (folderId) {
+      (storeData.trash || []).forEach(f => {
+        const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+        if (pId === folderId) childIds.push(f.id);
+      });
+      if (file.metadata?.containedFiles && Array.isArray(file.metadata.containedFiles)) {
+        file.metadata.containedFiles.forEach((cf: any) => {
+          if (cf?.id && !childIds.includes(cf.id)) childIds.push(cf.id);
+        });
+      }
+    }
+    const allIds = [file.id, ...childIds];
+    allIds.forEach(id => {
+      CloudDataStore.permanentlyRemoveTrashFile(id);
+      deleteFileBlob(id).catch(() => {});
+    });
+    CloudStorageAPI.deleteTrashPermanently(allIds).catch(() => {});
     showToast(`"${file.name}" supprimé définitivement`);
   };
 
   const handleRestoreFromSecure = async (file: FileItem) => {
-    CloudDataStore.restoreFromSecure(file);
+    const isFolder = file.category === 'folder' || file.category === 'classeur_folder' || (file as any).model || (file as any).isFolder || file.sourceCategory === 'classeur_folder' || (file as any).originalCategory === 'classeur_folder';
+    const folderId = isFolder ? file.id : null;
+    const childFiles: FileItem[] = [];
+    if (folderId) {
+      (storeData.secure || []).forEach(f => {
+        const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+        if (pId === folderId) childFiles.push(f);
+      });
+      if (file.metadata?.containedFiles && Array.isArray(file.metadata.containedFiles)) {
+        file.metadata.containedFiles.forEach((cf: any) => {
+          if (cf?.id && !childFiles.some(c => c.id === cf.id)) childFiles.push(cf);
+        });
+      }
+    }
+    const allIds = [file.id, ...childFiles.map(c => c.id)];
+    CloudDataStore.restoreFromSecure([file, ...childFiles]);
     try {
-      await CloudStorageAPI.restoreFromSecureFolder(file.id);
+      await CloudStorageAPI.restoreFromSecureFolder(allIds);
     } catch (e) {}
     showToast(`"${file.name}" retiré du dossier sécurisé`);
   };

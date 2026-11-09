@@ -11313,6 +11313,38 @@ a:hover{transform:translateY(-2px)}
               ).run();
 
               await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId).run();
+              const isSecFolder = realCategory === 'classeur_folder' || secFile.category === 'folder' || secFile.original_category === 'classeur_folder';
+              if (isSecFolder) {
+                const { results: childSecFiles } = await env.DB.prepare(`
+                  SELECT * FROM secure_files WHERE user_id = ? AND (original_folder_id = ? OR metadata_json LIKE ? OR metadata_json LIKE ?)
+                `).bind(reqUserId, id, `%"originalFolderId":"${id}"%`, `%"folderId":"${id}"%`).all<any>();
+                for (const cSec of childSecFiles || []) {
+                  await env.DB.prepare(`
+                    INSERT INTO trash_files (
+                      id, user_id, name, size, size_bytes, category, extension,
+                      source_category, original_folder_id, metadata_json, date_formatted,
+                      r2_key, file_url, deleted_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'classeur', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET deleted_at = CURRENT_TIMESTAMP
+                  `).bind(
+                    cSec.id,
+                    reqUserId,
+                    cSec.name,
+                    cSec.size,
+                    cSec.size_bytes,
+                    cSec.category || 'documents',
+                    cSec.extension || '',
+                    id,
+                    cSec.metadata_json,
+                    cSec.date_formatted,
+                    cSec.r2_key,
+                    cSec.file_url
+                  ).run();
+                  await env.DB.prepare('DELETE FROM secure_files WHERE id = ? AND user_id = ?').bind(cSec.id, reqUserId).run();
+                  await recordSyncItem(env.DB, reqUserId, cSec.id, 'trash', { id: cSec.id, isTrash: true, category: 'classeur' }, 0);
+                  await recordSyncItem(env.DB, reqUserId, cSec.id, 'secure', { id: cSec.id }, 1);
+                }
+              }
               if (realCategory === 'images' || realCategory === 'videos' || realCategory === 'audio') {
                 await env.DB.prepare(`DELETE FROM document_files WHERE id = ? AND user_id = ?`).bind(secFile.id, reqUserId).run().catch(() => {});
               }
@@ -11433,6 +11465,43 @@ a:hover{transform:translateY(-2px)}
                   Number(meta.positionY || meta.position_y || 0), Number(meta.displayOrder || meta.display_order || 0),
                   Number(meta.zoomLevel || meta.zoom_level || 10), meta.isPinned ? 1 : 0
                 ).run();
+                const { results: childSecFiles } = await env.DB.prepare(`
+                  SELECT * FROM secure_files WHERE user_id = ? AND (original_folder_id = ? OR metadata_json LIKE ? OR metadata_json LIKE ?)
+                `).bind(reqUserId, secFile.id, `%"originalFolderId":"${secFile.id}"%`, `%"folderId":"${secFile.id}"%`).all<any>();
+                for (const cFile of childSecFiles || []) {
+                  const cMeta = cFile.metadata_json ? JSON.parse(cFile.metadata_json) : {};
+                  await env.DB.prepare(`
+                    INSERT INTO classeur_files (
+                      id, user_id, folder_id, name, size, size_bytes, category, extension,
+                      date_formatted, is_notepad, notepad_title, notepad_content, r2_key, file_url, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                    ON CONFLICT(id) DO UPDATE SET
+                      name = excluded.name,
+                      size = excluded.size,
+                      size_bytes = excluded.size_bytes,
+                      date_formatted = excluded.date_formatted,
+                      file_url = excluded.file_url,
+                      updated_at = CURRENT_TIMESTAMP
+                  `).bind(
+                    cFile.id,
+                    reqUserId,
+                    secFile.id,
+                    cFile.name,
+                    cFile.size,
+                    cFile.size_bytes,
+                    cFile.category || 'documents',
+                    cFile.extension || '',
+                    cFile.date_formatted,
+                    cMeta.isNotepad ? 1 : 0,
+                    cMeta.notepadTitle || '',
+                    cMeta.content || '',
+                    cFile.r2_key,
+                    cFile.file_url
+                  ).run();
+                  await env.DB.prepare('DELETE FROM secure_files WHERE id = ? AND user_id = ?').bind(cFile.id, reqUserId).run();
+                  await recordSyncItem(env.DB, reqUserId, cFile.id, 'classeur', { id: cFile.id, folderId: secFile.id }, 0);
+                  await recordSyncItem(env.DB, reqUserId, cFile.id, 'secure', { id: cFile.id }, 1);
+                }
               } else if (
                 origFolder &&
                 !['images', 'videos', 'audio', 'documents', 'default-folder', 'root', 'menu-images', 'menu-videos', 'menu-audio', 'menu-documents', 'default'].includes(origFolder) &&
@@ -11863,8 +11932,8 @@ a:hover{transform:translateY(-2px)}
 
                 // Restaurer également tous les fichiers enfants de ce dossier présents dans la corbeille
                 const { results: childTrashFiles } = await env.DB.prepare(`
-                  SELECT * FROM trash_files WHERE user_id = ? AND original_folder_id = ?
-                `).bind(reqUserId, tid).all<any>();
+                  SELECT * FROM trash_files WHERE user_id = ? AND (original_folder_id = ? OR metadata_json LIKE ? OR metadata_json LIKE ?)
+                `).bind(reqUserId, tid, `%"originalFolderId":"${tid}"%`, `%"folderId":"${tid}"%`).all<any>();
 
                 if (childTrashFiles && childTrashFiles.length > 0) {
                   for (const cFile of childTrashFiles) {
@@ -12178,6 +12247,18 @@ a:hover{transform:translateY(-2px)}
               if (item) {
                 itemsToDelete.push(item);
                 await env.DB.prepare('DELETE FROM trash_files WHERE id = ? AND user_id = ?').bind(tid, reqUserId).run();
+                const isFolderItem = item.category === 'folder' || item.source_category === 'classeur_folder';
+                if (isFolderItem) {
+                  const { results: childItems } = await env.DB.prepare(`
+                    SELECT id, name, r2_key, file_url, category, source_category FROM trash_files WHERE user_id = ? AND (original_folder_id = ? OR metadata_json LIKE ? OR metadata_json LIKE ?)
+                  `).bind(reqUserId, tid, `%"originalFolderId":"${tid}"%`, `%"folderId":"${tid}"%`).all<any>();
+                  for (const cItem of childItems || []) {
+                    itemsToDelete.push(cItem);
+                    await env.DB.prepare('DELETE FROM trash_files WHERE id = ? AND user_id = ?').bind(cItem.id, reqUserId).run();
+                  }
+                  await env.DB.prepare('DELETE FROM classeur_files WHERE folder_id = ? AND user_id = ?').bind(tid, reqUserId).run().catch(() => {});
+                  await env.DB.prepare('DELETE FROM classeur_folders WHERE id = ? AND user_id = ?').bind(tid, reqUserId).run().catch(() => {});
+                }
               }
             }
           }
@@ -12185,6 +12266,7 @@ a:hover{transform:translateY(-2px)}
           // Nettoyage physique complet dans TOUS les buckets R2 et cascade des tables locales
           for (const item of itemsToDelete) {
             await env.DB.prepare(`DELETE FROM files WHERE id = ? AND user_id = ?`).bind(item.id, reqUserId).run().catch(() => {});
+            await env.DB.prepare(`DELETE FROM classeur_files WHERE id = ? AND user_id = ?`).bind(item.id, reqUserId).run().catch(() => {});
             await env.DB.prepare(`DELETE FROM media_thumbnails WHERE file_id = ? AND user_id = ?`).bind(item.id, reqUserId).run().catch(() => {});
             await cleanUserFavoriteOnDelete(env.DB, reqUserId, item.id);
             await recordSyncItem(env.DB, reqUserId, item.id, item.category || 'trash', { id: item.id }, 1);

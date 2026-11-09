@@ -1252,25 +1252,54 @@ export const CloudDataStore = {
     markTrashItemPermanentlyDeleted(fileId);
     dismissedRecentSet.add(fileId);
     CloudStorageAPI.dismissRecent(fileId).catch(() => { });
+
+    // Trouver tous les fichiers enfants si c'est un dossier
+    const childIds: string[] = [];
+    currentState.trash.forEach(t => {
+      const pId = t.originalFolderId || (t as any).folderId || (t as any).original_folder_id || (t.metadata && (t.metadata.folderId || t.metadata.originalFolderId));
+      if (pId === fileId) {
+        childIds.push(t.id);
+      }
+    });
+
+    const allIds = [fileId, ...childIds];
+    allIds.forEach(id => {
+      markTrashItemPermanentlyDeleted(id);
+      dismissedRecentSet.add(id);
+    });
+
     // Écrire un tombstone dans localStorage pour éviter la résurrection lors du prochain sync
     try {
       const raw = localStorage.getItem('studycloud_deleted_file_ids');
       const arr: string[] = raw ? JSON.parse(raw) : [];
-      if (!arr.includes(fileId)) {
-        arr.push(fileId);
+      let updated = false;
+      allIds.forEach(id => {
+        if (!arr.includes(id)) {
+          arr.push(id);
+          updated = true;
+        }
+      });
+      if (updated) {
         localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(arr.slice(-500)));
       }
       localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(dismissedRecentSet).slice(-500)));
     } catch { }
     // Notifier le tombstoneChecker (localSyncReplication) si disponible
     if (tombstoneChecker) {
-      // Le tombstoneChecker lit inMemoryTombstones, on passe par deletionListeners
-      deletionListeners.forEach(fn => { try { fn(fileId, 'trash'); } catch { } });
+      allIds.forEach(id => {
+        deletionListeners.forEach(fn => { try { fn(id, 'trash'); } catch { } });
+      });
     }
+
+    const removeSet = new Set(allIds);
+    const updatedMap = { ...currentState.folderFilesMap };
+    delete updatedMap[fileId];
+
     currentState = {
       ...currentState,
-      trash: currentState.trash.filter(f => f.id !== fileId),
-      recentFiles: (currentState.recentFiles || []).filter(f => f.id !== fileId),
+      trash: currentState.trash.filter(f => !removeSet.has(f.id)),
+      folderFilesMap: updatedMap,
+      recentFiles: (currentState.recentFiles || []).filter(f => !removeSet.has(f.id)),
     };
     persistToIndexedDB().catch(() => { });
     notify();
@@ -1351,9 +1380,28 @@ export const CloudDataStore = {
     const folderIds = new Set(
       arr.filter(f => f.category === 'classeur_folder' || f.category === 'folder' || (f as any).isFolder || (f as any).sourceCategory === 'classeur_folder').map(f => f.id)
     );
-    const childFilesInTrash = folderIds.size > 0
-      ? currentState.trash.filter(t => (t.originalFolderId && folderIds.has(t.originalFolderId)) || ((t as any).folderId && folderIds.has((t as any).folderId)))
-      : [];
+    const childFilesInTrash: FileItem[] = [];
+    if (folderIds.size > 0) {
+      currentState.trash.forEach(t => {
+        const pId = t.originalFolderId || (t as any).folderId || (t as any).original_folder_id || (t.metadata && (t.metadata.folderId || t.metadata.originalFolderId));
+        if (pId && folderIds.has(pId)) {
+          childFilesInTrash.push(t);
+        }
+      });
+    }
+
+    arr.forEach(file => {
+      const meta = (file as any).metadata || {};
+      if (meta.containedFiles && Array.isArray(meta.containedFiles)) {
+        meta.containedFiles.forEach((cf: any) => {
+          if (cf?.id && !initialIdSet.has(cf.id) && !childFilesInTrash.some(c => c.id === cf.id)) {
+            const fromTrash = currentState.trash.find(t => t.id === cf.id);
+            if (fromTrash) childFilesInTrash.push(fromTrash);
+            else childFilesInTrash.push({ ...cf, isTrash: false, originalFolderId: file.id });
+          }
+        });
+      }
+    });
 
     const allToRestore = [...arr, ...childFilesInTrash.filter(c => !initialIdSet.has(c.id))];
     const allIdSet = new Set(allToRestore.map(f => f.id));
@@ -1777,8 +1825,38 @@ export const CloudDataStore = {
   restoreFromSecure(items: FileItem | FileItem[]) {
     const arr = (Array.isArray(items) ? items : [items]).filter(Boolean);
     if (arr.length === 0) return;
-    const idSet = new Set(arr.map(f => f.id));
-    const newSecure = currentState.secure.filter(s => !idSet.has(s.id));
+    const initialIdSet = new Set(arr.map(f => f.id));
+
+    // Si un dossier est déverrouillé, identifier et restaurer simultanément tous les fichiers enfants contenus dans le dossier sécurisé
+    const folderIds = new Set(
+      arr.filter(f => f.category === 'classeur_folder' || f.category === 'folder' || (f as any).isFolder || (f as any).sourceCategory === 'classeur_folder' || (f as any).originalCategory === 'classeur_folder').map(f => f.id)
+    );
+    const childFilesInSecure: FileItem[] = [];
+    if (folderIds.size > 0) {
+      currentState.secure.forEach(s => {
+        const pId = s.originalFolderId || (s as any).folderId || (s as any).original_folder_id || (s.metadata && (s.metadata.folderId || s.metadata.originalFolderId));
+        if (pId && folderIds.has(pId)) {
+          childFilesInSecure.push(s);
+        }
+      });
+    }
+
+    arr.forEach(file => {
+      const meta = (file as any).metadata || {};
+      if (meta.containedFiles && Array.isArray(meta.containedFiles)) {
+        meta.containedFiles.forEach((cf: any) => {
+          if (cf?.id && !initialIdSet.has(cf.id) && !childFilesInSecure.some(c => c.id === cf.id)) {
+            const fromSec = currentState.secure.find(s => s.id === cf.id);
+            if (fromSec) childFilesInSecure.push(fromSec);
+            else childFilesInSecure.push({ ...cf, isSecure: false, originalFolderId: file.id });
+          }
+        });
+      }
+    });
+
+    const allToRestore = [...arr, ...childFilesInSecure.filter(c => !initialIdSet.has(c.id))];
+    const allIdSet = new Set(allToRestore.map(f => f.id));
+    const newSecure = currentState.secure.filter(s => !allIdSet.has(s.id));
     let newFolders = [...currentState.classeurFolders];
     let newDocs = [...currentState.documents];
     let newImgs = [...currentState.images];
@@ -1787,7 +1865,7 @@ export const CloudDataStore = {
     let newDls = [...currentState.downloads];
     const updatedMap = { ...currentState.folderFilesMap };
 
-    arr.forEach(file => {
+    allToRestore.forEach(file => {
       const fileExtStr = String((file as any).extension || (file.name && file.name.includes('.') ? file.name.split('.').pop() : '') || '').toLowerCase().replace(/^\./, '');
       const rawNameLower = (file.name || '').toLowerCase();
       const rawOrig = ((file as any).originalCategory || (file as any).sourceCategory || file.category || '').toLowerCase();
@@ -1956,9 +2034,10 @@ export const CloudDataStore = {
         }
       } catch { }
 
-      if (origCat === 'classeur' && (file as any).originalFolderId && updatedMap[(file as any).originalFolderId]) {
-        const fId = (file as any).originalFolderId;
-        updatedMap[fId] = [restored, ...updatedMap[fId].filter(f => f.id !== file.id)];
+      const targetFId = (file as any).originalFolderId || (file as any).folderId || (file as any).original_folder_id;
+      if (origCat === 'classeur' && targetFId) {
+        if (!updatedMap[targetFId]) updatedMap[targetFId] = [];
+        updatedMap[targetFId] = [restored, ...updatedMap[targetFId].filter(f => f.id !== file.id)];
       } else if (origCat === 'images') {
         newImgs = [restored, ...newImgs.filter(f => f.id !== file.id)];
         newDocs = newDocs.filter(f => f.id !== file.id);
@@ -1996,9 +2075,39 @@ export const CloudDataStore = {
   deleteSecureToTrash(items: FileItem | FileItem[]) {
     const arr = (Array.isArray(items) ? items : [items]).filter(Boolean);
     if (arr.length === 0) return;
-    const idSet = new Set(arr.map(f => f.id));
-    const newSecure = currentState.secure.filter(s => !idSet.has(s.id));
-    const trashedItems = arr.map(f => {
+    const initialIdSet = new Set(arr.map(f => f.id));
+
+    // Identifier les dossiers et tous leurs fichiers enfants dans le dossier sécurisé
+    const folderIds = new Set(
+      arr.filter(f => f.category === 'classeur_folder' || f.category === 'folder' || (f as any).isFolder || (f as any).sourceCategory === 'classeur_folder' || (f as any).originalCategory === 'classeur_folder').map(f => f.id)
+    );
+    const childFilesInSecure: FileItem[] = [];
+    if (folderIds.size > 0) {
+      currentState.secure.forEach(s => {
+        const pId = s.originalFolderId || (s as any).folderId || (s as any).original_folder_id || (s.metadata && (s.metadata.folderId || s.metadata.originalFolderId));
+        if (pId && folderIds.has(pId)) {
+          childFilesInSecure.push(s);
+        }
+      });
+    }
+
+    arr.forEach(file => {
+      const meta = (file as any).metadata || {};
+      if (meta.containedFiles && Array.isArray(meta.containedFiles)) {
+        meta.containedFiles.forEach((cf: any) => {
+          if (cf?.id && !initialIdSet.has(cf.id) && !childFilesInSecure.some(c => c.id === cf.id)) {
+            const fromSec = currentState.secure.find(s => s.id === cf.id);
+            if (fromSec) childFilesInSecure.push(fromSec);
+            else childFilesInSecure.push({ ...cf, isSecure: false, originalFolderId: file.id });
+          }
+        });
+      }
+    });
+
+    const allToTrash = [...arr, ...childFilesInSecure.filter(c => !initialIdSet.has(c.id))];
+    const allIdSet = new Set(allToTrash.map(f => f.id));
+    const newSecure = currentState.secure.filter(s => !allIdSet.has(s.id));
+    const trashedItems = allToTrash.map(f => {
       const fileExtStr = String((f as any).extension || (f.name && f.name.includes('.') ? f.name.split('.').pop() : '') || '').toLowerCase().replace(/^\./, '');
       const rawNameLower = (f.name || '').toLowerCase();
       const rawOrig = ((f as any).originalCategory || (f as any).sourceCategory || f.category || '').toLowerCase();
@@ -2092,7 +2201,7 @@ export const CloudDataStore = {
         }
       };
     });
-    const newTrash = [...trashedItems, ...currentState.trash.filter(t => !idSet.has(t.id))];
+    const newTrash = [...trashedItems, ...currentState.trash.filter(t => !allIdSet.has(t.id))];
 
     currentState = {
       ...currentState,

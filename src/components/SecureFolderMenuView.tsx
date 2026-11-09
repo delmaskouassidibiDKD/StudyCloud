@@ -421,20 +421,63 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // Helper pour identifier les fichiers enfants d'un ensemble de dossiers sécurisés
+  const getSecureFolderChildIds = (folderIds: Set<string>, list: FileItem[]) => {
+    const childIds = new Set<string>();
+    const childFiles: FileItem[] = [];
+    list.forEach(f => {
+      const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+      if (pId && folderIds.has(pId)) {
+        childIds.add(f.id);
+        childFiles.push(f);
+      }
+    });
+    list.forEach(f => {
+      if (folderIds.has(f.id)) {
+        const meta = (f as any).metadata || {};
+        if (meta.containedFiles && Array.isArray(meta.containedFiles)) {
+          meta.containedFiles.forEach((cf: any) => {
+            if (cf?.id && !childIds.has(cf.id)) {
+              childIds.add(cf.id);
+              childFiles.push(cf);
+            }
+          });
+        }
+      }
+    });
+    return { childIds, childFiles };
+  };
+
   // 7. Déverrouiller (Renvoyer vers l'emplacement d'origine)
   const handleRestore = async (file: FileItem) => {
-    setSecureFiles(prev => prev.filter(f => f.id !== file.id));
+    const isFolder = (file as any).isFolder || file.category === 'classeur_folder' || file.category === 'folder' || (file as any).sourceCategory === 'classeur_folder' || (file as any).originalCategory === 'classeur_folder' || (file as any).model;
+    const folderIds = new Set(isFolder ? [file.id] : []);
+    const { childIds, childFiles } = getSecureFolderChildIds(folderIds, secureFiles);
+
+    const allRestoredIds = [file.id, ...Array.from(childIds)];
+    const allRestoredIdSet = new Set(allRestoredIds);
+
+    setSecureFiles(prev => prev.filter(f => {
+      if (allRestoredIdSet.has(f.id)) return false;
+      if (isFolder) {
+        const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+        if (pId === file.id) return false;
+      }
+      return true;
+    }));
+
     setSelectedIds(prev => {
       const next = new Set(prev);
-      next.delete(file.id);
+      allRestoredIds.forEach(id => next.delete(id));
       return next;
     });
-    if (selectedFile?.id === file.id) {
+
+    if (selectedFile && allRestoredIdSet.has(selectedFile.id)) {
       setSelectedFile(null);
     }
 
-    try { CloudDataStore.restoreFromSecure([file]); } catch { }
-    await CloudStorageAPI.restoreFromSecureFolder(file.id).catch(() => { });
+    try { CloudDataStore.restoreFromSecure([file, ...childFiles]); } catch { }
+    await CloudStorageAPI.restoreFromSecureFolder(allRestoredIds).catch(() => { });
     invalidateCloudQueries.secure().catch(() => { });
     invalidateCloudQueries.all().catch(() => { });
     showToast(`"${file.name}" déverrouillé et restauré dans son menu d'origine 🔓`);
@@ -442,18 +485,34 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
   // 8. Supprimer vers la corbeille
   const handleDeleteToTrash = async (file: FileItem) => {
-    setSecureFiles(prev => prev.filter(f => f.id !== file.id));
+    const isFolder = (file as any).isFolder || file.category === 'classeur_folder' || file.category === 'folder' || (file as any).sourceCategory === 'classeur_folder' || (file as any).originalCategory === 'classeur_folder' || (file as any).model;
+    const folderIds = new Set(isFolder ? [file.id] : []);
+    const { childIds, childFiles } = getSecureFolderChildIds(folderIds, secureFiles);
+
+    const allTrashIds = [file.id, ...Array.from(childIds)];
+    const allTrashIdSet = new Set(allTrashIds);
+
+    setSecureFiles(prev => prev.filter(f => {
+      if (allTrashIdSet.has(f.id)) return false;
+      if (isFolder) {
+        const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+        if (pId === file.id) return false;
+      }
+      return true;
+    }));
+
     setSelectedIds(prev => {
       const next = new Set(prev);
-      next.delete(file.id);
+      allTrashIds.forEach(id => next.delete(id));
       return next;
     });
-    if (selectedFile?.id === file.id) {
+
+    if (selectedFile && allTrashIdSet.has(selectedFile.id)) {
       setSelectedFile(null);
     }
 
-    try { CloudDataStore.deleteSecureToTrash([file]); } catch { }
-    await CloudStorageAPI.deleteSecureFilesToTrash(file.id).catch(() => { });
+    try { CloudDataStore.deleteSecureToTrash([file, ...childFiles]); } catch { }
+    await CloudStorageAPI.deleteSecureFilesToTrash(allTrashIds).catch(() => { });
     invalidateCloudQueries.secure().catch(() => { });
     invalidateCloudQueries.trash().catch(() => { });
     invalidateCloudQueries.overview().catch(() => { });
@@ -508,40 +567,76 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
   };
 
   const handleBatchRestore = async () => {
-    const filesToRestore = secureFiles.filter(f => selectedIds.has(f.id));
-    if (filesToRestore.length === 0) return;
+    const selectedList = secureFiles.filter(f => selectedIds.has(f.id));
+    if (selectedList.length === 0) return;
 
-    setSecureFiles(prev => prev.filter(f => !selectedIds.has(f.id)));
-    const ids: string[] = Array.from(selectedIds);
-    if (selectedFile && selectedIds.has(selectedFile.id)) {
+    const folderIds = new Set(
+      selectedList
+        .filter(f => (f as any).isFolder || f.category === 'classeur_folder' || f.category === 'folder' || (f as any).sourceCategory === 'classeur_folder' || (f as any).originalCategory === 'classeur_folder' || (f as any).model)
+        .map(f => f.id)
+    );
+    const { childIds, childFiles } = getSecureFolderChildIds(folderIds, secureFiles);
+
+    const allRestoredIds = Array.from(new Set([...Array.from(selectedIds), ...Array.from(childIds)]));
+    const allRestoredIdSet = new Set(allRestoredIds);
+
+    setSecureFiles(prev => prev.filter(f => {
+      if (allRestoredIdSet.has(f.id)) return false;
+      if (folderIds.size > 0) {
+        const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+        if (pId && folderIds.has(pId)) return false;
+      }
+      return true;
+    }));
+
+    if (selectedFile && allRestoredIdSet.has(selectedFile.id)) {
       setSelectedFile(null);
     }
     setSelectedIds(new Set());
 
-    try { CloudDataStore.restoreFromSecure(filesToRestore); } catch { }
-    await CloudStorageAPI.restoreFromSecureFolder(ids).catch(() => { });
+    const allItemsToRestore = [...selectedList, ...childFiles.filter(c => !selectedIds.has(c.id))];
+    try { CloudDataStore.restoreFromSecure(allItemsToRestore); } catch { }
+    await CloudStorageAPI.restoreFromSecureFolder(allRestoredIds).catch(() => { });
     invalidateCloudQueries.secure().catch(() => { });
     invalidateCloudQueries.all().catch(() => { });
-    showToast(`${filesToRestore.length} fichier(s) déverrouillé(s) avec succès 🔓`);
+    showToast(`${selectedList.length} élément(s) déverrouillé(s) avec succès 🔓`);
   };
 
   const handleBatchTrash = async () => {
-    const filesToTrash = secureFiles.filter(f => selectedIds.has(f.id));
-    if (filesToTrash.length === 0) return;
+    const selectedList = secureFiles.filter(f => selectedIds.has(f.id));
+    if (selectedList.length === 0) return;
 
-    setSecureFiles(prev => prev.filter(f => !selectedIds.has(f.id)));
-    const ids: string[] = Array.from(selectedIds);
-    if (selectedFile && selectedIds.has(selectedFile.id)) {
+    const folderIds = new Set(
+      selectedList
+        .filter(f => (f as any).isFolder || f.category === 'classeur_folder' || f.category === 'folder' || (f as any).sourceCategory === 'classeur_folder' || (f as any).originalCategory === 'classeur_folder' || (f as any).model)
+        .map(f => f.id)
+    );
+    const { childIds, childFiles } = getSecureFolderChildIds(folderIds, secureFiles);
+
+    const allTrashIds = Array.from(new Set([...Array.from(selectedIds), ...Array.from(childIds)]));
+    const allTrashIdSet = new Set(allTrashIds);
+
+    setSecureFiles(prev => prev.filter(f => {
+      if (allTrashIdSet.has(f.id)) return false;
+      if (folderIds.size > 0) {
+        const pId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id || (f.metadata && (f.metadata.folderId || f.metadata.originalFolderId));
+        if (pId && folderIds.has(pId)) return false;
+      }
+      return true;
+    }));
+
+    if (selectedFile && allTrashIdSet.has(selectedFile.id)) {
       setSelectedFile(null);
     }
     setSelectedIds(new Set());
 
-    try { CloudDataStore.deleteSecureToTrash(filesToTrash); } catch { }
-    await CloudStorageAPI.deleteSecureFilesToTrash(ids).catch(() => { });
+    const allItemsToTrash = [...selectedList, ...childFiles.filter(c => !selectedIds.has(c.id))];
+    try { CloudDataStore.deleteSecureToTrash(allItemsToTrash); } catch { }
+    await CloudStorageAPI.deleteSecureFilesToTrash(allTrashIds).catch(() => { });
     invalidateCloudQueries.secure().catch(() => { });
     invalidateCloudQueries.trash().catch(() => { });
     invalidateCloudQueries.overview().catch(() => { });
-    showToast(`${filesToTrash.length} fichier(s) déplacé(s) dans la corbeille 🗑️`);
+    showToast(`${selectedList.length} élément(s) déplacé(s) dans la corbeille 🗑️`);
   };
 
   // Calcul dynamique de l'espace occupé par le dossier sécurisé
