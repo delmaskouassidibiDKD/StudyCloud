@@ -446,10 +446,11 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   );
   const totalMaxCredits = +startingReference.toFixed(2);
 
-  // Pourcentage de la jauge (démarre plein au départ, et se vide progressivement vers la gauche)
-  const creditsPercentage = totalMaxCredits > 0
-    ? Math.min(100, Math.max(0, Math.round((creditsRemaining / totalMaxCredits) * 100)))
+  // Pourcentage précis de la jauge (démarre plein à 100% lors d'un rechargement, et se vide progressivement lors de l'utilisation)
+  const precisePercentage = totalMaxCredits > 0
+    ? Math.min(100, Math.max(0, (creditsRemaining / totalMaxCredits) * 100))
     : 0;
+  const creditsPercentage = Math.round(precisePercentage);
 
   const dailyFreeCredits = Number(billingConfig.daily_free_credits || userCredits.daily_free_credits || 0);
   const isDailyActive = Number(billingConfig.is_daily_renewal_active) === 1 && dailyFreeCredits > 0;
@@ -466,16 +467,16 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   };
 
   // Couleur dynamique de la jauge
-  const gaugeColor = creditsPercentage >= 60
+  const gaugeColor = precisePercentage >= 60
     ? '#10b981'
-    : creditsPercentage >= 25
+    : precisePercentage >= 25
     ? '#f59e0b'
     : '#ef4444';
 
   // Arc SVG pour la jauge circulaire
   const radius = 54;
   const circumference = 2 * Math.PI * radius;
-  const strokeDashoffset = circumference - (Math.min(creditsPercentage, 100) / 100) * circumference;
+  const strokeDashoffset = circumference - (Math.min(precisePercentage, 100) / 100) * circumference;
 
   // Si l'utilisateur clique sur "Recharger", afficher le menu officiel de tarification
   if (showPricingView) {
@@ -665,10 +666,10 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
               <div
                 className="h-full rounded-full transition-all duration-1000 ease-out"
                 style={{
-                  width: `${Math.max(creditsPercentage > 0 ? 3 : 0, Math.min(100, creditsPercentage))}%`,
-                  background: creditsPercentage >= 60
+                  width: `${Math.max(creditsRemaining > 0 ? 3 : 0, Math.min(100, +precisePercentage.toFixed(1)))}%`,
+                  background: precisePercentage >= 60
                     ? 'linear-gradient(90deg, #10b981, #34d399, #6ee7b7)'
-                    : creditsPercentage >= 25
+                    : precisePercentage >= 25
                     ? 'linear-gradient(90deg, #f59e0b, #fbbf24)'
                     : 'linear-gradient(90deg, #ef4444, #f87171)',
                   boxShadow: `0 0 12px ${gaugeColor}aa`

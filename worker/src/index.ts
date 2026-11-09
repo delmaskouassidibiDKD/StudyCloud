@@ -17538,11 +17538,21 @@ a:hover{transform:translateY(-2px)}
         }
 
         const calculatedBalance = Math.max(0, +(giftRem + paidRem).toFixed(2));
-        const giftInit = Math.max(Number(userCredits.gift_initial || 0), giftRem, welcomeCredits);
+        const totalCreds = Number(userCredits.total_credits || 0);
+        let activeRef = Number(userCredits.reference_credits || 0);
+        let giftInit = Number(userCredits.gift_initial || 0);
+
+        if (activeRef <= 0 || totalCreds > activeRef || calculatedBalance > activeRef) {
+          activeRef = Math.max(activeRef, totalCreds, calculatedBalance, welcomeCredits);
+        }
+        if (giftInit <= 0 || totalCreds > giftInit || giftRem > giftInit) {
+          giftInit = Math.max(giftInit, totalCreds, giftRem, welcomeCredits);
+        }
+
         const giftType = userCredits.gift_type || 'welcome';
         const giftTitle = giftType === 'daily' ? 'Cadeau du jour' : 'Cadeau de base';
         const totalPurchased = Number(userCredits.total_credits_purchased || 0);
-        const referenceCredits = Math.max(giftInit + totalPurchased, Number(userCredits.reference_credits || 0), calculatedBalance);
+        const referenceCredits = Math.max(activeRef, giftInit + totalPurchased, welcomeCredits);
 
         return jsonResponse({
           success: true,
