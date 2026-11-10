@@ -659,6 +659,20 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
     return (storeData.documents || []).filter(doc => !q || doc.name.toLowerCase().includes(q));
   }, [storeData.documents, q]);
 
+  const isFolderItem = (item: any) => {
+    if (!item) return false;
+    const isTxtNote = (item.name || '').toLowerCase().endsWith('.txt');
+    return (
+      Boolean(item.isFolder) ||
+      item.category === 'classeur_folder' ||
+      item.category === 'folder' ||
+      item.originalCategory === 'classeur_folder' ||
+      item.sourceCategory === 'classeur_folder' ||
+      Boolean(item.model) ||
+      (item.category === 'classeur' && !isTxtNote)
+    );
+  };
+
   const filteredFavorites = useMemo(() => {
     const all = [
       ...(storeData.documents || []),
@@ -667,7 +681,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       ...(storeData.audio || [])
     ];
     const unique = all.filter((f, idx, arr) => arr.findIndex(x => x.id === f.id) === idx);
-    const favs = unique.filter(f => f.isFavorite || f.isPinned);
+    const favs = unique.filter(f => !isFolderItem(f) && (f.isFavorite || f.isPinned));
     return favs.filter(f => !q || f.name.toLowerCase().includes(q));
   }, [storeData.documents, storeData.images, storeData.videos, storeData.audio, q]);
 
@@ -676,7 +690,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   }, [storeData.trash, q]);
 
   const filteredSecure = useMemo(() => {
-    return (storeData.secure || []).filter(s => !q || s.name.toLowerCase().includes(q));
+    return (storeData.secure || []).filter(s => !isFolderItem(s) && (!q || s.name.toLowerCase().includes(q)));
   }, [storeData.secure, q]);
 
   // Statistiques par catégorie dans le dossier sécurisé (reflète le vrai menu sécurisé)
@@ -716,7 +730,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         return cat === 'videos' || (f as any).isVideo || ['mp4', 'webm', 'mov', 'avi', 'mkv'].includes(ext);
       }
       if (secureCategoryFilter === 'classeur') {
-        return cat === 'classeur' || cat === 'notes' || (f as any).isFolder || ext === 'txt';
+        return (cat === 'classeur' || cat === 'notes' || ext === 'txt') && !isFolderItem(f);
       }
       if (secureCategoryFilter === 'documents') {
         return cat === 'documents' || (!['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'mp4', 'webm', 'mov', 'avi', 'mkv', 'mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes(ext) && cat !== 'classeur' && !['txt'].includes(ext));
@@ -1072,20 +1086,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         break;
       }
 
-      case 'favorite': {
-        const newFav = !folder.isFavorite;
-        CloudDataStore.setClasseurFolders(
-          (storeData.classeurFolders || []).map(f => f.id === folder.id ? { ...f, isFavorite: newFav } : f)
-        );
-        if (newFav) {
-          CloudStorageAPI.addFavorite(folder.id, 'classeur_folder').catch(() => {});
-          showToast('Dossier ajouté aux favoris !');
-        } else {
-          CloudStorageAPI.removeFavorite(folder.id).catch(() => {});
-          showToast('Dossier retiré des favoris');
-        }
-        break;
-      }
+
 
       case 'pin': {
         const newPin = !folder.isPinned;
@@ -1207,14 +1208,6 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
           <div className="py-1">
             <button
               type="button"
-              onClick={() => handleFolderAction('favorite', folder)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
-            >
-              <Star className={`w-3.5 h-3.5 shrink-0 ${folder.isFavorite ? 'fill-amber-400' : ''}`} />
-              <span>{folder.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}</span>
-            </button>
-            <button
-              type="button"
               onClick={() => handleFolderAction('pin', folder)}
               className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-purple-400 hover:bg-purple-500/15 transition-colors cursor-pointer text-left"
             >
@@ -1283,11 +1276,6 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
             {folder.isPinned && (
               <span className="p-1 rounded-md bg-black/80 border border-blue-400/60 shadow-md flex items-center justify-center text-blue-400 backdrop-blur-sm" title="Épinglé">
                 <Pin className="w-3 h-3 rotate-45" />
-              </span>
-            )}
-            {folder.isFavorite && (
-              <span className="p-1 rounded-md bg-black/80 border border-amber-400/60 shadow-md flex items-center justify-center text-amber-400 backdrop-blur-sm" title="Favori">
-                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
               </span>
             )}
           </div>

@@ -3190,74 +3190,58 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }, 1200);
   };
 
-  // Verrouiller les éléments sélectionnés vers le dossier sécurisé
+  // Verrouiller les fichiers sélectionnés vers le dossier sécurisé (les dossiers sont exclus)
   const handleLockSelected = (currentCategoryList: FileItem[]) => {
     if (selectedItemIds.length === 0) return;
-    const idsToLock = [...selectedItemIds];
+    const idsToLock = selectedItemIds.filter(id => !classeur3DFolders.some(f => f.id === id));
+    if (idsToLock.length === 0) {
+      showToast('Les dossiers ne peuvent pas être mis dans le dossier sécurisé.');
+      return;
+    }
     const count = idsToLock.length;
 
     const lockedItems: FileItem[] = [];
 
     idsToLock.forEach(id => {
-      // 1. Est-ce un dossier ?
-      const folder = classeur3DFolders.find(f => f.id === id);
-      if (folder) {
-        const securedFolderItem: FileItem = {
-          id: folder.id,
-          name: folder.name,
-          category: 'documents' as const,
-          source: 'Dossier Sécurisé',
-          originalCategory: 'classeur_folder',
-          size: '1 dossier 3D',
-          sizeBytes: 2048,
-          date: folder.dateText,
+      // Uniquement des fichiers (pas de dossiers dans le dossier sécurisé)
+      const item = currentCategoryList.find(f => f.id === id) ||
+        (opened3DFolder ? (folderFilesMap[opened3DFolder.id] || []).find(f => f.id === id) : null) ||
+        documentsList.find(f => f.id === id) ||
+        imagesList.find(f => f.id === id) ||
+        videosList.find(f => f.id === id) ||
+        audioList.find(f => f.id === id) ||
+        downloadedItems.find(f => f.id === id) ||
+        (Object.values(folderFilesMap).flat() as FileItem[]).find(f => f.id === id);
+
+      if (item) {
+        const itm = item as any;
+        const detectedCat = detectFileCategory({ name: itm.name, type: itm.type, extension: itm.extension });
+        const isMediaExt = /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(itm.name || '');
+        let origCat = itm.originalCategory || itm.category;
+        if (isMediaExt && detectedCat) origCat = detectedCat;
+        else if (!origCat || origCat === 'secure' || origCat === 'trash') origCat = detectedCat || 'documents';
+        const isAud = origCat === 'audio';
+        const cachedCover = isAud ? getCachedMediaThumbnail(itm.id || itm.audioUrl || itm.url || '') : null;
+        const validCover = isAud ? (
+          (itm.coverUrl && isRealEmbeddedArtwork(itm.coverUrl, item) ? itm.coverUrl : null) ||
+          (itm.thumbnailUrl && isRealEmbeddedArtwork(itm.thumbnailUrl, item) ? itm.thumbnailUrl : null) ||
+          (cachedCover && isRealEmbeddedArtwork(cachedCover, item) ? cachedCover : null) ||
+          (itm.previewUrl && isRealEmbeddedArtwork(itm.previewUrl, item) ? itm.previewUrl : null) ||
+          undefined
+        ) : undefined;
+
+        const locked: FileItem = {
+          ...item,
           isSecure: true,
-          metadata: folder
-        } as FileItem;
-        lockedItems.push(securedFolderItem);
-        CloudStorageAPI.moveToSecureFolder(securedFolderItem, 'classeur_folder').catch(console.error);
-        setClasseur3DFolders(prev => prev.filter(f => f.id !== folder.id));
-      } else {
-        // 2. Est-ce un fichier ?
-        const item = currentCategoryList.find(f => f.id === id) ||
-          (opened3DFolder ? (folderFilesMap[opened3DFolder.id] || []).find(f => f.id === id) : null) ||
-          documentsList.find(f => f.id === id) ||
-          imagesList.find(f => f.id === id) ||
-          videosList.find(f => f.id === id) ||
-          audioList.find(f => f.id === id) ||
-          downloadedItems.find(f => f.id === id) ||
-          (Object.values(folderFilesMap).flat() as FileItem[]).find(f => f.id === id);
-
-        if (item) {
-          const itm = item as any;
-          const detectedCat = detectFileCategory({ name: itm.name, type: itm.type, extension: itm.extension });
-          const isMediaExt = /\.(jpe?g|png|gif|webp|bmp|svg|heic|mp4|mkv|avi|mov|webm|mp3|wav|ogg|m4a|aac|flac)$/i.test(itm.name || '');
-          let origCat = itm.originalCategory || itm.category;
-          if (isMediaExt && detectedCat) origCat = detectedCat;
-          else if (!origCat || origCat === 'secure' || origCat === 'trash') origCat = detectedCat || 'documents';
-          const isAud = origCat === 'audio';
-          const cachedCover = isAud ? getCachedMediaThumbnail(itm.id || itm.audioUrl || itm.url || '') : null;
-          const validCover = isAud ? (
-            (itm.coverUrl && isRealEmbeddedArtwork(itm.coverUrl, item) ? itm.coverUrl : null) ||
-            (itm.thumbnailUrl && isRealEmbeddedArtwork(itm.thumbnailUrl, item) ? itm.thumbnailUrl : null) ||
-            (cachedCover && isRealEmbeddedArtwork(cachedCover, item) ? cachedCover : null) ||
-            (itm.previewUrl && isRealEmbeddedArtwork(itm.previewUrl, item) ? itm.previewUrl : null) ||
-            undefined
-          ) : undefined;
-
-          const locked: FileItem = {
-            ...item,
-            isSecure: true,
-            originalCategory: origCat,
-            originalSource: itm.originalSource || itm.source,
-            source: 'Dossier Sécurisé',
-            coverUrl: validCover || itm.coverUrl,
-            thumbnailUrl: validCover || itm.thumbnailUrl,
-            previewUrl: isAud ? (validCover || itm.previewUrl) : itm.previewUrl
-          };
-          lockedItems.push(locked);
-          CloudStorageAPI.moveToSecureFolder(locked, origCat, itm.folderId || opened3DFolder?.id).catch(console.error);
-        }
+          originalCategory: origCat,
+          originalSource: itm.originalSource || itm.source,
+          source: 'Dossier Sécurisé',
+          coverUrl: validCover || itm.coverUrl,
+          thumbnailUrl: validCover || itm.thumbnailUrl,
+          previewUrl: isAud ? (validCover || itm.previewUrl) : itm.previewUrl
+        };
+        lockedItems.push(locked);
+        CloudStorageAPI.moveToSecureFolder(locked, origCat, itm.folderId || opened3DFolder?.id).catch(console.error);
       }
     });
 
@@ -4854,9 +4838,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return applySorting(filtered);
   }, [audioList, cloudRecentFiles, subSearchQuery, sortOption]);
 
-  // Liste des fichiers du dossier sécurisé (filtrés par recherche)
+  // Liste des fichiers du dossier sécurisé (filtrés par recherche, sans dossiers)
   const filteredSecureFiles = useMemo(() => {
     const list = secureFolderFiles.filter(item => {
+      const it = item as any;
+      const isFolderItem = Boolean(
+        it.isFolder ||
+        it.category === 'classeur_folder' ||
+        it.category === 'folder' ||
+        it.originalCategory === 'classeur_folder' ||
+        it.sourceCategory === 'classeur_folder' ||
+        it.model ||
+        (it.category === 'classeur' && !String(it.name || '').toLowerCase().endsWith('.txt'))
+      );
+      if (isFolderItem) return false;
       return subSearchQuery.trim() === '' || item.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
     return applySorting(list);
@@ -4915,37 +4910,30 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     isPinned: item.isPinned,
   });
 
-  // Fichiers et dossiers favoris
+  // Fichiers favoris uniquement (sans dossiers)
   const favoriteFiles = useMemo(() => {
     const folderFiles = Object.values(folderFilesMap).flat();
     const downloadFiles = downloadedItems.map(toFileItem);
     const all = [...documentsList, ...imagesList, ...videosList, ...audioList, ...folderFiles, ...downloadFiles];
     const unique = all.filter((f, idx, arr) => arr.findIndex(x => x.id === f.id) === idx);
-    const favFiles = unique.filter(f => Boolean(f.isFavorite));
+    const favFiles = unique.filter(f => {
+      const it = f as any;
+      const isFolderItem = Boolean(
+        it.isFolder ||
+        it.category === 'classeur_folder' ||
+        it.category === 'folder' ||
+        it.originalCategory === 'classeur_folder' ||
+        it.sourceCategory === 'classeur_folder' ||
+        it.model
+      );
+      return Boolean(f.isFavorite) && !isFolderItem;
+    });
 
-    // Inclure également les dossiers 3D marqués comme favoris
-    const favFolders: FileItem[] = classeur3DFolders
-      .filter(f => Boolean(f.isFavorite))
-      .map(folder => ({
-        id: folder.id,
-        name: folder.name,
-        category: 'classeur' as any,
-        source: 'classeur_folder',
-        originalCategory: 'classeur_folder',
-        size: 'Dossier 3D',
-        sizeBytes: 1024,
-        date: folder.dateText,
-        isFavorite: true,
-        isPinned: folder.isPinned,
-        isFolder: true,
-      } as any));
-
-    const combined = [...favFolders, ...favFiles];
     if (subSearchQuery.trim() !== '') {
-      return applySorting(combined.filter(f => f.name.toLowerCase().includes(subSearchQuery.toLowerCase())));
+      return applySorting(favFiles.filter(f => f.name.toLowerCase().includes(subSearchQuery.toLowerCase())));
     }
-    return applySorting(combined);
-  }, [documentsList, imagesList, videosList, audioList, folderFilesMap, downloadedItems, classeur3DFolders, subSearchQuery, sortOption]);
+    return applySorting(favFiles);
+  }, [documentsList, imagesList, videosList, audioList, folderFilesMap, downloadedItems, subSearchQuery, sortOption]);
 
   // Fichiers de la corbeille
   const filteredTrashFiles = useMemo(() => {
@@ -6233,7 +6221,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <span>Déplacer / Créer une copie</span>
               </button>
 
-              {/* Si dans dossier sécurisé : Déverrouiller / Tout déverrouiller. Sinon : Verrouiller / Tout verrouiller */}
+              {/* Si dans dossier sécurisé : Déverrouiller / Tout déverrouiller. Sinon : Verrouiller / Tout verrouiller (uniquement pour les fichiers, jamais les dossiers) */}
               {(currentSubView?.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) ? (
                 <button
                   type="button"
@@ -6244,7 +6232,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   <Unlock className="w-3.5 h-3.5" />
                   <span>{isSingle ? 'Déverrouiller' : 'Tout déverrouiller'}</span>
                 </button>
-              ) : (
+              ) : !selectedItemIds.some(id => classeur3DFolders.some(f => f.id === id)) && (
                 <button
                   type="button"
                   onClick={() => handleLockSelected(currentCategoryList)}
@@ -6708,41 +6696,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         break;
       }
 
-      case 'lock_folder': {
-        const contained = folderFilesMap[folder.id] || [];
-        const securedFile: FileItem = {
-          id: folder.id,
-          name: folder.name,
-          category: 'classeur_folder',
-          source: 'Dossier Sécurisé',
-          originalCategory: 'classeur_folder',
-          sourceCategory: 'classeur_folder',
-          size: contained.length > 0 ? `${contained.length} élément${contained.length > 1 ? 's' : ''}` : 'Dossier 3D',
-          sizeBytes: 2048,
-          date: folder.dateText,
-          isSecure: true,
-          metadata: {
-            ...folder,
-            containedFiles: contained,
-            itemCount: contained.length,
-          },
-        };
-        setSecureFolderFiles(prev => [securedFile, ...prev.filter(f => f.id !== folder.id)]);
-        setClasseur3DFolders(prev => prev.filter(f => f.id !== folder.id));
-        setClasseurFolders(prev => prev.filter(f => f.name !== folder.name));
-        setFolderFilesMap(prev => {
-          const next = { ...prev };
-          delete next[folder.id];
-          return next;
-        });
-        if (opened3DFolder?.id === folder.id) {
-          setOpened3DFolder(null);
-        }
-        CloudStorageAPI.moveToSecureFolder(securedFile, 'classeur_folder').catch(console.error);
-        showToast(`Dossier "${folder.name}" verrouillé dans le dossier sécurisé !`);
-        break;
-      }
-
       case 'duplicate': {
         if (duplicatingIdsRef.current.has(folder.id)) {
           return;
@@ -6786,21 +6739,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           invalidateCloudQueries.classeurFolders().catch(() => { });
         }).catch(console.error);
         showToast(`Dossier dupliqué : "${duplicatedFolder.name}" !`);
-        break;
-      }
-
-      case 'favorite': {
-        const newFav = !folder.isFavorite;
-        setClasseur3DFolders(prev =>
-          prev.map(f => f.id === folder.id ? { ...f, isFavorite: newFav } : f)
-        );
-        if (newFav) {
-          CloudStorageAPI.addFavorite(folder.id, 'classeur_folder').catch(console.error);
-          showToast('Ajouté aux favoris !');
-        } else {
-          CloudStorageAPI.removeFavorite(folder.id).catch(console.error);
-          showToast('Retiré des favoris');
-        }
         break;
       }
 
@@ -7257,19 +7195,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   )}
 
-                  {/* Badges Épinglé et Favori */}
-                  {(subF.isPinned || subF.isFavorite) && (
+                  {/* Badge Épinglé uniquement (plus de favori sur les dossiers) */}
+                  {subF.isPinned && (
                     <div className={`absolute top-2 ${isSelectionMode ? 'left-9 sm:left-10' : 'left-2'} z-20 flex items-center gap-1 pointer-events-none`}>
-                      {subF.isPinned && (
-                        <span className="p-1 rounded-md bg-black/80 border border-blue-400/60 shadow-md flex items-center justify-center text-blue-400 backdrop-blur-sm" title="Épinglé">
-                          <Pin className="w-3 h-3 rotate-45" />
-                        </span>
-                      )}
-                      {subF.isFavorite && (
-                        <span className="p-1 rounded-md bg-black/80 border border-amber-400/60 shadow-md flex items-center justify-center text-amber-400 backdrop-blur-sm" title="Favori">
-                          <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                        </span>
-                      )}
+                      <span className="p-1 rounded-md bg-black/80 border border-blue-400/60 shadow-md flex items-center justify-center text-blue-400 backdrop-blur-sm" title="Épinglé">
+                        <Pin className="w-3 h-3 rotate-45" />
+                      </span>
                     </div>
                   )}
 
@@ -7485,7 +7416,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </button>
           </div>
 
-          {/* Section 2 : Gestion principale (Supprimer, Partager, Lien, Verrouiller) */}
+          {/* Section 2 : Gestion principale (Supprimer, Partager, Lien) */}
           <div className="py-1">
             <button
               type="button"
@@ -7511,19 +7442,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <Link className="w-3.5 h-3.5 shrink-0 text-sky-400" />
               <span>Créer un lien</span>
             </button>
-            <button
-              type="button"
-              onClick={() => handleFolderAction('lock_folder', folder)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-300 hover:bg-amber-400/15 transition-colors cursor-pointer text-left"
-              title="Verrouiller ce dossier dans le dossier sécurisé"
-            >
-              <Lock className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-              <span>Verrouiller</span>
-            </button>
-            {/* OMITTED: 'Le déplacer' comme expressément demandé par l'utilisateur */}
+            {/* OMITTED: 'Le déplacer' et 'Verrouiller' (plus de dossiers dans le dossier sécurisé) */}
           </div>
 
-          {/* Section 3 : Organisation & Édition (Dupliquer, Favoris, Épingler, Modifier le nom) */}
+          {/* Section 3 : Organisation & Édition (Dupliquer, Épingler, Modifier le nom) */}
           <div className="py-1">
             <button
               type="button"
@@ -7532,14 +7454,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             >
               <Copy className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
               <span>Dupliquer</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleFolderAction('favorite', folder)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
-            >
-              <Star className={`w-3.5 h-3.5 shrink-0 ${folder.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-yellow-400'}`} />
-              <span>{folder.isFavorite ? 'Retirer des favoris' : 'Ajouter au favoris'}</span>
             </button>
             <button
               type="button"
@@ -13370,19 +13284,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                     </div>
                                   )}
 
-                                  {/* Badges Épinglé et Favori */}
-                                  {(folder.isPinned || folder.isFavorite) && (
+                                  {/* Badge Épinglé uniquement (plus de favori sur les dossiers) */}
+                                  {folder.isPinned && (
                                     <div className={`absolute top-2 ${isSelectionMode ? 'left-9 sm:left-10' : 'left-2'} z-20 flex items-center gap-1 pointer-events-none`}>
-                                      {folder.isPinned && (
-                                        <span className="p-1 rounded-md bg-black/80 border border-blue-400/60 shadow-md flex items-center justify-center text-blue-400 backdrop-blur-sm" title="Épinglé">
-                                          <Pin className="w-3 h-3 rotate-45" />
-                                        </span>
-                                      )}
-                                      {folder.isFavorite && (
-                                        <span className="p-1 rounded-md bg-black/80 border border-amber-400/60 shadow-md flex items-center justify-center text-amber-400 backdrop-blur-sm" title="Favori">
-                                          <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
-                                        </span>
-                                      )}
+                                      <span className="p-1 rounded-md bg-black/80 border border-blue-400/60 shadow-md flex items-center justify-center text-blue-400 backdrop-blur-sm" title="Épinglé">
+                                        <Pin className="w-3 h-3 rotate-45" />
+                                      </span>
                                     </div>
                                   )}
 

@@ -36,6 +36,23 @@ interface FavoriteItem {
   timestamp?: number;
 }
 
+const isFolderFavoriteItem = (item: any): boolean => {
+  if (!item) return false;
+  const isTxtNote = (item.name || '').toLowerCase().endsWith('.txt');
+  const cat = (item.category || '').toLowerCase();
+  const origCat = (item.originalCategory || item.original_category || '').toLowerCase();
+  const srcCat = (item.sourceCategory || item.source_category || '').toLowerCase();
+  return (
+    Boolean(item.isFolder) ||
+    cat === 'classeur_folder' ||
+    cat === 'folder' ||
+    origCat === 'classeur_folder' ||
+    srcCat === 'classeur_folder' ||
+    Boolean(item.model) ||
+    (cat === 'classeur' && !isTxtNote)
+  );
+};
+
 const loadLocalFavorites = (): FavoriteItem[] => {
   const list: FavoriteItem[] = [];
   const seenIds = new Set<string>();
@@ -47,7 +64,7 @@ const loadLocalFavorites = (): FavoriteItem[] => {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
         parsed.forEach((item: any) => {
-          if (item && item.id && item.isFavorite && !seenIds.has(item.id)) {
+          if (item && item.id && item.isFavorite && !isFolderFavoriteItem(item) && !seenIds.has(item.id)) {
             seenIds.add(item.id);
             list.push({
               ...item,
@@ -155,7 +172,15 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
       StudyCloudAPI.getFiles(userId, undefined, undefined, true)
         .then((res) => {
           if (res && res.success && Array.isArray(res.data)) {
-            const filesWithUrls = res.data.map((row: any) => ({
+            const filesWithUrls = res.data
+              .filter((row: any) => !isFolderFavoriteItem({
+                ...row,
+                isFolder: row.is_folder ?? row.isFolder ?? row.metadata?.isFolder,
+                originalCategory: row.original_category ?? row.originalCategory,
+                sourceCategory: row.source_category ?? row.sourceCategory,
+                model: row.model ?? row.metadata?.model,
+              }))
+              .map((row: any) => ({
               id: row.id,
               name: row.name,
               size: row.size || 0,

@@ -113,13 +113,25 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   onToggleFullscreen
 }) => {
   const [sortOption, setSortOption] = useState<SortOption>('recent');
-  // Récupérer les éléments favoris depuis CloudDataStore
+  // Récupérer les fichiers favoris uniquement (aucun dossier dans les favoris)
   const getFavsFromStore = (): FileItem[] => {
     const s = CloudDataStore.getState();
     const trashIds = new Set((s.trash || []).map(t => t.id));
 
     const isEligibleFav = (f: FileItem) => {
       if (!f || !f.id) return false;
+      const it = f as any;
+      if (
+        it.isFolder ||
+        f.category === 'classeur' ||
+        f.category === 'classeur_folder' ||
+        f.category === 'folder' ||
+        it.originalCategory === 'classeur_folder' ||
+        it.sourceCategory === 'classeur_folder' ||
+        it.model
+      ) {
+        return false;
+      }
       if (f.isTrash || trashIds.has(f.id) || isItemDeleted(f.id)) return false;
       return Boolean(f.isFavorite || s.favIdSet.has(f.id));
     };
@@ -134,30 +146,6 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
       ...Object.values(s.folderFilesMap || {}).flat().filter(isEligibleFav),
     ];
 
-    // Dossiers 3D du classeur marqués en favoris
-    const favFolders = (s.classeurFolders || [])
-      .filter(f => !trashIds.has(f.id) && !isItemDeleted(f.id) && (f.isFavorite || s.favIdSet.has(f.id)))
-      .map(f => ({
-        id: f.id,
-        name: f.name,
-        category: 'classeur' as const,
-        size: 'Dossier 3D',
-        date: 'Favori',
-        isFolder: true,
-        metadata: {
-          modelId: f.modelId,
-          primaryColor: f.primaryColor,
-          accentColor: f.accentColor,
-          iconName: f.iconName,
-          textDark: f.textDark,
-          displayOrder: f.displayOrder,
-          zoomLevel: f.zoomLevel,
-          isPinned: f.isPinned,
-          isFavorite: true
-        }
-      } as any as FileItem));
-    all.push(...favFolders);
-
     const seen = new Set<string>();
     return all.filter(f => {
       if (!f || !f.id || seen.has(f.id)) return false;
@@ -170,7 +158,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
   const [favoritesList, setFavoritesList] = useState<FileItem[]>(() => getFavsFromStore());
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilter, setActiveFilter] = useState<'all' | 'documents' | 'images' | 'videos' | 'audio' | 'classeur'>('all');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'documents' | 'images' | 'videos' | 'audio'>('all');
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
   const viewerExpandLevel = useViewerExpandLevel();
@@ -247,6 +235,24 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     const validItems = (items || []).filter(item => item && item.id && !trashIds.has(item.id) && !isItemDeleted(item.id));
     if (validItems.length > 0) {
       validItems.forEach(item => {
+        const lowerName = (item.name || '').toLowerCase();
+        const isTxtNote = lowerName.endsWith('.txt');
+        const isFolderItem =
+          Boolean((item as any).isFolder) ||
+          item.category === 'classeur_folder' ||
+          item.category === 'folder' ||
+          (item as any).originalCategory === 'classeur_folder' ||
+          (item as any).sourceCategory === 'classeur_folder' ||
+          Boolean((item as any).model) ||
+          (item.category === 'classeur' && !isTxtNote);
+
+        if (isFolderItem) {
+          // Les dossiers ne peuvent pas être mis en favoris : nettoyer silencieusement
+          s.favIdSet.delete(item.id);
+          CloudStorageAPI.removeFavorite(item.id).catch(() => {});
+          return;
+        }
+
         const existingAudio = s.audio?.find(a => a.id === item.id);
         const resolvedCover = item.coverUrl || item.thumbnailUrl || existingAudio?.coverUrl || existingAudio?.thumbnailUrl;
         const withFav = {
@@ -258,11 +264,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           artist: item.artist || existingAudio?.artist,
           title: (item as any).title || (existingAudio as any)?.title || item.name
         };
-        if (item.category === 'classeur' || item.isFolder) {
-          CloudDataStore.addClasseurFolder(withFav as any);
-        } else {
-          CloudDataStore.addOptimisticFile(withFav);
-        }
+        CloudDataStore.addOptimisticFile(withFav);
       });
     }
     setFavoritesList(getFavsFromStore());
@@ -380,9 +382,9 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     return '0 Mo';
   }, [totalFavoritesBytes]);
 
-  // Filtrage et catégorisation dynamique
+  // Filtrage et catégorisation dynamique (sans jamais afficher de dossiers)
   const categorized = useMemo(() => {
-    let list = favoritesList;
+    let list = favoritesList.filter(f => getFileType(f) !== 'folder');
 
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
@@ -394,13 +396,12 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     const audios = list.filter(f => getFileType(f) === 'audio');
     const images = list.filter(f => getFileType(f) === 'image');
     const videos = list.filter(f => getFileType(f) === 'video');
-    const classeur = list.filter(f => getFileType(f) === 'folder');
     const documents = list.filter(f => {
       const t = getFileType(f);
       return t === 'document' || t === 'note';
     });
 
-    return { audios, images, videos, classeur, documents, total: list.length };
+    return { audios, images, videos, documents, total: list.length };
   }, [favoritesList, searchQuery, sortOption]);
 
   // =========================================================================
@@ -1184,8 +1185,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
             { id: 'documents', label: `Documents (${categorized.documents.length})` },
             { id: 'images', label: `Images (${categorized.images.length})` },
             { id: 'videos', label: `Vidéos (${categorized.videos.length})` },
-            { id: 'audio', label: `Audio (${categorized.audios.length})` },
-            { id: 'classeur', label: `Dossiers (${categorized.classeur.length})` }
+            { id: 'audio', label: `Audio (${categorized.audios.length})` }
           ].map((tab) => (
             <button
               key={tab.id}
@@ -1239,7 +1239,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                   ? 'Aucun fichier doublon dans vos favoris. Tous les éléments sont uniques.'
                   : searchQuery
                     ? `Aucun élément favori ne correspond à "${searchQuery}".`
-                    : 'Pour ajouter un fichier en favori, cliquez sur l’étoile ⭐ ou dans les options (•••) d’un fichier ou dossier.'}
+                    : 'Pour ajouter un fichier en favori, cliquez sur l’étoile ⭐ ou dans les options (•••) d’un fichier.'}
               </p>
               {sortOption === 'duplicates' && (
                 <button
@@ -1269,21 +1269,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
                 </section>
               )}
 
-              {/* 2. SECTION CLASSEUR & DOSSIERS 3D */}
-              {(activeFilter === 'all' || activeFilter === 'classeur') && categorized.classeur.length > 0 && (
-                <section className="space-y-3">
-                  <div className="flex items-center gap-2 text-sm sm:text-base font-black text-orange-600 dark:text-orange-400 border-b border-stone-200 dark:border-white/10 pb-2">
-                    <FolderArchive className="w-4 h-4" />
-                    <span>Classeur & Dossiers 3D ({categorized.classeur.length})</span>
-                  </div>
-                  <div className={`grid gap-2 sm:gap-4 ${selectedFile
-                    ? 'grid-cols-3 lg:grid-cols-3'
-                    : 'grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                    }`}>
-                    {categorized.classeur.map((file, idx) => renderClasseurCard(file, idx))}
-                  </div>
-                </section>
-              )}
+
 
               {/* 3. SECTION DOCUMENTS */}
               {(activeFilter === 'all' || activeFilter === 'documents') && categorized.documents.length > 0 && (

@@ -654,15 +654,55 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     return '0 Mo';
   }, [totalSecureBytes]);
 
-  // 11. Filtrage par recherche et exclusion des enfants de dossiers sécurisés
+  const isSecureFolderItem = useCallback((f: any): boolean => {
+    if (!f) return false;
+    const isTxtNote = (f.name || '').toLowerCase().endsWith('.txt');
+    const cat = (f.category || '').toLowerCase();
+    const origCat = (f.originalCategory || f.original_category || '').toLowerCase();
+    const srcCat = (f.sourceCategory || f.source_category || '').toLowerCase();
+    return (
+      Boolean(f.isFolder) ||
+      cat === 'classeur_folder' ||
+      cat === 'folder' ||
+      origCat === 'classeur_folder' ||
+      srcCat === 'classeur_folder' ||
+      Boolean(f.model) ||
+      (cat === 'classeur' && !isTxtNote)
+    );
+  }, []);
+
+  // Restauration silencieuse vers le Classeur des anciens dossiers verrouillés (les dossiers ne vont plus dans le dossier sécurisé)
+  const autoRestoredFolderIdsRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!isUnlocked || !secureFiles.length) return;
+    const legacyFolders = secureFiles.filter(
+      f => isSecureFolderItem(f) && !autoRestoredFolderIdsRef.current.has(f.id)
+    );
+    if (legacyFolders.length === 0) return;
+
+    legacyFolders.forEach(f => autoRestoredFolderIdsRef.current.add(f.id));
+    const folderIdSet = new Set(legacyFolders.map(f => f.id));
+    const { childFiles } = getSecureFolderChildIds(folderIdSet, secureFiles);
+    const itemsToRestore = [...legacyFolders, ...childFiles];
+    const allRestoredIds = Array.from(new Set(itemsToRestore.map(item => item.id)));
+
+    CloudDataStore.restoreFromSecure(itemsToRestore);
+    CloudStorageAPI.restoreFromSecureFolder(allRestoredIds)
+      .then(() => {
+        invalidateCloudQueries.secure();
+        invalidateCloudQueries.all();
+      })
+      .catch(() => {});
+  }, [isUnlocked, secureFiles, isSecureFolderItem, getSecureFolderChildIds]);
+
+  // 11. Filtrage par recherche et exclusion stricte de tout dossier (les dossiers n'appartiennent pas au dossier sécurisé)
   const filteredFiles = useMemo(() => {
     const securedFolderIds = new Set(
-      secureFiles
-        .filter(f => (f as any).isFolder || f.category === 'classeur_folder' || f.category === 'folder' || (f as any).sourceCategory === 'classeur_folder' || (f as any).originalCategory === 'classeur_folder')
-        .map(f => f.id)
+      secureFiles.filter(f => isSecureFolderItem(f)).map(f => f.id)
     );
 
     let list = secureFiles.filter(f => {
+      if (isSecureFolderItem(f)) return false;
       const origFId = f.originalFolderId || (f as any).folderId || (f as any).original_folder_id;
       if (origFId && securedFolderIds.has(origFId)) return false;
       return true;
@@ -674,7 +714,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       (f.name || '').toLowerCase().includes(q) ||
       (f.extension || '').toLowerCase().includes(q)
     );
-  }, [secureFiles, searchQuery]);
+  }, [secureFiles, searchQuery, isSecureFolderItem]);
 
   // Détection du type de média
   const getFileType = (f: FileItem): 'audio' | 'video' | 'image' | 'folder' | 'document' => {
