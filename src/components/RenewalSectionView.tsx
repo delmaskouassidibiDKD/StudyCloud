@@ -711,20 +711,20 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
   const billingCycleDisplay = isYearly ? 'Facturation annuelle (-10%)' : 'Facturation mensuelle (+1 mois)';
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-2 sm:px-4 pb-20 animate-fadeIn">
+    <div className="w-full max-w-6xl mx-auto px-1 sm:px-4 pb-20 animate-fadeIn">
       {/* ========================================================================= */}
       {/* BARRE D'ACTIONS SUPÉRIEURE (HISTORIQUE DES ACHATS & ACTUALISER)           */}
       {/* ========================================================================= */}
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2.5 mb-4">
         <button
           type="button"
           onClick={() => setShowHistoryModal(true)}
-          className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-[#111a2e] dark:hover:bg-[#1e293b] text-[#2D4A3E] dark:text-emerald-400 border border-[#2D4A3E]/20 dark:border-emerald-500/30 text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
+          className="inline-flex items-center gap-1.5 sm:gap-2 px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-xl bg-white hover:bg-slate-50 dark:bg-[#111827] dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-[11px] sm:text-xs font-semibold transition shadow-xs cursor-pointer active:scale-95"
         >
-          <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+          <FileText className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 dark:text-blue-400" />
           <span>Historique des achats & paiements</span>
           {purchases.length > 0 && (
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white font-mono shadow-xs">
+            <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white font-mono">
               {purchases.length}
             </span>
           )}
@@ -734,10 +734,10 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
           type="button"
           onClick={handleManualRefresh}
           disabled={refreshing}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-[#111a2e] dark:hover:bg-[#1e293b] text-[#2D4A3E] dark:text-slate-200 border border-[#2D4A3E]/20 dark:border-slate-700 text-xs font-bold transition shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 sm:px-3 rounded-xl bg-white hover:bg-slate-50 dark:bg-[#111827] dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-[11px] sm:text-xs font-semibold transition shadow-xs cursor-pointer active:scale-95 disabled:opacity-50"
           title="Actualiser les informations"
         >
-          <RotateCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
+          <RotateCw className={`w-3.5 h-3.5 text-slate-500 dark:text-slate-400 ${refreshing ? 'animate-spin' : ''}`} />
           <span>Actualiser</span>
         </button>
       </div>
@@ -762,107 +762,107 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
       {/* MENU CONTINU UNIQUE SÉPARÉ EN DEUX PAR UNE LIGNE VERTICALE                */}
       {/* GAUCHE : Abonnements en cours | DROITE : Demandes en cours                */}
       {/* ========================================================================= */}
-      <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-3xl border-2 border-[#D4C9B5] dark:border-[#1e293b] shadow-sm overflow-hidden">
-        <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-[#D4C9B5] dark:divide-slate-800 items-start">
+      <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+        <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-slate-200 dark:divide-slate-800 items-start">
           
           {/* --------------------------------------------------------------------- */}
           {/* CÔTÉ GAUCHE : ABONNEMENTS EN COURS (Hauteur propre, fixe et autonome)  */}
           {/* --------------------------------------------------------------------- */}
-          <div className="p-5 sm:p-7 space-y-5 self-start w-full">
+          <div className="p-4 sm:p-6 space-y-5 self-start w-full">
             <div>
               {/* En-tête côté gauche */}
-              <div className="flex items-center justify-between border-b border-[#D4C9B5] dark:border-slate-800 pb-3.5 mb-5">
+              <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3.5 mb-5">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-[#2D4A3E]/10 dark:bg-emerald-500/20 text-[#2D4A3E] dark:text-emerald-400 flex items-center justify-center font-bold">
+                  <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold border border-blue-100 dark:border-blue-900/50">
                     <CreditCard className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-base sm:text-lg font-bold text-[#2D4A3E] dark:text-white">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                       Abonnements en cours
                     </h3>
-                    <span className="text-[11px] text-[#5C6B5A] dark:text-slate-400">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
                       Formule active, dates et détails de stockage
                     </span>
                   </div>
                 </div>
 
                 {activeSubscription ? (
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-extrabold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30 shadow-xs">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
                     Formule Active
                   </span>
                 ) : (
-                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-[#5C6B5A]/15 text-[#5C6B5A] dark:text-slate-400 border border-[#5C6B5A]/20">
+                  <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
                     Mode Gratuit
                   </span>
                 )}
               </div>
 
               {loading ? (
-                <div className="py-12 text-center text-xs text-[#5C6B5A] dark:text-slate-400 flex flex-col items-center gap-2">
-                  <RotateCw className="w-5 h-5 animate-spin text-[#2D4A3E] dark:text-emerald-400" />
+                <div className="py-12 text-center text-xs text-slate-500 dark:text-slate-400 flex flex-col items-center gap-2">
+                  <RotateCw className="w-5 h-5 animate-spin text-blue-600 dark:text-blue-400" />
                   <span>Chargement de vos informations d'abonnement...</span>
                 </div>
               ) : activeSubscription ? (
                 /* CARTE DE L'ABONNEMENT ACTIF */
-                <div className="space-y-4">
+                <div className="space-y-3.5">
                   {/* Titre de la formule et référence */}
-                  <div className="p-4 rounded-2xl bg-[#F5F0E8] dark:bg-slate-900/90 border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between flex-wrap gap-3">
+                  <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/90 border border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-3">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#2D4A3E] to-[#1c3027] dark:from-emerald-600 dark:to-emerald-800 text-white flex items-center justify-center shadow-sm">
+                      <div className="w-10 h-10 rounded-xl bg-slate-900 dark:bg-blue-600 text-white flex items-center justify-center shadow-xs">
                         <HardDrive className="w-5 h-5" />
                       </div>
                       <div>
-                        <h4 className="text-sm sm:text-base font-extrabold text-[#2D4A3E] dark:text-white">
+                        <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                           {activeSubscription.plan_name || 'Abonnement StudyCloud'}
                         </h4>
-                        <span className="text-[11px] font-mono text-[#5C6B5A] dark:text-slate-400">
+                        <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
                           Réf: {activeSubscription.id || 'SUB-ACTIF'}
                         </span>
                       </div>
                     </div>
 
                     <div className="text-right">
-                      <span className="text-xs font-extrabold text-emerald-700 dark:text-emerald-400 font-mono block">
+                      <span className="text-xs font-extrabold text-emerald-600 dark:text-emerald-400 font-mono block">
                         +{purchasedStorageDisplay}
                       </span>
-                      <span className="text-[10px] text-[#5C6B5A] dark:text-slate-400">Stockage acheté</span>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">Stockage acheté</span>
                     </div>
                   </div>
 
                   {/* Date de commencement (Heure, Jour, Mois, Année) */}
-                  <div className="p-3.5 rounded-2xl bg-[#F5F0E8] dark:bg-slate-900/70 border border-[#D4C9B5] dark:border-slate-800 flex items-start gap-3">
-                    <div className="p-2 rounded-xl bg-blue-500/10 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5">
                       <Calendar className="w-4 h-4" />
                     </div>
                     <div className="space-y-0.5">
-                      <span className="text-[10px] uppercase font-bold text-[#5C6B5A] dark:text-slate-400 block tracking-wider">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block tracking-wider">
                         Date & Heure de commencement :
                       </span>
-                      <div className="text-xs sm:text-sm font-extrabold text-[#2D4A3E] dark:text-white font-mono">
+                      <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white font-mono">
                         {formatFullDateTimeFrench(activeSubscription.start_date || activeSubscription.created_at).full}
                       </div>
-                      <span className="text-[10px] text-[#5C6B5A] dark:text-slate-500 block">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-500 block">
                         Début effectif de la validité de votre abonnement
                       </span>
                     </div>
                   </div>
 
                   {/* Date de fin (Heure, Jour, Mois, Année) */}
-                  <div className="p-3.5 rounded-2xl bg-[#F5F0E8] dark:bg-slate-900/70 border border-[#D4C9B5] dark:border-slate-800 flex items-start gap-3">
-                    <div className="p-2 rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5">
+                  <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-800 flex items-start gap-3">
+                    <div className="p-2 rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5">
                       <Clock className="w-4 h-4" />
                     </div>
                     <div className="space-y-0.5">
-                      <span className="text-[10px] uppercase font-bold text-[#5C6B5A] dark:text-slate-400 block tracking-wider">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block tracking-wider">
                         Date & Heure de fin :
                       </span>
-                      <div className="text-xs sm:text-sm font-extrabold text-[#2D4A3E] dark:text-white font-mono">
+                      <div className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white font-mono">
                         {activeSubscription.end_date 
                           ? formatFullDateTimeFrench(activeSubscription.end_date).full 
                           : 'Non définie (Permanent)'}
                       </div>
-                      <span className="text-[10px] text-[#5C6B5A] dark:text-slate-500 block">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-500 block">
                         Échéance de la période contractuelle actuelle
                       </span>
                     </div>
@@ -871,27 +871,27 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                   {/* Grille : Prix à payer chaque mois & Stockage Total */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     {/* Prix à payer chaque mois */}
-                    <div className="p-3.5 rounded-2xl bg-[#F5F0E8] dark:bg-slate-900/80 border border-[#D4C9B5] dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] uppercase font-bold text-[#5C6B5A] dark:text-slate-400 block tracking-wider">
+                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block tracking-wider">
                         Prix à payer chaque mois :
                       </span>
-                      <div className="text-base sm:text-lg font-black text-[#2D4A3E] dark:text-emerald-400 font-mono">
+                      <div className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-emerald-400 font-mono">
                         {Number(activeSubscription.monthly_price || 0).toLocaleString('fr-FR')} {activeSubscription.currency || 'FCFA'}
                       </div>
-                      <span className="text-[10px] text-[#5C6B5A] dark:text-slate-500 block">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-500 block">
                         Tarif régulier de la mensualité
                       </span>
                     </div>
 
                     {/* Somme de son stockage */}
-                    <div className="p-3.5 rounded-2xl bg-[#F5F0E8] dark:bg-slate-900/80 border border-[#D4C9B5] dark:border-slate-800 space-y-1">
-                      <span className="text-[10px] uppercase font-bold text-[#5C6B5A] dark:text-slate-400 block tracking-wider">
+                    <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 space-y-1">
+                      <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block tracking-wider">
                         Somme de votre stockage :
                       </span>
-                      <div className="text-base sm:text-lg font-black text-[#2D4A3E] dark:text-white font-mono">
+                      <div className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-white font-mono">
                         {totalStorageDisplay}
                       </div>
-                      <span className="text-[10px] text-[#5C6B5A] dark:text-slate-500 block">
+                      <span className="text-[10px] text-slate-500 dark:text-slate-500 block">
                         30 Mo gratuits + {purchasedStorageDisplay} achetés
                       </span>
                     </div>
@@ -899,28 +899,28 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                 </div>
               ) : (
                 /* ÉCRAN SI MODE GRATUIT SANS ABONNEMENT */
-                <div className="p-6 rounded-2xl bg-[#F5F0E8] dark:bg-slate-900/60 border border-[#D4C9B5] dark:border-slate-800 text-center space-y-4">
-                  <div className="w-12 h-12 rounded-2xl bg-[#2D4A3E]/10 dark:bg-slate-800 text-[#2D4A3E] dark:text-slate-300 mx-auto flex items-center justify-center">
-                    <HardDrive className="w-6 h-6" />
+                <div className="p-5 sm:p-6 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-center space-y-4">
+                  <div className="w-11 h-11 rounded-xl bg-blue-50 dark:bg-slate-800 text-blue-600 dark:text-blue-400 mx-auto flex items-center justify-center border border-blue-100 dark:border-slate-700">
+                    <HardDrive className="w-5 h-5" />
                   </div>
                   <div className="space-y-1">
-                    <h4 className="text-sm sm:text-base font-bold text-[#2D4A3E] dark:text-white">
+                    <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                       Formule Actuelle : Mode Gratuit de Bienvenue
                     </h4>
-                    <p className="text-xs text-[#5C6B5A] dark:text-slate-400 max-w-sm mx-auto">
-                      Vous disposez de votre espace cloud gratuit de <strong>30 Mo</strong>. Vous n'avez aucun abonnement mensuel actif pour l'instant.
+                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
+                      Vous disposez de votre espace cloud gratuit de <strong className="text-slate-700 dark:text-slate-200">30 Mo</strong>. Vous n'avez aucun abonnement mensuel actif pour l'instant.
                     </p>
                   </div>
 
-                  <div className="p-3 rounded-xl bg-white/70 dark:bg-slate-950/60 border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-around text-xs">
+                  <div className="p-3 rounded-xl bg-white dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 flex items-center justify-around text-xs">
                     <div>
-                      <span className="text-[10px] text-[#5C6B5A] dark:text-slate-400 block">Stockage Total :</span>
-                      <strong className="text-[#2D4A3E] dark:text-white font-mono">30 Mo</strong>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Stockage Total</span>
+                      <strong className="text-slate-900 dark:text-white font-mono">30 Mo</strong>
                     </div>
-                    <div className="h-6 w-px bg-[#D4C9B5] dark:bg-slate-800"></div>
+                    <div className="h-6 w-px bg-slate-200 dark:bg-slate-800"></div>
                     <div>
-                      <span className="text-[10px] text-[#5C6B5A] dark:text-slate-400 block">Mensualité :</span>
-                      <strong className="text-emerald-700 dark:text-emerald-400 font-mono">0 FCFA</strong>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 block">Mensualité</span>
+                      <strong className="text-emerald-600 dark:text-emerald-400 font-mono">0 FCFA</strong>
                     </div>
                   </div>
                 </div>
@@ -928,7 +928,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
             </div>
 
             {/* Bouton d'action en bas de la partie gauche */}
-            <div className="pt-4">
+            <div className="pt-2">
               {activeSubscription ? (
                 <button
                   type="button"
@@ -939,7 +939,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                       setIsInternalRenewing(true);
                     }
                   }}
-                  className="w-full py-3.5 px-4 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 active:scale-95 text-white font-extrabold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-lg shadow-orange-500/25 transition cursor-pointer"
+                  className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition cursor-pointer"
                 >
                   <RotateCw className="w-4 h-4" />
                   <span>Renouveler l'abonnement</span>
@@ -948,7 +948,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                 <button
                   type="button"
                   onClick={onGoToStorage}
-                  className="w-full py-3 px-4 rounded-xl bg-[#2D4A3E] hover:bg-[#233b31] dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-md transition cursor-pointer active:scale-95"
+                  className="w-full py-2.5 sm:py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white font-semibold text-xs sm:text-sm flex items-center justify-center gap-2 shadow-sm transition cursor-pointer active:scale-[0.98]"
                 >
                   <Sparkles className="w-4 h-4" />
                   <span>Découvrir les formules & Souscrire</span>
@@ -960,32 +960,32 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
           {/* --------------------------------------------------------------------- */}
           {/* CÔTÉ DROIT : DEMANDES EN COURS                                        */}
           {/* --------------------------------------------------------------------- */}
-          <div className="p-5 sm:p-7 space-y-5 self-start w-full">
+          <div className="p-4 sm:p-6 space-y-5 self-start w-full">
             <div>
               {/* En-tête côté droit */}
-              <div className="flex items-center justify-between border-b border-[#D4C9B5] dark:border-slate-800 pb-3.5 mb-5">
+              <div className="flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800 pb-3.5 mb-5 gap-2">
                 <div className="flex items-center gap-2.5">
-                  <div className="w-8 h-8 rounded-xl bg-orange-500/15 text-orange-600 dark:text-orange-400 flex items-center justify-center font-bold">
+                  <div className="w-8 h-8 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 flex items-center justify-center font-bold border border-amber-100 dark:border-amber-900/50 shrink-0">
                     <Clock className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-base sm:text-lg font-bold text-[#2D4A3E] dark:text-white">
+                    <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                       Demandes en cours
                     </h3>
-                    <span className="text-[11px] text-[#5C6B5A] dark:text-slate-400">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
                       Suivi en temps réel de vos commandes et activations
                     </span>
                   </div>
                 </div>
 
-                <span className="px-2.5 py-1 rounded-full text-xs font-extrabold bg-[#2D4A3E]/15 dark:bg-slate-800 text-[#2D4A3E] dark:text-slate-200 border border-[#2D4A3E]/20 dark:border-slate-700">
+                <span className="px-2.5 py-1 rounded-full text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 shrink-0 whitespace-nowrap">
                   {requests.length} demande{requests.length > 1 ? 's' : ''}
                 </span>
               </div>
 
               {loading ? (
-                <div className="py-12 text-center text-xs text-[#5C6B5A] dark:text-slate-400 flex flex-col items-center gap-2">
-                  <RotateCw className="w-5 h-5 animate-spin text-orange-500" />
+                <div className="py-12 text-center text-xs text-slate-500 dark:text-slate-400 flex flex-col items-center gap-2">
+                  <RotateCw className="w-5 h-5 animate-spin text-blue-600 dark:text-blue-400" />
                   <span>Chargement de vos demandes...</span>
                 </div>
               ) : requests.length > 0 ? (
@@ -1004,17 +1004,17 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                       return (
                         <div
                           key={req.id}
-                          className="rounded-2xl border-2 border-emerald-500 bg-emerald-50/90 dark:bg-emerald-950/40 p-4 sm:p-5 shadow-sm space-y-3 transition-all duration-200 relative group"
+                          className="rounded-2xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/70 dark:bg-emerald-950/30 p-4 sm:p-5 shadow-xs space-y-3 transition-all duration-200 relative group"
                         >
                           {/* Message de confirmation en vert avec bouton croix pour effacer */}
                           <div className="flex items-start justify-between gap-3">
                             <div className="flex items-start gap-3">
-                              <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                              <div className="w-9 h-9 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
                                 <CheckCircle2 className="w-5 h-5" />
                               </div>
                               <div className="space-y-0.5">
                                 <div className="flex items-center gap-2 flex-wrap">
-                                  <span className="text-xs sm:text-sm font-black text-emerald-900 dark:text-emerald-300">
+                                  <span className="text-xs sm:text-sm font-bold text-emerald-900 dark:text-emerald-300">
                                     Votre demande a été acceptée !
                                   </span>
                                   <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 text-white font-mono">
@@ -1045,22 +1045,22 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
 
                           {/* Informations synthétiques sur l'abonnement validé */}
                           <div className="grid grid-cols-2 gap-2 text-xs pt-1">
-                            <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-emerald-500/30">
-                              <span className="text-[10px] uppercase font-bold text-[#5C6B5A] dark:text-slate-400 block">Stockage ajouté :</span>
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-emerald-200 dark:border-emerald-800/40">
+                              <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">Stockage ajouté :</span>
                               <div className="text-xs sm:text-sm font-extrabold text-emerald-700 dark:text-emerald-400 font-mono">
                                 +{req.storage_display || `${req.storage_added_mb || req.additional_mb || 0} Mo`}
                               </div>
                             </div>
-                            <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-emerald-500/30">
-                              <span className="text-[10px] uppercase font-bold text-[#5C6B5A] dark:text-slate-400 block">Montant réglé :</span>
-                              <div className="text-xs sm:text-sm font-extrabold text-[#2D4A3E] dark:text-white font-mono">
+                            <div className="p-2.5 rounded-xl bg-white dark:bg-slate-900/80 border border-emerald-200 dark:border-emerald-800/40">
+                              <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block">Montant réglé :</span>
+                              <div className="text-xs sm:text-sm font-extrabold text-slate-900 dark:text-white font-mono">
                                 {req.price_display || `${Number(req.price_paid || 0).toLocaleString('fr-FR')} FCFA`}
                               </div>
                             </div>
                           </div>
 
                           {/* Date de validation & référence */}
-                          <div className="flex items-center justify-between text-[11px] text-emerald-800/80 dark:text-emerald-300/80 font-mono flex-wrap gap-2 pt-1 border-t border-emerald-500/20">
+                          <div className="flex items-center justify-between text-[11px] text-emerald-800/80 dark:text-emerald-300/80 font-mono flex-wrap gap-2 pt-1 border-t border-emerald-200/70 dark:border-emerald-800/40">
                             <span>📅 Validé le : {formatFullDateTimeFrench(req.confirmed_at || req.updated_at || req.created_at).full}</span>
                             <span>Réf: {req.id}</span>
                           </div>
@@ -1074,10 +1074,10 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                             <button
                               type="button"
                               onClick={() => downloadReceiptSlip(req, activeSubscription, user)}
-                              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition cursor-pointer active:scale-95"
+                              className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-xs shadow-xs transition cursor-pointer active:scale-95"
                               title="Télécharger la fiche de reçu officiel"
                             >
-                              <Download className="w-4 h-4" />
+                              <Download className="w-3.5 h-3.5" />
                               <span>Télécharger le reçu</span>
                             </button>
                           </div>
@@ -1089,10 +1089,10 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                     return (
                       <div
                         key={req.id}
-                        className={`rounded-2xl border-2 transition-all duration-200 overflow-hidden ${
+                        className={`rounded-xl border transition-all duration-200 overflow-hidden ${
                           isExpanded
-                            ? 'border-[#2D4A3E] dark:border-emerald-500 bg-[#F5F0E8] dark:bg-slate-900 shadow-md'
-                            : 'border-[#D4C9B5] dark:border-slate-800 bg-[#F5F0E8]/70 dark:bg-slate-900/60 hover:border-[#2D4A3E]/50 dark:hover:border-slate-700'
+                            ? 'border-blue-500 dark:border-blue-500 bg-slate-50 dark:bg-slate-900 shadow-sm'
+                            : 'border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/60 hover:border-slate-300 dark:hover:border-slate-700'
                         }`}
                       >
                         {/* En-tête cliquable */}
@@ -1105,8 +1105,8 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                             <div
                               className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5 font-bold ${
                                 isPending
-                                  ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
-                                  : 'bg-red-500/20 text-red-600 dark:text-red-400'
+                                  ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                  : 'bg-red-500/15 text-red-600 dark:text-red-400'
                               }`}
                             >
                               {isPending ? (
@@ -1118,17 +1118,17 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
 
                             <div className="min-w-0 space-y-0.5">
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs sm:text-sm font-extrabold text-[#2D4A3E] dark:text-white truncate">
+                                <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
                                   {req.pack_name || 'Demande de Stockage'}
                                 </span>
                                 {req.storage_display && (
-                                  <span className="text-[10px] px-2 py-0.5 rounded-md font-mono font-bold bg-[#2D4A3E]/10 dark:bg-slate-800 text-[#2D4A3E] dark:text-emerald-400">
+                                  <span className="text-[10px] px-2 py-0.5 rounded-md font-mono font-bold bg-blue-50 dark:bg-slate-800 text-blue-700 dark:text-blue-400 border border-blue-100 dark:border-slate-700">
                                     {req.storage_display}
                                   </span>
                                 )}
                               </div>
                               
-                              <div className="text-[11px] text-[#5C6B5A] dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
+                              <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5 flex-wrap">
                                 <span>📅 {reqDate.full}</span>
                               </div>
                             </div>
@@ -1136,14 +1136,14 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
 
                           <div className="flex items-center gap-2 shrink-0">
                             {isPending && (
-                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/50 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50">
                                 <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping"></span>
                                 En attente
                               </span>
                             )}
                             {isRejected && (
                               <div className="flex items-center gap-1.5">
-                                <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/30">
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-bold bg-red-50 text-red-700 dark:bg-red-950/50 dark:text-red-300 border border-red-200 dark:border-red-800/50">
                                   Rejetée
                                 </span>
                                 {/* Bouton croix pour effacer une demande rejetée */}
@@ -1166,7 +1166,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                               </div>
                             )}
 
-                            <div className="w-7 h-7 rounded-lg bg-[#D4C9B5]/40 dark:bg-slate-800 text-[#2D4A3E] dark:text-slate-300 flex items-center justify-center transition-transform duration-200">
+                            <div className="w-7 h-7 rounded-lg bg-slate-200/70 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center transition-transform duration-200">
                               {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                             </div>
                           </div>
@@ -1174,24 +1174,24 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
 
                         {/* Détails dépliés */}
                         {isExpanded && (
-                          <div className="px-4 pb-4 pt-1 border-t border-[#D4C9B5] dark:border-slate-800 space-y-3.5 animate-fadeIn">
-                            <div className="flex items-center justify-between text-[11px] text-[#5C6B5A] dark:text-slate-400 pt-2 flex-wrap gap-2">
-                              <span>Numéro de référence : <strong className="font-mono text-[#2D4A3E] dark:text-slate-200">{req.id}</strong></span>
-                              <span>Cycle : <strong className="text-[#2D4A3E] dark:text-slate-200">{req.billing_cycle === 'monthly' ? 'Mensuel' : 'Annuel (-10%)'}</strong></span>
+                          <div className="px-4 pb-4 pt-1 border-t border-slate-200 dark:border-slate-800 space-y-3.5 animate-fadeIn">
+                            <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 pt-2 flex-wrap gap-2">
+                              <span>Numéro de référence : <strong className="font-mono text-slate-800 dark:text-slate-200">{req.id}</strong></span>
+                              <span>Cycle : <strong className="text-slate-800 dark:text-slate-200">{req.billing_cycle === 'monthly' ? 'Mensuel' : 'Annuel (-10%)'}</strong></span>
                             </div>
 
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
-                              <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-950/70 border border-[#D4C9B5] dark:border-slate-800">
-                                <span className="text-[10px] uppercase font-bold text-[#5C6B5A] dark:text-slate-400 block mb-0.5">Montant :</span>
+                              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800">
+                                <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Montant :</span>
                                 <div className="text-sm font-extrabold text-emerald-700 dark:text-emerald-400 font-mono">
                                   {req.price_display || `${Number(req.price_paid || 0).toLocaleString('fr-FR')} ${req.currency || 'FCFA'}`}
                                 </div>
-                                <span className="text-[10px] text-[#5C6B5A] dark:text-slate-500">Moyen : {req.payment_method || 'Mobile Money'}</span>
+                                <span className="text-[10px] text-slate-500 dark:text-slate-500">Moyen : {req.payment_method || 'Mobile Money'}</span>
                               </div>
 
-                              <div className="p-2.5 rounded-xl bg-white/70 dark:bg-slate-950/70 border border-[#D4C9B5] dark:border-slate-800">
-                                <span className="text-[10px] uppercase font-bold text-[#5C6B5A] dark:text-slate-400 block mb-0.5">Contact transmis :</span>
-                                <div className="text-xs font-mono font-bold text-[#2D4A3E] dark:text-slate-200 truncate">
+                              <div className="p-2.5 rounded-xl bg-white dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800">
+                                <span className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-0.5">Contact transmis :</span>
+                                <div className="text-xs font-mono font-bold text-slate-800 dark:text-slate-200 truncate">
                                   📞 {req.contact_phone || 'Non renseigné'}
                                 </div>
                               </div>
@@ -1199,16 +1199,16 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
 
                             {/* Reçu joint pour aperçu */}
                             {req.receipt_image_url && (
-                              <div className="p-3 rounded-2xl bg-white/80 dark:bg-slate-950/80 border border-[#D4C9B5] dark:border-slate-800 space-y-2">
+                              <div className="p-3 rounded-xl bg-white dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 space-y-2">
                                 <div className="flex items-center justify-between">
-                                  <span className="text-xs font-bold text-[#2D4A3E] dark:text-slate-200 flex items-center gap-1.5">
-                                    <FileText className="w-3.5 h-3.5 text-orange-500" />
+                                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                                    <FileText className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                                     Preuve de transfert transmise :
                                   </span>
                                   <button
                                     type="button"
                                     onClick={() => setZoomedReceiptUrl(req.receipt_image_url)}
-                                    className="text-[11px] font-bold text-orange-600 dark:text-orange-400 hover:underline flex items-center gap-1 cursor-pointer"
+                                    className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 cursor-pointer"
                                   >
                                     <Eye className="w-3.5 h-3.5" />
                                     <span>Agrandir</span>
@@ -1217,7 +1217,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
 
                                 <div 
                                   onClick={() => setZoomedReceiptUrl(req.receipt_image_url)}
-                                  className="relative group cursor-pointer max-h-40 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-center p-1.5"
+                                  className="relative group cursor-pointer max-h-40 rounded-xl overflow-hidden bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center p-1.5"
                                 >
                                   <img
                                     src={req.receipt_image_url}
@@ -1231,8 +1231,8 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                             {/* Message pour la demande en attente ou rejetée */}
                             <div className={`p-3 rounded-xl text-xs flex items-start justify-between gap-3 ${
                               isPending 
-                                ? 'bg-amber-500/10 text-amber-900 dark:text-amber-300 border border-amber-500/20' 
-                                : 'bg-red-500/10 text-red-900 dark:text-red-300 border border-red-500/20'
+                                ? 'bg-amber-50 dark:bg-amber-950/30 text-amber-900 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40' 
+                                : 'bg-red-50 dark:bg-red-950/30 text-red-900 dark:text-red-300 border border-red-200 dark:border-red-800/40'
                             }`}>
                               <div className="flex items-start gap-2">
                                 <span className="text-sm mt-0.5">ℹ️</span>
@@ -1278,15 +1278,15 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                 </div>
               ) : (
                 /* ÉCRAN SI AUCUNE DEMANDE ENREGISTRÉE */
-                <div className="p-6 rounded-2xl bg-[#F5F0E8] dark:bg-slate-900/60 border border-[#D4C9B5] dark:border-slate-800 text-center space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-orange-500/10 text-orange-600 dark:text-orange-400 mx-auto flex items-center justify-center">
-                    <Clock className="w-6 h-6" />
+                <div className="p-6 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 text-center space-y-3">
+                  <div className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 mx-auto flex items-center justify-center border border-amber-100 dark:border-amber-900/50">
+                    <Clock className="w-5 h-5" />
                   </div>
                   <div className="space-y-1">
-                    <h4 className="text-sm sm:text-base font-bold text-[#2D4A3E] dark:text-white">
+                    <h4 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
                       Aucune demande en attente
                     </h4>
-                    <p className="text-xs text-[#5C6B5A] dark:text-slate-400 max-w-sm mx-auto">
+                    <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
                       Vos commandes ou renouvellements de stockage apparaîtront ici dès leur envoi.
                     </p>
                   </div>
@@ -1295,8 +1295,8 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
             </div>
 
             {/* Note informative discrète en bas de la partie droite */}
-            <div className="pt-4 text-center">
-              <span className="text-[11px] text-[#5C6B5A] dark:text-slate-500">
+            <div className="pt-2 text-center">
+              <span className="text-[11px] text-slate-500 dark:text-slate-500">
                 ⚡ Validation rapide par nos administrateurs 7j/7
               </span>
             </div>
@@ -1320,11 +1320,11 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
             {/* Header de la modale */}
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center font-bold">
+                <div className="w-8 h-8 rounded-xl bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
                   <FileText className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base sm:text-lg font-bold text-[#2D4A3E] dark:text-white">
+                  <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
                     Historique des Achats & Paiements
                   </h3>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400">
@@ -1366,11 +1366,11 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                   return (
                     <div 
                       key={item.id}
-                      className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-emerald-500/40 transition"
+                      className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-blue-500/40 transition"
                     >
                       <div className="space-y-1 min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs sm:text-sm font-extrabold text-[#2D4A3E] dark:text-white">
+                          <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white">
                             {item.pack_name || item.plan_name || 'Abonnement Stockage'}
                           </span>
                           {storageBoughtText && (
@@ -1385,7 +1385,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
 
                         <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5 pt-1">
                           <div>📅 <strong>Date du paiement :</strong> {confDate.full}</div>
-                          <div>💰 <strong>Montant réglé :</strong> <span className="font-bold text-[#2D4A3E] dark:text-emerald-400 font-mono">{item.price_display || `${Number(item.price_paid || item.monthly_price || 0).toLocaleString('fr-FR')} FCFA`}</span> ({item.payment_method || 'Mobile Money'})</div>
+                          <div>💰 <strong>Montant réglé :</strong> <span className="font-bold text-slate-900 dark:text-emerald-400 font-mono">{item.price_display || `${Number(item.price_paid || item.monthly_price || 0).toLocaleString('fr-FR')} FCFA`}</span> ({item.payment_method || 'Mobile Money'})</div>
                           {totalStorageText && <div>💾 <strong>Stockage total :</strong> {totalStorageText}</div>}
                           {item.renewal_date && <div>🗓️ <strong>Date de renouvellement :</strong> {formatFullDateTimeFrench(item.renewal_date).full}</div>}
                           <div>🔖 <strong>Réf reçu :</strong> <span className="font-mono">{item.payment_reference || item.id}</span></div>
@@ -1397,7 +1397,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                         <button
                           type="button"
                           onClick={() => downloadReceiptSlip(item, activeSubscription, user)}
-                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition shadow-xs cursor-pointer active:scale-95"
                           title="Télécharger la fiche de reçu officiel"
                         >
                           <Download className="w-4 h-4" />
@@ -1452,7 +1452,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 px-2">
-              <span className="text-xs sm:text-sm font-bold text-[#2D4A3E] dark:text-white flex items-center gap-2">
+              <span className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
                 <span>🧾</span> Preuve de paiement enregistrée
               </span>
               <button
