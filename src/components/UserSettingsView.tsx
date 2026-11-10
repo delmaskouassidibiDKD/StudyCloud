@@ -26,6 +26,7 @@ import { compressAvatarImage, getAvatarFromEmail } from '../services/imageUtils'
 import { buildAvatarKey } from '../services/storageUtils';
 import studentLogo from '../assets/student-logo.jpg';
 import proLogo from '../assets/pro-logo.jpg';
+import { isWallpaperAvatarPollution } from '../utils/wallpaperHelper';
 
 interface UserSettingsViewProps {
   onBack: () => void;
@@ -39,7 +40,15 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
   const [filiere, setFiliere] = useState(() => user?.filiere || localStorage.getItem('unifolder_user_filiere') || 'Électrotechniques');
   const [email, setEmail] = useState(() => user?.email || localStorage.getItem('unifolder_user_email') || 'delmaskouassidibi@gmail.com');
   const [country, setCountry] = useState(() => user?.country || localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire");
-  const [avatarUrl, setAvatarUrl] = useState(() => user?.avatar_url || localStorage.getItem('unifolder_user_avatar') || getAvatarFromEmail(user?.email, user?.name));
+  const [avatarUrl, setAvatarUrl] = useState(() => {
+    const dbAv = user?.avatar_url && !isWallpaperAvatarPollution(user.avatar_url) ? user.avatar_url : '';
+    const lsAvRaw = localStorage.getItem('unifolder_user_avatar') || '';
+    const safeLsAv = !isWallpaperAvatarPollution(lsAvRaw) ? lsAvRaw : '';
+    if (lsAvRaw && !safeLsAv) {
+      try { localStorage.removeItem('unifolder_user_avatar'); } catch {}
+    }
+    return dbAv || safeLsAv || getAvatarFromEmail(user?.email, user?.name);
+  });
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [showTermsModal, setShowTermsModal] = useState(false);
@@ -115,7 +124,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
       StudyCloudAPI.syncUser({
         id: userId,
         ...updatedUser,
-        avatarUrl: avatarUrl || undefined,
+        avatarUrl: (avatarUrl && !avatarUrl.startsWith('data:image/svg+xml') && !isWallpaperAvatarPollution(avatarUrl)) ? avatarUrl : undefined,
       }).catch((err) => console.warn('Erreur synchronisation utilisateur:', err));
     }
 
@@ -254,8 +263,29 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
                      (filiere && filiere !== 'Particulier / Professionnel' && filiere !== 'Professionnel / Particulier' && filiere !== 'Général' ? filiere : '') ||
                      (school && school !== 'Particulier / Professionnel' && school !== 'Professionnel / Particulier' ? school : '');
 
-  const isCustomUploaded = Boolean(avatarUrl && !avatarUrl.startsWith('data:image/svg+xml'));
-  const displayAvatar = isCustomUploaded ? avatarUrl : (!isStudent ? proLogo : studentLogo);
+  const isCustomUploaded = Boolean(avatarUrl && !avatarUrl.startsWith('data:image/svg+xml') && !isWallpaperAvatarPollution(avatarUrl));
+  const genericAvatar = !isStudent ? proLogo : studentLogo;
+  const displayAvatar = isCustomUploaded ? avatarUrl : genericAvatar;
+
+  const handleResetToDefaultAvatar = () => {
+    const defaultSvg = getAvatarFromEmail(email, name);
+    setAvatarUrl(defaultSvg);
+    localStorage.removeItem('unifolder_user_avatar');
+    updateProfile({ avatar_url: null });
+    const userId = user?.id || localStorage.getItem('unifolder_user_id');
+    if (userId) {
+      StudyCloudAPI.syncUser({
+        id: userId,
+        name,
+        email,
+        school,
+        filiere,
+        country,
+        avatarUrl: '',
+      }).catch((err) => console.warn('Erreur réinitialisation avatar:', err));
+    }
+    triggerToast("Photo de profil générique rétablie !");
+  };
 
   const isModified = editingField ? tempValue.trim() !== getOriginalValue(editingField) && tempValue.trim().length > 0 : false;
 
@@ -312,7 +342,17 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
           >
             <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-white dark:bg-[#111a2e] border-3 border-stone-800 dark:border-[#334155] flex items-center justify-center text-orange-600 dark:text-orange-500 shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none overflow-hidden">
               {displayAvatar ? (
-                <img src={displayAvatar} alt={name} className="w-full h-full object-cover" />
+                <img
+                  src={displayAvatar}
+                  alt={name}
+                  className="w-full h-full object-cover"
+                  onError={(e) => {
+                    const imgEl = e.currentTarget;
+                    if (imgEl.src !== genericAvatar) {
+                      imgEl.src = genericAvatar;
+                    }
+                  }}
+                />
               ) : (
                 <User className="w-12 h-12 md:w-16 md:h-16" />
               )}
@@ -320,7 +360,10 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
             {/* Quick camera trigger button overlapping the circle */}
             <button
               type="button"
-              onClick={() => avatarInputRef.current?.click()}
+              onClick={(e) => {
+                e.stopPropagation();
+                avatarInputRef.current?.click();
+              }}
               title="Changer le logo / photo"
               className="absolute bottom-0 right-0 p-2 md:p-2.5 bg-orange-600 hover:bg-orange-700 text-white rounded-full border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
             >
@@ -337,8 +380,19 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
                 className="flex items-center gap-2 px-4 py-2 bg-stone-900 dark:bg-[#1e293b] hover:bg-stone-800 dark:hover:bg-[#283852] text-white font-bold text-xs md:text-sm rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
               >
                 <Upload className="w-4 h-4 text-orange-400" />
-                <span>{avatarUrl ? "Changer le logo / photo" : "Ajouter un logo / photo"}</span>
+                <span>{isCustomUploaded ? "Changer le logo / photo" : "Ajouter un logo / photo"}</span>
               </button>
+              {isCustomUploaded && (
+                <button
+                  type="button"
+                  onClick={handleResetToDefaultAvatar}
+                  className="flex items-center gap-1.5 px-3 py-2 bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-red-50 dark:hover:bg-red-950/30 text-stone-700 dark:text-slate-200 hover:text-red-600 font-bold text-xs md:text-sm rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
+                  title="Revenir à l'image générique par défaut"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Image par défaut</span>
+                </button>
+              )}
             </div>
 
             <p className="text-[11px] text-stone-500 dark:text-slate-400 font-medium text-center max-w-xs">

@@ -4599,11 +4599,19 @@ a:hover{transform:translateY(-2px)}
         return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
       }
 
+      function isPollutedWallpaperAvatar(val: any): boolean {
+        if (!val || typeof val !== 'string') return false;
+        const v = val.trim();
+        return v.startsWith('/wallpapers/') || v.includes('/api/cloud/wallpaper/');
+      }
+
       function sanitizeUser(user: any) {
         if (!user) return null;
         const { password_hash: _ph, security_answer_1_hash: _s1, security_answer_2_hash: _s2, ...rest } = user;
+        const cleanAvatarUrl = isPollutedWallpaperAvatar(user.avatar_url) ? null : (user.avatar_url ?? null);
         return {
           ...rest,
+          avatar_url: cleanAvatarUrl,
           has_password: Boolean(user.password_hash && typeof user.password_hash === 'string' && user.password_hash.trim().length > 0),
           has_security_questions: Boolean(
             user.security_answer_1_hash &&
@@ -6258,6 +6266,9 @@ a:hover{transform:translateY(-2px)}
           await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, sessionExpiresAt).run();
         } catch (e) {}
 
+        if (isPollutedWallpaperAvatar(user.avatar_url)) {
+          env.DB.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?').bind(user.id).run().catch(() => {});
+        }
         const safeUser = sanitizeUser(user);
         return jsonResponse({ success: true, data: safeUser }, 200, origin);
       }
@@ -6450,6 +6461,9 @@ a:hover{transform:translateY(-2px)}
           );
         }
 
+        if (isPollutedWallpaperAvatar(user.avatar_url)) {
+          env.DB.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?').bind(user.id).run().catch(() => {});
+        }
         const safeUser = sanitizeUser(user);
         return jsonResponse({ success: true, data: safeUser }, 200, origin);
       }
@@ -6619,8 +6633,9 @@ a:hover{transform:translateY(-2px)}
         if (!id || !email) return errorResponse('ID et email requis', 400, origin);
 
         const cleanEmail = email.toLowerCase().trim();
-        const hasAvatar = avatarUrl !== undefined;
-        const avatarVal = avatarUrl ? String(avatarUrl) : null;
+        const isPollutedAvatar = isPollutedWallpaperAvatar(avatarUrl);
+        const hasAvatar = avatarUrl !== undefined && !isPollutedAvatar;
+        const avatarVal = isPollutedAvatar ? null : (avatarUrl ? String(avatarUrl) : null);
 
         // Rechercher si l'utilisateur existe déjà par id ou par email pour éviter les doublons
         const existing: any = await env.DB.prepare(
@@ -6673,9 +6688,12 @@ a:hover{transform:translateY(-2px)}
 
       if (path.startsWith('/api/users/') && !path.includes('/preferences') && method === 'GET') {
         const userId = path.split('/')[3];
-        const user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+        const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
         if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
-        return jsonResponse({ success: true, data: user }, 200, origin);
+        if (isPollutedWallpaperAvatar(user.avatar_url)) {
+          env.DB.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?').bind(user.id).run().catch(() => {});
+        }
+        return jsonResponse({ success: true, data: sanitizeUser(user) }, 200, origin);
       }
 
       if (path.startsWith('/api/users/') && path.endsWith('/preferences')) {
@@ -8159,16 +8177,11 @@ a:hover{transform:translateY(-2px)}
               'UPDATE user_wallpapers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
             ).bind(reqUserId).run().catch(() => {});
 
-            // Insérer le nouveau fond d'écran actif
+            // Insérer le nouveau fond d'écran actif (sans jamais écraser la photo de profil users.avatar_url)
             await env.DB.prepare(`
               INSERT INTO user_wallpapers (id, user_id, name, url, r2_key, size, is_active, created_at, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             `).bind(wallpaperId, reqUserId, inputName, finalUrl, r2Key, inputSize).run();
-
-            // Mettre à jour l'avatar utilisateur dans la table users pour synchroniser la photo de profil
-            await env.DB.prepare(
-              'UPDATE users SET avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
-            ).bind(finalUrl, reqUserId).run().catch(() => {});
 
             // Synchronisation inter-appareils
             await recordSyncItem(env.DB, reqUserId, wallpaperId, 'wallpapers', {
@@ -8205,10 +8218,6 @@ a:hover{transform:translateY(-2px)}
           try {
             await env.DB.prepare(
               'UPDATE user_wallpapers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-            ).bind(reqUserId).run().catch(() => {});
-
-            await env.DB.prepare(
-              'UPDATE users SET avatar_url = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
             ).bind(reqUserId).run().catch(() => {});
 
             await recordSyncItem(env.DB, reqUserId, 'wallpaper_reset', 'wallpapers', {
@@ -16322,10 +16331,14 @@ a:hover{transform:translateY(-2px)}
           }
         }
 
+        if (user && isPollutedWallpaperAvatar(user.avatar_url)) {
+          env.DB.prepare('UPDATE users SET avatar_url = NULL WHERE id = ?').bind(user.id).run().catch(() => {});
+        }
+
         return jsonResponse({
           success: true,
           data: {
-            user,
+            user: sanitizeUser(user),
             matieres,
             files,
             notes,

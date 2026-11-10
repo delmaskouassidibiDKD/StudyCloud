@@ -1,5 +1,5 @@
 /**
- * StudyCloud - Assistant Universel de Gestion du Fond d'Écran & Photo de Profil
+ * StudyCloud - Assistant Universel de Gestion du Fond d'Écran
  * 
  * Synchronisation Multi-Appareils & Architecture Local-First :
  * 1. 0ms instantané : Une fois chargée ou définie, l'image reste stockée en local
@@ -8,7 +8,7 @@
  * 2. Multi-Appareils : Lorsqu'on se connecte avec un autre téléphone, tablette ou navigateur,
  *    l'application détecte automatiquement le fond d'écran actif dans Cloudflare D1/R2,
  *    le télécharge UNE SEULE FOIS, le sauvegarde en local dans ce nouvel appareil,
- *    et l'affiche instantanément comme fond d'écran et photo de profil.
+ *    et l'affiche instantanément comme fond d'écran (sans jamais modifier la photo de profil).
  * 3. Remplacement universel : Si l'utilisateur choisit une autre image sur n'importe quel appareil,
  *    la nouvelle prend immédiatement sa place localement et dans le cloud.
  */
@@ -22,6 +22,26 @@ export const LS_WALLPAPER_LOCAL_KEY = 'studycloud_dashboard_wallpaper_local';
 export const LS_WALLPAPER_META = 'studycloud_dashboard_wallpaper_meta';
 export const LS_WALLPAPER_ID_KEY = 'studycloud_dashboard_wallpaper_id';
 export const IDB_WALLPAPER_KEY = 'active_wallpaper';
+
+/**
+ * Détecte si une URL/donnée d'avatar correspond en réalité à un fond d'écran pollué
+ * (ne doit JAMAIS être utilisée comme photo de profil utilisateur).
+ */
+export function isWallpaperAvatarPollution(val?: string | null): boolean {
+  if (!val || typeof val !== 'string') return false;
+  const trimmed = val.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith('/wallpapers/') || trimmed.includes('/api/cloud/wallpaper/')) {
+    return true;
+  }
+  try {
+    const activeWpUrl = localStorage.getItem(LS_WALLPAPER_KEY);
+    const activeWpLocal = localStorage.getItem(LS_WALLPAPER_LOCAL_KEY);
+    if (activeWpUrl && trimmed === activeWpUrl) return true;
+    if (activeWpLocal && trimmed === activeWpLocal) return true;
+  } catch {}
+  return false;
+}
 
 // Gestion de la rotation automatique toutes les 48 heures (2 jours)
 export const LS_WALLPAPER_ROTATION_ENABLED = 'studycloud_wallpaper_auto_rotation';
@@ -353,8 +373,8 @@ export async function convertToWallpaperDataUrl(
 }
 
 /**
- * Enregistre localement le fond d'écran et la photo de profil (IndexedDB + localStorage)
- * et déclenche les événements de synchronisation réactive instantanée (0ms).
+ * Enregistre localement le fond d'écran (IndexedDB + localStorage)
+ * et déclenche l'événement de synchronisation réactive instantanée (0ms).
  */
 export async function cacheWallpaperLocally(
   imageUrlOrDataUrl: string,
@@ -369,7 +389,6 @@ export async function cacheWallpaperLocally(
       localStorage.removeItem(LS_WALLPAPER_LOCAL_KEY);
     }
     localStorage.setItem(LS_WALLPAPER_KEY, imageUrlOrDataUrl);
-    localStorage.setItem('unifolder_user_avatar', imageUrlOrDataUrl);
     if (meta?.id) {
       localStorage.setItem(LS_WALLPAPER_ID_KEY, String(meta.id));
     }
@@ -385,13 +404,12 @@ export async function cacheWallpaperLocally(
     await storeThumbnailData(IDB_WALLPAPER_KEY, imageUrlOrDataUrl).catch(() => {});
   }
 
-  // Événements réactifs pour rafraîchir l'écran instantanément
+  // Événement réactif pour rafraîchir le fond d'écran instantanément (sans modifier la photo de profil)
   window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: imageUrlOrDataUrl } }));
-  window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: imageUrlOrDataUrl } }));
 }
 
 /**
- * Définit et synchronise le fond d'écran et la photo de profil :
+ * Définit et synchronise le fond d'écran :
  * 1. Application optimiste instantanée (0ms)
  * 2. Compression compacte optimisée (1280px ~120 Ko)
  * 3. Enregistrement local permanent (IndexedDB + localStorage + Cache API)
@@ -541,10 +559,8 @@ export async function syncAndCacheCloudWallpaper(
     localStorage.setItem(LS_WALLPAPER_KEY, cloudUrl);
     localStorage.setItem(LS_WALLPAPER_ID_KEY, cloudId);
     localStorage.setItem(LS_WALLPAPER_META, JSON.stringify(cloudWp));
-    localStorage.setItem('unifolder_user_avatar', cloudUrl);
   } catch {}
   window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: cloudUrl } }));
-  window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: cloudUrl } }));
 
   // 2. Téléchargement UNIQUE en arrière-plan du binaire complet pour le figer en local
   (async () => {

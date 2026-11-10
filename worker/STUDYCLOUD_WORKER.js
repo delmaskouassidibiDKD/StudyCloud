@@ -3720,11 +3720,17 @@ var index_default = {
       });
     }
     try {
-      let sanitizeUser = function (user) {
+      let isPollutedWallpaperAvatar = function (val) {
+        if (!val || typeof val !== "string") return false;
+        const v = val.trim();
+        return v.startsWith("/wallpapers/") || v.includes("/api/cloud/wallpaper/");
+      }, sanitizeUser = function (user) {
         if (!user) return null;
         const { password_hash: _ph, security_answer_1_hash: _s1, security_answer_2_hash: _s2, ...rest } = user;
+        const cleanAvatarUrl = isPollutedWallpaperAvatar(user.avatar_url) ? null : (user.avatar_url ?? null);
         return {
           ...rest,
+          avatar_url: cleanAvatarUrl,
           has_password: Boolean(user.password_hash && typeof user.password_hash === "string" && user.password_hash.trim().length > 0),
           has_security_questions: Boolean(
             user.security_answer_1_hash && typeof user.security_answer_1_hash === "string" && user.security_answer_1_hash.trim().length > 0 && user.security_answer_2_hash && typeof user.security_answer_2_hash === "string" && user.security_answer_2_hash.trim().length > 0
@@ -7036,10 +7042,6 @@ a:hover{transform:translateY(-2px)}
               INSERT INTO user_wallpapers (id, user_id, name, url, r2_key, size, is_active, created_at, updated_at)
               VALUES (?, ?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             `).bind(wallpaperId, reqUserId, inputName, finalUrl, r2Key, inputSize).run();
-            await env.DB.prepare(
-              "UPDATE users SET avatar_url = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
-            ).bind(finalUrl, reqUserId).run().catch(() => {
-            });
             await recordSyncItem(env.DB, reqUserId, wallpaperId, "wallpapers", {
               id: wallpaperId,
               name: inputName,
@@ -7071,10 +7073,6 @@ a:hover{transform:translateY(-2px)}
           try {
             await env.DB.prepare(
               "UPDATE user_wallpapers SET is_active = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
-            ).bind(reqUserId).run().catch(() => {
-            });
-            await env.DB.prepare(
-              "UPDATE users SET avatar_url = NULL, updated_at = CURRENT_TIMESTAMP WHERE id = ?"
             ).bind(reqUserId).run().catch(() => {
             });
             await recordSyncItem(env.DB, reqUserId, "wallpaper_reset", "wallpapers", {

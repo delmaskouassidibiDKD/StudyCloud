@@ -6,6 +6,7 @@
 
 import { StudyCloudAPI } from './api';
 import { safeLocalStorageSet } from '../utils/safeStorage';
+import { isWallpaperAvatarPollution } from '../utils/wallpaperHelper';
 
 export function getCurrentUserId(): string | null {
   return localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id') || null;
@@ -126,7 +127,11 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
         if (d.user.filiere) localStorage.setItem('unifolder_user_filiere', d.user.filiere);
         if (d.user.email) localStorage.setItem('unifolder_user_email', d.user.email);
         if (d.user.country) localStorage.setItem('unifolder_user_country', d.user.country);
-        if (d.user.avatar_url) localStorage.setItem('unifolder_user_avatar', d.user.avatar_url);
+        if (d.user.avatar_url && !isWallpaperAvatarPollution(d.user.avatar_url)) {
+          localStorage.setItem('unifolder_user_avatar', d.user.avatar_url);
+        } else {
+          localStorage.removeItem('unifolder_user_avatar');
+        }
       }
 
       // 2. Matières

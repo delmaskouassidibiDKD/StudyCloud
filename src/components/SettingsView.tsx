@@ -9,6 +9,7 @@ import { ServiceProposalView } from './ServiceProposalView';
 import studentLogo from '../assets/student-logo.jpg';
 import proLogo from '../assets/pro-logo.jpg';
 import { useBackHandler } from '../services/backNavigation';
+import { isWallpaperAvatarPollution } from '../utils/wallpaperHelper';
 
 export const SettingsView: React.FC = () => {
   const { user, logout } = useAuth();
@@ -96,7 +97,15 @@ export const SettingsView: React.FC = () => {
   const userSchool = user?.school || localStorage.getItem('unifolder_user_school') || 'CME';
   const userFiliere = user?.filiere || localStorage.getItem('unifolder_user_filiere') || 'Électrotechniques';
   const userEmail = user?.email || localStorage.getItem('unifolder_user_email') || 'delmaskouassidibi@gmail.com';
-  const userAvatar = user?.avatar_url || localStorage.getItem('unifolder_user_avatar') || '';
+
+  // Récupérer uniquement la vraie photo de profil de la base de données (jamais le fond d'écran)
+  const rawDbAvatar = user?.avatar_url && !isWallpaperAvatarPollution(user.avatar_url) ? user.avatar_url : '';
+  const lsAvatarRaw = localStorage.getItem('unifolder_user_avatar') || '';
+  const safeLsAvatar = !isWallpaperAvatarPollution(lsAvatarRaw) ? lsAvatarRaw : '';
+  if (lsAvatarRaw && !safeLsAvatar) {
+    try { localStorage.removeItem('unifolder_user_avatar'); } catch {}
+  }
+  const userAvatar = rawDbAvatar || safeLsAvatar || '';
 
   // Détection du statut étudiant ou profil standard / professionnel
   const isStudent = user?.is_student === 1 || 
@@ -109,9 +118,10 @@ export const SettingsView: React.FC = () => {
                      (userFiliere && userFiliere !== 'Particulier / Professionnel' && userFiliere !== 'Professionnel / Particulier' && userFiliere !== 'Général' ? userFiliere : '') ||
                      (userSchool && userSchool !== 'Particulier / Professionnel' && userSchool !== 'Professionnel / Particulier' ? userSchool : '');
 
-  // Choix du logo/avatar adapté : si l'utilisateur n'a pas uploadé une photo personnelle, utiliser le logo officiel correspondant à son profil
+  // Choix du logo/avatar adapté : si l'utilisateur n'a pas mis de photo personnelle en BDD, afficher le logo générique
   const isCustomUploaded = Boolean(userAvatar && !userAvatar.startsWith('data:image/svg+xml'));
-  const displayAvatar = isCustomUploaded ? userAvatar : (!isStudent ? proLogo : studentLogo);
+  const genericAvatar = !isStudent ? proLogo : studentLogo;
+  const displayAvatar = isCustomUploaded ? userAvatar : genericAvatar;
 
   return (
     <div className="max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-8 py-6 md:py-10 flex flex-col items-center text-center space-y-6 md:space-y-8 relative">
@@ -124,7 +134,17 @@ export const SettingsView: React.FC = () => {
           className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-white border-3 border-stone-800 flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden my-1 md:my-2 transition-all hover:scale-105 cursor-pointer relative group"
         >
           {displayAvatar ? (
-            <img src={displayAvatar} alt={userName} className="w-full h-full object-cover" />
+            <img
+              src={displayAvatar}
+              alt={userName}
+              className="w-full h-full object-cover"
+              onError={(e) => {
+                const imgEl = e.currentTarget;
+                if (imgEl.src !== genericAvatar) {
+                  imgEl.src = genericAvatar;
+                }
+              }}
+            />
           ) : (
             <User className="w-12 h-12 md:w-16 md:h-16" />
           )}
