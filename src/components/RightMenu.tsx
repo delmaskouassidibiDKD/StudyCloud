@@ -1387,8 +1387,8 @@ export function RightMenu({
           )}
         </div>
 
-        {/* Côté droit : Bouton 3 traits pour ouvrir le menu latéral */}
-        <div className="flex items-center gap-2">
+        {/* Côté droit : Bouton 3 traits pour ouvrir le menu latéral (toujours à droite même sur téléphone grâce à ml-auto) */}
+        <div className="flex items-center gap-2 ml-auto">
           <button
             type="button"
             onClick={() => setIsRightDrawerOpen((prev) => !prev)}

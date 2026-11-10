@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Globe, Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square, WifiOff, RotateCw, AlertTriangle, Coins, ArrowRight } from 'lucide-react';
+import { Globe, Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Palette, HelpCircle, Download, Square, WifiOff, RotateCw, AlertTriangle, Coins, ArrowRight, Menu, Pin } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
@@ -143,9 +143,27 @@ interface Message {
 interface ConversationItem {
   id: string;
   title: string;
+  is_pinned?: boolean | number;
+  pinned_at?: string | null;
   created_at?: string;
   updated_at?: string;
 }
+
+const sortConversations = (list: ConversationItem[]): ConversationItem[] => {
+  return [...list].sort((a, b) => {
+    const aPinned = a.is_pinned ? 1 : 0;
+    const bPinned = b.is_pinned ? 1 : 0;
+    if (aPinned !== bPinned) return bPinned - aPinned; // Épinglés toujours en haut
+    if (aPinned === 1 && bPinned === 1) {
+      const aPinTime = a.pinned_at || '';
+      const bPinTime = b.pinned_at || '';
+      if (aPinTime !== bPinTime) return bPinTime.localeCompare(aPinTime); // Dernier épinglage en tête
+    }
+    const aUpd = a.updated_at || a.created_at || '';
+    const bUpd = b.updated_at || b.created_at || '';
+    return bUpd.localeCompare(aUpd);
+  });
+};
 
 export function stripWorkerAi(name?: string | null): string {
   if (!name || typeof name !== 'string') return '';
@@ -3329,6 +3347,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [historySearch, setHistorySearch] = useState('');
+  const [openConvMenuId, setOpenConvMenuId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<Message[]>(() => {
     const savedId = safeGetItem('studycloud_current_conversation_id');
@@ -4036,8 +4055,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       const res = await StudyCloudAPI.getAiConversations(currentUserId);
       if (res && res.success && Array.isArray(res.data)) {
         // Filtrer strictement les conversations réelles du chat en éliminant les créations directes
-        const filtered = res.data.filter((c: any) => !c.id?.startsWith('creation-') && !c.title?.startsWith('Conçois un '));
+        const filtered = sortConversations(res.data.filter((c: any) => !c.id?.startsWith('creation-') && !c.title?.startsWith('Conçois un ')));
         setConversations(filtered);
+        safeSetItem('studycloud_conversations_cache', JSON.stringify(filtered));
       }
     } catch (e) {
       // Fallback localStorage
@@ -4046,7 +4066,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         try {
           const parsed = JSON.parse(local);
           if (Array.isArray(parsed)) {
-            setConversations(parsed.filter((c: any) => !c.id?.startsWith('creation-') && !c.title?.startsWith('Conçois un ')));
+            setConversations(sortConversations(parsed.filter((c: any) => !c.id?.startsWith('creation-') && !c.title?.startsWith('Conçois un '))));
           }
         } catch { }
       }
@@ -4423,7 +4443,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   }, []);
 
   // Création d'une nouvelle session de discussion
-  const handleStartNewConversation = () => {
+  const handleStartNewConversation = (keepDrawerOpen: boolean | any = false) => {
     const newId = 'conv-' + Date.now();
     currentConversationIdRef.current = newId;
     setCurrentConversationId(newId);
@@ -4435,7 +4455,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     delete inFlightConvsRef.current[newId];
     setConversationWaiting(newId, false);
     setConversationTyping(newId, false);
-    setIsHistoryDrawerOpen(false);
+    if (keepDrawerOpen !== true) {
+      setIsHistoryDrawerOpen(false);
+    }
     setShowProposalBar(true);
 
     // DÉTACHEMENT STRICT : aucun document de la session précédente ne doit persister
@@ -4464,7 +4486,45 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }).catch(() => { });
   };
 
-  // Suppression d'une session
+  // Épingler / Désépingler une session (liée à l'utilisateur en base D1, le dernier épinglage passe en tête)
+  const handleTogglePinConversation = async (conv: ConversationItem) => {
+    const currentlyPinned = Boolean(conv.is_pinned);
+    const nextPinned = !currentlyPinned;
+    const nextPinnedAt = nextPinned ? new Date().toISOString() : null;
+
+    // Mise à jour optimiste instantanée + tri immédiat (épinglés en haut, dernier épinglé en tête)
+    setConversations(prev => {
+      const updated = prev.map(c =>
+        c.id === conv.id ? { ...c, is_pinned: nextPinned ? 1 : 0, pinned_at: nextPinnedAt } : c
+      );
+      const sorted = sortConversations(updated);
+      safeSetItem('studycloud_conversations_cache', JSON.stringify(sorted));
+      return sorted;
+    });
+
+    try {
+      const res = await StudyCloudAPI.pinAiConversation({
+        id: conv.id,
+        userId: currentUserId,
+        isPinned: nextPinned,
+        title: conv.title,
+      });
+      if (res && res.success && res.data) {
+        setConversations(prev => {
+          const updated = prev.map(c =>
+            c.id === conv.id ? { ...c, is_pinned: res.data.is_pinned, pinned_at: res.data.pinned_at } : c
+          );
+          const sorted = sortConversations(updated);
+          safeSetItem('studycloud_conversations_cache', JSON.stringify(sorted));
+          return sorted;
+        });
+      }
+    } catch (err) {
+      console.warn('[AssistantChat] Erreur épinglage conversation:', err);
+    }
+  };
+
+  // Suppression d'une session (mise à jour immédiate + suppression en base D1)
   const handleDeleteConversation = async (convId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
@@ -4472,17 +4532,22 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         try { activeControllersByConvRef.current[convId].abort(); } catch { }
         delete activeControllersByConvRef.current[convId];
       }
-      // aiBackgroundManager.clearTask(convId);
 
-      await StudyCloudAPI.deleteAiConversation(convId);
-      setConversations(prev => prev.filter(c => c.id !== convId));
+      // Retrait immédiat côté UI pour réactivité optimale sur mobile
+      setConversations(prev => {
+        const updated = prev.filter(c => c.id !== convId);
+        safeSetItem('studycloud_conversations_cache', JSON.stringify(updated));
+        return updated;
+      });
       safeLocalStorageRemove(`studycloud_conv_msgs_${convId}`);
       safeLocalStorageRemove(`studycloud_conv_creations_${convId}`);
       safeLocalStorageRemove(`studycloud_analyzed_media_${currentUserId}_${convId}`);
       delete analyzedMediaPerConvRef.current[`${currentUserId}_${convId}`];
       if (currentConversationId === convId) {
-        handleStartNewConversation();
+        handleStartNewConversation(true);
       }
+
+      await StudyCloudAPI.deleteAiConversation(convId);
     } catch (err) {
       console.warn('[AssistantChat] Erreur suppression session:', err);
     }
@@ -6834,9 +6899,11 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
     sendMessage(prompt, toolType);
   };
 
-  // Groupement temporel des conversations façon Gemini (Aujourd'hui, Hier, 7 derniers jours, Plus ancien)
-  const filteredConversations = conversations.filter(c =>
-    !historySearch.trim() || c.title.toLowerCase().includes(historySearch.toLowerCase())
+  // Groupement et tri des conversations (épinglés toujours en haut par ordre d'épinglage, puis plus récents)
+  const filteredConversations = sortConversations(
+    conversations.filter(c =>
+      !historySearch.trim() || c.title.toLowerCase().includes(historySearch.toLowerCase())
+    )
   );
 
   return (
@@ -6845,24 +6912,18 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
       {/* EN-TÊTE SUPÉRIEUR (BOUTON HISTORIQUE, NOUVELLE CONVERSATION, PUISSANT/MOYEN, FERMER) */}
       <div className="flex items-center justify-between px-2 sm:px-4 py-1.5 sm:py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 relative z-30 shadow-sm w-full max-w-full flex-nowrap gap-1 sm:gap-2">
         <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-nowrap shrink">
-          {/* Bouton Historique */}
+          {/* Bouton Historique (sans badge numérique afin de laisser toute la place au mot Historique) */}
           <button
             type="button"
             onClick={(e) => {
               e.stopPropagation();
               setIsHistoryDrawerOpen(true);
             }}
-            className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] sm:text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0 touch-manipulation"
+            className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-[11px] sm:text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0 touch-manipulation"
             title="Historique des discussions"
           >
             <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-            <span className="hidden sm:inline">{tStudy("history_button", "Historique")}</span>
-            <span className="sm:hidden text-[11px]">Hist.</span>
-            {conversations.length > 0 && (
-              <span className="ml-0.5 px-1 sm:px-1.5 py-0.2 rounded-full bg-orange-500/25 text-orange-400 text-[9px] sm:text-[10px] font-black">
-                {conversations.length}
-              </span>
-            )}
+            <span>{tStudy("history_button", "Historique")}</span>
           </button>
 
           {/* Bouton + (Nouvelle discussion) */}
@@ -7035,79 +7096,100 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setIsHistoryDrawerOpen(false);
+              setOpenConvMenuId(null);
             }
           }}
         >
           <div
             className="w-full max-w-[310px] sm:max-w-[340px] h-full bg-[#1e2024] border-r border-zinc-800 flex flex-col p-4 shadow-2xl animate-slideInLeft"
-            onClick={e => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              setOpenConvMenuId(null);
+            }}
           >
             {/* Drawer Header */}
-            <div className="flex items-center justify-between gap-2 pb-3 border-b border-zinc-700/60 mb-3">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                <h3 className="text-xs sm:text-[13px] font-bold text-white whitespace-nowrap truncate">{tStudy("recent_discussions", "Discussions récentes")}</h3>
+            <div className="flex flex-col gap-1.5 pb-3 border-b border-zinc-700/60 mb-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                  <h3 className="text-xs sm:text-[13px] font-bold text-white whitespace-nowrap truncate">{tStudy("recent_discussions", "Discussions récentes")}</h3>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0 relative" ref={drawerLangMenuRef}>
+                  {/* Bouton sélecteur de langue (strictement horizontal : Globe + Drapeau + Code + Flèche) */}
+                  <button
+                    type="button"
+                    onClick={() => setIsDrawerLangMenuOpen(!isDrawerLangMenuOpen)}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/80 text-zinc-200 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 whitespace-nowrap shrink-0 select-none"
+                    title={`Langue de l'IA : ${currentChatLangObj.name} (${currentChatLangObj.nativeName})`}
+                  >
+                    <Globe className="w-3 h-3 text-orange-400 shrink-0" />
+                    <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap leading-none shrink-0">
+                      <span>{currentChatLangObj.flag}</span>
+                      <span className="font-bold tracking-tight">{currentChatLangObj.code.toUpperCase()}</span>
+                    </span>
+                    <ChevronDown className="w-2.5 h-2.5 text-zinc-400 shrink-0" />
+                  </button>
+
+                  {/* Dropdown Menu des Langues */}
+                  {isDrawerLangMenuOpen && (
+                    <div className="absolute right-6 top-full mt-1.5 w-52 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
+                      <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
+                        <span>Langue de l'IA</span>
+                        <span className="text-[9px] text-orange-400 font-semibold">{currentChatLangObj.name}</span>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto py-1 custom-scrollbar">
+                        {SUPPORTED_CHAT_LANGUAGES.map((lang) => {
+                          const isSelected = chatLanguage === lang.code;
+                          return (
+                            <button
+                              key={lang.code}
+                              type="button"
+                              onClick={() => {
+                                handleSelectLanguage(lang.code);
+                                setIsDrawerLangMenuOpen(false);
+                              }}
+                              className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left cursor-pointer transition-colors ${
+                                isSelected
+                                  ? 'bg-orange-500/15 text-orange-400 font-bold'
+                                  : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
+                              }`}
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm">{lang.flag}</span>
+                                <span>{lang.name}</span>
+                                <span className="text-[10px] text-zinc-500">({lang.nativeName})</span>
+                              </div>
+                              {isSelected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <button
+                    onClick={() => {
+                      setIsHistoryDrawerOpen(false);
+                      setOpenConvMenuId(null);
+                    }}
+                    className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 shrink-0 relative" ref={drawerLangMenuRef}>
-                {/* Bouton sélecteur de langue (strictement horizontal : Globe + Drapeau + Code + Flèche) */}
-                <button
-                  type="button"
-                  onClick={() => setIsDrawerLangMenuOpen(!isDrawerLangMenuOpen)}
-                  className="inline-flex items-center gap-1.5 px-2 py-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700/80 text-zinc-200 text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95 whitespace-nowrap shrink-0 select-none"
-                  title={`Langue de l'IA : ${currentChatLangObj.name} (${currentChatLangObj.nativeName})`}
-                >
-                  <Globe className="w-3 h-3 text-orange-400 shrink-0" />
-                  <span className="inline-flex items-center gap-1 text-xs whitespace-nowrap leading-none shrink-0">
-                    <span>{currentChatLangObj.flag}</span>
-                    <span className="font-bold tracking-tight">{currentChatLangObj.code.toUpperCase()}</span>
+
+              {/* Compteur des discussions affiché sous "Discussions récentes" (image 3) */}
+              {conversations.length > 0 && (
+                <div className="flex items-center gap-1.5 pl-5">
+                  <span className="px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-[10px] font-black border border-orange-500/30">
+                    {conversations.length}
                   </span>
-                  <ChevronDown className="w-2.5 h-2.5 text-zinc-400 shrink-0" />
-                </button>
-
-                {/* Dropdown Menu des Langues */}
-                {isDrawerLangMenuOpen && (
-                  <div className="absolute right-6 top-full mt-1.5 w-52 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md">
-                    <div className="px-3 py-1.5 border-b border-zinc-800/80 text-[10px] font-black text-zinc-400 uppercase tracking-wider flex items-center justify-between">
-                      <span>Langue de l'IA</span>
-                      <span className="text-[9px] text-orange-400 font-semibold">{currentChatLangObj.name}</span>
-                    </div>
-                    <div className="max-h-60 overflow-y-auto py-1 custom-scrollbar">
-                      {SUPPORTED_CHAT_LANGUAGES.map((lang) => {
-                        const isSelected = chatLanguage === lang.code;
-                        return (
-                          <button
-                            key={lang.code}
-                            type="button"
-                            onClick={() => {
-                              handleSelectLanguage(lang.code);
-                              setIsDrawerLangMenuOpen(false);
-                            }}
-                            className={`w-full flex items-center justify-between px-3 py-1.5 text-xs text-left cursor-pointer transition-colors ${
-                              isSelected
-                                ? 'bg-orange-500/15 text-orange-400 font-bold'
-                                : 'text-zinc-300 hover:bg-zinc-800/80 hover:text-white'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2">
-                              <span className="text-sm">{lang.flag}</span>
-                              <span>{lang.name}</span>
-                              <span className="text-[10px] text-zinc-500">({lang.nativeName})</span>
-                            </div>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-orange-400 shrink-0" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  onClick={() => setIsHistoryDrawerOpen(false)}
-                  className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 cursor-pointer"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
+                  <span className="text-[11px] font-semibold text-zinc-400">
+                    {conversations.length > 1 ? 'discussions enregistrées' : 'discussion enregistrée'}
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* New Conversation Button inside drawer */}
@@ -7138,36 +7220,89 @@ DIRECTIVES STRICTES DE NON-RÉPÉTITION ET DE RENOUVELLEMENT :
                   {tStudy("no_discussion_found", "Aucune discussion trouvée")}
                 </div>
               ) : (
-                filteredConversations.map(conv => {
+                filteredConversations.map((conv, index) => {
                   const isActive = conv.id === currentConversationId;
+                  const isPinned = Boolean(conv.is_pinned);
+                  const isMenuOpen = openConvMenuId === conv.id;
+                  const openUpwards = index >= filteredConversations.length - 2 && filteredConversations.length > 3;
+
                   return (
                     <div
                       key={conv.id}
                       onClick={() => {
+                        setOpenConvMenuId(null);
                         setCurrentConversationId(conv.id);
                         setCurrentConversationTitle(conv.title);
                         setIsHistoryDrawerOpen(false);
                       }}
-                      className={`p-2.5 rounded-xl border transition-all cursor-pointer group flex items-center justify-between gap-2 ${isActive
+                      className={`relative p-2.5 rounded-xl border transition-all cursor-pointer group flex items-center justify-between gap-2 ${isMenuOpen ? 'z-30' : 'z-10'} ${isActive
                           ? 'bg-orange-500/15 border-orange-500/50 text-white shadow-sm'
-                          : 'bg-[#26282d] border-zinc-800 text-zinc-300 hover:bg-[#2c2f35] hover:border-zinc-700'
+                          : isPinned
+                            ? 'bg-amber-500/10 border-amber-500/35 text-zinc-100 hover:bg-amber-500/15 hover:border-amber-500/50'
+                            : 'bg-[#26282d] border-zinc-800 text-zinc-300 hover:bg-[#2c2f35] hover:border-zinc-700'
                         }`}
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-orange-400' : 'text-zinc-400'}`} />
+                        {isPinned ? (
+                          <Pin className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0 -rotate-45" />
+                        ) : (
+                          <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-orange-400' : 'text-zinc-400'}`} />
+                        )}
                         <span className="text-xs font-bold truncate">
                           {conv.title}
                         </span>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={(e) => handleDeleteConversation(conv.id, e)}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer shrink-0"
-                        title="Supprimer cette discussion"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
+                      {/* Bouton 3 traits toujours visible (téléphone & ordinateur) pour ouvrir le menu Épingler / Supprimer */}
+                      <div className="relative shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenConvMenuId(isMenuOpen ? null : conv.id);
+                          }}
+                          className={`p-1.5 rounded-lg transition-all cursor-pointer flex items-center justify-center touch-manipulation ${
+                            isMenuOpen
+                              ? 'bg-orange-500/20 text-orange-400 border border-orange-500/40'
+                              : 'text-zinc-400 hover:text-white hover:bg-zinc-700/70 active:scale-95'
+                          }`}
+                          title="Options de la discussion"
+                          aria-label="Options de la discussion"
+                        >
+                          <Menu className="w-3.5 h-3.5" />
+                        </button>
+
+                        {/* Petit menu contextuel (Épingler / Supprimer) */}
+                        {isMenuOpen && (
+                          <div className={`absolute right-0 ${openUpwards ? 'bottom-full mb-1' : 'top-full mt-1'} w-44 bg-[#181a20] border border-zinc-700 rounded-xl shadow-2xl py-1.5 z-50 animate-fadeIn backdrop-blur-md`}>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenConvMenuId(null);
+                                handleTogglePinConversation(conv);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-amber-500/15 hover:text-amber-300 transition-colors cursor-pointer text-left"
+                            >
+                              <Pin className={`w-3.5 h-3.5 shrink-0 ${isPinned ? 'text-amber-400 fill-amber-400 -rotate-45' : 'text-amber-400'}`} />
+                              <span>{isPinned ? 'Désépingler' : 'Épingler en haut'}</span>
+                            </button>
+                            <div className="my-1 border-t border-zinc-800/80" />
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenConvMenuId(null);
+                                handleDeleteConversation(conv.id, e);
+                              }}
+                              className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-rose-400 hover:bg-rose-500/15 hover:text-rose-300 transition-colors cursor-pointer text-left"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                              <span>Supprimer</span>
+                            </button>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   );
                 })

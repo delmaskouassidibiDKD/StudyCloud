@@ -2324,6 +2324,13 @@ export const StudyCloudAPI = {
     });
   },
 
+  async pinAiConversation(data: { id: string; userId: string; isPinned: boolean; title?: string }) {
+    return aiRequest<{ success: boolean; data: { id: string; is_pinned: number; pinned_at: string | null } }>('/api/ai/conversations/pin', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
   async getAiConversationMessages(conversationId: string) {
     return aiRequest<{ success: boolean; data: any[] }>(`/api/ai/messages?conversationId=${encodeURIComponent(conversationId)}`);
   },

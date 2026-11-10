@@ -1025,7 +1025,7 @@ export default {
     // Support CORS pour les appels de l'espace d'étude StudyCloud
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
-      "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
+      "Access-Control-Allow-Methods": "GET, POST, PUT, PATCH, DELETE, OPTIONS",
       "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id",
     };
 
@@ -2243,7 +2243,23 @@ CONSIGNES STRICTES DE CONTINUATION :
     // GESTION DE L'HISTORIQUE DES CONVERSATIONS & MESSAGES (CLOUDFLARE D1)
     // ══════════════════════════════════════════════════════════════════════════════
 
-    // 1. Liste des conversations de l'utilisateur (Historique Récent)
+    const ensureConversationsSchema = async (db: D1Database) => {
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS conversations (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          is_pinned INTEGER DEFAULT 0,
+          pinned_at TEXT,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run().catch(() => { });
+      await db.prepare("ALTER TABLE conversations ADD COLUMN is_pinned INTEGER DEFAULT 0").run().catch(() => { });
+      await db.prepare("ALTER TABLE conversations ADD COLUMN pinned_at TEXT").run().catch(() => { });
+    };
+
+    // 1. Liste des conversations de l'utilisateur (Historique Récent, épinglés toujours en tête du plus récent épinglage au plus ancien)
     if (url.pathname === "/api/ai/conversations" && req.method === "GET") {
       try {
         const userId = url.searchParams.get("userId") || req.headers.get("x-user-id") || "default-user";
@@ -2255,18 +2271,10 @@ CONSIGNES STRICTES DE CONTINUATION :
           });
         }
 
-        await db.prepare(`
-          CREATE TABLE IF NOT EXISTS conversations (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            title TEXT NOT NULL,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-          )
-        `).run().catch(() => { });
+        await ensureConversationsSchema(db);
 
         const { results } = await db.prepare(
-          "SELECT id, user_id, title, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY updated_at DESC, created_at DESC"
+          "SELECT id, user_id, title, COALESCE(is_pinned, 0) AS is_pinned, pinned_at, created_at, updated_at FROM conversations WHERE user_id = ? ORDER BY COALESCE(is_pinned, 0) DESC, COALESCE(pinned_at, '') DESC, updated_at DESC, created_at DESC"
         ).bind(userId).all();
 
         return new Response(JSON.stringify({
@@ -2295,15 +2303,7 @@ CONSIGNES STRICTES DE CONTINUATION :
 
         const db = getD1Database();
         if (db) {
-          await db.prepare(`
-            CREATE TABLE IF NOT EXISTS conversations (
-              id TEXT PRIMARY KEY,
-              user_id TEXT NOT NULL,
-              title TEXT NOT NULL,
-              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-          `).run().catch(() => { });
+          await ensureConversationsSchema(db);
 
           await db.prepare(`
             INSERT INTO conversations (id, user_id, title, created_at, updated_at)
@@ -2321,6 +2321,56 @@ CONSIGNES STRICTES DE CONTINUATION :
         });
       } catch (err: any) {
         logger.error("Erreur POST /api/ai/conversations", { event: "post_conversations_error", error: err });
+        return new Response(JSON.stringify({ success: false, error: err?.message || String(err) }), {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      }
+    }
+
+    // 2b. Épingler / Désépingler une conversation liée à l'utilisateur
+    if (url.pathname === "/api/ai/conversations/pin" && (req.method === "POST" || req.method === "PATCH")) {
+      try {
+        const body: any = await req.json().catch(() => ({}));
+        const id = String(body.id || "").trim();
+        const userId = String(body.userId || req.headers.get("x-user-id") || "default-user").trim();
+        const isPinned = body.isPinned === true || body.isPinned === 1 ? 1 : 0;
+        const pinnedAt = isPinned ? new Date().toISOString() : null;
+
+        if (!id) {
+          return new Response(JSON.stringify({ success: false, error: "ID manquant" }), {
+            status: 400,
+            headers: { "Content-Type": "application/json", ...corsHeaders },
+          });
+        }
+
+        const db = getD1Database();
+        if (db) {
+          await ensureConversationsSchema(db);
+          const existing = await db.prepare("SELECT id FROM conversations WHERE id = ? AND user_id = ?").bind(id, userId).first();
+          if (existing) {
+            await db.prepare(
+              "UPDATE conversations SET is_pinned = ?, pinned_at = ? WHERE id = ? AND user_id = ?"
+            ).bind(isPinned, pinnedAt, id, userId).run();
+          } else {
+            const title = String(body.title || "Discussion IA").trim();
+            await db.prepare(`
+              INSERT INTO conversations (id, user_id, title, is_pinned, pinned_at, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+              ON CONFLICT(id) DO UPDATE SET is_pinned = excluded.is_pinned, pinned_at = excluded.pinned_at
+            `).bind(id, userId, title, isPinned, pinnedAt).run();
+          }
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          data: { id, is_pinned: isPinned, pinned_at: pinnedAt }
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        });
+      } catch (err: any) {
+        logger.error("Erreur POST /api/ai/conversations/pin", { event: "pin_conversation_error", error: err });
         return new Response(JSON.stringify({ success: false, error: err?.message || String(err) }), {
           status: 500,
           headers: { "Content-Type": "application/json", ...corsHeaders },
