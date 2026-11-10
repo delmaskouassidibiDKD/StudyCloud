@@ -18,7 +18,7 @@ import { CreateShareLinkModal } from './components/CreateShareLinkModal';
 import { PublishFileView } from './components/PublishFileView';
 import { INITIAL_FOLDERS } from './data/initialData';
 import { SharedFolder, NavigationTab } from './types';
-import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock, Mic, Loader2, Smartphone, Folder, FileText, Sparkles, Pause, Play } from 'lucide-react';
+import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock, Mic, Loader2, Smartphone, Folder, FileText, Sparkles, Pause, Play, CloudOff } from 'lucide-react';
 import { FileIconBadge } from './components/FileIconBadge';
 import { AssistantChat } from './components/AssistantChat';
 import { DnaLogo } from './components/DnaLogo';
@@ -249,7 +249,7 @@ export default function App() {
       window.dispatchEvent(new CustomEvent('studycloud_online_reconnected'));
       setNetworkBanner({
         type: 'online',
-        message: '🟢 Connexion rétablie • Synchronisation automatique des données...',
+        message: 'Connexion rétablie',
       });
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
@@ -261,7 +261,7 @@ export default function App() {
       if (timer) clearTimeout(timer);
       setNetworkBanner({
         type: 'offline',
-        message: '🔴 Connexion interrompue • Mode hors ligne actif',
+        message: 'Connexion Internet interrompue',
       });
     };
 
@@ -1868,17 +1868,14 @@ export default function App() {
 
   return (
     <div className={`min-h-dvh ${currentTab === 'folders' ? 'h-dvh max-h-dvh overflow-hidden' : ''} ${isCloudSkyTab ? 'studycloud-clouds-bg' : isProfileTab ? 'studycloud-profile-bg' : currentTab === 'library' ? 'bg-[#DDDDDD]' : currentTab === 'folders' ? 'bg-[#0a0e17]' : 'bg-[#E9D7C9]'} dark:bg-[#0b0f19] flex flex-col md:flex-row font-sans text-stone-900 dark:text-slate-100 transition-colors duration-200`}>
-      {/* Bannière flottante de statut réseau / reconnexion automatique */}
+      {/* Bannière flottante de statut réseau (carrée, noire, petit nuage barré, sans message supplémentaire) */}
       {networkBanner && (
         <div
           role="status"
           aria-live="polite"
-          className={`fixed top-4 left-1/2 -translate-x-1/2 z-[999999] px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-md border text-xs sm:text-sm font-semibold flex items-center gap-2 pointer-events-none transition-all duration-300 animate-in fade-in slide-in-from-top-4 ${
-            networkBanner.type === 'online'
-              ? 'bg-emerald-600/95 text-white border-emerald-400/50 shadow-emerald-500/25'
-              : 'bg-rose-600/95 text-white border-rose-400/50 shadow-rose-500/25'
-          }`}
+          className="fixed top-4 left-1/2 -translate-x-1/2 z-[999999] px-4 py-2.5 rounded-none bg-black text-white border border-zinc-800 shadow-2xl text-xs sm:text-sm font-semibold flex items-center gap-2 pointer-events-none transition-all duration-300 animate-in fade-in slide-in-from-top-4 whitespace-nowrap"
         >
+          <CloudOff className="w-4 h-4 text-white shrink-0" />
           <span>{networkBanner.message}</span>
         </div>
       )}
