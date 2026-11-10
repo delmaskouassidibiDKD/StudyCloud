@@ -1079,11 +1079,69 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         );
         break;
 
+      case 'subscriptions':
+        label = 'Abonnements';
+        defaultAction = () => {
+          setPricingInitialTab('storage');
+          setPreviousViewMode(viewMode === 'abondamment' ? 'home' : viewMode);
+          setViewMode('abondamment');
+        };
+        iconContent = (
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="p2SubCardBackGrad" x1="12" y1="14" x2="88" y2="86" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#065F46" />
+                  <stop offset="100%" stopColor="#0F172A" />
+                </linearGradient>
+                <linearGradient id="p2SubCardFrontGrad" x1="14" y1="12" x2="86" y2="84" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#10B981" />
+                  <stop offset="48%" stopColor="#0D9488" />
+                  <stop offset="100%" stopColor="#1E293B" />
+                </linearGradient>
+                <linearGradient id="p2SubGoldGrad" x1="25" y1="22" x2="75" y2="68" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#FEF08A" />
+                  <stop offset="45%" stopColor="#FBBF24" />
+                  <stop offset="100%" stopColor="#D97706" />
+                </linearGradient>
+                <linearGradient id="p2SubGlossGrad" x1="20" y1="14" x2="65" y2="55" gradientUnits="userSpaceOnUse">
+                  <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.45" />
+                  <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              {/* Base 3D épaisseur sombre */}
+              <rect x="13" y="19" width="74" height="68" rx="19" fill="url(#p2SubCardBackGrad)" stroke="#18181B" strokeWidth="1.4" />
+              {/* Carte principale 3D */}
+              <rect x="13" y="13" width="74" height="68" rx="19" fill="url(#p2SubCardFrontGrad)" stroke="#18181B" strokeWidth="1.4" />
+              {/* Reflet vitré supérieur */}
+              <path d="M 30 14 H 70 C 79 14 85 20 85 29 V 38 C 68 32 38 30 15 44 V 29 C 15 20 21 14 30 14 Z" fill="url(#p2SubGlossGrad)" />
+              {/* Couronne 3D dorée centrale */}
+              <path
+                d="M 27 56 L 24 35 L 39 44 L 50 27 L 61 44 L 76 35 L 73 56 Z"
+                fill="url(#p2SubGoldGrad)"
+                stroke="#78350F"
+                strokeWidth="1.4"
+                strokeLinejoin="round"
+              />
+              {/* Socle de la couronne */}
+              <rect x="27" y="56" width="46" height="6" rx="3" fill="#FDE047" stroke="#78350F" strokeWidth="1.2" />
+              {/* Joyaux sur les pointes */}
+              <circle cx="50" cy="26" r="3" fill="#FEF9C3" stroke="#78350F" strokeWidth="1" />
+              <circle cx="24" cy="34" r="2.5" fill="#FEF08A" stroke="#78350F" strokeWidth="1" />
+              <circle cx="76" cy="34" r="2.5" fill="#FEF08A" stroke="#78350F" strokeWidth="1" />
+              {/* Éclat d'étoile dorée */}
+              <path d="M 73 20 L 74.6 24.4 L 79 26 L 74.6 27.6 L 73 32 L 71.4 27.6 L 67 26 L 71.4 24.4 Z" fill="#FEF08A" />
+              {/* Bandeau VIP doré en bas */}
+              <rect x="27" y="67" width="46" height="15" rx="5" fill="#0F172A" stroke="#FBBF24" strokeWidth="1.2" />
+              <text x="50" y="77.5" fill="#FDE047" fontSize="8.5" fontWeight="900" textAnchor="middle" letterSpacing="1.2">PREMIUM</text>
+            </svg>
+          </div>
+        );
+        break;
+
       default:
         return null;
     }
-
-    const isMobileOnlyApp = id === 'ai-subscriptions';
 
     return (
       <div
@@ -1096,7 +1154,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           }
           defaultAction();
         }}
-        className={`${isMobileOnlyApp ? 'flex md:hidden' : 'flex'} group flex-col items-center cursor-pointer w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full transition-transform duration-200 select-none`}
+        className="flex group flex-col items-center cursor-pointer w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full transition-transform duration-200 select-none"
       >
         <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 lg:w-20 lg:h-20 flex items-center justify-center transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_10px_24px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_14px_28px_rgba(0,0,0,0.28)] group-hover:scale-110 active:scale-95">
           {iconContent}
@@ -2257,9 +2315,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
               {/* PAGE 1 : Écran d'accueil principal à droite */}
               <div className="w-1/2 shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start">
-                {/* Sur mobile : 4 blocs par ligne (inclut Abonnements IA) | Sur desktop : 10 colonnes régulières parfaitement alignées */}
+                {/* Sur mobile : 4 blocs par ligne (Crédits IA + Abonnements sur la 3e ligne) | Sur desktop : 10 colonnes avec Crédits IA et Abonnements sur la 2e ligne */}
                 <div className="grid grid-cols-4 md:grid md:grid-cols-10 md:w-full items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-x-2.5 lg:gap-x-4 md:gap-y-4 gap-x-1.5 sm:gap-x-3">
-                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'ai-subscriptions'].map((id, index) => renderBlock(id, index))}
+                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'ai-subscriptions', 'subscriptions'].map((id, index) => renderBlock(id, index))}
                 </div>
               </div>
             </div>
