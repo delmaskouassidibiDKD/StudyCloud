@@ -9,12 +9,7 @@ import {
   XCircle,
   CreditCard,
   Gift,
-  ShieldCheck,
-  TrendingUp,
   AlertCircle,
-  BarChart3,
-  Bot,
-  Layers,
   Info
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -503,7 +498,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   }
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F2EC] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto overflow-x-hidden transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-0 top-0 md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F2EC] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto overflow-x-hidden transition-colors duration-300">
 
       {/* ======================================================================
           HERO HEADER — Immersion Moderne & Luxueuse (Cyber/Améthyste & Ambre)
@@ -727,7 +722,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
       {/* ======================================================================
           CORPS PRINCIPAL — Layout moderne 2 colonnes (2/3 + 1/3) sur desktop
           ====================================================================== */}
-      <div className="px-4 md:px-6 lg:px-8 py-5 grid grid-cols-1 xl:grid-cols-3 gap-5 max-w-[1600px] mx-auto">
+      <div className="px-4 md:px-6 lg:px-8 pt-5 pb-24 md:pb-5 grid grid-cols-1 xl:grid-cols-3 gap-5 max-w-[1600px] mx-auto">
 
         {/* ── COLONNE GAUCHE (2/3 de la largeur) ── */}
         <div className="xl:col-span-2 space-y-5">
@@ -1117,118 +1112,6 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                 <Zap className="w-4 h-4 fill-current text-stone-900" />
                 <span>Recharger mes crédits</span>
               </button>
-            </div>
-          </div>
-
-          {/* Carte Détail du Portefeuille */}
-          <div className="bg-white dark:bg-[#131b2e] rounded-3xl p-5 border-2 border-stone-200 dark:border-slate-800 shadow-sm space-y-3">
-            <div className="flex items-center gap-2 border-b border-stone-100 dark:border-slate-800 pb-3">
-              <TrendingUp className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-              <h3 className="text-xs font-black uppercase tracking-wider text-stone-700 dark:text-slate-300">
-                Détail du portefeuille
-              </h3>
-            </div>
-
-            <div className="space-y-2.5 text-xs">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
-                  <Gift className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>{giftTitle}</span>
-                </div>
-                <div className="text-right">
-                  <span className="font-black text-stone-900 dark:text-white">
-                    {giftRemaining} Crédits
-                  </span>
-                  <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold block">
-                    {giftRemaining > 0 ? `(sur ${giftInitial} au départ • Prioritaire)` : '(Cadeau épuisé)'}
-                  </span>
-                </div>
-              </div>
-
-              {isDailyActive && (
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
-                    <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                    <span>Recharge quotidienne</span>
-                  </div>
-                  <span className="font-black text-emerald-600 dark:text-emerald-400">
-                    +{dailyFreeCredits} / jour
-                  </span>
-                </div>
-              )}
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
-                  <CreditCard className="w-3.5 h-3.5 text-blue-500" />
-                  <span>Extensions achetées</span>
-                </div>
-                <div className="text-right">
-                  <span className="font-black text-stone-900 dark:text-white">
-                    {paidRemaining} Crédits
-                  </span>
-                  {purchasedCredits > 0 && (
-                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-semibold block">
-                      {giftRemaining > 0 ? '(Crédits achetés • Préservés)' : '(Crédits achetés • En cours)'}
-                    </span>
-                  )}
-                </div>
-              </div>
-
-              <div className="h-px bg-stone-100 dark:border-slate-800" />
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-stone-700 dark:text-slate-300">
-                  <Zap className="w-3.5 h-3.5 text-amber-500" />
-                  <span className="font-bold">Total disponible</span>
-                </div>
-                <span className="font-black text-amber-600 dark:text-amber-400 text-sm">
-                  {creditsRemaining} Crédits
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
-                  <Bot className="w-3.5 h-3.5 text-purple-500" />
-                  <span>Consommation IA</span>
-                </div>
-                <div className="text-right">
-                  <span className="font-bold text-stone-900 dark:text-white">
-                    {consumedCredits} crédits
-                  </span>
-                  <span className="text-[10px] text-stone-400 block font-mono">
-                    {userCredits.tokensUsed.toLocaleString('fr-FR')} tokens
-                  </span>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-stone-600 dark:text-slate-400">
-                  <Layers className="w-3.5 h-3.5 text-orange-500" />
-                  <span>Taux proportionnel actif</span>
-                </div>
-                <span className="font-semibold text-stone-800 dark:text-slate-200 text-xs">
-                  1 crédit = {tokensPerCredit.toLocaleString('fr-FR')} tokens
-                </span>
-              </div>
-
-              <div className="h-px bg-stone-100 dark:border-slate-800" />
-
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2 text-stone-700 dark:text-slate-300">
-                  <BarChart3 className="w-3.5 h-3.5 text-stone-500" />
-                  <span className="font-bold">Formule active</span>
-                </div>
-                <span className="font-black text-stone-900 dark:text-white text-xs">
-                  {userCredits.plan}
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-stone-100 dark:border-slate-800">
-              <div className="flex items-center gap-1.5 text-[11px] text-stone-500 dark:text-slate-400">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                <span>Données chiffrées — Synchronisation instantanée Cloudflare D1.</span>
-              </div>
             </div>
           </div>
         </div>
