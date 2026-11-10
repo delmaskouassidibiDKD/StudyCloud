@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Search, Heart, Trash2, MoreVertical, X, FileText, Eye, EyeOff, Download, Star, Menu } from 'lucide-react';
+import { ArrowLeft, Search, Heart, Trash2, MoreVertical, X, Eye, EyeOff, Download, Star, Menu } from 'lucide-react';
 import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 import { getFileBlob, getFileBlobUrl, deleteFileBlob, formatFileSize } from '../services/localFileStorage';
 import { safeLocalStorageSet } from '../utils/safeStorage';
@@ -73,7 +73,7 @@ const loadLocalFavorites = (): FavoriteItem[] => {
           }
         });
       }
-    } catch (e) {}
+    } catch {}
   };
 
   checkKey('unifolder_files_menu_items');
@@ -181,33 +181,33 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
                 model: row.model ?? row.metadata?.model,
               }))
               .map((row: any) => ({
-              id: row.id,
-              name: row.name,
-              size: row.size || 0,
-              type: row.type || 'Fichier',
-              extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-              url: row.file_url || '',
-              previewUrl: row.preview_url || row.file_url || '',
-              thumbnailUrl: row.thumbnail_url || '',
-              r2Key: row.r2_key || undefined,
-              category: row.category || undefined,
-              sourceCategory: row.source_category || row.category || undefined,
-              originalCategory: row.original_category || undefined,
-              content: row.content || undefined,
-              metadata: row.metadata || undefined,
-              isFavorite: true,
-              matiere: row.matiere_id && row.matiere_id !== 'Mes fichiers' ? row.matiere_id : '',
-              importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-              createdAt: row.created_at,
-              timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-              isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
-            }));
+                id: row.id,
+                name: row.name,
+                size: row.size || 0,
+                type: row.type || 'Fichier',
+                extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+                url: row.file_url || '',
+                previewUrl: row.preview_url || row.file_url || '',
+                thumbnailUrl: row.thumbnail_url || '',
+                r2Key: row.r2_key || undefined,
+                category: row.category || undefined,
+                sourceCategory: row.source_category || row.category || undefined,
+                originalCategory: row.original_category || undefined,
+                content: row.content || undefined,
+                metadata: row.metadata || undefined,
+                isFavorite: true,
+                matiere: row.matiere_id && row.matiere_id !== 'Mes fichiers' ? row.matiere_id : '',
+                importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+                createdAt: row.created_at,
+                timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+                isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
+              }));
             setFavoriteFiles(filesWithUrls);
           } else {
             setFavoriteFiles([]);
           }
         })
-        .catch(() => {});
+        .catch(() => { });
     };
 
     fetchRemoteFavorites();
@@ -232,7 +232,7 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
     setFavoriteFiles((prev) => prev.filter((item) => item.id !== id));
     setOpenMenuId(null);
 
-    StudyCloudAPI.toggleFileFavorite(id, false).catch(() => {});
+    StudyCloudAPI.toggleFileFavorite(id, false).catch(() => { });
 
     // Mettre à jour dans toutes les listes locales
     const updateLocalKey = (key: string) => {
@@ -244,7 +244,7 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
           const updated = parsed.map((item: any) => (item.id === id ? { ...item, isFavorite: false } : item));
           safeLocalStorageSet(key, updated);
         }
-      } catch (e) {}
+      } catch {}
     };
 
     updateLocalKey('unifolder_files_menu_items');
@@ -266,7 +266,7 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
     setFavoriteFiles((prev) => prev.filter((item) => item.id !== id));
     setOpenMenuId(null);
     deleteFileBlob(id);
-    StudyCloudAPI.deleteFile(id).catch(() => {});
+    StudyCloudAPI.deleteFile(id).catch(() => { });
 
     const deleteFromLocalKey = (key: string) => {
       try {
@@ -277,7 +277,7 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
           const filtered = parsed.filter((item: any) => item.id !== id);
           safeLocalStorageSet(key, filtered);
         }
-      } catch (e) {}
+      } catch {}
     };
 
     deleteFromLocalKey('unifolder_files_menu_items');
@@ -329,11 +329,10 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
               e.stopPropagation();
               setIsPreviewMode((prev) => !prev);
             }}
-            className={`p-1.5 rounded-xl border-2 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center shrink-0 ${
-              isPreviewMode
+            className={`p-1.5 rounded-xl border-2 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center shrink-0 ${isPreviewMode
                 ? 'bg-amber-400 text-stone-900 border-amber-600'
                 : 'bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white border-[#2D4A3E] dark:border-[#334155]'
-            }`}
+              }`}
             title={isPreviewMode ? "Mode aperçu actif (cliquez pour passer en mode compact sans aperçu)" : "Mode compact sans aperçu (cliquez pour passer en mode aperçu)"}
           >
             {isPreviewMode ? (
@@ -401,9 +400,8 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
                         onClick={() => {
                           setActivePreviewItem && setActivePreviewItem({ ...f, folderName: f.matiere || 'Favoris' });
                         }}
-                        className={`aspect-[3/4] ${theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none cursor-pointer hover:scale-[1.01] shadow-md active:scale-98 ${
-                          isMenuOpen ? 'z-50 overflow-visible' : 'z-10 overflow-hidden'
-                        }`}
+                        className={`aspect-[3/4] ${theme.border} rounded-xl sm:rounded-2xl p-1.5 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none cursor-pointer hover:scale-[1.01] shadow-md active:scale-98 ${isMenuOpen ? 'z-50 overflow-visible' : 'z-10 overflow-hidden'
+                          }`}
                       >
                         {/* Barre supérieure : Bouton 3 traits, Étoile favori & Taille */}
                         <div className="flex items-center justify-between gap-1 z-20 relative">
@@ -548,9 +546,8 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
                         onClick={() => {
                           setActivePreviewItem && setActivePreviewItem({ ...f, folderName: f.matiere || 'Favoris' });
                         }}
-                        className={`group flex flex-col items-center w-full max-w-[90px] sm:max-w-[110px] relative cursor-pointer hover:scale-105 transition-all ${
-                          openMenuId === f.id ? 'z-50' : 'z-0'
-                        }`}
+                        className={`group flex flex-col items-center w-full max-w-[90px] sm:max-w-[110px] relative cursor-pointer hover:scale-105 transition-all ${openMenuId === f.id ? 'z-50' : 'z-0'
+                          }`}
                       >
                         <button
                           onClick={(e) => {
