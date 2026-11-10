@@ -1569,15 +1569,22 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       }
     }
 
-    // 4. Synchroniser avec CloudDataStore et CloudStorageAPI
-    CloudDataStore.toggleFavorite(id, newFav);
-    if (newFav) {
-      CloudStorageAPI.addFavorite(id, 'mes-fichiers').catch(() => {});
-    } else {
-      CloudStorageAPI.removeFavorite(id).catch(() => {});
-    }
+    // 4. Synchroniser localStorage des matières éventuelles et notifier HomeFavorites (strictement séparé de l'Espace Cloud)
+    try {
+      if (file?.matiere) {
+        const matKey = `unifolder_matiere_files_${file.matiere}`;
+        const matRaw = localStorage.getItem(matKey);
+        if (matRaw) {
+          const parsedMat: ImportedItem[] = JSON.parse(matRaw);
+          if (Array.isArray(parsedMat)) {
+            safeLocalStorageSet(matKey, parsedMat.map(item => item.id === id ? { ...item, isFavorite: newFav } : item));
+          }
+        }
+      }
+      window.dispatchEvent(new Event('unifolder_files_updated'));
+    } catch {}
 
-    // 5. Persister sur Cloudflare D1
+    // 5. Persister sur Cloudflare D1 (table files uniquement)
     try {
       if (userId && userId !== 'default-user') {
         const resolvedMat = savedMatieres.find(m => m.name === file?.matiere || m.id === file?.matiereId || m.id === file?.matiere);
@@ -1607,7 +1614,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       setTimeout(() => {
         pendingFavoriteOverridesRef.current.delete(id);
       }, 2500);
-      invalidateCloudQueries.favorites().catch(() => {});
+      invalidateCloudQueries.filesMenu().catch(() => {});
     }
   };
 
@@ -2060,11 +2067,6 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       // 4. Affichage immédiat (optimiste) + animation de progression
       setImportedFiles(prev => [...newItems, ...prev]);
       startSavingAnimation(newItems.map(item => item.id));
-
-      // 5. CloudDataStore.addOptimisticFile — sync multi-appareils immédiate
-      newItems.forEach(item => {
-        CloudDataStore.addOptimisticFile({ ...item, category: 'mes-fichiers' } as any);
-      });
 
       const targetMatForQueue = selectedTab !== 'Mes fichiers' ? savedMatieres.find(m => m.name.toLowerCase() === selectedTab.toLowerCase() || m.id === selectedTab) : null;
       // 6. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique

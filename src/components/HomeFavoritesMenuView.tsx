@@ -36,6 +36,27 @@ interface FavoriteItem {
   timestamp?: number;
 }
 
+const CLOUD_SPACE_MENU_IDS = new Set([
+  'menu-documents',
+  'menu-images',
+  'menu-videos',
+  'menu-audio',
+]);
+
+const CLOUD_SPACE_CATEGORIES = new Set([
+  'documents',
+  'images',
+  'videos',
+  'audio',
+  'downloads',
+  'classeur',
+  'classeur_folder',
+  'folder',
+  'secure',
+  'trash',
+  'apps',
+]);
+
 const isFolderFavoriteItem = (item: any): boolean => {
   if (!item) return false;
   const isTxtNote = (item.name || '').toLowerCase().endsWith('.txt');
@@ -53,6 +74,34 @@ const isFolderFavoriteItem = (item: any): boolean => {
   );
 };
 
+const isCloudSpaceItem = (item: any): boolean => {
+  if (!item) return true;
+  if (isFolderFavoriteItem(item)) return true;
+
+  const matId = String(item.matiere_id || item.matiereId || item.matiere || '').toLowerCase().trim();
+  if (CLOUD_SPACE_MENU_IDS.has(matId)) return true;
+
+  const uploadSource = String(item.uploadSource || item.upload_source || '').toLowerCase().trim();
+  const folderName = String(item.folderName || '').toLowerCase().trim();
+  const source = String(item.source || '').toLowerCase().trim();
+  const r2Key = String(item.r2Key || item.r2_key || '').toLowerCase();
+  const cat = String(item.category || '').toLowerCase().trim();
+
+  const isExplicitlyMesFichiers =
+    cat === 'mes-fichiers' ||
+    uploadSource === 'mes-fichiers' ||
+    uploadSource.startsWith('matiere-') ||
+    folderName === 'mes fichiers' ||
+    source === 'mes fichiers' ||
+    r2Key.includes('/mes-fichiers/') ||
+    Boolean(matId && matId !== 'mes fichiers' && !CLOUD_SPACE_MENU_IDS.has(matId));
+
+  if (!isExplicitlyMesFichiers && CLOUD_SPACE_CATEGORIES.has(cat)) {
+    return true;
+  }
+  return false;
+};
+
 const loadLocalFavorites = (): FavoriteItem[] => {
   const list: FavoriteItem[] = [];
   const seenIds = new Set<string>();
@@ -64,7 +113,7 @@ const loadLocalFavorites = (): FavoriteItem[] => {
       const parsed = JSON.parse(raw);
       if (Array.isArray(parsed)) {
         parsed.forEach((item: any) => {
-          if (item && item.id && item.isFavorite && !isFolderFavoriteItem(item) && !seenIds.has(item.id)) {
+          if (item && item.id && item.isFavorite && !isCloudSpaceItem(item) && !seenIds.has(item.id)) {
             seenIds.add(item.id);
             list.push({
               ...item,
@@ -173,11 +222,12 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
         .then((res) => {
           if (res && res.success && Array.isArray(res.data)) {
             const filesWithUrls = res.data
-              .filter((row: any) => !isFolderFavoriteItem({
+              .filter((row: any) => !isCloudSpaceItem({
                 ...row,
                 isFolder: row.is_folder ?? row.isFolder ?? row.metadata?.isFolder,
                 originalCategory: row.original_category ?? row.originalCategory,
                 sourceCategory: row.source_category ?? row.sourceCategory,
+                uploadSource: row.upload_source ?? row.uploadSource,
                 model: row.model ?? row.metadata?.model,
               }))
               .map((row: any) => ({
@@ -234,7 +284,7 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
 
     StudyCloudAPI.toggleFileFavorite(id, false).catch(() => { });
 
-    // Mettre à jour dans toutes les listes locales
+    // Mettre à jour dans toutes les listes locales (Mes fichiers & Matières uniquement, jamais l'Espace Cloud)
     const updateLocalKey = (key: string) => {
       try {
         const raw = localStorage.getItem(key);
@@ -248,6 +298,7 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
     };
 
     updateLocalKey('unifolder_files_menu_items');
+    updateLocalKey('unifolder_user_files');
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (k && k.startsWith('unifolder_matiere_files_')) {
@@ -255,9 +306,8 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
       }
     }
 
-    invalidateCloudQueries.favorites();
     invalidateCloudQueries.filesMenu();
-    invalidateCloudQueries.overview();
+    invalidateCloudQueries.matiereFiles();
 
     window.dispatchEvent(new Event('unifolder_files_updated'));
   };
@@ -281,6 +331,7 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
     };
 
     deleteFromLocalKey('unifolder_files_menu_items');
+    deleteFromLocalKey('unifolder_user_files');
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i);
       if (k && k.startsWith('unifolder_matiere_files_')) {
@@ -288,9 +339,8 @@ export const HomeFavoritesMenuView: React.FC<HomeFavoritesMenuViewProps> = ({ on
       }
     }
 
-    invalidateCloudQueries.favorites();
     invalidateCloudQueries.filesMenu();
-    invalidateCloudQueries.overview();
+    invalidateCloudQueries.matiereFiles();
 
     window.dispatchEvent(new Event('unifolder_files_updated'));
   };

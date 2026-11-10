@@ -4918,6 +4918,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const unique = all.filter((f, idx, arr) => arr.findIndex(x => x.id === f.id) === idx);
     const favFiles = unique.filter(f => {
       const it = f as any;
+      if (isMesFichiersItem(f)) return false;
       const isFolderItem = Boolean(
         it.isFolder ||
         it.category === 'classeur_folder' ||

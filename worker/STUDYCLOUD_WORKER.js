@@ -3209,8 +3209,6 @@ async function cleanUserFavoriteOnDelete(db, userId, itemId) {
       db.prepare("UPDATE classeur_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, userId).run().catch(() => {
       }),
       db.prepare("UPDATE download_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, userId).run().catch(() => {
-      }),
-      db.prepare("UPDATE files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, userId).run().catch(() => {
       })
     ]);
     const favSyncId = `fav_${userId}_${itemId}`;
@@ -3720,14 +3718,14 @@ var index_default = {
       });
     }
     try {
-      let isPollutedWallpaperAvatar = function (val) {
+      let isPollutedWallpaperAvatar = function(val) {
         if (!val || typeof val !== "string") return false;
         const v = val.trim();
         return v.startsWith("/wallpapers/") || v.includes("/api/cloud/wallpaper/");
-      }, sanitizeUser = function (user) {
+      }, sanitizeUser = function(user) {
         if (!user) return null;
         const { password_hash: _ph, security_answer_1_hash: _s1, security_answer_2_hash: _s2, ...rest } = user;
-        const cleanAvatarUrl = isPollutedWallpaperAvatar(user.avatar_url) ? null : (user.avatar_url ?? null);
+        const cleanAvatarUrl = isPollutedWallpaperAvatar(user.avatar_url) ? null : user.avatar_url ?? null;
         return {
           ...rest,
           avatar_url: cleanAvatarUrl,
@@ -3736,20 +3734,20 @@ var index_default = {
             user.security_answer_1_hash && typeof user.security_answer_1_hash === "string" && user.security_answer_1_hash.trim().length > 0 && user.security_answer_2_hash && typeof user.security_answer_2_hash === "string" && user.security_answer_2_hash.trim().length > 0
           )
         };
-      }, generateId = function () {
+      }, generateId = function() {
         return crypto.randomUUID();
-      }, isValidEmail = function (email) {
+      }, isValidEmail = function(email) {
         if (!email || typeof email !== "string") return false;
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         return emailRegex.test(email.trim());
-      }, validatePasswordFormat = function (pwd) {
+      }, validatePasswordFormat = function(pwd) {
         if (!pwd || typeof pwd !== "string") return { valid: false, error: "Mot de passe requis" };
         if (pwd.length < 6) return { valid: false, error: "Le mot de passe doit comporter au moins 6 caract\xE8res" };
         if (!/[a-zA-Z]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir des lettres" };
         if (!/[0-9]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir des chiffres" };
         if (!/[^a-zA-Z0-9]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir au moins un caract\xE8re sp\xE9cial (ex: @, #, $, !, etc.)" };
         return { valid: true };
-      }, generateEmailAvatar = function (email, name) {
+      }, generateEmailAvatar = function(email, name) {
         const cleanEmail = (email || "").trim().toLowerCase();
         const cleanName = (name || "").trim();
         let initials = "SC";
@@ -3767,7 +3765,7 @@ var index_default = {
         const color = colors[Math.abs(hash) % colors.length];
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"><rect width="128" height="128" rx="28" fill="${color}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${initials.length > 1 ? "48" : "58"}" font-weight="700">${initials}</text></svg>`;
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-      }, htmlResponse = function (title, message, success, userId, token) {
+      }, htmlResponse = function(title, message, success, userId, token) {
         const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -5335,6 +5333,10 @@ a:hover{transform:translateY(-2px)}
           await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId(), user.id, tokenHash, sessionExpiresAt).run();
         } catch (e) {
         }
+        if (isPollutedWallpaperAvatar(user.avatar_url)) {
+          env.DB.prepare("UPDATE users SET avatar_url = NULL WHERE id = ?").bind(user.id).run().catch(() => {
+          });
+        }
         const safeUser = sanitizeUser(user);
         return jsonResponse({ success: true, data: safeUser }, 200, origin);
       }
@@ -5497,6 +5499,10 @@ a:hover{transform:translateY(-2px)}
             clientOrigin
           );
         }
+        if (isPollutedWallpaperAvatar(user.avatar_url)) {
+          env.DB.prepare("UPDATE users SET avatar_url = NULL WHERE id = ?").bind(user.id).run().catch(() => {
+          });
+        }
         const safeUser = sanitizeUser(user);
         return jsonResponse({ success: true, data: safeUser }, 200, origin);
       }
@@ -5632,8 +5638,9 @@ a:hover{transform:translateY(-2px)}
         const { id, name, email, school, filiere, country, avatarUrl } = body;
         if (!id || !email) return errorResponse("ID et email requis", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
-        const hasAvatar = avatarUrl !== void 0;
-        const avatarVal = avatarUrl ? String(avatarUrl) : null;
+        const isPollutedAvatar = isPollutedWallpaperAvatar(avatarUrl);
+        const hasAvatar = avatarUrl !== void 0 && !isPollutedAvatar;
+        const avatarVal = isPollutedAvatar ? null : avatarUrl ? String(avatarUrl) : null;
         const existing = await env.DB.prepare(
           "SELECT id FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?"
         ).bind(id, cleanEmail).first();
@@ -5681,7 +5688,11 @@ a:hover{transform:translateY(-2px)}
         const userId = path.split("/")[3];
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
         if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
-        return jsonResponse({ success: true, data: user }, 200, origin);
+        if (isPollutedWallpaperAvatar(user.avatar_url)) {
+          env.DB.prepare("UPDATE users SET avatar_url = NULL WHERE id = ?").bind(user.id).run().catch(() => {
+          });
+        }
+        return jsonResponse({ success: true, data: sanitizeUser(user) }, 200, origin);
       }
       if (path.startsWith("/api/users/") && path.endsWith("/preferences")) {
         const userId = path.split("/")[3];
@@ -5924,22 +5935,7 @@ a:hover{transform:translateY(-2px)}
         const id = path.split("/")[3];
         const body = await request.json().catch(() => ({}));
         const isFavoriteVal = body.isFavorite === true || body.isFavorite === 1 ? 1 : 0;
-        const reqUserId = await extractRequestUserId();
         await env.DB.prepare("UPDATE files SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(isFavoriteVal, id).run();
-        if (reqUserId && reqUserId !== "default-user") {
-          if (isFavoriteVal === 1) {
-            await env.DB.prepare(`
-              INSERT OR REPLACE INTO user_favorites (id, user_id, item_id, category, created_at)
-              VALUES (?, ?, ?, 'mes-fichiers', CURRENT_TIMESTAMP)
-            `).bind(`fav_${reqUserId}_${id}`, reqUserId, id).run().catch(() => {
-            });
-          } else {
-            await env.DB.prepare(`
-              DELETE FROM user_favorites WHERE user_id = ? AND (item_id = ? OR id = ?)
-            `).bind(reqUserId, id, id).run().catch(() => {
-            });
-          }
-        }
         return jsonResponse({ success: true, message: "Favori mis \xE0 jour", isFavorite: isFavoriteVal }, 200, origin);
       }
       if (path.startsWith("/api/files/") && method === "DELETE") {
@@ -8446,8 +8442,6 @@ a:hover{transform:translateY(-2px)}
               AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all();
-
-          // ISOLATION TOTALE : Le menu Audio ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraAuds = [];
           let favAudSet = /* @__PURE__ */ new Set();
           try {
@@ -8468,12 +8462,10 @@ a:hover{transform:translateY(-2px)}
             if (!id || trashedIdSet.has(id) || securedAudIdSet.has(id)) return;
             if (seen.has(id)) return;
             seen.add(id);
-
             if (typeof id === "string" && (id.startsWith("cf-") || id.startsWith("cf_"))) return;
             if (a.r2_key && (a.r2_key.includes("/study/") || a.r2_key.includes("/classeur/") || a.r2_key.includes("/mes-fichiers/"))) return;
             if (a.folder_id && !["audio", "root", "default-folder", "menu-audio"].includes(a.folder_id)) return;
             if (a.category === "study" || a.category === "classeur" || a.category === "mes-fichiers" || a.is_study_import || a.isStudyImport) return;
-
             const name = a.name || "Audio";
             let finalUrl = a.audio_url || a.file_url || a.url || "";
             if (finalUrl.includes("localhost") || finalUrl.includes("127.0.0.1")) {
@@ -8741,8 +8733,6 @@ a:hover{transform:translateY(-2px)}
               AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all();
-
-          // ISOLATION TOTALE : Le menu Images ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraImgs = [];
           let favImgSet = /* @__PURE__ */ new Set();
           try {
@@ -8763,7 +8753,6 @@ a:hover{transform:translateY(-2px)}
             if (!id || trashedImgIdSet.has(id) || securedImgIdSet.has(id)) return;
             if (seen.has(id)) return;
             seen.add(id);
-
             if (typeof id === "string" && (id.startsWith("cf-") || id.startsWith("cf_"))) return;
             if (img.r2_key && (img.r2_key.includes("/study/") || img.r2_key.includes("/classeur/") || img.r2_key.includes("/mes-fichiers/"))) return;
             if (img.folder_id && !["images", "root", "default-folder", "menu-images"].includes(img.folder_id)) return;
@@ -9003,8 +8992,6 @@ a:hover{transform:translateY(-2px)}
               AND id NOT IN (SELECT id FROM trash_files WHERE user_id = ?)
             ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId, reqUserId, reqUserId).all();
-
-          // ISOLATION TOTALE : Le menu Vidéos ne contient JAMAIS les fichiers du menu Mes fichiers ni des matières ni du classeur
           let extraVids = [];
           let favVidSet = /* @__PURE__ */ new Set();
           try {
@@ -9025,7 +9012,6 @@ a:hover{transform:translateY(-2px)}
             if (!id || trashedVidIdSet.has(id) || securedVidIdSet.has(id)) return;
             if (seen.has(id)) return;
             seen.add(id);
-
             if (typeof id === "string" && (id.startsWith("cf-") || id.startsWith("cf_"))) return;
             if (v.r2_key && (v.r2_key.includes("/study/") || v.r2_key.includes("/classeur/") || v.r2_key.includes("/mes-fichiers/"))) return;
             if (v.folder_id && !["videos", "root", "default-folder", "menu-videos"].includes(v.folder_id)) return;
@@ -10931,8 +10917,10 @@ a:hover{transform:translateY(-2px)}
                     itemsToDelete.push(cItem);
                     await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(cItem.id, reqUserId).run();
                   }
-                  await env.DB.prepare("DELETE FROM classeur_files WHERE folder_id = ? AND user_id = ?").bind(tid, reqUserId).run().catch(() => { });
-                  await env.DB.prepare("DELETE FROM classeur_folders WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run().catch(() => { });
+                  await env.DB.prepare("DELETE FROM classeur_files WHERE folder_id = ? AND user_id = ?").bind(tid, reqUserId).run().catch(() => {
+                  });
+                  await env.DB.prepare("DELETE FROM classeur_folders WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run().catch(() => {
+                  });
                 }
               }
             }
@@ -10978,8 +10966,9 @@ a:hover{transform:translateY(-2px)}
         if (method === "GET") {
           await env.DB.prepare(`
             DELETE FROM user_favorites
-            WHERE user_id = ? AND item_id IN (
-              SELECT id FROM trash_files WHERE user_id = ?
+            WHERE user_id = ? AND (
+              category = 'mes-fichiers' OR
+              item_id IN (SELECT id FROM trash_files WHERE user_id = ?)
             )
           `).bind(reqUserId, reqUserId).run().catch(() => {
           });
@@ -11080,6 +11069,9 @@ a:hover{transform:translateY(-2px)}
           const itemId = body.itemId || body.item_id || body.id;
           const category = body.category || "documents";
           if (!itemId) return errorResponse("Item ID requis", 400, origin);
+          if (String(category).toLowerCase() === "mes-fichiers") {
+            return jsonResponse({ success: false, message: "Menu favoris s\xE9par\xE9 : Mes fichiers utilise /api/files/:id/favorite" }, 400, origin);
+          }
           const favId = `fav_${reqUserId}_${itemId}`;
           await env.DB.prepare(`
             INSERT INTO user_favorites (id, user_id, item_id, category)
@@ -11098,8 +11090,6 @@ a:hover{transform:translateY(-2px)}
             env.DB.prepare("UPDATE classeur_folders SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
             env.DB.prepare("UPDATE classeur_files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
-            }),
-            env.DB.prepare("UPDATE files SET is_favorite = 1 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             })
           ]);
           await recordSyncItem(env.DB, reqUserId, favId, "favorites", { itemId, category }, 0);
@@ -11125,8 +11115,6 @@ a:hover{transform:translateY(-2px)}
             env.DB.prepare("UPDATE classeur_folders SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             }),
             env.DB.prepare("UPDATE classeur_files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
-            }),
-            env.DB.prepare("UPDATE files SET is_favorite = 0 WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
             })
           ]);
           const favId = `fav_${reqUserId}_${itemId}`;
@@ -14468,7 +14456,13 @@ Lien vers le produit : ${productShareUrl}`;
             }
           }, 200, origin);
         }
-        if (env.DB) await ensureCloudMediaTables(env.DB);
+        if (env.DB) {
+          await ensureCloudMediaTables(env.DB);
+          await env.DB.prepare(`
+            DELETE FROM files WHERE user_id = ? AND matiere_id IN ('menu-documents', 'menu-images', 'menu-videos', 'menu-audio')
+          `).bind(userId).run().catch(() => {
+          });
+        }
         const [
           user,
           { results: matieres },
@@ -14484,7 +14478,7 @@ Lien vers le produit : ${productShareUrl}`;
         ] = await Promise.all([
           env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first().catch(() => null),
           env.DB.prepare("SELECT * FROM matieres WHERE user_id = ? ORDER BY display_order ASC").bind(userId).all().catch(() => ({ results: [] })),
-          env.DB.prepare("SELECT * FROM files WHERE user_id = ? ORDER BY last_imported DESC, created_at DESC").bind(userId).all().catch(() => ({ results: [] })),
+          env.DB.prepare('SELECT * FROM files WHERE user_id = ? AND (matiere_id NOT IN ("menu-documents", "menu-images", "menu-videos", "menu-audio") OR matiere_id IS NULL) ORDER BY last_imported DESC, created_at DESC').bind(userId).all().catch(() => ({ results: [] })),
           env.DB.prepare("SELECT * FROM notes WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC").bind(userId).all().catch(() => ({ results: [] })),
           env.DB.prepare("SELECT * FROM schedule_config WHERE user_id = ?").bind(userId).first().catch(() => null),
           env.DB.prepare("SELECT * FROM schedule_slots WHERE user_id = ?").bind(userId).all().catch(() => ({ results: [] })),
@@ -14514,10 +14508,14 @@ Lien vers le produit : ${productShareUrl}`;
             };
           }
         }
+        if (user && isPollutedWallpaperAvatar(user.avatar_url)) {
+          env.DB.prepare("UPDATE users SET avatar_url = NULL WHERE id = ?").bind(user.id).run().catch(() => {
+          });
+        }
         return jsonResponse({
           success: true,
           data: {
-            user,
+            user: sanitizeUser(user),
             matieres,
             files,
             notes,
@@ -15617,13 +15615,37 @@ Lien vers le produit : ${productShareUrl}`;
             plan_tier: "free"
           };
         }
-        const giftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
-        const giftInit = Math.max(Number(userCredits.gift_initial || 0), giftRem, welcomeCredits);
+        const currentBal = Number(userCredits.credits_balance !== void 0 ? userCredits.credits_balance : welcomeCredits);
+        let giftRem = Math.max(0, Number(userCredits.gift_remaining !== null && userCredits.gift_remaining !== void 0 ? userCredits.gift_remaining : currentBal));
+        let paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
+        const sumBefore = +(giftRem + paidRem).toFixed(2);
+        if (currentBal < sumBefore) {
+          const spent = +(sumBefore - currentBal).toFixed(2);
+          if (giftRem >= spent) {
+            giftRem = +(giftRem - spent).toFixed(2);
+          } else {
+            const leftover = +(spent - giftRem).toFixed(2);
+            giftRem = 0;
+            paidRem = Math.max(0, +(paidRem - leftover).toFixed(2));
+          }
+        } else if (currentBal > sumBefore && userCredits.gift_remaining !== null && userCredits.gift_remaining !== void 0) {
+          const added = +(currentBal - sumBefore).toFixed(2);
+          giftRem = +(giftRem + added).toFixed(2);
+        }
+        const calculatedBalance = Math.max(0, +(giftRem + paidRem).toFixed(2));
+        const totalCreds = Number(userCredits.total_credits || 0);
+        let activeRef = Number(userCredits.reference_credits || 0);
+        let giftInit = Number(userCredits.gift_initial || 0);
+        if (activeRef <= 0 || totalCreds > activeRef || calculatedBalance > activeRef) {
+          activeRef = Math.max(activeRef, totalCreds, calculatedBalance, welcomeCredits);
+        }
+        if (giftInit <= 0 || totalCreds > giftInit || giftRem > giftInit) {
+          giftInit = Math.max(giftInit, totalCreds, giftRem, welcomeCredits);
+        }
         const giftType = userCredits.gift_type || "welcome";
         const giftTitle = giftType === "daily" ? "Cadeau du jour" : "Cadeau de base";
-        const paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
         const totalPurchased = Number(userCredits.total_credits_purchased || 0);
-        const referenceCredits = Math.max(giftInit + totalPurchased, Number(userCredits.reference_credits || 0), Number(userCredits.credits_balance || 0));
+        const referenceCredits = Math.max(activeRef, giftInit + totalPurchased, welcomeCredits);
         return jsonResponse({
           success: true,
           credits: {

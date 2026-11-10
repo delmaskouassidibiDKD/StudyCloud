@@ -33,7 +33,7 @@ import {
 } from 'lucide-react';
 import { handleNativeShare } from '../utils/nativeShare';
 import { CloudStorageAPI } from '../services/cloudStorageService';
-import { CloudDataStore, FileItem, isItemDeleted } from '../services/cloudDataStore';
+import { CloudDataStore, FileItem, isItemDeleted, isMesFichiersItem } from '../services/cloudDataStore';
 import { useFavoritesList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { getFileBlobUrl, deleteFileBlob, formatFileSize } from '../services/localFileStorage';
@@ -121,6 +121,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
     const isEligibleFav = (f: FileItem) => {
       if (!f || !f.id) return false;
       const it = f as any;
+      if (isMesFichiersItem(f)) return false;
       if (
         it.isFolder ||
         f.category === 'classeur' ||
@@ -246,8 +247,8 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({
           Boolean((item as any).model) ||
           (item.category === 'classeur' && !isTxtNote);
 
-        if (isFolderItem) {
-          // Les dossiers ne peuvent pas être mis en favoris : nettoyer silencieusement
+        if (isFolderItem || isMesFichiersItem(item)) {
+          // Exclure les dossiers et les éléments provenant de "Mes fichiers" / Matières
           s.favIdSet.delete(item.id);
           CloudStorageAPI.removeFavorite(item.id).catch(() => {});
           return;

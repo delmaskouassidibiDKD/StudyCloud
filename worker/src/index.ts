@@ -3706,7 +3706,7 @@ async function cleanUserFavoriteOnDelete(db: any, userId: string, itemId: string
       WHERE user_id = ? AND (item_id = ? OR id = ?)
     `).bind(userId, itemId, itemId).run().catch(() => {});
 
-    // 2. Réinitialise is_favorite = 0 dans toutes les tables de fichiers
+    // 2. Réinitialise is_favorite = 0 dans les tables de l'Espace Cloud uniquement (sans jamais toucher à la table files de Mes fichiers)
     await Promise.all([
       db.prepare('UPDATE document_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, userId).run().catch(() => {}),
       db.prepare('UPDATE image_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, userId).run().catch(() => {}),
@@ -3714,8 +3714,7 @@ async function cleanUserFavoriteOnDelete(db: any, userId: string, itemId: string
       db.prepare('UPDATE audio_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, userId).run().catch(() => {}),
       db.prepare('UPDATE classeur_folders SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, userId).run().catch(() => {}),
       db.prepare('UPDATE classeur_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, userId).run().catch(() => {}),
-      db.prepare('UPDATE download_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, userId).run().catch(() => {}),
-      db.prepare('UPDATE files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, userId).run().catch(() => {})
+      db.prepare('UPDATE download_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, userId).run().catch(() => {})
     ]);
 
     // 3. Émet un tombstone dans sync_items pour réplication temps réel instantanée sur tous les appareils
@@ -6952,22 +6951,8 @@ a:hover{transform:translateY(-2px)}
         const id = path.split('/')[3];
         const body: any = await request.json().catch(() => ({}));
         const isFavoriteVal = body.isFavorite === true || body.isFavorite === 1 ? 1 : 0;
-        const reqUserId = await extractRequestUserId();
 
         await env.DB.prepare('UPDATE files SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(isFavoriteVal, id).run();
-
-        if (reqUserId && reqUserId !== 'default-user') {
-          if (isFavoriteVal === 1) {
-            await env.DB.prepare(`
-              INSERT OR REPLACE INTO user_favorites (id, user_id, item_id, category, created_at)
-              VALUES (?, ?, ?, 'mes-fichiers', CURRENT_TIMESTAMP)
-            `).bind(`fav_${reqUserId}_${id}`, reqUserId, id).run().catch(() => {});
-          } else {
-            await env.DB.prepare(`
-              DELETE FROM user_favorites WHERE user_id = ? AND (item_id = ? OR id = ?)
-            `).bind(reqUserId, id, id).run().catch(() => {});
-          }
-        }
 
         return jsonResponse({ success: true, message: 'Favori mis à jour', isFavorite: isFavoriteVal }, 200, origin);
       }
@@ -12320,11 +12305,12 @@ a:hover{transform:translateY(-2px)}
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
         if (method === 'GET') {
-          // PROACTIVE PURGE: Retirer définitivement des favoris tout fichier se trouvant dans la corbeille
+          // PROACTIVE PURGE: Retirer des favoris Espace Cloud tout fichier dans la corbeille ou appartenant à Mes fichiers
           await env.DB.prepare(`
             DELETE FROM user_favorites
-            WHERE user_id = ? AND item_id IN (
-              SELECT id FROM trash_files WHERE user_id = ?
+            WHERE user_id = ? AND (
+              category = 'mes-fichiers' OR
+              item_id IN (SELECT id FROM trash_files WHERE user_id = ?)
             )
           `).bind(reqUserId, reqUserId).run().catch(() => {});
 
@@ -12437,6 +12423,9 @@ a:hover{transform:translateY(-2px)}
           const itemId = body.itemId || body.item_id || body.id;
           const category = body.category || 'documents';
           if (!itemId) return errorResponse('Item ID requis', 400, origin);
+          if (String(category).toLowerCase() === 'mes-fichiers') {
+            return jsonResponse({ success: false, message: 'Menu favoris séparé : Mes fichiers utilise /api/files/:id/favorite' }, 400, origin);
+          }
 
           const favId = `fav_${reqUserId}_${itemId}`;
           await env.DB.prepare(`
@@ -12445,15 +12434,14 @@ a:hover{transform:translateY(-2px)}
             ON CONFLICT(id) DO UPDATE SET category = excluded.category
           `).bind(favId, reqUserId, itemId, category).run();
 
-          // Mettre également à jour la colonne is_favorite = 1 dans toutes les tables de fichiers
+          // Mettre également à jour is_favorite = 1 uniquement dans les tables de l'Espace Cloud (jamais dans files)
           await Promise.all([
             env.DB.prepare('UPDATE document_files SET is_favorite = 1 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
             env.DB.prepare('UPDATE image_files SET is_favorite = 1 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
             env.DB.prepare('UPDATE video_files SET is_favorite = 1 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
             env.DB.prepare('UPDATE audio_files SET is_favorite = 1 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
             env.DB.prepare('UPDATE classeur_folders SET is_favorite = 1 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
-            env.DB.prepare('UPDATE classeur_files SET is_favorite = 1 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
-            env.DB.prepare('UPDATE files SET is_favorite = 1 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {})
+            env.DB.prepare('UPDATE classeur_files SET is_favorite = 1 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {})
           ]);
 
           // Réplication Locale RxDB / Sync D1
@@ -12472,15 +12460,14 @@ a:hover{transform:translateY(-2px)}
             WHERE user_id = ? AND (item_id = ? OR id = ?)
           `).bind(reqUserId, itemId, itemId).run();
 
-          // Mettre également à jour la colonne is_favorite = 0 dans toutes les tables de fichiers
+          // Mettre également à jour is_favorite = 0 uniquement dans les tables de l'Espace Cloud (jamais dans files)
           await Promise.all([
             env.DB.prepare('UPDATE document_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
             env.DB.prepare('UPDATE image_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
             env.DB.prepare('UPDATE video_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
             env.DB.prepare('UPDATE audio_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
             env.DB.prepare('UPDATE classeur_folders SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
-            env.DB.prepare('UPDATE classeur_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {}),
-            env.DB.prepare('UPDATE files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {})
+            env.DB.prepare('UPDATE classeur_files SET is_favorite = 0 WHERE id = ? AND user_id = ?').bind(itemId, reqUserId).run().catch(() => {})
           ]);
 
           const favId = `fav_${reqUserId}_${itemId}`;
@@ -16282,7 +16269,12 @@ a:hover{transform:translateY(-2px)}
             }
           }, 200, origin);
         }
-        if (env.DB) await ensureCloudMediaTables(env.DB);
+        if (env.DB) {
+          await ensureCloudMediaTables(env.DB);
+          await env.DB.prepare(`
+            DELETE FROM files WHERE user_id = ? AND matiere_id IN ('menu-documents', 'menu-images', 'menu-videos', 'menu-audio')
+          `).bind(userId).run().catch(() => {});
+        }
 
         const [
           user,
@@ -16299,7 +16291,7 @@ a:hover{transform:translateY(-2px)}
         ] = await Promise.all([
           env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first().catch(() => null),
           env.DB.prepare('SELECT * FROM matieres WHERE user_id = ? ORDER BY display_order ASC').bind(userId).all().catch(() => ({ results: [] })),
-          env.DB.prepare('SELECT * FROM files WHERE user_id = ? ORDER BY last_imported DESC, created_at DESC').bind(userId).all().catch(() => ({ results: [] })),
+          env.DB.prepare('SELECT * FROM files WHERE user_id = ? AND (matiere_id NOT IN ("menu-documents", "menu-images", "menu-videos", "menu-audio") OR matiere_id IS NULL) ORDER BY last_imported DESC, created_at DESC').bind(userId).all().catch(() => ({ results: [] })),
           env.DB.prepare('SELECT * FROM notes WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC').bind(userId).all().catch(() => ({ results: [] })),
           env.DB.prepare('SELECT * FROM schedule_config WHERE user_id = ?').bind(userId).first().catch(() => null),
           env.DB.prepare('SELECT * FROM schedule_slots WHERE user_id = ?').bind(userId).all().catch(() => ({ results: [] })),

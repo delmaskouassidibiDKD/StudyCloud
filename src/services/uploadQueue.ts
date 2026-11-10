@@ -504,7 +504,7 @@ class UploadQueueManager {
         }, 60000);
       }
 
-      // Identification stricte des imports d'étude et création (qui ne doivent JAMAIS polluer les menus généraux)
+      // Identification stricte des imports d'étude, création et Mes fichiers (qui ne doivent JAMAIS polluer CloudDataStore / Espace Cloud)
       const isStudyOrCreationImport = task.uploadSource === 'left-menu-study' ||
         category === 'study' ||
         task.uploadSource === 'study' ||
@@ -512,7 +512,14 @@ class UploadQueueManager {
         Boolean((task.fileItem as any)?.isStudyImport) ||
         Boolean((task.fileItem as any)?.isStudySession);
 
-      if (!isStudyOrCreationImport && category !== 'study') {
+      const isMesFichiersUpload = !isStudyOrCreationImport && (
+        category === 'mes-fichiers' ||
+        task.uploadSource === 'mes-fichiers' ||
+        Boolean((task.fileItem as any)?.matiere) ||
+        (task.folderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(task.folderId))
+      );
+
+      if (!isStudyOrCreationImport && category !== 'study' && !isMesFichiersUpload) {
         const isSec = category === 'secure';
         const effectiveMediaCat = (task.fileItem as any)?.originalCategory || task.fileItem?.category || 'documents';
         CloudDataStore.updateFile(id, {
@@ -540,7 +547,7 @@ class UploadQueueManager {
       }
 
       // Si audio, sauvegarder également la métadonnée complète (artiste, album, pochette réelle, etc.) dans D1
-      if (category === 'audio') {
+      if (category === 'audio' && !isMesFichiersUpload) {
         const audioToSave = {
           ...task.fileItem,
           id: serverFileId || id,
@@ -557,12 +564,6 @@ class UploadQueueManager {
       }
 
       // Synchronisation directe et EXCLUSIVE dans la table files de D1 (pour Mes Fichiers et Matières)
-      const isMesFichiersUpload = !isStudyOrCreationImport && (
-        category === 'mes-fichiers' ||
-        task.uploadSource === 'mes-fichiers' ||
-        Boolean((task.fileItem as any)?.matiere) ||
-        (task.folderId && !['documents', 'images', 'videos', 'audio', 'default-folder', 'root'].includes(task.folderId))
-      );
 
       if (uploadUrl && r2Key && isMesFichiersUpload) {
         const currentUserId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || 'default-user';

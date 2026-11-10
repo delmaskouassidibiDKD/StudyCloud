@@ -44,7 +44,7 @@ import {
   EyeOff,
   AlertCircle
 } from 'lucide-react';
-import { CloudDataStore, FileItem, isItemDeleted, markItemDeleted } from '../services/cloudDataStore';
+import { CloudDataStore, FileItem, isItemDeleted, markItemDeleted, isMesFichiersItem } from '../services/cloudDataStore';
 import { handleNativeShare } from '../utils/nativeShare';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
@@ -681,7 +681,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       ...(storeData.audio || [])
     ];
     const unique = all.filter((f, idx, arr) => arr.findIndex(x => x.id === f.id) === idx);
-    const favs = unique.filter(f => !isFolderItem(f) && (f.isFavorite || f.isPinned));
+    const favs = unique.filter(f => !isFolderItem(f) && !isMesFichiersItem(f) && (f.isFavorite || f.isPinned));
     return favs.filter(f => !q || f.name.toLowerCase().includes(q));
   }, [storeData.documents, storeData.images, storeData.videos, storeData.audio, q]);
 

@@ -19,8 +19,7 @@ import { ModernImageViewer } from './ModernImageViewer';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { handleNativeShare } from '../utils/nativeShare';
 import { UploadQueue } from '../services/uploadQueue';
-import { CloudDataStore, isItemDeleted, markItemDeleted } from '../services/cloudDataStore';
-import { CloudStorageAPI } from '../services/cloudStorageService';
+import { isItemDeleted, markItemDeleted } from '../services/cloudDataStore';
 import { compressFile } from '../utils/fileCompressor';
 import { useMatiereFilesList, useMatieresList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries, queryClient, QUERY_KEYS } from '../services/queryClient';
@@ -1223,15 +1222,12 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       });
     }
 
-    // 4. Synchroniser avec CloudDataStore et CloudStorageAPI
-    CloudDataStore.toggleFavorite(id, newFav);
-    if (newFav) {
-      CloudStorageAPI.addFavorite(id, 'mes-fichiers').catch(() => {});
-    } else {
-      CloudStorageAPI.removeFavorite(id).catch(() => {});
-    }
+    // 4. Notifier HomeFavorites et invalider uniquement les requêtes Matières/Mes fichiers (sans toucher à l'Espace Cloud)
+    try {
+      window.dispatchEvent(new Event('unifolder_files_updated'));
+    } catch {}
 
-    // 5. Persister sur Cloudflare D1
+    // 5. Persister sur Cloudflare D1 (table files uniquement)
     try {
       if (userId && userId !== 'default-user') {
         const targetMat = savedMatieres.find(m => m.name.toLowerCase() === matiereName.toLowerCase() || m.id === matiereName);
@@ -1261,7 +1257,8 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       setTimeout(() => {
         pendingFavoriteOverridesRef.current.delete(id);
       }, 2500);
-      invalidateCloudQueries.favorites().catch(() => {});
+      invalidateCloudQueries.matiereFiles(matiereName).catch(() => {});
+      invalidateCloudQueries.filesMenu().catch(() => {});
     }
 
     window.dispatchEvent(new Event('unifolder_files_updated'));
@@ -1546,16 +1543,13 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         };
         newItems.push(itemObj);
 
-        // 2. Préparer les métadonnées pour UploadQueue (D1 + R2 en arrière-plan)
+        // 2. Préparer les métadonnées pour UploadQueue (exclusivement mes-fichiers / Matière, isolé de l'Espace Cloud)
         itemsWithFiles.push({
           file: fileToStore,
           item: {
             ...itemObj,
-            // Champs attendus par CloudDataStore / UploadQueue
-            category: isImg ? 'images' : (
-              f.type.startsWith('video/') ? 'videos' :
-              f.type.startsWith('audio/') ? 'audio' : 'documents'
-            ),
+            category: 'mes-fichiers',
+            uploadSource: 'mes-fichiers',
             source: matiereName,
             size: compResult.originalSizeFormatted,
             sizeBytes: compResult.originalSizeBytes,
@@ -1598,16 +1592,11 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       setImportedFiles(prev => [...newItems, ...prev]);
       startSavingAnimation(newItems.map(item => item.id));
 
-      // 5. CloudDataStore.addOptimisticFile — sync multi-appareils immédiate
-      newItems.forEach(item => {
-        CloudDataStore.addOptimisticFile(item as any);
-      });
-
       const targetMatForQueue = savedMatieres.find(m => m.name.toLowerCase() === matiereName.toLowerCase() || m.id === matiereName);
-      // 6. UploadQueue.enqueueExisting — R2 en arrière-plan avec retry automatique
+      // 5. UploadQueue.enqueueExisting — R2 en arrière-plan vers files uniquement (jamais document_files / Espace Cloud)
       UploadQueue.enqueueExisting(itemsWithFiles, {
-        category: 'documents',
-        uploadSource: `matiere-${matiereName}`,
+        category: 'mes-fichiers',
+        uploadSource: 'mes-fichiers',
         folderId: targetMatForQueue?.id || matiereName
       });
 

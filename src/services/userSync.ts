@@ -147,10 +147,15 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
         safeLocalStorageSet('unifolder_saved_matieres', []);
       }
 
-      // 3. Fichiers & Documents ("Mes fichiers")
+      // 3. Fichiers & Documents ("Mes fichiers" / Matières — exclusivement isolés de l'Espace Cloud)
       if (Array.isArray(d.files)) {
-        safeLocalStorageSet('unifolder_user_files', d.files);
-        safeLocalStorageSet('unifolder_files_menu_items', d.files);
+        const cleanHomeFiles = d.files.filter((f: any) => {
+          if (!f) return false;
+          const mId = String(f.matiere_id || f.matiereId || f.matiere || '').toLowerCase();
+          return !['menu-documents', 'menu-images', 'menu-videos', 'menu-audio'].includes(mId);
+        });
+        safeLocalStorageSet('unifolder_user_files', cleanHomeFiles);
+        safeLocalStorageSet('unifolder_files_menu_items', cleanHomeFiles);
       } else {
         safeLocalStorageSet('unifolder_user_files', []);
         safeLocalStorageSet('unifolder_files_menu_items', []);
