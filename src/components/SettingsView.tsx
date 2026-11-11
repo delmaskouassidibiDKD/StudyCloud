@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { User, Share2, Crown, Settings as SettingsIcon, GraduationCap, Mail, Bell, Headphones, MessageCircle, PlusCircle, Users, AlertTriangle, X, Check, BookOpen, Home, Youtube, LogOut, Camera, Briefcase, Building2 } from 'lucide-react';
+import { User, Share2, Crown, Settings as SettingsIcon, GraduationCap, Mail, Bell, Headphones, MessageCircle, PlusCircle, Users, AlertTriangle, X, Check, BookOpen, Home, Youtube, LogOut, Camera, Briefcase, Building2, Scale } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PromotionView } from './PromotionView';
 import { SettingsPricingView } from './SettingsPricingView';
 import { NotificationsView } from './NotificationsView';
 import { UserSettingsView } from './UserSettingsView';
 import { ServiceProposalView } from './ServiceProposalView';
+import { LegalTermsModal } from './LegalTermsModal';
 import studentLogo from '../assets/student-logo.jpg';
 import proLogo from '../assets/pro-logo.jpg';
 import { useBackHandler } from '../services/backNavigation';
@@ -35,6 +36,8 @@ export const SettingsView: React.FC = () => {
   }, [activeSubView]);
   const [showContactMenu, setShowContactMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
+  const [legalTab, setLegalTab] = useState<'cgu' | 'privacy' | 'mentions'>('cgu');
   const [reportText, setReportText] = useState('');
   const [reportSubmitted, setReportSubmitted] = useState(false);
 
@@ -42,6 +45,7 @@ export const SettingsView: React.FC = () => {
   useBackHandler(activeSubView !== 'none', () => setActiveSubView('none'), 'settings-subview');
   useBackHandler(showReportModal, () => setShowReportModal(false), 'settings-report-modal');
   useBackHandler(showContactMenu, () => setShowContactMenu(false), 'settings-contact-menu');
+  useBackHandler(showLegalModal, () => setShowLegalModal(false), 'settings-legal-modal');
 
   if (activeSubView === 'promotion') {
     return <PromotionView onBack={() => setActiveSubView('none')} />;
@@ -265,6 +269,15 @@ export const SettingsView: React.FC = () => {
           <span>Paramètres</span>
         </button>
 
+        {/* Bouton Cadre Juridique, CGU & Confidentialité */}
+        <button 
+          onClick={() => { setLegalTab('cgu'); setShowLegalModal(true); }}
+          className="w-full flex items-center justify-center gap-3 bg-[#FDFBF7] hover:bg-amber-50 border-2 border-stone-800 rounded-xl md:rounded-2xl py-3 md:py-4 px-4 md:px-6 text-stone-900 font-bold text-sm md:text-base shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917] cursor-pointer"
+        >
+          <Scale className="w-5 h-5 md:w-6 md:h-6 text-amber-700" />
+          <span>Conditions d'utilisation & Confidentialité</span>
+        </button>
+
         {/* Bouton de déconnexion direct */}
         <button 
           onClick={handleLogout}
@@ -352,6 +365,12 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       )}
+      {/* Modal Conditions Générales & Confidentialité */}
+      <LegalTermsModal
+        isOpen={showLegalModal}
+        onClose={() => setShowLegalModal(false)}
+        defaultTab={legalTab}
+      />
     </div>
   );
 };

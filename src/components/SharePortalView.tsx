@@ -5,6 +5,7 @@ import JSZip from 'jszip';
 import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadDestinationModal';
 import { importFilesToMesFichiers } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
+import { LegalTermsModal } from './LegalTermsModal';
 
 interface SharePortalViewProps {
   folder: SharedFolder;
@@ -19,6 +20,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
   const [errorMsg, setErrorMsg] = useState('');
   const [zipping, setZipping] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [showLegalModal, setShowLegalModal] = useState(false);
 
   // Modal de choix de destination
   const [pendingDownload, setPendingDownload] = useState<{
@@ -281,14 +283,30 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
               </div>
             </div>
 
-            <div className="mt-8 pt-6 border-t-2 border-stone-300 text-center">
+            <div className="mt-8 pt-6 border-t-2 border-stone-300 text-center space-y-1.5">
               <p className="text-xs text-stone-500">
-                StudyCloud Share • Permet aux étudiants de partager leurs dossiers de téléphone ou PC en toute simplicité.
+                StudyCloud Share • Service de partage direct édité par DKD Technologies • Fondateur : Dibi Kouassi Delmas
               </p>
+              <div className="flex items-center justify-center gap-2 text-[11px] text-stone-400">
+                <button
+                  type="button"
+                  onClick={() => setShowLegalModal(true)}
+                  className="underline hover:text-stone-700 transition-colors cursor-pointer"
+                >
+                  Conditions d'utilisation & Confidentialité
+                </button>
+              </div>
             </div>
           </div>
         )}
       </div>
+
+      {/* Modal interactif : Conditions et Confidentialité */}
+      <LegalTermsModal
+        isOpen={showLegalModal}
+        onClose={() => setShowLegalModal(false)}
+        defaultTab="cgu"
+      />
 
       {/* Modal interactif : Choisir où enregistrer (Appareil, StudyCloud, ou les deux) */}
       <DownloadDestinationModal

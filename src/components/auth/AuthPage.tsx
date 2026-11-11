@@ -6,6 +6,7 @@ import { DnaLogo } from '../DnaLogo';
 import { EmailPendingVerification } from './EmailPendingVerification';
 import { PhonePushNotification } from './PhonePushNotification';
 import { ForgotPasswordFlow } from './ForgotPasswordFlow';
+import { LegalTermsModal } from '../LegalTermsModal';
 
 interface AuthPageProps {
   onBack?: () => void;
@@ -126,6 +127,8 @@ export function AuthPage({ onBack }: AuthPageProps) {
 
   // Flux de mot de passe oublié
   const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
+  const [legalTab, setLegalTab] = useState<'cgu' | 'privacy' | 'mentions'>('cgu');
 
   // Notification WhatsApp / Téléphone en haut de l'écran
   const [pushNotification, setPushNotification] = useState<{
@@ -1059,12 +1062,45 @@ export function AuthPage({ onBack }: AuthPageProps) {
                 {mode === 'register' ? 'Se connecter' : 'Créer un compte'}
               </button>
             </div>
+
+            {/* Mentions & Conditions d'utilisation */}
+            <div className="mt-6 pt-4 border-t border-white/10 text-center space-y-1">
+              <p className="text-[11px] text-white/40 leading-relaxed">
+                En continuant, vous acceptez les{' '}
+                <button
+                  type="button"
+                  onClick={() => { setLegalTab('cgu'); setShowLegalModal(true); }}
+                  className="text-orange-400 hover:text-orange-300 underline font-medium cursor-pointer"
+                >
+                  Conditions d'utilisation
+                </button>
+                {' '}et la{' '}
+                <button
+                  type="button"
+                  onClick={() => { setLegalTab('privacy'); setShowLegalModal(true); }}
+                  className="text-orange-400 hover:text-orange-300 underline font-medium cursor-pointer"
+                >
+                  Politique de confidentialité
+                </button>
+                .
+              </p>
+              <p className="text-[10px] text-white/30">
+                Édité par DKD Technologies • Fondateur : Dibi Kouassi Delmas
+              </p>
+            </div>
           </>
         )}
           </div>
         </div>
       </div>
       </div>
+
+      {/* Modal interactif du cadre juridique */}
+      <LegalTermsModal
+        isOpen={showLegalModal}
+        onClose={() => setShowLegalModal(false)}
+        defaultTab={legalTab}
+      />
     </div>
   );
 }
