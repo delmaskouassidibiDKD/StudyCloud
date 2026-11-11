@@ -46,7 +46,7 @@ import {
 } from 'lucide-react';
 import { CloudDataStore, FileItem, isItemDeleted, markItemDeleted, isMesFichiersItem } from '../services/cloudDataStore';
 import { handleNativeShare } from '../utils/nativeShare';
-import { CloudStorageAPI } from '../services/cloudStorageService';
+import { CloudStorageAPI, hasLocalSecurePin, saveLocalSecurePin, verifyLocalSecurePin } from '../services/cloudStorageService';
 import { ensureFileExtension } from '../utils/fileExtensionHelper';
 import { invalidateCloudQueries } from '../services/queryClient';
 import { getFileBlobUrl, deleteFileBlob } from '../services/localFileStorage';
@@ -167,18 +167,17 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
   const [securePinError, setSecurePinError] = useState<string | null>(null);
   const [secureCategoryFilter, setSecureCategoryFilter] = useState<'all' | 'documents' | 'images' | 'videos' | 'audio' | 'classeur'>('all');
 
-  // Détection du code PIN : vérification locale ET distante auprès du Worker Cloudflare
+  // Détection du code PIN : vérification locale (hachée) ET distante auprès du Worker Cloudflare
   useEffect(() => {
-    const localPin = localStorage.getItem('studycloud_secure_folder_pin');
-    if (localPin) {
+    if (hasLocalSecurePin()) {
       setHasServerPin(true);
     }
     CloudStorageAPI.isSecureFolderConfigured()
       .then((configured) => {
-        setHasServerPin(configured || Boolean(localStorage.getItem('studycloud_secure_folder_pin')));
+        setHasServerPin(configured || hasLocalSecurePin());
       })
       .catch(() => {
-        setHasServerPin(Boolean(localStorage.getItem('studycloud_secure_folder_pin')));
+        setHasServerPin(hasLocalSecurePin());
       });
   }, []);
 
@@ -521,20 +520,19 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
       return;
     }
 
-    const stored = localStorage.getItem('studycloud_secure_folder_pin');
-    const isConfigured = hasServerPin ?? Boolean(stored);
+    const isConfigured = hasServerPin ?? hasLocalSecurePin();
 
     setIsSubmittingPin(true);
 
-    // 1. Si déjà configuré ou si un code est fourni, tester d'abord la validation en ligne ou locale
-    const isLocalOk = stored ? trimmed === stored.trim() : false;
+    // 1. Si déjà configuré ou si un code est fourni, tester d'abord la validation en ligne ou locale (hachée)
+    const isLocalOk = verifyLocalSecurePin(trimmed);
     let isWorkerOk = false;
     try {
       isWorkerOk = await CloudStorageAPI.verifySecurePin(trimmed);
     } catch {}
 
     if (isLocalOk || isWorkerOk) {
-      localStorage.setItem('studycloud_secure_folder_pin', trimmed);
+      saveLocalSecurePin(trimmed);
       setHasServerPin(true);
       setIsSecureFolderUnlocked(true);
       setSecurePinInput('');
@@ -558,7 +556,7 @@ export const CloudSpaceMenuView: React.FC<CloudSpaceMenuViewProps> = ({
         return;
       }
       try {
-        localStorage.setItem('studycloud_secure_folder_pin', trimmed);
+        saveLocalSecurePin(trimmed);
         await CloudStorageAPI.setSecurePin(trimmed).catch(() => {});
         setHasServerPin(true);
         setIsSecureFolderUnlocked(true);

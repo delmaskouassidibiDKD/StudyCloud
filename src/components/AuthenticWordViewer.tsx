@@ -75,8 +75,8 @@ export const AuthenticWordViewer: React.FC<AuthenticWordViewerProps> = ({
         breakPages: true,
         renderHeaders: true,
         renderFooters: true,
-        renderAltChunks: true,
-        experimental: true,
+        renderAltChunks: false,
+        experimental: false,
       });
 
       // Rendre les éléments de page éditables directement (contentEditable)

@@ -442,11 +442,13 @@ export const MobilePdfViewer: React.FC<MobilePdfViewerProps> = ({
         loadingTask = pdfjsLib.getDocument({
           data: typedArray,
           cMapPacked: true,
+          isEvalSupported: false,
         });
       } else if (url && !url.startsWith('blob:')) {
         loadingTask = pdfjsLib.getDocument({
           url: url,
           cMapPacked: true,
+          isEvalSupported: false,
         });
       } else {
         throw new Error("Impossible d'accéder au fichier PDF. Vérifiez votre connexion.");

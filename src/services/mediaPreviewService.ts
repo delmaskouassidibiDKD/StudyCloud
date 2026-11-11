@@ -27,7 +27,7 @@ function decodeTextFrame(bytes: Uint8Array, encoding: number): string {
     } else if (encoding === 3) {
       return new TextDecoder('utf-8').decode(bytes).replace(/\0+$/, '').trim();
     }
-  } catch {}
+  } catch { }
   let res = '';
   for (let i = 0; i < bytes.length; i++) {
     if (bytes[i] !== 0) res += String.fromCharCode(bytes[i]);
@@ -117,9 +117,9 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
     if (bytes.length > 10 && bytes[0] === 0x49 && bytes[1] === 0x44 && bytes[2] === 0x33) {
       const version = bytes[3]; // 2 (ID3v2.2), 3 (ID3v2.3), 4 (ID3v2.4)
       const tagSize = ((bytes[6] & 0x7f) << 21) |
-                      ((bytes[7] & 0x7f) << 14) |
-                      ((bytes[8] & 0x7f) << 7) |
-                      (bytes[9] & 0x7f);
+        ((bytes[7] & 0x7f) << 14) |
+        ((bytes[8] & 0x7f) << 7) |
+        (bytes[9] & 0x7f);
 
       const maxOffset = Math.min(bytes.length, tagSize + 10);
       let offset = 10;
@@ -168,14 +168,14 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
           let frameSize = 0;
           if (version === 4) {
             frameSize = ((bytes[offset + 4] & 0x7f) << 21) |
-                        ((bytes[offset + 5] & 0x7f) << 14) |
-                        ((bytes[offset + 6] & 0x7f) << 7) |
-                        (bytes[offset + 7] & 0x7f);
+              ((bytes[offset + 5] & 0x7f) << 14) |
+              ((bytes[offset + 6] & 0x7f) << 7) |
+              (bytes[offset + 7] & 0x7f);
           } else {
             frameSize = (bytes[offset + 4] << 24) |
-                        (bytes[offset + 5] << 16) |
-                        (bytes[offset + 6] << 8) |
-                        bytes[offset + 7];
+              (bytes[offset + 5] << 16) |
+              (bytes[offset + 6] << 8) |
+              bytes[offset + 7];
           }
 
           if (frameSize <= 0 || offset + 10 + frameSize > bytes.length) {
@@ -231,7 +231,7 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
             }
           }
         }
-      } catch {}
+      } catch { }
     }
 
     // 4. Parsing FLAC (bloc METADATA_BLOCK_PICTURE ou fLaC)
@@ -261,7 +261,7 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
         if (foundTail) {
           result.coverUrl = foundTail;
         }
-      } catch {}
+      } catch { }
     }
   } catch (e) {
     console.warn('[mediaPreviewService] Extraction métadonnées audio:', e);
@@ -273,7 +273,7 @@ export async function extractAudioMetadataWithTags(fileOrBlob: File | Blob): Pro
     if (dur > 0) {
       result.durationSec = Math.round(dur * 100) / 100;
     }
-  } catch {}
+  } catch { }
 
   return result;
 }
@@ -322,7 +322,7 @@ export async function getAudioBlobDuration(fileOrBlob: File | Blob): Promise<num
     } finally {
       URL.revokeObjectURL(url);
     }
-  } catch {}
+  } catch { }
 
   // Méthode 2 : Décodage Web Audio API (parfait pour WhatsApp Opus, AAC, MP3 avec métadonnées tronquées)
   try {
@@ -337,10 +337,10 @@ export async function getAudioBlobDuration(fileOrBlob: File | Blob): Promise<num
           return decoded.duration;
         }
       } finally {
-        ctx.close().catch(() => {});
+        ctx.close().catch(() => { });
       }
     }
-  } catch {}
+  } catch { }
 
   return 0;
 }
@@ -392,7 +392,7 @@ export function probeAudioDuration(src: string, timeoutMs = 12000): Promise<numb
         if (el.duration === Infinity) {
           try {
             el.currentTime = 1e6;
-          } catch {}
+          } catch { }
         }
       }
     };
@@ -441,11 +441,11 @@ export async function generatePdfThumbnail(
     let loadingTask: any;
 
     if (typeof fileOrUrl === 'string') {
-      loadingTask = pdfjsLib.getDocument({ url: fileOrUrl, cMapPacked: true });
+      loadingTask = pdfjsLib.getDocument({ url: fileOrUrl, cMapPacked: true, isEvalSupported: false });
     } else {
       const arrayBuffer = await fileOrUrl.arrayBuffer();
       const typedArray = new Uint8Array(arrayBuffer);
-      loadingTask = pdfjsLib.getDocument({ data: typedArray, cMapPacked: true });
+      loadingTask = pdfjsLib.getDocument({ data: typedArray, cMapPacked: true, isEvalSupported: false });
     }
 
     const pdf = await loadingTask.promise;
@@ -494,7 +494,7 @@ export async function generateDocumentThumbnail(
     try {
       const pdfThumb = await generatePdfThumbnail(fileOrUrl, cacheKey);
       if (pdfThumb) return pdfThumb;
-    } catch {}
+    } catch { }
   }
 
   // Pour Word, Excel, PPTX, TXT ou si le rendu PDF échoue : création d'une image de couverture de document nette et élégante
@@ -848,7 +848,7 @@ export async function extractAudioCover(
       if (meta.coverUrl) {
         return meta.coverUrl;
       }
-    } catch {}
+    } catch { }
   } catch (err) {
     console.warn('[mediaPreviewService] Impossible d\'extraire la pochette ID3:', err);
   }
@@ -968,7 +968,7 @@ export async function generateVideoThumbnail(
         try {
           const seekTime = Math.min(0.5, (video.duration || 1) / 2);
           video.currentTime = seekTime;
-        } catch {}
+        } catch { }
       };
 
       video.onseeked = () => {

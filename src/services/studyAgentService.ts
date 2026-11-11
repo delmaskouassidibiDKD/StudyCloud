@@ -46,6 +46,22 @@ export async function checkAgentHealth(): Promise<{
  * Génère un module pédagogique structuré (QCM, Vrai/Faux, Carte Mentale, Résumé, Devoir...)
  * avec garantie de format JSON conforme à l'UI StudyCloud
  */
+function getAgentAuthHeaders(userId?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+  if (userId) headers['x-user-id'] = userId;
+  if (typeof localStorage !== 'undefined') {
+    const token =
+      localStorage.getItem('sc_auth_token') ||
+      localStorage.getItem('unifolder_auth_token') ||
+      localStorage.getItem('auth_token') ||
+      '';
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export async function generateAgentCreation(params: {
   toolType: string;
   docName: string;
@@ -65,10 +81,7 @@ export async function generateAgentCreation(params: {
 
   const res = await fetch(`${agentUrl}/api/ai/creation`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': currentUserId,
-    },
+    headers: getAgentAuthHeaders(currentUserId),
     body: JSON.stringify({
       toolType: params.toolType,
       docName: params.docName,
@@ -108,7 +121,7 @@ export async function analyzeAgentDocument(params: {
 
   const res = await fetch(`${agentUrl}/api/ai/analyze`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: getAgentAuthHeaders(),
     body: JSON.stringify(params),
   });
 
@@ -143,10 +156,7 @@ export async function sendAgentChatMessage(params: {
 
   const res = await fetch(`${agentUrl}/api/ai/chat`, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': currentUserId
-    },
+    headers: getAgentAuthHeaders(currentUserId),
     body: JSON.stringify({
       userId: currentUserId,
       user_id: currentUserId,

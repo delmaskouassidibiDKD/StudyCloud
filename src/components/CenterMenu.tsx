@@ -724,7 +724,7 @@ export function CenterMenu({
       if (!arrayBuffer) return [];
 
       const typedarray = new Uint8Array(arrayBuffer);
-      const loadingTask = pdfjsLib.getDocument({ data: typedarray, cMapPacked: true });
+      const loadingTask = pdfjsLib.getDocument({ data: typedarray, cMapPacked: true, isEvalSupported: false });
       const pdf = await loadingTask.promise;
       const result: SpeechSegment[] = [];
 

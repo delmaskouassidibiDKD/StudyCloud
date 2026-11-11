@@ -430,9 +430,10 @@ export function PdfHorizontalViewer({
           loadingTask = pdfjsLib.getDocument({
             data: typedarray,
             cMapPacked: true,
+            isEvalSupported: false,
           });
         } else if (url) {
-          loadingTask = pdfjsLib.getDocument(url);
+          loadingTask = pdfjsLib.getDocument({ url, isEvalSupported: false });
         } else {
           throw new Error("Impossible de charger le document PDF.");
         }

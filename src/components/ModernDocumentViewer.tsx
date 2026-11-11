@@ -472,7 +472,7 @@ export const ModernDocumentViewer: React.FC<ModernDocumentViewerProps> = ({
         }
         try {
           const arrayBuffer = await ensureDecompressedArrayBuffer(await b.arrayBuffer());
-          const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
+          const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer), isEvalSupported: false });
           const doc = await loadingTask.promise;
           if (!isCancelled) {
             pdfDocRef.current = doc;

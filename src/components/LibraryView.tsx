@@ -185,7 +185,7 @@ export const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }>
         // Fallback: Si la miniature serveur n'existe pas (anciens fichiers), on génère en local
         (async () => {
           try {
-            const loadingTask = pdfjsLib.getDocument({ url: fileUrl });
+            const loadingTask = pdfjsLib.getDocument({ url: fileUrl, isEvalSupported: false });
             const pdf = await loadingTask.promise;
             const page = await pdf.getPage(1);
             const viewport = page.getViewport({ scale: 4.0 });

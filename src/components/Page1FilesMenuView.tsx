@@ -99,7 +99,7 @@ import {
   getDynamicCurrentDate,
   lightenColor
 } from './Folder3DModels';
-import { CloudStorageAPI, type CloudOverviewData } from '../services/cloudStorageService';
+import { CloudStorageAPI, hasLocalSecurePin, saveLocalSecurePin, verifyLocalSecurePin, type CloudOverviewData } from '../services/cloudStorageService';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { AudioCardPreview } from './AudioCardPreview';
@@ -3077,14 +3077,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [secureFolderFiles, setSecureFolderFiles] = useState<FileItem[]>([]);
 
 
-  const getStoredPin = () => localStorage.getItem('studycloud_secure_folder_pin');
-
   // Déverrouillage ou définition initiale du code secret du Dossier Sécurisé
   const handleUnlockSecureFolder = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const stored = getStoredPin();
+    const isConfigured = hasLocalSecurePin();
 
-    if (!stored) {
+    if (!isConfigured) {
       // Première configuration : le code doit être supérieur à 4 caractères
       const trimmed = securePinInput.trim();
       if (trimmed.length <= 4) {
@@ -3095,7 +3093,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setSecurePinError("La confirmation ne correspond pas au code saisi.");
         return;
       }
-      localStorage.setItem('studycloud_secure_folder_pin', trimmed);
+      saveLocalSecurePin(trimmed);
       CloudStorageAPI.setSecurePin(trimmed).catch(console.error);
       setIsSecureFolderUnlocked(true);
       setIsPinModalOpen(false);
@@ -3112,8 +3110,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
       setPinTargetDestination(null);
     } else {
-      // Code déjà existant : vérification locale ou via worker Cloudflare D1
-      const isLocalOk = securePinInput.trim() === stored.trim();
+      // Code déjà existant : vérification locale (hachée) ou via worker Cloudflare D1
+      const isLocalOk = verifyLocalSecurePin(securePinInput.trim());
       let isWorkerOk = false;
       try {
         isWorkerOk = await CloudStorageAPI.verifySecurePin(securePinInput.trim());
@@ -3122,6 +3120,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
 
       if (isLocalOk || isWorkerOk) {
+        saveLocalSecurePin(securePinInput.trim());
         setIsSecureFolderUnlocked(true);
         setIsPinModalOpen(false);
         setSecurePinInput('');
@@ -3161,9 +3160,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Modification du code secret depuis le menu 3 traits
   const handleChangePin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const stored = getStoredPin();
 
-    if (stored && oldPinInput.trim() !== stored.trim()) {
+    if (hasLocalSecurePin() && !verifyLocalSecurePin(oldPinInput.trim())) {
       setChangePinError("L'ancien code est incorrect.");
       return;
     }
@@ -3177,7 +3175,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return;
     }
 
-    localStorage.setItem('studycloud_secure_folder_pin', newTrimmed);
+    saveLocalSecurePin(newTrimmed);
     CloudStorageAPI.setSecurePin(newTrimmed, oldPinInput.trim()).catch(console.error);
     setChangePinSuccess("Code secret mis à jour avec succès !");
     setChangePinError(null);
@@ -9008,7 +9006,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isInsideSecureView = (currentSubView?.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder'));
     if (!isPinModalOpen && (!isInsideSecureView || isSecureFolderUnlocked)) return null;
 
-    const hasPin = Boolean(localStorage.getItem('studycloud_secure_folder_pin'));
+    const hasPin = hasLocalSecurePin();
 
     const content = (
       <div
@@ -9116,7 +9114,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // =========================================================================
   const renderChangePinModal = () => {
     if (!isChangePinModalOpen) return null;
-    const hasPin = Boolean(localStorage.getItem('studycloud_secure_folder_pin'));
+    const hasPin = hasLocalSecurePin();
 
     return (
       <div

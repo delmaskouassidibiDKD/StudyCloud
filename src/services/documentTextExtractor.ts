@@ -419,6 +419,7 @@ export async function extractDocumentText(item: any): Promise<string> {
       const loadingTask = (pdfjsLib as any).getDocument({
         data: typedarray,
         cMapPacked: true,
+        isEvalSupported: false,
       });
       const pdf = await loadingTask.promise;
       let fullText = '';

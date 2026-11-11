@@ -602,7 +602,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       if (!arrayBuffer) return [];
 
       const typedarray = new Uint8Array(arrayBuffer);
-      const loadingTask = pdfjsLib.getDocument({ data: typedarray, cMapPacked: true });
+      const loadingTask = pdfjsLib.getDocument({ data: typedarray, cMapPacked: true, isEvalSupported: false });
       const pdf = await loadingTask.promise;
       const result: { text: string; page: number; lineIndex: number }[] = [];
 

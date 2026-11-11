@@ -60,19 +60,19 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
   const [scheduleData, setScheduleData] = useState<Record<string, ScheduleEntry>>(() => {
     try {
       return toScheduleObject(localStorage.getItem('user_schedule_data'));
-    } catch (e) {}
+    } catch (e) { }
     return {};
   });
   const [days, setDays] = useState<string[]>(() => {
     try {
       return toStringArray(localStorage.getItem('user_schedule_days'), DEFAULT_DAYS);
-    } catch (e) {}
+    } catch (e) { }
     return DEFAULT_DAYS;
   });
   const [hours, setHours] = useState<string[]>(() => {
     try {
       return toStringArray(localStorage.getItem('user_schedule_hours'), DEFAULT_HOURS);
-    } catch (e) {}
+    } catch (e) { }
     return DEFAULT_HOURS;
   });
 
@@ -93,7 +93,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     try {
       const saved = localStorage.getItem('user_schedule_zoom');
       if (saved) return Number(saved);
-    } catch (e) {}
+    } catch (e) { }
     return 100;
   });
 
@@ -172,7 +172,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     const timer = setTimeout(() => {
       StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(days), JSON.stringify(hours), zoomLevel)
         .then(() => invalidateCloudQueries.scheduleConfig())
-        .catch(() => {});
+        .catch(() => { });
     }, 800);
     return () => clearTimeout(timer);
   }, [days, hours, zoomLevel, userId]);
@@ -185,7 +185,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
         setHours(toStringArray(localStorage.getItem('user_schedule_hours'), DEFAULT_HOURS));
         const savedZoom = localStorage.getItem('user_schedule_zoom');
         setZoomLevel(savedZoom ? Number(savedZoom) : 100);
-      } catch (e) {}
+      } catch (e) { }
     };
     window.addEventListener('unifolder_data_restored', handleRestore);
     return () => window.removeEventListener('unifolder_data_restored', handleRestore);
@@ -196,7 +196,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       const next = Math.min(150, Math.max(30, prev + 10 * delta));
       try {
         localStorage.setItem('user_schedule_zoom', next.toString());
-      } catch (e) {}
+      } catch (e) { }
       return next;
     });
   };
@@ -241,7 +241,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
         setZoomLevel(finalZoom);
         try {
           localStorage.setItem('user_schedule_zoom', finalZoom.toString());
-        } catch (err) {}
+        } catch (err) { }
       }
       setTouchStartDist(null);
     }
@@ -255,7 +255,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
         const next = Math.min(150, Math.max(30, prev + delta));
         try {
           localStorage.setItem('user_schedule_zoom', next.toString());
-        } catch (e) {}
+        } catch (e) { }
         return next;
       });
     }
@@ -494,7 +494,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
         setSuccessMessage('Ligne ajoutée et enregistrée avec succès !');
         setTimeout(() => setSuccessMessage(null), 3000);
       })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   const deleteHourRow = async () => {
@@ -571,7 +571,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
         setSuccessMessage('Une ligne a été ajoutée et enregistrée !');
         setTimeout(() => setSuccessMessage(null), 3000);
       })
-      .catch(() => {});
+      .catch(() => { });
   };
 
   const handleDownloadPdf = async () => {
@@ -639,14 +639,14 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       </div>
 
       {/* Scrollable Schedule Grid Container (Both Horizontal & Vertical) */}
-      <div 
+      <div
         className="flex-1 overflow-auto p-4 sm:p-6 pb-24 md:pb-8 touch-pan-x touch-pan-y"
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
         onWheel={handleWheel}
       >
-        <div 
+        <div
           ref={tableRef}
           className="min-w-[900px] max-w-full mx-auto bg-white dark:bg-[#0c1222] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden"
           style={{ zoom: `${zoomLevel}%` }}
@@ -672,7 +672,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                   type="button"
                   onClick={() => {
                     setZoomLevel(100);
-                    try { localStorage.setItem('user_schedule_zoom', '100'); } catch(e) {}
+                    try { localStorage.setItem('user_schedule_zoom', '100'); } catch (e) { }
                   }}
                   title="Réinitialiser le zoom (100%)"
                   className="px-2 py-0.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md transition-colors cursor-pointer"
@@ -694,128 +694,127 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
 
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-xs sm:text-sm table-fixed">
-            <thead>
-              <tr className="bg-slate-100 dark:bg-[#162033] text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-800">
-                {/* Diagonal Split Top-Left Corner Box */}
-                <th className="relative border-r border-slate-200 dark:border-slate-800 w-32 h-14 p-0 overflow-hidden bg-slate-100 dark:bg-[#162033]">
-                  <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none" viewBox="0 0 100 100">
-                    <line x1="0" y1="0" x2="100" y2="100" stroke="currentColor" className="text-slate-300 dark:text-slate-700" strokeWidth="1.5" />
-                  </svg>
-                  <div className="absolute top-1.5 right-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                    Jours
-                  </div>
-                  <div className="absolute bottom-1.5 left-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                    Heures
-                  </div>
-                </th>
-                {days.map((day, dIdx) => (
-                  <th
-                    key={day}
-                    onClick={() => handleHeaderClick('day', dIdx)}
-                    className="py-3 px-3 font-semibold border-r border-slate-200 dark:border-slate-800 text-center uppercase tracking-wider last:border-r-0 cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition-colors group relative text-xs"
-                    title="Cliquer pour modifier ce jour"
-                  >
-                    <div className="flex items-center justify-center gap-1">
-                      <span>{day}</span>
-                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
+              <thead>
+                <tr className="bg-slate-100 dark:bg-[#162033] text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-800">
+                  {/* Diagonal Split Top-Left Corner Box */}
+                  <th className="relative border-r border-slate-200 dark:border-slate-800 w-32 h-14 p-0 overflow-hidden bg-slate-100 dark:bg-[#162033]">
+                    <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none" viewBox="0 0 100 100">
+                      <line x1="0" y1="0" x2="100" y2="100" stroke="currentColor" className="text-slate-300 dark:text-slate-700" strokeWidth="1.5" />
+                    </svg>
+                    <div className="absolute top-1.5 right-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                      Jours
+                    </div>
+                    <div className="absolute bottom-1.5 left-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                      Heures
                     </div>
                   </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {hours.map((hour, hIdx) => (
-                <tr key={`${hour}-${hIdx}`} className="border-b border-slate-200 dark:border-slate-800/80 hover:bg-slate-50/60 dark:hover:bg-slate-850/40 transition-colors">
-                  <td
-                    onClick={() => handleHeaderClick('hour', hIdx)}
-                    className="py-3 px-2 font-semibold text-slate-700 dark:text-slate-300 bg-slate-50/80 dark:bg-[#0c1424] border-r border-slate-200 dark:border-slate-800 text-center whitespace-nowrap cursor-pointer hover:bg-slate-100 dark:hover:bg-[#162033] transition-colors group text-xs"
-                    title="Cliquer pour modifier cette heure"
-                  >
-                    <div className="flex items-center justify-center gap-1">
-                      <span>{hour}</span>
-                      <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
-                    </div>
-                  </td>
-                  {days.map((day) => {
-                    const key = `${day}_${hour}`;
-                    const entry = scheduleData[key];
-                    const colorStyle = COLORS.find(c => c.bg === entry?.color || c.bg.startsWith(entry?.color?.split(' ')[0])) || COLORS[0];
-
-                    return (
-                      <td
-                        key={day}
-                        onClick={() => openSlot(day, hour)}
-                        className={`p-2 border-r border-slate-200 dark:border-slate-800/80 last:border-r-0 cursor-pointer transition-all hover:bg-slate-100/60 dark:hover:bg-slate-800/40 relative group align-top ${
-                          entry ? colorStyle.bg + ' ' + colorStyle.border + ' border-l-4' : 'h-16 dark:bg-[#070a13]'
-                        }`}
-                      >
-                        {entry ? (
-                          <div className="flex flex-col gap-1">
-                            <div 
-                              className={`font-bold text-xs sm:text-sm ${colorStyle.text}`}
-                              style={{
-                                display: '-webkit-box',
-                                WebkitLineClamp: 2,
-                                WebkitBoxOrient: 'vertical',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
-                                wordBreak: 'break-word',
-                              }}
-                            >
-                              {entry.subject}
-                            </div>
-                            {entry.room && (
-                              <div className="text-[11px] opacity-85 font-semibold flex items-start gap-1 min-w-0">
-                                <MapPin className="w-3 h-3 shrink-0 mt-0.5" />
-                                <span 
-                                  className="min-w-0"
-                                  style={{
-                                    display: '-webkit-box',
-                                    WebkitLineClamp: 2,
-                                    WebkitBoxOrient: 'vertical',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    wordBreak: 'break-word',
-                                  }}
-                                >
-                                  {entry.room}
-                                </span>
-                              </div>
-                            )}
-                            {entry.note && (
-                              <div className="text-[10px] opacity-80 font-medium flex items-start gap-1 min-w-0">
-                                <User className="w-3 h-3 shrink-0 mt-0.5" />
-                                <span 
-                                  className="min-w-0"
-                                  style={{
-                                    display: '-webkit-box',
-                                    WebkitLineClamp: 2,
-                                    WebkitBoxOrient: 'vertical',
-                                    overflow: 'hidden',
-                                    textOverflow: 'ellipsis',
-                                    wordBreak: 'break-word',
-                                  }}
-                                >
-                                  {entry.note}
-                                </span>
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="w-full h-full flex items-center justify-center opacity-0 group-hover:opacity-40 text-slate-400 dark:text-slate-500">
-                            <Plus className="w-4 h-4" />
-                          </div>
-                        )}
-                      </td>
-                    );
-                  })}
+                  {days.map((day, dIdx) => (
+                    <th
+                      key={day}
+                      onClick={() => handleHeaderClick('day', dIdx)}
+                      className="py-3 px-3 font-semibold border-r border-slate-200 dark:border-slate-800 text-center uppercase tracking-wider last:border-r-0 cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition-colors group relative text-xs"
+                      title="Cliquer pour modifier ce jour"
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>{day}</span>
+                        <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
+                      </div>
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {hours.map((hour, hIdx) => (
+                  <tr key={`${hour}-${hIdx}`} className="border-b border-slate-200 dark:border-slate-800/80 hover:bg-slate-50/60 dark:hover:bg-slate-850/40 transition-colors">
+                    <td
+                      onClick={() => handleHeaderClick('hour', hIdx)}
+                      className="py-3 px-2 font-semibold text-slate-700 dark:text-slate-300 bg-slate-50/80 dark:bg-[#0c1424] border-r border-slate-200 dark:border-slate-800 text-center whitespace-nowrap cursor-pointer hover:bg-slate-100 dark:hover:bg-[#162033] transition-colors group text-xs"
+                      title="Cliquer pour modifier cette heure"
+                    >
+                      <div className="flex items-center justify-center gap-1">
+                        <span>{hour}</span>
+                        <Edit2 className="w-3 h-3 opacity-0 group-hover:opacity-100 text-slate-400 transition-opacity" />
+                      </div>
+                    </td>
+                    {days.map((day) => {
+                      const key = `${day}_${hour}`;
+                      const entry = scheduleData[key];
+                      const colorStyle = COLORS.find(c => c.bg === entry?.color || c.bg.startsWith(entry?.color?.split(' ')[0])) || COLORS[0];
+
+                      return (
+                        <td
+                          key={day}
+                          onClick={() => openSlot(day, hour)}
+                          className={`p-2 border-r border-slate-200 dark:border-slate-800/80 last:border-r-0 cursor-pointer transition-all hover:bg-slate-100/60 dark:hover:bg-slate-800/40 relative group align-top ${entry ? colorStyle.bg + ' ' + colorStyle.border + ' border-l-4' : 'h-16 dark:bg-[#070a13]'
+                            }`}
+                        >
+                          {entry ? (
+                            <div className="flex flex-col gap-1">
+                              <div
+                                className={`font-bold text-xs sm:text-sm ${colorStyle.text}`}
+                                style={{
+                                  display: '-webkit-box',
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: 'vertical',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis',
+                                  wordBreak: 'break-word',
+                                }}
+                              >
+                                {entry.subject}
+                              </div>
+                              {entry.room && (
+                                <div className="text-[11px] opacity-85 font-semibold flex items-start gap-1 min-w-0">
+                                  <MapPin className="w-3 h-3 shrink-0 mt-0.5" />
+                                  <span
+                                    className="min-w-0"
+                                    style={{
+                                      display: '-webkit-box',
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: 'vertical',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      wordBreak: 'break-word',
+                                    }}
+                                  >
+                                    {entry.room}
+                                  </span>
+                                </div>
+                              )}
+                              {entry.note && (
+                                <div className="text-[10px] opacity-80 font-medium flex items-start gap-1 min-w-0">
+                                  <User className="w-3 h-3 shrink-0 mt-0.5" />
+                                  <span
+                                    className="min-w-0"
+                                    style={{
+                                      display: '-webkit-box',
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: 'vertical',
+                                      overflow: 'hidden',
+                                      textOverflow: 'ellipsis',
+                                      wordBreak: 'break-word',
+                                    }}
+                                  >
+                                    {entry.note}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center opacity-0 group-hover:opacity-40 text-slate-400 dark:text-slate-500">
+                              <Plus className="w-4 h-4" />
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
-    </div>
 
       {/* Edit Header Modal */}
       {editingHeader && (
@@ -1070,9 +1069,8 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                         key={c.name}
                         type="button"
                         onClick={() => setSelectedColor(c.bg)}
-                        className={`w-7 h-7 rounded-full ${c.bg} border-2 ${
-                          isSelected ? 'border-slate-900 dark:border-white scale-110 shadow-sm' : 'border-slate-200 dark:border-slate-700'
-                        } transition-all cursor-pointer flex items-center justify-center`}
+                        className={`w-7 h-7 rounded-full ${c.bg} border-2 ${isSelected ? 'border-slate-900 dark:border-white scale-110 shadow-sm' : 'border-slate-200 dark:border-slate-700'
+                          } transition-all cursor-pointer flex items-center justify-center`}
                       >
                         {isSelected && <Check className="w-3.5 h-3.5 text-slate-900 dark:text-white" />}
                       </button>

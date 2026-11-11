@@ -33,6 +33,71 @@ function getUserIdParam(): string {
   return encodeURIComponent(uid && uid !== 'default-user' ? uid : '');
 }
 
+// ─── Hachage local irréversible du code PIN (C-6 : Zéro PIN en clair dans localStorage) ───
+const PIN_HASH_STORAGE_KEY = 'studycloud_secure_folder_pin_hash';
+const LEGACY_PLAINTEXT_PIN_KEY = 'studycloud_secure_folder_pin';
+
+function computeSaltedPinDigestSync(pin: string): string {
+  const uid = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || 'sc';
+  const input = `sc_pin_v2:${uid}:${pin.trim()}`;
+  let h1 = 0xdeadbeef ^ input.length;
+  let h2 = 0x41c6ce57 ^ input.length;
+  let h3 = 0x9e3779b9 ^ input.length;
+  let h4 = 0x85ebca6b ^ input.length;
+  for (let round = 0; round < 1024; round++) {
+    for (let i = 0; i < input.length; i++) {
+      const ch = input.charCodeAt(i) ^ round;
+      h1 = Math.imul(h1 ^ ch, 2654435761);
+      h2 = Math.imul(h2 ^ ch, 1597334677);
+      h3 = Math.imul(h3 ^ (ch + round), 2246822507);
+      h4 = Math.imul(h4 ^ (ch ^ (round << 3)), 3266489909);
+    }
+    h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507) ^ Math.imul(h2 ^ (h2 >>> 13), 3266489909);
+    h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507) ^ Math.imul(h1 ^ (h1 >>> 13), 3266489909);
+    h3 = Math.imul(h3 ^ (h3 >>> 16), 2246822507) ^ Math.imul(h4 ^ (h4 >>> 13), 3266489909);
+    h4 = Math.imul(h4 ^ (h4 >>> 16), 2246822507) ^ Math.imul(h3 ^ (h3 >>> 13), 3266489909);
+  }
+  const toHex = (n: number) => (n >>> 0).toString(16).padStart(8, '0');
+  return `scv2$${toHex(h1)}${toHex(h2)}${toHex(h3)}${toHex(h4)}`;
+}
+
+function migrateLegacyPinIfPresent(): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    const legacy = localStorage.getItem(LEGACY_PLAINTEXT_PIN_KEY);
+    if (legacy) {
+      if (legacy.trim()) {
+        localStorage.setItem(PIN_HASH_STORAGE_KEY, computeSaltedPinDigestSync(legacy.trim()));
+      }
+      localStorage.removeItem(LEGACY_PLAINTEXT_PIN_KEY);
+    }
+  } catch {}
+}
+
+export function hasLocalSecurePin(): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  migrateLegacyPinIfPresent();
+  return Boolean(localStorage.getItem(PIN_HASH_STORAGE_KEY));
+}
+
+export function saveLocalSecurePin(pin: string): void {
+  if (typeof localStorage === 'undefined') return;
+  const clean = String(pin || '').trim();
+  if (!clean) return;
+  try {
+    localStorage.setItem(PIN_HASH_STORAGE_KEY, computeSaltedPinDigestSync(clean));
+    localStorage.removeItem(LEGACY_PLAINTEXT_PIN_KEY);
+  } catch {}
+}
+
+export function verifyLocalSecurePin(pin: string): boolean {
+  if (typeof localStorage === 'undefined') return false;
+  migrateLegacyPinIfPresent();
+  const storedHash = localStorage.getItem(PIN_HASH_STORAGE_KEY);
+  if (!storedHash) return false;
+  return storedHash === computeSaltedPinDigestSync(String(pin || '').trim());
+}
+
 export interface CloudOverviewData {
   counts: {
     classeurFolders: number;
@@ -672,17 +737,18 @@ export const CloudStorageAPI = {
   // 8. DOSSIER SÉCURISÉ (/api/cloud/secure/*)
   // --------------------------------------------------------------------------
   async checkSecurePinConfigured(): Promise<boolean> {
+    migrateLegacyPinIfPresent();
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const res = await fetchWithTimeout(`${baseUrl}/api/cloud/secure/config?userId=${getUserIdParam()}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
-      if (!res.ok) return false;
+      if (!res.ok) return hasLocalSecurePin();
       const json = await res.json();
-      return Boolean(json.isConfigured);
+      return Boolean(json.isConfigured) || hasLocalSecurePin();
     } catch (e) {
-      return Boolean(localStorage.getItem('studycloud_secure_folder_pin'));
+      return hasLocalSecurePin();
     }
   },
 
@@ -700,7 +766,7 @@ export const CloudStorageAPI = {
       });
       const json = await res.json();
       if (json.success) {
-        localStorage.setItem('studycloud_secure_folder_pin', pin);
+        saveLocalSecurePin(pin);
       }
       return json;
     } catch (e: any) {
@@ -718,14 +784,18 @@ export const CloudStorageAPI = {
       });
       if (res.ok) {
         const json = await res.json();
+        if (json.verified) {
+          saveLocalSecurePin(pin);
+        }
         return Boolean(json.verified);
       }
-      // Fallback local si offline
-      const local = localStorage.getItem('studycloud_secure_folder_pin');
-      return local === pin;
+      if (res.status === 401 || res.status === 429) {
+        return false;
+      }
+      // Fallback local uniquement si erreur serveur/offline
+      return verifyLocalSecurePin(pin);
     } catch (e) {
-      const local = localStorage.getItem('studycloud_secure_folder_pin');
-      return local === pin;
+      return verifyLocalSecurePin(pin);
     }
   },
 
@@ -988,15 +1058,15 @@ export const CloudStorageAPI = {
     fileId?: string,
     onProgress?: (percent: number) => void,
     durationSec?: number
-  ): Promise<{ 
-    success: boolean; 
-    category?: string; 
-    detectedCategory?: string; 
-    file?: FileItem; 
-    error?: string; 
-    message?: string; 
-    isStorageLimitExceeded?: boolean; 
-    status?: number; 
+  ): Promise<{
+    success: boolean;
+    category?: string;
+    detectedCategory?: string;
+    file?: FileItem;
+    error?: string;
+    message?: string;
+    isStorageLimitExceeded?: boolean;
+    status?: number;
   }> {
     return new Promise((resolve) => {
       try {
@@ -1246,8 +1316,8 @@ export const CloudStorageAPI = {
         body: JSON.stringify({ itemId, category }),
       });
       if (res.ok) {
-        invalidateCloudQueries.pinned().catch(() => {});
-        invalidateCloudQueries.all().catch(() => {});
+        invalidateCloudQueries.pinned().catch(() => { });
+        invalidateCloudQueries.all().catch(() => { });
       }
       return res.ok;
     } catch (e) {
@@ -1264,8 +1334,8 @@ export const CloudStorageAPI = {
         headers: getAuthHeaders(),
       });
       if (res.ok) {
-        invalidateCloudQueries.pinned().catch(() => {});
-        invalidateCloudQueries.all().catch(() => {});
+        invalidateCloudQueries.pinned().catch(() => { });
+        invalidateCloudQueries.all().catch(() => { });
       }
       return res.ok;
     } catch (e) {
@@ -1286,8 +1356,8 @@ export const CloudStorageAPI = {
         body: JSON.stringify({ id, name, category, folderId }),
       });
       if (res.ok) {
-        invalidateCloudQueries.all().catch(() => {});
-        invalidateCloudQueries.overview().catch(() => {});
+        invalidateCloudQueries.all().catch(() => { });
+        invalidateCloudQueries.overview().catch(() => { });
       }
       return res.ok;
     } catch (e) {

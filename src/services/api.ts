@@ -1352,6 +1352,16 @@ function notifyActivityVersionCheck() {
   window.dispatchEvent(new CustomEvent('studycloud_check_app_version'));
 }
 
+function getStoredAuthToken(): string {
+  if (typeof localStorage === 'undefined') return '';
+  return (
+    localStorage.getItem('sc_auth_token') ||
+    localStorage.getItem('unifolder_auth_token') ||
+    localStorage.getItem('auth_token') ||
+    ''
+  );
+}
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method || 'GET').toUpperCase();
 
@@ -1392,6 +1402,10 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const userId = (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
   if (userId && userId !== 'default-user') {
     defaultHeaders['x-user-id'] = userId;
+  }
+  const authToken = getStoredAuthToken();
+  if (authToken) {
+    defaultHeaders['Authorization'] = `Bearer ${authToken}`;
   }
 
   const response = await fetch(url, {
@@ -1451,6 +1465,10 @@ async function aiRequest<T>(endpoint: string, options: RequestInit = {}): Promis
   const userId = (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
   if (userId && userId !== 'default-user') {
     defaultHeaders['x-user-id'] = userId;
+  }
+  const authToken = getStoredAuthToken();
+  if (authToken) {
+    defaultHeaders['Authorization'] = `Bearer ${authToken}`;
   }
 
   const response = await fetch(url, {
@@ -1668,6 +1686,14 @@ export const StudyCloudAPI = {
     const headers: Record<string, string> = {
       'Content-Type': finalContentType,
     };
+    const userId = (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
+    if (userId && userId !== 'default-user') {
+      headers['x-user-id'] = userId;
+    }
+    const authToken = getStoredAuthToken();
+    if (authToken) {
+      headers['Authorization'] = `Bearer ${authToken}`;
+    }
     if (originalSizeBytes) {
       headers['x-original-size-bytes'] = String(originalSizeBytes);
     }
@@ -2556,12 +2582,14 @@ export async function gradeExamPaper(payload: {
   const currentUserId = payload.userId || localStorage.getItem('unifolder_user_id') || 'default-user';
   const currentUserName = payload.studentName || localStorage.getItem('unifolder_user_name') || 'Étudiant StudyCloud';
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
+  const authToken = getStoredAuthToken();
 
   const response = await fetch(`${dedicatedAiUrl}/api/ai/grade-exam`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'x-user-id': currentUserId,
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     },
     body: JSON.stringify({
       ...payload,
@@ -2598,10 +2626,12 @@ export async function getUserCertificates(userId?: string): Promise<{
 }> {
   const currentUserId = userId || localStorage.getItem('unifolder_user_id') || 'default-user';
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
+  const authToken = getStoredAuthToken();
 
   const response = await fetch(`${dedicatedAiUrl}/api/ai/certificates?userId=${encodeURIComponent(currentUserId)}`, {
     headers: {
       'x-user-id': currentUserId,
+      ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
     },
   });
 
@@ -3513,11 +3543,13 @@ export async function getUserAiCreditsLive(
     try {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const timeoutId = controller ? setTimeout(() => controller.abort(), 8000) : null;
+      const authToken = getStoredAuthToken();
       const res = await fetch(`${url}/api/ai/user/credits?userId=${encodeURIComponent(userId)}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': userId,
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           Pragma: 'no-cache'
         },
@@ -3610,11 +3642,13 @@ export async function deductUserAiCredits(params: {
 
   for (const url of candidateUrls) {
     try {
+      const authToken = getStoredAuthToken();
       const res = await fetch(`${url}/api/ai/user/deduct-credits`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': currentUserId
+          'x-user-id': currentUserId,
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
         },
         body: JSON.stringify({
           user_id: currentUserId,
@@ -3686,11 +3720,13 @@ export async function getUserAiPurchases(
     try {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const timeoutId = controller ? setTimeout(() => controller.abort(), 3500) : null;
+      const authToken = getStoredAuthToken();
       const res = await fetch(`${url}/api/ai/user/purchases?userId=${encodeURIComponent(currentUserId)}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': currentUserId,
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           Pragma: 'no-cache'
         },

@@ -35,7 +35,7 @@ import {
   Minimize2,
   FileEdit
 } from 'lucide-react';
-import { CloudStorageAPI } from '../services/cloudStorageService';
+import { CloudStorageAPI, hasLocalSecurePin, saveLocalSecurePin, verifyLocalSecurePin } from '../services/cloudStorageService';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { useSecureList } from '../hooks/useCloudQueries';
 import { invalidateCloudQueries } from '../services/queryClient';
@@ -201,21 +201,18 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     setTimeout(() => setToastMessage(null), 3500);
   }, []);
 
-  const getStoredPin = () => localStorage.getItem('studycloud_secure_folder_pin');
-
-  // 1. Détection du code PIN : vérification locale ET distante auprès du Worker Cloudflare
+  // 1. Détection du code PIN : vérification locale (hachée) ET distante auprès du Worker Cloudflare
   useEffect(() => {
-    const localPin = getStoredPin();
-    if (localPin) {
+    if (hasLocalSecurePin()) {
       setHasServerPin(true);
     }
     // Vérifier en ligne pour les nouveaux appareils ou après vidage du cache
     CloudStorageAPI.isSecureFolderConfigured()
       .then((configured) => {
-        setHasServerPin(configured || Boolean(getStoredPin()));
+        setHasServerPin(configured || hasLocalSecurePin());
       })
       .catch(() => {
-        setHasServerPin(Boolean(getStoredPin()));
+        setHasServerPin(hasLocalSecurePin());
       });
   }, []);
 
@@ -224,8 +221,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     if (e) e.preventDefault();
     if (isSubmittingPin) return;
 
-    const stored = getStoredPin();
-    const isConfigured = hasServerPin ?? Boolean(stored);
+    const isConfigured = hasServerPin ?? hasLocalSecurePin();
 
     if (!isConfigured) {
       // Configuration initiale d'un nouveau code
@@ -241,7 +237,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
 
       setIsSubmittingPin(true);
       try {
-        localStorage.setItem('studycloud_secure_folder_pin', trimmed);
+        saveLocalSecurePin(trimmed);
         await CloudStorageAPI.setSecurePin(trimmed).catch(() => { });
         setHasServerPin(true);
         setIsUnlocked(true);
@@ -263,7 +259,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       }
 
       setIsSubmittingPin(true);
-      const isLocalOk = stored ? trimmed === stored.trim() : false;
+      const isLocalOk = verifyLocalSecurePin(trimmed);
       let isWorkerOk = false;
       try {
         isWorkerOk = await CloudStorageAPI.verifySecurePin(trimmed);
@@ -272,8 +268,8 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
       setIsSubmittingPin(false);
 
       if (isLocalOk || isWorkerOk) {
-        // Enregistrer en local si validé en ligne (ex: nouvel appareil)
-        localStorage.setItem('studycloud_secure_folder_pin', trimmed);
+        // Enregistrer l'empreinte hachée en local si validé en ligne (ex: nouvel appareil)
+        saveLocalSecurePin(trimmed);
         setHasServerPin(true);
         setIsUnlocked(true);
         setPinError(null);
@@ -349,7 +345,7 @@ export const SecureFolderMenuView: React.FC<SecureFolderMenuViewProps> = ({
     try {
       const res = await CloudStorageAPI.setSecurePin(newPinInput.trim(), oldPinInput.trim() || undefined);
       if (res.success) {
-        localStorage.setItem('studycloud_secure_folder_pin', newPinInput.trim());
+        saveLocalSecurePin(newPinInput.trim());
         setShowChangePinModal(false);
         setOldPinInput('');
         setNewPinInput('');

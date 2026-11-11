@@ -359,7 +359,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
             const arrayBuffer = await pdfFile.arrayBuffer();
             const typedarray = new Uint8Array(arrayBuffer);
-            const loadingTask = pdfjsLib.getDocument({ data: typedarray });
+            const loadingTask = pdfjsLib.getDocument({ data: typedarray, isEvalSupported: false });
             const pdf = await loadingTask.promise;
             const page = await pdf.getPage(1);
             const viewport = page.getViewport({ scale: 1.5 });
@@ -626,7 +626,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
             const arrayBuffer = uploadEvent.target?.result as ArrayBuffer;
             if (arrayBuffer) {
               const typedarray = new Uint8Array(arrayBuffer);
-              const loadingTask = pdfjsLib.getDocument({ data: typedarray });
+              const loadingTask = pdfjsLib.getDocument({ data: typedarray, isEvalSupported: false });
               const pdf = await loadingTask.promise;
               const page = await pdf.getPage(1);
               const viewport = page.getViewport({ scale: 1.5 });

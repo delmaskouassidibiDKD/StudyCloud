@@ -1415,11 +1415,63 @@ function ChatRecommendationCard({ recoType }: { recoType: string; key?: any }) {
 
 function sanitizeSvg(rawSvg: string): string {
   if (!rawSvg) return '';
-  return rawSvg
+  // 1. Nettoyage textuel préventif
+  let cleaned = rawSvg
     .replace(/<script[\s\S]*?<\/script>/gi, '')
-    .replace(/\bon\w+\s*=\s*(['"]).*?\1/gi, '')
+    .replace(/<foreignObject[\s\S]*?<\/foreignObject>/gi, '')
+    .replace(/<iframe[\s\S]*?<\/iframe>/gi, '')
+    .replace(/<object[\s\S]*?<\/object>/gi, '')
+    .replace(/<embed[\s\S]*?>/gi, '')
+    .replace(/\bon\w+\s*=\s*(['"])[\s\S]*?\1/gi, '')
     .replace(/\bon\w+\s*=\s*[^>\s]+/gi, '')
-    .replace(/javascript:/gi, '');
+    .replace(/(?:javascript|vbscript|data\s*:\s*text\/html)\s*:/gi, 'blocked:');
+
+  // 2. Assainissement structurel DOMParser (H-8 : bloque les vecteurs XSS SVG avancés : <set>, <animate>, <use>, entités HTML)
+  if (typeof DOMParser !== 'undefined') {
+    try {
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(cleaned, 'image/svg+xml');
+      const svgEl = doc.querySelector('svg');
+      if (svgEl && !doc.querySelector('parsererror')) {
+        const forbiddenTags = new Set([
+          'script', 'foreignobject', 'iframe', 'object', 'embed', 'applet',
+          'meta', 'link', 'base', 'animate', 'set', 'animatetransform',
+          'animatemotion', 'handler', 'listener', 'audio', 'video'
+        ]);
+        const allNodes = Array.from(svgEl.querySelectorAll('*'));
+        for (const el of allNodes) {
+          const tag = el.tagName.toLowerCase();
+          if (forbiddenTags.has(tag)) {
+            el.remove();
+            continue;
+          }
+          for (const attr of Array.from(el.attributes)) {
+            const name = attr.name.toLowerCase();
+            const val = (attr.value || '').replace(/[\s\u0000-\u001f]+/g, '').toLowerCase();
+            if (
+              name.startsWith('on') ||
+              val.includes('javascript:') ||
+              val.includes('vbscript:') ||
+              val.includes('data:text/html') ||
+              val.includes('data:image/svg+xml') ||
+              (tag === 'use' && (name === 'href' || name === 'xlink:href') && !val.startsWith('#'))
+            ) {
+              el.removeAttribute(attr.name);
+            }
+          }
+        }
+        for (const attr of Array.from(svgEl.attributes)) {
+          const name = attr.name.toLowerCase();
+          const val = (attr.value || '').replace(/[\s\u0000-\u001f]+/g, '').toLowerCase();
+          if (name.startsWith('on') || val.includes('javascript:') || val.includes('vbscript:') || val.includes('data:text/html')) {
+            svgEl.removeAttribute(attr.name);
+          }
+        }
+        return svgEl.outerHTML;
+      }
+    } catch {}
+  }
+  return cleaned;
 }
 
 function extractSvgBlocks(content: string): { cleanText: string; svgBlocks: string[] } {

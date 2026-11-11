@@ -5627,19 +5627,41 @@ a:hover{transform:translateY(-2px)}
         const isConfirmed = Number(latestVerif.confirmed) === 1 || Number(latestVerif.used) === 1 || Number(latestVerif.clicked) === 1;
 
         if (isConfirmed) {
-          // L'utilisateur a bien cliqué sur le lien de confirmation envoyé pour cette tentative
-          const user = await env.DB.prepare('SELECT * FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?').bind(latestVerif.user_id, cleanEmail).first();
-          if (user) {
-            let jwtToken = latestVerif?.confirmed_jwt;
-            if (!jwtToken) {
-              jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
-              const tokenHash = await hashToken(jwtToken);
-              const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
-              await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, expiresAt).run();
+          // Sécurité C-3 : La récupération du JWT par polling n'est autorisée que pendant la fenêtre immédiate
+          // suivant la confirmation (90 secondes max) et tant que le jeton n'a pas été révoqué/expiré.
+          const confirmedTimeMs = latestVerif.confirmed_at
+            ? new Date(latestVerif.confirmed_at).getTime()
+            : (latestVerif.created_at ? new Date(latestVerif.created_at).getTime() : 0);
+          const ageSinceConfirmMs = confirmedTimeMs > 0 ? (Date.now() - confirmedTimeMs) : 0;
+          const MAX_POLL_WINDOW_MS = 90 * 1000;
+
+          if (ageSinceConfirmMs > MAX_POLL_WINDOW_MS) {
+            if (latestVerif.confirmed_jwt) {
               try {
-                await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?').bind(jwtToken, latestVerif.id).run();
-              } catch (e3) {}
+                await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = NULL WHERE id = ?').bind(latestVerif.id).run();
+              } catch {}
             }
+            return jsonResponse({
+              success: true,
+              confirmed: false,
+              clicked: false,
+              expired: true,
+              resendCount: 0,
+              maxCount: 5,
+              isBlocked: false,
+              blockedUntil: null,
+              blockStage: 0,
+            }, 200, origin);
+          }
+
+          // L'utilisateur a bien cliqué sur le lien de confirmation envoyé pour cette tentative récente
+          const user = await env.DB.prepare('SELECT * FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?').bind(latestVerif.user_id, cleanEmail).first();
+          if (user && latestVerif.confirmed_jwt) {
+            const jwtToken = latestVerif.confirmed_jwt;
+            // Invalider le JWT stocké en table de vérification dès sa livraison (usage unique)
+            try {
+              await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = NULL WHERE id = ?').bind(latestVerif.id).run();
+            } catch (e3) {}
             return jsonResponse({
               success: true,
               confirmed: true,
@@ -5697,21 +5719,14 @@ a:hover{transform:translateY(-2px)}
             return htmlResponse("Lien expiré ou déjà utilisé", "Ce lien ne peut plus être utilisé ou n'est plus valide. Veuillez vous connecter.", false);
           }
 
-          // Si déjà validé
+          // Si déjà validé : ne jamais régénérer ni exposer de JWT sur un lien déjà utilisé (M-5)
           if (Number(record.used) === 1 || Number(record.confirmed) === 1) {
-            let jwtToken = record.confirmed_jwt;
-            if (!jwtToken) {
-              const user: any = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(record.user_id).first();
-              if (user) {
-                jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
-              }
-            }
             return htmlResponse(
               "Confirmation déjà effectuée !",
               "Ce lien ne peut plus être réutilisé car la confirmation a déjà été validée. Cet e-mail est déjà associé à un compte. Vous pouvez retourner dans l'application pour vous connecter.",
               true,
               record.user_id,
-              jwtToken
+              undefined
             );
           }
 
@@ -6008,8 +6023,11 @@ a:hover{transform:translateY(-2px)}
           const hash1 = await hashToken(answer1.slice(0, 30).toLowerCase().trim());
           const match1 = hash1 === user.security_answer_1_hash;
           let match2 = true;
-          if (user.security_answer_2_hash && answer2) {
-            const hash2 = await hashToken(answer2.slice(0, 30).toLowerCase().trim());
+          if (user.security_answer_2_hash) {
+            if (!answer2 || !String(answer2).trim()) {
+              return errorResponse('Les deux réponses de sécurité sont requises.', 400, origin);
+            }
+            const hash2 = await hashToken(String(answer2).slice(0, 30).toLowerCase().trim());
             match2 = hash2 === user.security_answer_2_hash;
           }
           if (!match1 || !match2) {
@@ -6069,7 +6087,9 @@ a:hover{transform:translateY(-2px)}
           }, 429, origin);
         }
 
-        const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const randArr = new Uint32Array(1);
+        crypto.getRandomValues(randArr);
+        const resetCode = (100000 + (randArr[0] % 900000)).toString();
         const expiresAt = new Date(now + 3600 * 1000).toISOString();
 
         await env.DB.prepare(`
@@ -6100,18 +6120,31 @@ a:hover{transform:translateY(-2px)}
         if (!pwdCheck.valid) return errorResponse(pwdCheck.error || 'Nouveau mot de passe non conforme', 400, origin);
 
         const cleanEmail = email.toLowerCase().trim();
-        const user: any = await env.DB.prepare('SELECT id, name FROM users WHERE email = ?').bind(cleanEmail).first();
+        const user: any = await env.DB.prepare('SELECT id, name FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
         if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
 
-        const resetRecord: any = await env.DB.prepare(`
+        const activeReset: any = await env.DB.prepare(`
           SELECT * FROM password_resets
-          WHERE user_id = ? AND reset_code = ? AND used = 0 AND expires_at > CURRENT_TIMESTAMP
+          WHERE user_id = ? AND used = 0 AND expires_at > CURRENT_TIMESTAMP
           ORDER BY created_at DESC LIMIT 1
-        `).bind(user.id, code.trim()).first();
+        `).bind(user.id).first();
 
-        if (!resetRecord) {
+        if (!activeReset) {
           return errorResponse('Code de réinitialisation invalide ou expiré', 400, origin);
         }
+
+        if (String(activeReset.reset_code).trim() !== String(code).trim()) {
+          // Protection anti-brute-force sur le code à 6 chiffres (max 5 essais par code)
+          const nextAttempts = Number(activeReset.attempts_today || 0) + 1;
+          if (nextAttempts >= 5) {
+            await env.DB.prepare('UPDATE password_resets SET used = 1, attempts_today = ? WHERE id = ?').bind(nextAttempts, activeReset.id).run();
+            return errorResponse('Trop de tentatives incorrectes. Ce code a été invalidé, veuillez en demander un nouveau.', 429, origin);
+          }
+          await env.DB.prepare('UPDATE password_resets SET attempts_today = ? WHERE id = ?').bind(nextAttempts, activeReset.id).run();
+          return errorResponse('Code de réinitialisation incorrect', 400, origin);
+        }
+
+        const resetRecord = activeReset;
 
         const newHash = await hashPassword(newPassword);
         await env.DB.prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(newHash, user.id).run();
@@ -6583,37 +6616,18 @@ a:hover{transform:translateY(-2px)}
       // 1. UTILISATEURS & PROFIL
       // ----------------------------------------------------------------------
 
-      // POST /api/users/delete-account — Suppression définitive du compte et de toutes ses données
+      // POST /api/users/delete-account — Suppression définitive du compte et de toutes ses données (C-4 : JWT obligatoire)
       if (path === '/api/users/delete-account' && method === 'POST') {
-        const body: any = await request.json().catch(() => ({}));
-        const authHeader = request.headers.get('Authorization') || '';
-        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
-
-        let targetUserId = body.userId;
-        let targetEmail = body.email ? String(body.email).toLowerCase().trim() : null;
-
-        if (token) {
-          try {
-            const payload = await verifyJWT(token);
-            if (payload?.userId) targetUserId = payload.userId;
-            if (payload?.email && !targetEmail) targetEmail = String(payload.email).toLowerCase().trim();
-          } catch (e) {}
+        const authUser = await getAuthUser(request);
+        if (!authUser || !authUser.userId) {
+          return errorResponse('Authentification valide (JWT) requise pour supprimer le compte', 401, origin);
         }
 
-        if (!targetUserId && !targetEmail) {
-          return errorResponse('userId ou email requis pour supprimer le compte', 400, origin);
-        }
+        const targetUserId = String(authUser.userId);
+        const targetEmail = authUser.email ? String(authUser.email).toLowerCase().trim() : null;
 
         if (env.DB) {
-          // Rechercher l'utilisateur existant
-          let existingUser: any = null;
-          if (targetUserId) {
-            existingUser = await env.DB.prepare('SELECT id, email FROM users WHERE id = ?').bind(targetUserId).first();
-          }
-          if (!existingUser && targetEmail) {
-            existingUser = await env.DB.prepare('SELECT id, email FROM users WHERE LOWER(TRIM(email)) = ?').bind(targetEmail).first();
-          }
-
+          const existingUser: any = await env.DB.prepare('SELECT id, email FROM users WHERE id = ?').bind(targetUserId).first();
           const resolvedUserId = existingUser?.id || targetUserId;
           const resolvedEmail = existingUser?.email || targetEmail;
 
@@ -6631,21 +6645,34 @@ a:hover{transform:translateY(-2px)}
         const { id, name, email, school, filiere, country, avatarUrl } = body;
         if (!id || !email) return errorResponse('ID et email requis', 400, origin);
 
+        const authUser = await getAuthUser(request);
         const cleanEmail = email.toLowerCase().trim();
         const isPollutedAvatar = isPollutedWallpaperAvatar(avatarUrl);
         const hasAvatar = avatarUrl !== undefined && !isPollutedAvatar;
         const avatarVal = isPollutedAvatar ? null : (avatarUrl ? String(avatarUrl) : null);
 
-        // Rechercher si l'utilisateur existe déjà par id ou par email pour éviter les doublons
+        // Sécurité C-5 : Si un JWT est fourni, l'ID synchronisé doit correspondre au propriétaire du jeton
+        const targetId = authUser?.userId ? String(authUser.userId) : String(id);
+        if (authUser?.userId && String(authUser.userId) !== String(id)) {
+          return errorResponse('Non autorisé : discordance d\'identité utilisateur', 403, origin);
+        }
+
+        // Rechercher si l'utilisateur existe déjà par son ID unique
         const existing: any = await env.DB.prepare(
-          'SELECT id FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?'
-        ).bind(id, cleanEmail).first();
+          'SELECT id, email, password_hash, email_verified FROM users WHERE id = ?'
+        ).bind(targetId).first();
 
         if (existing) {
+          // Si le compte est déjà vérifié ou protégé par mot de passe et qu'aucun JWT valide n'est fourni,
+          // interdire toute modification d'email (protection anti-account-takeover C-5)
+          const safeEmail = (authUser?.userId === existing.id)
+            ? (existing.email || cleanEmail)
+            : (existing.email || cleanEmail);
+
           await env.DB.prepare(`
             UPDATE users SET
               name = COALESCE(?, name),
-              email = ?,
+              email = COALESCE(users.email, ?),
               school = COALESCE(?, school),
               filiere = COALESCE(?, filiere),
               country = COALESCE(?, country),
@@ -6654,7 +6681,7 @@ a:hover{transform:translateY(-2px)}
             WHERE id = ?
           `).bind(
             name || null,
-            cleanEmail,
+            safeEmail,
             school || null,
             filiere || null,
             country || null,
@@ -6663,11 +6690,19 @@ a:hover{transform:translateY(-2px)}
             existing.id
           ).run();
         } else {
+          // Vérifier qu'aucun autre compte vérifié n'utilise déjà cet email avant d'insérer
+          const emailOwner: any = await env.DB.prepare(
+            'SELECT id FROM users WHERE LOWER(TRIM(email)) = ?'
+          ).bind(cleanEmail).first();
+          if (emailOwner && emailOwner.id !== targetId) {
+            return jsonResponse({ success: true, message: 'Synchronisation ignorée (email déjà rattaché)' }, 200, origin);
+          }
+
           await env.DB.prepare(`
             INSERT INTO users (id, name, email, school, filiere, country, avatar_url, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
           `).bind(
-            id,
+            targetId,
             name || 'Étudiant',
             cleanEmail,
             school || 'CME',
@@ -6680,7 +6715,7 @@ a:hover{transform:translateY(-2px)}
         // Initialiser les préférences utilisateur si inexistantes
         await env.DB.prepare(`
           INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)
-        `).bind(existing ? existing.id : id).run();
+        `).bind(existing ? existing.id : targetId).run();
 
         return jsonResponse({ success: true, message: 'Utilisateur synchronisé' }, 200, origin);
       }
@@ -6792,7 +6827,7 @@ a:hover{transform:translateY(-2px)}
         const pathId = parts.length > 3 ? decodeURIComponent(parts[3]) : '';
         const body: any = await request.json().catch(() => ({}));
         const targetId = pathId || body.id;
-        const userId = body.userId;
+        const reqUserId = (await extractRequestUserId()) || body.userId;
         if (!targetId) return errorResponse('id requis', 400, origin);
 
         const updates: string[] = [];
@@ -6804,14 +6839,19 @@ a:hover{transform:translateY(-2px)}
         if (body.displayOrder !== undefined) { updates.push('display_order = ?'); params.push(body.displayOrder); }
 
         if (updates.length > 0) {
-          params.push(targetId);
-          await env.DB.prepare(`UPDATE matieres SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run();
+          if (reqUserId) {
+            params.push(targetId, reqUserId);
+            await env.DB.prepare(`UPDATE matieres SET ${updates.join(', ')} WHERE id = ? AND user_id = ?`).bind(...params).run();
+          } else {
+            params.push(targetId);
+            await env.DB.prepare(`UPDATE matieres SET ${updates.join(', ')} WHERE id = ?`).bind(...params).run();
+          }
         }
 
-        if (body.oldName && userId) {
+        if (body.oldName && reqUserId) {
           await env.DB.prepare(`
             UPDATE files SET matiere_id = ? WHERE user_id = ? AND (matiere_id = ? OR matiere_id = ?)
-          `).bind(targetId, userId, body.oldName, targetId).run().catch(() => {});
+          `).bind(targetId, reqUserId, body.oldName, targetId).run().catch(() => {});
         }
 
         return jsonResponse({ success: true, message: 'Matière mise à jour' }, 200, origin);
@@ -6821,15 +6861,13 @@ a:hover{transform:translateY(-2px)}
         if (env.DB) await ensureCloudMediaTables(env.DB);
         const rawId = path.split('/')[3] || '';
         const id = decodeURIComponent(rawId);
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
-        const matRow: any = await env.DB.prepare('SELECT name, user_id FROM matieres WHERE id = ? OR name = ?').bind(id, id).first().catch(() => null);
-        await env.DB.prepare('DELETE FROM matieres WHERE id = ? OR name = ?').bind(id, id).run();
+        const matRow: any = await env.DB.prepare('SELECT name, user_id FROM matieres WHERE (id = ? OR name = ?) AND user_id = ?').bind(id, id, reqUserId).first().catch(() => null);
+        await env.DB.prepare('DELETE FROM matieres WHERE (id = ? OR name = ?) AND user_id = ?').bind(id, id, reqUserId).run();
 
-        if (matRow && matRow.user_id) {
-          await env.DB.prepare('DELETE FROM files WHERE user_id = ? AND (matiere_id = ? OR matiere_id = ?)').bind(matRow.user_id, id, matRow.name).run().catch(() => {});
-        } else {
-          await env.DB.prepare('DELETE FROM files WHERE matiere_id = ?').bind(id).run().catch(() => {});
-        }
+        await env.DB.prepare('DELETE FROM files WHERE user_id = ? AND (matiere_id = ? OR matiere_id = ?)').bind(reqUserId, id, matRow?.name || id).run().catch(() => {});
 
         return jsonResponse({ success: true, message: 'Matière et ses fichiers supprimés' }, 200, origin);
       }
@@ -6949,10 +6987,15 @@ a:hover{transform:translateY(-2px)}
       if (path.startsWith('/api/files/') && path.endsWith('/favorite') && (method === 'PATCH' || method === 'PUT' || method === 'POST')) {
         if (env.DB) await ensureCloudMediaTables(env.DB);
         const id = path.split('/')[3];
+        const reqUserId = await extractRequestUserId();
         const body: any = await request.json().catch(() => ({}));
         const isFavoriteVal = body.isFavorite === true || body.isFavorite === 1 ? 1 : 0;
 
-        await env.DB.prepare('UPDATE files SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(isFavoriteVal, id).run();
+        if (reqUserId) {
+          await env.DB.prepare('UPDATE files SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?').bind(isFavoriteVal, id, reqUserId).run();
+        } else {
+          await env.DB.prepare('UPDATE files SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(isFavoriteVal, id).run();
+        }
 
         return jsonResponse({ success: true, message: 'Favori mis à jour', isFavorite: isFavoriteVal }, 200, origin);
       }
@@ -6964,6 +7007,9 @@ a:hover{transform:translateY(-2px)}
 
         // 1. Chercher les informations du fichier dans la table files (Mes fichiers & Matières)
         const fileRow = await env.DB.prepare('SELECT r2_key, file_url, user_id FROM files WHERE id = ?').bind(id).first<any>().catch(() => null);
+        if (fileRow && fileRow.user_id && reqUserId && fileRow.user_id !== reqUserId) {
+          return errorResponse('Non autorisé : ce fichier appartient à un autre utilisateur', 403, origin);
+        }
 
         const targetUser = fileRow?.user_id || reqUserId;
         const targetR2Key = fileRow?.r2_key;
@@ -7112,12 +7158,16 @@ a:hover{transform:translateY(-2px)}
 
       if (path.startsWith('/api/study-files/') && method === 'DELETE') {
         const id = path.split('/')[3];
-        const row = await env.DB.prepare('SELECT r2_key FROM study_imported_files WHERE id = ?').bind(id).first().catch(() => null);
+        const reqUserId = await extractRequestUserId();
+        const row: any = await env.DB.prepare('SELECT r2_key, user_id FROM study_imported_files WHERE id = ?').bind(id).first().catch(() => null);
+        if (row && row.user_id && reqUserId && row.user_id !== reqUserId) {
+          return errorResponse('Non autorisé', 403, origin);
+        }
         if (row && row.r2_key && env.BUCKET) {
           try { await env.BUCKET.delete(row.r2_key); } catch (e) {}
         }
         await env.DB.prepare('DELETE FROM study_imported_files WHERE id = ?').bind(id).run().catch(() => {});
-        if (row && (row as any).user_id) { recalculateAndSaveUserStorage(env.DB, (row as any).user_id).catch(() => {}); }
+        if (row && row.user_id) { recalculateAndSaveUserStorage(env.DB, row.user_id).catch(() => {}); }
         return jsonResponse({ success: true, message: 'Fichier d\'étude supprimé' }, 200, origin);
       }
 
@@ -7126,7 +7176,13 @@ a:hover{transform:translateY(-2px)}
       // ----------------------------------------------------------------------
       if (path === '/api/storage/upload' && method === 'PUT') {
         const key = url.searchParams.get('key');
-        if (!key) return errorResponse('Clé de stockage manquante', 400, origin);
+        if (!key || key.includes('..') || key.startsWith('/')) {
+          return errorResponse('Clé de stockage invalide ou manquante', 400, origin);
+        }
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId || reqUserId === 'default-user') {
+          return errorResponse('Authentification requise pour téléverser un fichier', 401, origin);
+        }
         const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
 
         const fileBuffer = await request.arrayBuffer();
@@ -7135,7 +7191,6 @@ a:hover{transform:translateY(-2px)}
         const effectiveSize = headerSize > 0 ? headerSize : rawSize;
 
         // Vérification stricte du quota utilisateur en base D1
-        const reqUserId = await extractRequestUserId();
         if (reqUserId && env.DB) {
           if (effectiveSize > 0) {
             const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, effectiveSize);
@@ -7163,6 +7218,7 @@ a:hover{transform:translateY(-2px)}
 
       if (path.startsWith('/api/storage/file/') && method === 'GET') {
         const key = decodeURIComponent(path.replace('/api/storage/file/', ''));
+        if (!key || key.includes('..')) return errorResponse('Clé invalide', 400, origin);
         let found = await getObjectFromAnyBucket(rawEnv, 'documents', key);
         if (!found || !found.object) {
           found = await getObjectFromAnyBucket(rawEnv, 'images', key);
@@ -7183,10 +7239,22 @@ a:hover{transform:translateY(-2px)}
         object.writeHttpMetadata(headers);
         headers.set('etag', object.httpEtag);
         headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+        headers.set('X-Content-Type-Options', 'nosniff');
         headers.set('Access-Control-Allow-Origin', origin || '*');
-            headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-            headers.set('Access-Control-Allow-Headers', '*');
-            headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
+        headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
+        headers.set('Access-Control-Allow-Headers', '*');
+        headers.set('Cross-Origin-Resource-Policy', 'cross-origin');
+
+        // Protection anti-XSS stocké (M-3) : isoler tout fichier HTML/SVG/JS/XML par CSP sandbox
+        const ext = (key.split('.').pop() || '').toLowerCase();
+        const ct = (headers.get('Content-Type') || '').toLowerCase();
+        if (['html', 'htm', 'svg', 'xml', 'xhtml', 'js', 'mjs'].includes(ext) || ct.includes('html') || ct.includes('svg') || ct.includes('javascript') || ct.includes('xml')) {
+          headers.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+          if (['html', 'htm', 'js', 'mjs'].includes(ext) || ct.includes('html') || ct.includes('javascript')) {
+            const safeName = key.split('/').pop() || 'file';
+            headers.set('Content-Disposition', `attachment; filename="${encodeURIComponent(safeName)}"`);
+          }
+        }
 
         return new Response(object.body, { headers });
       }
@@ -7195,23 +7263,28 @@ a:hover{transform:translateY(-2px)}
       // 4b. API STUDYCLOUD - ESPACE CLOUD, CLASSEUR 3D & MÉDIAS DÉDIÉS (OPTION B)
       // ======================================================================
 
-      // Helper d'extraction et de sécurisation de l'identité utilisateur (Multi-Tenant Strict)
+      // Helper d'extraction et de sécurisation de l'identité utilisateur (Multi-Tenant Strict - C-2)
+      // Priorité absolue au jeton JWT signé (Authorization: Bearer <token>) pour empêcher l'usurpation d'userId.
       async function extractRequestUserId(): Promise<string> {
-        const queryUserId = url.searchParams.get('userId');
-        if (queryUserId && queryUserId.trim() && queryUserId !== 'null' && queryUserId !== 'undefined' && queryUserId !== 'default-user') {
-          return queryUserId.trim();
+        const authHeader = request.headers.get('Authorization') || '';
+        if (authHeader.startsWith('Bearer ')) {
+          const token = authHeader.slice(7).trim();
+          if (token && token !== 'null' && token !== 'undefined') {
+            try {
+              const payload = await verifyJWT(token);
+              if (payload?.userId && payload.userId !== 'default-user') {
+                return String(payload.userId).trim();
+              }
+            } catch {}
+          }
         }
         const xUserId = request.headers.get('x-user-id');
         if (xUserId && xUserId.trim() && xUserId !== 'null' && xUserId !== 'undefined' && xUserId !== 'default-user') {
           return xUserId.trim();
         }
-        const authHeader = request.headers.get('Authorization') || '';
-        if (authHeader.startsWith('Bearer ')) {
-          const token = authHeader.slice(7).trim();
-          try {
-            const payload = await verifyJWT(token);
-            if (payload?.userId && payload.userId !== 'default-user') return String(payload.userId);
-          } catch {}
+        const queryUserId = url.searchParams.get('userId');
+        if (queryUserId && queryUserId.trim() && queryUserId !== 'null' && queryUserId !== 'undefined' && queryUserId !== 'default-user') {
+          return queryUserId.trim();
         }
         return '';
       }
@@ -7267,7 +7340,8 @@ a:hover{transform:translateY(-2px)}
         const headers = new Headers();
         object.writeHttpMetadata(headers);
         headers.set('etag', object.httpEtag);
-        headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+        headers.set('Cache-Control', category === 'secure' ? 'private, no-store' : 'public, max-age=31536000, immutable');
+        headers.set('X-Content-Type-Options', 'nosniff');
         headers.set('Accept-Ranges', 'bytes');
         headers.set('Access-Control-Allow-Origin', origin);
 
@@ -7288,6 +7362,16 @@ a:hover{transform:translateY(-2px)}
             svg: 'image/svg+xml', gif: 'image/gif'
           };
           if (ext && mimeMap[ext]) headers.set('Content-Type', mimeMap[ext]);
+        }
+
+        // Protection anti-XSS stocké (M-3) : isoler tout fichier HTML/SVG/JS/XML par CSP sandbox
+        const finalMime = (headers.get('Content-Type') || '').toLowerCase();
+        if (['html', 'htm', 'svg', 'xml', 'xhtml', 'js', 'mjs'].includes(docExt) || finalMime.includes('html') || finalMime.includes('svg') || finalMime.includes('javascript') || finalMime.includes('xml')) {
+          headers.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+          if (['html', 'htm', 'js', 'mjs'].includes(docExt) || finalMime.includes('html') || finalMime.includes('javascript')) {
+            const safeName = key.split('/').pop() || 'file';
+            headers.set('Content-Disposition', `attachment; filename="${encodeURIComponent(safeName)}"`);
+          }
         }
 
         if (isDocCategory) {
@@ -10908,6 +10992,18 @@ a:hover{transform:translateY(-2px)}
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
 
+        // Protection anti-brute-force (C-6) : max 5 échecs par tranche de 5 minutes par utilisateur
+        const gPinRate: Record<string, { count: number; until: number }> = ((globalThis as any).__scPinRateLimit = (globalThis as any).__scPinRateLimit || {});
+        const nowMs = Date.now();
+        const rateEntry = gPinRate[reqUserId];
+        if (rateEntry && rateEntry.until > nowMs && rateEntry.count >= 5) {
+          return jsonResponse({
+            success: false,
+            error: 'Trop de tentatives incorrectes. Veuillez patienter quelques minutes avant de réessayer.',
+            verified: false
+          }, 429, origin);
+        }
+
         const body: any = await request.json().catch(() => ({}));
         const pin = String(body.pin || '').trim();
 
@@ -10921,9 +11017,12 @@ a:hover{transform:translateY(-2px)}
 
         const isValid = await verifyPassword(pin, existing.pin_hash);
         if (!isValid) {
+          const prevCount = (rateEntry && rateEntry.until > nowMs) ? rateEntry.count : 0;
+          gPinRate[reqUserId] = { count: prevCount + 1, until: nowMs + 5 * 60 * 1000 };
           return jsonResponse({ success: false, error: 'Code PIN incorrect', verified: false }, 401, origin);
         }
 
+        delete gPinRate[reqUserId];
         return jsonResponse({ success: true, verified: true, message: 'Dossier sécurisé déverrouillé' }, 200, origin);
       }
 
@@ -13133,24 +13232,14 @@ a:hover{transform:translateY(-2px)}
 
       if (path === '/api/shares') {
         if (method === 'GET') {
-          const userId = url.searchParams.get('userId') || request.headers.get('x-user-id');
+          const reqUserId = await extractRequestUserId();
+          const userId = reqUserId || url.searchParams.get('userId') || request.headers.get('x-user-id');
           const isPublicOnly = url.searchParams.get('publicOnly') === 'true' || url.searchParams.get('isPublic') === '1';
-
-          // Migration automatique multi-appareils : si un utilisateur authentifié demande ses partages,
-          // on associe automatiquement les partages créés sous 'default-user' sur ce navigateur à son compte
-          // pour qu'ils soient immédiatement synchronisés et visibles sur tous ses autres appareils !
-          if (userId && userId !== 'default-user' && userId !== 'all') {
-            await env.DB.prepare(`
-              UPDATE shared_folders
-              SET user_id = ?
-              WHERE user_id = 'default-user'
-            `).bind(userId).run().catch(() => {});
-          }
 
           let query = "SELECT * FROM shared_folders WHERE id NOT LIKE 'staging_%'";
           const params: any[] = [];
 
-          if (userId && userId !== 'all' && userId !== 'public') {
+          if (!isPublicOnly && userId && userId !== 'all' && userId !== 'public' && userId !== 'default-user') {
             // L'utilisateur demande ses propres liens : filtrage strict par son ID utilisateur
             query += ' AND user_id = ?';
             params.push(userId);
@@ -13159,18 +13248,20 @@ a:hover{transform:translateY(-2px)}
             // Seuls les liens explicitement rendus publics (is_public = 1) sont accessibles !
             query += ' AND is_public = 1';
           }
-          if (isPublicOnly && !query.includes('is_public = 1')) {
-            query += ' AND is_public = 1';
-          }
 
           query += ' ORDER BY created_at DESC';
           const { results } = await env.DB.prepare(query).bind(...params).all<any>();
           const foldersWithFiles = await Promise.all(
             (results || []).map(async (folder: any) => {
+              const isOwner = Boolean(reqUserId && folder.user_id && folder.user_id === reqUserId);
+              const { password_hash: _ph, ...safeFolder } = folder;
+              if (folder.is_password_protected && !isOwner) {
+                return { ...safeFolder, files: [], requiresPassword: true };
+              }
               const { results: files } = await env.DB.prepare(
                 'SELECT * FROM shared_folder_files WHERE shared_folder_id = ?'
               ).bind(folder.id).all();
-              return { ...folder, files: files || [] };
+              return { ...safeFolder, files: files || [] };
             })
           );
           return jsonResponse({ success: true, data: foldersWithFiles }, 200, origin);
@@ -13346,26 +13437,29 @@ a:hover{transform:translateY(-2px)}
 
         await env.DB.prepare('UPDATE shared_folders SET views_count = views_count + 1 WHERE id = ?').bind(folder.id).run();
         const { results: files } = await env.DB.prepare('SELECT * FROM shared_folder_files WHERE shared_folder_id = ?').bind(folder.id).all();
+        const { password_hash: _ph, ...safeFolder } = folder;
 
         return jsonResponse({
           success: true,
           data: {
-            ...folder,
+            ...safeFolder,
             files: folder.is_password_protected ? [] : files,
             requiresPassword: !!folder.is_password_protected,
           },
         }, 200, origin);
       }
 
-      // Basculer la visibilité publique d'un partage
+      // Basculer la visibilité publique d'un partage (C-8 : vérification propriétaire stricte)
       if (path.startsWith('/api/shares/') && path.endsWith('/public') && method === 'PUT') {
         const shareId = path.split('/')[3];
-        const requestingUserId = url.searchParams.get('userId') || request.headers.get('x-user-id');
-        if (requestingUserId && requestingUserId !== 'admin') {
-          const owner = await env.DB.prepare('SELECT user_id FROM shared_folders WHERE id = ?').bind(shareId).first<any>();
-          if (owner && owner.user_id && owner.user_id !== requestingUserId && owner.user_id !== 'default-user') {
-            return errorResponse('Non autorisé : vous ne pouvez modifier que vos propres partages', 403, origin);
-          }
+        const requestingUserId = await extractRequestUserId();
+        if (!requestingUserId || requestingUserId === 'default-user') {
+          return errorResponse('Authentification requise pour modifier un partage', 401, origin);
+        }
+        const owner = await env.DB.prepare('SELECT user_id FROM shared_folders WHERE id = ?').bind(shareId).first<any>();
+        if (!owner) return errorResponse('Partage introuvable', 404, origin);
+        if (owner.user_id && owner.user_id !== 'default-user' && owner.user_id !== requestingUserId) {
+          return errorResponse('Non autorisé : vous ne pouvez modifier que vos propres partages', 403, origin);
         }
 
         const body: any = await request.json();
@@ -13397,12 +13491,14 @@ a:hover{transform:translateY(-2px)}
 
       if (path.startsWith('/api/shares/') && method === 'DELETE') {
         const shareId = path.split('/')[3];
-        const requestingUserId = url.searchParams.get('userId') || request.headers.get('x-user-id');
-        if (requestingUserId && requestingUserId !== 'admin') {
-          const owner = await env.DB.prepare('SELECT user_id FROM shared_folders WHERE id = ?').bind(shareId).first<any>();
-          if (owner && owner.user_id && owner.user_id !== requestingUserId && owner.user_id !== 'default-user') {
-            return errorResponse('Non autorisé : vous ne pouvez supprimer que vos propres partages', 403, origin);
-          }
+        const requestingUserId = await extractRequestUserId();
+        if (!requestingUserId || requestingUserId === 'default-user') {
+          return errorResponse('Authentification requise pour supprimer un partage', 401, origin);
+        }
+        const owner = await env.DB.prepare('SELECT user_id FROM shared_folders WHERE id = ?').bind(shareId).first<any>();
+        if (!owner) return errorResponse('Partage introuvable', 404, origin);
+        if (owner.user_id && owner.user_id !== 'default-user' && owner.user_id !== requestingUserId) {
+          return errorResponse('Non autorisé : vous ne pouvez supprimer que vos propres partages', 403, origin);
         }
         try {
           const { results: filesToDelete } = await env.DB.prepare('SELECT r2_key FROM shared_folder_files WHERE shared_folder_id = ?').bind(shareId).all<any>();
@@ -13446,11 +13542,12 @@ a:hover{transform:translateY(-2px)}
 
         // Récupérer les fichiers liés
         const { results: files } = await env.DB.prepare('SELECT * FROM shared_folder_files WHERE shared_folder_id = ?').bind(shareId).all();
+        const { password_hash: _ph, ...safeFolder } = folder;
 
         return jsonResponse({
           success: true,
           data: {
-            ...folder,
+            ...safeFolder,
             files: folder.is_password_protected ? [] : files, // Masquer les fichiers si mot de passe requis
             requiresPassword: !!folder.is_password_protected,
           },
@@ -13463,12 +13560,16 @@ a:hover{transform:translateY(-2px)}
         const folder = await env.DB.prepare('SELECT * FROM shared_folders WHERE id = ?').bind(shareId).first<any>();
         if (!folder) return errorResponse('Dossier partagé introuvable', 404, origin);
 
-        if (folder.password_hash !== pin) {
+        const storedPin = String(folder.password_hash || '');
+        const cleanPin = String(pin || '');
+        const isMatch = storedPin === cleanPin || (storedPin.includes(':') ? await verifyPassword(cleanPin, storedPin) : false);
+        if (!isMatch) {
           return errorResponse('Code PIN incorrect', 401, origin);
         }
 
         const { results: files } = await env.DB.prepare('SELECT * FROM shared_folder_files WHERE shared_folder_id = ?').bind(shareId).all();
-        return jsonResponse({ success: true, data: { ...folder, files } }, 200, origin);
+        const { password_hash: _ph, ...safeFolder } = folder;
+        return jsonResponse({ success: true, data: { ...safeFolder, files } }, 200, origin);
       }
 
       // Vérifier si un utilisateur a déjà un compte pour le téléchargement / enregistrement
@@ -13484,7 +13585,7 @@ a:hover{transform:translateY(-2px)}
         }, 200, origin);
       }
 
-      // Connexion / Inscription rapide depuis la page autonome de partage
+      // Connexion / Inscription rapide depuis la page autonome de partage (M-1 : émission de JWT valide)
       if (path === '/api/shares/quick-auth' && method === 'POST') {
         const body: any = await request.json().catch(() => ({}));
         const { mode, email, password, name, school, country } = body;
@@ -13497,16 +13598,24 @@ a:hover{transform:translateY(-2px)}
           if (!user) return errorResponse('Aucun compte associé à cet email', 404, origin);
           const valid = user.password_hash ? await verifyPassword(password, user.password_hash) : false;
           if (!valid) return errorResponse('Mot de passe incorrect', 401, origin);
+          const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
+          const tokenHash = await hashToken(jwtToken);
+          const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, sessionExpiresAt).run().catch(() => {});
           return jsonResponse({
             success: true,
             message: 'Connexion réussie',
             userId: user.id,
             name: user.name,
-            email: user.email
+            email: user.email,
+            token: jwtToken,
           }, 200, origin);
         } else {
           const existing: any = await env.DB.prepare('SELECT id FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
           if (existing) return errorResponse('Un compte existe déjà avec cet email. Veuillez vous connecter.', 409, origin);
+
+          const pwdCheck = validatePasswordFormat(password);
+          if (!pwdCheck.valid) return errorResponse(pwdCheck.error || 'Mot de passe trop faible', 400, origin);
 
           const newUserId = generateId();
           const pwdHash = await hashPassword(password);
@@ -13521,12 +13630,18 @@ a:hover{transform:translateY(-2px)}
 
           await env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)').bind(newUserId).run();
 
+          const jwtToken = await createJWT({ userId: newUserId, email: cleanEmail, name: cleanName });
+          const tokenHash = await hashToken(jwtToken);
+          const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), newUserId, tokenHash, sessionExpiresAt).run().catch(() => {});
+
           return jsonResponse({
             success: true,
             message: 'Compte créé avec succès',
             userId: newUserId,
             name: cleanName,
-            email: cleanEmail
+            email: cleanEmail,
+            token: jwtToken,
           }, 201, origin);
         }
       }
