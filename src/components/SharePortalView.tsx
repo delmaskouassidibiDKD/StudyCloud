@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Folder, FileText, Download, Lock, Check, ShieldCheck, ArrowLeft, Package, Sparkles } from 'lucide-react';
 import { SharedFolder, SharedFile } from '../types';
 import JSZip from 'jszip';
@@ -301,12 +302,15 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
         )}
       </div>
 
-      {/* Modal interactif : Conditions et Confidentialité */}
-      <LegalTermsModal
-        isOpen={showLegalModal}
-        onClose={() => setShowLegalModal(false)}
-        defaultTab="cgu"
-      />
+      {/* Modal interactif : Conditions et Confidentialité (Pleine Page Blanche via Portal) */}
+      {showLegalModal && createPortal(
+        <LegalTermsModal
+          isOpen={showLegalModal}
+          onClose={() => setShowLegalModal(false)}
+          defaultTab="cgu"
+        />,
+        document.body
+      )}
 
       {/* Modal interactif : Choisir où enregistrer (Appareil, StudyCloud, ou les deux) */}
       <DownloadDestinationModal

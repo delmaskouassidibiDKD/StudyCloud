@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Mail, Lock, Eye, EyeOff, ArrowLeft, AlertCircle, CheckCircle2, User, ShieldCheck, KeyRound, UserPlus, X, Sparkles } from 'lucide-react';
 import { StudyCloudAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -1095,12 +1096,15 @@ export function AuthPage({ onBack }: AuthPageProps) {
       </div>
       </div>
 
-      {/* Modal interactif du cadre juridique */}
-      <LegalTermsModal
-        isOpen={showLegalModal}
-        onClose={() => setShowLegalModal(false)}
-        defaultTab={legalTab}
-      />
+      {/* Modal interactif du cadre juridique (Pleine Page Blanche via Portal) */}
+      {showLegalModal && createPortal(
+        <LegalTermsModal
+          isOpen={showLegalModal}
+          onClose={() => setShowLegalModal(false)}
+          defaultTab={legalTab}
+        />,
+        document.body
+      )}
     </div>
   );
 }

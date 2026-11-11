@@ -6,6 +6,7 @@ import { SettingsPricingView } from './SettingsPricingView';
 import { NotificationsView } from './NotificationsView';
 import { UserSettingsView } from './UserSettingsView';
 import { ServiceProposalView } from './ServiceProposalView';
+import { createPortal } from 'react-dom';
 import { LegalTermsModal } from './LegalTermsModal';
 import studentLogo from '../assets/student-logo.jpg';
 import proLogo from '../assets/pro-logo.jpg';
@@ -365,12 +366,15 @@ export const SettingsView: React.FC = () => {
           </div>
         </div>
       )}
-      {/* Modal Conditions Générales & Confidentialité */}
-      <LegalTermsModal
-        isOpen={showLegalModal}
-        onClose={() => setShowLegalModal(false)}
-        defaultTab={legalTab}
-      />
+      {/* Modal Conditions Générales & Confidentialité (Pleine Page Blanche via Portal) */}
+      {showLegalModal && createPortal(
+        <LegalTermsModal
+          isOpen={showLegalModal}
+          onClose={() => setShowLegalModal(false)}
+          defaultTab={legalTab}
+        />,
+        document.body
+      )}
     </div>
   );
 };

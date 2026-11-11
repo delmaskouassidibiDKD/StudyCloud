@@ -42,6 +42,7 @@ import { UploadQueueWidget } from './components/UploadQueueWidget';
 import { checkAndPerformWallpaperAutoRotation } from './utils/wallpaperHelper';
 import { purgeVolatileStorage, safeLocalStorageRemove, sanitizeItemForStorage } from './utils/safeStorage';
 import { documentSpeechService, useDocumentSpeech } from './services/documentSpeechService';
+import { LegalTermsModal, LegalTabType } from './components/LegalTermsModal';
 
 // Nettoyage immédiat au chargement de l'application pour libérer l'espace des appareils saturés
 if (typeof window !== 'undefined') {
@@ -58,13 +59,26 @@ export default function App() {
   const viewerExpandLevel = useViewerExpandLevel();
   const { user, isAuthenticated, isLoading: authLoading, needsOnboarding, needsSecuritySetup, loginWithToken } = useAuth();
 
+  // Détection directe d'une page légale publique via URL (?legal=cgu|privacy|mentions ou /terms|/privacy|/legal)
+  const [directLegalTab, setDirectLegalTab] = useState<LegalTabType | null>(() => {
+    try {
+      const pathname = window.location.pathname.toLowerCase();
+      const params = new URLSearchParams(window.location.search);
+      const legalParam = params.get('legal');
+      if (legalParam === 'privacy' || pathname === '/privacy' || pathname === '/confidentialite') return 'privacy';
+      if (legalParam === 'mentions' || pathname === '/legal' || pathname === '/mentions-legales') return 'mentions';
+      if (legalParam === 'cgu' || pathname === '/terms' || pathname === '/cgu') return 'cgu';
+    } catch {}
+    return null;
+  });
+
   // Détecter immédiatement à l'initialisation si l'URL contient un retour Google OAuth ou une confirmation email
   const [isProcessingAuth, setIsProcessingAuth] = useState<string | null>(() => {
     try {
       const p = new URLSearchParams(window.location.search);
       if (p.get('code')) return 'Connexion sécurisée avec votre compte Google en cours...';
       if (p.get('verify_token') || (p.get('verified') === '1' && p.get('token'))) return 'Validation de votre adresse email en cours...';
-    } catch {}
+    } catch { }
     return null;
   });
 
@@ -174,7 +188,7 @@ export default function App() {
       try {
         const parsed = JSON.parse(saved);
         if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
+      } catch (e) { }
     }
     return [];
   });
@@ -190,7 +204,7 @@ export default function App() {
         localStorage.setItem('studycloud_open_subview', 'notifications');
         return 'settings';
       }
-    } catch (e) {}
+    } catch (e) { }
     const saved = localStorage.getItem('unifolder_current_tab');
     if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file', 'ai-subscriptions', 'storage-menu'].includes(saved)) {
       return saved as NavigationTab;
@@ -226,7 +240,7 @@ export default function App() {
         if (typeof screen !== 'undefined' && screen.orientation && (screen.orientation as any).lock) {
           await (screen.orientation as any).lock('portrait');
         }
-      } catch (e) {}
+      } catch (e) { }
     };
     enforcePortrait();
     window.addEventListener('orientationchange', enforcePortrait);
@@ -244,8 +258,8 @@ export default function App() {
     let timer: ReturnType<typeof setTimeout> | null = null;
 
     const handleOnline = () => {
-      invalidateCloudQueries.all().catch(() => {});
-      CloudDataStore.syncFromCloud(true).catch(() => {});
+      invalidateCloudQueries.all().catch(() => { });
+      CloudDataStore.syncFromCloud(true).catch(() => { });
       window.dispatchEvent(new CustomEvent('studycloud_online_reconnected'));
       setNetworkBanner({
         type: 'online',
@@ -296,7 +310,7 @@ export default function App() {
       if (savedFiles && JSON.parse(savedFiles).length > 0) {
         return { isPublishing: false, hasFiles: true, progress: `${JSON.parse(savedFiles).length} fichier(s)` };
       }
-    } catch {}
+    } catch { }
     return null;
   });
 
@@ -380,7 +394,7 @@ export default function App() {
           localStorage.removeItem('user_grades_trimesters_data');
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }, []);
 
   const showToast = (msg: string) => {
@@ -408,13 +422,13 @@ export default function App() {
           createdAt: row.created_at || new Date().toISOString(),
           files: Array.isArray(row.files)
             ? row.files.map((f: any) => ({
-                id: f.id || f.file_id || crypto.randomUUID(),
-                name: f.name,
-                size: f.size || 0,
-                type: f.type || 'file',
-                url: f.file_url || f.url || (f.r2_key ? `${getWorkerApiUrl().replace(/\/+$/, '')}/api/storage/file/${encodeURIComponent(f.r2_key)}` : ''),
-                r2Key: f.r2_key || f.r2Key || undefined,
-              }))
+              id: f.id || f.file_id || crypto.randomUUID(),
+              name: f.name,
+              size: f.size || 0,
+              type: f.type || 'file',
+              url: f.file_url || f.url || (f.r2_key ? `${getWorkerApiUrl().replace(/\/+$/, '')}/api/storage/file/${encodeURIComponent(f.r2_key)}` : ''),
+              r2Key: f.r2_key || f.r2Key || undefined,
+            }))
             : [],
           totalSize: row.total_size || 0,
           downloadsCount: row.downloads_count || 0,
@@ -614,8 +628,8 @@ export default function App() {
                 }
               }
 
-              const uniqueFileId = (item.id && typeof item.id === 'string' && item.id.startsWith('shf_')) 
-                ? item.id 
+              const uniqueFileId = (item.id && typeof item.id === 'string' && item.id.startsWith('shf_'))
+                ? item.id
                 : generateShareFileId(userId);
               const r2Key = buildShareFileR2Key(userId, uniqueFileId, item.name);
               if (fileBlob) {
@@ -640,8 +654,8 @@ export default function App() {
             fileUrl = `${workerUrl}/api/storage/file/${encodeURIComponent(storedR2Key)}`;
           }
 
-          const uniqueFileId = (item.id && typeof item.id === 'string' && item.id.startsWith('shf_')) 
-            ? item.id 
+          const uniqueFileId = (item.id && typeof item.id === 'string' && item.id.startsWith('shf_'))
+            ? item.id
             : generateShareFileId(userId);
 
           return {
@@ -730,7 +744,7 @@ export default function App() {
       showToast(`✨ Votre lien "${linkName.trim()}" a été créé avec succès (${validFiles.length} fichier${validFiles.length > 1 ? 's' : ''}) ! Retrouvez-le dans Liens Actifs.`);
 
       // Actualiser immédiatement la liste depuis D1 (source de vérité) et le cache TanStack Query
-      loadUserSharesFromD1().catch(() => {});
+      loadUserSharesFromD1().catch(() => { });
       invalidateCloudQueries.shares();
       invalidateCloudQueries.stagingShareFiles();
 
@@ -750,7 +764,7 @@ export default function App() {
       if (saved) {
         return JSON.parse(saved);
       }
-    } catch (e) {}
+    } catch (e) { }
     return null;
   });
 
@@ -761,7 +775,7 @@ export default function App() {
       } else {
         localStorage.removeItem('studycloud_active_folder_detail');
       }
-    } catch (e) {}
+    } catch (e) { }
   }, [activeFolderDetail]);
 
   const [activeQRCodeFolder, setActiveQRCodeFolder] = useState<SharedFolder | null>(null);
@@ -786,7 +800,7 @@ export default function App() {
     try {
       const raw = localStorage.getItem('studycloud_active_preview_item');
       if (raw) return JSON.parse(raw);
-    } catch (e) {}
+    } catch (e) { }
     return null;
   });
   const [previewOwnerTab, setPreviewOwnerTab] = useState<NavigationTab | null>(() => {
@@ -795,14 +809,14 @@ export default function App() {
       if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file'].includes(saved)) {
         return saved as NavigationTab;
       }
-    } catch (e) {}
+    } catch (e) { }
     return 'folders';
   });
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isStudySpaceOpen, setIsStudySpaceOpen] = useState<boolean>(() => {
     try {
       return localStorage.getItem('studycloud_is_study_space_open') === 'true';
-    } catch {}
+    } catch { }
     return false;
   });
 
@@ -813,7 +827,7 @@ export default function App() {
       } else {
         localStorage.removeItem('studycloud_is_study_space_open');
       }
-    } catch {}
+    } catch { }
   }, [isStudySpaceOpen]);
 
   // Verrouillage strict du défilement global de la page quand l'Espace d'étude / Aperçu est ouvert sur mobile
@@ -855,7 +869,7 @@ export default function App() {
         localStorage.removeItem('studycloud_active_preview_item');
         localStorage.removeItem('studycloud_preview_owner_tab');
         safeLocalStorageRemove('studycloud_current_conversation_id');
-      } catch (e) {}
+      } catch (e) { }
       return;
     }
     setIsPreviewLoading(true);
@@ -866,7 +880,7 @@ export default function App() {
       const sanitized = sanitizeItemForStorage(item);
       localStorage.setItem('studycloud_active_preview_item', JSON.stringify(sanitized));
       localStorage.setItem('studycloud_preview_owner_tab', tabOwner);
-    } catch (e) {}
+    } catch (e) { }
     if (item.lockFullscreen) {
       setIsCenterFullscreen(true);
       setMobilePreviewTab(1);
@@ -889,7 +903,7 @@ export default function App() {
       // Auto-reprise : tenter de relancer immédiatement
       try {
         documentSpeechService.resume();
-      } catch {}
+      } catch { }
 
       // Relancer au premier toucher si le navigateur bloque l'autoplay sans interaction préalable
       const handleFirstGesture = () => {
@@ -936,14 +950,14 @@ export default function App() {
     try {
       const saved = localStorage.getItem('studycloud_preview_scroll_mode');
       if (saved === 'vertical' || saved === 'horizontal') return saved;
-    } catch (e) {}
+    } catch (e) { }
     return 'vertical';
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('studycloud_preview_scroll_mode', previewScrollMode);
-    } catch (e) {}
+    } catch (e) { }
   }, [previewScrollMode]);
 
   const [mobilePreviewTab, setMobilePreviewTab] = useState<0 | 1 | 2>(() => {
@@ -952,14 +966,14 @@ export default function App() {
       if (saved === '0' || saved === '1' || saved === '2') {
         return parseInt(saved, 10) as 0 | 1 | 2;
       }
-    } catch {}
+    } catch { }
     return 1;
   });
 
   useEffect(() => {
     try {
       localStorage.setItem('studycloud_mobile_preview_tab', String(mobilePreviewTab));
-    } catch {}
+    } catch { }
   }, [mobilePreviewTab]);
 
   useEffect(() => {
@@ -984,14 +998,14 @@ export default function App() {
         const val = parseFloat(saved);
         if (!isNaN(val)) return Math.min(38, Math.max(23.5, val));
       }
-    } catch (e) {}
+    } catch (e) { }
     return 24;
   });
   const [previewRightWidth, setPreviewRightWidth] = useState(() => {
     try {
       const saved = localStorage.getItem('studycloud_preview_right_width');
       if (saved) return Math.min(48, Math.max(28, parseFloat(saved)));
-    } catch (e) {}
+    } catch (e) { }
     return 38;
   });
   const previewContainerRef = useRef<HTMLDivElement>(null);
@@ -1042,7 +1056,7 @@ export default function App() {
       // Sauvegarder la largeur actuelle comme largeur préférée du mode Fichiers
       try {
         localStorage.setItem('studycloud_preview_left_width_files', previewLeftWidth.toString());
-      } catch (err) {}
+      } catch (err) { }
 
       // Calculer la largeur minimale requise pour le chat (550px pour empêcher tout chevauchement des boutons supérieurs - Image 2)
       const containerWidth = previewContainerRef.current?.getBoundingClientRect().width || window.innerWidth;
@@ -1068,7 +1082,7 @@ export default function App() {
         setPreviewLeftWidth(clampedPct);
         try {
           localStorage.setItem('studycloud_preview_left_width', clampedPct.toString());
-        } catch (err) {}
+        } catch (err) { }
       }
     } else {
       // Retour au mode Fichiers (Image 2) : restaurer la largeur personnalisée des fichiers si elle existe
@@ -1081,7 +1095,7 @@ export default function App() {
             localStorage.setItem('studycloud_preview_left_width', val.toString());
           }
         }
-      } catch (err) {}
+      } catch (err) { }
     }
   }, [isAssistantOpen]);
 
@@ -1106,7 +1120,7 @@ export default function App() {
       window.removeEventListener('studycloud_open_ai_subscriptions', handleOpenAiSubs);
     };
   }, []);
-  
+
   // Navigation directe vers le vrai menu officiel de tarification intégré dans FoldersView (Image 5)
   const handleOpenAuthenticPricing = (tab: 'storage' | 'ai' | 'renewal' = 'ai') => {
     handleSetTab('folders');
@@ -1132,7 +1146,7 @@ export default function App() {
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
   }, []);
-  
+
   const [shareToast, setShareToast] = useState(false);
   const [activeLongPressItem, setActiveLongPressItem] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean } | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
@@ -1212,7 +1226,7 @@ export default function App() {
       localStorage.removeItem('sc_study_timer_target');
     }
   }, [timerRunning]);
-  
+
   const folderInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
@@ -1250,11 +1264,11 @@ export default function App() {
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           if (!ctx) return resolve(e.target?.result as string);
-          
+
           let width = img.width;
           let height = img.height;
           const maxDim = 1200;
-          
+
           if (width > height && width > maxDim) {
             height *= maxDim / width;
             width = maxDim;
@@ -1262,7 +1276,7 @@ export default function App() {
             width *= maxDim / height;
             height = maxDim;
           }
-          
+
           canvas.width = width;
           canvas.height = height;
           ctx.drawImage(img, 0, 0, width, height);
@@ -1299,7 +1313,7 @@ export default function App() {
         } else {
           localStorage.setItem('studycloud_preview_left_width_files', newWidth.toString());
         }
-      } catch (err) {}
+      } catch (err) { }
     };
 
     const handleMouseUp = () => {
@@ -1341,7 +1355,7 @@ export default function App() {
       const maxRight = Math.max(minRight, 100 - previewLeftWidth - minCenter);
       const newWidth = Math.min(Math.max(minRight, percentage), maxRight);
       setPreviewRightWidth(newWidth);
-      try { localStorage.setItem('studycloud_preview_right_width', newWidth.toString()); } catch (err) {}
+      try { localStorage.setItem('studycloud_preview_right_width', newWidth.toString()); } catch (err) { }
     };
 
     const handleMouseUp = () => {
@@ -1374,7 +1388,7 @@ export default function App() {
       const f = e.target.files[0];
       const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
       const isImg = !isPdf && (f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(f.name));
-      
+
       // Sauvegarder le binaire réel dans IndexedDB
       storeFileBlob(replacingItemId, f).catch((err) => console.warn('Erreur stockage IndexedDB:', err));
 
@@ -1442,7 +1456,7 @@ export default function App() {
       const id = generateShareFileId(currentUserId);
 
       // 1. Sauvegarde locale de secours
-      storeFileBlob(id, f).catch(() => {});
+      storeFileBlob(id, f).catch(() => { });
 
       // 2. Upload immédiat vers Cloudflare R2 avec clé unique dédiée
       const r2Key = buildShareFileR2Key(currentUserId, id, f.name);
@@ -1475,7 +1489,7 @@ export default function App() {
         try {
           previewUrl = URL.createObjectURL(f);
           imageFilesToCompress.push({ id, file: f });
-        } catch (e) {}
+        } catch (e) { }
       }
 
       const newItem = {
@@ -1592,12 +1606,12 @@ export default function App() {
             createdAt: row.created_at || new Date().toISOString(),
             files: Array.isArray(row.files)
               ? row.files.map((f: any) => ({
-                  id: f.id || f.file_id || crypto.randomUUID(),
-                  name: f.name,
-                  size: f.size || 0,
-                  type: f.type || 'file',
-                  url: f.file_url || f.url || '',
-                }))
+                id: f.id || f.file_id || crypto.randomUUID(),
+                name: f.name,
+                size: f.size || 0,
+                type: f.type || 'file',
+                url: f.file_url || f.url || '',
+              }))
               : [],
             totalSize: row.total_size || 0,
             downloadsCount: row.downloads_count || 0,
@@ -1660,7 +1674,7 @@ export default function App() {
     const handleRestore = () => {
       const saved = localStorage.getItem('unifolder_shares');
       if (saved) {
-        try { setFolders(JSON.parse(saved)); } catch (e) {}
+        try { setFolders(JSON.parse(saved)); } catch (e) { }
       } else {
         setFolders([]);
       }
@@ -1715,7 +1729,7 @@ export default function App() {
       if (folderName && folderFiles.length > 0) {
         try {
           localStorage.setItem(`unifolder_matiere_files_${folderName}`, JSON.stringify(folderFiles));
-        } catch (err) {}
+        } catch (err) { }
       }
 
       setPreviewOwnerTab('folders');
@@ -1769,6 +1783,22 @@ export default function App() {
       prev.map((f) => (f.id === folderId ? { ...f, downloadsCount: f.downloadsCount + 1 } : f))
     );
   };
+
+  // ─── DIRECT PUBLIC LEGAL PAGE ROUTE (/terms, /privacy, /legal, ?legal=...) ──
+  if (directLegalTab) {
+    return (
+      <LegalTermsModal
+        isOpen={true}
+        defaultTab={directLegalTab}
+        onClose={() => {
+          setDirectLegalTab(null);
+          try {
+            window.history.replaceState({}, '', '/');
+          } catch {}
+        }}
+      />
+    );
+  }
 
   // ─── AUTH GUARDS ─────────────────────────────────────────────────────────────
   // 1. Écran de chargement lors de la vérification du token JWT ou du retour Google / Email
@@ -1935,7 +1965,7 @@ export default function App() {
                   });
                   try {
                     localStorage.setItem(`unifolder_matiere_files_${folderName}`, JSON.stringify(files));
-                  } catch (err) {}
+                  } catch (err) { }
                 }
                 setPreviewOwnerTab('folders');
                 setIsStudySpaceOpen(true);
@@ -2164,7 +2194,7 @@ export default function App() {
                   const targetFileIds = filesToCheck.map((f: any) => f.id).filter(Boolean);
 
                   // Supprimer les fichiers temporaires de staging avec vérification côté serveur
-                  await StudyCloudAPI.deleteStagingShareFiles(currentUserId, targetFileIds, targetR2Keys).catch(() => {});
+                  await StudyCloudAPI.deleteStagingShareFiles(currentUserId, targetFileIds, targetR2Keys).catch(() => { });
                   invalidateCloudQueries.stagingShareFiles();
 
                   if (isAll) {
@@ -2173,7 +2203,7 @@ export default function App() {
                     try {
                       localStorage.removeItem(`unifolder_uploaded_items_${currentUserId}`);
                       localStorage.removeItem('unifolder_uploaded_items');
-                    } catch (e) {}
+                    } catch (e) { }
                     setToastMessage('✓ Fichiers effacés. Vous pouvez commencer un nouveau partage.');
                   } else {
                     const remaining = uploadedItems.filter((i) => !targetIds!.includes(i.id));
@@ -2182,7 +2212,7 @@ export default function App() {
                     try {
                       localStorage.setItem(`unifolder_uploaded_items_${currentUserId}`, JSON.stringify(remaining));
                       localStorage.setItem('unifolder_uploaded_items', JSON.stringify(remaining));
-                    } catch (e) {}
+                    } catch (e) { }
                     setToastMessage(`✓ ${targetIds!.length} fichier(s) supprimé(s).`);
                   }
 
@@ -2274,9 +2304,8 @@ export default function App() {
       )}
 
       {(isStudySpaceOpen || activePreviewItem) && (previewOwnerTab ? previewOwnerTab === currentTab : currentTab === 'folders') && (
-        <div className={`fixed inset-0 left-0 right-0 z-[99999] ${
-          isAssistantOpen && mobilePreviewTab === 0 ? 'bg-[#1e2024]' : 'bg-[#FDFBF7] dark:bg-[#0b0f19]'
-        } flex flex-col animate-fadeIn overflow-hidden`}>
+        <div className={`fixed inset-0 left-0 right-0 z-[99999] ${isAssistantOpen && mobilePreviewTab === 0 ? 'bg-[#1e2024]' : 'bg-[#FDFBF7] dark:bg-[#0b0f19]'
+          } flex flex-col animate-fadeIn overflow-hidden`}>
           {/* Top Header Bar - Solid Dark #070a13 */}
           <div className="fixed top-0 left-0 right-0 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[44px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
             {/* Left: Bouton Retour (Normal sur Ordinateur md+, réduit sur Téléphone) */}
@@ -2317,11 +2346,10 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => navigateToMobilePreviewTab(0)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] transition-all duration-200 cursor-pointer touch-manipulation ${
-                    mobilePreviewTab === 0
-                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-950 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
-                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-stone-300/40 dark:border-zinc-700/40 bg-white/40 dark:bg-zinc-900/30 font-bold'
-                  }`}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] transition-all duration-200 cursor-pointer touch-manipulation ${mobilePreviewTab === 0
+                    ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-950 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
+                    : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-stone-300/40 dark:border-zinc-700/40 bg-white/40 dark:bg-zinc-900/30 font-bold'
+                    }`}
                   title="Menu actuel (Fichiers & Assistant)"
                 >
                   <Folder className="w-3 h-3 shrink-0" />
@@ -2332,11 +2360,10 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => navigateToMobilePreviewTab(1)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] transition-all duration-200 cursor-pointer touch-manipulation whitespace-nowrap ${
-                    mobilePreviewTab === 1
-                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-950 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
-                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-stone-300/40 dark:border-zinc-700/40 bg-white/40 dark:bg-zinc-900/30 font-bold'
-                  }`}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] transition-all duration-200 cursor-pointer touch-manipulation whitespace-nowrap ${mobilePreviewTab === 1
+                    ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-950 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
+                    : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-stone-300/40 dark:border-zinc-700/40 bg-white/40 dark:bg-zinc-900/30 font-bold'
+                    }`}
                   title="Aperçu du fichier / Document"
                 >
                   <FileText className="w-3 h-3 shrink-0" />
@@ -2347,11 +2374,10 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => navigateToMobilePreviewTab(2)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] transition-all duration-200 cursor-pointer touch-manipulation ${
-                    mobilePreviewTab === 2
-                      ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-950 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
-                      : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-stone-300/40 dark:border-zinc-700/40 bg-white/40 dark:bg-zinc-900/30 font-bold'
-                  }`}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] sm:text-[11px] transition-all duration-200 cursor-pointer touch-manipulation ${mobilePreviewTab === 2
+                    ? 'bg-amber-400/25 dark:bg-amber-400/20 text-amber-950 dark:text-amber-200 border border-amber-400/80 dark:border-amber-400/70 shadow-[0_0_12px_rgba(251,191,36,0.45)] font-black ring-1 ring-amber-400/40'
+                    : 'text-stone-600 dark:text-zinc-400 hover:text-stone-900 dark:hover:text-white border border-stone-300/40 dark:border-zinc-700/40 bg-white/40 dark:bg-zinc-900/30 font-bold'
+                    }`}
                   title="Studio de création"
                 >
                   <Sparkles className="w-3 h-3 shrink-0" />
@@ -2361,7 +2387,7 @@ export default function App() {
 
               <div id="studycloud-top-audio-portal" className="hidden md:flex items-center shrink-0" />
             </div>
-            
+
             {/* Right: Sur Ordinateur -> Boutons originaux directs (Horloge, Partager, Télécharger) | Sur Téléphone -> Bouton 3 traits avec sous-menu */}
             <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
               {/* Bouton Musique */}
@@ -2386,13 +2412,12 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setShowStudyTimer(true)}
-                  className={`px-2 py-1 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                    timerRunning
-                      ? 'bg-amber-400 text-stone-950 border-stone-900 animate-pulse'
-                      : timerLeft < timerDuration
+                  className={`px-2 py-1 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${timerRunning
+                    ? 'bg-amber-400 text-stone-950 border-stone-900 animate-pulse'
+                    : timerLeft < timerDuration
                       ? 'bg-amber-100 text-amber-900 border-stone-800'
                       : 'bg-white hover:bg-stone-100 text-stone-900'
-                  }`}
+                    }`}
                   title="Minuteur d'étude"
                 >
                   <Clock className={`w-3.5 h-3.5 shrink-0 ${timerRunning ? 'text-stone-950' : 'text-blue-600'}`} />
@@ -2423,7 +2448,7 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         const content = activePreviewItem.url || `Ceci est le fichier ${activePreviewItem.name} téléchargé depuis UniFolder Share.`;
-                        const blob = activePreviewItem.url && (activePreviewItem.url.startsWith('data:') || activePreviewItem.url.startsWith('blob:') || activePreviewItem.url.startsWith('http')) 
+                        const blob = activePreviewItem.url && (activePreviewItem.url.startsWith('data:') || activePreviewItem.url.startsWith('blob:') || activePreviewItem.url.startsWith('http'))
                           ? fetch(activePreviewItem.url).then(r => r.blob()).catch(() => new Blob([content], { type: 'text/plain;charset=utf-8' }))
                           : Promise.resolve(new Blob([content], { type: 'text/plain;charset=utf-8' }));
                         blob.then((b) => {
@@ -2452,11 +2477,10 @@ export default function App() {
                 <button
                   type="button"
                   onClick={() => setIsHeaderActionsMenuOpen(prev => !prev)}
-                  className={`p-1.5 rounded-md border-[1.5px] border-stone-800 dark:border-[#334155] ${
-                    isHeaderActionsMenuOpen
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white'
-                  } shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer touch-manipulation flex items-center justify-center shrink-0`}
+                  className={`p-1.5 rounded-md border-[1.5px] border-stone-800 dark:border-[#334155] ${isHeaderActionsMenuOpen
+                    ? 'bg-orange-500 text-white'
+                    : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white'
+                    } shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer touch-manipulation flex items-center justify-center shrink-0`}
                   title="Menu des options (Horloge, Partager, Télécharger)"
                   aria-label="Options"
                 >
@@ -2516,11 +2540,10 @@ export default function App() {
                           setIsHeaderActionsMenuOpen(false);
                           handleOpenExternalCreateShareLink([activePreviewItem]);
                         }}
-                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold transition-colors text-left ${
-                          activePreviewItem
-                            ? 'text-stone-800 dark:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 cursor-pointer'
-                            : 'text-stone-300 dark:text-zinc-600 cursor-not-allowed opacity-40'
-                        }`}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold transition-colors text-left ${activePreviewItem
+                          ? 'text-stone-800 dark:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 cursor-pointer'
+                          : 'text-stone-300 dark:text-zinc-600 cursor-not-allowed opacity-40'
+                          }`}
                       >
                         <div className="p-1.5 rounded-md bg-orange-100 dark:bg-orange-900/40 text-orange-500">
                           <Share2 className="w-3.5 h-3.5" />
@@ -2541,105 +2564,104 @@ export default function App() {
                           if (!activePreviewItem) return;
                           setIsHeaderActionsMenuOpen(false);
                           const content = activePreviewItem.url || `Ceci est le fichier ${activePreviewItem.name} téléchargé depuis UniFolder Share.`;
-                          const blob = activePreviewItem.url && (activePreviewItem.url.startsWith('data:') || activePreviewItem.url.startsWith('blob:') || activePreviewItem.url.startsWith('http')) 
+                          const blob = activePreviewItem.url && (activePreviewItem.url.startsWith('data:') || activePreviewItem.url.startsWith('blob:') || activePreviewItem.url.startsWith('http'))
                             ? fetch(activePreviewItem.url).then(r => r.blob()).catch(() => new Blob([content], { type: 'text/plain;charset=utf-8' }))
                             : Promise.resolve(new Blob([content], { type: 'text/plain;charset=utf-8' }));
                           blob.then((b) => {
                             const url = URL.createObjectURL(b);
                             const a = document.createElement('a');
-                          a.href = url;
-                          a.download = activePreviewItem.name;
-                          document.body.appendChild(a);
-                          a.click();
-                          document.body.removeChild(a);
-                          URL.revokeObjectURL(url);
-                        });
-                      }}
-                      className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold transition-colors text-left ${
-                        activePreviewItem
+                            a.href = url;
+                            a.download = activePreviewItem.name;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                            URL.revokeObjectURL(url);
+                          });
+                        }}
+                        className={`w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold transition-colors text-left ${activePreviewItem
                           ? 'text-stone-800 dark:text-zinc-200 hover:bg-stone-100 dark:hover:bg-zinc-800 cursor-pointer'
                           : 'text-stone-300 dark:text-zinc-600 cursor-not-allowed opacity-40'
-                      }`}
-                    >
-                      <div className="p-1.5 rounded-md bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400">
-                        <Download className="w-3.5 h-3.5" />
-                      </div>
-                      <div className="flex flex-col min-w-0">
-                        <span className="leading-tight">Télécharger</span>
-                        <span className="text-[10px] font-normal text-stone-400 dark:text-zinc-500">
-                          Enregistrer sur l’appareil
-                        </span>
-                      </div>
-                    </button>
+                          }`}
+                      >
+                        <div className="p-1.5 rounded-md bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400">
+                          <Download className="w-3.5 h-3.5" />
+                        </div>
+                        <div className="flex flex-col min-w-0">
+                          <span className="leading-tight">Télécharger</span>
+                          <span className="text-[10px] font-normal text-stone-400 dark:text-zinc-500">
+                            Enregistrer sur l’appareil
+                          </span>
+                        </div>
+                      </button>
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           </div>
-        </div>
 
           {/* Main Content Area: 3 Columns on Desktop, Navigable Tabs on Mobile */}
           <div className="flex-1 w-full h-full min-h-0 relative overflow-hidden">
-            
+
             {/* Transparent blocker during resize so iframes (PDF/Viewer) never swallow mouse events */}
             {(isResizingLeft || isResizingRight) && (
-              <div 
+              <div
                 className="fixed inset-0 z-[999999] cursor-col-resize select-none bg-transparent"
                 style={{ cursor: 'col-resize' }}
               />
             )}
 
             {/* Desktop 3-Column Grid / Mobile Single Tab */}
-            <div 
+            <div
               ref={previewContainerRef}
               className={`w-full h-full ${isMobileScreen ? 'flex flex-col' : 'grid'} gap-0 relative`}
               style={{
-                gridTemplateColumns: isCenterFullscreen || isRightFullscreen 
-                  ? '100%' 
+                gridTemplateColumns: isCenterFullscreen || isRightFullscreen
+                  ? '100%'
                   : (isMobileScreen ? '100%' : `minmax(${isAssistantOpen ? "550px" : "320px"}, ${previewLeftWidth}%) minmax(420px, 1fr) ${previewRightWidth}%`),
               }}
             >
-                {/* Column 1: Left Area */}
-                <LeftMenu 
-                  isCenterFullscreen={isCenterFullscreen}
-                  isRightFullscreen={isRightFullscreen}
-                  mobilePreviewTab={mobilePreviewTab}
-                  isAssistantOpen={isAssistantOpen}
-                  setIsAssistantOpen={setIsAssistantOpen}
-                  setIsResizingLeft={setIsResizingLeft}
-                  activePreviewItem={activePreviewItem}
-                  setActivePreviewItem={setActivePreviewItem}
-                  activeFolderDetail={activeFolderDetail}
-                  isMobileScreen={isMobileScreen}
-                  onImportFile={() => {
-                    setActivePreviewItem(null);
-                    handleSetTab('upload');
-                  }}
-                />
+              {/* Column 1: Left Area */}
+              <LeftMenu
+                isCenterFullscreen={isCenterFullscreen}
+                isRightFullscreen={isRightFullscreen}
+                mobilePreviewTab={mobilePreviewTab}
+                isAssistantOpen={isAssistantOpen}
+                setIsAssistantOpen={setIsAssistantOpen}
+                setIsResizingLeft={setIsResizingLeft}
+                activePreviewItem={activePreviewItem}
+                setActivePreviewItem={setActivePreviewItem}
+                activeFolderDetail={activeFolderDetail}
+                isMobileScreen={isMobileScreen}
+                onImportFile={() => {
+                  setActivePreviewItem(null);
+                  handleSetTab('upload');
+                }}
+              />
 
-                {/* Column 2: Center Area */}
-                <CenterMenu 
-                  isCenterFullscreen={isCenterFullscreen}
-                  setIsCenterFullscreen={setIsCenterFullscreen}
-                  isRightFullscreen={isRightFullscreen}
-                  mobilePreviewTab={mobilePreviewTab}
-                  isPreviewLoading={isPreviewLoading}
-                  activePreviewItem={activePreviewItem}
-                  previewScrollMode={previewScrollMode}
-                  setPreviewScrollMode={setPreviewScrollMode}
-                  isMobileScreen={isMobileScreen}
-                />
+              {/* Column 2: Center Area */}
+              <CenterMenu
+                isCenterFullscreen={isCenterFullscreen}
+                setIsCenterFullscreen={setIsCenterFullscreen}
+                isRightFullscreen={isRightFullscreen}
+                mobilePreviewTab={mobilePreviewTab}
+                isPreviewLoading={isPreviewLoading}
+                activePreviewItem={activePreviewItem}
+                previewScrollMode={previewScrollMode}
+                setPreviewScrollMode={setPreviewScrollMode}
+                isMobileScreen={isMobileScreen}
+              />
 
-                {/* Column 3: Right Area */}
-                <RightMenu 
-                  isRightFullscreen={isRightFullscreen}
-                  setIsRightFullscreen={setIsRightFullscreen}
-                  isCenterFullscreen={isCenterFullscreen}
-                  mobilePreviewTab={mobilePreviewTab}
-                  activePreviewItem={activePreviewItem}
-                  isMobileScreen={isMobileScreen}
-                  setIsResizingRight={setIsResizingRight}
-                />
+              {/* Column 3: Right Area */}
+              <RightMenu
+                isRightFullscreen={isRightFullscreen}
+                setIsRightFullscreen={setIsRightFullscreen}
+                isCenterFullscreen={isCenterFullscreen}
+                mobilePreviewTab={mobilePreviewTab}
+                activePreviewItem={activePreviewItem}
+                isMobileScreen={isMobileScreen}
+                setIsResizingRight={setIsResizingRight}
+              />
 
             </div>
           </div>
@@ -2716,7 +2738,7 @@ export default function App() {
               // L'utilisateur a annulé la procédure de partage depuis un menu externe
               const currentUserId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
               if (keysToPurge.length > 0 || fileIdsToPurge.length > 0) {
-                await StudyCloudAPI.deleteStagingShareFiles(currentUserId, fileIdsToPurge, keysToPurge).catch(() => {});
+                await StudyCloudAPI.deleteStagingShareFiles(currentUserId, fileIdsToPurge, keysToPurge).catch(() => { });
               }
               setToastMessage('Échec de partage vous avez annulé les procédures');
             }
@@ -2739,7 +2761,7 @@ export default function App() {
       {/* Mini lecteur flottant quand un document est en cours de lecture en arrière-plan */}
       {!activePreviewItemState && !isStudySpaceOpen && (docSpeech.state === 'playing' || docSpeech.state === 'paused') && (
         <div className="fixed bottom-16 sm:bottom-6 left-1/2 -translate-x-1/2 z-[99990] w-[92%] max-w-md bg-stone-900/95 dark:bg-stone-800/95 backdrop-blur-md text-white rounded-2xl border border-amber-500/50 shadow-2xl p-2.5 flex items-center justify-between gap-3 animate-slideUp">
-          <div 
+          <div
             className="flex items-center gap-2.5 min-w-0 cursor-pointer flex-1"
             onClick={() => {
               const file = documentSpeechService.getActiveFile();
