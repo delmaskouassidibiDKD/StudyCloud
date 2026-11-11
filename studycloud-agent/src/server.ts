@@ -1089,6 +1089,25 @@ export default {
       return new Response(null, { headers: corsHeaders, status: 204 });
     }
 
+    // 1b. Protection anti-abus et limitation de débit par utilisateur/IP (H-7)
+    if (request.method === "POST") {
+      const clientIp = request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "anon";
+      const authHdr = request.headers.get("Authorization") || "";
+      const xUserId = request.headers.get("x-user-id") || "";
+      const rateKey = `ai_rl_${xUserId || authHdr.slice(-16) || clientIp}`;
+      const gAgent = globalThis as any;
+      if (!gAgent.__scAgentRateMap) gAgent.__scAgentRateMap = new Map<string, { count: number; resetAt: number }>();
+      const rlEntry = gAgent.__scAgentRateMap.get(rateKey);
+      if (rlEntry && rlEntry.resetAt > Date.now() && rlEntry.count >= 35) {
+        return new Response(
+          JSON.stringify({ success: false, error: "Limite de requêtes IA atteinte. Veuillez patienter quelques secondes." }),
+          { status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const prevCount = (rlEntry && rlEntry.resetAt > Date.now()) ? rlEntry.count : 0;
+      gAgent.__scAgentRateMap.set(rateKey, { count: prevCount + 1, resetAt: Date.now() + 60 * 1000 });
+    }
+
     // Routes Studio Création (12 Modules) & Notation Devoir sur 20
     if ((url.pathname === "/api/create" || url.pathname === "/create") && request.method === "POST") {
       return await handleCreationRequest(request, env, corsHeaders);
@@ -1172,7 +1191,8 @@ export default {
         const docText = body.attachedFileContent || body.documentText || body.fileContent || "";
         const workersai = createWorkersAI({ binding: env.AI });
 
-        const customSystem = body.system || rawHistory.find((h: any) => h.role === "system")?.content;
+        const rawCustomSystem = typeof body.system === "string" ? body.system : rawHistory.find((h: any) => h.role === "system")?.content;
+        const customSystem = typeof rawCustomSystem === "string" && rawCustomSystem.length <= 6000 ? rawCustomSystem : undefined;
         const defaultSystem = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Delmas IA).
 Tu es directement connectée à l'espace d'étude de l'étudiant, avec deux modes de fonctionnement distincts selon ton analyse du prompt :
 

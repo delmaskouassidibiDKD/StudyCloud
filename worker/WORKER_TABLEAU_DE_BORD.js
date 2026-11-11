@@ -14803,6 +14803,12 @@ export default {
               headers.set('etag', object.httpEtag);
               headers.set('Cache-Control', 'public, max-age=31536000, immutable');
               headers.set('Access-Control-Allow-Origin', origin);
+              headers.set('X-Content-Type-Options', 'nosniff');
+              const ext = (key.split('.').pop() || '').toLowerCase();
+              const ct = (headers.get('Content-Type') || '').toLowerCase();
+              if (['html', 'htm', 'svg', 'xml', 'xhtml', 'js', 'mjs'].includes(ext) || ct.includes('html') || ct.includes('svg') || ct.includes('javascript') || ct.includes('xml')) {
+                headers.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+              }
               return new Response(object.body, { headers });
             }
           } catch (r2Err) {
@@ -16032,6 +16038,12 @@ export default {
               headers.set('etag', object.httpEtag);
               headers.set('Cache-Control', 'public, max-age=31536000, immutable');
               headers.set('Access-Control-Allow-Origin', origin);
+              headers.set('X-Content-Type-Options', 'nosniff');
+              const ext = (key.split('.').pop() || '').toLowerCase();
+              const ct = (headers.get('Content-Type') || '').toLowerCase();
+              if (['html', 'htm', 'svg', 'xml', 'xhtml', 'js', 'mjs'].includes(ext) || ct.includes('html') || ct.includes('svg') || ct.includes('javascript') || ct.includes('xml')) {
+                headers.set('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+              }
               return new Response(object.body, { headers });
             }
           } catch (e) {}
@@ -17145,7 +17157,7 @@ export default {
         }
 
         // Tenter d'expédier directement si une clé locale valide existe
-        if (candidateKey && candidateKey.startsWith('re_') && !candidateKey.includes('re_7VqQc1Cg')) {
+        if (candidateKey && candidateKey.startsWith('re_') && candidateKey.length > 10) {
           emailResult = await sendStorageAlertEmail({
             resendApiKey: candidateKey,
             toEmail,
@@ -17300,8 +17312,7 @@ export default {
       return new Response(
         JSON.stringify({
           success: false,
-          error: error.message || 'Erreur interne du Worker Tableau de Bord',
-          stack: error.stack
+          error: error.message || 'Erreur interne du Worker Tableau de Bord'
         }, null, 2),
         {
           status: 500,

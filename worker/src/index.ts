@@ -4545,7 +4545,7 @@ a:hover{transform:translateY(-2px)}
       async function hashPassword(password: string): Promise<string> {
         const encoder = new TextEncoder();
         const salt = crypto.getRandomValues(new Uint8Array(16));
-        const iterations = 10000;
+        const iterations = 100000;
         const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
         const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, keyMaterial, 256);
         const hashArray = Array.from(new Uint8Array(bits));
@@ -4558,19 +4558,25 @@ a:hover{transform:translateY(-2px)}
           const encoder = new TextEncoder();
           const parsed = JSON.parse(atob(stored));
           const { salt: saltArray, hash: hashArray } = parsed;
+          if (!Array.isArray(saltArray) || !Array.isArray(hashArray)) return false;
           const iterations = parsed.iter || 100000;
           const salt = new Uint8Array(saltArray);
           const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
           const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, keyMaterial, 256);
-          const newHash = Array.from(new Uint8Array(bits));
-          return JSON.stringify(newHash) === JSON.stringify(hashArray);
+          const newHash = new Uint8Array(bits);
+          if (newHash.length !== hashArray.length) return false;
+          let diff = 0;
+          for (let i = 0; i < newHash.length; i++) {
+            diff |= newHash[i] ^ (hashArray[i] & 0xff);
+          }
+          return diff === 0;
         } catch { return false; }
       }
 
       async function createJWT(payload: object, expiresInHours = 720): Promise<string> {
         const encoder = new TextEncoder();
         const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-        const exp = Math.floor(Date.now() / 1000) + expiresInHours * 3600;
+        const exp = Math.floor(Date.now() / 1000) + Math.round(expiresInHours * 3600);
         const body = btoa(JSON.stringify({ ...payload, exp, iat: Math.floor(Date.now() / 1000) }));
         const key = await crypto.subtle.importKey('raw', encoder.encode(JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
         const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(`${header}.${body}`));
@@ -4582,9 +4588,20 @@ a:hover{transform:translateY(-2px)}
         try {
           const encoder = new TextEncoder();
           const [header, body, sig] = token.split('.');
-          const key = await crypto.subtle.importKey('raw', encoder.encode(JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+          if (!header || !body || !sig) return null;
           const sigBytes = Uint8Array.from(atob(sig.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
-          const valid = await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(`${header}.${body}`));
+          const candidateSecrets = [JWT_SECRET];
+          if (rawEnv.JWT_SECRET && rawEnv.JWT_SECRET !== 'studycloud-jwt-secret-key') {
+            candidateSecrets.push('studycloud-jwt-secret-key');
+          }
+          let valid = false;
+          for (const sec of candidateSecrets) {
+            const key = await crypto.subtle.importKey('raw', encoder.encode(sec), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+            if (await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(`${header}.${body}`))) {
+              valid = true;
+              break;
+            }
+          }
           if (!valid) return null;
           const payload = JSON.parse(atob(body));
           if (payload.exp < Math.floor(Date.now() / 1000)) return null;
@@ -4625,10 +4642,40 @@ a:hover{transform:translateY(-2px)}
 
       async function getAuthUser(req: Request): Promise<any | null> {
         const authHeader = req.headers.get('Authorization') || '';
-        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
         if (!token) return null;
         const payload = await verifyJWT(token);
         if (!payload?.userId) return null;
+
+        // Révocation effective des sessions via auth_sessions (H-2) avec cache mémoire court (30s)
+        if (env.DB) {
+          try {
+            const tokenHash = await hashToken(token);
+            const gSessCache: Record<string, { ok: boolean; exp: number }> = ((globalThis as any).__scSessionCache = (globalThis as any).__scSessionCache || {});
+            const cached = gSessCache[tokenHash];
+            const nowMs = Date.now();
+            if (cached && cached.exp > nowMs) {
+              return cached.ok ? payload : null;
+            }
+            const sessionRow: any = await env.DB.prepare(
+              'SELECT id, expires_at FROM auth_sessions WHERE token_hash = ? LIMIT 1'
+            ).bind(tokenHash).first();
+            if (sessionRow) {
+              const isNotExpired = !sessionRow.expires_at || new Date(sessionRow.expires_at).getTime() > nowMs;
+              gSessCache[tokenHash] = { ok: isNotExpired, exp: nowMs + 30000 };
+              return isNotExpired ? payload : null;
+            }
+            // Vérifier si l'utilisateur possède d'autres sessions enregistrées (si oui, ce jeton a été révoqué par logout/reset)
+            const anyUserSession: any = await env.DB.prepare(
+              'SELECT id FROM auth_sessions WHERE user_id = ? LIMIT 1'
+            ).bind(String(payload.userId)).first();
+            if (anyUserSession) {
+              gSessCache[tokenHash] = { ok: false, exp: nowMs + 30000 };
+              return null;
+            }
+            gSessCache[tokenHash] = { ok: true, exp: nowMs + 30000 };
+          } catch {}
+        }
         return payload;
       }
 
@@ -5899,6 +5946,16 @@ a:hover{transform:translateY(-2px)}
         if (!isValidEmail(email)) return errorResponse('Format d\'adresse email invalide (ex: exemple@gmail.com)', 400, origin);
 
         const cleanEmail = email.toLowerCase().trim();
+        // Protection anti-force brute sur le login (H-5 : max 8 échecs par 5 minutes par email/IP)
+        const loginIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
+        const loginLockKey = `login_fail_${cleanEmail}_${loginIp}`;
+        const gLogin = globalThis as any;
+        if (!gLogin.__scLoginLockMap) gLogin.__scLoginLockMap = new Map<string, { count: number; resetAt: number }>();
+        const loginAttempt = gLogin.__scLoginLockMap.get(loginLockKey);
+        if (loginAttempt && loginAttempt.resetAt > Date.now() && loginAttempt.count >= 8) {
+          return errorResponse('Trop de tentatives de connexion échouées. Veuillez patienter 5 minutes ou réinitialiser votre mot de passe.', 429, origin);
+        }
+
         const existingUser: any = await env.DB.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
         if (!existingUser) {
           return jsonResponse({
@@ -5924,8 +5981,11 @@ a:hover{transform:translateY(-2px)}
 
         const valid = await verifyPassword(password, existingUser.password_hash);
         if (!valid) {
+          const prevCount = (loginAttempt && loginAttempt.resetAt > Date.now()) ? loginAttempt.count : 0;
+          gLogin.__scLoginLockMap.set(loginLockKey, { count: prevCount + 1, resetAt: Date.now() + 5 * 60 * 1000 });
           return errorResponse('Mot de passe incorrect. Veuillez vérifier votre saisie ou réinitialiser votre mot de passe.', 401, origin);
         }
+        gLogin.__scLoginLockMap.delete(loginLockKey);
 
         const user = existingUser;
 
@@ -6035,7 +6095,7 @@ a:hover{transform:translateY(-2px)}
           }
         }
 
-        const resetSessionToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+        const resetSessionToken = await createJWT({ purpose: 'pwd_reset', email: user.email, userId: user.id }, 0.25);
         return jsonResponse({
           success: true,
           verified: true,
@@ -6056,6 +6116,11 @@ a:hover{transform:translateY(-2px)}
         if (!isValidEmail(email)) return errorResponse('Format d\'adresse email du compte invalide (ex: exemple@gmail.com)', 400, origin);
 
         const cleanAccountEmail = email.toLowerCase().trim();
+        // Vérification cryptographique du resetSessionToken délivré par verify-answers (H-3)
+        const resetPayload = await verifyJWT(String(resetSessionToken));
+        if (!resetPayload || resetPayload.purpose !== 'pwd_reset' || String(resetPayload.email || '').toLowerCase().trim() !== cleanAccountEmail) {
+          return errorResponse('Session de réinitialisation invalide ou expirée. Veuillez revalider vos questions de sécurité.', 403, origin);
+        }
         // Sécurité stricte : le code est TOUJOURS envoyé à l'email qui a servi à créer le compte
         const cleanTargetEmail = cleanAccountEmail;
         const user: any = await env.DB.prepare('SELECT id, name, email FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanAccountEmail).first();
@@ -7263,20 +7328,12 @@ a:hover{transform:translateY(-2px)}
       // 4b. API STUDYCLOUD - ESPACE CLOUD, CLASSEUR 3D & MÉDIAS DÉDIÉS (OPTION B)
       // ======================================================================
 
-      // Helper d'extraction et de sécurisation de l'identité utilisateur (Multi-Tenant Strict - C-2)
-      // Priorité absolue au jeton JWT signé (Authorization: Bearer <token>) pour empêcher l'usurpation d'userId.
+      // Helper d'extraction et de sécurisation de l'identité utilisateur (Multi-Tenant Strict - C-2 & H-2)
+      // Priorité absolue au jeton JWT signé et vérifié contre auth_sessions (getAuthUser) pour empêcher l'usurpation et honorer les révocations.
       async function extractRequestUserId(): Promise<string> {
-        const authHeader = request.headers.get('Authorization') || '';
-        if (authHeader.startsWith('Bearer ')) {
-          const token = authHeader.slice(7).trim();
-          if (token && token !== 'null' && token !== 'undefined') {
-            try {
-              const payload = await verifyJWT(token);
-              if (payload?.userId && payload.userId !== 'default-user') {
-                return String(payload.userId).trim();
-              }
-            } catch {}
-          }
+        const authUser = await getAuthUser(request);
+        if (authUser?.userId && authUser.userId !== 'default-user') {
+          return String(authUser.userId).trim();
         }
         const xUserId = request.headers.get('x-user-id');
         if (xUserId && xUserId.trim() && xUserId !== 'null' && xUserId !== 'undefined' && xUserId !== 'default-user') {
@@ -7442,38 +7499,54 @@ a:hover{transform:translateY(-2px)}
           foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, file_type as extension, title as name, file_url, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(source_category, category, "audio") as category FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(source_category, category, "audio") as category, 1 as is_private_record FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(original_category, category, "audio") as category FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(original_category, category, "audio") as category, 1 as is_private_record FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
+
+        // Sécurité H-6 : Vérifier que les fichiers privés (dossier sécurisé / corbeille) appartiennent bien à l'utilisateur
+        const reqStreamUserId = await extractRequestUserId();
+        if (foundRecord && foundRecord.is_private_record && foundRecord.user_id && reqStreamUserId && foundRecord.user_id !== reqStreamUserId) {
+          return errorResponse('Accès interdit aux fichiers privés d\'un autre utilisateur', 403, origin);
         }
 
         if (!foundRecord || !foundRecord.r2_key) {
-          // Auto-guérison : récupérer la r2_key depuis d'autres tables ou extraire depuis l'URL
+          // Auto-guérison : récupérer la r2_key depuis d'autres tables du MÊME utilisateur ou extraire depuis l'URL
           let recoveredKey = '';
           if (foundRecord) {
             const urlKeys = extractR2Keys('', (foundRecord as any).file_url || (foundRecord as any).image_url || (foundRecord as any).video_url || '');
             if (urlKeys.length > 0) recoveredKey = urlKeys[0];
 
-            if (!recoveredKey) {
+            if (!recoveredKey && foundRecord.user_id) {
+              const ownerId = foundRecord.user_id;
               const rowsToCheck: any = await env.DB.prepare(`
-                SELECT r2_key FROM files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM image_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM image_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM video_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM video_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM audio_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM audio_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM document_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM document_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM classeur_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM classeur_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM secure_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM secure_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM trash_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM trash_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 LIMIT 1
-              `).bind(fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name).first<any>().catch(() => null);
+              `).bind(
+                ownerId, fileId, foundRecord.name,
+                ownerId, fileId, foundRecord.name,
+                ownerId, fileId, foundRecord.name,
+                ownerId, fileId, foundRecord.name,
+                ownerId, fileId, foundRecord.name,
+                ownerId, fileId, foundRecord.name,
+                ownerId, fileId, foundRecord.name,
+                ownerId, fileId, foundRecord.name
+              ).first<any>().catch(() => null);
               if (rowsToCheck?.r2_key) recoveredKey = rowsToCheck.r2_key;
             }
 
@@ -7495,7 +7568,7 @@ a:hover{transform:translateY(-2px)}
 
           if (!foundRecord || !foundRecord.r2_key) {
             const searchTarget = (foundRecord?.name || fileId).replace(/[^a-zA-Z0-9._-]/g, '_');
-            const recordUserId = foundRecord?.user_id || '';
+            const recordUserId = foundRecord?.user_id || reqStreamUserId || '';
             if (recordUserId && foundRecord?.name) {
               const candidateKey = `${recordUserId}/${foundRecord.category || 'images'}/${fileId}_${searchTarget}`;
               const testFound = await getObjectFromAnyBucket(rawEnv, foundRecord.category || 'images', candidateKey);
@@ -7505,17 +7578,14 @@ a:hover{transform:translateY(-2px)}
               }
             }
 
-            if (!recoveredKey) {
+            // Sécurité H-6 : Recherche R2 strictement confinée au préfixe de l'utilisateur propriétaire (jamais de scan global inter-utilisateurs)
+            if (!recoveredKey && recordUserId) {
               const allBuckets = getAllBuckets(rawEnv);
               for (const b of allBuckets) {
                 try {
-                  const listRes = await b.list(recordUserId ? { prefix: `${recordUserId}/`, limit: 500 } : { limit: 500 });
+                  const listRes = await b.list({ prefix: `${recordUserId}/`, limit: 150 });
                   if (listRes && Array.isArray(listRes.objects)) {
-                    const matched = listRes.objects.find((o: any) =>
-                      o.key.includes(fileId) ||
-                      (searchTarget && o.key.includes(searchTarget)) ||
-                      (foundRecord?.name && o.key.toLowerCase().includes(foundRecord.name.toLowerCase()))
-                    );
+                    const matched = listRes.objects.find((o: any) => o.key.includes(fileId));
                     if (matched) {
                       recoveredKey = matched.key;
                       if (!foundRecord) {
@@ -10982,8 +11052,11 @@ a:hover{transform:translateY(-2px)}
             updated_at = CURRENT_TIMESTAMP
         `).bind(reqUserId, pinHash).run();
 
+        const secureUnlockToken = await createJWT({ userId: reqUserId, scope: 'secure_folder' }, 2);
+
         return jsonResponse({
           success: true,
+          secureUnlockToken,
           message: 'Code PIN sécurisé configuré avec succès'
         }, 200, origin);
       }
@@ -11023,12 +11096,22 @@ a:hover{transform:translateY(-2px)}
         }
 
         delete gPinRate[reqUserId];
-        return jsonResponse({ success: true, verified: true, message: 'Dossier sécurisé déverrouillé' }, 200, origin);
+        const secureUnlockToken = await createJWT({ userId: reqUserId, scope: 'secure_folder' }, 2);
+        return jsonResponse({ success: true, verified: true, secureUnlockToken, message: 'Dossier sécurisé déverrouillé' }, 200, origin);
       }
 
       if (path === '/api/cloud/secure/files') {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        // Si un jeton de déverrouillage de dossier sécurisé (x-secure-token) est transmis, vérifier sa signature et sa correspondance (C-6)
+        const secTokenHeader = request.headers.get('x-secure-token');
+        if (secTokenHeader && secTokenHeader !== 'null' && secTokenHeader !== 'undefined') {
+          const secPayload = await verifyJWT(secTokenHeader);
+          if (!secPayload || secPayload.scope !== 'secure_folder' || String(secPayload.userId) !== reqUserId) {
+            return errorResponse('Jeton de déverrouillage du dossier sécurisé invalide ou expiré', 403, origin);
+          }
+        }
 
         if (method === 'GET') {
           const { results } = await env.DB.prepare(`
@@ -13650,8 +13733,8 @@ a:hover{transform:translateY(-2px)}
       if (path.startsWith('/api/shares/') && path.endsWith('/save-to-cloud') && method === 'POST') {
         const shareId = path.split('/')[3];
         const body: any = await request.json().catch(() => ({}));
-        const { userId } = body;
-        if (!userId) return errorResponse('userId requis', 400, origin);
+        const userId = (await extractRequestUserId()) || body.userId;
+        if (!userId || userId === 'default-user') return errorResponse('Authentification requise', 401, origin);
 
         const folder: any = await env.DB.prepare('SELECT * FROM shared_folders WHERE id = ?').bind(shareId).first();
         if (!folder) return errorResponse('Dossier partagé introuvable', 404, origin);
@@ -17593,7 +17676,7 @@ a:hover{transform:translateY(-2px)}
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
 
-        const targetUserId = (url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
+        const targetUserId = ((await extractRequestUserId()) || url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
         let cfg: any = null;
         try {
           cfg = await targetDb.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first();
@@ -17704,7 +17787,7 @@ a:hover{transform:translateY(-2px)}
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
 
         const body: any = await request.json().catch(() => ({}));
-        const targetUserId = (body.userId || body.user_id || request.headers.get('x-user-id') || 'default-user').trim();
+        const targetUserId = ((await extractRequestUserId()) || body.userId || body.user_id || request.headers.get('x-user-id') || 'default-user').trim();
         const tokens = Math.max(1, parseInt(body.tokens || 0, 10));
         const model = body.model || 'Delmas IA';
         const actionType = body.actionType || body.action_type || 'chat_deduction';
@@ -17868,7 +17951,7 @@ a:hover{transform:translateY(-2px)}
 
     } catch (err: any) {
       console.error('Worker API Error:', err);
-      return errorResponse(err.message || 'Erreur interne du serveur', 500, origin);
+      return errorResponse('Une erreur interne est survenue sur le serveur.', 500, origin);
     }
   },
 

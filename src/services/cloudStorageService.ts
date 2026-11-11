@@ -16,6 +16,7 @@ import { isMesFichiersItem } from './cloudDataStore';
 export function getAuthHeaders(): Record<string, string> {
   const userId = getCurrentUserId() || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || '';
   const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('sc_auth_token') || localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token') || '') : '';
+  const secureUnlockToken = typeof sessionStorage !== 'undefined' ? (sessionStorage.getItem('sc_secure_unlock_token') || '') : '';
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
   };
@@ -24,6 +25,9 @@ export function getAuthHeaders(): Record<string, string> {
   }
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
+  }
+  if (secureUnlockToken) {
+    headers['x-secure-token'] = secureUnlockToken;
   }
   return headers;
 }
@@ -767,6 +771,9 @@ export const CloudStorageAPI = {
       const json = await res.json();
       if (json.success) {
         saveLocalSecurePin(pin);
+        if (json.secureUnlockToken && typeof sessionStorage !== 'undefined') {
+          try { sessionStorage.setItem('sc_secure_unlock_token', json.secureUnlockToken); } catch {}
+        }
       }
       return json;
     } catch (e: any) {
@@ -786,6 +793,9 @@ export const CloudStorageAPI = {
         const json = await res.json();
         if (json.verified) {
           saveLocalSecurePin(pin);
+          if (json.secureUnlockToken && typeof sessionStorage !== 'undefined') {
+            try { sessionStorage.setItem('sc_secure_unlock_token', json.secureUnlockToken); } catch {}
+          }
         }
         return Boolean(json.verified);
       }

@@ -4,6 +4,7 @@ import { SharedFolder, SharedFile } from '../types';
 import JSZip from 'jszip';
 import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadDestinationModal';
 import { importFilesToMesFichiers } from '../services/userSync';
+import { StudyCloudAPI } from '../services/api';
 
 interface SharePortalViewProps {
   folder: SharedFolder;
@@ -13,6 +14,7 @@ interface SharePortalViewProps {
 
 export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBackToApp, onIncrementDownload }) => {
   const [unlocked, setUnlocked] = useState(!folder.isPasswordProtected);
+  const [unlockedFiles, setUnlockedFiles] = useState<SharedFile[]>(folder.files || []);
   const [inputPassword, setInputPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [zipping, setZipping] = useState(false);
@@ -29,13 +31,29 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
     setTimeout(() => setToastMsg(null), 3000);
   };
 
-  const handleUnlock = (e: React.FormEvent) => {
+  const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (inputPassword === folder.password) {
-      setUnlocked(true);
-      setErrorMsg('');
-    } else {
-      setErrorMsg('Mot de passe incorrect. Veuillez réessayer.');
+    setErrorMsg('');
+    try {
+      const res = await StudyCloudAPI.verifySharePin(folder.id, inputPassword);
+      if (res.success) {
+        if (res.data?.files && Array.isArray(res.data.files)) {
+          setUnlockedFiles(res.data.files);
+        }
+        setUnlocked(true);
+        return;
+      }
+      if (folder.password && inputPassword === folder.password) {
+        setUnlocked(true);
+        return;
+      }
+      setErrorMsg((res as any).error || 'Mot de passe incorrect. Veuillez réessayer.');
+    } catch {
+      if (folder.password && inputPassword === folder.password) {
+        setUnlocked(true);
+      } else {
+        setErrorMsg('Mot de passe incorrect. Veuillez réessayer.');
+      }
     }
   };
 
@@ -45,7 +63,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
     onIncrementDownload(folder.id);
     try {
       const zip = new JSZip();
-      folder.files.forEach((file) => {
+      unlockedFiles.forEach((file) => {
         const content = file.url || `Contenu officiel du fichier ${file.name}\nDossier partagé: ${folder.title}\nPartagé via StudyCloud - Plateforme étudiante`;
         zip.file(file.name, content);
       });
@@ -91,7 +109,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
     if (!pendingDownload) return;
 
     const isAll = pendingDownload.type === 'all';
-    const filesToImport = isAll ? folder.files : [pendingDownload.file!];
+    const filesToImport = isAll ? unlockedFiles : [pendingDownload.file!];
 
     // 1. Si choix Appareil ou Les Deux
     if (choice === 'device' || choice === 'both') {
@@ -206,7 +224,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
                     {folder.category}
                   </span>
                   <span className="text-xs font-mono text-stone-600 font-medium">
-                    {formatSize(folder.totalSize)} • {folder.files.length} fichiers
+                    {formatSize(folder.totalSize)} • {unlockedFiles.length} fichiers
                   </span>
                 </div>
                 <h2 className="text-2xl md:text-3xl font-extrabold text-stone-900 mb-2">{folder.title}</h2>
@@ -231,10 +249,10 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
             {/* Files list */}
             <div>
               <h3 className="text-xs font-bold uppercase tracking-wider text-stone-700 mb-3">
-                Fichiers disponibles en téléchargement direct ({folder.files.length})
+                Fichiers disponibles en téléchargement direct ({unlockedFiles.length})
               </h3>
               <div className="space-y-3">
-                {folder.files.map((file) => (
+                {unlockedFiles.map((file) => (
                   <div
                     key={file.id}
                     className="bg-white border-3 border-stone-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-[3px_3px_0px_0px_#1c1917] hover:shadow-[4px_4px_0px_0px_#1c1917] transition-all"
@@ -277,7 +295,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
         isOpen={Boolean(pendingDownload)}
         onClose={() => setPendingDownload(null)}
         title={pendingDownload?.type === 'all' ? folder.title : pendingDownload?.file?.name}
-        filesCount={pendingDownload?.type === 'all' ? folder.files.length : 1}
+        filesCount={pendingDownload?.type === 'all' ? unlockedFiles.length : 1}
         onConfirm={handleConfirmDestination}
       />
     </div>
