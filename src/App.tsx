@@ -72,7 +72,7 @@ export default function App() {
       } else if (legalParam === 'cgu' || pathname === '/terms' || pathname === '/cgu') {
         window.location.replace(getLegalPortalUrl('cgu'));
       }
-    } catch {}
+    } catch { }
   }, []);
 
   // Détecter immédiatement à l'initialisation si l'URL contient un retour Google OAuth ou une confirmation email
@@ -135,6 +135,11 @@ export default function App() {
         .finally(() => {
           setIsProcessingAuth(null);
         });
+    } else if (urlParams.get('error') && !googleCode) {
+      // L'utilisateur a annulé la connexion Google (?error=access_denied)
+      window.history.replaceState({}, '', window.location.pathname);
+      localStorage.removeItem('sc_google_auth_mode');
+      setIsProcessingAuth(null);
     } else if (urlParams.get('verify_error') === 'expired') {
       window.history.replaceState({}, '', window.location.pathname);
       localStorage.setItem('sc_verification_expired_notice', 'Votre lien de confirmation a expiré (validité 70 secondes). Veuillez réclamer un nouveau lien ci-dessous.');
