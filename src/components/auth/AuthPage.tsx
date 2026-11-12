@@ -1097,58 +1097,51 @@ export function AuthPage({ onBack }: AuthPageProps) {
 
                   <button
                     type="button"
+                    disabled={isGoogleLoading}
                     onClick={() => handleGoogleSignIn(mode === 'register' ? 'register' : 'login')}
-                    className="w-full py-3.5 px-5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-3 transition-all hover:opacity-95 hover:scale-[1.01] active:scale-[0.99] shadow-lg shadow-blue-600/30 cursor-pointer"
+                    className="w-full py-3.5 px-5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-3 transition-all hover:opacity-95 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-blue-600/30 cursor-pointer"
                     style={{
                       background: 'linear-gradient(135deg, #1a73e8 0%, #1557b0 100%)',
                       border: '1px solid rgba(255, 255, 255, 0.2)',
                     }}
                   >
-                    {/* Google Official Multi-color Logo on white circle */}
-                    <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm">
-                      <svg width="15" height="15" viewBox="0 0 18 18" fill="none">
-                        <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4" />
-                        <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853" />
-                        <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05" />
-                        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335" />
-                      </svg>
-                    </div>
-                    <span>{mode === 'register' ? "S'inscrire avec Google" : 'Continuer avec Google'}</span>
+                    {isGoogleLoading ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        <span>Redirection vers Google...</span>
+                      </span>
+                    ) : (
+                      <>
+                        {/* Google Official Multi-color Logo on white circle */}
+                        <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm">
+                          <svg width="15" height="15" viewBox="0 0 18 18" fill="none">
+                            <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+                            <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+                            <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+                            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+                          </svg>
+                        </div>
+                        <span>{mode === 'register' ? "S'inscrire avec Google" : 'Continuer avec Google'}</span>
+                      </>
+                    )}
                   </button>
 
-            <button
-              type="button"
-              disabled={isGoogleLoading}
-              onClick={() => handleGoogleSignIn(mode === 'register' ? 'register' : 'login')}
-              className="w-full py-3.5 px-5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-3 transition-all hover:opacity-95 hover:scale-[1.01] active:scale-[0.99] disabled:opacity-70 disabled:cursor-not-allowed shadow-lg shadow-blue-600/30 cursor-pointer"
-              style={{
-                background: 'linear-gradient(135deg, #1a73e8 0%, #1557b0 100%)',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
-              }}
-            >
-              {isGoogleLoading ? (
-                <span className="flex items-center gap-2">
-                  <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                  </svg>
-                  <span>Redirection vers Google...</span>
-                </span>
-              ) : (
-                <>
-                  {/* Google Official Multi-color Logo on white circle */}
-                  <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center shrink-0 shadow-sm">
-                    <svg width="15" height="15" viewBox="0 0 18 18" fill="none">
-                      <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
-                      <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
-                      <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
-                      <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
-                    </svg>
+                  {/* Switch mode (Connexion <-> Inscription) */}
+                  <div className="mt-5 text-center">
+                    <span className="text-xs sm:text-sm text-white/50 font-medium">
+                      {mode === 'register' ? 'Vous avez déjà un compte ? ' : 'Pas encore de compte ? '}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => { setMode(mode === 'register' ? 'login' : 'register'); resetForm(); }}
+                      className="text-xs sm:text-sm font-bold text-orange-400 hover:text-orange-300 transition-colors cursor-pointer underline underline-offset-4 ml-1"
+                    >
+                      {mode === 'register' ? 'Se connecter' : 'Créer un compte'}
+                    </button>
                   </div>
-                  <span>{mode === 'register' ? "S'inscrire avec Google" : 'Continuer avec Google'}</span>
-                </>
-              )}
-            </button>
 
                   {/* Mentions & Conditions d'utilisation (Worker dédié dkd-legal) */}
                   <div className="mt-6 pt-4 border-t border-white/10 text-center space-y-1">

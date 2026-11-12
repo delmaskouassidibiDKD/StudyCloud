@@ -4224,15 +4224,18 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           return 0;
         });
 
-        // Si l'utilisateur est toujours sur cette conversation, mettre à jour la vue sans écraser les messages en cours de streaming
+        // Si l'utilisateur est toujours sur cette conversation, mettre à jour la vue sans jamais écraser les messages envoyés localement ou en cours de streaming
         if (currentConversationIdRef.current === convId) {
           let mergedForStorage = loaded;
           setMessages(prev => {
-            const inFlightStreaming = prev.filter(m => m.isStreaming);
-            if (inFlightStreaming.length === 0) return loaded;
             const loadedIds = new Set(loaded.map(m => m.id));
-            const pending = inFlightStreaming.filter(m => !loadedIds.has(m.id));
-            mergedForStorage = [...loaded, ...pending];
+            const convInFlight = Boolean(inFlightConvsRef.current[convId]);
+            const pendingLocal = prev.filter(m =>
+              !loadedIds.has(m.id) &&
+              (m.isStreaming || m.isError || (convInFlight && m.sender === 'user'))
+            );
+            if (pendingLocal.length === 0) return loaded;
+            mergedForStorage = [...loaded, ...pendingLocal];
             return mergedForStorage;
           });
           safeSetItem(`studycloud_conv_msgs_${convId}`, JSON.stringify(mergedForStorage));
