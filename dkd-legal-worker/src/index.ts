@@ -40,7 +40,7 @@ const STUDYCLOUD_CONFIG: AppLegalConfig = {
   founder: 'Dibi Kouassi Delmas',
   version: 'Version 4.3 — Novembre 2026',
   effectiveDate: 'Les présentes conditions entrent en vigueur en novembre 2026.',
-  defaultReturnUrl: 'https://studycloud.delmaskouassidibi.workers.dev',
+  defaultReturnUrl: 'https://studycloud.dkd-technologies.com',
   supportEmails: ['contact@dkd-technologies.com', 'support@studycloud.app'],
   sections: {
     cgu: [
@@ -104,7 +104,6 @@ function sanitizeReturnUrl(raw: string | null, fallback: string): string {
     const isAllowed =
       host === 'localhost' ||
       host === '127.0.0.1' ||
-      host.endsWith('.delmaskouassidibi.workers.dev') ||
       host.endsWith('.dkd-technologies.com') ||
       host === 'dkd-technologies.com' ||
       host.endsWith('.studycloud.app') ||

@@ -1,5 +1,9 @@
-name = "dkd-legal"
+name = "conditions-dutilisation"
 main = "src/index.ts"
 compatibility_date = "2025-02-01"
-workers_dev = true
+workers_dev = false
+
+routes = [
+  { pattern = "conditions-dutilisation.dkd-technologies.com", custom_domain = true }
+]
 

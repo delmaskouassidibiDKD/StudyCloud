@@ -24,10 +24,11 @@ const refreshMatieresCache = (includeFiles: boolean) => {
   }).catch(() => {});
 };
 
-export const DKD_LEGAL_PORTAL_URL = 'https://dkd-legal.delmaskouassidibi.workers.dev';
+export const DKD_LEGAL_PORTAL_URL = 'https://conditions-dutilisation.dkd-technologies.com';
 
 export const getLegalPortalUrl = (tab: 'cgu' | 'privacy' | 'mentions' = 'cgu'): string => {
-  const returnTo = typeof window !== 'undefined' ? window.location.origin : 'https://studycloud.delmaskouassidibi.workers.dev';
+  const isLocal = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const returnTo = isLocal ? window.location.origin : 'https://studycloud.dkd-technologies.com';
   return `${DKD_LEGAL_PORTAL_URL}/?app=studycloud&tab=${tab}&return_to=${encodeURIComponent(returnTo)}`;
 };
 
