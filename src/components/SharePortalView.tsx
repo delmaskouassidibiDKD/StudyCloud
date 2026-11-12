@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { createPortal } from 'react-dom';
 import { Folder, FileText, Download, Lock, Check, ShieldCheck, ArrowLeft, Package, Sparkles } from 'lucide-react';
 import { SharedFolder, SharedFile } from '../types';
 import JSZip from 'jszip';
 import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadDestinationModal';
 import { importFilesToMesFichiers } from '../services/userSync';
-import { StudyCloudAPI } from '../services/api';
-import { LegalTermsModal } from './LegalTermsModal';
+import { StudyCloudAPI, getLegalPortalUrl } from '../services/api';
 
 interface SharePortalViewProps {
   folder: SharedFolder;
@@ -21,7 +19,6 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
   const [errorMsg, setErrorMsg] = useState('');
   const [zipping, setZipping] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  const [showLegalModal, setShowLegalModal] = useState(false);
 
   // Modal de choix de destination
   const [pendingDownload, setPendingDownload] = useState<{
@@ -289,28 +286,19 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
                 StudyCloud Share • Service de partage direct édité par DKD Technologies • Fondateur : Dibi Kouassi Delmas
               </p>
               <div className="flex items-center justify-center gap-2 text-[11px] text-stone-400">
-                <button
-                  type="button"
-                  onClick={() => setShowLegalModal(true)}
+                <a
+                  href={getLegalPortalUrl('cgu')}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="underline hover:text-stone-700 transition-colors cursor-pointer"
                 >
                   Conditions d'utilisation & Confidentialité
-                </button>
+                </a>
               </div>
             </div>
           </div>
         )}
       </div>
-
-      {/* Modal interactif : Conditions et Confidentialité (Pleine Page Blanche via Portal) */}
-      {showLegalModal && createPortal(
-        <LegalTermsModal
-          isOpen={showLegalModal}
-          onClose={() => setShowLegalModal(false)}
-          defaultTab="cgu"
-        />,
-        document.body
-      )}
 
       {/* Modal interactif : Choisir où enregistrer (Appareil, StudyCloud, ou les deux) */}
       <DownloadDestinationModal

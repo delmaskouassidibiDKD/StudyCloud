@@ -6,8 +6,7 @@ import { SettingsPricingView } from './SettingsPricingView';
 import { NotificationsView } from './NotificationsView';
 import { UserSettingsView } from './UserSettingsView';
 import { ServiceProposalView } from './ServiceProposalView';
-import { createPortal } from 'react-dom';
-import { LegalTermsModal } from './LegalTermsModal';
+import { getLegalPortalUrl } from '../services/api';
 import studentLogo from '../assets/student-logo.jpg';
 import proLogo from '../assets/pro-logo.jpg';
 import { useBackHandler } from '../services/backNavigation';
@@ -37,8 +36,6 @@ export const SettingsView: React.FC = () => {
   }, [activeSubView]);
   const [showContactMenu, setShowContactMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
-  const [showLegalModal, setShowLegalModal] = useState(false);
-  const [legalTab, setLegalTab] = useState<'cgu' | 'privacy' | 'mentions'>('cgu');
   const [reportText, setReportText] = useState('');
   const [reportSubmitted, setReportSubmitted] = useState(false);
 
@@ -46,7 +43,6 @@ export const SettingsView: React.FC = () => {
   useBackHandler(activeSubView !== 'none', () => setActiveSubView('none'), 'settings-subview');
   useBackHandler(showReportModal, () => setShowReportModal(false), 'settings-report-modal');
   useBackHandler(showContactMenu, () => setShowContactMenu(false), 'settings-contact-menu');
-  useBackHandler(showLegalModal, () => setShowLegalModal(false), 'settings-legal-modal');
 
   if (activeSubView === 'promotion') {
     return <PromotionView onBack={() => setActiveSubView('none')} />;
@@ -270,14 +266,16 @@ export const SettingsView: React.FC = () => {
           <span>Paramètres</span>
         </button>
 
-        {/* Bouton Cadre Juridique, CGU & Confidentialité */}
-        <button 
-          onClick={() => { setLegalTab('cgu'); setShowLegalModal(true); }}
+        {/* Lien Cadre Juridique, CGU & Confidentialité (Worker dédié dkd-legal) */}
+        <a
+          href={getLegalPortalUrl('cgu')}
+          target="_blank"
+          rel="noopener noreferrer"
           className="w-full flex items-center justify-center gap-3 bg-[#FDFBF7] hover:bg-amber-50 border-2 border-stone-800 rounded-xl md:rounded-2xl py-3 md:py-4 px-4 md:px-6 text-stone-900 font-bold text-sm md:text-base shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917] cursor-pointer"
         >
           <Scale className="w-5 h-5 md:w-6 md:h-6 text-amber-700" />
           <span>Conditions d'utilisation & Confidentialité</span>
-        </button>
+        </a>
 
         {/* Bouton de déconnexion direct */}
         <button 
@@ -365,15 +363,6 @@ export const SettingsView: React.FC = () => {
             )}
           </div>
         </div>
-      )}
-      {/* Modal Conditions Générales & Confidentialité (Pleine Page Blanche via Portal) */}
-      {showLegalModal && createPortal(
-        <LegalTermsModal
-          isOpen={showLegalModal}
-          onClose={() => setShowLegalModal(false)}
-          defaultTab={legalTab}
-        />,
-        document.body
       )}
     </div>
   );

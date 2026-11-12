@@ -24,6 +24,13 @@ const refreshMatieresCache = (includeFiles: boolean) => {
   }).catch(() => {});
 };
 
+export const DKD_LEGAL_PORTAL_URL = 'https://dkd-legal.delmaskouassidibi.workers.dev';
+
+export const getLegalPortalUrl = (tab: 'cgu' | 'privacy' | 'mentions' = 'cgu'): string => {
+  const returnTo = typeof window !== 'undefined' ? window.location.origin : 'https://studycloud.delmaskouassidibi.workers.dev';
+  return `${DKD_LEGAL_PORTAL_URL}/?app=studycloud&tab=${tab}&return_to=${encodeURIComponent(returnTo)}`;
+};
+
 export const setWorkerApiUrl = (url: string) => {
   localStorage.setItem('studycloud_worker_url', url.trim());
 };

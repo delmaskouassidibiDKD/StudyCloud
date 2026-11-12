@@ -42,7 +42,7 @@ import { UploadQueueWidget } from './components/UploadQueueWidget';
 import { checkAndPerformWallpaperAutoRotation } from './utils/wallpaperHelper';
 import { purgeVolatileStorage, safeLocalStorageRemove, sanitizeItemForStorage } from './utils/safeStorage';
 import { documentSpeechService, useDocumentSpeech } from './services/documentSpeechService';
-import { LegalTermsModal, LegalTabType } from './components/LegalTermsModal';
+import { getLegalPortalUrl } from './services/api';
 
 // Nettoyage immédiat au chargement de l'application pour libérer l'espace des appareils saturés
 if (typeof window !== 'undefined') {
@@ -59,18 +59,21 @@ export default function App() {
   const viewerExpandLevel = useViewerExpandLevel();
   const { user, isAuthenticated, isLoading: authLoading, needsOnboarding, needsSecuritySetup, loginWithToken } = useAuth();
 
-  // Détection directe d'une page légale publique via URL (?legal=cgu|privacy|mentions ou /terms|/privacy|/legal)
-  const [directLegalTab, setDirectLegalTab] = useState<LegalTabType | null>(() => {
+  // Redirection transparente vers le Worker dédié dkd-legal si l'URL vise /terms, /privacy ou /legal
+  useEffect(() => {
     try {
       const pathname = window.location.pathname.toLowerCase();
       const params = new URLSearchParams(window.location.search);
       const legalParam = params.get('legal');
-      if (legalParam === 'privacy' || pathname === '/privacy' || pathname === '/confidentialite') return 'privacy';
-      if (legalParam === 'mentions' || pathname === '/legal' || pathname === '/mentions-legales') return 'mentions';
-      if (legalParam === 'cgu' || pathname === '/terms' || pathname === '/cgu') return 'cgu';
+      if (legalParam === 'privacy' || pathname === '/privacy' || pathname === '/confidentialite') {
+        window.location.replace(getLegalPortalUrl('privacy'));
+      } else if (legalParam === 'mentions' || pathname === '/legal' || pathname === '/mentions-legales') {
+        window.location.replace(getLegalPortalUrl('mentions'));
+      } else if (legalParam === 'cgu' || pathname === '/terms' || pathname === '/cgu') {
+        window.location.replace(getLegalPortalUrl('cgu'));
+      }
     } catch {}
-    return null;
-  });
+  }, []);
 
   // Détecter immédiatement à l'initialisation si l'URL contient un retour Google OAuth ou une confirmation email
   const [isProcessingAuth, setIsProcessingAuth] = useState<string | null>(() => {
@@ -1783,22 +1786,6 @@ export default function App() {
       prev.map((f) => (f.id === folderId ? { ...f, downloadsCount: f.downloadsCount + 1 } : f))
     );
   };
-
-  // ─── DIRECT PUBLIC LEGAL PAGE ROUTE (/terms, /privacy, /legal, ?legal=...) ──
-  if (directLegalTab) {
-    return (
-      <LegalTermsModal
-        isOpen={true}
-        defaultTab={directLegalTab}
-        onClose={() => {
-          setDirectLegalTab(null);
-          try {
-            window.history.replaceState({}, '', '/');
-          } catch {}
-        }}
-      />
-    );
-  }
 
   // ─── AUTH GUARDS ─────────────────────────────────────────────────────────────
   // 1. Écran de chargement lors de la vérification du token JWT ou du retour Google / Email

@@ -1,13 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { Mail, Lock, Eye, EyeOff, ArrowLeft, AlertCircle, CheckCircle2, User, ShieldCheck, KeyRound, UserPlus, X, Sparkles } from 'lucide-react';
-import { StudyCloudAPI } from '../../services/api';
+import { StudyCloudAPI, getLegalPortalUrl } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { DnaLogo } from '../DnaLogo';
 import { EmailPendingVerification } from './EmailPendingVerification';
 import { PhonePushNotification } from './PhonePushNotification';
 import { ForgotPasswordFlow } from './ForgotPasswordFlow';
-import { LegalTermsModal } from '../LegalTermsModal';
 
 interface AuthPageProps {
   onBack?: () => void;
@@ -128,8 +126,6 @@ export function AuthPage({ onBack }: AuthPageProps) {
 
   // Flux de mot de passe oublié
   const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [showLegalModal, setShowLegalModal] = useState(false);
-  const [legalTab, setLegalTab] = useState<'cgu' | 'privacy' | 'mentions'>('cgu');
 
   // Notification WhatsApp / Téléphone en haut de l'écran
   const [pushNotification, setPushNotification] = useState<{
@@ -1064,25 +1060,27 @@ export function AuthPage({ onBack }: AuthPageProps) {
               </button>
             </div>
 
-            {/* Mentions & Conditions d'utilisation */}
+            {/* Mentions & Conditions d'utilisation (Worker dédié dkd-legal) */}
             <div className="mt-6 pt-4 border-t border-white/10 text-center space-y-1">
               <p className="text-[11px] text-white/40 leading-relaxed">
                 En continuant, vous acceptez les{' '}
-                <button
-                  type="button"
-                  onClick={() => { setLegalTab('cgu'); setShowLegalModal(true); }}
+                <a
+                  href={getLegalPortalUrl('cgu')}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-orange-400 hover:text-orange-300 underline font-medium cursor-pointer"
                 >
                   Conditions d'utilisation
-                </button>
+                </a>
                 {' '}et la{' '}
-                <button
-                  type="button"
-                  onClick={() => { setLegalTab('privacy'); setShowLegalModal(true); }}
+                <a
+                  href={getLegalPortalUrl('privacy')}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="text-orange-400 hover:text-orange-300 underline font-medium cursor-pointer"
                 >
                   Politique de confidentialité
-                </button>
+                </a>
                 .
               </p>
               <p className="text-[10px] text-white/30">
@@ -1095,16 +1093,6 @@ export function AuthPage({ onBack }: AuthPageProps) {
         </div>
       </div>
       </div>
-
-      {/* Modal interactif du cadre juridique (Pleine Page Blanche via Portal) */}
-      {showLegalModal && createPortal(
-        <LegalTermsModal
-          isOpen={showLegalModal}
-          onClose={() => setShowLegalModal(false)}
-          defaultTab={legalTab}
-        />,
-        document.body
-      )}
     </div>
   );
 }
