@@ -570,15 +570,19 @@ function renderLegalHtml(app: AppLegalConfig, initialTab: LegalTab, returnUrl: s
         <section id="sec-overview" class="sc-section">
           <h2>1. Aperçu et mission de la plateforme</h2>
           <p>
-            Les présentes Conditions Générales d'Utilisation (« Conditions ») régissent l'accès et l'utilisation du site web et des services de <strong>StudyCloud</strong> (« nous », « notre » ou « DKD Technologies »). StudyCloud est un écosystème numérique polyvalent s'adressant à un large public : étudiants, élèves, professionnels, créateurs de contenus et particuliers.
+            Les présentes Conditions Générales d'Utilisation (« Conditions ») régissent l'accès et l'utilisation du site web et des services de <strong>StudyCloud</strong> (« nous », « notre » ou « DKD Technologies »).
           </p>
-          <p>La plateforme réunit en un seul espace :</p>
+          <div style="margin-top: 1.25rem; margin-bottom: 0.75rem;">
+            <h3 style="font-size: 1.15rem; font-weight: 700; color: #0f172a; margin-bottom: 0.5rem;">2.1 Présentation de StudyCloud</h3>
+            <p>StudyCloud est un écosystème numérique tout-en-un offrant :</p>
+          </div>
           <ul>
-            <li><strong>Un hub de ressources et pépites d'Internet :</strong> sélection d'outils gratuits, utilitaires web, logiciels et ressources incontournables pour gagner du temps ;</li>
-            <li><strong>Une place de marché et création de boutique en ligne :</strong> espace permettant aux utilisateurs de proposer et vendre leurs propres documents et contenus originaux ;</li>
-            <li><strong>Un espace d'organisation et de stockage Cloud :</strong> Classeur 3D, gestion par matières, calendrier, bloc-notes et sauvegarde sécurisée accessible sur ordinateur et téléphone ;</li>
-            <li><strong>Des fonctionnalités d'Intelligence Artificielle intégrées :</strong> outils d'aide à la synthèse, rédaction, questionnaires d'entraînement et devoirs guidés ;</li>
-            <li><strong>Un portail de partage direct (StudyCloud Share) :</strong> échange rapide de dossiers et fichiers par lien dédié.</li>
+            <li><strong>Un explorateur et un hub de ressources &amp; pépites du web :</strong> Sélection et partage d'outils incontournables d'Internet, de liens pratiques, de logiciels et d'astuces pour optimiser le travail et l'apprentissage.</li>
+            <li><strong>Une place de marché &amp; Création de boutique :</strong> Possibilité pour les utilisateurs de créer leur propre boutique pour vendre des documents numériques, fiches ou contenus originaux.</li>
+            <li><strong>Un espace d'organisation et d'étude :</strong> Classeur 3D, gestion par matières, calendrier, emplois du temps, bloc-notes, visionneuses de documents et lecteurs multimédias.</li>
+            <li><strong>Un stockage Cloud sécurisé :</strong> Espace en ligne personnel pour sauvegarder ses documents, photos, audios et vidéos accessibles partout.</li>
+            <li><strong>Des fonctionnalités d'Intelligence Artificielle intégrées :</strong> Outils de génération de synthèses, devoirs guidés, questionnaires d'entraînement et aide à la rédaction.</li>
+            <li><strong>Un portail de partage direct (StudyCloud Share) :</strong> Création instantanée de liens de partage pour distribuer des dossiers en un clic.</li>
           </ul>
         </section>
 

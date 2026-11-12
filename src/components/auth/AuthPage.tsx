@@ -474,47 +474,47 @@ export function AuthPage({ onBack }: AuthPageProps) {
 
                 {/* Catchphrase */}
                 <h2 className="text-2xl xl:text-3xl font-black text-white leading-tight mb-3">
-                  Votre espace Cloud sécurisé, ressources éducatives et outils IA pour réussir.
+                  Votre écosystème numérique tout-en-un pour travailler, créer, stocker et explorer.
                 </h2>
-                <p className="text-xs xl:text-sm text-white/60 leading-relaxed mb-8">
-                  Étudiants, élèves, professionnels et entreprises : stockez vos cours et dossiers, explorez une vaste bibliothèque de ressources scolaires du web et révisez avec nos outils d'intelligence artificielle intégrés.
+                <p className="text-xs xl:text-sm text-white/60 leading-relaxed mb-6">
+                  Particuliers, étudiants, créateurs, indépendants et entreprises : un espace centralisé réunissant stockage cloud sécurisé, explorateur de pépites du web, place de marché et intelligence artificielle intégrée.
                 </p>
 
                 {/* Information list written directly on background (no icons in front, no enclosing box borders) */}
-                <div className="space-y-5">
+                <div className="space-y-4">
                   <div>
                     <h4 className="text-sm font-bold text-white mb-1">
-                      Stockage Cloud &amp; Classement Intelligent
+                      Explorateur &amp; Hub de Ressources du Web
                     </h4>
                     <p className="text-xs text-white/50 leading-relaxed">
-                      Organisez vos cours scolaires et universitaires, documents personnels et archives d'entreprise en toute sécurité avec accès instantané partout.
+                      Sélection et partage d'outils incontournables d'Internet, de logiciels utiles, de liens pratiques et d'astuces pour optimiser votre travail et votre apprentissage.
                     </p>
                   </div>
 
                   <div>
                     <h4 className="text-sm font-bold text-white mb-1">
-                      Hub de Ressources Éducatives du Web
+                      Place de Marché &amp; Création de Boutique
                     </h4>
                     <p className="text-xs text-white/50 leading-relaxed">
-                      Accédez à une riche bibliothèque de cours, devoirs, examens et fiches de révision regroupés depuis Internet et classés par matières et niveaux.
+                      Créez votre propre boutique en ligne pour proposer ou vendre vos documents numériques, fiches et contenus originaux en toute simplicité.
                     </p>
                   </div>
 
                   <div>
                     <h4 className="text-sm font-bold text-white mb-1">
-                      Assistant IA Delmas &amp; Outils Intelligents
+                      Stockage Cloud Sécurisé &amp; Classeur 3D
                     </h4>
                     <p className="text-xs text-white/50 leading-relaxed">
-                      Révisez plus vite, posez des questions sur vos documents, générez des résumés précis, des exercices et du contenu pédagogique grâce à l'IA.
+                      Espace en ligne pour sauvegarder vos documents, photos, audios et vidéos accessibles partout, avec classeur 3D, calendrier et visionneuses multimédias.
                     </p>
                   </div>
 
                   <div>
                     <h4 className="text-sm font-bold text-white mb-1">
-                      Sécurité Maximale &amp; Données Protégées
+                      Intelligence Artificielle &amp; Partage Instantané
                     </h4>
                     <p className="text-xs text-white/50 leading-relaxed">
-                      Chiffrement avancé, double authentification (2FA) et isolation étanche pour protéger vos cours, vos fiches et vos projets professionnels.
+                      Assistant IA Delmas pour synthèses, devoirs guidés, rédaction et création pédagogique, couplé à StudyCloud Share pour distribuer des dossiers en un clic.
                     </p>
                   </div>
                 </div>
@@ -523,7 +523,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
               {/* Bottom info */}
               <div className="pt-6 border-t border-white/10 flex items-center justify-between text-[11px] text-white/40">
                 <span>DKD TECHNOLOGIES Cloud</span>
-                <span className="font-semibold text-orange-400">Étudiants, Élèves & Entreprises</span>
+                <span className="font-semibold text-orange-400">Écosystème Numérique Tout-en-Un</span>
               </div>
             </div>
 

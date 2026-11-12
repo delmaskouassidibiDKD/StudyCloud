@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "StudyCloud - Stockage Cloud, Ressources & Outils IA",
+  "name": "StudyCloud - Écosystème Tout-en-Un : Outils, Cloud & IA",
   "short_name": "StudyCloud",
-  "description": "Plateforme cloud d'étude tout-en-un : stockage sécurisé, bibliothèque de ressources scolaires du web et outils d'intelligence artificielle pédagogique par DKD Technologies.",
+  "description": "Écosystème numérique tout-en-un : explorateur de ressources et pépites du web, place de marché, stockage cloud sécurisé, classeur 3D et intelligence artificielle par DKD Technologies.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
