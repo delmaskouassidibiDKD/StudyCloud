@@ -1925,6 +1925,9 @@ CONSIGNES STRICTES DE CONTINUATION :
           // Calcul précis des jetons / crédits consommés
           const totalChars = (userPrompt || '').length + (answerText || '').length + (audioTranscript || '').length + (docContent || '').slice(0, 4000).length;
           const calculatedTokens = Math.max(90, Math.ceil(totalChars / 3.8));
+          const tokensPerCredit = Math.max(1, billingConfig?.tokens_per_credit || 1000);
+          const rawCreditsDeducted = calculatedTokens / tokensPerCredit;
+          const creditsDeducted = Math.max(0.01, +(rawCreditsDeducted).toFixed(2));
 
           // Déduction FIFO stricte du cadeau puis des crédits achetés
           let giftRem = Math.max(0, Number(userBilling?.gift_remaining !== undefined ? userBilling.gift_remaining : (userBilling?.credits_balance || 50)));
