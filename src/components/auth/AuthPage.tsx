@@ -123,6 +123,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
   const [securityAnswer1, setSecurityAnswer1] = useState('');
   const [securityQuestion2, setSecurityQuestion2] = useState('Quel est le prénom de votre mère ?');
   const [securityAnswer2, setSecurityAnswer2] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
 
   // Flux de mot de passe oublié
   const [showForgotPassword, setShowForgotPassword] = useState(false);
@@ -156,6 +157,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
     setName('');
     setSecurityAnswer1('');
     setSecurityAnswer2('');
+    setAcceptedTerms(false);
     setError(null);
     setAccountNotFoundNotice(null);
     setSuccess(null);
@@ -196,6 +198,10 @@ export function AuthPage({ onBack }: AuthPageProps) {
       }
       if (!securityAnswer1.trim() || !securityAnswer2.trim()) {
         setError('Veuillez renseigner les réponses à vos deux questions de sécurité pour protéger votre compte.');
+        return;
+      }
+      if (!acceptedTerms) {
+        setError("Veuillez accepter les Conditions d'utilisation et la Politique de confidentialité pour créer votre compte.");
         return;
       }
     } else {
@@ -993,15 +999,51 @@ export function AuthPage({ onBack }: AuthPageProps) {
                 </div>
               )}
 
+              {/* Case obligatoire d'acceptation des Conditions avant création de compte */}
+              {mode === 'register' && (
+                <label className="flex items-start gap-3 p-3 rounded-2xl bg-white/5 border border-white/10 hover:border-orange-500/40 transition-colors cursor-pointer select-none">
+                  <input
+                    id="auth-accept-terms"
+                    type="checkbox"
+                    checked={acceptedTerms}
+                    onChange={(e) => setAcceptedTerms(e.target.checked)}
+                    className="mt-0.5 w-4 h-4 rounded accent-orange-500 cursor-pointer shrink-0"
+                  />
+                  <span className="text-[11px] sm:text-xs text-white/80 leading-relaxed font-medium">
+                    J'ai lu et j'accepte les{' '}
+                    <a
+                      href={getLegalPortalUrl('cgu')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-orange-400 hover:text-orange-300 underline font-bold"
+                    >
+                      Conditions d'utilisation
+                    </a>
+                    {' '}et la{' '}
+                    <a
+                      href={getLegalPortalUrl('privacy')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="text-orange-400 hover:text-orange-300 underline font-bold"
+                    >
+                      Politique de confidentialité
+                    </a>
+                    {' '}de StudyCloud. <span className="text-orange-400">*</span>
+                  </span>
+                </label>
+              )}
+
               {/* Submit */}
               <button
                 id="auth-submit-btn"
                 type="submit"
-                disabled={isLoading}
-                className="w-full py-4 px-6 rounded-2xl font-extrabold text-white text-base flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed cursor-pointer mt-2"
+                disabled={isLoading || (mode === 'register' && !acceptedTerms)}
+                className="w-full py-4 px-6 rounded-2xl font-extrabold text-white text-base flex items-center justify-center gap-2 transition-all hover:scale-[1.01] active:scale-[0.99] disabled:opacity-50 disabled:hover:scale-100 disabled:cursor-not-allowed cursor-pointer mt-2"
                 style={{
-                  background: isLoading ? 'rgba(234,88,12,0.5)' : 'linear-gradient(135deg, #EA580C, #F97316)',
-                  boxShadow: isLoading ? 'none' : '0 8px 28px rgba(234,88,12,0.35)',
+                  background: (isLoading || (mode === 'register' && !acceptedTerms)) ? 'rgba(234,88,12,0.35)' : 'linear-gradient(135deg, #EA580C, #F97316)',
+                  boxShadow: (isLoading || (mode === 'register' && !acceptedTerms)) ? 'none' : '0 8px 28px rgba(234,88,12,0.35)',
                 }}
               >
                 {isLoading ? (
@@ -1084,7 +1126,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
                 .
               </p>
               <p className="text-[10px] text-white/30">
-                Édité par DKD Technologies • Fondateur : Dibi Kouassi Delmas
+                Édité par DKD Technologies
               </p>
             </div>
           </>

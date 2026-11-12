@@ -283,7 +283,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
 
             <div className="mt-8 pt-6 border-t-2 border-stone-300 text-center space-y-1.5">
               <p className="text-xs text-stone-500">
-                StudyCloud Share • Service de partage direct édité par DKD Technologies • Fondateur : Dibi Kouassi Delmas
+                StudyCloud Share • Service de partage direct édité par DKD Technologies
               </p>
               <div className="flex items-center justify-center gap-2 text-[11px] text-stone-400">
                 <a
