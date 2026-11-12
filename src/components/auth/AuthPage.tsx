@@ -474,17 +474,17 @@ export function AuthPage({ onBack }: AuthPageProps) {
 
                 {/* Catchphrase */}
                 <h2 className="text-2xl xl:text-3xl font-black text-white leading-tight mb-3">
-                  Votre espace Cloud sécurisé pour stocker, classer et protéger toutes vos données.
+                  Votre espace Cloud sécurisé, ressources éducatives et outils IA pour réussir.
                 </h2>
                 <p className="text-xs xl:text-sm text-white/60 leading-relaxed mb-8">
-                  Étudiants, élèves, professionnels et entreprises : conservez vos cours, fiches, dossiers et données importantes en lieu sûr pour ne jamais les perdre. Accédez-y partout, avec l'intelligence artificielle intégrée.
+                  Étudiants, élèves, professionnels et entreprises : stockez vos cours et dossiers, explorez une vaste bibliothèque de ressources scolaires du web et révisez avec nos outils d'intelligence artificielle intégrés.
                 </p>
 
                 {/* Information list written directly on background (no icons in front, no enclosing box borders) */}
-                <div className="space-y-6">
+                <div className="space-y-5">
                   <div>
                     <h4 className="text-sm font-bold text-white mb-1">
-                      Stockage Cloud & Classement Intelligent
+                      Stockage Cloud &amp; Classement Intelligent
                     </h4>
                     <p className="text-xs text-white/50 leading-relaxed">
                       Organisez vos cours scolaires et universitaires, documents personnels et archives d'entreprise en toute sécurité avec accès instantané partout.
@@ -493,16 +493,25 @@ export function AuthPage({ onBack }: AuthPageProps) {
 
                   <div>
                     <h4 className="text-sm font-bold text-white mb-1">
-                      Assistant IA Delmas Intégré
+                      Hub de Ressources Éducatives du Web
                     </h4>
                     <p className="text-xs text-white/50 leading-relaxed">
-                      Révisez plus vite, posez des questions sur vos cours ou documents, et générez des résumés précis grâce à l'intelligence artificielle.
+                      Accédez à une riche bibliothèque de cours, devoirs, examens et fiches de révision regroupés depuis Internet et classés par matières et niveaux.
                     </p>
                   </div>
 
                   <div>
                     <h4 className="text-sm font-bold text-white mb-1">
-                      Sécurité Maximale & Données Protégées
+                      Assistant IA Delmas &amp; Outils Intelligents
+                    </h4>
+                    <p className="text-xs text-white/50 leading-relaxed">
+                      Révisez plus vite, posez des questions sur vos documents, générez des résumés précis, des exercices et du contenu pédagogique grâce à l'IA.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-bold text-white mb-1">
+                      Sécurité Maximale &amp; Données Protégées
                     </h4>
                     <p className="text-xs text-white/50 leading-relaxed">
                       Chiffrement avancé, double authentification (2FA) et isolation étanche pour protéger vos cours, vos fiches et vos projets professionnels.

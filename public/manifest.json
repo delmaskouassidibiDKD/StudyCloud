@@ -1,8 +1,8 @@
 {
   "id": "/",
-  "name": "StudyCloud - Stockage & Étude Intelligente",
+  "name": "StudyCloud - Stockage Cloud, Ressources & Outils IA",
   "short_name": "StudyCloud",
-  "description": "Plateforme cloud sécurisée d'étude, de cours, de devoirs et d'assistance intelligente conçue par DKD Technologies.",
+  "description": "Plateforme cloud d'étude tout-en-un : stockage sécurisé, bibliothèque de ressources scolaires du web et outils d'intelligence artificielle pédagogique par DKD Technologies.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
