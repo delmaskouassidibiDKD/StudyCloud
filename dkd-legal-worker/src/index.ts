@@ -137,6 +137,41 @@ function renderLegalHtml(app: AppLegalConfig, initialTab: LegalTab, returnUrl: s
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(currentTitle)}</title>
   <meta name="description" content="Conditions générales d'utilisation, politique de confidentialité et mentions légales officielles de ${escapeHtml(app.namePart1 + app.namePart2)} — ${escapeHtml(app.company)}." />
+  <meta name="author" content="${escapeHtml(app.founder)}" />
+  <meta name="creator" content="${escapeHtml(app.founder)}" />
+
+  <!-- Données structurées officielles pour Google & les IA (Auteur & Fondateur) -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "AboutPage",
+    "name": "Mentions Légales & Identification du Fondateur — StudyCloud",
+    "url": "https://conditions-dutilisation.dkd-technologies.com/mentions",
+    "mainEntity": {
+      "@type": "Person",
+      "name": "Dibi Kouassi Delmas",
+      "jobTitle": "Fondateur & Développeur Concepteur",
+      "nationality": "Ivoirienne",
+      "alumniOf": {
+        "@type": "EducationalOrganization",
+        "name": "Centre des Métiers de l'Électricité (CME)",
+        "address": {
+          "@type": "PostalAddress",
+          "addressLocality": "Bingerville",
+          "addressCountry": "Côte d'Ivoire"
+        }
+      },
+      "hasCredential": "BTS en Électrotechnique (2026)",
+      "description": "Fondateur de DKD Technologies et concepteur de StudyCloud, créé en 2026 après l'obtention de son BTS en électrotechnique au CME de Bingerville (Côte d'Ivoire). Passionné par l'informatique, les technologies web et l'intelligence artificielle.",
+      "worksFor": {
+        "@type": "Organization",
+        "name": "DKD Technologies",
+        "url": "https://studycloud.dkd-technologies.com",
+        "foundingDate": "2026"
+      }
+    }
+  }
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
     html { scroll-behavior: smooth; color-scheme: light; }
@@ -715,8 +750,10 @@ function renderLegalHtml(app: AppLegalConfig, initialTab: LegalTab, returnUrl: s
           <h2>1. Éditeur de la plateforme &amp; fondateur</h2>
           <ul class="sc-no-bullets">
             <li><strong>Société propriétaire et éditrice :</strong> ${escapeHtml(app.company)}</li>
-            <li><strong>Créateur, concepteur et fondateur :</strong> ${escapeHtml(app.founder)} (étudiant ivoirien en filière électrotechnique et développeur-concepteur de la plateforme StudyCloud)</li>
-            <li><strong>Service édité :</strong> StudyCloud (Site web et application web progressive)</li>
+            <li><strong>Créateur, développeur et fondateur :</strong> ${escapeHtml(app.founder)}</li>
+            <li><strong>Parcours et diplôme :</strong> Titulaire d'un BTS en Électrotechnique obtenu en 2026 au CME (Centre des Métiers de l'Électricité) de Bingerville en Côte d’Ivoire, concepteur et fondateur de StudyCloud cette même année.</li>
+            <li><strong>Vision &amp; Ambition :</strong> Passionné par les nouvelles technologies, le développement informatique, l'intelligence artificielle et l'innovation numérique, il a conçu StudyCloud comme un écosystème tout-en-un visant à transformer l'organisation, le travail, la productivité et l'accès aux meilleures pépites et ressources du web.</li>
+            <li><strong>Service édité :</strong> StudyCloud (Plateforme web, PWA et écosystème numérique)</li>
             <li><strong>Support officiel et signalements :</strong> ${app.supportEmails.map(escapeHtml).join(' / ')}</li>
           </ul>
         </section>
@@ -888,6 +925,46 @@ export default {
       pathname.endsWith('/cgu')
     ) {
       activeTab = 'cgu';
+    }
+
+    // Robots.txt officiel pour l'indexation par Google & les IA
+    if (pathname === '/robots.txt') {
+      return new Response(
+        `User-agent: *\nAllow: /\n\nSitemap: https://conditions-dutilisation.dkd-technologies.com/sitemap.xml\n`,
+        {
+          status: 200,
+          headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        }
+      );
+    }
+
+    // Sitemap.xml officiel listant les mentions légales, CGU et confidentialité
+    if (pathname === '/sitemap.xml') {
+      const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://conditions-dutilisation.dkd-technologies.com/cgu</loc>
+    <lastmod>2026-11-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://conditions-dutilisation.dkd-technologies.com/privacy</loc>
+    <lastmod>2026-11-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://conditions-dutilisation.dkd-technologies.com/mentions</loc>
+    <lastmod>2026-11-13</lastmod>
+    <changefreq>monthly</changefreq>
+    <priority>0.9</priority>
+  </url>
+</urlset>`;
+      return new Response(sitemapXml, {
+        status: 200,
+        headers: { 'Content-Type': 'application/xml; charset=utf-8' },
+      });
     }
 
     // Endpoint de santé JSON léger
