@@ -100,23 +100,23 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
 
   // 2. VARIANTE HEADER (Pour FoldersView / barre supérieure de l'application)
   return (
-    <div className={`flex flex-col items-center relative notranslate select-none ${className}`} ref={menuRef}>
+    <div className={`flex flex-col items-center justify-center min-w-[56px] sm:min-w-[62px] relative notranslate select-none ${className}`} ref={menuRef}>
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`p-2 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${
+        className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${
           isDarkMode
-            ? 'bg-slate-900/80 hover:bg-slate-800/90 text-white border-white/15 backdrop-blur-md shadow-sm'
-            : 'bg-white/90 hover:bg-white text-stone-800 border-stone-200/90 shadow-sm'
+            ? 'bg-slate-900/70 hover:bg-slate-800/85 text-white border-white/15 backdrop-blur-xl shadow-md hover:border-rose-400/40'
+            : 'bg-white/85 hover:bg-white text-stone-800 border-stone-200/90 shadow-sm'
         }`}
         title="Changer de langue / Change language"
         aria-label="Sélectionner la langue"
       >
-        <Globe className="w-4 h-4 text-rose-400 group-hover:rotate-12 transition-transform" />
+        <Globe className="w-4 h-4 text-rose-400 drop-shadow-[0_0_6px_rgba(251,113,133,0.4)] group-hover:rotate-12 transition-transform" />
       </button>
       <span
-        className={`text-[9.5px] sm:text-[10px] font-bold tracking-tight leading-none mt-1 ${
-          isDarkMode ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : 'text-stone-700'
+        className={`text-[10px] sm:text-[10.5px] font-bold tracking-tight text-center leading-none mt-1.5 whitespace-nowrap ${
+          isDarkMode ? 'text-white drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.9)]' : 'text-stone-800 font-bold'
         }`}
       >
         Langue

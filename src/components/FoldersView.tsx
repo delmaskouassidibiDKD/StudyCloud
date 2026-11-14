@@ -1177,6 +1177,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
   const viewerExpandLevel = useViewerExpandLevel();
   const isDedicatedView = viewMode === 'files-menu' || viewMode === 'page1-files-menu' || viewMode.startsWith('matiere-') || viewMode === 'red-robot-menu';
+  const isDarkHeader = isDarkMode || Boolean(dashboardWallpaper && viewMode === 'home') || (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
 
   return (
     <div className={`flex flex-col ${isDedicatedView
@@ -1243,7 +1244,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       <div className={`fixed top-0 left-0 right-0 ${viewerExpandLevel >= 2 ? 'md:left-0' : 'md:left-64'} z-40 px-3 md:px-6 py-2 h-[64px] md:h-[68px] flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${viewerExpandLevel >= 2 ? '!hidden pointer-events-none' : ''
         } ${dashboardWallpaper && viewMode === 'home'
           ? 'bg-transparent border-b-2 border-white/50 text-white shadow-sm'
-          : isDarkMode
+          : isDarkHeader
             ? 'bg-[#070a13] border-b border-[#1e293b] shadow-md'
             : 'bg-[#E9D7C9] border-b-2 border-stone-800 shadow-sm'
         }`}>
@@ -1267,8 +1268,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           />
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-3">
-          {/* Bouton Mélodie & Mini-Lecteur Audio (Placé directement DEVANT Espace d'étude - Desktop uniquement) */}
+        <div className="flex items-center gap-2 sm:gap-2.5 md:gap-3.5 lg:gap-4.5">
+          {/* Bouton Mélodie & Mini-Lecteur Audio (Desktop uniquement) */}
           <HeaderMelodyControl
             isDarkMode={isDarkMode}
             dashboardWallpaper={dashboardWallpaper}
@@ -1276,56 +1277,56 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           />
 
           {/* Espace d'étude / Menu de création - Desktop uniquement (Masqué sur mobile, accès via bouton application) */}
-          <div className="hidden md:flex flex-col items-center">
+          <div className="hidden md:flex flex-col items-center justify-center min-w-[56px] sm:min-w-[62px]">
             <button
               type="button"
               onClick={() => onOpenStudySpace?.()}
-              className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 group ${isDarkMode
-                  ? 'bg-slate-900/80 hover:bg-slate-800/90 text-emerald-400 border-white/15 backdrop-blur-md shadow-sm'
-                  : 'bg-white/90 hover:bg-white text-emerald-600 border-stone-200/90 shadow-sm'
+              className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 group ${isDarkHeader
+                  ? 'bg-slate-900/70 hover:bg-slate-800/85 text-emerald-400 border-white/15 backdrop-blur-xl shadow-md hover:border-emerald-400/40'
+                  : 'bg-white/85 hover:bg-white text-emerald-600 border-stone-200/90 shadow-sm'
                 }`}
               title="Ouvrir le Menu de création"
             >
-              <BookOpen className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition-transform" />
+              <BookOpen className="w-4 h-4 text-emerald-400 drop-shadow-[0_0_6px_rgba(52,211,153,0.4)] group-hover:scale-110 transition-transform" />
             </button>
-            <span className={`text-[9.5px] sm:text-[10px] font-bold tracking-tight leading-none mt-1 whitespace-nowrap ${dashboardWallpaper && viewMode === 'home'
-                ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
-                : (isDarkMode ? 'text-slate-200' : 'text-stone-700')
+            <span className={`text-[10px] sm:text-[10.5px] font-bold tracking-tight text-center leading-none mt-1.5 whitespace-nowrap ${isDarkHeader
+                ? 'text-white drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.9)]'
+                : 'text-stone-800'
               }`}>
               Création
             </span>
           </div>
 
           {/* Mode Sombre / Jour - Desktop uniquement (Sur mobile, accessible dans le bouton 3 traits) */}
-          <div className="hidden md:flex flex-col items-center">
+          <div className="hidden md:flex flex-col items-center justify-center min-w-[56px] sm:min-w-[62px]">
             <button
               type="button"
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 group ${isDarkMode
-                  ? 'bg-slate-900/80 hover:bg-slate-800/90 text-amber-400 border-white/15 backdrop-blur-md shadow-sm'
-                  : 'bg-white/90 hover:bg-white text-indigo-600 border-stone-200/90 shadow-sm'
+              className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 group ${isDarkHeader
+                  ? 'bg-slate-900/70 hover:bg-slate-800/85 text-amber-400 border-white/15 backdrop-blur-xl shadow-md hover:border-amber-400/40'
+                  : 'bg-white/85 hover:bg-white text-indigo-600 border-stone-200/90 shadow-sm'
                 }`}
               title={isDarkMode ? "Passer en mode jour" : "Passer en mode sombre"}
             >
               {isDarkMode ? (
-                <Sun className="w-4 h-4 text-amber-400 group-hover:rotate-45 transition-transform" />
+                <Sun className="w-4 h-4 text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.5)] group-hover:rotate-45 transition-transform" />
               ) : (
-                <Moon className="w-4 h-4 text-indigo-600 group-hover:-rotate-12 transition-transform" />
+                <Moon className="w-4 h-4 text-indigo-400 drop-shadow-[0_0_6px_rgba(129,140,248,0.5)] group-hover:-rotate-12 transition-transform" />
               )}
             </button>
-            <span className={`text-[9.5px] sm:text-[10px] font-bold tracking-tight leading-none mt-1 whitespace-nowrap ${dashboardWallpaper && viewMode === 'home'
-                ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
-                : (isDarkMode ? 'text-slate-200' : 'text-stone-700')
+            <span className={`text-[10px] sm:text-[10.5px] font-bold tracking-tight text-center leading-none mt-1.5 whitespace-nowrap ${isDarkHeader
+                ? 'text-white drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.9)]'
+                : 'text-stone-800'
               }`}>
               {isDarkMode ? "Jour" : "Sombre"}
             </span>
           </div>
 
           {/* Sélecteur de langue universel StudyCloud - Desktop uniquement (Sur mobile, accessible dans le bouton 3 traits) */}
-          <LanguageSelector variant="header" isDarkMode={isDarkMode} className="hidden md:flex" />
+          <LanguageSelector variant="header" isDarkMode={isDarkHeader} className="hidden md:flex" />
 
           {/* Delmas IA Button - Robot orange-bleu distinct (Visible Mobile & Desktop) */}
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center justify-center min-w-[56px] sm:min-w-[64px]">
             <button
               type="button"
               onClick={() => setIsAssistantOpen(!isAssistantOpen)}
@@ -1339,18 +1340,18 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 <DelmasRobot size={36} variant="blue" />
               </div>
             </button>
-            <span className={`text-[9px] sm:text-[10px] font-bold tracking-tight uppercase mt-1 leading-none whitespace-nowrap transition-colors ${isAssistantOpen
-                ? 'text-blue-500'
-                : (dashboardWallpaper && viewMode === 'home'
-                  ? 'text-blue-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
-                  : (isDarkMode ? 'text-blue-400' : 'text-blue-600'))
+            <span className={`text-[10px] sm:text-[10.5px] font-bold tracking-tight uppercase mt-1.5 leading-none whitespace-nowrap text-center transition-colors ${isAssistantOpen
+                ? 'text-blue-400'
+                : isDarkHeader
+                  ? 'text-blue-300 drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.9)]'
+                  : 'text-blue-600'
               }`}>
               Delmas IA
             </span>
           </div>
 
           {/* Abonnement - Moderne & Professionnel (Visible Mobile & Desktop) */}
-          <div className="flex flex-col items-center">
+          <div className="flex flex-col items-center justify-center min-w-[68px] sm:min-w-[76px]">
             <button
               type="button"
               onClick={() => {
@@ -1358,65 +1359,65 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 setPreviousViewMode(viewMode === 'abondamment' ? 'home' : viewMode);
                 setViewMode('abondamment');
               }}
-              className={`p-2 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${isDarkMode
-                  ? 'bg-slate-900/80 hover:bg-slate-800/90 text-amber-400 border-white/15 backdrop-blur-md shadow-sm'
-                  : 'bg-white/90 hover:bg-white text-amber-600 border-stone-200/90 shadow-sm'
+              className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${isDarkHeader
+                  ? 'bg-slate-900/70 hover:bg-slate-800/85 text-amber-400 border-white/15 backdrop-blur-xl shadow-md hover:border-amber-400/40'
+                  : 'bg-white/85 hover:bg-white text-amber-600 border-stone-200/90 shadow-sm'
                 }`}
               title="Abonnement & Stockage"
             >
-              <Sparkles className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
+              <Sparkles className="w-4 h-4 text-amber-400 drop-shadow-[0_0_6px_rgba(251,191,36,0.5)] group-hover:scale-110 transition-transform" />
             </button>
-            <span className={`text-[9.5px] sm:text-[10px] font-bold tracking-tight leading-none mt-1 whitespace-nowrap ${dashboardWallpaper && viewMode === 'home'
-                ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
-                : (isDarkMode ? 'text-slate-200' : 'text-stone-700')
+            <span className={`text-[10px] sm:text-[10.5px] font-bold tracking-tight text-center leading-none mt-1.5 whitespace-nowrap ${isDarkHeader
+                ? 'text-white drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.9)]'
+                : 'text-stone-800'
               }`}>
               Abonnement
             </span>
           </div>
 
           {/* Créer les matières - Desktop uniquement (Sur mobile, accessible dans le bouton 3 traits) */}
-          <div className="hidden md:flex flex-col items-center">
+          <div className="hidden md:flex flex-col items-center justify-center min-w-[56px] sm:min-w-[62px]">
             <button
               type="button"
               onClick={() => setIsMatiereMenuOpen(true)}
-              className={`p-2 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${isDarkMode
-                  ? 'bg-slate-900/80 hover:bg-slate-800/90 text-orange-400 border-white/15 backdrop-blur-md shadow-sm'
-                  : 'bg-white/90 hover:bg-white text-orange-600 border-stone-200/90 shadow-sm'
+              className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${isDarkHeader
+                  ? 'bg-slate-900/70 hover:bg-slate-800/85 text-orange-400 border-white/15 backdrop-blur-xl shadow-md hover:border-orange-400/40'
+                  : 'bg-white/85 hover:bg-white text-orange-600 border-stone-200/90 shadow-sm'
                 }`}
               title="Matière"
             >
-              <FolderPlus className="w-4 h-4 text-orange-400 group-hover:scale-110 transition-transform" />
+              <FolderPlus className="w-4 h-4 text-orange-400 drop-shadow-[0_0_6px_rgba(251,146,60,0.4)] group-hover:scale-110 transition-transform" />
             </button>
-            <span className={`text-[9.5px] sm:text-[10px] font-bold tracking-tight leading-none mt-1 whitespace-nowrap ${dashboardWallpaper && viewMode === 'home'
-                ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
-                : (isDarkMode ? 'text-slate-200' : 'text-stone-700')
+            <span className={`text-[10px] sm:text-[10.5px] font-bold tracking-tight text-center leading-none mt-1.5 whitespace-nowrap ${isDarkHeader
+                ? 'text-white drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.9)]'
+                : 'text-stone-800'
               }`}>
               Matière
             </span>
           </div>
 
           {/* Bouton 3 traits - Menu d'options rapides Mobile (Matières, Thème, Langue) */}
-          <div className="flex md:hidden flex-col items-center relative" ref={mobileOptionsRef}>
+          <div className="flex md:hidden flex-col items-center justify-center min-w-[56px] relative" ref={mobileOptionsRef}>
             <button
               type="button"
               onClick={() => {
                 setIsMobileOptionsOpen(!isMobileOptionsOpen);
                 setIsMobileLangExpanded(false);
               }}
-              className={`p-2 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${isMobileOptionsOpen
-                  ? 'bg-sky-500/20 text-sky-400 border-sky-500/50 shadow-md ring-2 ring-sky-500/30'
-                  : isDarkMode
-                    ? 'bg-slate-900/80 hover:bg-slate-800/90 text-white border-white/15 backdrop-blur-md shadow-sm'
-                    : 'bg-white/90 hover:bg-white text-stone-800 border-stone-200/90 shadow-sm'
+              className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${isMobileOptionsOpen
+                  ? 'bg-sky-500/25 text-sky-300 border-sky-400/80 shadow-[0_0_15px_rgba(14,165,233,0.4)] ring-2 ring-sky-400/40'
+                  : isDarkHeader
+                    ? 'bg-slate-900/70 hover:bg-slate-800/85 text-white border-white/15 backdrop-blur-xl shadow-md hover:border-white/30'
+                    : 'bg-white/85 hover:bg-white text-stone-800 border-stone-200/90 shadow-sm'
                 }`}
               title="Options (Matières, Thème, Langue)"
               aria-label="Options rapides"
             >
-              <Menu className="w-4 h-4 text-sky-400 group-hover:scale-110 transition-transform" />
+              <Menu className="w-4 h-4 text-sky-400 drop-shadow-[0_0_6px_rgba(56,189,248,0.5)] group-hover:scale-110 transition-transform" />
             </button>
-            <span className={`text-[9.5px] font-bold tracking-tight leading-none mt-1 whitespace-nowrap ${dashboardWallpaper && viewMode === 'home'
-                ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
-                : (isDarkMode ? 'text-slate-200' : 'text-stone-700')
+            <span className={`text-[10px] font-bold tracking-tight text-center leading-none mt-1.5 whitespace-nowrap ${isDarkHeader
+                ? 'text-white drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.9)]'
+                : 'text-stone-800'
               }`}>
               Options
             </span>
@@ -1424,7 +1425,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             {/* Petit Menu Mobile Déroulant pour Matières, Thème et Langue */}
             {isMobileOptionsOpen && (
               <div
-                className={`absolute top-full right-0 mt-2.5 w-64 rounded-2xl shadow-2xl border p-2 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-xl ${isDarkMode
+                className={`absolute top-full right-0 mt-2.5 w-68 rounded-2xl shadow-2xl border p-2 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-xl ${isDarkMode
                     ? 'bg-[#0f172a]/95 border-white/15 text-white'
                     : 'bg-white/95 border-stone-200 text-stone-900 shadow-stone-900/15'
                   }`}
@@ -1490,7 +1491,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                   </span>
                 </button>
 
-                {/* 3. Langue */}
+                {/* 3. Langue (Gros, en gras, très contrasté et visible) */}
                 <div className="pt-0.5">
                   <button
                     type="button"
@@ -1503,25 +1504,25 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                         <Globe className="w-4 h-4 text-rose-400" />
                       </div>
                       <div>
-                        <div className="text-xs font-bold leading-tight">Langue</div>
-                        <div className={`text-[10px] leading-tight mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-stone-500'}`}>
+                        <div className={`text-xs font-black leading-tight ${isDarkMode ? 'text-white' : 'text-stone-900'}`}>Langue</div>
+                        <div className={`text-[10px] leading-tight mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-stone-600'}`}>
                           Traduire l'application
                         </div>
                       </div>
                     </div>
                     <div className="flex items-center gap-1.5">
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isDarkMode ? 'bg-rose-500/20 text-rose-300' : 'bg-rose-100 text-rose-700'
+                      <span className={`text-[10px] font-black px-2.5 py-0.5 rounded-full shadow-sm ${isDarkMode ? 'bg-rose-500/25 text-rose-300 border border-rose-500/30' : 'bg-rose-100 text-rose-700 border border-rose-200'
                         }`}>
                         {SUPPORTED_LANGUAGES.find((l) => l.code === getCurrentLanguage())?.label || 'Français'}
                       </span>
                       <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isMobileLangExpanded ? 'rotate-90' : ''
-                        } ${isDarkMode ? 'text-slate-500' : 'text-stone-400'}`} />
+                        } ${isDarkMode ? 'text-slate-300' : 'text-stone-500'}`} />
                     </div>
                   </button>
 
                   {/* Liste déroulante des langues pour mobile */}
                   {isMobileLangExpanded && (
-                    <div className={`mt-1 max-h-44 overflow-y-auto no-scrollbar rounded-xl border p-1 ${isDarkMode ? 'bg-black/30 border-white/10' : 'bg-stone-50 border-stone-200/80'
+                    <div className={`mt-1.5 max-h-48 overflow-y-auto no-scrollbar rounded-xl border p-1 ${isDarkMode ? 'bg-black/40 border-white/15 divide-y divide-white/5' : 'bg-stone-50 border-stone-200/80 divide-y divide-stone-200/40'
                       }`}>
                       {SUPPORTED_LANGUAGES.map((lang) => {
                         const isSelected = getCurrentLanguage() === lang.code;
@@ -1533,15 +1534,15 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                               applyLanguage(lang.code);
                               setIsMobileOptionsOpen(false);
                             }}
-                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors text-left cursor-pointer ${isSelected
-                                ? 'bg-rose-500/20 text-rose-400 font-bold'
+                            className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-xs font-bold transition-colors text-left cursor-pointer ${isSelected
+                                ? 'bg-rose-500/25 text-rose-300 font-black'
                                 : isDarkMode
-                                  ? 'text-slate-300 hover:bg-white/10'
-                                  : 'text-stone-700 hover:bg-stone-200/60'
+                                  ? 'text-slate-200 hover:bg-white/10'
+                                  : 'text-stone-800 hover:bg-stone-200/70'
                               }`}
                           >
                             <span>{lang.label}</span>
-                            {isSelected && <Check className="w-3.5 h-3.5 text-rose-400 shrink-0" />}
+                            {isSelected && <Check className="w-4 h-4 text-rose-400 shrink-0 stroke-[2.5]" />}
                           </button>
                         );
                       })}
@@ -1554,7 +1555,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
         </div>
       </div>
-
+      
       {/* Delmas IA Overlay Modal - Isolé hors du header avec createPortal vers document.body (ne subit aucune déformation ni creux) */}
       {isAssistantOpen && typeof document !== 'undefined' && createPortal(
         <div

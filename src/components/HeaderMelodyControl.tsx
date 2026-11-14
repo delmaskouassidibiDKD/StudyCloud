@@ -17,7 +17,7 @@ export const HeaderMelodyControl: React.FC<HeaderMelodyControlProps> = ({
   viewMode = 'home',
   compact = false
 }) => {
-  const isDark = isDarkMode || (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
+  const isDark = isDarkMode || Boolean(dashboardWallpaper && viewMode === 'home') || (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
   const {
     currentTrack,
     isAudioPlaying,
@@ -199,23 +199,23 @@ export const HeaderMelodyControl: React.FC<HeaderMelodyControlProps> = ({
         </div>
       )}
 
-      {/* ─── BOUTON MÉLODIE (ORANGE BIEN DESSINÉ) AVEC SON DROPDOWN ─── */}
-      <div className="flex flex-col items-center relative" ref={dropdownRef}>
+      {/* ─── BOUTON MÉLODIE (MODERNE GLASSMORPHIC) AVEC SON DROPDOWN ─── */}
+      <div className="flex flex-col items-center justify-center min-w-[56px] sm:min-w-[62px] relative" ref={dropdownRef}>
         <button
           type="button"
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          className={`${compact ? 'p-1 rounded-lg border-2' : 'p-1.5 sm:p-2 rounded-xl border-2'} transition-all cursor-pointer flex items-center justify-center active:scale-95 group relative ${
+          className={`p-2 sm:p-2.5 rounded-2xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 group relative ${
             isDropdownOpen
-              ? 'bg-amber-500/20 text-amber-500 border-amber-500 shadow-sm ring-2 ring-amber-400/40'
+              ? 'bg-amber-500/25 text-amber-300 border-amber-400/80 shadow-[0_0_15px_rgba(245,158,11,0.35)] ring-2 ring-amber-400/40'
               : isDark
-              ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-amber-500/50 shadow-sm'
-              : 'bg-[#F5F1E9] hover:bg-amber-50 text-amber-600 border-amber-600 shadow-[1px_1px_0px_0px_#d97706]'
+              ? 'bg-slate-900/70 hover:bg-slate-800/85 text-amber-400 border-white/15 backdrop-blur-xl shadow-md hover:border-amber-400/40'
+              : 'bg-white/85 hover:bg-white text-amber-600 border-stone-200/90 shadow-sm'
           }`}
           title="Musiques & sons de l'utilisateur"
         >
           {/* Logo mélodie bien dessiné orange */}
           <div className="relative flex items-center justify-center">
-            <Music className={`${compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-amber-500 stroke-[2.4] drop-shadow-sm group-hover:scale-110 transition-transform`} />
+            <Music className="w-4 h-4 text-amber-400 stroke-[2.4] drop-shadow-[0_0_6px_rgba(251,191,36,0.4)] group-hover:scale-110 transition-transform" />
             {isAudioPlaying && (
               <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-amber-400 animate-ping" />
             )}
@@ -223,11 +223,9 @@ export const HeaderMelodyControl: React.FC<HeaderMelodyControlProps> = ({
         </button>
 
         <span
-          className={`${compact ? 'text-[7.5px] sm:text-[8px] font-black' : 'text-[10px] font-extrabold'} leading-none mt-0.5 ${
-            dashboardWallpaper && viewMode === 'home'
-              ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
-              : isDark
-              ? 'text-white'
+          className={`text-[10px] sm:text-[10.5px] font-bold text-center leading-none mt-1.5 whitespace-nowrap ${
+            isDark
+              ? 'text-white drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.9)]'
               : 'text-stone-700'
           }`}
         >
