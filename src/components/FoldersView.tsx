@@ -6,6 +6,7 @@ import { DelmasRobot } from './DelmasRobot';
 import { CreationMenuBookIcon } from './CreationMenuBookIcon';
 import { DelmasChat } from './DelmasChat';
 import { DnaLogo } from './DnaLogo';
+import { LanguageSelector } from './LanguageSelector';
 import { PricingView } from './PricingView';
 import { FilesMenuView } from './FilesMenuView';
 import { ScheduleMenuView } from './ScheduleMenuView';
@@ -57,8 +58,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 }) => {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
-  const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
-  const [currentLang, setCurrentLang] = useState('fr');
+
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
@@ -81,56 +81,6 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     } catch (e) { }
   }, [isDarkMode]);
 
-  useEffect(() => {
-    const match = document.cookie.match(/(?:^|; )googtrans=([^;]*)/);
-    if (match) {
-      const parts = match[1].split('/');
-      if (parts.length === 3 && parts[2] && parts[2] !== 'fr') {
-        setCurrentLang(parts[2]);
-        document.documentElement.removeAttribute('translate');
-        document.documentElement.classList.remove('notranslate');
-        document.body.removeAttribute('translate');
-        document.body.classList.remove('notranslate');
-        return;
-      }
-    }
-    // Langue par défaut = Français
-    setCurrentLang('fr');
-    document.documentElement.setAttribute('lang', 'fr');
-    document.documentElement.setAttribute('translate', 'no');
-    document.documentElement.classList.add('notranslate');
-    document.body.setAttribute('translate', 'no');
-    document.body.classList.add('notranslate');
-  }, []);
-
-  const handleLanguageChange = (langCode: string) => {
-    const hostname = window.location.hostname;
-    const hostParts = hostname.split('.');
-
-    if (langCode === 'fr') {
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${hostname};`;
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${hostname};`;
-      if (hostParts.length > 2) {
-        const rootDomain = hostParts.slice(-2).join('.');
-        document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${rootDomain};`;
-      }
-      document.documentElement.setAttribute('lang', 'fr');
-      document.documentElement.setAttribute('translate', 'no');
-      document.documentElement.classList.add('notranslate');
-      document.body.setAttribute('translate', 'no');
-      document.body.classList.add('notranslate');
-    } else {
-      document.cookie = `googtrans=/fr/${langCode}; path=/;`;
-      document.cookie = `googtrans=/fr/${langCode}; path=/; domain=${hostname};`;
-      document.cookie = `googtrans=/fr/${langCode}; path=/; domain=.${hostname};`;
-      document.documentElement.removeAttribute('translate');
-      document.documentElement.classList.remove('notranslate');
-      document.body.removeAttribute('translate');
-      document.body.classList.remove('notranslate');
-    }
-    window.location.reload();
-  };
   const [activeNotification, setActiveNotification] = useState<string | null>(null);
   const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai' | 'renewal'>(() => {
     try {
@@ -568,7 +518,6 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   // Gestion du bouton matériel / virtuel retour d'Android
   useBackHandler(viewMode !== 'home', () => setViewMode('home'), 'folders-viewmode');
   useBackHandler(isAssistantOpen, () => setIsAssistantOpen(false), 'folders-assistant');
-  useBackHandler(isLanguageMenuOpen, () => setIsLanguageMenuOpen(false), 'folders-lang');
   useBackHandler(isMatiereMenuOpen, () => setIsMatiereMenuOpen(false), 'folders-matiere');
   useBackHandler(showThreeDotsMenu, () => setShowThreeDotsMenu(false), 'folders-threedots');
   const [activeModal, setActiveModal] = useState<'none' | 'schedule' | 'grades'>('none');
@@ -1349,63 +1298,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             </span>
           </div>
 
-          {/* Language button - Solid filled #1e293b, no transparency */}
-          <div className="flex flex-col items-center relative">
-            <button
-              onClick={() => setIsLanguageMenuOpen(!isLanguageMenuOpen)}
-              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${isDarkMode
-                  ? 'bg-[#1e293b] hover:bg-[#283852] text-white border-[#334155] shadow-sm'
-                  : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
-                }`}
-              title="Langue"
-            >
-              <Globe className="w-4 h-4 text-rose-400" />
-            </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${dashboardWallpaper && viewMode === 'home'
-                ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
-                : (isDarkMode ? 'text-white' : 'text-stone-700')
-              }`}>
-              Langue
-            </span>
-
-            {isLanguageMenuOpen && (
-              <div className={`absolute top-full right-0 mt-2 rounded-2xl shadow-2xl z-50 min-w-[160px] py-1.5 max-h-[300px] overflow-y-auto border-2 ${isDarkMode
-                  ? 'bg-[#111a2e] border-[#334155] text-white'
-                  : 'bg-[#F5F1E9] border-2 border-stone-800 text-stone-800'
-                }`}>
-                {[
-                  { code: 'fr', label: 'Français' },
-                  { code: 'en', label: 'English' },
-                  { code: 'es', label: 'Español' },
-                  { code: 'pt', label: 'Português' },
-                  { code: 'it', label: 'Italiano' },
-                  { code: 'de', label: 'Deutsch' },
-                  { code: 'zh-CN', label: '中文 (Chinois)' },
-                  { code: 'ja', label: '日本語 (Japonais)' },
-                  { code: 'ko', label: '한국어 (Coréen)' },
-                  { code: 'ar', label: 'العربية (Arabe)' },
-                  { code: 'hi', label: 'हिन्दी (Hindi)' },
-                  { code: 'ru', label: 'Русский (Russe)' }
-                ].map(lang => {
-                  const isSelected = currentLang === lang.code;
-                  return (
-                    <button
-                      key={lang.code}
-                      onClick={() => handleLanguageChange(lang.code)}
-                      className={`w-full text-left px-3.5 py-2 text-xs font-bold transition-colors ${isSelected
-                          ? 'bg-rose-500/25 text-rose-400 border-l-4 border-rose-500'
-                          : isDarkMode
-                            ? 'text-slate-200 hover:bg-[#1e293b] border-l-4 border-transparent'
-                            : 'text-stone-700 hover:bg-stone-200 border-l-4 border-transparent'
-                        }`}
-                    >
-                      {lang.label}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          {/* Sélecteur de langue universel StudyCloud */}
+          <LanguageSelector variant="header" isDarkMode={isDarkMode} />
 
           {/* Delmas IA Button - Robot orange-bleu distinct du robot d'étude */}
           <div className="flex flex-col items-center">

@@ -3,6 +3,7 @@ import { Mail, Lock, Eye, EyeOff, ArrowLeft, AlertCircle, CheckCircle2, User, Sh
 import { StudyCloudAPI, getLegalPortalUrl } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { DnaLogo } from '../DnaLogo';
+import { LanguageSelector } from '../LanguageSelector';
 import { EmailPendingVerification } from './EmailPendingVerification';
 import { PhonePushNotification } from './PhonePushNotification';
 import { ForgotPasswordFlow } from './ForgotPasswordFlow';
@@ -445,6 +446,11 @@ export function AuthPage({ onBack }: AuthPageProps) {
           style={{ background: 'radial-gradient(circle, #EA580C 0%, transparent 70%)' }} />
         <div className="absolute bottom-[-10%] left-[-5%] w-[450px] h-[450px] rounded-full opacity-15 blur-[90px] animate-pulse"
           style={{ background: 'radial-gradient(circle, #2563EB 0%, transparent 70%)', animationDelay: '2s' }} />
+      </div>
+
+      {/* Sélecteur de langue universel StudyCloud (en haut à droite, accessible immédiatement) */}
+      <div className="absolute top-3 right-3 sm:top-5 sm:right-6 z-50">
+        <LanguageSelector variant="floating" />
       </div>
 
       <div className="min-h-full w-full flex flex-col items-center justify-start p-4 sm:p-6 lg:p-8 py-8 sm:py-12">

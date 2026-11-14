@@ -1,5 +1,5 @@
 import React, { Component, ReactNode } from 'react';
-import {createRoot} from 'react-dom/client';
+import { createRoot } from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
 import 'katex/dist/katex.min.css';
@@ -19,7 +19,7 @@ class ErrorBoundary extends React.Component {
     if (error?.message?.toLowerCase().includes('quota') || error?.message?.toLowerCase().includes('storage')) {
       try {
         purgeVolatileStorage();
-      } catch {}
+      } catch { }
     }
   }
   render() {
@@ -46,7 +46,7 @@ class ErrorBoundary extends React.Component {
                         localStorage.removeItem(k);
                       }
                     });
-                  } catch (e) {}
+                  } catch (e) { }
                   if (typeof caches !== 'undefined') {
                     caches.keys().then((names) => {
                       return Promise.all(names.map((name) => caches.delete(name)));
@@ -66,7 +66,7 @@ class ErrorBoundary extends React.Component {
                   try {
                     purgeVolatileStorage();
                     localStorage.clear();
-                  } catch {}
+                  } catch { }
                   if (typeof caches !== 'undefined') {
                     caches.keys().then((names) => {
                       return Promise.all(names.map((name) => caches.delete(name)));
@@ -104,6 +104,9 @@ clearAllLocalCaches();
 LocalSyncReplication.startAutoReplication();
 
 import { GlobalAudioProvider } from './context/GlobalAudioContext';
+import { initLanguageObserver } from './services/languageService';
+
+initLanguageObserver();
 
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

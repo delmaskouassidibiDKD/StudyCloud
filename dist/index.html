@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="fr" translate="no" class="notranslate">
+<html lang="fr">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover, interactive-widget=overlays-content" />
@@ -24,8 +24,8 @@
     <meta name="keywords" content="StudyCloud, DKD Technologies, pépites du web, outils internet, hub de ressources web, logiciels, astuces productivité, place de marché, boutique en ligne, vente de documents, stockage cloud sécurisé, classeur 3D, intelligence artificielle, assistant IA, partage de fichiers, professionnels, étudiants, entreprises" />
     <meta name="author" content="Dibi Kouassi Delmas" />
     <meta name="creator" content="Dibi Kouassi Delmas" />
-    <meta name="google" content="notranslate" />
-    <meta name="googlebot" content="notranslate" />
+
+
     <meta http-equiv="content-language" content="fr" />
     <meta property="og:site_name" content="StudyCloud" />
     <meta property="og:title" content="StudyCloud - Écosystème Tout-en-Un : Outils &amp; Pépites Web, Cloud, Boutiques &amp; IA" />
@@ -124,7 +124,30 @@
         }
       } catch (e) {}
     </script>
-    <script type="module" crossorigin src="/assets/index-CmOFRFGE.js"></script>
+    <script>
+      if (typeof Node === 'function' && Node.prototype) {
+        var origRemoveChild = Node.prototype.removeChild;
+        Node.prototype.removeChild = function(child) {
+          if (child.parentNode !== this) return child;
+          return origRemoveChild.apply(this, arguments);
+        };
+        var origInsertBefore = Node.prototype.insertBefore;
+        Node.prototype.insertBefore = function(newNode, referenceNode) {
+          if (referenceNode && referenceNode.parentNode !== this) return newNode;
+          return origInsertBefore.apply(this, arguments);
+        };
+      }
+      function googleTranslateElementInit() {
+        try {
+          new window.google.translate.TranslateElement({
+            pageLanguage: 'fr',
+            autoDisplay: false
+          }, 'google_translate_element');
+        } catch (e) {}
+      }
+    </script>
+    <script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async defer></script>
+    <script type="module" crossorigin src="/assets/index-D1ezFSrp.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-react-DQyCuIb2.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-icons-DCefPSQt.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-pdf-B5tYFR6d.js">
@@ -133,9 +156,10 @@
     <link rel="modulepreload" crossorigin href="/assets/vendor-calendar-BLx5pBbz.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-charts-D7EJoZef.js">
     <link rel="stylesheet" crossorigin href="/assets/vendor-math-BOvhZl6_.css">
-    <link rel="stylesheet" crossorigin href="/assets/index-C3OYQgQB.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-DNOBTI6S.css">
   </head>
-  <body class="notranslate" translate="no">
+  <body>
+    <div id="google_translate_element" style="display:none !important; visibility:hidden !important; position:absolute !important; top:-9999px !important;"></div>
     <div id="root"></div>
     <script>
       // Enregistrement automatique et prioritaire du Service Worker PWA
