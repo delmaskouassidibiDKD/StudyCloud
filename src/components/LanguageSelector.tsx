@@ -104,19 +104,19 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
+        className={`p-2 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${
           isDarkMode
-            ? 'bg-[#1e293b] hover:bg-[#283852] text-white border-[#334155] shadow-sm'
-            : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
+            ? 'bg-slate-900/80 hover:bg-slate-800/90 text-white border-white/15 backdrop-blur-md shadow-sm'
+            : 'bg-white/90 hover:bg-white text-stone-800 border-stone-200/90 shadow-sm'
         }`}
         title="Changer de langue / Change language"
         aria-label="Sélectionner la langue"
       >
-        <Globe className="w-4 h-4 text-rose-400" />
+        <Globe className="w-4 h-4 text-rose-400 group-hover:rotate-12 transition-transform" />
       </button>
       <span
-        className={`text-[10px] font-extrabold leading-none mt-1 ${
-          isDarkMode ? 'text-white' : 'text-stone-700'
+        className={`text-[9.5px] sm:text-[10px] font-bold tracking-tight leading-none mt-1 ${
+          isDarkMode ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]' : 'text-stone-700'
         }`}
       >
         Langue
@@ -124,15 +124,15 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
 
       {isOpen && (
         <div
-          className={`absolute top-full right-0 mt-2 rounded-2xl shadow-2xl z-50 min-w-[170px] py-1.5 max-h-[300px] overflow-y-auto no-scrollbar border-2 animate-in fade-in zoom-in-95 duration-150 ${
+          className={`absolute top-full right-0 mt-2.5 rounded-2xl shadow-2xl z-50 min-w-[180px] py-1.5 max-h-[300px] overflow-y-auto no-scrollbar border animate-in fade-in zoom-in-95 duration-150 backdrop-blur-xl ${
             isDarkMode
-              ? 'bg-[#111a2e] border-[#334155] text-white'
-              : 'bg-[#F5F1E9] border-2 border-stone-800 text-stone-800'
+              ? 'bg-[#0f172a]/95 border-white/15 text-white'
+              : 'bg-white/95 border-stone-200 text-stone-900 shadow-stone-900/15'
           }`}
         >
           <div
             className={`px-3 py-1.5 border-b text-[10px] font-black uppercase tracking-wider ${
-              isDarkMode ? 'border-white/10 text-white/40' : 'border-stone-300 text-stone-500'
+              isDarkMode ? 'border-white/10 text-white/40' : 'border-stone-200 text-stone-500'
             }`}
           >
             Langues disponibles
@@ -148,8 +148,8 @@ export const LanguageSelector: React.FC<LanguageSelectorProps> = ({
                   isSelected
                     ? 'bg-rose-500/25 text-rose-400 border-l-4 border-rose-500'
                     : isDarkMode
-                    ? 'text-slate-200 hover:bg-[#1e293b] border-l-4 border-transparent'
-                    : 'text-stone-700 hover:bg-stone-200 border-l-4 border-transparent'
+                    ? 'text-slate-200 hover:bg-white/10 border-l-4 border-transparent'
+                    : 'text-stone-700 hover:bg-stone-100 border-l-4 border-transparent'
                 }`}
               >
                 <span>{lang.label}</span>

@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, ArrowRight, X, Search, Globe, Sun, Moon, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, ArrowRight, X, Search, Globe, Sun, Moon, BookOpen, ChevronLeft, ChevronRight, Menu, Check } from 'lucide-react';
 import { MenuDrawer } from './MenuDrawer';
 import { DelmasRobot } from './DelmasRobot';
 import { CreationMenuBookIcon } from './CreationMenuBookIcon';
 import { DelmasChat } from './DelmasChat';
 import { DnaLogo } from './DnaLogo';
 import { LanguageSelector } from './LanguageSelector';
+import { SUPPORTED_LANGUAGES, getCurrentLanguage, applyLanguage } from '../services/languageService';
 import { PricingView } from './PricingView';
 import { FilesMenuView } from './FilesMenuView';
 import { ScheduleMenuView } from './ScheduleMenuView';
@@ -58,6 +59,22 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 }) => {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [isMobileOptionsOpen, setIsMobileOptionsOpen] = useState(false);
+  const [isMobileLangExpanded, setIsMobileLangExpanded] = useState(false);
+  const mobileOptionsRef = useRef<HTMLDivElement>(null);
+
+  // Fermeture du menu d'options rapides mobile au clic extérieur
+  useEffect(() => {
+    if (!isMobileOptionsOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mobileOptionsRef.current && !mobileOptionsRef.current.contains(e.target as Node)) {
+        setIsMobileOptionsOpen(false);
+        setIsMobileLangExpanded(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isMobileOptionsOpen]);
 
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
@@ -520,6 +537,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   useBackHandler(isAssistantOpen, () => setIsAssistantOpen(false), 'folders-assistant');
   useBackHandler(isMatiereMenuOpen, () => setIsMatiereMenuOpen(false), 'folders-matiere');
   useBackHandler(showThreeDotsMenu, () => setShowThreeDotsMenu(false), 'folders-threedots');
+  useBackHandler(isMobileOptionsOpen, () => {
+    setIsMobileOptionsOpen(false);
+    setIsMobileLangExpanded(false);
+  }, 'folders-mobile-options');
   const [activeModal, setActiveModal] = useState<'none' | 'schedule' | 'grades'>('none');
 
 
@@ -1254,56 +1275,59 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             viewMode={viewMode}
           />
 
-          {/* Espace d'étude Button (Placé directement DEVANT le bouton mode sombre) */}
-          <div className="flex flex-col items-center">
+          {/* Espace d'étude / Menu de création - Desktop uniquement (Masqué sur mobile, accès via bouton application) */}
+          <div className="hidden md:flex flex-col items-center">
             <button
+              type="button"
               onClick={() => onOpenStudySpace?.()}
-              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center active:scale-95 ${isDarkMode
-                  ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-amber-500/50 shadow-sm'
-                  : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
+              className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 group ${isDarkMode
+                  ? 'bg-slate-900/80 hover:bg-slate-800/90 text-emerald-400 border-white/15 backdrop-blur-md shadow-sm'
+                  : 'bg-white/90 hover:bg-white text-emerald-600 border-stone-200/90 shadow-sm'
                 }`}
               title="Ouvrir le Menu de création"
             >
-              <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+              <BookOpen className="w-4 h-4 text-emerald-500 group-hover:scale-110 transition-transform" />
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${dashboardWallpaper && viewMode === 'home'
-                ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
-                : (isDarkMode ? 'text-white' : 'text-stone-700')
+            <span className={`text-[9.5px] sm:text-[10px] font-bold tracking-tight leading-none mt-1 whitespace-nowrap ${dashboardWallpaper && viewMode === 'home'
+                ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
+                : (isDarkMode ? 'text-slate-200' : 'text-stone-700')
               }`}>
-              Menu de création
+              Création
             </span>
           </div>
 
-          {/* Dark / Night Mode Toggle Button (Placé directement DEVANT le bouton langue) */}
-          <div className="flex flex-col items-center">
+          {/* Mode Sombre / Jour - Desktop uniquement (Sur mobile, accessible dans le bouton 3 traits) */}
+          <div className="hidden md:flex flex-col items-center">
             <button
+              type="button"
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center active:scale-95 ${isDarkMode
-                  ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-amber-500/50 shadow-sm'
-                  : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
+              className={`p-2 rounded-xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 group ${isDarkMode
+                  ? 'bg-slate-900/80 hover:bg-slate-800/90 text-amber-400 border-white/15 backdrop-blur-md shadow-sm'
+                  : 'bg-white/90 hover:bg-white text-indigo-600 border-stone-200/90 shadow-sm'
                 }`}
-              title={isDarkMode ? "Passer en mode jour" : "Passer en mode nuit / sombre"}
+              title={isDarkMode ? "Passer en mode jour" : "Passer en mode sombre"}
             >
               {isDarkMode ? (
-                <Sun className="w-4 h-4 text-amber-400" />
+                <Sun className="w-4 h-4 text-amber-400 group-hover:rotate-45 transition-transform" />
               ) : (
-                <Moon className="w-4 h-4 text-indigo-600" />
+                <Moon className="w-4 h-4 text-indigo-600 group-hover:-rotate-12 transition-transform" />
               )}
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${dashboardWallpaper && viewMode === 'home'
-                ? 'text-amber-300 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
-                : (isDarkMode ? 'text-amber-300' : 'text-stone-700')
+            <span className={`text-[9.5px] sm:text-[10px] font-bold tracking-tight leading-none mt-1 whitespace-nowrap ${dashboardWallpaper && viewMode === 'home'
+                ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
+                : (isDarkMode ? 'text-slate-200' : 'text-stone-700')
               }`}>
               {isDarkMode ? "Jour" : "Sombre"}
             </span>
           </div>
 
-          {/* Sélecteur de langue universel StudyCloud */}
-          <LanguageSelector variant="header" isDarkMode={isDarkMode} />
+          {/* Sélecteur de langue universel StudyCloud - Desktop uniquement (Sur mobile, accessible dans le bouton 3 traits) */}
+          <LanguageSelector variant="header" isDarkMode={isDarkMode} className="hidden md:flex" />
 
-          {/* Delmas IA Button - Robot orange-bleu distinct du robot d'étude */}
+          {/* Delmas IA Button - Robot orange-bleu distinct (Visible Mobile & Desktop) */}
           <div className="flex flex-col items-center">
             <button
+              type="button"
               onClick={() => setIsAssistantOpen(!isAssistantOpen)}
               className="flex flex-col items-center justify-center cursor-pointer group active:scale-95 transition-all select-none shrink-0"
               title={isAssistantOpen ? "Fermer Delmas IA" : "Ouvrir Delmas IA"}
@@ -1312,61 +1336,220 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                   ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.7)] scale-105'
                   : 'hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]'
                 }`}>
-                <DelmasRobot size={38} variant="blue" />
+                <DelmasRobot size={36} variant="blue" />
               </div>
             </button>
-            <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap transition-colors ${isAssistantOpen
+            <span className={`text-[9px] sm:text-[10px] font-bold tracking-tight uppercase mt-1 leading-none whitespace-nowrap transition-colors ${isAssistantOpen
                 ? 'text-blue-500'
                 : (dashboardWallpaper && viewMode === 'home'
-                  ? 'text-blue-300 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)] group-hover:text-blue-200'
-                  : (isDarkMode ? 'text-blue-400 group-hover:text-blue-300' : 'text-blue-600 group-hover:text-blue-700'))
+                  ? 'text-blue-300 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
+                  : (isDarkMode ? 'text-blue-400' : 'text-blue-600'))
               }`}>
-              delmas IA
+              Delmas IA
             </span>
           </div>
 
-          {/* Abondamment button - Solid filled #1e293b, no transparency */}
+          {/* Abonnement - Moderne & Professionnel (Visible Mobile & Desktop) */}
           <div className="flex flex-col items-center">
             <button
+              type="button"
               onClick={() => {
                 setPricingInitialTab('storage');
                 setPreviousViewMode(viewMode === 'abondamment' ? 'home' : viewMode);
                 setViewMode('abondamment');
               }}
-              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${isDarkMode
-                  ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-[#334155] shadow-sm'
-                  : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
+              className={`p-2 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${isDarkMode
+                  ? 'bg-slate-900/80 hover:bg-slate-800/90 text-amber-400 border-white/15 backdrop-blur-md shadow-sm'
+                  : 'bg-white/90 hover:bg-white text-amber-600 border-stone-200/90 shadow-sm'
                 }`}
-              title="Abonnement"
+              title="Abonnement & Stockage"
             >
-              <Sparkles className="w-4 h-4 text-amber-400" />
+              <Sparkles className="w-4 h-4 text-amber-400 group-hover:scale-110 transition-transform" />
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${dashboardWallpaper && viewMode === 'home'
-                ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
-                : (isDarkMode ? 'text-white' : 'text-stone-700')
+            <span className={`text-[9.5px] sm:text-[10px] font-bold tracking-tight leading-none mt-1 whitespace-nowrap ${dashboardWallpaper && viewMode === 'home'
+                ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
+                : (isDarkMode ? 'text-slate-200' : 'text-stone-700')
               }`}>
               Abonnement
             </span>
           </div>
 
-          {/* Créer les matières - Solid filled #1e293b, no transparency */}
-          <div className="flex flex-col items-center">
+          {/* Créer les matières - Desktop uniquement (Sur mobile, accessible dans le bouton 3 traits) */}
+          <div className="hidden md:flex flex-col items-center">
             <button
+              type="button"
               onClick={() => setIsMatiereMenuOpen(true)}
-              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${isDarkMode
-                  ? 'bg-[#1e293b] hover:bg-[#283852] text-orange-400 border-[#334155] shadow-sm'
-                  : 'bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
+              className={`p-2 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${isDarkMode
+                  ? 'bg-slate-900/80 hover:bg-slate-800/90 text-orange-400 border-white/15 backdrop-blur-md shadow-sm'
+                  : 'bg-white/90 hover:bg-white text-orange-600 border-stone-200/90 shadow-sm'
                 }`}
               title="Matière"
             >
-              <FolderPlus className="w-4 h-4 text-orange-400" />
+              <FolderPlus className="w-4 h-4 text-orange-400 group-hover:scale-110 transition-transform" />
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${dashboardWallpaper && viewMode === 'home'
-                ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
-                : (isDarkMode ? 'text-white' : 'text-stone-700')
+            <span className={`text-[9.5px] sm:text-[10px] font-bold tracking-tight leading-none mt-1 whitespace-nowrap ${dashboardWallpaper && viewMode === 'home'
+                ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
+                : (isDarkMode ? 'text-slate-200' : 'text-stone-700')
               }`}>
               Matière
             </span>
+          </div>
+
+          {/* Bouton 3 traits - Menu d'options rapides Mobile (Matières, Thème, Langue) */}
+          <div className="flex md:hidden flex-col items-center relative" ref={mobileOptionsRef}>
+            <button
+              type="button"
+              onClick={() => {
+                setIsMobileOptionsOpen(!isMobileOptionsOpen);
+                setIsMobileLangExpanded(false);
+              }}
+              className={`p-2 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center group ${isMobileOptionsOpen
+                  ? 'bg-sky-500/20 text-sky-400 border-sky-500/50 shadow-md ring-2 ring-sky-500/30'
+                  : isDarkMode
+                    ? 'bg-slate-900/80 hover:bg-slate-800/90 text-white border-white/15 backdrop-blur-md shadow-sm'
+                    : 'bg-white/90 hover:bg-white text-stone-800 border-stone-200/90 shadow-sm'
+                }`}
+              title="Options (Matières, Thème, Langue)"
+              aria-label="Options rapides"
+            >
+              <Menu className="w-4 h-4 text-sky-400 group-hover:scale-110 transition-transform" />
+            </button>
+            <span className={`text-[9.5px] font-bold tracking-tight leading-none mt-1 whitespace-nowrap ${dashboardWallpaper && viewMode === 'home'
+                ? 'text-slate-200 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]'
+                : (isDarkMode ? 'text-slate-200' : 'text-stone-700')
+              }`}>
+              Options
+            </span>
+
+            {/* Petit Menu Mobile Déroulant pour Matières, Thème et Langue */}
+            {isMobileOptionsOpen && (
+              <div
+                className={`absolute top-full right-0 mt-2.5 w-64 rounded-2xl shadow-2xl border p-2 z-50 animate-in fade-in zoom-in-95 duration-150 backdrop-blur-xl ${isDarkMode
+                    ? 'bg-[#0f172a]/95 border-white/15 text-white'
+                    : 'bg-white/95 border-stone-200 text-stone-900 shadow-stone-900/15'
+                  }`}
+              >
+                <div className={`px-2.5 py-1.5 text-[10px] font-bold uppercase tracking-wider border-b mb-1 flex items-center justify-between ${isDarkMode ? 'border-white/10 text-slate-400' : 'border-stone-100 text-stone-400'
+                  }`}>
+                  <span>Menu rapide</span>
+                  <span className="text-[9px] font-normal lowercase opacity-75">3 réglages</span>
+                </div>
+
+                {/* 1. Matière */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMatiereMenuOpen(true);
+                    setIsMobileOptionsOpen(false);
+                  }}
+                  className={`w-full flex items-center justify-between p-2 rounded-xl transition-colors text-left cursor-pointer ${isDarkMode ? 'hover:bg-white/10 active:bg-white/15' : 'hover:bg-stone-100 active:bg-stone-200/70'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-orange-500/15 flex items-center justify-center shrink-0">
+                      <FolderPlus className="w-4 h-4 text-orange-400" />
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold leading-tight">Matières</div>
+                      <div className={`text-[10px] leading-tight mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-stone-500'}`}>
+                        Gérer ou ajouter des matières
+                      </div>
+                    </div>
+                  </div>
+                  <ChevronRight className={`w-4 h-4 shrink-0 ${isDarkMode ? 'text-slate-500' : 'text-stone-400'}`} />
+                </button>
+
+                {/* 2. Mode Sombre / Clair */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsDarkMode(!isDarkMode);
+                  }}
+                  className={`w-full flex items-center justify-between p-2 rounded-xl transition-colors text-left cursor-pointer ${isDarkMode ? 'hover:bg-white/10 active:bg-white/15' : 'hover:bg-stone-100 active:bg-stone-200/70'
+                    }`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${isDarkMode ? 'bg-amber-400/15' : 'bg-indigo-500/15'
+                      }`}>
+                      {isDarkMode ? (
+                        <Sun className="w-4 h-4 text-amber-400" />
+                      ) : (
+                        <Moon className="w-4 h-4 text-indigo-600" />
+                      )}
+                    </div>
+                    <div>
+                      <div className="text-xs font-bold leading-tight">Thème</div>
+                      <div className={`text-[10px] leading-tight mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-stone-500'}`}>
+                        {isDarkMode ? 'Passer en mode Jour' : 'Passer en mode Nuit'}
+                      </div>
+                    </div>
+                  </div>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isDarkMode ? 'bg-amber-400/20 text-amber-300' : 'bg-indigo-100 text-indigo-700'
+                    }`}>
+                    {isDarkMode ? 'Sombre' : 'Clair'}
+                  </span>
+                </button>
+
+                {/* 3. Langue */}
+                <div className="pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setIsMobileLangExpanded(!isMobileLangExpanded)}
+                    className={`w-full flex items-center justify-between p-2 rounded-xl transition-colors text-left cursor-pointer ${isDarkMode ? 'hover:bg-white/10 active:bg-white/15' : 'hover:bg-stone-100 active:bg-stone-200/70'
+                      }`}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-8 h-8 rounded-lg bg-rose-500/15 flex items-center justify-center shrink-0">
+                        <Globe className="w-4 h-4 text-rose-400" />
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold leading-tight">Langue</div>
+                        <div className={`text-[10px] leading-tight mt-0.5 ${isDarkMode ? 'text-slate-400' : 'text-stone-500'}`}>
+                          Traduire l'application
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${isDarkMode ? 'bg-rose-500/20 text-rose-300' : 'bg-rose-100 text-rose-700'
+                        }`}>
+                        {SUPPORTED_LANGUAGES.find((l) => l.code === getCurrentLanguage())?.label || 'Français'}
+                      </span>
+                      <ChevronRight className={`w-3.5 h-3.5 transition-transform duration-200 ${isMobileLangExpanded ? 'rotate-90' : ''
+                        } ${isDarkMode ? 'text-slate-500' : 'text-stone-400'}`} />
+                    </div>
+                  </button>
+
+                  {/* Liste déroulante des langues pour mobile */}
+                  {isMobileLangExpanded && (
+                    <div className={`mt-1 max-h-44 overflow-y-auto no-scrollbar rounded-xl border p-1 ${isDarkMode ? 'bg-black/30 border-white/10' : 'bg-stone-50 border-stone-200/80'
+                      }`}>
+                      {SUPPORTED_LANGUAGES.map((lang) => {
+                        const isSelected = getCurrentLanguage() === lang.code;
+                        return (
+                          <button
+                            key={lang.code}
+                            type="button"
+                            onClick={() => {
+                              applyLanguage(lang.code);
+                              setIsMobileOptionsOpen(false);
+                            }}
+                            className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors text-left cursor-pointer ${isSelected
+                                ? 'bg-rose-500/20 text-rose-400 font-bold'
+                                : isDarkMode
+                                  ? 'text-slate-300 hover:bg-white/10'
+                                  : 'text-stone-700 hover:bg-stone-200/60'
+                              }`}
+                          >
+                            <span>{lang.label}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-rose-400 shrink-0" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
         </div>

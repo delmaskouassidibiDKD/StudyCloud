@@ -136,7 +136,7 @@ export function purgeGoogleTranslateArtifacts() {
 export function applyLanguage(langCode: string, reloadFallback = true) {
   try {
     localStorage.setItem(STORAGE_KEY, langCode);
-  } catch (e) {}
+  } catch (e) { }
 
   purgeGoogleTranslateArtifacts();
 
