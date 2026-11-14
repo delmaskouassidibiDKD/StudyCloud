@@ -71,7 +71,7 @@ const STUDYCLOUD_CONFIG: AppLegalConfig = {
       sidebarTitle: "conditions d'utilisation",
       heading: "Conditions générales d'utilisation de StudyCloud",
       dateNote: 'Les présentes conditions entrent en vigueur en novembre 2026.',
-      intro: 'Édité par la société DKD Technologies — Plateforme créée et conçue par Dibi Kouassi Delmas, étudiant ivoirien en électrotechnique.',
+      intro: 'Édité par la société DKD Technologies.',
     },
     privacy: {
       pageTitle: 'Politique de confidentialité — StudyCloud | DKD Technologies',
@@ -213,15 +213,16 @@ function renderLegalHtml(app: AppLegalConfig, initialTab: LegalTab, returnUrl: s
       cursor: pointer;
     }
     .sc-logo-box {
-      width: 36px;
-      height: 36px;
-      border-radius: 10px;
-      background: #0f172a;
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, #1e1b4b, #0f172a);
+      border: 1px solid rgba(255,255,255,0.12);
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+      box-shadow: 0 2px 6px rgba(15,23,42,0.25);
     }
     .sc-brand-text {
       display: flex;
@@ -533,12 +534,37 @@ function renderLegalHtml(app: AppLegalConfig, initialTab: LegalTab, returnUrl: s
     <div class="sc-header-left">
       <a href="${safeReturnUrl}" class="sc-brand">
         <div class="sc-logo-box">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21" stroke="#F38020" stroke-width="2.5" stroke-linecap="round"/>
-            <path d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round"/>
-            <line x1="10" y1="6" x2="14" y2="6" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
-            <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" stroke-width="3" stroke-linecap="round"/>
-            <line x1="10" y1="18" x2="14" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <linearGradient id="sc-dna-gradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stop-color="white" />
+                <stop offset="50%" stop-color="#F38020" />
+                <stop offset="100%" stop-color="white" />
+              </linearGradient>
+              <filter id="sc-dna-filter" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="1.5" result="blur" />
+                <feComposite in="SourceGraphic" in2="blur" operator="over" />
+              </filter>
+            </defs>
+            <g filter="url(#sc-dna-filter)">
+              <path
+                d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke="url(#sc-dna-gradient)"
+              />
+              <path
+                d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21"
+                stroke-width="2.5"
+                stroke-linecap="round"
+                stroke="url(#sc-dna-gradient)"
+              />
+              <line x1="10" y1="6" x2="14" y2="6" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
+              <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.9" />
+              <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" stroke-width="3" stroke-linecap="round" />
+              <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.9" />
+              <line x1="10" y1="18" x2="14" y2="18" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
+            </g>
           </svg>
         </div>
         <div class="sc-brand-text">
