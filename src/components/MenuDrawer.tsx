@@ -132,9 +132,9 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               </button>
 
               {/* Version Téléphone: Logo ADN + Nom de l'application (comme Image 3) */}
-              <div className="flex md:hidden items-center gap-2 select-none">
+              <div className="notranslate flex md:hidden items-center gap-2 select-none" translate="no">
                 <DnaLogo className="w-7 h-7 shrink-0 drop-shadow-[0_0_2px_rgba(0,0,0,0.9)]" glow={true} />
-                <div className="notranslate flex flex-col justify-center">
+                <div className="flex flex-col justify-center">
                   <h1 className="font-black tracking-tight text-[17px] leading-tight flex items-center select-none">
                     <span className="font-black text-orange-500">Study</span>
                     <span className="font-black text-sky-400 dark:text-blue-400">Cloud</span>

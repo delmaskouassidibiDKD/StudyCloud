@@ -90,12 +90,55 @@ function triggerCombo(langCode: string): boolean {
 }
 
 /**
+ * Purge active et continue de tout spinner, logo tournant ou infobulle Google Translate injecté
+ */
+export function purgeGoogleTranslateArtifacts() {
+  if (typeof document === 'undefined') return;
+
+  const selectors = [
+    '[class*="VIpgJd-ZVi9od"]',
+    '.VIpgJd-ZVi9od-aZ2wEe-wOHMyf',
+    '.VIpgJd-ZVi9od-aZ2wEe-wOHMyf-ti6hGc',
+    '.VIpgJd-ZVi9od-ORHb-OEVmcd',
+    '.VIpgJd-ZVi9od-xl07Ob-OEVmcd',
+    '.VIpgJd-y6EkJ',
+    '.goog-te-spinner-pos',
+    '.goog-te-spinner',
+    '.goog-te-spinner-animation',
+    '.goog-te-balloon-frame',
+    '.goog-te-banner-frame',
+    '.goog-te-banner-frame.skiptranslate',
+    'iframe.goog-te-banner-frame',
+    '#goog-gt-tt',
+    '.goog-tooltip',
+  ];
+
+  try {
+    const nodes = document.querySelectorAll(selectors.join(', '));
+    nodes.forEach((node) => {
+      const el = node as HTMLElement;
+      el.style.setProperty('display', 'none', 'important');
+      el.style.setProperty('visibility', 'hidden', 'important');
+      el.style.setProperty('opacity', '0', 'important');
+      el.style.setProperty('pointer-events', 'none', 'important');
+      el.style.setProperty('top', '-9999px', 'important');
+      el.style.setProperty('left', '-9999px', 'important');
+      el.style.setProperty('z-index', '-99999', 'important');
+    });
+  } catch (e) {
+    // ignore
+  }
+}
+
+/**
  * Modifie la langue globale de l'application StudyCloud
  */
 export function applyLanguage(langCode: string, reloadFallback = true) {
   try {
     localStorage.setItem(STORAGE_KEY, langCode);
   } catch (e) {}
+
+  purgeGoogleTranslateArtifacts();
 
   if (langCode === 'fr') {
     setGoogtransCookie(null);
@@ -111,6 +154,8 @@ export function applyLanguage(langCode: string, reloadFallback = true) {
       window.location.reload();
     }
     window.dispatchEvent(new CustomEvent('studycloud_language_changed', { detail: { lang: 'fr' } }));
+    setTimeout(purgeGoogleTranslateArtifacts, 100);
+    setTimeout(purgeGoogleTranslateArtifacts, 500);
     return;
   }
 
@@ -128,13 +173,48 @@ export function applyLanguage(langCode: string, reloadFallback = true) {
   }
 
   window.dispatchEvent(new CustomEvent('studycloud_language_changed', { detail: { lang: langCode } }));
+  setTimeout(purgeGoogleTranslateArtifacts, 100);
+  setTimeout(purgeGoogleTranslateArtifacts, 500);
+  setTimeout(purgeGoogleTranslateArtifacts, 1500);
 }
 
 /**
  * Initialise l'observateur pour s'assurer que les nouveaux menus et modales React soient traduits
+ * et élimine tout spinner ou logo Google indésirable.
  */
 export function initLanguageObserver() {
   if (typeof window === 'undefined') return;
+
+  // Purge immédiate au démarrage
+  purgeGoogleTranslateArtifacts();
+
+  // Observateur continu pour supprimer immédiatement tout spinner Google Translate injecté
+  if (typeof MutationObserver !== 'undefined') {
+    const attachObserver = () => {
+      const targetNode = document.body || document.documentElement;
+      if (!targetNode) return;
+
+      const observer = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+          if (m.addedNodes.length > 0) {
+            purgeGoogleTranslateArtifacts();
+            break;
+          }
+        }
+      });
+
+      observer.observe(targetNode, {
+        childList: true,
+        subtree: true,
+      });
+    };
+
+    if (document.body) {
+      attachObserver();
+    } else {
+      window.addEventListener('DOMContentLoaded', attachObserver);
+    }
+  }
 
   const current = getCurrentLanguage();
   if (current !== 'fr') {
@@ -147,10 +227,10 @@ export function initLanguageObserver() {
     let attempts = 0;
     const interval = setInterval(() => {
       attempts++;
+      purgeGoogleTranslateArtifacts();
       if (triggerCombo(current) || attempts > 20) {
         clearInterval(interval);
       }
     }, 400);
   }
 }
-

@@ -187,9 +187,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
         }`}
       >
         {/* Brand Header - Logo et Nom de l'application */}
-        <div className="flex items-center gap-2.5 px-1.5 mb-7">
+        <div className="notranslate flex items-center gap-2.5 px-1.5 mb-7" translate="no">
           <DnaLogo className="w-9 h-9 shrink-0 drop-shadow-[0_0_2px_rgba(0,0,0,0.9)]" glow={true} />
-          <div className="notranslate flex flex-col justify-center">
+          <div className="flex flex-col justify-center">
             <h1 className="font-black tracking-tight text-[26px] leading-tight flex items-center select-none">
               <span className="font-black text-orange-500">Study</span>
               <span className="font-black text-sky-400 dark:text-blue-400">Cloud</span>
