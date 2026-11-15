@@ -11,7 +11,12 @@ import {
   Sparkles,
   Bookmark,
   Check,
-  AlertCircle
+  AlertCircle,
+  Play,
+  Layers,
+  AppWindow,
+  ShieldCheck,
+  MoveUpRight
 } from 'lucide-react';
 import { DkdStore3DIcon } from './DkdStore3DIcon';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
@@ -24,6 +29,75 @@ import {
 
 interface DkdStoreViewProps {
   onBack: () => void;
+}
+
+/**
+ * Ouvre une fenêtre d'application autonome (Frameless / Standalone Web App Window)
+ * - Sans barre d'onglets, sans barre de favoris, sans barre de recherche
+ * - Permet à l'utilisateur d'avoir sa vraie session de compte (Google, Canva, etc.)
+ * - StudyCloud reste ouvert en dessous sans jamais recharger
+ */
+export function openAppWindow(url: string, name: string): Window | null {
+  if (typeof window === 'undefined') return null;
+  const screenW = window.screen.availWidth || 1280;
+  const screenH = window.screen.availHeight || 800;
+
+  const width = Math.min(1366, Math.max(900, Math.round(screenW * 0.9)));
+  const height = Math.min(900, Math.max(650, Math.round(screenH * 0.9)));
+  const left = Math.max(0, Math.round((screenW - width) / 2));
+  const top = Math.max(0, Math.round((screenH - height) / 2));
+
+  const windowFeatures = [
+    `width=${width}`,
+    `height=${height}`,
+    `left=${left}`,
+    `top=${top}`,
+    'popup=yes',
+    'resizable=yes',
+    'scrollbars=yes',
+    'status=no',
+    'toolbar=no',
+    'menubar=no',
+    'location=no'
+  ].join(',');
+
+  const appWin = window.open(url, `dkd_app_${name.replace(/\W+/g, '_')}`, windowFeatures);
+  if (appWin) {
+    try {
+      appWin.focus();
+    } catch {}
+  }
+  return appWin;
+}
+
+/**
+ * Détecte si une application nécessite le mode Fenêtre App Autonome
+ * pour que le compte utilisateur et les sessions privées fonctionnent sans restriction
+ */
+export function isAppWindowRequired(url: string): boolean {
+  try {
+    const raw = url.includes('://') ? url : `https://${url}`;
+    const parsed = new URL(raw);
+    const host = parsed.hostname.toLowerCase();
+    const pathname = parsed.pathname.toLowerCase();
+
+    // 1. Tous les outils interactifs Google Workspace (Vids, Docs, Sheets, Slides, Drive)
+    if (host.includes('google.com')) {
+      if (host.includes('youtube.com') || host.includes('youtu.be')) return false;
+      if (pathname.includes('/pub') || pathname.includes('/preview')) return false;
+      return true; // Google Vids, Docs /edit, Workspace exigent une fenêtre autonome
+    }
+
+    // 2. Outils de création professionnels avec authentification
+    if (host.includes('canva.com') && !url.includes('embed')) return true;
+    if (host.includes('figma.com') && !url.includes('embed')) return true;
+    if (host.includes('notion.so')) return true;
+    if (host.includes('github.com')) return true;
+    if (host.includes('chatgpt.com') || host.includes('openai.com')) return true;
+    if (host.includes('office.com') || host.includes('microsoft.com')) return true;
+    if (host.includes('deepl.com')) return true;
+  } catch {}
+  return false;
 }
 
 export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
@@ -49,8 +123,10 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
     }
   });
 
-  // 4. SITE ACTIF OUVERT DANS L'APPLICATION (Vision intégrée sans sortir de StudyCloud)
+  // 4. SITE ACTIF OUVERT DANS L'APPLICATION
   const [activeSite, setActiveSite] = useState<DkdStoreSite | null>(null);
+  const [isAppWindowMode, setIsAppWindowMode] = useState<boolean>(false);
+  const [appWindowInstance, setAppWindowInstance] = useState<Window | null>(null);
   const [iframeKey, setIframeKey] = useState<number>(0);
   const [isIframeLoading, setIsIframeLoading] = useState<boolean>(true);
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -112,6 +188,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
           resetViewerExpand();
         } else if (activeSite) {
           setActiveSite(null);
+          setIsAppWindowMode(false);
         }
       }
     };
@@ -182,10 +259,36 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
   };
 
   // Helper pour l'ouverture d'un site
-  const handleOpenSite = (site: DkdStoreSite) => {
+  const handleOpenSite = (site: DkdStoreSite, preferIframe = false) => {
     setActiveSite(site);
-    setIsIframeLoading(true);
-    setIframeKey(prev => prev + 1);
+
+    // Détection intelligente : si le site requiert un compte connecté (Google Vids, etc.)
+    if (isAppWindowRequired(site.url) && !preferIframe) {
+      setIsAppWindowMode(true);
+      const win = openAppWindow(site.url, site.name);
+      setAppWindowInstance(win);
+      showToast(`🚀 ${site.name} lancé en fenêtre d'application`);
+    } else {
+      setIsAppWindowMode(false);
+      setIsIframeLoading(true);
+      setIframeKey(prev => prev + 1);
+    }
+  };
+
+  // Ramener la fenêtre au premier plan
+  const bringAppWindowToFront = () => {
+    if (activeSite) {
+      if (appWindowInstance && !appWindowInstance.closed) {
+        try {
+          appWindowInstance.focus();
+          showToast(`✓ Fenêtre ${activeSite.name} ramenée au premier plan`);
+          return;
+        } catch {}
+      }
+      const win = openAppWindow(activeSite.url, activeSite.name);
+      setAppWindowInstance(win);
+      showToast(`✓ Fenêtre ${activeSite.name} active`);
+    }
   };
 
   // Helper pour recharger l'iframe
@@ -214,6 +317,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
             onClick={() => {
               if (activeSite) {
                 setActiveSite(null);
+                setIsAppWindowMode(false);
               } else {
                 onBack();
               }
@@ -244,21 +348,62 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
               </span>
             )}
           </div>
+
+          {/* État de l'application active */}
+          {activeSite && isAppWindowMode && (
+            <span className="hidden md:inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-[10px] font-bold text-emerald-600 dark:text-emerald-400">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span>Fenêtre App active</span>
+            </span>
+          )}
         </div>
 
-        {/* Partie droite : Actions, Actualiser, Super Agrandissement & Zoom */}
+        {/* Partie droite : Actions, Détacher en Fenêtre App, Super Agrandissement & Zoom */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           {activeSite ? (
             <>
+              {/* Basculer vers le mode Fenêtre App autonome */}
+              {!isAppWindowMode && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAppWindowMode(true);
+                    const win = openAppWindow(activeSite.url, activeSite.name);
+                    setAppWindowInstance(win);
+                    showToast(`🚀 Détaché en fenêtre d'application`);
+                  }}
+                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl bg-blue-500/15 hover:bg-blue-500/25 text-blue-600 dark:text-blue-400 border border-blue-500/30 text-xs font-bold transition-all cursor-pointer active:scale-95 shadow-2xs"
+                  title="Détacher en fenêtre d'application connectée"
+                >
+                  <AppWindow className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[11px]">Fenêtre App</span>
+                </button>
+              )}
+
+              {/* Si on est en mode Fenêtre App : bouton pour tester dans l'iframe */}
+              {isAppWindowMode && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenSite(activeSite, true)}
+                  className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-stone-700 text-xs font-bold transition-all cursor-pointer active:scale-95"
+                  title="Afficher dans le cadre de la page StudyCloud"
+                >
+                  <Layers className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[11px]">Mode Cadre</span>
+                </button>
+              )}
+
               {/* Actualiser le site actif */}
-              <button
-                type="button"
-                onClick={handleReloadIframe}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 dark:border-stone-700"
-                title="Recharger la page"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isIframeLoading ? 'animate-spin text-blue-500' : ''}`} />
-              </button>
+              {!isAppWindowMode && (
+                <button
+                  type="button"
+                  onClick={handleReloadIframe}
+                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 dark:border-stone-700"
+                  title="Recharger la page"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isIframeLoading ? 'animate-spin text-blue-500' : ''}`} />
+                </button>
+              )}
 
               {/* Épingler à l'accueil / Raccourcis */}
               <button
@@ -274,7 +419,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                 <Bookmark className={`w-3.5 h-3.5 ${pinnedSiteIds.includes(activeSite.id) ? 'fill-current' : ''}`} />
               </button>
 
-              {/* Ouvrir dans un nouvel onglet externe */}
+              {/* Ouvrir dans un nouvel onglet standard */}
               <a
                 href={activeSite.url}
                 target="_blank"
@@ -359,48 +504,147 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
       )}
 
       {/* ====================================================================== */}
-      {/* 2. MODE SITE ACTIF OUVERT (Vision dans l'application sans sortir)        */}
+      {/* 2. MODE SITE ACTIF OUVERT                                               */}
       {/* ====================================================================== */}
       {activeSite ? (
-        <div className="flex-1 w-full flex flex-col relative min-h-0 bg-stone-100 dark:bg-[#070b14] overflow-hidden">
-          {/* Indicateur de chargement de l'iframe */}
-          {isIframeLoading && (
-            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/80 dark:bg-[#070b14]/80 backdrop-blur-xs">
-              <div className="w-10 h-10 border-3 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-              <p className="mt-3 text-xs sm:text-sm font-semibold text-stone-700 dark:text-stone-300">
-                Ouverture de <span className="font-bold text-blue-600 dark:text-blue-400">{activeSite.name}</span>...
-              </p>
+        isAppWindowMode ? (
+          /* ================================================================== */
+          /* 2.A : CONTRÔLEUR ÉLÉGANT EN MODE FENÊTRE APP AUTONOME              */
+          /* ================================================================== */
+          <div className="flex-1 w-full flex flex-col items-center justify-center p-4 sm:p-6 bg-stone-100/60 dark:bg-[#070b14] overflow-y-auto">
+            <div className="w-full max-w-lg bg-white dark:bg-[#0e1628] border-2 border-stone-200 dark:border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl text-center space-y-6">
+              
+              {/* Logo de l'application */}
+              <div className="w-20 h-20 rounded-3xl bg-stone-100 dark:bg-slate-900 border border-stone-200 dark:border-slate-700 flex items-center justify-center mx-auto shadow-inner overflow-hidden p-2">
+                {activeSite.logo_url ? (
+                  <img src={activeSite.logo_url} alt={activeSite.name} className="w-full h-full object-contain rounded-2xl" />
+                ) : (
+                  <Globe className="w-10 h-10 text-blue-500" />
+                )}
+              </div>
+
+              {/* Titre & Statut */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-center gap-2">
+                  <h3 className="text-xl font-black text-stone-900 dark:text-white">
+                    {activeSite.name}
+                  </h3>
+                  {activeSite.badge && (
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30">
+                      {activeSite.badge}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs font-mono text-stone-400 dark:text-stone-500">
+                  {getDomainFromUrl(activeSite.url)}
+                </p>
+                {activeSite.description && (
+                  <p className="text-xs sm:text-sm text-stone-600 dark:text-slate-300 mt-2 leading-relaxed">
+                    {activeSite.description}
+                  </p>
+                )}
+              </div>
+
+              {/* Boîte d'état vert rassurante */}
+              <div className="p-4 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-900/50 text-left space-y-2">
+                <div className="flex items-center gap-2 text-emerald-800 dark:text-emerald-300 font-bold text-xs">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span>Application autonome connectée & sécurisée</span>
+                </div>
+                <ul className="text-[11px] text-emerald-900/80 dark:text-emerald-200/90 space-y-1 list-disc list-inside">
+                  <li>Votre compte (Google, Canva, etc.) est actif directement.</li>
+                  <li>Aucune restriction de cadre ni blocage de mot de passe.</li>
+                  <li>StudyCloud reste ouvert et prêt sous vos yeux.</li>
+                </ul>
+              </div>
+
+              {/* Boutons d'actions principales */}
+              <div className="space-y-2.5 pt-1">
+                {/* Bouton pour ramener la fenêtre au premier plan */}
+                <button
+                  type="button"
+                  onClick={bringAppWindowToFront}
+                  className="w-full py-3.5 px-6 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm flex items-center justify-center gap-2.5 shadow-lg shadow-blue-500/25 active:scale-98 transition-all cursor-pointer"
+                >
+                  <AppWindow className="w-4 h-4" />
+                  <span>Ramener la fenêtre au premier plan</span>
+                  <MoveUpRight className="w-3.5 h-3.5" />
+                </button>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {/* Revenir au catalogue */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveSite(null);
+                      setIsAppWindowMode(false);
+                    }}
+                    className="py-2.5 px-3 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-stone-800 dark:text-stone-200 font-bold text-xs transition-all cursor-pointer"
+                  >
+                    ← Retour au catalogue
+                  </button>
+
+                  {/* Basculer vers le mode cadre interne */}
+                  <button
+                    type="button"
+                    onClick={() => handleOpenSite(activeSite, true)}
+                    className="py-2.5 px-3 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-stone-800 dark:text-stone-200 font-bold text-xs transition-all cursor-pointer"
+                  >
+                    Essayer dans la page
+                  </button>
+                </div>
+              </div>
+
             </div>
-          )}
-
-          {/* Iframe intégrée */}
-          <iframe
-            key={iframeKey}
-            ref={iframeRef}
-            src={activeSite.url}
-            title={activeSite.name}
-            onLoad={() => setIsIframeLoading(false)}
-            className="w-full flex-1 border-0 bg-white"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads allow-presentation"
-            allow="camera; microphone; fullscreen; clipboard-read; clipboard-write;"
-          />
-
-          {/* Barre inférieure discrète pour dépannage iframe */}
-          <div className="w-full py-1.5 px-3 bg-stone-100 dark:bg-[#0d1424] border-t border-stone-200 dark:border-white/10 flex items-center justify-between text-[11px] text-stone-500 dark:text-stone-400 shrink-0">
-            <span className="truncate">
-              ⚡ Connecté via StudyCloud · {getDomainFromUrl(activeSite.url)}
-            </span>
-            <a
-              href={activeSite.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold shrink-0 ml-2"
-            >
-              <span>Si la page reste blanche, ouvrir ici</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
           </div>
-        </div>
+        ) : (
+          /* ================================================================== */
+          /* 2.B : LECTEUR INTÉGRÉ STANDARD DANS LE CADRE DE LA PAGE            */
+          /* ================================================================== */
+          <div className="flex-1 w-full flex flex-col relative min-h-0 bg-stone-100 dark:bg-[#070b14] overflow-hidden">
+            {/* Indicateur de chargement de l'iframe */}
+            {isIframeLoading && (
+              <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/80 dark:bg-[#070b14]/80 backdrop-blur-xs">
+                <div className="w-10 h-10 border-3 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+                <p className="mt-3 text-xs sm:text-sm font-semibold text-stone-700 dark:text-stone-300">
+                  Ouverture de <span className="font-bold text-blue-600 dark:text-blue-400">{activeSite.name}</span>...
+                </p>
+              </div>
+            )}
+
+            {/* Iframe intégrée */}
+            <iframe
+              key={iframeKey}
+              ref={iframeRef}
+              src={activeSite.url}
+              title={activeSite.name}
+              onLoad={() => setIsIframeLoading(false)}
+              className="w-full flex-1 border-0 bg-white"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads allow-presentation"
+              allow="camera; microphone; fullscreen; clipboard-read; clipboard-write; autoplay;"
+            />
+
+            {/* Barre inférieure pour détacher facilement en Fenêtre App */}
+            <div className="w-full py-1.5 px-3 bg-stone-100 dark:bg-[#0d1424] border-t border-stone-200 dark:border-white/10 flex items-center justify-between text-[11px] text-stone-500 dark:text-stone-400 shrink-0">
+              <span className="truncate">
+                ⚡ Connecté via StudyCloud · {getDomainFromUrl(activeSite.url)}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsAppWindowMode(true);
+                  const win = openAppWindow(activeSite.url, activeSite.name);
+                  setAppWindowInstance(win);
+                  showToast(`🚀 Détaché en fenêtre d'application connectée`);
+                }}
+                className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold shrink-0 ml-2 cursor-pointer"
+              >
+                <span>Si le site demande de vous connecter, cliquez ici pour l'ouvrir en Fenêtre App</span>
+                <AppWindow className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          </div>
+        )
       ) : (
         /* ==================================================================== */
         /* 3. MODE CATALOGUE DKD STORE (Recherche, Catégories D1 et Pépites)     */
@@ -463,7 +707,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                 <button
                   type="button"
                   onClick={() => setShowOnlyPinned(prev => !prev)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                     showOnlyPinned
                       ? 'bg-amber-500 text-white shadow-md shadow-amber-500/25 ring-2 ring-amber-500/30'
                       : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] dark:hover:bg-[#17233f] text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700/70'
@@ -594,6 +838,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                   {filteredSites.map((site) => {
                     const isPinned = pinnedSiteIds.includes(site.id);
                     const domain = getDomainFromUrl(site.url);
+                    const requiresAppWindow = isAppWindowRequired(site.url);
 
                     return (
                       <div
@@ -612,7 +857,6 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                                   alt={site.name}
                                   className="w-full h-full object-contain rounded-xl"
                                   onError={(e) => {
-                                    // Fallback favicon Google si le logo direct échoue
                                     const img = e.currentTarget;
                                     if (!img.dataset.fallbackTried) {
                                       img.dataset.fallbackTried = '1';
@@ -680,11 +924,11 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                           </div>
                         </div>
 
-                        {/* Pied de la carte : Bouton d'ouverture intégrée */}
+                        {/* Pied de la carte : Bouton d'ouverture */}
                         <div className="mt-4 pt-3 border-t border-stone-100 dark:border-slate-800/60 flex items-center justify-between">
                           <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span>Intégré dans StudyCloud</span>
+                            <span>{requiresAppWindow ? "Fenêtre App connectée" : "Intégré StudyCloud"}</span>
                           </span>
 
                           <button
