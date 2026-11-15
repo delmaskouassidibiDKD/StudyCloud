@@ -84,7 +84,7 @@ export const PromotionView: React.FC<PromotionViewProps> = ({ onBack }) => {
         </span>
       </div>
 
-      <div className="w-full max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 pt-3 md:pt-4 pb-6 md:pb-8 flex flex-col items-center">
+      <div className="w-full max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-6 pt-3 md:pt-4 pb-32 sm:pb-36 md:pb-8 flex flex-col items-center">
         {/* Titre & Description sans badge */}
         <div className="text-center space-y-1 mb-4 md:mb-5">
           <h1 className="text-2xl md:text-3xl lg:text-4xl font-serif font-black text-stone-900 dark:text-white">
@@ -227,6 +227,9 @@ export const PromotionView: React.FC<PromotionViewProps> = ({ onBack }) => {
                   </div>
                 </div>
               </div>
+
+              {/* Marge de sécurité pour la barre de navigation mobile */}
+              <div className="h-8 md:hidden pointer-events-none" />
             </div>
 
           </div>
