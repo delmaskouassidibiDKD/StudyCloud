@@ -213,7 +213,7 @@ export const SettingsView: React.FC = () => {
           className="w-full flex items-center justify-center gap-3 bg-[#FDFBF7] hover:bg-orange-50 border-2 border-stone-800 rounded-xl md:rounded-2xl py-3 md:py-4 px-4 md:px-6 text-stone-900 font-bold text-sm md:text-base shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
         >
           <Share2 className="w-5 h-5 md:w-6 md:h-6 text-orange-600" />
-          <span>Partager</span>
+          <span>Partager StudyCloud</span>
         </button>
 
         <button 
