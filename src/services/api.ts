@@ -3757,5 +3757,93 @@ export async function getUserAiPurchases(
   return { success: true, purchases: [], total_purchased: 0 };
 }
 
+// ----------------------------------------------------------------------
+// DKD STORE - Types & Appel Public vers la Base de Données D1
+// ----------------------------------------------------------------------
+export interface DkdStoreSite {
+  id: string;
+  name: string;
+  url: string;
+  logo_url: string;
+  category_id: string;
+  category_name: string;
+  description: string;
+  badge: string;
+  is_active: number;
+  sort_order: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DkdStoreCategory {
+  id: string;
+  name: string;
+  icon: string;
+  sort_order: number;
+  is_active: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface DkdStorePublicData {
+  success: boolean;
+  config?: {
+    id: string;
+    sites_sort_mode: string;
+    categories_sort_mode: string;
+  };
+  categories: DkdStoreCategory[];
+  sites: DkdStoreSite[];
+  error?: string;
+}
+
+/**
+ * Récupère publiquement les catégories et sites du DKD store enregistrés dans D1.
+ * Utilise une stratégie multi-domaines avec secours automatique :
+ * 1. worker-tableaux-de-bord (immédiat)
+ * 2. api-worker.dkd-technologies.com
+ * 3. studycloud-worker
+ */
+export async function getDkdStorePublicData(): Promise<DkdStorePublicData> {
+  const candidateUrls = [
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getWorkerApiUrl().replace(/\/+$/, ''),
+    'https://api-worker.dkd-technologies.com',
+    'https://studycloud-worker.delmaskouassidibi.workers.dev'
+  ];
+
+  for (const baseUrl of candidateUrls) {
+    if (!baseUrl) continue;
+    try {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 4000) : null;
+      const res = await fetch(`${baseUrl}/api/public/dkd-store`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          Pragma: 'no-cache'
+        },
+        signal: controller ? controller.signal : undefined
+      });
+      if (timeoutId) clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success) {
+          return {
+            success: true,
+            config: data.config,
+            categories: Array.isArray(data.categories) ? data.categories : [],
+            sites: Array.isArray(data.sites) ? data.sites : []
+          };
+        }
+      }
+    } catch {}
+  }
+
+  return { success: false, categories: [], sites: [] };
+}
+
+
 
 

@@ -15809,6 +15809,80 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ----------------------------------------------------------------------
+      // 12b. DKD STORE (Catalogue Public des Pépites Web & Applications D1)
+      // ----------------------------------------------------------------------
+      if (path === '/api/public/dkd-store' && method === 'GET') {
+        if (!env.DB) return jsonResponse({ success: false, error: 'Database non configurée' }, 500, origin);
+        try {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS dkd_store_config (
+              id TEXT PRIMARY KEY DEFAULT 'default',
+              sites_sort_mode TEXT DEFAULT 'manual',
+              categories_sort_mode TEXT DEFAULT 'manual',
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {});
+
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS dkd_store_categories (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              icon TEXT DEFAULT '📁',
+              sort_order INTEGER DEFAULT 0,
+              is_active INTEGER DEFAULT 1,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {});
+
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS dkd_store_sites (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              url TEXT NOT NULL,
+              logo_url TEXT DEFAULT '',
+              category_id TEXT DEFAULT '',
+              category_name TEXT DEFAULT '',
+              description TEXT DEFAULT '',
+              badge TEXT DEFAULT '',
+              is_active INTEGER DEFAULT 1,
+              sort_order INTEGER DEFAULT 0,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {});
+
+          const config = (await env.DB.prepare("SELECT * FROM dkd_store_config WHERE id = 'default'").first<any>()) || {
+            id: 'default',
+            sites_sort_mode: 'manual',
+            categories_sort_mode: 'manual'
+          };
+
+          const catsRes = await env.DB.prepare("SELECT * FROM dkd_store_categories WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC").all<any>();
+          const sitesRes = await env.DB.prepare("SELECT * FROM dkd_store_sites WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC").all<any>();
+
+          let categories = catsRes.results || [];
+          let sites = sitesRes.results || [];
+
+          if (config.sites_sort_mode === 'random') {
+            sites = sites.slice().sort(() => Math.random() - 0.5);
+          }
+          if (config.categories_sort_mode === 'random') {
+            categories = categories.slice().sort(() => Math.random() - 0.5);
+          }
+
+          return jsonResponse({
+            success: true,
+            config,
+            categories,
+            sites
+          }, 200, origin);
+        } catch (e: any) {
+          return jsonResponse({ success: false, error: e?.message || 'Erreur D1' }, 500, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
       // 13. NOTIFICATIONS (Connecté D1 avec purge automatique 3 semaines / 21 jours)
       // ----------------------------------------------------------------------
       if (path === '/api/notifications') {

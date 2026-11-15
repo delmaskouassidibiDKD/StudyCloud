@@ -1648,6 +1648,16 @@ const R2_FOLDERS_METADATA = [
     role: "Conserve les fichiers supprimés pendant leur période de rétention de 30 jours avant suppression définitive.",
     usage: "Restauré vers son dossier d'origine ou purgé définitivement.",
     examples: "trash/usr_1/vieux_brouillon.pdf, trash/usr_1/exercice_rate.png"
+  },
+  {
+    folder: 'dkd-store-logos/',
+    name: 'Logos et icônes des applications DKD store',
+    uiConnection: "Tableau de bord admin > DKD store, Application StudyCloud > DKD store",
+    role: "Stocke physiquement dans Cloudflare R2 les logos, icônes et vignettes des applications et sites référencés dans le kiosque DKD store.",
+    usage: "Téléversé depuis le tableau de bord lors de l'ajout ou la modification d'un site pépite. Affiché dans le catalogue DKD store de StudyCloud.",
+    examples: "dkd-store-logos/site_17947812_logo.png",
+    isExempted: true,
+    exemptReason: "Ressources publiques officielles du kiosque DKD store (non décomptées du quota étudiant)"
   }
 ];
 
@@ -2543,7 +2553,8 @@ async function inspectRealR2Global(bucket, db, detailedUsers) {
     'storage-receipts/': { count: 0, bytes: 0, formatted: '0 Octets' },
     'payment-methods/': { count: 0, bytes: 0, formatted: '0 Octets' },
     'secure-files/': { count: 0, bytes: 0, formatted: '0 Octets' },
-    'trash/': { count: 0, bytes: 0, formatted: '0 Octets' }
+    'trash/': { count: 0, bytes: 0, formatted: '0 Octets' },
+    'dkd-store-logos/': { count: 0, bytes: 0, formatted: '0 Octets' }
   };
 
   const dynamicR2Meta = [...R2_FOLDERS_METADATA];
@@ -16451,7 +16462,7 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
         for (let i = 0; i < binStr.length; i++) {
           bytes[i] = binStr.charCodeAt(i);
         }
-        const r2Key = `dkd-store/logos/${id}_${Date.now()}.png`;
+        const r2Key = `dkd-store-logos/${id}_${Date.now()}.png`;
         await bucket.put(r2Key, bytes.buffer, { httpMetadata: { contentType } });
         logoUrl = `${url.origin}/api/storage/file/${encodeURIComponent(r2Key)}`;
       } catch (e) {
