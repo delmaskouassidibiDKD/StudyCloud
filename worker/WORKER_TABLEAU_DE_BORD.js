@@ -6618,14 +6618,20 @@ function renderDashboardHtml(data) {
         </div>
       </div>
 
-      <!-- Description -->
-      <div class="space-y-1">
-        <label class="text-xs font-bold text-slate-200 block">Description du site</label>
+      <!-- Informations & Description pour la publication du site -->
+      <div class="p-3.5 rounded-2xl bg-slate-950/90 border border-blue-500/30 space-y-2">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-extrabold text-blue-300 flex items-center gap-1.5">
+            <span>📝</span>
+            <span>Informations & Description du site (affichées lors de la publication)</span>
+          </label>
+          <span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30 font-bold">Fiche de présentation</span>
+        </div>
         <textarea
           id="dkd-site-form-desc"
-          rows="2"
-          placeholder="Expliquez en une phrase ce que ce site apporte à l'étudiant..."
-          class="w-full bg-slate-950 text-white text-xs rounded-xl px-3.5 py-2 border border-slate-700 focus:border-blue-500 outline-none resize-none"
+          rows="4"
+          placeholder="Mettez ici toutes les informations et la description du site (ex: utilité du site, ce qu'on peut y faire, pourquoi c'est une pépite pour les étudiants...)"
+          class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none resize-y leading-relaxed"
         ></textarea>
       </div>
 
@@ -14567,7 +14573,7 @@ function renderDashboardHtml(data) {
     function getDomainFromUrl(rawUrl) {
       try {
         const u = new URL(rawUrl.indexOf('://') === -1 ? 'https://' + rawUrl : rawUrl);
-        return u.hostname.replace(/^www\./, '');
+        return u.hostname.replace(/^www\\./, '');
       } catch (e) {
         return rawUrl || '';
       }
@@ -14645,7 +14651,7 @@ function renderDashboardHtml(data) {
 
       let html = '';
       // 1. En premier : le bouton "Tout" qui regroupe tout
-      html += '<button type="button" onclick="selectDkdCategory(\'all\')" class="px-3.5 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap flex items-center gap-1.5 transition cursor-pointer shrink-0 ' +
+      html += '<button type="button" data-cat-id="all" onclick="selectDkdCategory(this.getAttribute(&quot;data-cat-id&quot;))" class="px-3.5 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap flex items-center gap-1.5 transition cursor-pointer shrink-0 ' +
         (isAllSelected
           ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-900/30 border border-blue-400/40'
           : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700/80') + '">' +
@@ -14669,7 +14675,7 @@ function renderDashboardHtml(data) {
           return String(s.category_id) === String(cat.id) || String(s.category_name).toLowerCase() === String(cat.name).toLowerCase();
         }).length;
         const isActive = String(selectedDkdStoreCategoryId) === String(cat.id);
-        html += '<button type="button" onclick="selectDkdCategory(\'' + escapeHtml(cat.id) + '\')" class="px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition cursor-pointer shrink-0 ' +
+        html += '<button type="button" data-cat-id="' + escapeHtml(cat.id) + '" onclick="selectDkdCategory(this.getAttribute(&quot;data-cat-id&quot;))" class="px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition cursor-pointer shrink-0 ' +
           (isActive
             ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30 border border-blue-400/40'
             : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800') + '">' +
@@ -14762,7 +14768,7 @@ function renderDashboardHtml(data) {
           '<div class="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 mx-auto flex items-center justify-center text-2xl">🛍️</div>' +
           '<div class="space-y-1">' +
             '<div class="text-xs font-extrabold text-white">Aucun site trouvé</div>' +
-            '<p class="text-[11px] text-slate-400">Ajoutez votre premier site avec son lien et son logo pour l\'afficher dans DKD store.</p>' +
+            '<p class="text-[11px] text-slate-400">Ajoutez votre premier site avec son lien, son logo et sa description pour l&#39;afficher dans DKD store.</p>' +
           '</div>' +
           '<button type="button" onclick="openDkdSiteModal()" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer inline-flex items-center gap-1.5">' +
             '<span>➕</span><span>Ajouter un site</span>' +
@@ -14779,7 +14785,7 @@ function renderDashboardHtml(data) {
         const domain = getDomainFromUrl(s.url);
         const rankNum = s.sort_order || (idx + 1);
 
-        html += '<div onclick="selectDkdSite(\'' + escapeHtml(s.id) + '\')" class="p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-2.5 ' +
+        html += '<div data-site-id="' + escapeHtml(s.id) + '" onclick="selectDkdSite(this.getAttribute(&quot;data-site-id&quot;))" class="p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-2.5 ' +
           (isSelected
             ? 'bg-blue-600/15 border-blue-500 shadow-md shadow-blue-950/40'
             : 'bg-slate-900/70 hover:bg-slate-900 border-slate-800/90') +
@@ -14788,7 +14794,7 @@ function renderDashboardHtml(data) {
             '<span class="text-[10px] font-mono font-black px-1.5 py-0.5 rounded-md bg-slate-950 text-slate-400 border border-slate-800 shrink-0">#' + rankNum + '</span>' +
             '<div class="w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0">' +
               (logoSrc
-                ? '<img src="' + escapeHtml(logoSrc) + '" alt="" class="w-7 h-7 object-contain" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\';" /><span style="display:none" class="text-base">🌐</span>'
+                ? '<img src="' + escapeHtml(logoSrc) + '" alt="" class="w-7 h-7 object-contain" />'
                 : '<span class="text-base">🌐</span>') +
             '</div>' +
             '<div class="min-w-0 flex-1">' +
@@ -14800,11 +14806,12 @@ function renderDashboardHtml(data) {
                 '<span class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-medium">' + escapeHtml(s.category_name || 'Général') + '</span>' +
                 '<span class="font-mono text-slate-500 truncate">' + escapeHtml(domain) + '</span>' +
               '</div>' +
+              (s.description ? '<div class="text-[10px] text-slate-400 truncate mt-0.5">' + escapeHtml(s.description) + '</div>' : '') +
             '</div>' +
           '</div>' +
           '<div class="flex items-center gap-2 shrink-0" onclick="event.stopPropagation()">' +
             '<label class="flex items-center gap-1 cursor-pointer" title="Cocher ou décocher pour afficher/masquer ce site dans DKD store">' +
-              '<input type="checkbox" ' + (isActive ? 'checked' : '') + ' onchange="toggleDkdSiteActive(\'' + escapeHtml(s.id) + '\', this.checked)" class="w-4 h-4 accent-emerald-500 rounded cursor-pointer" />' +
+              '<input type="checkbox" data-site-id="' + escapeHtml(s.id) + '" ' + (isActive ? 'checked' : '') + ' onchange="toggleDkdSiteActive(this.getAttribute(&quot;data-site-id&quot;), this.checked)" class="w-4 h-4 accent-emerald-500 rounded cursor-pointer" />' +
               '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded ' + (isActive ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30') + '">' +
                 (isActive ? 'Actif' : 'Masqué') +
               '</span>' +
@@ -14825,7 +14832,7 @@ function renderDashboardHtml(data) {
         detailEl.innerHTML = '<div class="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">' +
           '<div class="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-3xl">👈</div>' +
           '<div class="text-sm font-black text-white">Sélectionnez un site à gauche ou ajoutez-en un nouveau</div>' +
-          '<p class="text-xs text-slate-400 max-w-md">Cliquez sur n\'importe quel site dans la colonne de gauche pour voir toutes ses informations, modifier son lien ou son logo, le cocher/décocher ou le supprimer.</p>' +
+          '<p class="text-xs text-slate-400 max-w-md">Cliquez sur n&#39;importe quel site dans la colonne de gauche pour voir toutes ses informations, sa description, modifier son lien ou son logo, le cocher/décocher ou le supprimer.</p>' +
           '<button type="button" onclick="openDkdSiteModal()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-emerald-600 text-white font-black text-xs shadow-lg cursor-pointer">' +
             '➕ Ajouter un nouveau site' +
           '</button>' +
@@ -14848,13 +14855,15 @@ function renderDashboardHtml(data) {
         });
       }
 
+      const safeSiteId = escapeHtml(site.id);
+
       detailEl.innerHTML = '<div class="space-y-4">' +
         '<!-- En-tête du site sélectionné -->' +
         '<div class="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 flex flex-wrap items-center justify-between gap-4">' +
           '<div class="flex items-center gap-3.5 min-w-0">' +
             '<div class="w-16 h-16 rounded-2xl bg-slate-900 border-2 border-slate-700 flex items-center justify-center overflow-hidden shrink-0 shadow-inner">' +
               (logoSrc
-                ? '<img id="detail-dkd-logo-preview-top" src="' + escapeHtml(logoSrc) + '" alt="Logo" class="w-11 h-11 object-contain" onerror="this.style.display=\'none\'" />'
+                ? '<img id="detail-dkd-logo-preview-top" src="' + escapeHtml(logoSrc) + '" alt="Logo" class="w-11 h-11 object-contain" />'
                 : '<span class="text-2xl">🌐</span>') +
             '</div>' +
             '<div class="min-w-0">' +
@@ -14872,10 +14881,10 @@ function renderDashboardHtml(data) {
 
           '<!-- Contrôles rapides de classement et suppression -->' +
           '<div class="flex flex-wrap items-center gap-1.5">' +
-            '<button type="button" onclick="moveDkdSiteOrder(\'' + escapeHtml(site.id) + '\', \'first\')" title="Afficher ce site en tout premier" class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-extrabold cursor-pointer">🥇 Mettre 1er</button>' +
-            '<button type="button" onclick="moveDkdSiteOrder(\'' + escapeHtml(site.id) + '\', \'up\')" title="Monter d\'une place" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold cursor-pointer">⬆️ Monter</button>' +
-            '<button type="button" onclick="moveDkdSiteOrder(\'' + escapeHtml(site.id) + '\', \'down\')" title="Descendre d\'une place" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold cursor-pointer">⬇️ Descendre</button>' +
-            '<button type="button" onclick="deleteDkdSite(\'' + escapeHtml(site.id) + '\')" class="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-[11px] font-extrabold transition cursor-pointer">🗑️ Supprimer</button>' +
+            '<button type="button" data-site-id="' + safeSiteId + '" onclick="moveDkdSiteOrder(this.getAttribute(&quot;data-site-id&quot;), &quot;first&quot;)" title="Afficher ce site en tout premier" class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-extrabold cursor-pointer">🥇 Mettre 1er</button>' +
+            '<button type="button" data-site-id="' + safeSiteId + '" onclick="moveDkdSiteOrder(this.getAttribute(&quot;data-site-id&quot;), &quot;up&quot;)" title="Monter d&#39;une place" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold cursor-pointer">⬆️ Monter</button>' +
+            '<button type="button" data-site-id="' + safeSiteId + '" onclick="moveDkdSiteOrder(this.getAttribute(&quot;data-site-id&quot;), &quot;down&quot;)" title="Descendre d&#39;une place" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold cursor-pointer">⬇️ Descendre</button>' +
+            '<button type="button" data-site-id="' + safeSiteId + '" onclick="deleteDkdSite(this.getAttribute(&quot;data-site-id&quot;))" class="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-[11px] font-extrabold transition cursor-pointer">🗑️ Supprimer</button>' +
           '</div>' +
         '</div>' +
 
@@ -14886,45 +14895,57 @@ function renderDashboardHtml(data) {
             '<span class="text-xl">' + (isActive ? '✅' : '🚫') + '</span>' +
             '<div>' +
               '<div class="text-xs font-black ' + (isActive ? 'text-emerald-300' : 'text-rose-300') + '">' +
-                (isActive ? 'Site COCHÉ : Affiché dans l\'application DKD store' : 'Site DÉCOCHÉ : Masqué dans l\'application DKD store') +
+                (isActive ? 'Site COCHÉ : Affiché dans l&#39;application DKD store' : 'Site DÉCOCHÉ : Masqué dans l&#39;application DKD store') +
               '</div>' +
               '<div class="text-[11px] text-slate-300">Décochez cette case si vous souhaitez masquer temporairement ce site sans le supprimer.</div>' +
             '</div>' +
           '</div>' +
-          '<input type="checkbox" id="detail-dkd-active" ' + (isActive ? 'checked' : '') + ' onchange="toggleDkdSiteActive(\'' + escapeHtml(site.id) + '\', this.checked)" class="w-5 h-5 accent-emerald-500 rounded cursor-pointer shrink-0" />' +
+          '<input type="checkbox" id="detail-dkd-active" data-site-id="' + safeSiteId + '" ' + (isActive ? 'checked' : '') + ' onchange="toggleDkdSiteActive(this.getAttribute(&quot;data-site-id&quot;), this.checked)" class="w-5 h-5 accent-emerald-500 rounded cursor-pointer shrink-0" />' +
         '</label>' +
 
-        '<!-- Formulaire complet d\'édition des informations du site -->' +
+        '<!-- Formulaire complet d édition des informations et de la description du site -->' +
         '<div class="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-3.5">' +
-          '<div class="text-xs font-extrabold text-white uppercase tracking-wider border-b border-slate-800 pb-2">✏️ Modifier les informations du site</div>' +
+          '<div class="text-xs font-extrabold text-white uppercase tracking-wider border-b border-slate-800 pb-2">✏️ Informations de publication & Description du site</div>' +
 
           '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
             '<div class="space-y-1">' +
-              '<label class="text-[11px] font-bold text-slate-300 block">Nom du site / de l\'application</label>' +
+              '<label class="text-[11px] font-bold text-slate-300 block">Nom du site / de l&#39;application</label>' +
               '<input type="text" id="detail-dkd-name" value="' + escapeHtml(site.name || '') + '" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none" />' +
             '</div>' +
             '<div class="space-y-1">' +
               '<label class="text-[11px] font-bold text-slate-300 block">Lien du site (URL)</label>' +
-              '<input type="url" id="detail-dkd-url" value="' + escapeHtml(site.url || '') + '" oninput="onDkdSiteUrlInput(this.value, \'detail-dkd-logo\', \'detail-dkd-logo-preview\')" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none font-mono" />' +
+              '<input type="url" id="detail-dkd-url" value="' + escapeHtml(site.url || '') + '" oninput="onDkdSiteUrlInput(this.value, &quot;detail-dkd-logo&quot;, &quot;detail-dkd-logo-preview&quot;)" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none font-mono" />' +
             '</div>' +
+          '</div>' +
+
+          '<!-- Section dédiée : Informations & Description du site -->' +
+          '<div class="p-3.5 rounded-2xl bg-blue-950/20 border border-blue-500/30 space-y-2">' +
+            '<div class="flex items-center justify-between">' +
+              '<label class="text-xs font-extrabold text-blue-300 flex items-center gap-1.5">' +
+                '<span>📝</span>' +
+                '<span>Informations & Description du site (affichées aux utilisateurs dans DKD store)</span>' +
+              '</label>' +
+              '<span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-300 border border-blue-500/30 font-bold">Description de publication</span>' +
+            '</div>' +
+            '<textarea id="detail-dkd-desc" rows="4" placeholder="Décrivez ce site, ses fonctionnalités et ce qu&#39;il apporte aux utilisateurs dans StudyCloud..." class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none resize-y leading-relaxed">' + escapeHtml(site.description || '') + '</textarea>' +
           '</div>' +
 
           '<!-- Logo -->' +
           '<div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">' +
             '<div class="flex items-center justify-between">' +
               '<label class="text-[11px] font-bold text-slate-300">Logo du site (URL ou image importée)</label>' +
-              '<button type="button" onclick="autoDetectDkdLogo(\'detail-dkd-url\', \'detail-dkd-logo\', \'detail-dkd-logo-preview\')" class="text-[10px] px-2.5 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 font-bold cursor-pointer">🪄 Détecter le logo depuis le lien</button>' +
+              '<button type="button" onclick="autoDetectDkdLogo(&quot;detail-dkd-url&quot;, &quot;detail-dkd-logo&quot;, &quot;detail-dkd-logo-preview&quot;)" class="text-[10px] px-2.5 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 font-bold cursor-pointer">🪄 Détecter le logo depuis le lien</button>' +
             '</div>' +
             '<div class="flex items-center gap-3">' +
               '<div class="w-12 h-12 rounded-xl bg-slate-950 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0">' +
                 '<img id="detail-dkd-logo-preview" src="' + escapeHtml(logoSrc) + '" alt="Logo" class="w-9 h-9 object-contain ' + (logoSrc ? '' : 'hidden') + '" />' +
               '</div>' +
               '<div class="flex-1 space-y-1.5">' +
-                '<input type="text" id="detail-dkd-logo" value="' + escapeHtml(site.logo_url || '') + '" oninput="updateDkdLogoPreview(this.value, \'detail-dkd-logo-preview\')" placeholder="https://... ou data:image/..." class="w-full bg-slate-950 text-white text-[11px] rounded-xl px-3 py-2 border border-slate-700 focus:border-blue-500 outline-none font-mono" />' +
+                '<input type="text" id="detail-dkd-logo" value="' + escapeHtml(site.logo_url || '') + '" oninput="updateDkdLogoPreview(this.value, &quot;detail-dkd-logo-preview&quot;)" placeholder="https://... ou data:image/..." class="w-full bg-slate-950 text-white text-[11px] rounded-xl px-3 py-2 border border-slate-700 focus:border-blue-500 outline-none font-mono" />' +
                 '<div class="flex items-center gap-2">' +
                   '<label class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold border border-slate-700 cursor-pointer inline-flex items-center gap-1">' +
-                    '<span>📁 Changer l\'image du logo</span>' +
-                    '<input type="file" accept="image/*" class="hidden" onchange="handleDkdLogoFileUpload(event, \'detail-dkd-logo\', \'detail-dkd-logo-preview\')" />' +
+                    '<span>📁 Changer l&#39;image du logo</span>' +
+                    '<input type="file" accept="image/*" class="hidden" onchange="handleDkdLogoFileUpload(event, &quot;detail-dkd-logo&quot;, &quot;detail-dkd-logo-preview&quot;)" />' +
                   '</label>' +
                 '</div>' +
               '</div>' +
@@ -14946,21 +14967,16 @@ function renderDashboardHtml(data) {
               '<input type="text" id="detail-dkd-badge" value="' + escapeHtml(site.badge || '') + '" placeholder="Ex: Officiel, Gratuit..." class="w-full bg-slate-900 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none" />' +
             '</div>' +
             '<div class="space-y-1">' +
-              '<label class="text-[11px] font-bold text-slate-300 block">Ordre d\'affichage (1er, 2e...)</label>' +
+              '<label class="text-[11px] font-bold text-slate-300 block">Ordre d&#39;affichage (1er, 2e...)</label>' +
               '<input type="number" id="detail-dkd-order" value="' + Number(site.sort_order || 1) + '" min="1" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none font-mono font-bold" />' +
             '</div>' +
           '</div>' +
 
-          '<div class="space-y-1">' +
-            '<label class="text-[11px] font-bold text-slate-300 block">Description</label>' +
-            '<textarea id="detail-dkd-desc" rows="2" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2 border border-slate-700 focus:border-blue-500 outline-none resize-none">' + escapeHtml(site.description || '') + '</textarea>' +
-          '</div>' +
-
           '<div class="flex items-center justify-between gap-3 pt-2 border-t border-slate-800">' +
-            '<button type="button" onclick="deleteDkdSite(\'' + escapeHtml(site.id) + '\')" class="px-4 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 font-bold text-xs transition cursor-pointer">' +
+            '<button type="button" data-site-id="' + safeSiteId + '" onclick="deleteDkdSite(this.getAttribute(&quot;data-site-id&quot;))" class="px-4 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 font-bold text-xs transition cursor-pointer">' +
               '🗑️ Supprimer ce site' +
             '</button>' +
-            '<button type="button" id="btn-save-dkd-detail" onclick="saveDkdSiteFromDetail(\'' + escapeHtml(site.id) + '\')" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white font-black text-xs shadow-lg cursor-pointer active:scale-95">' +
+            '<button type="button" id="btn-save-dkd-detail" data-site-id="' + safeSiteId + '" onclick="saveDkdSiteFromDetail(this.getAttribute(&quot;data-site-id&quot;))" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white font-black text-xs shadow-lg cursor-pointer active:scale-95">' +
               '💾 Enregistrer les modifications' +
             '</button>' +
           '</div>' +
@@ -14996,7 +15012,7 @@ function renderDashboardHtml(data) {
       const urlInp = document.getElementById(urlInputId);
       const logoInp = document.getElementById(logoInputId);
       if (!urlInp || !urlInp.value.trim()) {
-        showToast('⚠️ Entrez d\'abord le lien URL du site');
+        showToast("⚠️ Entrez d'abord le lien URL du site");
         return;
       }
       const fav = getAutoFaviconUrl(urlInp.value.trim());
@@ -15156,11 +15172,11 @@ function renderDashboardHtml(data) {
         const data = await res.json();
         if (data.success) {
           dkdStoreSites = data.sites || dkdStoreSites;
-          if (data. categories) dkdStoreCategories = data.categories;
+          if (data.categories) dkdStoreCategories = data.categories;
           if (data.site && data.site.id) selectedDkdStoreSiteId = data.site.id;
           closeDkdSiteModal();
           renderDkdStoreView();
-          showToast('✓ Site "' + name + '" ajouté dans DKD store !');
+          showToast('✓ Site "' + name + '" publié dans DKD store !');
         } else {
           showToast('⚠️ ' + (data.error || 'Échec de sauvegarde'));
         }
@@ -15319,7 +15335,7 @@ function renderDashboardHtml(data) {
           dkdStoreSites = data.sites || dkdStoreSites;
           if (data.config) dkdStoreConfig = data.config;
           renderDkdStoreView();
-          showToast('📊 Ordre d\'affichage mis à jour !');
+          showToast("📊 Ordre d'affichage mis à jour !");
         }
       } catch (e) {
         showToast('❌ Erreur : ' + e.message);
@@ -15373,7 +15389,7 @@ function renderDashboardHtml(data) {
       let html = '';
       // Option "Tout"
       const totalSites = (dkdStoreSites || []).length;
-      html += '<div onclick="selectDkdCategory(\'all\'); closeAllCategoriesModal();" class="p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border ' + (selectedDkdStoreCategoryId === 'all' ? 'border-blue-500' : 'border-slate-800') + ' flex items-center justify-between cursor-pointer transition">' +
+      html += '<div data-cat-id="all" onclick="selectDkdCategory(this.getAttribute(&quot;data-cat-id&quot;)); closeAllCategoriesModal();" class="p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border ' + (selectedDkdStoreCategoryId === 'all' ? 'border-blue-500' : 'border-slate-800') + ' flex items-center justify-between cursor-pointer transition">' +
         '<div class="flex items-center gap-2.5">' +
           '<span class="text-base">✨</span>' +
           '<span class="text-xs font-black text-white">Tout (Toutes les catégories)</span>' +
@@ -15386,15 +15402,16 @@ function renderDashboardHtml(data) {
           return String(s.category_id) === String(c.id) || String(s.category_name).toLowerCase() === String(c.name).toLowerCase();
         }).length;
         const isSel = String(selectedDkdStoreCategoryId) === String(c.id);
+        const safeCatId = escapeHtml(c.id);
 
         html += '<div class="p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800/80 border ' + (isSel ? 'border-blue-500' : 'border-slate-800') + ' flex items-center justify-between gap-2 transition">' +
-          '<div onclick="selectDkdCategory(\'' + escapeHtml(c.id) + '\'); closeAllCategoriesModal();" class="flex items-center gap-2.5 flex-1 cursor-pointer min-w-0">' +
+          '<div data-cat-id="' + safeCatId + '" onclick="selectDkdCategory(this.getAttribute(&quot;data-cat-id&quot;)); closeAllCategoriesModal();" class="flex items-center gap-2.5 flex-1 cursor-pointer min-w-0">' +
             '<span class="text-[10px] font-mono text-slate-500">#' + (idx + 1) + '</span>' +
             '<span class="text-base">' + escapeHtml(c.icon || '📁') + '</span>' +
             '<span class="text-xs font-bold text-white truncate">' + escapeHtml(c.name) + '</span>' +
             '<span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">' + count + ' site(s)</span>' +
           '</div>' +
-          '<button type="button" onclick="deleteDkdCategory(\'' + escapeHtml(c.id) + '\')" title="Supprimer cette catégorie" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-600 text-rose-400 hover:text-white text-[10px] font-bold cursor-pointer">🗑️</button>' +
+          '<button type="button" data-cat-id="' + safeCatId + '" onclick="deleteDkdCategory(this.getAttribute(&quot;data-cat-id&quot;))" title="Supprimer cette catégorie" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-600 text-rose-400 hover:text-white text-[10px] font-bold cursor-pointer">🗑️</button>' +
         '</div>';
       });
 
@@ -15488,9 +15505,9 @@ function renderDashboardHtml(data) {
             '<span class="text-xs font-bold text-white truncate">' + escapeHtml(c.name) + '</span>' +
           '</div>' +
           '<div class="flex items-center gap-1 shrink-0">' +
-            '<button type="button" onclick="moveRankCategoryItem(' + i + ', \'first\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-amber-300 font-bold cursor-pointer">1er</button>' +
-            '<button type="button" onclick="moveRankCategoryItem(' + i + ', \'up\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬆️</button>' +
-            '<button type="button" onclick="moveRankCategoryItem(' + i + ', \'down\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬇️</button>' +
+            '<button type="button" onclick="moveRankCategoryItem(' + i + ', &quot;first&quot;)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-amber-300 font-bold cursor-pointer">1er</button>' +
+            '<button type="button" onclick="moveRankCategoryItem(' + i + ', &quot;up&quot;)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬆️</button>' +
+            '<button type="button" onclick="moveRankCategoryItem(' + i + ', &quot;down&quot;)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬇️</button>' +
           '</div>' +
         '</div>';
       });
@@ -15592,9 +15609,9 @@ function renderDashboardHtml(data) {
             '</div>' +
           '</div>' +
           '<div class="flex items-center gap-1 shrink-0">' +
-            '<button type="button" onclick="moveRankSiteItem(' + i + ', \'first\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-emerald-300 font-bold cursor-pointer">🥇 1er</button>' +
-            '<button type="button" onclick="moveRankSiteItem(' + i + ', \'up\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬆️</button>' +
-            '<button type="button" onclick="moveRankSiteItem(' + i + ', \'down\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬇️</button>' +
+            '<button type="button" onclick="moveRankSiteItem(' + i + ', &quot;first&quot;)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-emerald-300 font-bold cursor-pointer">🥇 1er</button>' +
+            '<button type="button" onclick="moveRankSiteItem(' + i + ', &quot;up&quot;)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬆️</button>' +
+            '<button type="button" onclick="moveRankSiteItem(' + i + ', &quot;down&quot;)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬇️</button>' +
           '</div>' +
         '</div>';
       });
