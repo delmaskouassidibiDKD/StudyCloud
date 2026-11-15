@@ -924,6 +924,50 @@ async function ensureStorageTables(db) {
       console.warn('[Storage Tables Init] Erreur rules:', errRules);
     }
 
+    // 9. Tables D1 pour le DKD store (Catalogue de Sites, Logos, Catégories & Classement)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS dkd_store_config (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        sites_sort_mode TEXT DEFAULT 'manual',
+        categories_sort_mode TEXT DEFAULT 'manual',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      INSERT OR IGNORE INTO dkd_store_config (id, sites_sort_mode, categories_sort_mode)
+      VALUES ('default', 'manual', 'manual')
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS dkd_store_categories (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        icon TEXT DEFAULT '📁',
+        sort_order INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS dkd_store_sites (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        logo_url TEXT DEFAULT '',
+        category_id TEXT DEFAULT '',
+        category_name TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        badge TEXT DEFAULT '',
+        is_active INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
   } catch (e) {
     console.warn('[Storage Tables Init]', e);
   }
@@ -1484,6 +1528,26 @@ const TABLES_METADATA = [
     example: "{ id: 'youtube', name: 'Tutoriels Vidéo', url: 'https://youtube.com/...' }",
     isExempted: true,
     exemptReason: "Liens utiles globaux de la plateforme (non décompté du quota personnel)"
+  },
+  {
+    table: 'dkd_store_sites',
+    label: 'Catalogue des sites et pépites du DKD store',
+    uiConnection: "Menu d'Administration > DKD store & Application DKD store (Écran d'accueil)",
+    role: "Enregistre tous les sites web, outils, simulateurs, logos, catégories, statut actif/masqué et ordre d'affichage ajoutés depuis le tableau de bord.",
+    usage: "Alimente en direct l'application DKD store dans StudyCloud.",
+    example: "{ id: 'site_1', name: 'PhET Simulations', url: 'https://phet.colorado.edu', is_active: 1, sort_order: 1 }",
+    isExempted: true,
+    exemptReason: "Catalogue officiel de la plateforme DKD store"
+  },
+  {
+    table: 'dkd_store_categories',
+    label: 'Catégories du catalogue DKD store',
+    uiConnection: "Menu d'Administration > DKD store > Catégories",
+    role: "Stocke les catégories de classement des pépites web et leur ordre d'affichage.",
+    usage: "Permet de filtrer horizontalement et de classer les sites dans DKD store.",
+    example: "{ id: 'cat_cme', name: 'Électrotechnique & CME', icon: '⚡', sort_order: 1 }",
+    isExempted: true,
+    exemptReason: "Catégories officielles du DKD store"
   }
 ];
 
@@ -2805,6 +2869,9 @@ function renderDashboardHtml(data) {
   const robotRougeModelsJson = JSON.stringify(data.robotRougeModels || []).replace(/</g, '\\u003c');
   const aiBillingConfigJson = JSON.stringify(data.aiBillingConfig || { tokens_per_credit: 1000, welcome_credits: 50, daily_free_credits: 0, is_daily_renewal_active: 0 }).replace(/</g, '\\u003c');
   const aiUsageLogsJson = JSON.stringify(data.aiUsageLogs || []).replace(/</g, '\\u003c');
+  const dkdStoreConfigJson = JSON.stringify(data.dkdStoreConfig || { id: 'default', sites_sort_mode: 'manual', categories_sort_mode: 'manual' }).replace(/</g, '\\u003c');
+  const dkdStoreCategoriesJson = JSON.stringify(data.dkdStoreCategories || []).replace(/</g, '\\u003c');
+  const dkdStoreSitesJson = JSON.stringify(data.dkdStoreSites || []).replace(/</g, '\\u003c');
   const aiCfg = data.aiBillingConfig || { tokens_per_credit: 1000, welcome_credits: 50, daily_free_credits: 0, is_daily_renewal_active: 0 };
   const rc = data.robotRougeConfig || {};
   const cp = data.companyProfile || {};
@@ -3119,6 +3186,23 @@ function renderDashboardHtml(data) {
             <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 font-mono">50-100%</span>
           </div>
           <div class="text-[10px] text-slate-400 font-normal truncate">Seuils, emails ADN & relances</div>
+        </div>
+      </button>
+
+      <button 
+        onclick="switchView('dkd-store')" 
+        id="nav-btn-dkd-store"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
+      >
+        <span class="text-base group-hover:scale-110 transition-transform">🛍️</span>
+        <div class="flex-1 overflow-hidden">
+          <div class="text-xs font-extrabold flex items-center justify-between gap-1.5">
+            <span class="tracking-tight">
+              <span style="color:#4285F4">D</span><span style="color:#EA4335">K</span><span style="color:#FBBC05">D</span> <span style="color:#34A853">s</span><span style="color:#4285F4">t</span><span style="color:#EA4335">o</span><span style="color:#FBBC05">r</span><span style="color:#34A853">e</span>
+            </span>
+            <span id="sidebar-dkd-sites-count" class="text-[9px] px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-mono">0</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Sites, logos, catégories & ordre</div>
         </div>
       </button>
     </nav>
@@ -5764,6 +5848,120 @@ function renderDashboardHtml(data) {
     </div>
   </div>
 
+    <!-- ================================================================== -->
+    <!-- VUE DKD STORE : GESTION DES SITES, PÉPITES, LOGOS & CATÉGORIES     -->
+    <!-- ================================================================== -->
+    <div id="view-dkd-store" class="hidden flex-1 min-h-0 flex-col gap-2.5 overflow-hidden">
+      <!-- BARRE SUPÉRIEURE : TITRE + BOUTONS D'ACTION + RECHERCHE + CATÉGORIES HORIZONTALES -->
+      <div class="bg-[#0e1628] border border-slate-800 rounded-2xl p-3 shrink-0 space-y-2.5 shadow-lg">
+        <!-- Ligne 1 : Titre DKD store & les 3 Boutons Principaux -->
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2.5">
+            <div class="w-9 h-9 rounded-xl bg-slate-900 border border-slate-700/80 flex items-center justify-center text-lg shadow-inner">
+              🛍️
+            </div>
+            <div>
+              <h2 class="text-sm sm:text-base font-black tracking-tight flex items-center gap-2">
+                <span>
+                  <span style="color:#4285F4">D</span><span style="color:#EA4335">K</span><span style="color:#FBBC05">D</span> <span style="color:#34A853">s</span><span style="color:#4285F4">t</span><span style="color:#EA4335">o</span><span style="color:#FBBC05">r</span><span style="color:#34A853">e</span>
+                </span>
+                <span id="dkd-store-header-count" class="text-[10px] px-2 py-0.5 rounded-full bg-blue-500/15 text-blue-400 border border-blue-500/30 font-mono">0 site</span>
+                <span id="dkd-store-sort-mode-badge" class="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono">Ordre personnalisé</span>
+              </h2>
+              <p class="text-[11px] text-slate-400">Ajoutez des sites et logos, créez des catégories, cochez/décochez la visibilité et classez l'ordre d'affichage dans StudyCloud.</p>
+            </div>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2">
+            <!-- Bouton 1 : Ajouter un site -->
+            <button
+              type="button"
+              onclick="openDkdSiteModal()"
+              class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white font-black text-xs shadow-lg shadow-blue-900/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+            >
+              <span>➕</span>
+              <span>Ajouter un site</span>
+            </button>
+
+            <!-- Bouton 2 : Classer les catégories -->
+            <button
+              type="button"
+              onclick="openRankCategoriesModal()"
+              class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-300 border border-amber-500/30 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+            >
+              <span>🗂️</span>
+              <span>Classer les catégories</span>
+            </button>
+
+            <!-- Bouton 3 : Classer les sites -->
+            <button
+              type="button"
+              onclick="openRankSitesModal()"
+              class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-emerald-300 border border-emerald-500/30 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+            >
+              <span>📊</span>
+              <span>Classer les sites</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Ligne 2 : Champ de recherche rapide en haut -->
+        <div class="relative">
+          <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+          <input
+            type="text"
+            id="dkd-store-search-input"
+            oninput="onDkdStoreSearch(this.value)"
+            placeholder="Rechercher rapidement une application, un site, un lien ou une catégorie..."
+            class="w-full bg-slate-950/90 text-white text-xs rounded-xl pl-9 pr-9 py-2.5 border border-slate-700/80 hover:border-blue-500/60 focus:border-blue-500 outline-none transition"
+          />
+          <button
+            type="button"
+            id="dkd-store-search-clear"
+            onclick="onDkdStoreSearch('')"
+            class="hidden absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-xs cursor-pointer"
+          >✕</button>
+        </div>
+
+        <!-- Ligne 3 : En bas du champ de recherche -> Catégories horizontales ("Tout" en 1er + quelques catégories + bouton 3 traits ☰ à la fin) -->
+        <div class="flex items-center gap-1.5 pt-0.5 overflow-x-auto no-scrollbar" id="dkd-store-horizontal-cats">
+          <!-- Généré dynamiquement par renderDkdStoreHorizontalCategories() -->
+        </div>
+      </div>
+
+      <!-- ZONE SPLIT-VIEW 2 COLONNES : GAUCHE (LISTE DES SITES) / DROITE (DÉTAILS & ACTIONS DU SITE SÉLECTIONNÉ) -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
+        <!-- COLONNE GAUCHE : Tous les sites ajoutés -->
+        <div class="md:col-span-5 lg:col-span-4 bg-[#0e1628] border border-slate-800 rounded-2xl flex flex-col min-h-0 overflow-hidden shadow-lg">
+          <div class="px-3.5 py-2.5 border-b border-slate-800 flex items-center justify-between shrink-0 bg-slate-900/50">
+            <div class="text-xs font-extrabold text-white flex items-center gap-1.5">
+              <span>🌐</span>
+              <span>Sites ajoutés</span>
+              <span id="dkd-left-list-count" class="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-800 text-slate-300 font-mono">0</span>
+            </div>
+            <button
+              type="button"
+              onclick="openAllCategoriesModal()"
+              class="text-[10px] text-blue-400 hover:text-blue-300 font-bold flex items-center gap-1 cursor-pointer"
+            >
+              <span>➕ Gérer catégories</span>
+            </button>
+          </div>
+
+          <div id="dkd-store-left-list" class="flex-1 overflow-y-auto p-2 space-y-1.5">
+            <!-- Liste générée dynamiquement par renderDkdStoreLeftList() -->
+          </div>
+        </div>
+
+        <!-- COLONNE DROITE : Détails complets du site cliqué et toutes les actions -->
+        <div class="md:col-span-7 lg:col-span-8 bg-[#0e1628] border border-slate-800 rounded-2xl flex flex-col min-h-0 overflow-hidden shadow-lg">
+          <div id="dkd-store-right-detail" class="flex-1 overflow-y-auto p-4">
+            <!-- Détails générés dynamiquement par renderDkdStoreRightDetail() -->
+          </div>
+        </div>
+      </div>
+    </div>
+
 </main>
 
   <!-- ================================================================== -->
@@ -6278,6 +6476,339 @@ function renderDashboardHtml(data) {
     </div>
   </div>
 
+  <!-- ================================================================== -->
+  <!-- MODALE 1 DKD STORE : AJOUTER OU MODIFIER UN SITE                   -->
+  <!-- ================================================================== -->
+  <div id="modal-dkd-site" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4" onclick="closeDkdSiteModal(event)">
+    <div class="relative max-w-xl w-full bg-[#0e1628] border-2 border-slate-700 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] overflow-y-auto" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3">
+        <div class="flex items-center gap-2.5">
+          <div class="w-10 h-10 rounded-2xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-xl">🌐</div>
+          <div>
+            <h3 id="modal-dkd-site-title" class="text-base font-black text-white">Ajouter un site dans DKD store</h3>
+            <p class="text-[11px] text-slate-400">Enregistrez le nom, le lien, le logo et la catégorie dans la base D1.</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeDkdSiteModal()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer text-sm">✕</button>
+      </div>
+
+      <input type="hidden" id="dkd-site-form-id" value="" />
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="space-y-1">
+          <label class="text-xs font-bold text-slate-200 block">Nom du site / de l'application *</label>
+          <input
+            type="text"
+            id="dkd-site-form-name"
+            placeholder="Ex: Wikipédia, PhET Simulations, GeoGebra..."
+            class="w-full bg-slate-950 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none"
+          />
+        </div>
+
+        <div class="space-y-1">
+          <label class="text-xs font-bold text-slate-200 block">Lien du site (URL complète) *</label>
+          <input
+            type="url"
+            id="dkd-site-form-url"
+            oninput="onDkdSiteUrlInput(this.value, 'dkd-site-form-logo', 'dkd-site-form-logo-preview')"
+            placeholder="https://..."
+            class="w-full bg-slate-950 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none font-mono"
+          />
+        </div>
+      </div>
+
+      <!-- Logo du site : Aperçu + Upload Image + URL + Auto-Favicon -->
+      <div class="p-3 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+        <div class="flex items-center justify-between">
+          <label class="text-xs font-bold text-slate-200">Logo du site</label>
+          <button
+            type="button"
+            onclick="autoDetectDkdLogo('dkd-site-form-url', 'dkd-site-form-logo', 'dkd-site-form-logo-preview')"
+            class="text-[10px] px-2.5 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 font-bold cursor-pointer"
+          >
+            🪄 Récupérer le logo depuis le lien
+          </button>
+        </div>
+        <div class="flex items-center gap-3">
+          <div class="w-14 h-14 rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0">
+            <img id="dkd-site-form-logo-preview" src="" alt="Logo" class="w-10 h-10 object-contain hidden" />
+            <span id="dkd-site-form-logo-fallback" class="text-xl">🌐</span>
+          </div>
+          <div class="flex-1 space-y-2">
+            <input
+              type="text"
+              id="dkd-site-form-logo"
+              oninput="updateDkdLogoPreview(this.value, 'dkd-site-form-logo-preview')"
+              placeholder="Lien du logo (https://...) ou importer une image ci-dessous"
+              class="w-full bg-slate-900 text-white text-[11px] rounded-xl px-3 py-2 border border-slate-700 focus:border-blue-500 outline-none font-mono"
+            />
+            <div class="flex items-center gap-2">
+              <label class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold border border-slate-700 cursor-pointer flex items-center gap-1.5">
+                <span>📁 Importer un fichier logo</span>
+                <input type="file" accept="image/*" class="hidden" onchange="handleDkdLogoFileUpload(event, 'dkd-site-form-logo', 'dkd-site-form-logo-preview')" />
+              </label>
+              <span class="text-[10px] text-slate-500">PNG, JPG, WebP ou SVG</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Catégorie + Création rapide de catégorie -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="space-y-1">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold text-slate-200">Catégorie *</label>
+            <button type="button" onclick="toggleQuickAddCategoryBox()" class="text-[10px] text-amber-400 hover:text-amber-300 font-bold cursor-pointer">➕ Créer une catégorie</button>
+          </div>
+          <select
+            id="dkd-site-form-category"
+            class="w-full bg-slate-950 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none cursor-pointer"
+          >
+            <!-- Options générées dynamiquement -->
+          </select>
+        </div>
+
+        <div class="grid grid-cols-2 gap-2">
+          <div class="space-y-1">
+            <label class="text-xs font-bold text-slate-200 block">Badge (Optionnel)</label>
+            <input
+              type="text"
+              id="dkd-site-form-badge"
+              placeholder="Ex: Populaire, Gratuit..."
+              class="w-full bg-slate-950 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none"
+            />
+          </div>
+          <div class="space-y-1">
+            <label class="text-xs font-bold text-slate-200 block">Position (1er, 2e...)</label>
+            <input
+              type="number"
+              id="dkd-site-form-order"
+              value="1"
+              min="1"
+              class="w-full bg-slate-950 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none font-mono font-bold"
+            />
+          </div>
+        </div>
+      </div>
+
+      <!-- Boîte de création rapide de catégorie -->
+      <div id="dkd-quick-add-cat-box" class="hidden p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
+        <div class="text-[11px] font-bold text-amber-300">Nouvelle catégorie</div>
+        <div class="flex items-center gap-2">
+          <input
+            type="text"
+            id="dkd-quick-cat-icon"
+            value="📁"
+            placeholder="Icône"
+            class="w-14 bg-slate-950 text-white text-center text-xs rounded-lg px-2 py-2 border border-slate-700 outline-none"
+          />
+          <input
+            type="text"
+            id="dkd-quick-cat-name"
+            placeholder="Nom de la catégorie (ex: Sciences, IA, Livres...)"
+            class="flex-1 bg-slate-950 text-white text-xs rounded-lg px-3 py-2 border border-slate-700 outline-none"
+          />
+          <button
+            type="button"
+            onclick="submitQuickCategory()"
+            class="px-3 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs cursor-pointer"
+          >
+            Ajouter
+          </button>
+        </div>
+      </div>
+
+      <!-- Description -->
+      <div class="space-y-1">
+        <label class="text-xs font-bold text-slate-200 block">Description du site</label>
+        <textarea
+          id="dkd-site-form-desc"
+          rows="2"
+          placeholder="Expliquez en une phrase ce que ce site apporte à l'étudiant..."
+          class="w-full bg-slate-950 text-white text-xs rounded-xl px-3.5 py-2 border border-slate-700 focus:border-blue-500 outline-none resize-none"
+        ></textarea>
+      </div>
+
+      <!-- Cocher / Décocher l'affichage dans DKD store -->
+      <label class="p-3 rounded-xl bg-slate-950/90 border border-slate-800 flex items-center justify-between cursor-pointer hover:border-emerald-500/40 transition">
+        <div>
+          <div class="text-xs font-bold text-white">Afficher ce site dans DKD store (Coché = Visible)</div>
+          <div class="text-[10px] text-slate-400">Si décoché, le site est conservé mais ne s'affiche plus dans l'application.</div>
+        </div>
+        <input type="checkbox" id="dkd-site-form-active" checked class="w-5 h-5 accent-emerald-500 rounded cursor-pointer" />
+      </label>
+
+      <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
+        <button type="button" onclick="closeDkdSiteModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer">
+          Annuler
+        </button>
+        <button
+          type="button"
+          id="btn-save-dkd-site-modal"
+          onclick="saveDkdSiteFromModal()"
+          class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white font-black text-xs shadow-lg cursor-pointer active:scale-95"
+        >
+          💾 Enregistrer le site
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================== -->
+  <!-- MODALE 2 DKD STORE : BOUTON 3 TRAITS (☰) TOUTES LES CATÉGORIES     -->
+  <!-- ================================================================== -->
+  <div id="modal-dkd-all-categories" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4" onclick="closeAllCategoriesModal(event)">
+    <div class="relative max-w-lg w-full bg-[#0e1628] border-2 border-slate-700 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-amber-500/15 border border-amber-500/30 flex items-center justify-center text-lg font-black text-amber-300">☰</div>
+          <div>
+            <h3 class="text-base font-black text-white">Toutes les catégories existantes</h3>
+            <p class="text-[11px] text-slate-400">Cliquez sur une catégorie pour filtrer ou créez-en une nouvelle.</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeAllCategoriesModal()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer text-sm">✕</button>
+      </div>
+
+      <!-- Création d'une catégorie -->
+      <div class="p-3 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-2 shrink-0">
+        <div class="text-[11px] font-bold text-slate-300">➕ Créer une nouvelle catégorie</div>
+        <div class="flex items-center gap-2">
+          <input
+            type="text"
+            id="modal-all-cat-new-icon"
+            value="📁"
+            class="w-12 bg-slate-900 text-white text-center text-xs rounded-xl px-2 py-2 border border-slate-700 outline-none"
+          />
+          <input
+            type="text"
+            id="modal-all-cat-new-name"
+            placeholder="Nom de la catégorie..."
+            class="flex-1 bg-slate-900 text-white text-xs rounded-xl px-3 py-2 border border-slate-700 focus:border-amber-500 outline-none"
+          />
+          <button
+            type="button"
+            onclick="createNewCategoryFromAllModal()"
+            class="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-xs cursor-pointer"
+          >
+            Créer
+          </button>
+        </div>
+      </div>
+
+      <!-- Recherche dans les catégories -->
+      <div class="relative shrink-0">
+        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+        <input
+          type="text"
+          id="modal-all-cat-search"
+          oninput="renderAllCategoriesModalList()"
+          placeholder="Chercher une catégorie..."
+          class="w-full bg-slate-950 text-white text-xs rounded-xl pl-8 pr-3 py-2 border border-slate-800 focus:border-blue-500 outline-none"
+        />
+      </div>
+
+      <!-- Liste complète de toutes les catégories -->
+      <div id="modal-all-cat-list" class="flex-1 overflow-y-auto space-y-1.5 pr-1">
+        <!-- Généré dynamiquement -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================== -->
+  <!-- MODALE 3 DKD STORE : CLASSER LES CATÉGORIES (OU COCHER ALÉATOIRE)  -->
+  <!-- ================================================================== -->
+  <div id="modal-dkd-rank-categories" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4" onclick="closeRankCategoriesModal(event)">
+    <div class="relative max-w-lg w-full bg-[#0e1628] border-2 border-slate-700 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">🗂️</span>
+          <div>
+            <h3 class="text-base font-black text-white">Classer les catégories</h3>
+            <p class="text-[11px] text-slate-400">Choisissez quelle catégorie s'affiche en premier ou cochez l'affichage aléatoire.</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeRankCategoriesModal()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer text-sm">✕</button>
+      </div>
+
+      <!-- Option Aléatoire -->
+      <label class="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-between cursor-pointer shrink-0">
+        <div class="flex items-center gap-2.5">
+          <span class="text-xl">🎲</span>
+          <div>
+            <div class="text-xs font-black text-amber-300">Affichage aléatoire des catégories</div>
+            <div class="text-[10px] text-slate-300">Si coché, l'ordre des catégories changera automatiquement de façon aléatoire.</div>
+          </div>
+        </div>
+        <input type="checkbox" id="dkd-rank-cats-random-checkbox" onchange="onToggleRandomCategories(this.checked)" class="w-5 h-5 accent-amber-500 rounded cursor-pointer" />
+      </label>
+
+      <div id="dkd-rank-cats-list" class="flex-1 overflow-y-auto space-y-1.5 pr-1">
+        <!-- Généré dynamiquement -->
+      </div>
+
+      <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800 shrink-0">
+        <button type="button" onclick="closeRankCategoriesModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer">
+          Fermer
+        </button>
+        <button
+          type="button"
+          onclick="saveRankedCategories()"
+          class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-stone-950 font-black text-xs shadow-lg cursor-pointer"
+        >
+          ✓ Enregistrer le classement
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================== -->
+  <!-- MODALE 4 DKD STORE : CLASSER LES SITES (OU COCHER ALÉATOIRE)       -->
+  <!-- ================================================================== -->
+  <div id="modal-dkd-rank-sites" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4" onclick="closeRankSitesModal(event)">
+    <div class="relative max-w-xl w-full bg-[#0e1628] border-2 border-slate-700 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+        <div class="flex items-center gap-2.5">
+          <span class="text-2xl">📊</span>
+          <div>
+            <h3 class="text-base font-black text-white">Classer les sites</h3>
+            <p class="text-[11px] text-slate-400">Décidez quels sites s'affichent en premier dans l'application ou cochez aléatoire.</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeRankSitesModal()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer text-sm">✕</button>
+      </div>
+
+      <!-- Option Aléatoire -->
+      <label class="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-between cursor-pointer shrink-0">
+        <div class="flex items-center gap-2.5">
+          <span class="text-xl">🎲</span>
+          <div>
+            <div class="text-xs font-black text-emerald-300">Affichage aléatoire des sites</div>
+            <div class="text-[10px] text-slate-300">Si coché, les sites s'afficheront dans un ordre aléatoire à chaque ouverture de DKD store.</div>
+          </div>
+        </div>
+        <input type="checkbox" id="dkd-rank-sites-random-checkbox" onchange="onToggleRandomSites(this.checked)" class="w-5 h-5 accent-emerald-500 rounded cursor-pointer" />
+      </label>
+
+      <div id="dkd-rank-sites-list" class="flex-1 overflow-y-auto space-y-1.5 pr-1">
+        <!-- Généré dynamiquement -->
+      </div>
+
+      <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800 shrink-0">
+        <button type="button" onclick="closeRankSitesModal()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs cursor-pointer">
+          Fermer
+        </button>
+        <button
+          type="button"
+          onclick="saveRankedSites()"
+          class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-stone-950 font-black text-xs shadow-lg cursor-pointer"
+        >
+          ✓ Enregistrer le classement
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST DE NOTIFICATION FLOTTANT -->
   <div id="toast" class="fixed bottom-5 right-5 z-50 bg-emerald-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-2xl border border-emerald-400/40 hidden transition-opacity animate-bounce">
     Notification
@@ -6295,6 +6826,12 @@ function renderDashboardHtml(data) {
     let allStoragePlans = ${storagePlansJson};
     let allAiPlans = ${aiPlansJson};
     let robotRougeConfig = ${robotRougeConfigJson};
+    let dkdStoreConfig = ${dkdStoreConfigJson};
+    let dkdStoreCategories = Array.isArray(${dkdStoreCategoriesJson}) ? ${dkdStoreCategoriesJson} : [];
+    let dkdStoreSites = Array.isArray(${dkdStoreSitesJson}) ? ${dkdStoreSitesJson} : [];
+    let selectedDkdStoreCategoryId = 'all';
+    let selectedDkdStoreSiteId = dkdStoreSites.length > 0 ? dkdStoreSites[0].id : null;
+    let dkdStoreSearchQuery = '';
     const defaultStorageAlertRules = [
       {
         threshold_percent: 50,
@@ -6454,8 +6991,8 @@ function renderDashboardHtml(data) {
 
     function switchView(viewName) {
       currentView = viewName;
-      const flexViews = ['users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques'];
-      ['global', 'users', 'demandes', 'demandes-ia', 'robot-rouge', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro', 'alertes-stockage', 'facturation-ia'].forEach(v => {
+      const flexViews = ['users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'dkd-store'];
+      ['global', 'users', 'demandes', 'demandes-ia', 'robot-rouge', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro', 'alertes-stockage', 'facturation-ia', 'dkd-store'].forEach(v => {
         const el = document.getElementById('view-' + v);
         const navBtn = document.getElementById('nav-btn-' + v);
         if (!el) return;
@@ -6489,7 +7026,8 @@ function renderDashboardHtml(data) {
           statistiques: 'Statistiques & Métriques',
           'profil-pro': 'Informations professionnelles',
           'alertes-stockage': 'Planification Alertes Stockage',
-          'facturation-ia': 'Facturation & Quotas IA (Formule 2)'
+          'facturation-ia': 'Facturation & Quotas IA (Formule 2)',
+          'dkd-store': 'DKD store — Sites, Pépites & Catégories'
         };
         badge.textContent = titles[viewName] || viewName;
       }
@@ -6548,6 +7086,10 @@ function renderDashboardHtml(data) {
           }
         } catch(e) {
           console.warn('Erreur chargement Robot Rouge:', e);
+        }
+      } else if (viewName === 'dkd-store') {
+        if (typeof renderDkdStoreView === 'function') {
+          renderDkdStoreView();
         }
       }
     }
@@ -14016,6 +14558,1080 @@ function renderDashboardHtml(data) {
     }
     window.loadFacturationIaLogs = loadFacturationIaLogs;
 
+    // ========================================================================
+    // GESTION COMPLÈTE DU MENU DKD STORE (SITES, LOGOS, CATÉGORIES & CLASSEMENT)
+    // ========================================================================
+    let tempRankedCategories = [];
+    let tempRankedSites = [];
+
+    function getDomainFromUrl(rawUrl) {
+      try {
+        const u = new URL(rawUrl.indexOf('://') === -1 ? 'https://' + rawUrl : rawUrl);
+        return u.hostname.replace(/^www\./, '');
+      } catch (e) {
+        return rawUrl || '';
+      }
+    }
+
+    function getAutoFaviconUrl(rawUrl) {
+      const domain = getDomainFromUrl(rawUrl);
+      if (!domain) return '';
+      return 'https://www.google.com/s2/favicons?domain=' + encodeURIComponent(domain) + '&sz=128';
+    }
+
+    function updateDkdSidebarBadge() {
+      const sbBadge = document.getElementById('sidebar-dkd-sites-count');
+      if (sbBadge) sbBadge.textContent = String((dkdStoreSites || []).length);
+
+      const hdrBadge = document.getElementById('dkd-store-header-count');
+      if (hdrBadge) {
+        const activeCount = (dkdStoreSites || []).filter(function(s) { return Number(s.is_active) === 1; }).length;
+        hdrBadge.textContent = (dkdStoreSites || []).length + ' site(s) • ' + activeCount + ' actif(s)';
+      }
+
+      const modeBadge = document.getElementById('dkd-store-sort-mode-badge');
+      if (modeBadge) {
+        const isRandSites = dkdStoreConfig && dkdStoreConfig.sites_sort_mode === 'random';
+        const isRandCats = dkdStoreConfig && dkdStoreConfig.categories_sort_mode === 'random';
+        if (isRandSites && isRandCats) {
+          modeBadge.textContent = '🎲 Sites & Catégories aléatoires';
+          modeBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono';
+        } else if (isRandSites) {
+          modeBadge.textContent = '🎲 Sites aléatoires';
+          modeBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono';
+        } else if (isRandCats) {
+          modeBadge.textContent = '🎲 Catégories aléatoires';
+          modeBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-mono';
+        } else {
+          modeBadge.textContent = '📊 Ordre classé (1er, 2e...)';
+          modeBadge.className = 'text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 font-mono';
+        }
+      }
+    }
+
+    function renderDkdStoreView() {
+      updateDkdSidebarBadge();
+      renderDkdStoreHorizontalCategories();
+      renderDkdStoreLeftList();
+      renderDkdStoreRightDetail();
+      populateDkdCategorySelect('dkd-site-form-category');
+    }
+    window.renderDkdStoreView = renderDkdStoreView;
+
+    function populateDkdCategorySelect(selectId, selectedValue) {
+      const sel = document.getElementById(selectId);
+      if (!sel) return;
+      let html = '';
+      const cats = (dkdStoreCategories || []).slice().sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+      if (cats.length === 0) {
+        html += '<option value="general">📁 Général</option>';
+      } else {
+        cats.forEach(function(c) {
+          const isSel = selectedValue && (String(c.id) === String(selectedValue) || String(c.name) === String(selectedValue));
+          html += '<option value="' + escapeHtml(c.id) + '"' + (isSel ? ' selected' : '') + '>' + escapeHtml((c.icon || '📁') + ' ' + c.name) + '</option>';
+        });
+      }
+      sel.innerHTML = html;
+    }
+
+    function renderDkdStoreHorizontalCategories() {
+      const container = document.getElementById('dkd-store-horizontal-cats');
+      if (!container) return;
+
+      const totalCount = (dkdStoreSites || []).length;
+      const isAllSelected = !selectedDkdStoreCategoryId || selectedDkdStoreCategoryId === 'all';
+
+      let html = '';
+      // 1. En premier : le bouton "Tout" qui regroupe tout
+      html += '<button type="button" onclick="selectDkdCategory(\'all\')" class="px-3.5 py-1.5 rounded-xl text-xs font-extrabold whitespace-nowrap flex items-center gap-1.5 transition cursor-pointer shrink-0 ' +
+        (isAllSelected
+          ? 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white shadow-md shadow-blue-900/30 border border-blue-400/40'
+          : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-700/80') + '">' +
+        '<span>✨</span><span>Tout</span>' +
+        '<span class="text-[10px] px-1.5 py-0.2 rounded-full ' + (isAllSelected ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400') + ' font-mono">' + totalCount + '</span>' +
+      '</button>';
+
+      // 2. Quelques catégories affichées de manière horizontale (max 6 pour rester fluide)
+      const sortedCats = (dkdStoreCategories || []).slice().sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+      const visibleHorizontalCats = sortedCats.slice(0, 6);
+      const selectedCatInExtra = !isAllSelected && !visibleHorizontalCats.some(function(c) { return String(c.id) === String(selectedDkdStoreCategoryId); })
+        ? sortedCats.find(function(c) { return String(c.id) === String(selectedDkdStoreCategoryId); })
+        : null;
+
+      const displayList = selectedCatInExtra ? visibleHorizontalCats.concat([selectedCatInExtra]) : visibleHorizontalCats;
+
+      displayList.forEach(function(cat) {
+        const count = (dkdStoreSites || []).filter(function(s) {
+          return String(s.category_id) === String(cat.id) || String(s.category_name).toLowerCase() === String(cat.name).toLowerCase();
+        }).length;
+        const isActive = String(selectedDkdStoreCategoryId) === String(cat.id);
+        html += '<button type="button" onclick="selectDkdCategory(\'' + escapeHtml(cat.id) + '\')" class="px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap flex items-center gap-1.5 transition cursor-pointer shrink-0 ' +
+          (isActive
+            ? 'bg-blue-600 text-white shadow-md shadow-blue-900/30 border border-blue-400/40'
+            : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border border-slate-800') + '">' +
+          '<span>' + escapeHtml(cat.icon || '📁') + '</span>' +
+          '<span>' + escapeHtml(cat.name) + '</span>' +
+          '<span class="text-[10px] px-1.5 py-0.2 rounded-full ' + (isActive ? 'bg-white/20 text-white' : 'bg-slate-800 text-slate-400') + ' font-mono">' + count + '</span>' +
+        '</button>';
+      });
+
+      // 3. À la fin des quelques catégories : le bouton Trois Traits (☰) qui liste toutes les catégories existantes
+      html += '<button type="button" onclick="openAllCategoriesModal()" title="Voir et gérer toutes les catégories existantes" class="px-3 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 text-xs font-black whitespace-nowrap flex items-center gap-1.5 transition cursor-pointer shrink-0 ml-auto">' +
+        '<span class="text-sm leading-none">☰</span>' +
+        '<span>Toutes les catégories</span>' +
+        '<span class="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-200 font-mono">' + sortedCats.length + '</span>' +
+      '</button>';
+
+      container.innerHTML = html;
+    }
+
+    function selectDkdCategory(catId) {
+      selectedDkdStoreCategoryId = catId || 'all';
+      renderDkdStoreHorizontalCategories();
+      const filtered = getFilteredDkdSites();
+      if (filtered.length > 0 && !filtered.some(function(s) { return String(s.id) === String(selectedDkdStoreSiteId); })) {
+        selectedDkdStoreSiteId = filtered[0].id;
+      }
+      renderDkdStoreLeftList();
+      renderDkdStoreRightDetail();
+    }
+    window.selectDkdCategory = selectDkdCategory;
+
+    function onDkdStoreSearch(val) {
+      dkdStoreSearchQuery = (val || '').trim();
+      const inp = document.getElementById('dkd-store-search-input');
+      if (inp && inp.value !== val) inp.value = val;
+      const clr = document.getElementById('dkd-store-search-clear');
+      if (clr) {
+        if (dkdStoreSearchQuery.length > 0) clr.classList.remove('hidden');
+        else clr.classList.add('hidden');
+      }
+      const filtered = getFilteredDkdSites();
+      if (filtered.length > 0 && !filtered.some(function(s) { return String(s.id) === String(selectedDkdStoreSiteId); })) {
+        selectedDkdStoreSiteId = filtered[0].id;
+      }
+      renderDkdStoreLeftList();
+      renderDkdStoreRightDetail();
+    }
+    window.onDkdStoreSearch = onDkdStoreSearch;
+
+    function getFilteredDkdSites() {
+      const q = (dkdStoreSearchQuery || '').toLowerCase();
+      const catId = selectedDkdStoreCategoryId || 'all';
+      const selectedCatObj = (dkdStoreCategories || []).find(function(c) { return String(c.id) === String(catId); });
+
+      return (dkdStoreSites || [])
+        .filter(function(s) {
+          if (catId !== 'all') {
+            const matchId = String(s.category_id) === String(catId);
+            const matchName = selectedCatObj && String(s.category_name || '').toLowerCase() === String(selectedCatObj.name || '').toLowerCase();
+            if (!matchId && !matchName) return false;
+          }
+          if (q) {
+            const hay = ((s.name || '') + ' ' + (s.url || '') + ' ' + (s.category_name || '') + ' ' + (s.description || '') + ' ' + (s.badge || '')).toLowerCase();
+            if (hay.indexOf(q) === -1) return false;
+          }
+          return true;
+        })
+        .sort(function(a, b) {
+          return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+        });
+    }
+
+    function selectDkdSite(siteId) {
+      selectedDkdStoreSiteId = siteId;
+      renderDkdStoreLeftList();
+      renderDkdStoreRightDetail();
+    }
+    window.selectDkdSite = selectDkdSite;
+
+    function renderDkdStoreLeftList() {
+      const listEl = document.getElementById('dkd-store-left-list');
+      const countEl = document.getElementById('dkd-left-list-count');
+      if (!listEl) return;
+
+      const filtered = getFilteredDkdSites();
+      if (countEl) countEl.textContent = String(filtered.length);
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = '<div class="p-6 text-center space-y-3">' +
+          '<div class="w-12 h-12 rounded-2xl bg-slate-900 border border-slate-800 mx-auto flex items-center justify-center text-2xl">🛍️</div>' +
+          '<div class="space-y-1">' +
+            '<div class="text-xs font-extrabold text-white">Aucun site trouvé</div>' +
+            '<p class="text-[11px] text-slate-400">Ajoutez votre premier site avec son lien et son logo pour l\'afficher dans DKD store.</p>' +
+          '</div>' +
+          '<button type="button" onclick="openDkdSiteModal()" class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs cursor-pointer inline-flex items-center gap-1.5">' +
+            '<span>➕</span><span>Ajouter un site</span>' +
+          '</button>' +
+        '</div>';
+        return;
+      }
+
+      let html = '';
+      filtered.forEach(function(s, idx) {
+        const isSelected = String(s.id) === String(selectedDkdStoreSiteId);
+        const isActive = Number(s.is_active) === 1;
+        const logoSrc = s.logo_url || getAutoFaviconUrl(s.url);
+        const domain = getDomainFromUrl(s.url);
+        const rankNum = s.sort_order || (idx + 1);
+
+        html += '<div onclick="selectDkdSite(\'' + escapeHtml(s.id) + '\')" class="p-2.5 rounded-xl border transition cursor-pointer flex items-center justify-between gap-2.5 ' +
+          (isSelected
+            ? 'bg-blue-600/15 border-blue-500 shadow-md shadow-blue-950/40'
+            : 'bg-slate-900/70 hover:bg-slate-900 border-slate-800/90') +
+          (!isActive ? ' opacity-60' : '') + '">' +
+          '<div class="flex items-center gap-2.5 min-w-0 flex-1">' +
+            '<span class="text-[10px] font-mono font-black px-1.5 py-0.5 rounded-md bg-slate-950 text-slate-400 border border-slate-800 shrink-0">#' + rankNum + '</span>' +
+            '<div class="w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0">' +
+              (logoSrc
+                ? '<img src="' + escapeHtml(logoSrc) + '" alt="" class="w-7 h-7 object-contain" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'inline\';" /><span style="display:none" class="text-base">🌐</span>'
+                : '<span class="text-base">🌐</span>') +
+            '</div>' +
+            '<div class="min-w-0 flex-1">' +
+              '<div class="flex items-center gap-1.5">' +
+                '<span class="text-xs font-extrabold text-white truncate">' + escapeHtml(s.name || 'Site sans nom') + '</span>' +
+                (s.badge ? '<span class="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold shrink-0">' + escapeHtml(s.badge) + '</span>' : '') +
+              '</div>' +
+              '<div class="flex items-center gap-1.5 text-[10px] text-slate-400 truncate mt-0.5">' +
+                '<span class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-medium">' + escapeHtml(s.category_name || 'Général') + '</span>' +
+                '<span class="font-mono text-slate-500 truncate">' + escapeHtml(domain) + '</span>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="flex items-center gap-2 shrink-0" onclick="event.stopPropagation()">' +
+            '<label class="flex items-center gap-1 cursor-pointer" title="Cocher ou décocher pour afficher/masquer ce site dans DKD store">' +
+              '<input type="checkbox" ' + (isActive ? 'checked' : '') + ' onchange="toggleDkdSiteActive(\'' + escapeHtml(s.id) + '\', this.checked)" class="w-4 h-4 accent-emerald-500 rounded cursor-pointer" />' +
+              '<span class="text-[9px] font-bold px-1.5 py-0.5 rounded ' + (isActive ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'bg-rose-500/20 text-rose-400 border border-rose-500/30') + '">' +
+                (isActive ? 'Actif' : 'Masqué') +
+              '</span>' +
+            '</label>' +
+          '</div>' +
+        '</div>';
+      });
+
+      listEl.innerHTML = html;
+    }
+
+    function renderDkdStoreRightDetail() {
+      const detailEl = document.getElementById('dkd-store-right-detail');
+      if (!detailEl) return;
+
+      const site = (dkdStoreSites || []).find(function(s) { return String(s.id) === String(selectedDkdStoreSiteId); });
+      if (!site) {
+        detailEl.innerHTML = '<div class="h-full flex flex-col items-center justify-center text-center p-8 space-y-3">' +
+          '<div class="w-16 h-16 rounded-3xl bg-slate-900 border border-slate-800 flex items-center justify-center text-3xl">👈</div>' +
+          '<div class="text-sm font-black text-white">Sélectionnez un site à gauche ou ajoutez-en un nouveau</div>' +
+          '<p class="text-xs text-slate-400 max-w-md">Cliquez sur n\'importe quel site dans la colonne de gauche pour voir toutes ses informations, modifier son lien ou son logo, le cocher/décocher ou le supprimer.</p>' +
+          '<button type="button" onclick="openDkdSiteModal()" class="px-4 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-emerald-600 text-white font-black text-xs shadow-lg cursor-pointer">' +
+            '➕ Ajouter un nouveau site' +
+          '</button>' +
+        '</div>';
+        return;
+      }
+
+      const isActive = Number(site.is_active) === 1;
+      const logoSrc = site.logo_url || getAutoFaviconUrl(site.url);
+      const cats = (dkdStoreCategories || []).slice().sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+      let catOptionsHtml = '';
+      if (cats.length === 0) {
+        catOptionsHtml = '<option value="general">📁 Général</option>';
+      } else {
+        cats.forEach(function(c) {
+          const isSel = String(c.id) === String(site.category_id) || String(c.name).toLowerCase() === String(site.category_name || '').toLowerCase();
+          catOptionsHtml += '<option value="' + escapeHtml(c.id) + '"' + (isSel ? ' selected' : '') + '>' + escapeHtml((c.icon || '📁') + ' ' + c.name) + '</option>';
+        });
+      }
+
+      detailEl.innerHTML = '<div class="space-y-4">' +
+        '<!-- En-tête du site sélectionné -->' +
+        '<div class="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 flex flex-wrap items-center justify-between gap-4">' +
+          '<div class="flex items-center gap-3.5 min-w-0">' +
+            '<div class="w-16 h-16 rounded-2xl bg-slate-900 border-2 border-slate-700 flex items-center justify-center overflow-hidden shrink-0 shadow-inner">' +
+              (logoSrc
+                ? '<img id="detail-dkd-logo-preview-top" src="' + escapeHtml(logoSrc) + '" alt="Logo" class="w-11 h-11 object-contain" onerror="this.style.display=\'none\'" />'
+                : '<span class="text-2xl">🌐</span>') +
+            '</div>' +
+            '<div class="min-w-0">' +
+              '<div class="flex flex-wrap items-center gap-2">' +
+                '<h3 class="text-base sm:text-lg font-black text-white truncate">' + escapeHtml(site.name || 'Site sans nom') + '</h3>' +
+                '<span class="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">Position #' + (site.sort_order || 1) + '</span>' +
+                '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">' + escapeHtml(site.category_name || 'Général') + '</span>' +
+              '</div>' +
+              '<a href="' + escapeHtml(site.url || '#') + '" target="_blank" rel="noopener noreferrer" class="text-xs font-mono text-blue-400 hover:underline flex items-center gap-1 mt-1 truncate">' +
+                '<span>🔗 ' + escapeHtml(site.url || '') + '</span>' +
+                '<span>↗</span>' +
+              '</a>' +
+            '</div>' +
+          '</div>' +
+
+          '<!-- Contrôles rapides de classement et suppression -->' +
+          '<div class="flex flex-wrap items-center gap-1.5">' +
+            '<button type="button" onclick="moveDkdSiteOrder(\'' + escapeHtml(site.id) + '\', \'first\')" title="Afficher ce site en tout premier" class="px-2.5 py-1.5 rounded-xl bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/30 text-[11px] font-extrabold cursor-pointer">🥇 Mettre 1er</button>' +
+            '<button type="button" onclick="moveDkdSiteOrder(\'' + escapeHtml(site.id) + '\', \'up\')" title="Monter d\'une place" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold cursor-pointer">⬆️ Monter</button>' +
+            '<button type="button" onclick="moveDkdSiteOrder(\'' + escapeHtml(site.id) + '\', \'down\')" title="Descendre d\'une place" class="px-2.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-[11px] font-bold cursor-pointer">⬇️ Descendre</button>' +
+            '<button type="button" onclick="deleteDkdSite(\'' + escapeHtml(site.id) + '\')" class="px-3 py-1.5 rounded-xl bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/40 text-[11px] font-extrabold transition cursor-pointer">🗑️ Supprimer</button>' +
+          '</div>' +
+        '</div>' +
+
+        '<!-- Bloc Cocher / Décocher la visibilité dans DKD store -->' +
+        '<label class="p-3.5 rounded-2xl border transition flex items-center justify-between gap-3 cursor-pointer ' +
+          (isActive ? 'bg-emerald-500/10 border-emerald-500/40' : 'bg-rose-500/10 border-rose-500/40') + '">' +
+          '<div class="flex items-center gap-3">' +
+            '<span class="text-xl">' + (isActive ? '✅' : '🚫') + '</span>' +
+            '<div>' +
+              '<div class="text-xs font-black ' + (isActive ? 'text-emerald-300' : 'text-rose-300') + '">' +
+                (isActive ? 'Site COCHÉ : Affiché dans l\'application DKD store' : 'Site DÉCOCHÉ : Masqué dans l\'application DKD store') +
+              '</div>' +
+              '<div class="text-[11px] text-slate-300">Décochez cette case si vous souhaitez masquer temporairement ce site sans le supprimer.</div>' +
+            '</div>' +
+          '</div>' +
+          '<input type="checkbox" id="detail-dkd-active" ' + (isActive ? 'checked' : '') + ' onchange="toggleDkdSiteActive(\'' + escapeHtml(site.id) + '\', this.checked)" class="w-5 h-5 accent-emerald-500 rounded cursor-pointer shrink-0" />' +
+        '</label>' +
+
+        '<!-- Formulaire complet d\'édition des informations du site -->' +
+        '<div class="p-4 rounded-2xl bg-slate-950/60 border border-slate-800 space-y-3.5">' +
+          '<div class="text-xs font-extrabold text-white uppercase tracking-wider border-b border-slate-800 pb-2">✏️ Modifier les informations du site</div>' +
+
+          '<div class="grid grid-cols-1 sm:grid-cols-2 gap-3">' +
+            '<div class="space-y-1">' +
+              '<label class="text-[11px] font-bold text-slate-300 block">Nom du site / de l\'application</label>' +
+              '<input type="text" id="detail-dkd-name" value="' + escapeHtml(site.name || '') + '" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none" />' +
+            '</div>' +
+            '<div class="space-y-1">' +
+              '<label class="text-[11px] font-bold text-slate-300 block">Lien du site (URL)</label>' +
+              '<input type="url" id="detail-dkd-url" value="' + escapeHtml(site.url || '') + '" oninput="onDkdSiteUrlInput(this.value, \'detail-dkd-logo\', \'detail-dkd-logo-preview\')" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none font-mono" />' +
+            '</div>' +
+          '</div>' +
+
+          '<!-- Logo -->' +
+          '<div class="p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-2">' +
+            '<div class="flex items-center justify-between">' +
+              '<label class="text-[11px] font-bold text-slate-300">Logo du site (URL ou image importée)</label>' +
+              '<button type="button" onclick="autoDetectDkdLogo(\'detail-dkd-url\', \'detail-dkd-logo\', \'detail-dkd-logo-preview\')" class="text-[10px] px-2.5 py-1 rounded-lg bg-blue-500/15 hover:bg-blue-500/25 text-blue-300 border border-blue-500/30 font-bold cursor-pointer">🪄 Détecter le logo depuis le lien</button>' +
+            '</div>' +
+            '<div class="flex items-center gap-3">' +
+              '<div class="w-12 h-12 rounded-xl bg-slate-950 border border-slate-700 flex items-center justify-center overflow-hidden shrink-0">' +
+                '<img id="detail-dkd-logo-preview" src="' + escapeHtml(logoSrc) + '" alt="Logo" class="w-9 h-9 object-contain ' + (logoSrc ? '' : 'hidden') + '" />' +
+              '</div>' +
+              '<div class="flex-1 space-y-1.5">' +
+                '<input type="text" id="detail-dkd-logo" value="' + escapeHtml(site.logo_url || '') + '" oninput="updateDkdLogoPreview(this.value, \'detail-dkd-logo-preview\')" placeholder="https://... ou data:image/..." class="w-full bg-slate-950 text-white text-[11px] rounded-xl px-3 py-2 border border-slate-700 focus:border-blue-500 outline-none font-mono" />' +
+                '<div class="flex items-center gap-2">' +
+                  '<label class="px-3 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold border border-slate-700 cursor-pointer inline-flex items-center gap-1">' +
+                    '<span>📁 Changer l\'image du logo</span>' +
+                    '<input type="file" accept="image/*" class="hidden" onchange="handleDkdLogoFileUpload(event, \'detail-dkd-logo\', \'detail-dkd-logo-preview\')" />' +
+                  '</label>' +
+                '</div>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">' +
+            '<div class="space-y-1">' +
+              '<div class="flex items-center justify-between">' +
+                '<label class="text-[11px] font-bold text-slate-300">Catégorie</label>' +
+                '<button type="button" onclick="openAllCategoriesModal()" class="text-[10px] text-amber-400 hover:underline font-bold cursor-pointer">+ Catégorie</button>' +
+              '</div>' +
+              '<select id="detail-dkd-category" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none cursor-pointer">' +
+                catOptionsHtml +
+              '</select>' +
+            '</div>' +
+            '<div class="space-y-1">' +
+              '<label class="text-[11px] font-bold text-slate-300 block">Badge (Optionnel)</label>' +
+              '<input type="text" id="detail-dkd-badge" value="' + escapeHtml(site.badge || '') + '" placeholder="Ex: Officiel, Gratuit..." class="w-full bg-slate-900 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none" />' +
+            '</div>' +
+            '<div class="space-y-1">' +
+              '<label class="text-[11px] font-bold text-slate-300 block">Ordre d\'affichage (1er, 2e...)</label>' +
+              '<input type="number" id="detail-dkd-order" value="' + Number(site.sort_order || 1) + '" min="1" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none font-mono font-bold" />' +
+            '</div>' +
+          '</div>' +
+
+          '<div class="space-y-1">' +
+            '<label class="text-[11px] font-bold text-slate-300 block">Description</label>' +
+            '<textarea id="detail-dkd-desc" rows="2" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2 border border-slate-700 focus:border-blue-500 outline-none resize-none">' + escapeHtml(site.description || '') + '</textarea>' +
+          '</div>' +
+
+          '<div class="flex items-center justify-between gap-3 pt-2 border-t border-slate-800">' +
+            '<button type="button" onclick="deleteDkdSite(\'' + escapeHtml(site.id) + '\')" class="px-4 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-600 text-rose-300 hover:text-white border border-rose-500/30 font-bold text-xs transition cursor-pointer">' +
+              '🗑️ Supprimer ce site' +
+            '</button>' +
+            '<button type="button" id="btn-save-dkd-detail" onclick="saveDkdSiteFromDetail(\'' + escapeHtml(site.id) + '\')" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-600 to-emerald-600 hover:from-blue-500 hover:to-emerald-500 text-white font-black text-xs shadow-lg cursor-pointer active:scale-95">' +
+              '💾 Enregistrer les modifications' +
+            '</button>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+    }
+
+    function updateDkdLogoPreview(logoUrl, previewImgId) {
+      const img = document.getElementById(previewImgId);
+      if (!img) return;
+      const val = (logoUrl || '').trim();
+      if (val) {
+        img.src = val;
+        img.classList.remove('hidden');
+      } else {
+        img.classList.add('hidden');
+      }
+    }
+    window.updateDkdLogoPreview = updateDkdLogoPreview;
+
+    function onDkdSiteUrlInput(urlVal, logoInputId, previewImgId) {
+      const logoInp = document.getElementById(logoInputId);
+      if (logoInp && !logoInp.value.trim()) {
+        const autoLogo = getAutoFaviconUrl(urlVal);
+        if (autoLogo) {
+          updateDkdLogoPreview(autoLogo, previewImgId);
+        }
+      }
+    }
+    window.onDkdSiteUrlInput = onDkdSiteUrlInput;
+
+    function autoDetectDkdLogo(urlInputId, logoInputId, previewImgId) {
+      const urlInp = document.getElementById(urlInputId);
+      const logoInp = document.getElementById(logoInputId);
+      if (!urlInp || !urlInp.value.trim()) {
+        showToast('⚠️ Entrez d\'abord le lien URL du site');
+        return;
+      }
+      const fav = getAutoFaviconUrl(urlInp.value.trim());
+      if (logoInp) logoInp.value = fav;
+      updateDkdLogoPreview(fav, previewImgId);
+      showToast('🪄 Logo récupéré automatiquement depuis le domaine !');
+    }
+    window.autoDetectDkdLogo = autoDetectDkdLogo;
+
+    function handleDkdLogoFileUpload(event, logoInputId, previewImgId) {
+      const file = event.target && event.target.files && event.target.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = function(ev) {
+        const img = new Image();
+        img.onload = function() {
+          const canvas = document.createElement('canvas');
+          const maxDim = 160;
+          let w = img.width;
+          let h = img.height;
+          if (w > maxDim || h > maxDim) {
+            if (w > h) {
+              h = Math.round((h * maxDim) / w);
+              w = maxDim;
+            } else {
+              w = Math.round((w * maxDim) / h);
+              h = maxDim;
+            }
+          }
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, w, h);
+          const dataUrl = canvas.toDataURL('image/png', 0.9);
+          const logoInp = document.getElementById(logoInputId);
+          if (logoInp) logoInp.value = dataUrl;
+          updateDkdLogoPreview(dataUrl, previewImgId);
+          showToast('✓ Logo importé et optimisé !');
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+    window.handleDkdLogoFileUpload = handleDkdLogoFileUpload;
+
+    function openDkdSiteModal() {
+      const modal = document.getElementById('modal-dkd-site');
+      if (!modal) return;
+      document.getElementById('dkd-site-form-id').value = '';
+      document.getElementById('dkd-site-form-name').value = '';
+      document.getElementById('dkd-site-form-url').value = '';
+      document.getElementById('dkd-site-form-logo').value = '';
+      document.getElementById('dkd-site-form-badge').value = '';
+      document.getElementById('dkd-site-form-order').value = String((dkdStoreSites || []).length + 1);
+      document.getElementById('dkd-site-form-desc').value = '';
+      document.getElementById('dkd-site-form-active').checked = true;
+      updateDkdLogoPreview('', 'dkd-site-form-logo-preview');
+      populateDkdCategorySelect('dkd-site-form-category', selectedDkdStoreCategoryId !== 'all' ? selectedDkdStoreCategoryId : null);
+      modal.classList.remove('hidden');
+    }
+    window.openDkdSiteModal = openDkdSiteModal;
+
+    function closeDkdSiteModal(ev) {
+      if (ev && ev.target && ev.target.id !== 'modal-dkd-site') return;
+      const modal = document.getElementById('modal-dkd-site');
+      if (modal) modal.classList.add('hidden');
+    }
+    window.closeDkdSiteModal = closeDkdSiteModal;
+
+    function toggleQuickAddCategoryBox() {
+      const box = document.getElementById('dkd-quick-add-cat-box');
+      if (box) box.classList.toggle('hidden');
+    }
+    window.toggleQuickAddCategoryBox = toggleQuickAddCategoryBox;
+
+    async function submitQuickCategory() {
+      const icon = (document.getElementById('dkd-quick-cat-icon')?.value || '📁').trim();
+      const name = (document.getElementById('dkd-quick-cat-name')?.value || '').trim();
+      if (!name) {
+        showToast('⚠️ Entrez le nom de la catégorie');
+        return;
+      }
+      await createDkdCategoryRequest(name, icon);
+      document.getElementById('dkd-quick-cat-name').value = '';
+      document.getElementById('dkd-quick-add-cat-box')?.classList.add('hidden');
+    }
+    window.submitQuickCategory = submitQuickCategory;
+
+    async function createDkdCategoryRequest(name, icon) {
+      try {
+        const res = await fetch('/api/dkd-store/category', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name,
+            icon: icon || '📁',
+            sort_order: (dkdStoreCategories || []).length + 1
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreCategories = data.categories || dkdStoreCategories;
+          populateDkdCategorySelect('dkd-site-form-category', data.category?.id);
+          renderDkdStoreView();
+          renderAllCategoriesModalList();
+          showToast('✓ Catégorie "' + name + '" créée !');
+        } else {
+          showToast('⚠️ ' + (data.error || 'Erreur création catégorie'));
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+
+    async function saveDkdSiteFromModal() {
+      const name = (document.getElementById('dkd-site-form-name')?.value || '').trim();
+      let rawUrl = (document.getElementById('dkd-site-form-url')?.value || '').trim();
+      let logoUrl = (document.getElementById('dkd-site-form-logo')?.value || '').trim();
+      const categoryId = document.getElementById('dkd-site-form-category')?.value || 'general';
+      const badge = (document.getElementById('dkd-site-form-badge')?.value || '').trim();
+      const sortOrder = Number(document.getElementById('dkd-site-form-order')?.value || 1);
+      const description = (document.getElementById('dkd-site-form-desc')?.value || '').trim();
+      const isActive = document.getElementById('dkd-site-form-active')?.checked ? 1 : 0;
+
+      if (!name || !rawUrl) {
+        showToast('⚠️ Le nom du site et son lien URL sont obligatoires');
+        return;
+      }
+      if (rawUrl.indexOf('://') === -1) rawUrl = 'https://' + rawUrl;
+      if (!logoUrl) logoUrl = getAutoFaviconUrl(rawUrl);
+
+      const catObj = (dkdStoreCategories || []).find(function(c) { return String(c.id) === String(categoryId); });
+      const categoryName = catObj ? catObj.name : 'Général';
+
+      const btn = document.getElementById('btn-save-dkd-site-modal');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Enregistrement...';
+      }
+
+      try {
+        const res = await fetch('/api/dkd-store/site', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            name: name,
+            url: rawUrl,
+            logo_url: logoUrl,
+            category_id: categoryId,
+            category_name: categoryName,
+            badge: badge,
+            sort_order: sortOrder,
+            description: description,
+            is_active: isActive
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSites = data.sites || dkdStoreSites;
+          if (data. categories) dkdStoreCategories = data.categories;
+          if (data.site && data.site.id) selectedDkdStoreSiteId = data.site.id;
+          closeDkdSiteModal();
+          renderDkdStoreView();
+          showToast('✓ Site "' + name + '" ajouté dans DKD store !');
+        } else {
+          showToast('⚠️ ' + (data.error || 'Échec de sauvegarde'));
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '💾 Enregistrer le site';
+        }
+      }
+    }
+    window.saveDkdSiteFromModal = saveDkdSiteFromModal;
+
+    async function saveDkdSiteFromDetail(siteId) {
+      const name = (document.getElementById('detail-dkd-name')?.value || '').trim();
+      let rawUrl = (document.getElementById('detail-dkd-url')?.value || '').trim();
+      let logoUrl = (document.getElementById('detail-dkd-logo')?.value || '').trim();
+      const categoryId = document.getElementById('detail-dkd-category')?.value || 'general';
+      const badge = (document.getElementById('detail-dkd-badge')?.value || '').trim();
+      const sortOrder = Number(document.getElementById('detail-dkd-order')?.value || 1);
+      const description = (document.getElementById('detail-dkd-desc')?.value || '').trim();
+      const isActive = document.getElementById('detail-dkd-active')?.checked ? 1 : 0;
+
+      if (!name || !rawUrl) {
+        showToast('⚠️ Le nom et le lien URL sont requis');
+        return;
+      }
+      if (rawUrl.indexOf('://') === -1) rawUrl = 'https://' + rawUrl;
+      if (!logoUrl) logoUrl = getAutoFaviconUrl(rawUrl);
+
+      const catObj = (dkdStoreCategories || []).find(function(c) { return String(c.id) === String(categoryId); });
+      const categoryName = catObj ? catObj.name : 'Général';
+
+      const btn = document.getElementById('btn-save-dkd-detail');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = '⏳ Enregistrement...';
+      }
+
+      try {
+        const res = await fetch('/api/dkd-store/site', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: siteId,
+            name: name,
+            url: rawUrl,
+            logo_url: logoUrl,
+            category_id: categoryId,
+            category_name: categoryName,
+            badge: badge,
+            sort_order: sortOrder,
+            description: description,
+            is_active: isActive
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSites = data.sites || dkdStoreSites;
+          renderDkdStoreView();
+          showToast('✓ Modifications enregistrées pour "' + name + '" !');
+        } else {
+          showToast('⚠️ ' + (data.error || 'Échec de mise à jour'));
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = '💾 Enregistrer les modifications';
+        }
+      }
+    }
+    window.saveDkdSiteFromDetail = saveDkdSiteFromDetail;
+
+    async function toggleDkdSiteActive(siteId, isChecked) {
+      try {
+        const res = await fetch('/api/dkd-store/site/toggle', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: siteId, is_active: isChecked ? 1 : 0 })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSites = data.sites || dkdStoreSites;
+          renderDkdStoreView();
+          showToast(isChecked ? '✅ Site activé et visible dans DKD store' : '🚫 Site décoché (masqué dans DKD store)');
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.toggleDkdSiteActive = toggleDkdSiteActive;
+
+    async function deleteDkdSite(siteId) {
+      const site = (dkdStoreSites || []).find(function(s) { return String(s.id) === String(siteId); });
+      if (!confirm('Voulez-vous vraiment supprimer définitivement le site "' + (site ? site.name : siteId) + '" de DKD store ?')) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/dkd-store/site/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: siteId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSites = data.sites || [];
+          if (String(selectedDkdStoreSiteId) === String(siteId)) {
+            selectedDkdStoreSiteId = dkdStoreSites.length > 0 ? dkdStoreSites[0].id : null;
+          }
+          renderDkdStoreView();
+          showToast('🗑️ Site supprimé avec succès');
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.deleteDkdSite = deleteDkdSite;
+
+    async function moveDkdSiteOrder(siteId, direction) {
+      const sorted = (dkdStoreSites || []).slice().sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+      const idx = sorted.findIndex(function(s) { return String(s.id) === String(siteId); });
+      if (idx === -1) return;
+
+      if (direction === 'first' && idx > 0) {
+        const item = sorted.splice(idx, 1)[0];
+        sorted.unshift(item);
+      } else if (direction === 'up' && idx > 0) {
+        const tmp = sorted[idx - 1];
+        sorted[idx - 1] = sorted[idx];
+        sorted[idx] = tmp;
+      } else if (direction === 'down' && idx < sorted.length - 1) {
+        const tmp = sorted[idx + 1];
+        sorted[idx + 1] = sorted[idx];
+        sorted[idx] = tmp;
+      } else {
+        return;
+      }
+
+      const orderedIds = sorted.map(function(s) { return s.id; });
+      try {
+        const res = await fetch('/api/dkd-store/rank-sites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sites_sort_mode: 'custom',
+            ordered_ids: orderedIds
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSites = data.sites || dkdStoreSites;
+          if (data.config) dkdStoreConfig = data.config;
+          renderDkdStoreView();
+          showToast('📊 Ordre d\'affichage mis à jour !');
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.moveDkdSiteOrder = moveDkdSiteOrder;
+
+    // ------------------------------------------------------------------------
+    // MODALE BOUTON 3 TRAITS (☰) : TOUTES LES CATÉGORIES
+    // ------------------------------------------------------------------------
+    function openAllCategoriesModal() {
+      const modal = document.getElementById('modal-dkd-all-categories');
+      if (!modal) return;
+      renderAllCategoriesModalList();
+      modal.classList.remove('hidden');
+    }
+    window.openAllCategoriesModal = openAllCategoriesModal;
+
+    function closeAllCategoriesModal(ev) {
+      if (ev && ev.target && ev.target.id !== 'modal-dkd-all-categories') return;
+      const modal = document.getElementById('modal-dkd-all-categories');
+      if (modal) modal.classList.add('hidden');
+    }
+    window.closeAllCategoriesModal = closeAllCategoriesModal;
+
+    async function createNewCategoryFromAllModal() {
+      const icon = (document.getElementById('modal-all-cat-new-icon')?.value || '📁').trim();
+      const name = (document.getElementById('modal-all-cat-new-name')?.value || '').trim();
+      if (!name) {
+        showToast('⚠️ Entrez un nom de catégorie');
+        return;
+      }
+      await createDkdCategoryRequest(name, icon);
+      const nameInp = document.getElementById('modal-all-cat-new-name');
+      if (nameInp) nameInp.value = '';
+    }
+    window.createNewCategoryFromAllModal = createNewCategoryFromAllModal;
+
+    function renderAllCategoriesModalList() {
+      const listEl = document.getElementById('modal-all-cat-list');
+      if (!listEl) return;
+      const q = (document.getElementById('modal-all-cat-search')?.value || '').trim().toLowerCase();
+
+      const sorted = (dkdStoreCategories || []).slice().sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      }).filter(function(c) {
+        if (!q) return true;
+        return (c.name || '').toLowerCase().indexOf(q) !== -1;
+      });
+
+      let html = '';
+      // Option "Tout"
+      const totalSites = (dkdStoreSites || []).length;
+      html += '<div onclick="selectDkdCategory(\'all\'); closeAllCategoriesModal();" class="p-3 rounded-xl bg-slate-900 hover:bg-slate-800 border ' + (selectedDkdStoreCategoryId === 'all' ? 'border-blue-500' : 'border-slate-800') + ' flex items-center justify-between cursor-pointer transition">' +
+        '<div class="flex items-center gap-2.5">' +
+          '<span class="text-base">✨</span>' +
+          '<span class="text-xs font-black text-white">Tout (Toutes les catégories)</span>' +
+        '</div>' +
+        '<span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300">' + totalSites + ' site(s)</span>' +
+      '</div>';
+
+      sorted.forEach(function(c, idx) {
+        const count = (dkdStoreSites || []).filter(function(s) {
+          return String(s.category_id) === String(c.id) || String(s.category_name).toLowerCase() === String(c.name).toLowerCase();
+        }).length;
+        const isSel = String(selectedDkdStoreCategoryId) === String(c.id);
+
+        html += '<div class="p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800/80 border ' + (isSel ? 'border-blue-500' : 'border-slate-800') + ' flex items-center justify-between gap-2 transition">' +
+          '<div onclick="selectDkdCategory(\'' + escapeHtml(c.id) + '\'); closeAllCategoriesModal();" class="flex items-center gap-2.5 flex-1 cursor-pointer min-w-0">' +
+            '<span class="text-[10px] font-mono text-slate-500">#' + (idx + 1) + '</span>' +
+            '<span class="text-base">' + escapeHtml(c.icon || '📁') + '</span>' +
+            '<span class="text-xs font-bold text-white truncate">' + escapeHtml(c.name) + '</span>' +
+            '<span class="text-[10px] font-mono px-2 py-0.5 rounded-full bg-slate-800 text-slate-300">' + count + ' site(s)</span>' +
+          '</div>' +
+          '<button type="button" onclick="deleteDkdCategory(\'' + escapeHtml(c.id) + '\')" title="Supprimer cette catégorie" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-600 text-rose-400 hover:text-white text-[10px] font-bold cursor-pointer">🗑️</button>' +
+        '</div>';
+      });
+
+      listEl.innerHTML = html;
+    }
+    window.renderAllCategoriesModalList = renderAllCategoriesModalList;
+
+    async function deleteDkdCategory(catId) {
+      const cat = (dkdStoreCategories || []).find(function(c) { return String(c.id) === String(catId); });
+      if (!confirm('Supprimer la catégorie "' + (cat ? cat.name : catId) + '" ?')) return;
+      try {
+        const res = await fetch('/api/dkd-store/category/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: catId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreCategories = data.categories || [];
+          if (String(selectedDkdStoreCategoryId) === String(catId)) selectedDkdStoreCategoryId = 'all';
+          renderDkdStoreView();
+          renderAllCategoriesModalList();
+          showToast('🗑️ Catégorie supprimée');
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.deleteDkdCategory = deleteDkdCategory;
+
+    // ------------------------------------------------------------------------
+    // MODALE CLASSER LES CATÉGORIES (OU COCHER ALÉATOIRE)
+    // ------------------------------------------------------------------------
+    function openRankCategoriesModal() {
+      const modal = document.getElementById('modal-dkd-rank-categories');
+      if (!modal) return;
+      tempRankedCategories = (dkdStoreCategories || []).slice().sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+      const chk = document.getElementById('dkd-rank-cats-random-checkbox');
+      if (chk) chk.checked = !!(dkdStoreConfig && dkdStoreConfig.categories_sort_mode === 'random');
+      renderRankCategoriesList();
+      modal.classList.remove('hidden');
+    }
+    window.openRankCategoriesModal = openRankCategoriesModal;
+
+    function closeRankCategoriesModal(ev) {
+      if (ev && ev.target && ev.target.id !== 'modal-dkd-rank-categories') return;
+      document.getElementById('modal-dkd-rank-categories')?.classList.add('hidden');
+    }
+    window.closeRankCategoriesModal = closeRankCategoriesModal;
+
+    function onToggleRandomCategories(checked) {
+      renderRankCategoriesList();
+    }
+    window.onToggleRandomCategories = onToggleRandomCategories;
+
+    function moveRankCategoryItem(index, dir) {
+      if (dir === 'first' && index > 0) {
+        const item = tempRankedCategories.splice(index, 1)[0];
+        tempRankedCategories.unshift(item);
+      } else if (dir === 'up' && index > 0) {
+        const tmp = tempRankedCategories[index - 1];
+        tempRankedCategories[index - 1] = tempRankedCategories[index];
+        tempRankedCategories[index] = tmp;
+      } else if (dir === 'down' && index < tempRankedCategories.length - 1) {
+        const tmp = tempRankedCategories[index + 1];
+        tempRankedCategories[index + 1] = tempRankedCategories[index];
+        tempRankedCategories[index] = tmp;
+      }
+      renderRankCategoriesList();
+    }
+    window.moveRankCategoryItem = moveRankCategoryItem;
+
+    function renderRankCategoriesList() {
+      const listEl = document.getElementById('dkd-rank-cats-list');
+      if (!listEl) return;
+      const isRandom = document.getElementById('dkd-rank-cats-random-checkbox')?.checked;
+
+      if (tempRankedCategories.length === 0) {
+        listEl.innerHTML = '<div class="p-6 text-center text-xs text-slate-400">Aucune catégorie créée pour le moment.</div>';
+        return;
+      }
+
+      let html = '';
+      tempRankedCategories.forEach(function(c, i) {
+        html += '<div class="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-2 ' + (isRandom ? 'opacity-50' : '') + '">' +
+          '<div class="flex items-center gap-2.5 min-w-0">' +
+            '<span class="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-300 font-mono font-black text-xs">' + (i + 1) + (i === 0 ? 'er' : 'e') + '</span>' +
+            '<span class="text-base">' + escapeHtml(c.icon || '📁') + '</span>' +
+            '<span class="text-xs font-bold text-white truncate">' + escapeHtml(c.name) + '</span>' +
+          '</div>' +
+          '<div class="flex items-center gap-1 shrink-0">' +
+            '<button type="button" onclick="moveRankCategoryItem(' + i + ', \'first\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-amber-300 font-bold cursor-pointer">1er</button>' +
+            '<button type="button" onclick="moveRankCategoryItem(' + i + ', \'up\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬆️</button>' +
+            '<button type="button" onclick="moveRankCategoryItem(' + i + ', \'down\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬇️</button>' +
+          '</div>' +
+        '</div>';
+      });
+      listEl.innerHTML = html;
+    }
+
+    async function saveRankedCategories() {
+      const isRandom = document.getElementById('dkd-rank-cats-random-checkbox')?.checked;
+      const orderedIds = tempRankedCategories.map(function(c) { return c.id; });
+      try {
+        const res = await fetch('/api/dkd-store/rank-categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            categories_sort_mode: isRandom ? 'random' : 'custom',
+            ordered_ids: orderedIds
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreCategories = data.categories || dkdStoreCategories;
+          if (data.config) dkdStoreConfig = data.config;
+          closeRankCategoriesModal();
+          renderDkdStoreView();
+          showToast(isRandom ? '🎲 Catégories configurées en affichage aléatoire !' : '🗂️ Classement des catégories enregistré !');
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.saveRankedCategories = saveRankedCategories;
+
+    // ------------------------------------------------------------------------
+    // MODALE CLASSER LES SITES (OU COCHER ALÉATOIRE)
+    // ------------------------------------------------------------------------
+    function openRankSitesModal() {
+      const modal = document.getElementById('modal-dkd-rank-sites');
+      if (!modal) return;
+      tempRankedSites = (dkdStoreSites || []).slice().sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+      const chk = document.getElementById('dkd-rank-sites-random-checkbox');
+      if (chk) chk.checked = !!(dkdStoreConfig && dkdStoreConfig.sites_sort_mode === 'random');
+      renderRankSitesList();
+      modal.classList.remove('hidden');
+    }
+    window.openRankSitesModal = openRankSitesModal;
+
+    function closeRankSitesModal(ev) {
+      if (ev && ev.target && ev.target.id !== 'modal-dkd-rank-sites') return;
+      document.getElementById('modal-dkd-rank-sites')?.classList.add('hidden');
+    }
+    window.closeRankSitesModal = closeRankSitesModal;
+
+    function onToggleRandomSites(checked) {
+      renderRankSitesList();
+    }
+    window.onToggleRandomSites = onToggleRandomSites;
+
+    function moveRankSiteItem(index, dir) {
+      if (dir === 'first' && index > 0) {
+        const item = tempRankedSites.splice(index, 1)[0];
+        tempRankedSites.unshift(item);
+      } else if (dir === 'up' && index > 0) {
+        const tmp = tempRankedSites[index - 1];
+        tempRankedSites[index - 1] = tempRankedSites[index];
+        tempRankedSites[index] = tmp;
+      } else if (dir === 'down' && index < tempRankedSites.length - 1) {
+        const tmp = tempRankedSites[index + 1];
+        tempRankedSites[index + 1] = tempRankedSites[index];
+        tempRankedSites[index] = tmp;
+      }
+      renderRankSitesList();
+    }
+    window.moveRankSiteItem = moveRankSiteItem;
+
+    function renderRankSitesList() {
+      const listEl = document.getElementById('dkd-rank-sites-list');
+      if (!listEl) return;
+      const isRandom = document.getElementById('dkd-rank-sites-random-checkbox')?.checked;
+
+      if (tempRankedSites.length === 0) {
+        listEl.innerHTML = '<div class="p-6 text-center text-xs text-slate-400">Aucun site ajouté pour le moment.</div>';
+        return;
+      }
+
+      let html = '';
+      tempRankedSites.forEach(function(s, i) {
+        const logoSrc = s.logo_url || getAutoFaviconUrl(s.url);
+        html += '<div class="p-2.5 rounded-xl bg-slate-900 border border-slate-800 flex items-center justify-between gap-2 ' + (isRandom ? 'opacity-50' : '') + '">' +
+          '<div class="flex items-center gap-2.5 min-w-0">' +
+            '<span class="px-2 py-0.5 rounded-lg bg-emerald-500/20 text-emerald-300 font-mono font-black text-xs">' + (i + 1) + (i === 0 ? 'er' : 'e') + '</span>' +
+            '<div class="w-8 h-8 rounded-lg bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0">' +
+              (logoSrc ? '<img src="' + escapeHtml(logoSrc) + '" alt="" class="w-6 h-6 object-contain" />' : '<span>🌐</span>') +
+            '</div>' +
+            '<div class="min-w-0">' +
+              '<div class="text-xs font-bold text-white truncate">' + escapeHtml(s.name) + '</div>' +
+              '<div class="text-[10px] text-slate-400 truncate">' + escapeHtml(s.category_name || 'Général') + '</div>' +
+            '</div>' +
+          '</div>' +
+          '<div class="flex items-center gap-1 shrink-0">' +
+            '<button type="button" onclick="moveRankSiteItem(' + i + ', \'first\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-[10px] text-emerald-300 font-bold cursor-pointer">🥇 1er</button>' +
+            '<button type="button" onclick="moveRankSiteItem(' + i + ', \'up\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬆️</button>' +
+            '<button type="button" onclick="moveRankSiteItem(' + i + ', \'down\')" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-xs text-white cursor-pointer">⬇️</button>' +
+          '</div>' +
+        '</div>';
+      });
+      listEl.innerHTML = html;
+    }
+
+    async function saveRankedSites() {
+      const isRandom = document.getElementById('dkd-rank-sites-random-checkbox')?.checked;
+      const orderedIds = tempRankedSites.map(function(s) { return s.id; });
+      try {
+        const res = await fetch('/api/dkd-store/rank-sites', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sites_sort_mode: isRandom ? 'random' : 'custom',
+            ordered_ids: orderedIds
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSites = data.sites || dkdStoreSites;
+          if (data.config) dkdStoreConfig = data.config;
+          closeRankSitesModal();
+          renderDkdStoreView();
+          showToast(isRandom ? '🎲 Sites configurés en affichage aléatoire !' : '📊 Classement des sites enregistré !');
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.saveRankedSites = saveRankedSites;
+
+    // Initialiser le badge DKD store dès le chargement
+    setTimeout(function() {
+      updateDkdSidebarBadge();
+    }, 50);
+
 
     window.addEventListener('focus', () => {
       smartAutoRefresh();
@@ -14743,6 +16359,284 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
 }
 
 // ============================================================================
+// GESTIONNAIRE ULTRA-RAPIDE DES ROUTES DKD STORE (/api/dkd-store/* & /api/public/dkd-store)
+// ============================================================================
+async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
+  const getFullDkdState = async () => {
+    const cfg = (await safeFirst(db, "SELECT * FROM dkd_store_config WHERE id = 'default'")) || {
+      id: 'default',
+      sites_sort_mode: 'custom',
+      categories_sort_mode: 'custom'
+    };
+    const catsRes = await safeQuery(db, "SELECT * FROM dkd_store_categories ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
+    const sitesRes = await safeQuery(db, "SELECT * FROM dkd_store_sites ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
+    return {
+      config: cfg,
+      categories: (catsRes && catsRes.results) ? catsRes.results : [],
+      sites: (sitesRes && sitesRes.results) ? sitesRes.results : []
+    };
+  };
+
+  // 1. GET /api/dkd-store/data ou GET /api/public/dkd-store
+  if (request.method === 'GET' && (path === '/api/dkd-store/data' || path === '/api/public/dkd-store')) {
+    const state = await getFullDkdState();
+    const isPublic = path === '/api/public/dkd-store';
+    let sites = isPublic ? state.sites.filter(s => Number(s.is_active) === 1) : state.sites;
+    let categories = isPublic ? state.categories.filter(c => Number(c.is_active) === 1) : state.categories;
+
+    if (isPublic && state.config.sites_sort_mode === 'random') {
+      sites = sites.slice().sort(() => Math.random() - 0.5);
+    }
+    if (isPublic && state.config.categories_sort_mode === 'random') {
+      categories = categories.slice().sort(() => Math.random() - 0.5);
+    }
+
+    return new Response(JSON.stringify({
+      success: true,
+      config: state.config,
+      categories,
+      sites
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 2. POST /api/dkd-store/site (Créer ou modifier un site)
+  if (request.method === 'POST' && path === '/api/dkd-store/site') {
+    const body = await request.json().catch(() => ({}));
+    const id = (body.id || ('SITE_' + Date.now() + '_' + Math.random().toString(36).slice(2, 6))).trim();
+    const name = (body.name || '').trim();
+    const siteUrl = (body.url || '').trim();
+    let logoUrl = (body.logo_url || '').trim();
+    const categoryId = (body.category_id || 'general').trim();
+    const categoryName = (body.category_name || 'Général').trim();
+    const description = (body.description || '').trim();
+    const badge = (body.badge || '').trim();
+    const isActive = body.is_active !== undefined ? (Number(body.is_active) ? 1 : 0) : 1;
+    const sortOrder = Number(body.sort_order || 1);
+
+    if (!name || !siteUrl) {
+      return new Response(JSON.stringify({ success: false, error: 'Nom et lien URL requis' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+
+    // Si le logo est en base64 et que R2 est disponible, l'enregistrer proprement dans R2
+    if (logoUrl.startsWith('data:image/') && bucket) {
+      try {
+        const mimeMatch = logoUrl.match(/^data:([^;]+);base64,/);
+        const contentType = mimeMatch ? mimeMatch[1] : 'image/png';
+        const base64Content = logoUrl.replace(/^data:[^;]+;base64,/, '');
+        const binStr = atob(base64Content);
+        const bytes = new Uint8Array(binStr.length);
+        for (let i = 0; i < binStr.length; i++) {
+          bytes[i] = binStr.charCodeAt(i);
+        }
+        const r2Key = `dkd-store/logos/${id}_${Date.now()}.png`;
+        await bucket.put(r2Key, bytes.buffer, { httpMetadata: { contentType } });
+        logoUrl = `${url.origin}/api/storage/file/${encodeURIComponent(r2Key)}`;
+      } catch (e) {
+        console.warn('Fallback base64 logo D1:', e);
+      }
+    }
+
+    // S'assurer que la catégorie existe dans dkd_store_categories
+    const existingCat = await safeFirst(db, "SELECT id FROM dkd_store_categories WHERE id = ?", [categoryId]);
+    if (!existingCat) {
+      await safeRun(db, `
+        INSERT OR IGNORE INTO dkd_store_categories (id, name, icon, sort_order, is_active, created_at, updated_at)
+        VALUES (?, ?, '📁', 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      `, [categoryId, categoryName]);
+    }
+
+    await safeRun(db, `
+      INSERT INTO dkd_store_sites (
+        id, name, url, logo_url, category_id, category_name, description, badge, is_active, sort_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        url = excluded.url,
+        logo_url = excluded.logo_url,
+        category_id = excluded.category_id,
+        category_name = excluded.category_name,
+        description = excluded.description,
+        badge = excluded.badge,
+        is_active = excluded.is_active,
+        sort_order = excluded.sort_order,
+        updated_at = CURRENT_TIMESTAMP
+    `, [id, name, siteUrl, logoUrl, categoryId, categoryName, description, badge, isActive, sortOrder]);
+
+    const state = await getFullDkdState();
+    const savedSite = state.sites.find(s => s.id === id);
+    return new Response(JSON.stringify({
+      success: true,
+      site: savedSite,
+      sites: state.sites,
+      categories: state.categories
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 3. POST /api/dkd-store/site/toggle (Cocher / décocher un site)
+  if (request.method === 'POST' && path === '/api/dkd-store/site/toggle') {
+    const body = await request.json().catch(() => ({}));
+    const id = (body.id || '').trim();
+    const isActive = Number(body.is_active) ? 1 : 0;
+    if (!id) {
+      return new Response(JSON.stringify({ success: false, error: 'Identifiant du site requis' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+    await safeRun(db, "UPDATE dkd_store_sites SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [isActive, id]);
+    const state = await getFullDkdState();
+    return new Response(JSON.stringify({
+      success: true,
+      sites: state.sites
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 4. POST /api/dkd-store/site/delete (Supprimer un site)
+  if (request.method === 'POST' && path === '/api/dkd-store/site/delete') {
+    const body = await request.json().catch(() => ({}));
+    const id = (body.id || '').trim();
+    if (!id) {
+      return new Response(JSON.stringify({ success: false, error: 'Identifiant du site requis' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+    await safeRun(db, "DELETE FROM dkd_store_sites WHERE id = ?", [id]);
+    const state = await getFullDkdState();
+    return new Response(JSON.stringify({
+      success: true,
+      sites: state.sites
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 5. POST /api/dkd-store/category (Créer ou modifier une catégorie)
+  if (request.method === 'POST' && path === '/api/dkd-store/category') {
+    const body = await request.json().catch(() => ({}));
+    const name = (body.name || '').trim();
+    const icon = (body.icon || '📁').trim();
+    const sortOrder = Number(body.sort_order || 1);
+    if (!name) {
+      return new Response(JSON.stringify({ success: false, error: 'Nom de catégorie requis' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+    const id = (body.id || ('cat_' + name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_') + '_' + Math.random().toString(36).slice(2, 5))).trim();
+    await safeRun(db, `
+      INSERT INTO dkd_store_categories (id, name, icon, sort_order, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        name = excluded.name,
+        icon = excluded.icon,
+        sort_order = excluded.sort_order,
+        updated_at = CURRENT_TIMESTAMP
+    `, [id, name, icon, sortOrder]);
+
+    const state = await getFullDkdState();
+    const category = state.categories.find(c => c.id === id);
+    return new Response(JSON.stringify({
+      success: true,
+      category,
+      categories: state.categories
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 6. POST /api/dkd-store/category/delete (Supprimer une catégorie)
+  if (request.method === 'POST' && path === '/api/dkd-store/category/delete') {
+    const body = await request.json().catch(() => ({}));
+    const id = (body.id || '').trim();
+    if (!id) {
+      return new Response(JSON.stringify({ success: false, error: 'Identifiant requis' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+    await safeRun(db, "DELETE FROM dkd_store_categories WHERE id = ?", [id]);
+    const state = await getFullDkdState();
+    return new Response(JSON.stringify({
+      success: true,
+      categories: state.categories
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 7. POST /api/dkd-store/rank-categories (Classer les catégories ou mode aléatoire)
+  if (request.method === 'POST' && path === '/api/dkd-store/rank-categories') {
+    const body = await request.json().catch(() => ({}));
+    const sortMode = body.categories_sort_mode === 'random' ? 'random' : 'custom';
+    const orderedIds = Array.isArray(body.ordered_ids) ? body.ordered_ids : [];
+
+    await safeRun(db, `
+      UPDATE dkd_store_config SET categories_sort_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'
+    `, [sortMode]);
+
+    for (let i = 0; i < orderedIds.length; i++) {
+      await safeRun(db, "UPDATE dkd_store_categories SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [i + 1, orderedIds[i]]);
+    }
+
+    const state = await getFullDkdState();
+    return new Response(JSON.stringify({
+      success: true,
+      config: state.config,
+      categories: state.categories
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 8. POST /api/dkd-store/rank-sites (Classer les sites ou mode aléatoire)
+  if (request.method === 'POST' && path === '/api/dkd-store/rank-sites') {
+    const body = await request.json().catch(() => ({}));
+    const sortMode = body.sites_sort_mode === 'random' ? 'random' : 'custom';
+    const orderedIds = Array.isArray(body.ordered_ids) ? body.ordered_ids : [];
+
+    await safeRun(db, `
+      UPDATE dkd_store_config SET sites_sort_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'default'
+    `, [sortMode]);
+
+    for (let i = 0; i < orderedIds.length; i++) {
+      await safeRun(db, "UPDATE dkd_store_sites SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [i + 1, orderedIds[i]]);
+    }
+
+    const state = await getFullDkdState();
+    return new Response(JSON.stringify({
+      success: true,
+      config: state.config,
+      sites: state.sites
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  return new Response(JSON.stringify({ success: false, error: `Route DKD store introuvable: ${request.method} ${path}` }), {
+    status: 404,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+  });
+}
+
+// ============================================================================
 // GESTIONNAIRE PRINCIPAL DU WORKER TABLEAU DE BORD
 // ============================================================================
 export default {
@@ -14788,6 +16682,9 @@ export default {
       // ----------------------------------------------------------------------
       if (path.startsWith('/api/ai/')) {
         return await handleAiBillingRoutes(request, path, url, origin, db);
+      }
+      if (path.startsWith('/api/dkd-store') || path === '/api/public/dkd-store') {
+        return await handleDkdStoreRoutes(request, path, url, origin, db, bucket);
       }
       // ----------------------------------------------------------------------
       // ROUTE GET : /api/storage/file/* (Téléchargement / Affichage Fichiers & Reçus R2)
@@ -17280,6 +19177,14 @@ export default {
       // ----------------------------------------------------------------------
       // ROUTE PAR DÉFAUT : Page Web Tableau de Bord (HTML)
       // ----------------------------------------------------------------------
+      const dkdStoreConfigRow = (await safeFirst(db, "SELECT * FROM dkd_store_config WHERE id = 'default'")) || {
+        id: 'default',
+        sites_sort_mode: 'custom',
+        categories_sort_mode: 'custom'
+      };
+      const dkdStoreCatsRes = await safeQuery(db, "SELECT * FROM dkd_store_categories ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
+      const dkdStoreSitesRes = await safeQuery(db, "SELECT * FROM dkd_store_sites ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
+
       const htmlContent = renderDashboardHtml({
         summary: globalSummary,
         globalConfig: globalConfigRow,
@@ -17297,7 +19202,10 @@ export default {
         alertLogs: (alertLogsRes && alertLogsRes.results) ? alertLogsRes.results : [],
         robotRougeConfig: robotRougeConfigRes,
         robotRougeModels: (robotRougeModelsRes && robotRougeModelsRes.results) ? robotRougeModelsRes.results : [],
-        aiBillingConfig: aiBillingConfigRow
+        aiBillingConfig: aiBillingConfigRow,
+        dkdStoreConfig: dkdStoreConfigRow,
+        dkdStoreCategories: (dkdStoreCatsRes && dkdStoreCatsRes.results) ? dkdStoreCatsRes.results : [],
+        dkdStoreSites: (dkdStoreSitesRes && dkdStoreSitesRes.results) ? dkdStoreSitesRes.results : []
       });
 
       return new Response(htmlContent, {
