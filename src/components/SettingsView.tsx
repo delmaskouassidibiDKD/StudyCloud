@@ -125,16 +125,16 @@ export const SettingsView: React.FC = () => {
   const displayAvatar = isCustomUploaded ? userAvatar : genericAvatar;
 
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 sm:px-6 md:px-8 py-4 md:py-6 pb-28 sm:pb-32 md:pb-8 relative">
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-5 lg:gap-8 items-start">
-        {/* Colonne GAUCHE : Profil utilisateur (md: 5 cols, lg: 4 cols) */}
-        <div className="md:col-span-5 lg:col-span-4 w-full md:sticky md:top-4">
-          <div className="w-full bg-white/85 dark:bg-stone-900/85 backdrop-blur-md border-3 border-stone-800 dark:border-stone-700 rounded-3xl p-6 md:p-7 shadow-[5px_5px_0px_0px_#1c1917] dark:shadow-none flex flex-col items-center text-center space-y-3 transition-all">
+    <div className="w-full min-h-[calc(100dvh-60px)] md:min-h-[calc(100dvh-40px)] flex flex-col justify-center items-center px-4 sm:px-6 md:px-8 lg:px-12 py-6 md:py-8 pb-28 sm:pb-32 md:pb-8 relative">
+      <div className="w-full max-w-5xl lg:max-w-6xl my-auto grid grid-cols-1 md:grid-cols-12 gap-6 lg:gap-8 items-stretch">
+        {/* Colonne GAUCHE : Profil utilisateur (md: 5 cols) */}
+        <div className="md:col-span-5 w-full flex flex-col">
+          <div className="w-full h-full bg-white/90 dark:bg-stone-900/90 backdrop-blur-md border-3 border-stone-800 dark:border-stone-700 rounded-3xl p-6 sm:p-8 md:p-9 shadow-[6px_6px_0px_0px_#1c1917] dark:shadow-none flex flex-col items-center justify-center text-center space-y-4 transition-all">
             {/* Profile Photo Circle */}
             <div 
               onClick={() => setActiveSubView('user-settings')}
               title="Cliquer pour changer le logo ou modifier le profil"
-              className="w-24 h-24 md:w-28 md:h-28 lg:w-32 lg:h-32 rounded-full bg-white border-3 border-stone-800 flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden my-1 md:my-2 transition-all hover:scale-105 cursor-pointer relative group"
+              className="w-28 h-28 sm:w-32 sm:h-32 md:w-36 md:h-36 lg:w-40 lg:h-40 rounded-full bg-white border-3 border-stone-800 flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden my-1 transition-all hover:scale-105 cursor-pointer relative group shrink-0"
             >
               {displayAvatar ? (
                 <img
@@ -149,103 +149,115 @@ export const SettingsView: React.FC = () => {
                   }}
                 />
               ) : (
-                <User className="w-12 h-12 md:w-16 md:h-16" />
+                <User className="w-14 h-14 md:w-18 md:h-18" />
               )}
               <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
-                <Camera className="w-6 h-6 drop-shadow" />
-                <span className="text-[10px] font-extrabold mt-0.5">Modifier</span>
+                <Camera className="w-6 h-6 md:w-7 md:h-7 drop-shadow" />
+                <span className="text-[11px] font-extrabold mt-1">Modifier</span>
               </div>
             </div>
 
             {/* User Name & Profile Info */}
-            <div className="space-y-1 md:space-y-1.5 w-full">
-              <h2 className="text-xl md:text-2xl lg:text-3xl font-extrabold text-stone-900 dark:text-white tracking-tight">{userName}</h2>
+            <div className="space-y-2 w-full">
+              <h2 className="text-2xl sm:text-3xl md:text-3xl lg:text-4xl font-black text-stone-900 dark:text-white tracking-tight">{userName}</h2>
               
               {/* Email */}
-              <div className="flex items-center justify-center gap-1.5 md:gap-2 text-stone-600 dark:text-stone-300 text-xs sm:text-sm font-medium">
-                <Mail className="w-4 h-4 text-orange-600 shrink-0" />
+              <div className="flex items-center justify-center gap-2 text-stone-600 dark:text-stone-300 text-xs sm:text-sm md:text-base font-medium">
+                <Mail className="w-4 h-4 md:w-4.5 md:h-4.5 text-orange-600 shrink-0" />
                 <span className="truncate">{userEmail}</span>
               </div>
 
               {/* Profil Étudiant vs Profil Standard / Professionnel */}
-              {isStudent ? (
-                <>
-                  {userSchool && (
-                    <div className="flex items-center justify-center gap-1.5 md:gap-2 text-stone-700 dark:text-stone-300 text-xs sm:text-sm font-semibold">
-                      <Building2 className="w-4 h-4 text-orange-600 shrink-0" />
-                      <span className="truncate">{userSchool}</span>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                {isStudent ? (
+                  <>
+                    {userSchool && (
+                      <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-500/10 text-orange-700 dark:text-orange-400 font-bold text-xs sm:text-sm border border-orange-500/20">
+                        <Building2 className="w-4 h-4 text-orange-600 shrink-0" />
+                        <span className="truncate">{userSchool}</span>
+                      </div>
+                    )}
+                    {userFiliere && userFiliere !== userSchool && (
+                      <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-800 dark:text-stone-200 font-bold text-xs sm:text-sm border border-stone-300 dark:border-stone-700">
+                        <GraduationCap className="w-4 h-4 text-orange-600 shrink-0" />
+                        <span className="truncate">{userFiliere}</span>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-500/10 text-orange-700 dark:text-orange-400 font-bold text-xs sm:text-sm border border-orange-500/20">
+                      <Briefcase className="w-4 h-4 text-orange-600 shrink-0" />
+                      <span className="truncate">{domainName || "Professionnel indépendant"}</span>
                     </div>
-                  )}
-                  {userFiliere && userFiliere !== userSchool && (
-                    <div className="flex items-center justify-center gap-1.5 md:gap-2 text-stone-700 dark:text-stone-300 text-xs sm:text-sm font-semibold">
-                      <GraduationCap className="w-4 h-4 text-orange-600 shrink-0" />
-                      <span className="truncate">{userFiliere}</span>
+                    <div className="flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-xl bg-stone-100 dark:bg-stone-800 text-stone-500 dark:text-stone-400 text-xs font-medium border border-stone-300 dark:border-stone-700">
+                      <Building2 className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                      <span>Profil Professionnel</span>
                     </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="flex items-center justify-center gap-1.5 md:gap-2 text-stone-800 dark:text-stone-200 text-xs sm:text-sm font-bold">
-                    <Briefcase className="w-4 h-4 text-orange-600 shrink-0" />
-                    <span className="truncate">{domainName || "Professionnel indépendant"}</span>
-                  </div>
-                  <div className="flex items-center justify-center gap-1.5 md:gap-2 text-stone-500 dark:text-stone-400 text-[11px] sm:text-xs font-medium">
-                    <Building2 className="w-3.5 h-3.5 text-stone-400 shrink-0" />
-                    <span>Profil Professionnel / Non-étudiant</span>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Colonne DROITE : Boutons d'action (md: 7 cols, lg: 8 cols) */}
-        <div className="md:col-span-7 lg:col-span-8 w-full">
-          <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
+        {/* Colonne DROITE : Boutons d'action (md: 7 cols) */}
+        <div className="md:col-span-7 w-full flex flex-col justify-center">
+          <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-3.5 md:gap-4">
             {/* 1. Tutoriels YouTube */}
             <a 
               href="https://www.youtube.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full flex items-center justify-center sm:justify-start gap-2.5 sm:gap-3 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-red-50 dark:hover:bg-red-950/30 border-2 border-stone-800 dark:border-stone-700 rounded-xl md:rounded-2xl py-3 px-3.5 sm:px-4 text-stone-900 dark:text-white font-bold text-xs sm:text-sm shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+              className="w-full min-h-[64px] md:min-h-[70px] flex items-center justify-start gap-3 sm:gap-3.5 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-red-50 dark:hover:bg-red-950/30 border-2 md:border-3 border-stone-800 dark:border-stone-700 rounded-2xl py-3.5 md:py-4 px-4 sm:px-5 text-stone-900 dark:text-white font-extrabold text-sm sm:text-base shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
             >
-              <Youtube className="w-5 h-5 text-red-600 shrink-0" />
+              <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+                <Youtube className="w-5 h-5 md:w-6 md:h-6 text-red-600" />
+              </div>
               <span className="truncate">Tutoriels YouTube</span>
             </a>
 
             {/* 2. Partager StudyCloud */}
             <button 
               onClick={() => setActiveSubView('promotion')}
-              className="w-full flex items-center justify-center sm:justify-start gap-2.5 sm:gap-3 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-orange-50 dark:hover:bg-orange-950/30 border-2 border-stone-800 dark:border-stone-700 rounded-xl md:rounded-2xl py-3 px-3.5 sm:px-4 text-stone-900 dark:text-white font-bold text-xs sm:text-sm shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+              className="w-full min-h-[64px] md:min-h-[70px] flex items-center justify-start gap-3 sm:gap-3.5 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-orange-50 dark:hover:bg-orange-950/30 border-2 md:border-3 border-stone-800 dark:border-stone-700 rounded-2xl py-3.5 md:py-4 px-4 sm:px-5 text-stone-900 dark:text-white font-extrabold text-sm sm:text-base shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
             >
-              <Share2 className="w-5 h-5 text-orange-600 shrink-0" />
+              <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-orange-500/10 flex items-center justify-center shrink-0">
+                <Share2 className="w-5 h-5 md:w-6 md:h-6 text-orange-600" />
+              </div>
               <span className="truncate">Partager StudyCloud</span>
             </button>
 
             {/* 3. Abonnement */}
             <button 
               onClick={() => setActiveSubView('pricing')}
-              className="w-full flex items-center justify-center sm:justify-start gap-2.5 sm:gap-3 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-orange-50 dark:hover:bg-amber-950/30 border-2 border-stone-800 dark:border-stone-700 rounded-xl md:rounded-2xl py-3 px-3.5 sm:px-4 text-stone-900 dark:text-white font-bold text-xs sm:text-sm shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+              className="w-full min-h-[64px] md:min-h-[70px] flex items-center justify-start gap-3 sm:gap-3.5 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-amber-50 dark:hover:bg-amber-950/30 border-2 md:border-3 border-stone-800 dark:border-stone-700 rounded-2xl py-3.5 md:py-4 px-4 sm:px-5 text-stone-900 dark:text-white font-extrabold text-sm sm:text-base shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
             >
-              <Crown className="w-5 h-5 text-amber-600 shrink-0" />
+              <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+                <Crown className="w-5 h-5 md:w-6 md:h-6 text-amber-600" />
+              </div>
               <span className="truncate">Abonnement</span>
             </button>
 
             {/* 4. Notifications */}
             <button 
               onClick={() => setActiveSubView('notifications')}
-              className="w-full flex items-center justify-center sm:justify-start gap-2.5 sm:gap-3 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-orange-50 dark:hover:bg-orange-950/30 border-2 border-stone-800 dark:border-stone-700 rounded-xl md:rounded-2xl py-3 px-3.5 sm:px-4 text-stone-900 dark:text-white font-bold text-xs sm:text-sm shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+              className="w-full min-h-[64px] md:min-h-[70px] flex items-center justify-start gap-3 sm:gap-3.5 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-orange-50 dark:hover:bg-orange-950/30 border-2 md:border-3 border-stone-800 dark:border-stone-700 rounded-2xl py-3.5 md:py-4 px-4 sm:px-5 text-stone-900 dark:text-white font-extrabold text-sm sm:text-base shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
             >
-              <Bell className="w-5 h-5 text-orange-600 shrink-0" />
+              <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-orange-500/10 flex items-center justify-center shrink-0">
+                <Bell className="w-5 h-5 md:w-6 md:h-6 text-orange-600" />
+              </div>
               <span className="truncate">Notifications</span>
             </button>
 
             {/* 5. Proposer un service */}
             <button 
               onClick={() => setActiveSubView('service')}
-              className="w-full flex items-center justify-center sm:justify-start gap-2.5 sm:gap-3 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-orange-50 dark:hover:bg-purple-950/30 border-2 border-stone-800 dark:border-stone-700 rounded-xl md:rounded-2xl py-3 px-3.5 sm:px-4 text-stone-900 dark:text-white font-bold text-xs sm:text-sm shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+              className="w-full min-h-[64px] md:min-h-[70px] flex items-center justify-start gap-3 sm:gap-3.5 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-purple-50 dark:hover:bg-purple-950/30 border-2 md:border-3 border-stone-800 dark:border-stone-700 rounded-2xl py-3.5 md:py-4 px-4 sm:px-5 text-stone-900 dark:text-white font-extrabold text-sm sm:text-base shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
             >
-              <PlusCircle className="w-5 h-5 text-purple-600 shrink-0" />
+              <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0">
+                <PlusCircle className="w-5 h-5 md:w-6 md:h-6 text-purple-600" />
+              </div>
               <span className="truncate">Proposer un service</span>
             </button>
 
@@ -254,27 +266,33 @@ export const SettingsView: React.FC = () => {
               href="https://t.me/+QtRhdlTsMHxjODk0"
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full flex items-center justify-center sm:justify-start gap-2.5 sm:gap-3 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-orange-50 dark:hover:bg-emerald-950/30 border-2 border-stone-800 dark:border-stone-700 rounded-xl md:rounded-2xl py-3 px-3.5 sm:px-4 text-stone-900 dark:text-white font-bold text-xs sm:text-sm shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+              className="w-full min-h-[64px] md:min-h-[70px] flex items-center justify-start gap-3 sm:gap-3.5 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 border-2 md:border-3 border-stone-800 dark:border-stone-700 rounded-2xl py-3.5 md:py-4 px-4 sm:px-5 text-stone-900 dark:text-white font-extrabold text-sm sm:text-base shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
             >
-              <Headphones className="w-5 h-5 text-emerald-600 shrink-0" />
+              <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+                <Headphones className="w-5 h-5 md:w-6 md:h-6 text-emerald-600" />
+              </div>
               <span className="truncate">Service client officiel</span>
             </a>
 
             {/* 7. Nous contacter / signaler un problème */}
             <button 
               onClick={() => setShowContactMenu(!showContactMenu)}
-              className="w-full flex items-center justify-center sm:justify-start gap-2.5 sm:gap-3 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-orange-50 dark:hover:bg-blue-950/30 border-2 border-stone-800 dark:border-stone-700 rounded-xl md:rounded-2xl py-3 px-3.5 sm:px-4 text-stone-900 dark:text-white font-bold text-xs sm:text-sm shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+              className="w-full min-h-[64px] md:min-h-[70px] flex items-center justify-start gap-3 sm:gap-3.5 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-blue-50 dark:hover:bg-blue-950/30 border-2 md:border-3 border-stone-800 dark:border-stone-700 rounded-2xl py-3.5 md:py-4 px-4 sm:px-5 text-stone-900 dark:text-white font-extrabold text-sm sm:text-base shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
             >
-              <MessageCircle className="w-5 h-5 text-blue-600 shrink-0" />
+              <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-blue-500/10 flex items-center justify-center shrink-0">
+                <MessageCircle className="w-5 h-5 md:w-6 md:h-6 text-blue-600" />
+              </div>
               <span className="truncate">Nous contacter / problème</span>
             </button>
 
             {/* 8. Paramètres du compte */}
             <button 
               onClick={() => setActiveSubView('user-settings')}
-              className="w-full flex items-center justify-center sm:justify-start gap-2.5 sm:gap-3 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-orange-50 dark:hover:bg-stone-800 border-2 border-stone-800 dark:border-stone-700 rounded-xl md:rounded-2xl py-3 px-3.5 sm:px-4 text-stone-900 dark:text-white font-bold text-xs sm:text-sm shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+              className="w-full min-h-[64px] md:min-h-[70px] flex items-center justify-start gap-3 sm:gap-3.5 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-stone-100 dark:hover:bg-stone-800 border-2 md:border-3 border-stone-800 dark:border-stone-700 rounded-2xl py-3.5 md:py-4 px-4 sm:px-5 text-stone-900 dark:text-white font-extrabold text-sm sm:text-base shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
             >
-              <SettingsIcon className="w-5 h-5 text-stone-700 dark:text-stone-300 shrink-0" />
+              <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-stone-500/10 flex items-center justify-center shrink-0">
+                <SettingsIcon className="w-5 h-5 md:w-6 md:h-6 text-stone-700 dark:text-stone-300" />
+              </div>
               <span className="truncate">Paramètres</span>
             </button>
 
@@ -283,18 +301,22 @@ export const SettingsView: React.FC = () => {
               href={getLegalPortalUrl('cgu')}
               target="_blank"
               rel="noopener noreferrer"
-              className="w-full flex items-center justify-center sm:justify-start gap-2.5 sm:gap-3 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-amber-50 dark:hover:bg-amber-950/30 border-2 border-stone-800 dark:border-stone-700 rounded-xl md:rounded-2xl py-3 px-3.5 sm:px-4 text-stone-900 dark:text-white font-bold text-xs sm:text-sm shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+              className="w-full min-h-[64px] md:min-h-[70px] flex items-center justify-start gap-3 sm:gap-3.5 bg-[#FDFBF7] dark:bg-stone-900/90 hover:bg-amber-50 dark:hover:bg-amber-950/30 border-2 md:border-3 border-stone-800 dark:border-stone-700 rounded-2xl py-3.5 md:py-4 px-4 sm:px-5 text-stone-900 dark:text-white font-extrabold text-sm sm:text-base shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
             >
-              <Scale className="w-5 h-5 text-amber-700 shrink-0" />
+              <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-amber-600/10 flex items-center justify-center shrink-0">
+                <Scale className="w-5 h-5 md:w-6 md:h-6 text-amber-700" />
+              </div>
               <span className="truncate">CGU & Confidentialité</span>
             </a>
 
             {/* 10. Bouton de déconnexion direct */}
             <button 
               onClick={handleLogout}
-              className="w-full flex items-center justify-center sm:justify-start gap-2.5 sm:gap-3 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-900/40 border-2 border-stone-800 dark:border-red-900/60 rounded-xl md:rounded-2xl py-3 px-3.5 sm:px-4 text-red-700 dark:text-red-400 font-bold text-xs sm:text-sm shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+              className="w-full min-h-[64px] md:min-h-[70px] flex items-center justify-start gap-3 sm:gap-3.5 bg-red-50 dark:bg-red-950/30 hover:bg-red-100 dark:hover:bg-red-900/40 border-2 md:border-3 border-stone-800 dark:border-red-900/60 rounded-2xl py-3.5 md:py-4 px-4 sm:px-5 text-red-700 dark:text-red-400 font-extrabold text-sm sm:text-base shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
             >
-              <LogOut className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
+              <div className="w-10 h-10 md:w-11 md:h-11 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+                <LogOut className="w-5 h-5 md:w-6 md:h-6 text-red-600 dark:text-red-400" />
+              </div>
               <span className="truncate">Se déconnecter</span>
             </button>
           </div>
