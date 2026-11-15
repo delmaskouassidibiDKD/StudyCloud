@@ -22,6 +22,8 @@ import { MatiereMenuView } from './MatiereMenuView';
 import { StorageMenuView } from './StorageMenuView';
 import { Page1FilesMenuView } from './Page1FilesMenuView';
 import { RedRobotMenuView } from './RedRobotMenuView';
+import { StudySearchView } from './StudySearchView';
+import { StudySearch3DIcon } from './StudySearch3DIcon';
 import { NavigationTab } from '../types';
 import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
@@ -115,7 +117,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
   const [previousViewMode, setPreviousViewMode] = useState<string>('home');
   // Restauration persistante du viewMode pour conserver exactement le menu où se trouvait l'utilisateur lors d'une mise à jour ou actualisation
-  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | 'red-robot-menu' | string>(() => {
+  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | 'red-robot-menu' | 'study-search' | string>(() => {
     try {
       const saved = localStorage.getItem('unifolder_view_mode');
       if (saved && saved.trim().length > 0) {
@@ -1176,7 +1178,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [newGradeCoeff, setNewGradeCoeff] = useState('');
 
   const viewerExpandLevel = useViewerExpandLevel();
-  const isDedicatedView = viewMode === 'files-menu' || viewMode === 'page1-files-menu' || viewMode.startsWith('matiere-') || viewMode === 'red-robot-menu';
+  const isDedicatedView = viewMode === 'files-menu' || viewMode === 'page1-files-menu' || viewMode.startsWith('matiere-') || viewMode === 'red-robot-menu' || viewMode === 'study-search';
   const isDarkHeader = isDarkMode || Boolean(dashboardWallpaper && viewMode === 'home') || (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
 
   return (
@@ -2143,6 +2145,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           }}
         />
       )}
+      {viewMode === 'study-search' && (
+        <StudySearchView
+          onBack={() => {
+            setActivePageIndex(0);
+            setViewMode('home');
+          }}
+        />
+      )}
 
       {viewMode === 'home' && (
         <div
@@ -2386,6 +2396,33 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                         : 'text-stone-900 dark:text-stone-100'
                       }`}>
                       Menu de création
+                    </span>
+                  </div>
+
+                  {/* Nouvelle Application 3D : StudySearch (Moteur de recherche Google interne) */}
+                  <div
+                    onClick={(e) => {
+                      if (hasMovedRef.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                      }
+                      setActivePageIndex(0);
+                      setViewMode('study-search');
+                    }}
+                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full"
+                    title="Ouvrir StudySearch (Moteur de recherche web)"
+                  >
+                    {/* Conteneur avec taille équivalente aux autres applications */}
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 lg:w-20 lg:h-20 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_16px_rgba(66,133,244,0.4)] dark:drop-shadow-[0_10px_24px_rgba(96,165,250,0.55)] group-hover:drop-shadow-[0_14px_28px_rgba(66,133,244,0.7)] group-hover:scale-110 active:scale-95 transition-all duration-300">
+                      <StudySearch3DIcon className="w-full h-full" />
+                    </div>
+
+                    <span className={`text-[8.5px] sm:text-[9.5px] md:text-[10.5px] font-bold mt-1 md:mt-1.5 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper
+                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1 md:px-1.5 py-0.5 rounded-full border border-white/10'
+                        : 'text-stone-900 dark:text-stone-100'
+                      }`}>
+                      StudySearch
                     </span>
                   </div>
                 </div>
