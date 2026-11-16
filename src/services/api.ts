@@ -3767,6 +3767,8 @@ export interface DkdStoreSite {
   logo_url: string;
   category_id: string;
   category_name: string;
+  subcategory_id?: string;
+  subcategory_name?: string;
   description: string;
   badge: string;
   is_active: number;
@@ -3785,6 +3787,17 @@ export interface DkdStoreCategory {
   updated_at?: string;
 }
 
+export interface DkdStoreSubcategory {
+  id: string;
+  category_id: string;
+  name: string;
+  icon?: string;
+  sort_order?: number;
+  is_active?: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface DkdStorePublicData {
   success: boolean;
   config?: {
@@ -3793,6 +3806,7 @@ export interface DkdStorePublicData {
     categories_sort_mode: string;
   };
   categories: DkdStoreCategory[];
+  subcategories?: DkdStoreSubcategory[];
   sites: DkdStoreSite[];
   error?: string;
 }

@@ -968,6 +968,27 @@ async function ensureStorageTables(db) {
       )
     `).run().catch(() => {});
 
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS dkd_store_subcategories (
+        id TEXT PRIMARY KEY,
+        category_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        icon TEXT DEFAULT '🏷️',
+        sort_order INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      ALTER TABLE dkd_store_sites ADD COLUMN subcategory_id TEXT DEFAULT ''
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      ALTER TABLE dkd_store_sites ADD COLUMN subcategory_name TEXT DEFAULT ''
+    `).run().catch(() => {});
+
   } catch (e) {
     console.warn('[Storage Tables Init]', e);
   }
@@ -1548,6 +1569,16 @@ const TABLES_METADATA = [
     example: "{ id: 'cat_cme', name: 'Électrotechnique & CME', icon: '⚡', sort_order: 1 }",
     isExempted: true,
     exemptReason: "Catégories officielles du DKD store"
+  },
+  {
+    table: 'dkd_store_subcategories',
+    label: 'Sous-catégories du catalogue DKD store',
+    uiConnection: "Menu d'Administration > DKD store > Sous-catégories",
+    role: "Stocke les sous-catégories rattachées aux catégories (ex: Google rattaché à IA).",
+    usage: "Permet d'affiner le classement et la recherche des pépites web dans DKD store.",
+    example: "{ id: 'subcat_google', category_id: 'cat_ia', name: 'Google', icon: '🏷️', sort_order: 1 }",
+    isExempted: true,
+    exemptReason: "Sous-catégories officielles du DKD store"
   }
 ];
 
@@ -2882,6 +2913,7 @@ function renderDashboardHtml(data) {
   const aiUsageLogsJson = JSON.stringify(data.aiUsageLogs || []).replace(/</g, '\\u003c');
   const dkdStoreConfigJson = JSON.stringify(data.dkdStoreConfig || { id: 'default', sites_sort_mode: 'manual', categories_sort_mode: 'manual' }).replace(/</g, '\\u003c');
   const dkdStoreCategoriesJson = JSON.stringify(data.dkdStoreCategories || []).replace(/</g, '\\u003c');
+  const dkdStoreSubcategoriesJson = JSON.stringify(data.dkdStoreSubcategories || []).replace(/</g, '\\u003c');
   const dkdStoreSitesJson = JSON.stringify(data.dkdStoreSites || []).replace(/</g, '\\u003c');
   const aiCfg = data.aiBillingConfig || { tokens_per_credit: 1000, welcome_credits: 50, daily_free_credits: 0, is_daily_renewal_active: 0 };
   const rc = data.robotRougeConfig || {};
@@ -5913,6 +5945,16 @@ function renderDashboardHtml(data) {
               <span>📊</span>
               <span>Classer les sites</span>
             </button>
+
+            <!-- Bouton 4 : Gérer les sous-catégories -->
+            <button
+              type="button"
+              onclick="openAllSubcategoriesModal()"
+              class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-blue-300 border border-blue-500/30 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+            >
+              <span>🏷️</span>
+              <span>Sous-catégories</span>
+            </button>
           </div>
         </div>
 
@@ -6564,47 +6606,47 @@ function renderDashboardHtml(data) {
         </div>
       </div>
 
-      <!-- Catégorie + Création rapide de catégorie -->
+      <!-- Catégorie (Obligatoire) & Sous-catégorie (Optionnel) -->
       <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <!-- Catégorie (Obligatoire) -->
         <div class="space-y-1">
           <div class="flex items-center justify-between">
-            <label class="text-xs font-bold text-slate-200">Catégorie *</label>
-            <button type="button" onclick="toggleQuickAddCategoryBox()" class="text-[10px] text-amber-400 hover:text-amber-300 font-bold cursor-pointer">➕ Créer une catégorie</button>
+            <label class="text-xs font-bold text-slate-200 flex items-center gap-1">
+              <span>📁 Catégorie *</span>
+              <span class="text-[10px] text-amber-400 font-bold">(Obligatoire)</span>
+            </label>
+            <button type="button" onclick="toggleQuickAddCategoryBox()" class="text-[10px] text-amber-400 hover:text-amber-300 font-bold cursor-pointer">➕ Créer</button>
           </div>
           <select
             id="dkd-site-form-category"
+            onchange="onDkdSiteFormCategoryChange()"
             class="w-full bg-slate-950 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none cursor-pointer"
           >
             <!-- Options générées dynamiquement -->
           </select>
         </div>
 
-        <div class="grid grid-cols-2 gap-2">
-          <div class="space-y-1">
-            <label class="text-xs font-bold text-slate-200 block">Badge (Optionnel)</label>
-            <input
-              type="text"
-              id="dkd-site-form-badge"
-              placeholder="Ex: Populaire, Gratuit..."
-              class="w-full bg-slate-950 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none"
-            />
+        <!-- Sous-catégorie (Optionnel) -->
+        <div class="space-y-1">
+          <div class="flex items-center justify-between">
+            <label class="text-xs font-bold text-slate-200 flex items-center gap-1">
+              <span>🏷️ Sous-catégorie</span>
+              <span class="text-[10px] text-slate-400 font-normal">(Optionnel)</span>
+            </label>
+            <button type="button" onclick="toggleQuickAddSubcategoryBox()" class="text-[10px] text-blue-400 hover:text-blue-300 font-bold cursor-pointer">➕ Créer</button>
           </div>
-          <div class="space-y-1">
-            <label class="text-xs font-bold text-slate-200 block">Position (1er, 2e...)</label>
-            <input
-              type="number"
-              id="dkd-site-form-order"
-              value="1"
-              min="1"
-              class="w-full bg-slate-950 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none font-mono font-bold"
-            />
-          </div>
+          <select
+            id="dkd-site-form-subcategory"
+            class="w-full bg-slate-950 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:border-blue-500 outline-none cursor-pointer"
+          >
+            <option value="">(Aucune sous-catégorie)</option>
+          </select>
         </div>
       </div>
 
       <!-- Boîte de création rapide de catégorie -->
       <div id="dkd-quick-add-cat-box" class="hidden p-3 rounded-xl bg-amber-500/10 border border-amber-500/30 space-y-2">
-        <div class="text-[11px] font-bold text-amber-300">Nouvelle catégorie</div>
+        <div class="text-[11px] font-bold text-amber-300">Nouvelle catégorie parente</div>
         <div class="flex items-center gap-2">
           <input
             type="text"
@@ -6626,6 +6668,56 @@ function renderDashboardHtml(data) {
           >
             Ajouter
           </button>
+        </div>
+      </div>
+
+      <!-- Boîte de création rapide de sous-catégorie -->
+      <div id="dkd-quick-add-subcat-box" class="hidden p-3 rounded-xl bg-blue-500/10 border border-blue-500/30 space-y-2">
+        <div class="text-[11px] font-bold text-blue-300">Nouvelle sous-catégorie (rattachée à la catégorie sélectionnée)</div>
+        <div class="flex items-center gap-2">
+          <input
+            type="text"
+            id="dkd-quick-subcat-icon"
+            value="🏷️"
+            placeholder="Icône"
+            class="w-14 bg-slate-950 text-white text-center text-xs rounded-lg px-2 py-2 border border-slate-700 outline-none"
+          />
+          <input
+            type="text"
+            id="dkd-quick-subcat-name"
+            placeholder="Nom de la sous-catégorie (ex: Google, DeepSeek, Mathématiques...)"
+            class="flex-1 bg-slate-950 text-white text-xs rounded-lg px-3 py-2 border border-slate-700 outline-none"
+          />
+          <button
+            type="button"
+            onclick="submitQuickSubcategory()"
+            class="px-3 py-2 rounded-lg bg-blue-500 hover:bg-blue-400 text-stone-950 font-black text-xs cursor-pointer"
+          >
+            Ajouter
+          </button>
+        </div>
+      </div>
+
+      <!-- Badge (Optionnel) + Position -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div class="space-y-1">
+          <label class="text-xs font-bold text-slate-200 block">Badge (Optionnel)</label>
+          <input
+            type="text"
+            id="dkd-site-form-badge"
+            placeholder="Ex: Populaire, Gratuit..."
+            class="w-full bg-slate-950 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none"
+          />
+        </div>
+        <div class="space-y-1">
+          <label class="text-xs font-bold text-slate-200 block">Position (1er, 2e...)</label>
+          <input
+            type="number"
+            id="dkd-site-form-order"
+            value="1"
+            min="1"
+            class="w-full bg-slate-950 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none font-mono font-bold"
+          />
         </div>
       </div>
 
@@ -6728,6 +6820,87 @@ function renderDashboardHtml(data) {
       <!-- Liste complète de toutes les catégories -->
       <div id="modal-all-cat-list" class="flex-1 overflow-y-auto space-y-1.5 pr-1">
         <!-- Généré dynamiquement -->
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================== -->
+  <!-- MODALE 2B DKD STORE : GESTION DES SOUS-CATÉGORIES                  -->
+  <!-- ================================================================== -->
+  <div id="modal-dkd-all-subcategories" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4" onclick="closeAllSubcategoriesModal(event)">
+    <div class="relative max-w-lg w-full bg-[#0e1628] border-2 border-slate-700 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[90vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-xl bg-blue-500/15 border border-blue-500/30 flex items-center justify-center text-lg font-black text-blue-300">🏷️</div>
+          <div>
+            <h3 class="text-base font-black text-white">Sous-catégories DKD store</h3>
+            <p class="text-[11px] text-slate-400">Gérez les sous-catégories associées à vos catégories principales.</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeAllSubcategoriesModal()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer text-sm">✕</button>
+      </div>
+
+      <!-- Création d'une sous-catégorie -->
+      <div class="p-3 rounded-2xl bg-slate-950/90 border border-slate-800 space-y-2 shrink-0">
+        <div class="text-[11px] font-bold text-blue-300">➕ Créer une nouvelle sous-catégorie</div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <div class="space-y-1">
+            <label class="text-[10px] text-slate-400 block">Catégorie parente *</label>
+            <select id="modal-all-subcat-parent" class="w-full bg-slate-900 text-white text-xs rounded-xl px-2.5 py-1.5 border border-slate-700 outline-none">
+              <!-- Rempli dynamiquement -->
+            </select>
+          </div>
+          <div class="space-y-1">
+            <label class="text-[10px] text-slate-400 block">Nom de la sous-catégorie *</label>
+            <div class="flex items-center gap-1.5">
+              <input
+                type="text"
+                id="modal-all-subcat-new-icon"
+                value="🏷️"
+                class="w-10 bg-slate-900 text-white text-center text-xs rounded-xl px-1 py-1.5 border border-slate-700 outline-none"
+              />
+              <input
+                type="text"
+                id="modal-all-subcat-new-name"
+                placeholder="Ex: Google, OpenAI..."
+                class="flex-1 bg-slate-900 text-white text-xs rounded-xl px-2.5 py-1.5 border border-slate-700 focus:border-blue-500 outline-none"
+              />
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onclick="createNewSubcategoryFromModal()"
+          class="w-full py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs cursor-pointer transition shadow-md"
+        >
+          ➕ Ajouter cette sous-catégorie
+        </button>
+      </div>
+
+      <!-- Filtre par catégorie & Recherche -->
+      <div class="flex items-center gap-2 shrink-0">
+        <select
+          id="modal-all-subcat-filter"
+          onchange="renderAllSubcategoriesModalList()"
+          class="bg-slate-950 text-white text-xs rounded-xl px-3 py-2 border border-slate-800 focus:border-blue-500 outline-none"
+        >
+          <option value="all">Toutes les catégories</option>
+        </select>
+        <div class="relative flex-1">
+          <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+          <input
+            type="text"
+            id="modal-all-subcat-search"
+            oninput="renderAllSubcategoriesModalList()"
+            placeholder="Filtrer les sous-catégories..."
+            class="w-full bg-slate-950 text-white text-xs rounded-xl pl-8 pr-3 py-2 border border-slate-800 focus:border-blue-500 outline-none"
+          />
+        </div>
+      </div>
+
+      <!-- Liste des sous-catégories -->
+      <div id="modal-all-subcat-list" class="flex-1 overflow-y-auto space-y-1.5 pr-1">
+        <!-- Rempli dynamiquement -->
       </div>
     </div>
   </div>
@@ -6845,6 +7018,7 @@ function renderDashboardHtml(data) {
     let robotRougeConfig = ${robotRougeConfigJson};
     let dkdStoreConfig = ${dkdStoreConfigJson};
     let dkdStoreCategories = Array.isArray(${dkdStoreCategoriesJson}) ? ${dkdStoreCategoriesJson} : [];
+    let dkdStoreSubcategories = Array.isArray(${dkdStoreSubcategoriesJson}) ? ${dkdStoreSubcategoriesJson} : [];
     let dkdStoreSites = Array.isArray(${dkdStoreSitesJson}) ? ${dkdStoreSitesJson} : [];
     let selectedDkdStoreCategoryId = 'all';
     let selectedDkdStoreSiteId = dkdStoreSites.length > 0 ? dkdStoreSites[0].id : null;
@@ -14632,6 +14806,7 @@ function renderDashboardHtml(data) {
       renderDkdStoreLeftList();
       renderDkdStoreRightDetail();
       populateDkdCategorySelect('dkd-site-form-category');
+      onDkdSiteFormCategoryChange();
     }
     window.renderDkdStoreView = renderDkdStoreView;
 
@@ -14652,6 +14827,37 @@ function renderDashboardHtml(data) {
       }
       sel.innerHTML = html;
     }
+    window.populateDkdCategorySelect = populateDkdCategorySelect;
+
+    function populateDkdSubcategorySelect(selectId, categoryId, selectedSubcatId) {
+      const sel = document.getElementById(selectId);
+      if (!sel) return;
+      let html = '<option value="">(Aucune sous-catégorie)</option>';
+      const targetCatId = categoryId || 'general';
+      const subcats = (dkdStoreSubcategories || []).filter(function(sc) {
+        return String(sc.category_id) === String(targetCatId);
+      }).sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+      subcats.forEach(function(sc) {
+        const isSel = selectedSubcatId && (String(sc.id) === String(selectedSubcatId) || String(sc.name).toLowerCase() === String(selectedSubcatId).toLowerCase());
+        html += '<option value="' + escapeHtml(sc.id) + '"' + (isSel ? ' selected' : '') + '>' + escapeHtml((sc.icon || '🏷️') + ' ' + sc.name) + '</option>';
+      });
+      sel.innerHTML = html;
+    }
+    window.populateDkdSubcategorySelect = populateDkdSubcategorySelect;
+
+    function onDkdSiteFormCategoryChange() {
+      const catId = document.getElementById('dkd-site-form-category')?.value;
+      populateDkdSubcategorySelect('dkd-site-form-subcategory', catId, '');
+    }
+    window.onDkdSiteFormCategoryChange = onDkdSiteFormCategoryChange;
+
+    function onDkdDetailCategoryChange() {
+      const catId = document.getElementById('detail-dkd-category')?.value;
+      populateDkdSubcategorySelect('detail-dkd-subcategory', catId, '');
+    }
+    window.onDkdDetailCategoryChange = onDkdDetailCategoryChange;
 
     function renderDkdStoreHorizontalCategories() {
       const container = document.getElementById('dkd-store-horizontal-cats');
@@ -14749,7 +14955,7 @@ function renderDashboardHtml(data) {
             if (!matchId && !matchName) return false;
           }
           if (q) {
-            const hay = ((s.name || '') + ' ' + (s.url || '') + ' ' + (s.category_name || '') + ' ' + (s.description || '') + ' ' + (s.badge || '')).toLowerCase();
+            const hay = ((s.name || '') + ' ' + (s.url || '') + ' ' + (s.category_name || '') + ' ' + (s.subcategory_name || '') + ' ' + (s.description || '') + ' ' + (s.badge || '')).toLowerCase();
             if (hay.indexOf(q) === -1) return false;
           }
           return true;
@@ -14815,6 +15021,7 @@ function renderDashboardHtml(data) {
               '</div>' +
               '<div class="flex items-center gap-1.5 text-[10px] text-slate-400 truncate mt-0.5">' +
                 '<span class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-medium">' + escapeHtml(s.category_name || 'Général') + '</span>' +
+                (s.subcategory_name ? '<span class="px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-500/30 font-medium">🏷️ ' + escapeHtml(s.subcategory_name) + '</span>' : '') +
                 '<span class="font-mono text-slate-500 truncate">' + escapeHtml(domain) + '</span>' +
               '</div>' +
               (s.description ? '<div class="text-[10px] text-slate-400 truncate mt-0.5">' + escapeHtml(s.description) + '</div>' : '') +
@@ -14866,6 +15073,17 @@ function renderDashboardHtml(data) {
         });
       }
 
+      const subcatsForCat = (dkdStoreSubcategories || []).filter(function(sc) {
+        return String(sc.category_id) === String(site.category_id);
+      }).sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+      let subcatOptionsHtml = '<option value="">(Aucune sous-catégorie)</option>';
+      subcatsForCat.forEach(function(sc) {
+        const isSel = String(sc.id) === String(site.subcategory_id) || String(sc.name).toLowerCase() === String(site.subcategory_name || '').toLowerCase();
+        subcatOptionsHtml += '<option value="' + escapeHtml(sc.id) + '"' + (isSel ? ' selected' : '') + '>' + escapeHtml((sc.icon || '🏷️') + ' ' + sc.name) + '</option>';
+      });
+
       const safeSiteId = escapeHtml(site.id);
 
       detailEl.innerHTML = '<div class="space-y-4">' +
@@ -14882,6 +15100,7 @@ function renderDashboardHtml(data) {
                 '<h3 class="text-base sm:text-lg font-black text-white truncate">' + escapeHtml(site.name || 'Site sans nom') + '</h3>' +
                 '<span class="text-[10px] font-mono font-black px-2 py-0.5 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30">Position #' + (site.sort_order || 1) + '</span>' +
                 '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 border border-slate-700">' + escapeHtml(site.category_name || 'Général') + '</span>' +
+                (site.subcategory_name ? '<span class="text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-500/30">🏷️ ' + escapeHtml(site.subcategory_name) + '</span>' : '') +
               '</div>' +
               '<a href="' + escapeHtml(site.url || '#') + '" target="_blank" rel="noopener noreferrer" class="text-xs font-mono text-blue-400 hover:underline flex items-center gap-1 mt-1 truncate">' +
                 '<span>🔗 ' + escapeHtml(site.url || '') + '</span>' +
@@ -14963,14 +15182,23 @@ function renderDashboardHtml(data) {
             '</div>' +
           '</div>' +
 
-          '<div class="grid grid-cols-1 sm:grid-cols-3 gap-3">' +
+          '<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">' +
             '<div class="space-y-1">' +
               '<div class="flex items-center justify-between">' +
-                '<label class="text-[11px] font-bold text-slate-300">Catégorie</label>' +
+                '<label class="text-[11px] font-bold text-slate-300">Catégorie *</label>' +
                 '<button type="button" onclick="openAllCategoriesModal()" class="text-[10px] text-amber-400 hover:underline font-bold cursor-pointer">+ Catégorie</button>' +
               '</div>' +
-              '<select id="detail-dkd-category" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none cursor-pointer">' +
+              '<select id="detail-dkd-category" onchange="onDkdDetailCategoryChange()" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none cursor-pointer">' +
                 catOptionsHtml +
+              '</select>' +
+            '</div>' +
+            '<div class="space-y-1">' +
+              '<div class="flex items-center justify-between">' +
+                '<label class="text-[11px] font-bold text-slate-300">Sous-catégorie</label>' +
+                '<button type="button" onclick="promptAddSubcategoryForCurrentSite()" class="text-[10px] text-blue-400 hover:underline font-bold cursor-pointer">+ Sous-cat.</button>' +
+              '</div>' +
+              '<select id="detail-dkd-subcategory" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3 py-2.5 border border-slate-700 focus:border-blue-500 outline-none cursor-pointer">' +
+                subcatOptionsHtml +
               '</select>' +
             '</div>' +
             '<div class="space-y-1">' +
@@ -15081,7 +15309,10 @@ function renderDashboardHtml(data) {
       document.getElementById('dkd-site-form-desc').value = '';
       document.getElementById('dkd-site-form-active').checked = true;
       updateDkdLogoPreview('', 'dkd-site-form-logo-preview');
-      populateDkdCategorySelect('dkd-site-form-category', selectedDkdStoreCategoryId !== 'all' ? selectedDkdStoreCategoryId : null);
+      const targetCatId = selectedDkdStoreCategoryId !== 'all' ? selectedDkdStoreCategoryId : null;
+      populateDkdCategorySelect('dkd-site-form-category', targetCatId);
+      const activeCat = document.getElementById('dkd-site-form-category')?.value;
+      populateDkdSubcategorySelect('dkd-site-form-subcategory', activeCat, '');
       modal.classList.remove('hidden');
     }
     window.openDkdSiteModal = openDkdSiteModal;
@@ -15099,6 +15330,12 @@ function renderDashboardHtml(data) {
     }
     window.toggleQuickAddCategoryBox = toggleQuickAddCategoryBox;
 
+    function toggleQuickAddSubcategoryBox() {
+      const box = document.getElementById('dkd-quick-add-subcat-box');
+      if (box) box.classList.toggle('hidden');
+    }
+    window.toggleQuickAddSubcategoryBox = toggleQuickAddSubcategoryBox;
+
     async function submitQuickCategory() {
       const icon = (document.getElementById('dkd-quick-cat-icon')?.value || '📁').trim();
       const name = (document.getElementById('dkd-quick-cat-name')?.value || '').trim();
@@ -15111,6 +15348,80 @@ function renderDashboardHtml(data) {
       document.getElementById('dkd-quick-add-cat-box')?.classList.add('hidden');
     }
     window.submitQuickCategory = submitQuickCategory;
+
+    async function submitQuickSubcategory() {
+      const catId = document.getElementById('dkd-site-form-category')?.value;
+      if (!catId) {
+        showToast('⚠️ Sélectionnez ou créez d\'abord une catégorie parente');
+        return;
+      }
+      const icon = (document.getElementById('dkd-quick-subcat-icon')?.value || '🏷️').trim();
+      const name = (document.getElementById('dkd-quick-subcat-name')?.value || '').trim();
+      if (!name) {
+        showToast('⚠️ Entrez le nom de la sous-catégorie');
+        return;
+      }
+      try {
+        const res = await fetch('/api/dkd-store/subcategory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category_id: catId,
+            name: name,
+            icon: icon || '🏷️',
+            sort_order: (dkdStoreSubcategories || []).length + 1
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSubcategories = data.subcategories || dkdStoreSubcategories;
+          populateDkdSubcategorySelect('dkd-site-form-subcategory', catId, data.subcategory?.id);
+          document.getElementById('dkd-quick-subcat-name').value = '';
+          document.getElementById('dkd-quick-add-subcat-box')?.classList.add('hidden');
+          showToast('✓ Sous-catégorie "' + name + '" créée !');
+        } else {
+          showToast('⚠️ ' + (data.error || 'Erreur création sous-catégorie'));
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.submitQuickSubcategory = submitQuickSubcategory;
+
+    async function promptAddSubcategoryForCurrentSite() {
+      const catId = document.getElementById('detail-dkd-category')?.value;
+      if (!catId) {
+        showToast('⚠️ Aucune catégorie parente sélectionnée');
+        return;
+      }
+      const catObj = (dkdStoreCategories || []).find(function(c) { return String(c.id) === String(catId); });
+      const catName = catObj ? catObj.name : catId;
+      const subName = prompt('Nom de la nouvelle sous-catégorie pour la catégorie "' + catName + '" :');
+      if (!subName || !subName.trim()) return;
+      try {
+        const res = await fetch('/api/dkd-store/subcategory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category_id: catId,
+            name: subName.trim(),
+            icon: '🏷️',
+            sort_order: (dkdStoreSubcategories || []).length + 1
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSubcategories = data.subcategories || dkdStoreSubcategories;
+          populateDkdSubcategorySelect('detail-dkd-subcategory', catId, data.subcategory?.id);
+          showToast('✓ Sous-catégorie "' + subName.trim() + '" créée !');
+        } else {
+          showToast('⚠️ ' + (data.error || 'Erreur création sous-catégorie'));
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.promptAddSubcategoryForCurrentSite = promptAddSubcategoryForCurrentSite;
 
     async function createDkdCategoryRequest(name, icon) {
       try {
@@ -15143,6 +15454,7 @@ function renderDashboardHtml(data) {
       let rawUrl = (document.getElementById('dkd-site-form-url')?.value || '').trim();
       let logoUrl = (document.getElementById('dkd-site-form-logo')?.value || '').trim();
       const categoryId = document.getElementById('dkd-site-form-category')?.value || 'general';
+      const subcategoryId = document.getElementById('dkd-site-form-subcategory')?.value || '';
       const badge = (document.getElementById('dkd-site-form-badge')?.value || '').trim();
       const sortOrder = Number(document.getElementById('dkd-site-form-order')?.value || 1);
       const description = (document.getElementById('dkd-site-form-desc')?.value || '').trim();
@@ -15157,6 +15469,9 @@ function renderDashboardHtml(data) {
 
       const catObj = (dkdStoreCategories || []).find(function(c) { return String(c.id) === String(categoryId); });
       const categoryName = catObj ? catObj.name : 'Général';
+
+      const subcatObj = (dkdStoreSubcategories || []).find(function(sc) { return String(sc.id) === String(subcategoryId); });
+      const subcategoryName = subcatObj ? subcatObj.name : '';
 
       const btn = document.getElementById('btn-save-dkd-site-modal');
       if (btn) {
@@ -15174,6 +15489,8 @@ function renderDashboardHtml(data) {
             logo_url: logoUrl,
             category_id: categoryId,
             category_name: categoryName,
+            subcategory_id: subcategoryId,
+            subcategory_name: subcategoryName,
             badge: badge,
             sort_order: sortOrder,
             description: description,
@@ -15184,6 +15501,7 @@ function renderDashboardHtml(data) {
         if (data.success) {
           dkdStoreSites = data.sites || dkdStoreSites;
           if (data.categories) dkdStoreCategories = data.categories;
+          if (data.subcategories) dkdStoreSubcategories = data.subcategories;
           if (data.site && data.site.id) selectedDkdStoreSiteId = data.site.id;
           closeDkdSiteModal();
           renderDkdStoreView();
@@ -15207,6 +15525,7 @@ function renderDashboardHtml(data) {
       let rawUrl = (document.getElementById('detail-dkd-url')?.value || '').trim();
       let logoUrl = (document.getElementById('detail-dkd-logo')?.value || '').trim();
       const categoryId = document.getElementById('detail-dkd-category')?.value || 'general';
+      const subcategoryId = document.getElementById('detail-dkd-subcategory')?.value || '';
       const badge = (document.getElementById('detail-dkd-badge')?.value || '').trim();
       const sortOrder = Number(document.getElementById('detail-dkd-order')?.value || 1);
       const description = (document.getElementById('detail-dkd-desc')?.value || '').trim();
@@ -15221,6 +15540,9 @@ function renderDashboardHtml(data) {
 
       const catObj = (dkdStoreCategories || []).find(function(c) { return String(c.id) === String(categoryId); });
       const categoryName = catObj ? catObj.name : 'Général';
+
+      const subcatObj = (dkdStoreSubcategories || []).find(function(sc) { return String(sc.id) === String(subcategoryId); });
+      const subcategoryName = subcatObj ? subcatObj.name : '';
 
       const btn = document.getElementById('btn-save-dkd-detail');
       if (btn) {
@@ -15239,6 +15561,8 @@ function renderDashboardHtml(data) {
             logo_url: logoUrl,
             category_id: categoryId,
             category_name: categoryName,
+            subcategory_id: subcategoryId,
+            subcategory_name: subcategoryName,
             badge: badge,
             sort_order: sortOrder,
             description: description,
@@ -15248,6 +15572,8 @@ function renderDashboardHtml(data) {
         const data = await res.json();
         if (data.success) {
           dkdStoreSites = data.sites || dkdStoreSites;
+          if (data.categories) dkdStoreCategories = data.categories;
+          if (data.subcategories) dkdStoreSubcategories = data.subcategories;
           renderDkdStoreView();
           showToast('✓ Modifications enregistrées pour "' + name + '" !');
         } else {
@@ -15452,6 +15778,162 @@ function renderDashboardHtml(data) {
       }
     }
     window.deleteDkdCategory = deleteDkdCategory;
+
+    // ------------------------------------------------------------------------
+    // MODALE GESTION DES SOUS-CATÉGORIES
+    // ------------------------------------------------------------------------
+    function openAllSubcategoriesModal() {
+      const modal = document.getElementById('modal-dkd-all-subcategories');
+      if (!modal) return;
+      populateAllSubcatCategorySelects();
+      renderAllSubcategoriesModalList();
+      modal.classList.remove('hidden');
+    }
+    window.openAllSubcategoriesModal = openAllSubcategoriesModal;
+
+    function closeAllSubcategoriesModal(ev) {
+      if (ev && ev.target && ev.target.id !== 'modal-dkd-all-subcategories') return;
+      document.getElementById('modal-dkd-all-subcategories')?.classList.add('hidden');
+    }
+    window.closeAllSubcategoriesModal = closeAllSubcategoriesModal;
+
+    function populateAllSubcatCategorySelects() {
+      const parentSel = document.getElementById('modal-all-subcat-parent');
+      const filterSel = document.getElementById('modal-all-subcat-filter');
+      const cats = (dkdStoreCategories || []).slice().sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+      if (parentSel) {
+        let pHtml = '';
+        cats.forEach(function(c) {
+          pHtml += '<option value="' + escapeHtml(c.id) + '">' + escapeHtml((c.icon || '📁') + ' ' + c.name) + '</option>';
+        });
+        parentSel.innerHTML = pHtml;
+      }
+      if (filterSel) {
+        let fHtml = '<option value="all">Toutes les catégories</option>';
+        cats.forEach(function(c) {
+          fHtml += '<option value="' + escapeHtml(c.id) + '">' + escapeHtml((c.icon || '📁') + ' ' + c.name) + '</option>';
+        });
+        filterSel.innerHTML = fHtml;
+      }
+    }
+
+    async function createNewSubcategoryFromModal() {
+      const catId = document.getElementById('modal-all-subcat-parent')?.value;
+      const icon = (document.getElementById('modal-all-subcat-new-icon')?.value || '🏷️').trim();
+      const name = (document.getElementById('modal-all-subcat-new-name')?.value || '').trim();
+      if (!catId) {
+        showToast('⚠️ Sélectionnez une catégorie parente');
+        return;
+      }
+      if (!name) {
+        showToast('⚠️ Entrez le nom de la sous-catégorie');
+        return;
+      }
+      try {
+        const res = await fetch('/api/dkd-store/subcategory', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            category_id: catId,
+            name: name,
+            icon: icon || '🏷️',
+            sort_order: (dkdStoreSubcategories || []).length + 1
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSubcategories = data.subcategories || dkdStoreSubcategories;
+          const nameInp = document.getElementById('modal-all-subcat-new-name');
+          if (nameInp) nameInp.value = '';
+          renderAllSubcategoriesModalList();
+          renderDkdStoreView();
+          showToast('✓ Sous-catégorie "' + name + '" créée avec succès !');
+        } else {
+          showToast('⚠️ ' + (data.error || 'Erreur création sous-catégorie'));
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.createNewSubcategoryFromModal = createNewSubcategoryFromModal;
+
+    function renderAllSubcategoriesModalList() {
+      const listEl = document.getElementById('modal-all-subcat-list');
+      if (!listEl) return;
+      const catFilter = document.getElementById('modal-all-subcat-filter')?.value || 'all';
+      const q = (document.getElementById('modal-all-subcat-search')?.value || '').trim().toLowerCase();
+
+      const filtered = (dkdStoreSubcategories || []).filter(function(sc) {
+        if (catFilter !== 'all' && String(sc.category_id) !== String(catFilter)) return false;
+        if (q) {
+          const parentCat = (dkdStoreCategories || []).find(function(c) { return String(c.id) === String(sc.category_id); });
+          const hay = ((sc.name || '') + ' ' + (parentCat ? parentCat.name : '')).toLowerCase();
+          if (hay.indexOf(q) === -1) return false;
+        }
+        return true;
+      }).sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+
+      if (filtered.length === 0) {
+        listEl.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs">Aucune sous-catégorie trouvée</div>';
+        return;
+      }
+
+      let html = '';
+      filtered.forEach(function(sc, idx) {
+        const parentCat = (dkdStoreCategories || []).find(function(c) { return String(c.id) === String(sc.category_id); });
+        const count = (dkdStoreSites || []).filter(function(s) {
+          return String(s.subcategory_id) === String(sc.id) || String(s.subcategory_name || '').toLowerCase() === String(sc.name).toLowerCase();
+        }).length;
+        const safeSubId = escapeHtml(sc.id);
+
+        html += '<div class="p-2.5 rounded-xl bg-slate-900/90 hover:bg-slate-800/80 border border-slate-800 flex items-center justify-between gap-2 transition">' +
+          '<div class="flex items-center gap-2.5 flex-1 min-w-0">' +
+            '<span class="text-[10px] font-mono text-slate-500">#' + (idx + 1) + '</span>' +
+            '<span class="text-base">' + escapeHtml(sc.icon || '🏷️') + '</span>' +
+            '<div class="min-w-0 flex-1">' +
+              '<div class="text-xs font-bold text-white truncate">' + escapeHtml(sc.name) + '</div>' +
+              '<div class="text-[10px] text-slate-400 flex items-center gap-1.5">' +
+                '<span class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">📁 ' + escapeHtml(parentCat ? parentCat.name : 'Général') + '</span>' +
+                '<span class="text-slate-500 font-mono">' + count + ' site(s)</span>' +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<button type="button" data-sub-id="' + safeSubId + '" onclick="deleteDkdSubcategory(this.getAttribute(&quot;data-sub-id&quot;))" title="Supprimer cette sous-catégorie" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-600 text-rose-400 hover:text-white text-[10px] font-bold cursor-pointer">🗑️</button>' +
+        '</div>';
+      });
+
+      listEl.innerHTML = html;
+    }
+    window.renderAllSubcategoriesModalList = renderAllSubcategoriesModalList;
+
+    async function deleteDkdSubcategory(subcatId) {
+      const sc = (dkdStoreSubcategories || []).find(function(item) { return String(item.id) === String(subcatId); });
+      if (!confirm('Supprimer la sous-catégorie "' + (sc ? sc.name : subcatId) + '" ? Les sites associés n\'auront plus de sous-catégorie.')) return;
+      try {
+        const res = await fetch('/api/dkd-store/subcategory/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: subcatId })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSubcategories = data.subcategories || [];
+          if (data.sites) dkdStoreSites = data.sites;
+          renderDkdStoreView();
+          renderAllSubcategoriesModalList();
+          showToast('🗑️ Sous-catégorie supprimée');
+        } else {
+          showToast('⚠️ ' + (data.error || 'Erreur lors de la suppression'));
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.deleteDkdSubcategory = deleteDkdSubcategory;
 
     // ------------------------------------------------------------------------
     // MODALE CLASSER LES CATÉGORIES (OU COCHER ALÉATOIRE)
@@ -16397,10 +16879,12 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
       categories_sort_mode: 'custom'
     };
     const catsRes = await safeQuery(db, "SELECT * FROM dkd_store_categories ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
+    const subcatsRes = await safeQuery(db, "SELECT * FROM dkd_store_subcategories ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
     const sitesRes = await safeQuery(db, "SELECT * FROM dkd_store_sites ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
     return {
       config: cfg,
       categories: (catsRes && catsRes.results) ? catsRes.results : [],
+      subcategories: (subcatsRes && subcatsRes.results) ? subcatsRes.results : [],
       sites: (sitesRes && sitesRes.results) ? sitesRes.results : []
     };
   };
@@ -16411,6 +16895,7 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
     const isPublic = path === '/api/public/dkd-store';
     let sites = isPublic ? state.sites.filter(s => Number(s.is_active) === 1) : state.sites;
     let categories = isPublic ? state.categories.filter(c => Number(c.is_active) === 1) : state.categories;
+    let subcategories = isPublic ? state.subcategories.filter(sc => Number(sc.is_active) === 1) : state.subcategories;
 
     if (isPublic && state.config.sites_sort_mode === 'random') {
       sites = sites.slice().sort(() => Math.random() - 0.5);
@@ -16423,6 +16908,7 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
       success: true,
       config: state.config,
       categories,
+      subcategories,
       sites
     }), {
       status: 200,
@@ -16439,6 +16925,8 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
     let logoUrl = (body.logo_url || '').trim();
     const categoryId = (body.category_id || 'general').trim();
     const categoryName = (body.category_name || 'Général').trim();
+    let subcategoryId = (body.subcategory_id || '').trim();
+    let subcategoryName = (body.subcategory_name || '').trim();
     const description = (body.description || '').trim();
     const badge = (body.badge || '').trim();
     const isActive = body.is_active !== undefined ? (Number(body.is_active) ? 1 : 0) : 1;
@@ -16479,22 +16967,43 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
       `, [categoryId, categoryName]);
     }
 
+    // S'assurer que la sous-catégorie existe si fournie
+    if (subcategoryName) {
+      if (!subcategoryId) {
+        subcategoryId = ('subcat_' + subcategoryName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_') + '_' + Math.random().toString(36).slice(2, 5)).trim();
+      }
+      const existingSub = await safeFirst(db, "SELECT id, name FROM dkd_store_subcategories WHERE id = ?", [subcategoryId]);
+      if (!existingSub) {
+        await safeRun(db, `
+          INSERT OR IGNORE INTO dkd_store_subcategories (id, category_id, name, icon, sort_order, is_active, created_at, updated_at)
+          VALUES (?, ?, ?, '🏷️', 1, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `, [subcategoryId, categoryId, subcategoryName]);
+      } else {
+        subcategoryName = existingSub.name;
+      }
+    } else {
+      subcategoryId = '';
+      subcategoryName = '';
+    }
+
     await safeRun(db, `
       INSERT INTO dkd_store_sites (
-        id, name, url, logo_url, category_id, category_name, description, badge, is_active, sort_order, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        id, name, url, logo_url, category_id, category_name, subcategory_id, subcategory_name, description, badge, is_active, sort_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         url = excluded.url,
         logo_url = excluded.logo_url,
         category_id = excluded.category_id,
         category_name = excluded.category_name,
+        subcategory_id = excluded.subcategory_id,
+        subcategory_name = excluded.subcategory_name,
         description = excluded.description,
         badge = excluded.badge,
         is_active = excluded.is_active,
         sort_order = excluded.sort_order,
         updated_at = CURRENT_TIMESTAMP
-    `, [id, name, siteUrl, logoUrl, categoryId, categoryName, description, badge, isActive, sortOrder]);
+    `, [id, name, siteUrl, logoUrl, categoryId, categoryName, subcategoryId, subcategoryName, description, badge, isActive, sortOrder]);
 
     const state = await getFullDkdState();
     const savedSite = state.sites.find(s => s.id === id);
@@ -16502,7 +17011,8 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
       success: true,
       site: savedSite,
       sites: state.sites,
-      categories: state.categories
+      categories: state.categories,
+      subcategories: state.subcategories
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
@@ -16602,6 +17112,66 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
     return new Response(JSON.stringify({
       success: true,
       categories: state.categories
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 6b. POST /api/dkd-store/subcategory (Créer ou modifier une sous-catégorie)
+  if (request.method === 'POST' && path === '/api/dkd-store/subcategory') {
+    const body = await request.json().catch(() => ({}));
+    const categoryId = (body.category_id || '').trim();
+    const name = (body.name || '').trim();
+    const icon = (body.icon || '🏷️').trim();
+    const sortOrder = Number(body.sort_order || 1);
+    if (!name || !categoryId) {
+      return new Response(JSON.stringify({ success: false, error: 'Nom et catégorie parente requis' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+    const id = (body.id || ('subcat_' + name.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '_') + '_' + Math.random().toString(36).slice(2, 5))).trim();
+    await safeRun(db, `
+      INSERT INTO dkd_store_subcategories (id, category_id, name, icon, sort_order, is_active, created_at, updated_at)
+      VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+      ON CONFLICT(id) DO UPDATE SET
+        category_id = excluded.category_id,
+        name = excluded.name,
+        icon = excluded.icon,
+        sort_order = excluded.sort_order,
+        updated_at = CURRENT_TIMESTAMP
+    `, [id, categoryId, name, icon, sortOrder]);
+
+    const state = await getFullDkdState();
+    const subcategory = state.subcategories.find(sc => sc.id === id);
+    return new Response(JSON.stringify({
+      success: true,
+      subcategory,
+      subcategories: state.subcategories
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 6c. POST /api/dkd-store/subcategory/delete (Supprimer une sous-catégorie)
+  if (request.method === 'POST' && path === '/api/dkd-store/subcategory/delete') {
+    const body = await request.json().catch(() => ({}));
+    const id = (body.id || '').trim();
+    if (!id) {
+      return new Response(JSON.stringify({ success: false, error: 'Identifiant requis' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+    await safeRun(db, "DELETE FROM dkd_store_subcategories WHERE id = ?", [id]);
+    await safeRun(db, "UPDATE dkd_store_sites SET subcategory_id = '', subcategory_name = '' WHERE subcategory_id = ?", [id]);
+    const state = await getFullDkdState();
+    return new Response(JSON.stringify({
+      success: true,
+      subcategories: state.subcategories,
+      sites: state.sites
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
@@ -19211,6 +19781,7 @@ export default {
         categories_sort_mode: 'custom'
       };
       const dkdStoreCatsRes = await safeQuery(db, "SELECT * FROM dkd_store_categories ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
+      const dkdStoreSubcatsRes = await safeQuery(db, "SELECT * FROM dkd_store_subcategories ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
       const dkdStoreSitesRes = await safeQuery(db, "SELECT * FROM dkd_store_sites ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
 
       const htmlContent = renderDashboardHtml({
@@ -19233,6 +19804,7 @@ export default {
         aiBillingConfig: aiBillingConfigRow,
         dkdStoreConfig: dkdStoreConfigRow,
         dkdStoreCategories: (dkdStoreCatsRes && dkdStoreCatsRes.results) ? dkdStoreCatsRes.results : [],
+        dkdStoreSubcategories: (dkdStoreSubcatsRes && dkdStoreSubcatsRes.results) ? dkdStoreSubcatsRes.results : [],
         dkdStoreSites: (dkdStoreSitesRes && dkdStoreSitesRes.results) ? dkdStoreSitesRes.results : []
       });
 

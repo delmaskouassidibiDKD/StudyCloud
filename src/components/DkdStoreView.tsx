@@ -20,7 +20,8 @@ import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '.
 import {
   getDkdStorePublicData,
   DkdStoreSite,
-  DkdStoreCategory
+  DkdStoreCategory,
+  DkdStoreSubcategory
 } from '../services/api';
 
 interface DkdStoreViewProps {
@@ -33,6 +34,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
   // 1. ÉTAT DES DONNÉES D1 & CHARGEMENT
   const [sites, setSites] = useState<DkdStoreSite[]>([]);
   const [categories, setCategories] = useState<DkdStoreCategory[]>([]);
+  const [subcategories, setSubcategories] = useState<DkdStoreSubcategory[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -40,6 +42,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
   // 2. FILTRES & RECHERCHE
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
+  const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string>('all');
   const [showOnlyPinned, setShowOnlyPinned] = useState<boolean>(false);
 
   // 3. SITES ÉPINGLÉS / FAVORIS (Persistance Locale)
@@ -84,6 +87,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
       if (data && data.success) {
         setSites(Array.isArray(data.sites) ? data.sites : []);
         setCategories(Array.isArray(data.categories) ? data.categories : []);
+        setSubcategories(Array.isArray(data.subcategories) ? data.subcategories : []);
       } else {
         setFetchError(data?.error || 'Impossible de charger le catalogue.');
       }
@@ -98,6 +102,12 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
   useEffect(() => {
     loadStoreData();
   }, []);
+
+  // Sous-catégories associées à la catégorie actuellement sélectionnée
+  const currentCategorySubcategories = useMemo(() => {
+    if (selectedCategoryId === 'all') return [];
+    return subcategories.filter(sc => String(sc.category_id) === String(selectedCategoryId));
+  }, [subcategories, selectedCategoryId]);
 
   // Nettoyage au démontage
   useEffect(() => {
@@ -144,7 +154,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
     }
   };
 
-  // Filtrage des sites selon recherche, catégorie et favoris
+  // Filtrage des sites selon recherche, catégorie, sous-catégorie et favoris
   const filteredSites = useMemo(() => {
     return sites.filter((site) => {
       // Filtre favoris
@@ -159,7 +169,14 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
         if (!matchesId && !matchesName) return false;
       }
 
-      // Filtre de recherche
+      // Filtre sous-catégorie
+      if (selectedSubcategoryId !== 'all') {
+        const matchesSubId = String(site.subcategory_id) === String(selectedSubcategoryId);
+        const matchesSubName = String(site.subcategory_name).toLowerCase() === String(selectedSubcategoryId).toLowerCase();
+        if (!matchesSubId && !matchesSubName) return false;
+      }
+
+      // Filtre de recherche (inclut nom, URL, description, catégorie et sous-catégorie)
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const inName = (site.name || '').toLowerCase().includes(q);
@@ -167,12 +184,13 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
         const inUrl = (site.url || '').toLowerCase().includes(q);
         const inBadge = (site.badge || '').toLowerCase().includes(q);
         const inCat = (site.category_name || '').toLowerCase().includes(q);
-        return inName || inDesc || inUrl || inBadge || inCat;
+        const inSubcat = (site.subcategory_name || '').toLowerCase().includes(q);
+        return inName || inDesc || inUrl || inBadge || inCat || inSubcat;
       }
 
       return true;
     });
-  }, [sites, searchQuery, selectedCategoryId, showOnlyPinned, pinnedSiteIds]);
+  }, [sites, searchQuery, selectedCategoryId, selectedSubcategoryId, showOnlyPinned, pinnedSiteIds]);
 
   // Extraction propre du nom de domaine pour affichage
   const getDomainFromUrl = (url: string) => {
@@ -241,8 +259,18 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
               <span className="text-[#34A853]">e</span>
             </span>
             {activeSite && (
-              <span className="hidden sm:inline-block text-xs font-semibold text-stone-500 dark:text-stone-400 border-l border-stone-300 dark:border-stone-700 pl-2 ml-1 truncate">
-                {activeSite.name}
+              <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 dark:text-stone-400 border-l border-stone-300 dark:border-stone-700 pl-2 ml-1 truncate">
+                <span>{activeSite.name}</span>
+                {activeSite.category_name && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-medium">
+                    {activeSite.category_name}
+                  </span>
+                )}
+                {activeSite.subcategory_name && (
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-500/30 font-medium">
+                    🏷️ {activeSite.subcategory_name}
+                  </span>
+                )}
               </span>
             )}
           </div>
@@ -280,7 +308,6 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
           {activeSite ? (
             <>
               {/* Actualiser le site actif */}
-              (
               <button
                 type="button"
                 onClick={handleReloadIframe}
@@ -289,7 +316,6 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isIframeLoading ? 'animate-spin text-blue-500' : ''}`} />
               </button>
-              )}
 
               {/* Épingler à l'accueil / Raccourcis */}
               <button
@@ -445,6 +471,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                 type="button"
                 onClick={() => {
                   setSelectedCategoryId('all');
+                  setSelectedSubcategoryId('all');
                   setShowOnlyPinned(false);
                 }}
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${selectedCategoryId === 'all' && !showOnlyPinned
@@ -497,6 +524,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                     type="button"
                     onClick={() => {
                       setSelectedCategoryId(cat.id);
+                      setSelectedSubcategoryId('all');
                       setShowOnlyPinned(false);
                     }}
                     className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${isSelected
@@ -518,6 +546,54 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                 );
               })}
             </div>
+
+            {/* 3.1.B SOUS-CATÉGORIES DYNAMIQUES (Rattachées à la catégorie sélectionnée) */}
+            {currentCategorySubcategories.length > 0 && (
+              <div className="w-full flex items-center justify-start gap-1.5 overflow-x-auto no-scrollbar py-1 scroll-smooth">
+                <span className="text-[10px] font-black uppercase text-stone-400 dark:text-slate-500 tracking-wider shrink-0 flex items-center gap-1 mr-1">
+                  <span>🏷️</span>
+                  <span>Sous-catégories :</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSelectedSubcategoryId('all')}
+                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 cursor-pointer ${
+                    selectedSubcategoryId === 'all'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'bg-stone-100 hover:bg-stone-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-slate-800'
+                  }`}
+                >
+                  Toutes
+                </button>
+                {currentCategorySubcategories.map((subcat) => {
+                  const isSel = selectedSubcategoryId === subcat.id;
+                  const countInSub = sites.filter(s =>
+                    (String(s.category_id) === String(selectedCategoryId) || String(s.category_name).toLowerCase() === String(selectedCategoryId).toLowerCase()) &&
+                    (String(s.subcategory_id) === String(subcat.id) || String(s.subcategory_name).toLowerCase() === String(subcat.name).toLowerCase())
+                  ).length;
+                  return (
+                    <button
+                      key={subcat.id}
+                      type="button"
+                      onClick={() => setSelectedSubcategoryId(subcat.id)}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 cursor-pointer ${
+                        isSel
+                          ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-400'
+                          : 'bg-stone-100 hover:bg-stone-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-600 dark:text-stone-300 border border-stone-200 dark:border-slate-800'
+                      }`}
+                    >
+                      <span>{subcat.icon || '🏷️'}</span>
+                      <span>{subcat.name}</span>
+                      {countInSub > 0 && (
+                        <span className={`text-[9px] px-1 py-0.1 rounded-full ${isSel ? 'bg-white/20 text-white' : 'bg-stone-200 dark:bg-slate-800 text-stone-500 dark:text-stone-400 font-mono'}`}>
+                          {countInSub}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
 
             {/* 3.2 CONTENU DU CATALOGUE DES SITES ENREGISTRÉS */}
             <div className="w-full pt-1">
@@ -643,11 +719,20 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                               <p className="text-[11px] text-stone-400 dark:text-stone-500 font-mono truncate mt-0.5">
                                 {domain}
                               </p>
-                              {site.category_name && (
-                                <span className="inline-block mt-1 text-[10px] px-2 py-0.5 rounded-lg bg-stone-100 dark:bg-slate-800 text-stone-600 dark:text-stone-300 font-semibold border border-stone-200 dark:border-slate-700/60">
-                                  {site.category_name}
-                                </span>
-                              )}
+                              {/* Catégorie et Sous-catégorie */}
+                              <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                {site.category_name && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-lg bg-stone-100 dark:bg-slate-800 text-stone-600 dark:text-stone-300 font-semibold border border-stone-200 dark:border-slate-700/60">
+                                    📁 {site.category_name}
+                                  </span>
+                                )}
+                                {site.subcategory_name && (
+                                  <span className="text-[10px] px-2 py-0.5 rounded-lg bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-500/30 flex items-center gap-1">
+                                    <span>🏷️</span>
+                                    <span>{site.subcategory_name}</span>
+                                  </span>
+                                )}
+                              </div>
                             </div>
 
                             {/* Bouton épingler aux raccourcis */}
