@@ -15352,7 +15352,7 @@ function renderDashboardHtml(data) {
     async function submitQuickSubcategory() {
       const catId = document.getElementById('dkd-site-form-category')?.value;
       if (!catId) {
-        showToast('⚠️ Sélectionnez ou créez d\'abord une catégorie parente');
+        showToast("⚠️ Sélectionnez ou créez d'abord une catégorie parente");
         return;
       }
       const icon = (document.getElementById('dkd-quick-subcat-icon')?.value || '🏷️').trim();
@@ -15912,7 +15912,7 @@ function renderDashboardHtml(data) {
 
     async function deleteDkdSubcategory(subcatId) {
       const sc = (dkdStoreSubcategories || []).find(function(item) { return String(item.id) === String(subcatId); });
-      if (!confirm('Supprimer la sous-catégorie "' + (sc ? sc.name : subcatId) + '" ? Les sites associés n\'auront plus de sous-catégorie.')) return;
+      if (!confirm('Supprimer la sous-catégorie "' + (sc ? sc.name : subcatId) + '" ? Les sites associés n\\\'auront plus de sous-catégorie.')) return;
       try {
         const res = await fetch('/api/dkd-store/subcategory/delete', {
           method: 'POST',
