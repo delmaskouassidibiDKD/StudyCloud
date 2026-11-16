@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Download, X, Smartphone, CheckCircle, Share } from 'lucide-react';
+import { Download, X, Smartphone, Share, MoreVertical } from 'lucide-react';
 
 interface BeforeInstallPromptEvent extends Event {
   readonly platforms: string[];
@@ -14,11 +14,11 @@ export const PwaInstallPrompt: React.FC = () => {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [showPrompt, setShowPrompt] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
-  const [showIOSInstructions, setShowIOSInstructions] = useState(false);
+  const [showInstructions, setShowInstructions] = useState<'ios' | 'android' | null>(null);
   const [isInstalled, setIsInstalled] = useState(false);
 
   useEffect(() => {
-    // 1. Vérifier si l'application est déjà lancée en mode PWA / Standalone
+    // 1. Vérifier si l'application est déjà lancée en mode autonome (déjà installée)
     const isStandalone =
       window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true ||
@@ -29,35 +29,43 @@ export const PwaInstallPrompt: React.FC = () => {
       return;
     }
 
-    // 2. Détection des appareils iOS (iPhone / iPad) qui requièrent l'action "Partager > Sur l'écran d'accueil"
+    // 2. Détection iOS
     const userAgent = window.navigator.userAgent.toLowerCase();
     const isIosDevice = /iphone|ipad|ipod/.test(userAgent) && !(window as any).MSStream;
     setIsIOS(isIosDevice);
 
-    // 3. Écoute de l'événement natif Chrome / Android / Edge (beforeinstallprompt)
+    // 3. Écoute de l'événement natif Chrome / Android / Edge si disponible
     const handleBeforeInstallPrompt = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
-
-      // Ne pas ré-afficher si l'utilisateur l'a fermé au cours de cette session
-      const hasDismissed = sessionStorage.getItem('studycloud_pwa_dismissed');
-      if (!hasDismissed) {
-        // Petit délai d'attente de 2s pour ne pas agresser l'utilisateur dès la première seconde
-        setTimeout(() => setShowPrompt(true), 2000);
-      }
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
 
-    // 4. Écoute de la fin d'installation réussie
+    // 4. Écoute de l'événement d'installation réussie
     const handleAppInstalled = () => {
       setIsInstalled(true);
       setShowPrompt(false);
+      setShowInstructions(null);
       setDeferredPrompt(null);
-      console.log('[StudyCloud PWA] Application installée avec succès !');
     };
 
     window.addEventListener('appinstalled', handleAppInstalled);
+
+    // 5. Afficher automatiquement la bannière après un court délai (1.5s)
+    // Ne pas afficher uniquement si l'utilisateur vient de la fermer dans l'onglet actif
+    const hasDismissed = sessionStorage.getItem('studycloud_pwa_dismissed');
+    if (!hasDismissed) {
+      const timer = setTimeout(() => {
+        setShowPrompt(true);
+      }, 1500);
+
+      return () => {
+        clearTimeout(timer);
+        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+        window.removeEventListener('appinstalled', handleAppInstalled);
+      };
+    }
 
     return () => {
       window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -67,28 +75,32 @@ export const PwaInstallPrompt: React.FC = () => {
 
   const handleInstallClick = async () => {
     if (deferredPrompt) {
-      // Déclenche le pop-up d'installation natif du navigateur
-      await deferredPrompt.prompt();
-      const choiceResult = await deferredPrompt.userChoice;
-      if (choiceResult.outcome === 'accepted') {
-        console.log('[StudyCloud PWA] Installation acceptée par l\'utilisateur');
-        setShowPrompt(false);
-      } else {
-        console.log('[StudyCloud PWA] Installation refusée');
+      try {
+        await deferredPrompt.prompt();
+        const choiceResult = await deferredPrompt.userChoice;
+        if (choiceResult.outcome === 'accepted') {
+          setShowPrompt(false);
+        }
+        setDeferredPrompt(null);
+      } catch {
+        if (isIOS) setShowInstructions('ios');
+        else setShowInstructions('android');
       }
-      setDeferredPrompt(null);
     } else if (isIOS) {
-      setShowIOSInstructions(true);
+      setShowInstructions('ios');
+    } else {
+      setShowInstructions('android');
     }
   };
 
   const handleDismiss = () => {
     setShowPrompt(false);
+    setShowInstructions(null);
     sessionStorage.setItem('studycloud_pwa_dismissed', 'true');
   };
 
-  // Ne rien afficher si déjà installée ou si le prompt n'est pas actif
-  if (isInstalled || (!showPrompt && !showIOSInstructions)) {
+  // Ne rien afficher si l'application est déjà installée
+  if (isInstalled || (!showPrompt && !showInstructions)) {
     return null;
   }
 
@@ -98,7 +110,7 @@ export const PwaInstallPrompt: React.FC = () => {
         {/* Ligne lumineuse supérieure */}
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-orange-500 via-blue-500 to-indigo-500" />
 
-        {/* Bouton Fermer bien accessible */}
+        {/* Bouton Fermer */}
         <button
           onClick={handleDismiss}
           className="absolute top-2.5 right-2.5 p-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 rounded-full transition-colors cursor-pointer"
@@ -107,36 +119,64 @@ export const PwaInstallPrompt: React.FC = () => {
           <X className="w-4 h-4" />
         </button>
 
-        {showIOSInstructions ? (
-          /* Guide d'installation spécial iOS Safari */
+        {showInstructions === 'ios' ? (
+          /* Guide simple pour iPhone / iPad */
           <div className="space-y-3">
             <div className="flex items-center gap-2 text-blue-400 font-bold text-sm">
               <Smartphone className="w-4 h-4" />
-              <span>Installer StudyCloud sur iPhone / iPad</span>
+              <span>Installer l'application sur iPhone / iPad</span>
             </div>
             <p className="text-xs text-zinc-300 leading-relaxed">
-              Pour installer l'application sur votre écran d'accueil :
+              Pour utiliser l'application même hors connexion :
             </p>
             <ol className="text-xs text-zinc-300 space-y-1.5 list-decimal pl-4">
               <li>
-                Appuyez sur le bouton de partage <Share className="w-3.5 h-3.5 inline text-blue-400" /> en bas de Safari.
+                Appuyez sur le bouton de partage <Share className="w-3.5 h-3.5 inline text-blue-400" /> en bas de l'écran.
               </li>
               <li>
-                Faites défiler vers le bas et appuyez sur <strong className="text-white">« Sur l'écran d'accueil »</strong>.
+                Faites défiler vers le bas et choisissez <strong className="text-white">« Sur l'écran d'accueil »</strong>.
               </li>
               <li>
-                Confirmez en appuyant sur <strong className="text-blue-400">Ajouter</strong> en haut à droite.
+                Appuyez sur <strong className="text-blue-400">Ajouter</strong> en haut à droite.
               </li>
             </ol>
             <button
-              onClick={() => setShowIOSInstructions(false)}
+              onClick={() => setShowInstructions(null)}
+              className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shadow-md active:scale-95"
+            >
+              Compris !
+            </button>
+          </div>
+        ) : showInstructions === 'android' ? (
+          /* Guide simple pour Android / Navigateur */
+          <div className="space-y-3">
+            <div className="flex items-center gap-2 text-blue-400 font-bold text-sm">
+              <Smartphone className="w-4 h-4" />
+              <span>Installer l'application</span>
+            </div>
+            <p className="text-xs text-zinc-300 leading-relaxed">
+              Pour utiliser l'application même hors connexion :
+            </p>
+            <ol className="text-xs text-zinc-300 space-y-1.5 list-decimal pl-4">
+              <li>
+                Appuyez sur le menu <MoreVertical className="w-3.5 h-3.5 inline text-blue-400" /> en haut à droite de votre navigateur.
+              </li>
+              <li>
+                Choisissez <strong className="text-white">« Installer l'application »</strong> (ou « Ajouter à l'écran d'accueil »).
+              </li>
+              <li>
+                Validez pour y accéder à tout moment.
+              </li>
+            </ol>
+            <button
+              onClick={() => setShowInstructions(null)}
               className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shadow-md active:scale-95"
             >
               Compris !
             </button>
           </div>
         ) : (
-          /* Bannière standard d'installation PWA */
+          /* Bannière principale : zéro terme technique, juste télécharger pour utiliser hors connexion */
           <div className="flex items-start gap-3">
             {/* Logo officiel de l'application */}
             <div className="relative shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden shadow-xl border border-white/15 bg-zinc-900">
@@ -148,19 +188,14 @@ export const PwaInstallPrompt: React.FC = () => {
             </div>
 
             <div className="flex-1 min-w-0 pr-3 sm:pr-4">
-              <div className="flex items-center gap-1.5 mb-0.5">
-                <h3 className="text-xs sm:text-sm font-black text-white tracking-tight truncate">
-                  Télécharger StudyCloud
-                </h3>
-                <span className="text-[9px] font-bold px-1.5 py-0.2 bg-blue-500/20 text-blue-300 rounded border border-blue-500/30">
-                  App PWA
-                </span>
-              </div>
-              <p className="text-[11px] text-zinc-300 leading-snug mb-2.5 line-clamp-2 sm:line-clamp-none">
-                Accès direct sur l'écran d'accueil et consultations disponibles <strong>même sans connexion</strong>.
+              <h3 className="text-xs sm:text-sm font-black text-white tracking-tight truncate mb-0.5">
+                Télécharger l'application
+              </h3>
+              <p className="text-[11px] text-zinc-300 leading-snug mb-2.5">
+                Téléchargez l'application pour utiliser StudyCloud <strong>même hors connexion</strong>.
               </p>
 
-              {/* Ligne des boutons entièrement visible et adaptée */}
+              {/* Boutons d'action */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleInstallClick}
