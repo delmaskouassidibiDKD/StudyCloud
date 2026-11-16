@@ -29,7 +29,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
     try {
       const saved = localStorage.getItem('user_grades_standard_scale');
       if (saved) return parseFloat(saved) || 20;
-    } catch (e) {}
+    } catch (e) { }
     return 20;
   });
 
@@ -76,7 +76,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                 coefficient: item.coefficient,
                 subGradesJson: JSON.stringify(item.subGrades || []),
                 average: item.grade
-              }).catch(() => {})
+              }).catch(() => { })
             );
           });
         }
@@ -122,7 +122,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
           setTrimestersData(loaded);
           window.dispatchEvent(new Event('user_grades_changed'));
           // Nettoyer l'ancienne donnée localStorage devenue inutile
-          try { localStorage.removeItem('user_grades_trimesters_data'); } catch {}
+          try { localStorage.removeItem('user_grades_trimesters_data'); } catch { }
         } else {
           // D1 vide : charger les matières enregistrées pour afficher la liste
           try {
@@ -145,7 +145,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                 return;
               }
             }
-          } catch {}
+          } catch { }
           setTrimestersData(getEmptyTrimestersData());
         }
       })
@@ -165,7 +165,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
       localStorage.setItem('user_grades_standard_scale', standardScale.toString());
       triggerDebouncedCloudBackup();
       window.dispatchEvent(new Event('user_grades_changed'));
-    } catch (e) {}
+    } catch (e) { }
   }, [standardScale]);
 
   useEffect(() => {
@@ -423,7 +423,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
       ...prev,
       [activeTrimestre]: updatedList
     }));
-    StudyCloudAPI.deleteGrade(targetId).catch(() => {});
+    StudyCloudAPI.deleteGrade(targetId).catch(() => { });
     triggerDebouncedCloudBackup();
     setDeleteId(null);
     setSuccessMessage('Matière supprimée avec succès !');
@@ -435,10 +435,10 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
       {/* Sticky Header Group */}
       <div className="sticky top-0 z-40 flex flex-col w-full shrink-0 bg-slate-50/90 dark:bg-[#070a13]/90 backdrop-blur-md pb-1">
         {/* Top Navigation Bar with Back & Add */}
-        <div className="bg-white/95 dark:bg-[#0c1222]/95 px-4 py-2.5 flex items-center justify-between border-b border-slate-200/80 dark:border-slate-800/80 shadow-xs">
+        <div className="bg-white/95 dark:bg-[#0c1222]/95 px-4 py-2.5 flex items-center justify-between border-b border-slate-300 dark:border-slate-700 shadow-xs">
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-300 dark:border-slate-600 shadow-2xs transition-all cursor-pointer active:scale-95"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Retour</span>
@@ -485,11 +485,10 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
             <button
               key={tab.id}
               onClick={() => setActiveTrimestre(tab.id as '1' | '2' | '3')}
-              className={`flex-1 py-1.5 text-center text-xs sm:text-sm font-bold tracking-wider rounded-lg transition-all cursor-pointer ${
-                activeTrimestre === tab.id
-                  ? 'bg-white dark:bg-[#11192e] text-indigo-600 dark:text-indigo-400 shadow-xs'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-              }`}
+              className={`flex-1 py-1.5 text-center text-xs sm:text-sm font-bold tracking-wider rounded-lg transition-all cursor-pointer ${activeTrimestre === tab.id
+                ? 'bg-white dark:bg-[#11192e] text-indigo-600 dark:text-indigo-400 shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
             >
               {tab.label}
             </button>
@@ -497,7 +496,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
         </div>
 
         {/* Table Headers Bar */}
-        <div className="mx-3 sm:mx-6 mt-2 bg-slate-100/90 dark:bg-[#11192e] rounded-xl border border-slate-200/70 dark:border-slate-800/70 text-slate-500 dark:text-slate-400 font-semibold text-xs uppercase tracking-wider px-4 py-2.5 grid grid-cols-12 items-center">
+        <div className="mx-3 sm:mx-6 mt-2 bg-slate-100/90 dark:bg-[#11192e] rounded-xl border border-slate-300 dark:border-slate-700 text-slate-500 dark:text-slate-400 font-semibold text-xs uppercase tracking-wider px-4 py-2.5 grid grid-cols-12 items-center">
           <div className="col-span-6">Matière</div>
           <div className="col-span-2 text-center">Coefficient</div>
           <div className="col-span-4 text-right pr-2 md:pr-4">Moyenne</div>
@@ -507,12 +506,12 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
       {/* Rows Container - Stacked white cards on background (Scrollable) */}
       <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 space-y-2.5 md:space-y-3 max-w-6xl xl:max-w-7xl w-full mx-auto pb-24 md:pb-8">
         {isLoading ? (
-          <div className="bg-white dark:bg-[#161f30] rounded-xl md:rounded-2xl p-12 md:p-16 text-center text-stone-500 dark:text-slate-400 shadow-sm border border-stone-200 dark:border-slate-800 flex flex-col items-center justify-center gap-3 transition-colors">
+          <div className="bg-white dark:bg-[#161f30] rounded-xl md:rounded-2xl p-12 md:p-16 text-center text-stone-500 dark:text-slate-400 shadow-sm border border-stone-300 dark:border-slate-700 flex flex-col items-center justify-center gap-3 transition-colors">
             <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
             <p className="font-semibold text-sm text-stone-700 dark:text-slate-200">Chargement de vos notes depuis la base de données...</p>
           </div>
         ) : currentItems.length === 0 ? (
-          <div className="bg-white dark:bg-[#161f30] rounded-xl md:rounded-2xl p-12 md:p-16 text-center text-stone-500 dark:text-slate-400 shadow-sm border border-stone-200 dark:border-slate-800 transition-colors">
+          <div className="bg-white dark:bg-[#161f30] rounded-xl md:rounded-2xl p-12 md:p-16 text-center text-stone-500 dark:text-slate-400 shadow-sm border border-stone-300 dark:border-slate-700 transition-colors">
             <p className="font-semibold text-base md:text-lg text-stone-700 dark:text-slate-200">Aucune matière enregistrée</p>
             <p className="text-xs md:text-sm text-stone-400 dark:text-slate-400 mt-1">Cliquez sur le bouton "Ajouter" en haut pour commencer.</p>
           </div>
@@ -525,17 +524,17 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
             return (
               <div
                 key={item.id}
-                className="bg-white dark:bg-[#161f30] rounded-xl md:rounded-2xl shadow-xs md:shadow-md border border-stone-200/80 dark:border-slate-800 hover:border-stone-300 dark:hover:border-slate-700 transition-all overflow-hidden"
+                className="bg-white dark:bg-[#161f30] rounded-xl md:rounded-2xl shadow-xs md:shadow-md border border-stone-300 dark:border-slate-700 hover:border-stone-400 dark:hover:border-slate-600 transition-all overflow-hidden"
               >
                 {/* Main Row */}
                 <div className="px-4 sm:px-5 md:px-8 py-3.5 sm:py-4 md:py-5 lg:py-6 grid grid-cols-12 items-center group">
                   <div className="col-span-6 pr-2 md:pr-4">
-                    <div 
+                    <div
                       className="bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283548] border-2 border-stone-300 dark:border-slate-700 hover:border-stone-400 dark:hover:border-slate-600 px-3 py-2 md:px-5 md:py-3.5 rounded-lg md:rounded-xl cursor-pointer max-w-full overflow-hidden transition-all shadow-2xs"
                       onClick={() => handleOpenEdit(item)}
                       title="Modifier cette matière"
                     >
-                      <div 
+                      <div
                         className="font-sans font-semibold text-xs sm:text-sm md:text-base lg:text-lg text-stone-900 dark:text-slate-100 leading-snug"
                         style={{
                           display: '-webkit-box',
@@ -568,7 +567,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
                 {/* Expanded Sub-Grades Accordion */}
                 {isExpanded && (
-                  <div className="bg-[#F5F1E9] dark:bg-[#0f172a] px-4 sm:px-5 md:px-8 py-4 md:py-6 border-t border-stone-200/80 dark:border-slate-800 animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="bg-[#F5F1E9] dark:bg-[#0f172a] px-4 sm:px-5 md:px-8 py-4 md:py-6 border-t border-stone-300 dark:border-slate-700 animate-in fade-in slide-in-from-top-2 duration-200">
                     <div className="flex items-center justify-between mb-3 md:mb-4">
                       <div className="flex items-center gap-2.5">
                         <h4 className="font-sans font-bold text-xs md:text-sm uppercase tracking-wider text-stone-800 dark:text-slate-200">
@@ -597,8 +596,8 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                       <form onSubmit={(e) => handleAddNewGradeSubmit(item.id, e)} className="bg-white dark:bg-[#1e293b] p-3.5 rounded-xl border border-blue-200 dark:border-blue-900 shadow-sm mb-3 space-y-3">
                         <div className="flex items-center justify-between">
                           <span className="font-bold text-xs text-blue-900 dark:text-blue-300 uppercase">Ajouter une nouvelle note</span>
-                          <button 
-                            type="button" 
+                          <button
+                            type="button"
                             onClick={() => setActiveAddGradeSubjectId(null)}
                             className="text-stone-400 hover:text-stone-600 dark:hover:text-slate-300 text-xs cursor-pointer"
                           >
@@ -608,7 +607,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                         <div className="grid grid-cols-3 gap-2">
                           <div>
                             <label className="block text-[10px] font-semibold text-stone-500 dark:text-slate-400 mb-1">Note</label>
-                            <input 
+                            <input
                               type="number"
                               step="0.01"
                               min="0"
@@ -625,7 +624,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                           </div>
                           <div>
                             <label className="block text-[10px] font-semibold text-stone-500 dark:text-slate-400 mb-1">Sur combien</label>
-                            <input 
+                            <input
                               type="number"
                               step="1"
                               min="1"
@@ -641,7 +640,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                           </div>
                           <div>
                             <label className="block text-[10px] font-semibold text-stone-500 dark:text-slate-400 mb-1">Coefficient</label>
-                            <input 
+                            <input
                               type="number"
                               step="0.5"
                               min="0.5"
@@ -1005,7 +1004,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
 
           {/* Content Body */}
           <div className="max-w-3xl w-full mx-auto px-6 py-8 space-y-10 pb-24 text-stone-800 dark:text-slate-200 font-serif">
-            
+
             {/* Section 1: Guide Pratique */}
             <div className="space-y-6">
               <div className="border-b-2 border-stone-300 dark:border-slate-800 pb-2">
@@ -1016,7 +1015,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
                   Mode d'emploi des fonctionnalités
                 </h3>
               </div>
-              
+
               <div className="space-y-6 text-sm sm:text-base leading-relaxed text-stone-700 dark:text-slate-300">
                 <div className="space-y-1.5">
                   <h4 className="font-extrabold text-stone-900 dark:text-slate-100 text-base flex items-center gap-2">

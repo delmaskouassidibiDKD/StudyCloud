@@ -598,10 +598,10 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
   return (
     <div className="absolute inset-x-0 md:left-64 md:right-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] z-30 w-full md:w-[calc(100%-16rem)] bg-slate-50 dark:bg-[#070a13] text-slate-800 dark:text-slate-100 flex flex-col overflow-hidden transition-colors duration-300">
       {/* Top Header Bar */}
-      <div className="flex-none px-3 sm:px-5 py-2.5 bg-white/95 dark:bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between z-40 shadow-xs">
+      <div className="flex-none px-3 sm:px-5 py-2.5 bg-white/95 dark:bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-300 dark:border-slate-700 flex items-center justify-between z-40 shadow-xs">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-300 dark:border-slate-600 shadow-2xs transition-all cursor-pointer active:scale-95 shrink-0"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span>Retour</span>
@@ -612,7 +612,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
             type="button"
             onClick={handleDownloadPdf}
             disabled={isGeneratingPdf}
-            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-semibold text-xs rounded-xl border border-indigo-200/80 dark:border-indigo-800/60 shadow-2xs transition-all cursor-pointer active:scale-95 disabled:opacity-60 whitespace-nowrap shrink-0"
+            className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/60 dark:hover:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-semibold text-xs rounded-xl border border-indigo-300 dark:border-indigo-700 shadow-2xs transition-all cursor-pointer active:scale-95 disabled:opacity-60 whitespace-nowrap shrink-0"
             title="Télécharger l'emploi du temps en PDF"
           >
             {isGeneratingPdf ? (
@@ -648,18 +648,18 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       >
         <div
           ref={tableRef}
-          className="min-w-[900px] max-w-full mx-auto bg-white dark:bg-[#0c1222] rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800 overflow-hidden"
+          className="min-w-[900px] max-w-full mx-auto bg-white dark:bg-[#0c1222] rounded-2xl shadow-sm border border-slate-300 dark:border-slate-700 overflow-hidden"
           style={{ zoom: `${zoomLevel}%` }}
         >
           {/* Header title inside the table area */}
-          <div className="bg-slate-50 dark:bg-[#111a2e] py-3 px-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
+          <div className="bg-slate-50 dark:bg-[#111a2e] py-3 px-4 border-b border-slate-300 dark:border-slate-700 flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-3">
               <div className="flex items-center gap-2">
                 <Calendar className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 <span className="font-bold text-sm text-slate-800 dark:text-white">Emploi du temps hebdomadaire</span>
               </div>
               {/* Zoom Controls */}
-              <div className="flex items-center gap-1 bg-white dark:bg-[#070a13] border border-slate-200 dark:border-slate-800 rounded-xl p-1 shadow-2xs">
+              <div className="flex items-center gap-1 bg-white dark:bg-[#070a13] border border-slate-300 dark:border-slate-700 rounded-xl p-1 shadow-2xs">
                 <button
                   type="button"
                   onClick={() => changeZoom(-1)}
@@ -695,11 +695,11 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
           <div className="overflow-x-auto">
             <table className="w-full border-collapse text-xs sm:text-sm table-fixed">
               <thead>
-                <tr className="bg-slate-100 dark:bg-[#162033] text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-800">
+                <tr className="bg-slate-100 dark:bg-[#162033] text-slate-800 dark:text-slate-200 border-b border-slate-300 dark:border-slate-700">
                   {/* Diagonal Split Top-Left Corner Box */}
-                  <th className="relative border-r border-slate-200 dark:border-slate-800 w-32 h-14 p-0 overflow-hidden bg-slate-100 dark:bg-[#162033]">
+                  <th className="relative border-r border-slate-300 dark:border-slate-700 w-32 h-14 p-0 overflow-hidden bg-slate-100 dark:bg-[#162033]">
                     <svg className="absolute inset-0 w-full h-full pointer-events-none" preserveAspectRatio="none" viewBox="0 0 100 100">
-                      <line x1="0" y1="0" x2="100" y2="100" stroke="currentColor" className="text-slate-300 dark:text-slate-700" strokeWidth="1.5" />
+                      <line x1="0" y1="0" x2="100" y2="100" stroke="currentColor" className="text-slate-400 dark:text-slate-500" strokeWidth="2" />
                     </svg>
                     <div className="absolute top-1.5 right-2 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
                       Jours
@@ -712,7 +712,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                     <th
                       key={day}
                       onClick={() => handleHeaderClick('day', dIdx)}
-                      className="py-3 px-3 font-semibold border-r border-slate-200 dark:border-slate-800 text-center uppercase tracking-wider last:border-r-0 cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition-colors group relative text-xs"
+                      className="py-3 px-3 font-semibold border-r border-slate-300 dark:border-slate-700 text-center uppercase tracking-wider last:border-r-0 cursor-pointer hover:bg-slate-200/60 dark:hover:bg-slate-800/60 transition-colors group relative text-xs"
                       title="Cliquer pour modifier ce jour"
                     >
                       <div className="flex items-center justify-center gap-1">
@@ -725,10 +725,10 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
               </thead>
               <tbody>
                 {hours.map((hour, hIdx) => (
-                  <tr key={`${hour}-${hIdx}`} className="border-b border-slate-200 dark:border-slate-800/80 hover:bg-slate-50/60 dark:hover:bg-slate-850/40 transition-colors">
+                  <tr key={`${hour}-${hIdx}`} className="border-b border-slate-300 dark:border-slate-700 hover:bg-slate-50/60 dark:hover:bg-slate-850/40 transition-colors">
                     <td
                       onClick={() => handleHeaderClick('hour', hIdx)}
-                      className="py-3 px-2 font-semibold text-slate-700 dark:text-slate-300 bg-slate-50/80 dark:bg-[#0c1424] border-r border-slate-200 dark:border-slate-800 text-center whitespace-nowrap cursor-pointer hover:bg-slate-100 dark:hover:bg-[#162033] transition-colors group text-xs"
+                      className="py-3 px-2 font-semibold text-slate-700 dark:text-slate-300 bg-slate-50/80 dark:bg-[#0c1424] border-r border-slate-300 dark:border-slate-700 text-center whitespace-nowrap cursor-pointer hover:bg-slate-100 dark:hover:bg-[#162033] transition-colors group text-xs"
                       title="Cliquer pour modifier cette heure"
                     >
                       <div className="flex items-center justify-center gap-1">
@@ -745,7 +745,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                         <td
                           key={day}
                           onClick={() => openSlot(day, hour)}
-                          className={`p-2 border-r border-slate-200 dark:border-slate-800/80 last:border-r-0 cursor-pointer transition-all hover:bg-slate-100/60 dark:hover:bg-slate-800/40 relative group align-top ${entry ? colorStyle.bg + ' ' + colorStyle.border + ' border-l-4' : 'h-16 dark:bg-[#070a13]'
+                          className={`p-2 border-r border-slate-300 dark:border-slate-700 last:border-r-0 cursor-pointer transition-all hover:bg-slate-100/60 dark:hover:bg-slate-800/40 relative group align-top ${entry ? colorStyle.bg + ' ' + colorStyle.border + ' border-l-4' : 'h-16 dark:bg-[#070a13]'
                             }`}
                         >
                           {entry ? (
@@ -819,8 +819,8 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       {/* Edit Header Modal */}
       {editingHeader && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-300 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-300 dark:border-slate-700">
               <h3 className="font-bold text-base text-slate-900 dark:text-white">
                 Modifier {editingHeader.type === 'day' ? 'le jour' : "l'heure"}
               </h3>
@@ -909,7 +909,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       {/* Confirmation Modal for Adding Row */}
       {showAddConfirm && (
         <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-300 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
                 <Plus className="w-5 h-5" />
@@ -923,11 +923,11 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                 </p>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-300 dark:border-slate-700">
               <button
                 type="button"
                 onClick={() => setShowAddConfirm(false)}
-                className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs rounded-xl transition-all cursor-pointer"
+                className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs rounded-xl border border-slate-300 dark:border-slate-600 transition-all cursor-pointer"
               >
                 Annuler
               </button>
@@ -962,7 +962,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       {/* Confirmation Modal for Deleting Row */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 z-60 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
+          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-sm w-full p-6 shadow-xl border border-slate-300 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 rounded-full bg-rose-100 dark:bg-rose-950/50 flex items-center justify-center text-rose-600 dark:text-rose-400 shrink-0">
                 <Trash2 className="w-5 h-5" />
@@ -976,11 +976,11 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
                 </p>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-200 dark:border-slate-800">
+            <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-300 dark:border-slate-700">
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(false)}
-                className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs rounded-xl transition-all cursor-pointer"
+                className="px-3.5 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-semibold text-xs rounded-xl border border-slate-300 dark:border-slate-600 transition-all cursor-pointer"
               >
                 Annuler
               </button>
@@ -999,8 +999,8 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
       {/* Edit/Add Modal */}
       {activeSlot && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-200 dark:border-slate-800 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-200 dark:border-slate-800">
+          <div className="bg-white dark:bg-[#111a2e] rounded-2xl max-w-md w-full p-6 shadow-xl border border-slate-300 dark:border-slate-700 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-300 dark:border-slate-700">
               <div className="flex items-center gap-2">
                 <Clock className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                 <h3 className="font-bold text-base text-slate-900 dark:text-white">

@@ -613,11 +613,11 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
       </svg>
 
       {/* Modern Sticky Header */}
-      <div className="sticky top-0 z-40 px-3 sm:px-6 py-2.5 bg-white/95 dark:bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-200/80 dark:border-slate-800/80 flex items-center justify-between shadow-xs">
+      <div className="sticky top-0 z-40 px-3 sm:px-6 py-2.5 bg-white/95 dark:bg-[#0c1222]/95 backdrop-blur-md border-b border-slate-300 dark:border-slate-700 flex items-center justify-between shadow-xs">
         <div className="flex items-center gap-2">
           <button
             onClick={onBack}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-xl border border-slate-300 dark:border-slate-600 shadow-2xs transition-all cursor-pointer active:scale-95"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Retour</span>
@@ -625,14 +625,14 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
         </div>
 
         <div className="flex items-center gap-2">
-          <span className="font-bold text-xs sm:text-sm text-slate-800 dark:text-white capitalize px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs whitespace-nowrap">
+          <span className="font-bold text-xs sm:text-sm text-slate-800 dark:text-white capitalize px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-xl border border-slate-300 dark:border-slate-600 shadow-2xs whitespace-nowrap">
             {selectedAnalysis}
           </span>
         </div>
 
         <button
           onClick={() => setIsRightDrawerOpen(true)}
-          className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs transition-all cursor-pointer active:scale-95 flex items-center justify-center"
+          className="p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl border border-slate-300 dark:border-slate-600 shadow-2xs transition-all cursor-pointer active:scale-95 flex items-center justify-center"
           title="Choisir le type d'analyse"
         >
           <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -644,7 +644,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
 
       {/* Sub-toolbar for analysis filters (trimestres & subjects) */}
       {(selectedAnalysis === 'analyse par matière' || selectedAnalysis === 'analyse par note') && (
-        <div className="px-3 sm:px-6 py-2 bg-slate-100/90 dark:bg-[#11192e] border-b border-slate-200/80 dark:border-slate-800 flex items-center justify-between flex-wrap gap-2">
+        <div className="px-3 sm:px-6 py-2 bg-slate-100/90 dark:bg-[#11192e] border-b border-slate-300 dark:border-slate-700 flex items-center justify-between flex-wrap gap-2">
           {selectedAnalysis === 'analyse par matière' && (
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Trimestre :</span>
@@ -652,7 +652,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                 <button
                   key={t}
                   onClick={() => setSubjectTrimestre(t)}
-                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-2xs ${subjectTrimestre === t ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'}`}
+                  className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-2xs ${subjectTrimestre === t ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50'}`}
                 >
                   T{t}
                 </button>
@@ -668,7 +668,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                   <button
                     key={t}
                     onClick={() => setNoteTrimestre(t)}
-                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-2xs ${noteTrimestre === t ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 hover:bg-slate-50'}`}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer shadow-2xs ${noteTrimestre === t ? 'bg-indigo-600 text-white' : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600 hover:bg-slate-50'}`}
                   >
                     T{t}
                   </button>
@@ -677,13 +677,13 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
               <div className="relative">
                 <button
                   onClick={() => setIsNoteSubjectDropdownOpen(!isNoteSubjectDropdownOpen)}
-                  className="px-3 py-1 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-2xs flex items-center gap-1.5 cursor-pointer"
+                  className="px-3 py-1 text-xs font-bold rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 shadow-2xs flex items-center gap-1.5 cursor-pointer"
                 >
                   <span>Matière : {currentNoteSubject}</span>
                   <svg className={`w-3 h-3 transition-transform ${isNoteSubjectDropdownOpen ? 'rotate-180' : ''}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="6 9 12 15 18 9" /></svg>
                 </button>
                 {isNoteSubjectDropdownOpen && (
-                  <div className="absolute top-full left-0 mt-1 bg-white dark:bg-[#11192e] border border-slate-200 dark:border-slate-700 rounded-xl shadow-xl z-50 min-w-[160px] py-1 max-h-48 overflow-y-auto">
+                  <div className="absolute top-full left-0 mt-1 bg-white dark:bg-[#11192e] border border-slate-300 dark:border-slate-700 rounded-xl shadow-xl z-50 min-w-[160px] py-1 max-h-48 overflow-y-auto">
                     {noteSubjects.map((sub, idx) => (
                       <button
                         key={idx}
@@ -709,7 +709,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
           <div className="w-full h-full py-4 overflow-y-auto">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 h-auto min-h-full pb-10">
               {/* Radar Chart: Capabilities Profile */}
-              <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col items-center justify-center min-h-[350px]">
+              <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-5 border border-slate-300 dark:border-slate-700 shadow-xs flex flex-col items-center justify-center min-h-[350px]">
                 <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1 text-center">Profil de Compétences</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 text-center">Moyenne par matière sur l'année</p>
                 <div className="w-full h-[250px]">
@@ -729,7 +729,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
               </div>
 
               {/* Pie Chart: Consistency */}
-              <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col items-center justify-center min-h-[350px]">
+              <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-5 border border-slate-300 dark:border-slate-700 shadow-xs flex flex-col items-center justify-center min-h-[350px]">
                 <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1 text-center">Régularité des Notes</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 text-center">Répartition de toutes les notes</p>
                 {gradeDistributionData.length > 0 ? (
@@ -774,7 +774,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
               </div>
 
               {/* Area Chart: Progression */}
-              <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-5 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col items-center justify-center min-h-[350px] md:col-span-2">
+              <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-5 border border-slate-300 dark:border-slate-700 shadow-xs flex flex-col items-center justify-center min-h-[350px] md:col-span-2">
                 <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-1 text-center">Progression Annuelle</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 text-center">Évolution de la moyenne globale</p>
                 <div className="w-full h-[250px] max-w-2xl">
@@ -802,8 +802,8 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
           </div>
         ) : selectedAnalysis === 'analyse par trimestre' ? (
           <div className="w-full max-w-4xl mx-auto py-2">
-            <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col min-h-[460px] h-[calc(100vh-220px)] max-h-[620px]">
-              <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+            <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-6 border border-slate-300 dark:border-slate-700 shadow-xs flex flex-col min-h-[460px] h-[calc(100vh-220px)] max-h-[620px]">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-300 dark:border-slate-700 pb-3">
                 <div>
                   <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Moyenne par Trimestre</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Évolution comparative des trimestres 1, 2 et 3</p>
@@ -869,8 +869,8 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
           </div>
          ) : selectedAnalysis === 'analyse par matière' ? (
           <div className="w-full max-w-5xl mx-auto py-2">
-            <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col min-h-[480px] h-[calc(100vh-240px)] max-h-[650px]">
-              <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+            <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-6 border border-slate-300 dark:border-slate-700 shadow-xs flex flex-col min-h-[480px] h-[calc(100vh-240px)] max-h-[650px]">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-300 dark:border-slate-700 pb-3">
                 <div>
                   <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Moyennes par Matière — Trimestre {subjectTrimestre}</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Performances détaillées par discipline</p>
@@ -948,8 +948,8 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
           </div>
         ) : selectedAnalysis === 'analyse par note' ? (
           <div className="w-full max-w-4xl mx-auto py-2">
-            <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-6 border border-slate-200 dark:border-slate-800 shadow-xs flex flex-col min-h-[480px] h-[calc(100vh-240px)] max-h-[650px]">
-              <div className="flex items-center justify-between mb-4 border-b border-slate-100 dark:border-slate-800/80 pb-3">
+            <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-6 border border-slate-300 dark:border-slate-700 shadow-xs flex flex-col min-h-[480px] h-[calc(100vh-240px)] max-h-[650px]">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-300 dark:border-slate-700 pb-3">
                 <div>
                   <h3 className="font-bold text-base text-slate-800 dark:text-slate-100">Détail des Notes — {currentNoteSubject}</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">Notes enregistrées au Trimestre {noteTrimestre}</p>
@@ -1060,11 +1060,11 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
               className="absolute top-0 right-0 bottom-0 w-64 sm:w-72 md:w-96 bg-[#F5F0E8] dark:bg-[#0f172a] border-l-2 border-[#2D4A3E] dark:border-slate-700 rounded-l-2xl shadow-2xl p-5 flex flex-col justify-between pointer-events-auto overflow-hidden"
             >
               <div>
-                <div className="flex items-center justify-between pb-3 mb-5 border-b border-[#2D4A3E]/20 dark:border-slate-800">
+                <div className="flex items-center justify-between pb-3 mb-5 border-b border-[#2D4A3E]/40 dark:border-slate-700">
                   <h2 className="font-serif font-bold text-base text-[#2D4A3E] dark:text-slate-100">Menu</h2>
                   <button
                     onClick={() => setIsRightDrawerOpen(false)}
-                    className="p-1.5 hover:bg-[#E8DFD0] dark:hover:bg-slate-800 rounded-lg border border-[#2D4A3E] dark:border-slate-700 text-[#2D4A3E] dark:text-slate-200 transition-all cursor-pointer flex items-center justify-center"
+                    className="p-1.5 hover:bg-[#E8DFD0] dark:hover:bg-slate-800 rounded-lg border border-[#2D4A3E] dark:border-slate-600 text-[#2D4A3E] dark:text-slate-200 transition-all cursor-pointer flex items-center justify-center"
                     title="Fermer"
                   >
                     <X className="w-4 h-4" />
@@ -1077,7 +1077,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                       setSelectedAnalysis('analyse globale');
                       setIsRightDrawerOpen(false);
                     }}
-                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 dark:border-slate-700 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse globale' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
+                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/40 dark:border-slate-600 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse globale' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
                   >
                     <BarChart2 className="w-4 h-4" />
                     <span>Analyse globale</span>
@@ -1087,7 +1087,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                       setSelectedAnalysis('analyse par trimestre');
                       setIsRightDrawerOpen(false);
                     }}
-                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 dark:border-slate-700 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par trimestre' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
+                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/40 dark:border-slate-600 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par trimestre' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
                   >
                     <Calendar className="w-4 h-4" />
                     <span>Analyse par trimestre</span>
@@ -1097,7 +1097,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                       setSelectedAnalysis('analyse par matière');
                       setIsRightDrawerOpen(false);
                     }}
-                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 dark:border-slate-700 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par matière' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
+                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/40 dark:border-slate-600 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par matière' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
                   >
                     <FolderTree className="w-4 h-4" />
                     <span>Analyse par matière</span>
@@ -1107,7 +1107,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                       setSelectedAnalysis('analyse par note');
                       setIsRightDrawerOpen(false);
                     }}
-                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/30 dark:border-slate-700 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par note' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
+                    className={`w-full text-left p-2.5 rounded-xl border border-[#2D4A3E]/40 dark:border-slate-600 font-bold transition-all flex items-center gap-2.5 cursor-pointer ${selectedAnalysis === 'analyse par note' ? 'bg-[#2D4A3E] dark:bg-emerald-700 text-[#F5F0E8]' : 'bg-[#E8DFD0]/60 dark:bg-slate-800/80 hover:bg-[#E8DFD0] dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200'}`}
                   >
                     <Award className="w-4 h-4" />
                     <span>Analyse par note</span>
@@ -1115,7 +1115,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                 </div>
               </div>
 
-              <div className="pt-3 border-t border-[#2D4A3E]/20 dark:border-slate-800 text-center">
+              <div className="pt-3 border-t border-[#2D4A3E]/40 dark:border-slate-700 text-center">
                 <p className="text-[10px] text-[#5C6B5A] dark:text-slate-400">UniFolder Statut v1.0</p>
               </div>
             </motion.div>
