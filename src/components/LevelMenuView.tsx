@@ -829,12 +829,12 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                     <Bar
                       dataKey="count"
                       activeBar={false}
-                      radius={[8, 8, 0, 0]} 
-                      label={{ 
-                        position: 'top', 
-                        content: (props: any) => { 
-                          const { x, y, width } = props; 
-                          const item = props.payload || (typeof props.index === 'number' ? trimesterData[props.index] : null); 
+                      radius={[8, 8, 0, 0]}
+                      label={{
+                        position: 'top',
+                        content: (props: any) => {
+                          const { x, y, width } = props;
+                          const item = props.payload || (typeof props.index === 'number' ? trimesterData[props.index] : null);
                           const val = Number(props.value ?? item?.count ?? 0);
                           const hasNote = Boolean(item?.hasNote || val > 0);
                           if (!hasNote && val <= 0) return null;
@@ -844,12 +844,12 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                               : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
                             : 'Pas de note';
                           return (
-                            <text 
-                              x={x + width / 2} 
-                              y={y - 8} 
-                              fill={hasNote ? '#2D4A3E' : '#ef4444'} 
-                              textAnchor="middle" 
-                              fontSize="11" 
+                            <text
+                              x={x + width / 2}
+                              y={y - 8}
+                              fill={hasNote ? '#2D4A3E' : '#ef4444'}
+                              textAnchor="middle"
+                              fontSize="11"
                               fontWeight="bold"
                             >
                               {labelText}
@@ -867,7 +867,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
               </div>
             </div>
           </div>
-         ) : selectedAnalysis === 'analyse par matière' ? (
+        ) : selectedAnalysis === 'analyse par matière' ? (
           <div className="w-full max-w-5xl mx-auto py-2">
             <div className="bg-white dark:bg-[#0c1222] rounded-2xl p-4 sm:p-6 border border-slate-300 dark:border-slate-700 shadow-xs flex flex-col min-h-[480px] h-[calc(100vh-240px)] max-h-[650px]">
               <div className="flex items-center justify-between mb-4 border-b border-slate-300 dark:border-slate-700 pb-3">
@@ -892,7 +892,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                         <CartesianGrid strokeDasharray="3 3" stroke="#2D4A3E/15" />
                         <XAxis dataKey="name" stroke="#2D4A3E" tick={{ fill: '#2D4A3E', fontWeight: 'bold', fontSize: 10 }} interval={0} angle={-15} textAnchor="end" height={40} />
                         <YAxis stroke="#2D4A3E" tick={<CustomYTick />} domain={[0, standardScale]} ticks={ticks} />
-                        <Tooltip 
+                        <Tooltip
                           contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
                           formatter={(value: any, name: any, item: any) => {
                             const val = Number(value);
@@ -903,37 +903,37 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                             ];
                           }}
                         />
-                        <Bar 
-                          dataKey="count" 
+                        <Bar
+                          dataKey="count"
                           activeBar={false}
-                          radius={[8, 8, 0, 0]} 
-                          label={{ 
-                            position: 'top', 
-                            content: (props: any) => { 
-                              const { x, y, width } = props; 
-                              const item = props.payload || (typeof props.index === 'number' ? subjectData[props.index] : null); 
+                          radius={[8, 8, 0, 0]}
+                          label={{
+                            position: 'top',
+                            content: (props: any) => {
+                              const { x, y, width } = props;
+                              const item = props.payload || (typeof props.index === 'number' ? subjectData[props.index] : null);
                               const val = Number(props.value ?? item?.count ?? 0);
                               const hasNote = Boolean(item?.hasNote || val > 0);
                               if (!hasNote && val <= 0) return null;
-                              const labelText = hasNote 
-                                ? (item?.displayLabel && !item.displayLabel.includes('Pas de note') 
-                                    ? item.displayLabel 
-                                    : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
+                              const labelText = hasNote
+                                ? (item?.displayLabel && !item.displayLabel.includes('Pas de note')
+                                  ? item.displayLabel
+                                  : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
                                 : 'Pas de note';
                               return (
-                                <text 
-                                  x={x + width / 2} 
-                                  y={y - 8} 
-                                  fill={hasNote ? '#2D4A3E' : '#ef4444'} 
-                                  textAnchor="middle" 
-                                  fontSize="10" 
+                                <text
+                                  x={x + width / 2}
+                                  y={y - 8}
+                                  fill={hasNote ? '#2D4A3E' : '#ef4444'}
+                                  textAnchor="middle"
+                                  fontSize="10"
                                   fontWeight="bold"
                                 >
                                   {labelText}
                                 </text>
-                              ); 
-                            } 
-                          }} 
+                              );
+                            }
+                          }}
                         >
                           {subjectData.map((_, index) => (
                             <Cell key={`cell-sub-${index}`} fill={`url(#subGradient-${index})`} />
@@ -969,13 +969,13 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                     <ResponsiveContainer width="100%" height="100%">
                       <RechartsBarChart data={noteData} margin={{ top: 25, right: 20, left: 10, bottom: 25 }} barCategoryGap="10%">
                         <CartesianGrid strokeDasharray="3 3" stroke="#2D4A3E/15" />
-                        <XAxis 
-                          dataKey="name" 
-                          stroke="#2D4A3E" 
-                          tick={{ fill: '#2D4A3E', fontWeight: 'bold', fontSize: 11 }} 
+                        <XAxis
+                          dataKey="name"
+                          stroke="#2D4A3E"
+                          tick={{ fill: '#2D4A3E', fontWeight: 'bold', fontSize: 11 }}
                         />
                         <YAxis stroke="#2D4A3E" tick={<CustomYTick />} domain={[0, standardScale]} ticks={ticks} />
-                        <Tooltip 
+                        <Tooltip
                           contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
                           formatter={(value: any, name: any, item: any) => {
                             const val = Number(value);
@@ -986,38 +986,38 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
                             ];
                           }}
                         />
-                        <Bar 
-                          dataKey="count" 
+                        <Bar
+                          dataKey="count"
                           activeBar={false}
                           barSize={28}
-                          radius={[0, 0, 0, 0]} 
-                          label={{ 
-                            position: 'top', 
-                            content: (props: any) => { 
-                              const { x, y, width } = props; 
-                              const item = props.payload || (typeof props.index === 'number' ? noteData[props.index] : null); 
+                          radius={[0, 0, 0, 0]}
+                          label={{
+                            position: 'top',
+                            content: (props: any) => {
+                              const { x, y, width } = props;
+                              const item = props.payload || (typeof props.index === 'number' ? noteData[props.index] : null);
                               const val = Number(props.value ?? item?.count ?? 0);
                               const hasNote = Boolean(item?.hasNote || val > 0);
                               if (!hasNote && val <= 0) return null;
-                              const labelText = hasNote 
-                                ? (item?.displayLabel && !item.displayLabel.includes('Pas de note') 
-                                    ? item.displayLabel 
-                                    : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
+                              const labelText = hasNote
+                                ? (item?.displayLabel && !item.displayLabel.includes('Pas de note')
+                                  ? item.displayLabel
+                                  : `${val.toFixed(2).replace('.', ',')} / ${standardScale}`)
                                 : 'Pas de note';
                               return (
-                                <text 
-                                  x={x + width / 2} 
-                                  y={y - 8} 
-                                  fill={hasNote ? '#2D4A3E' : '#ef4444'} 
-                                  textAnchor="middle" 
-                                  fontSize="11" 
+                                <text
+                                  x={x + width / 2}
+                                  y={y - 8}
+                                  fill={hasNote ? '#2D4A3E' : '#ef4444'}
+                                  textAnchor="middle"
+                                  fontSize="11"
                                   fontWeight="bold"
                                 >
                                   {labelText}
                                 </text>
-                              ); 
-                            } 
-                          }} 
+                              );
+                            }
+                          }}
                         >
                           {noteData.map((entry, index) => (
                             <Cell key={`cell-note-${index}`} fill={getNoteSolidColor(entry.count, standardScale)} />
