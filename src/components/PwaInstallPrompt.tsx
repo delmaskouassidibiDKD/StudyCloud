@@ -42,8 +42,8 @@ export const PwaInstallPrompt: React.FC = () => {
       // Ne pas ré-afficher si l'utilisateur l'a fermé au cours de cette session
       const hasDismissed = sessionStorage.getItem('studycloud_pwa_dismissed');
       if (!hasDismissed) {
-        // Petit délai d'attente de 2.5s pour ne pas agresser l'utilisateur dès la première seconde
-        setTimeout(() => setShowPrompt(true), 2500);
+        // Petit délai d'attente de 2s pour ne pas agresser l'utilisateur dès la première seconde
+        setTimeout(() => setShowPrompt(true), 2000);
       }
     };
 
@@ -93,15 +93,15 @@ export const PwaInstallPrompt: React.FC = () => {
   }
 
   return (
-    <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:max-w-md z-50 animate-bounceIn">
-      <div className="relative overflow-hidden rounded-2xl bg-[#141720]/95 backdrop-blur-xl border border-blue-500/30 p-4 shadow-[0_12px_40px_rgba(0,0,0,0.7),0_0_25px_rgba(37,99,235,0.25)] text-white">
+    <div className="pwa-prompt-container animate-bounceIn select-none">
+      <div className="relative overflow-hidden rounded-2xl sm:rounded-3xl bg-[#141720]/95 backdrop-blur-2xl border border-blue-500/40 p-3.5 sm:p-4 shadow-[0_16px_50px_rgba(0,0,0,0.85),0_0_30px_rgba(37,99,235,0.35)] text-white">
         {/* Ligne lumineuse supérieure */}
         <div className="absolute top-0 left-0 right-0 h-0.5 bg-gradient-to-r from-orange-500 via-blue-500 to-indigo-500" />
 
-        {/* Bouton Fermer */}
+        {/* Bouton Fermer bien accessible */}
         <button
           onClick={handleDismiss}
-          className="absolute top-2.5 right-2.5 p-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60 rounded-full transition-colors cursor-pointer"
+          className="absolute top-2.5 right-2.5 p-1 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/80 rounded-full transition-colors cursor-pointer"
           title="Fermer"
         >
           <X className="w-4 h-4" />
@@ -130,16 +130,16 @@ export const PwaInstallPrompt: React.FC = () => {
             </ol>
             <button
               onClick={() => setShowIOSInstructions(false)}
-              className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer"
+              className="w-full py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition-colors cursor-pointer shadow-md active:scale-95"
             >
               Compris !
             </button>
           </div>
         ) : (
           /* Bannière standard d'installation PWA */
-          <div className="flex items-start gap-3.5">
-            {/* Logo officiel de l'application (Badge 3D StudyCloud) */}
-            <div className="relative shrink-0 w-14 h-14 rounded-2xl overflow-hidden shadow-xl border border-white/15 bg-zinc-900">
+          <div className="flex items-start gap-3">
+            {/* Logo officiel de l'application */}
+            <div className="relative shrink-0 w-12 h-12 sm:w-14 sm:h-14 rounded-2xl overflow-hidden shadow-xl border border-white/15 bg-zinc-900">
               <img
                 src="/icons/icon-192x192.png"
                 alt="Logo StudyCloud"
@@ -147,30 +147,31 @@ export const PwaInstallPrompt: React.FC = () => {
               />
             </div>
 
-            <div className="flex-1 min-w-0 pr-4">
+            <div className="flex-1 min-w-0 pr-3 sm:pr-4">
               <div className="flex items-center gap-1.5 mb-0.5">
-                <h3 className="text-sm font-bold text-white tracking-tight truncate">
-                  Installer StudyCloud
+                <h3 className="text-xs sm:text-sm font-black text-white tracking-tight truncate">
+                  Télécharger StudyCloud
                 </h3>
                 <span className="text-[9px] font-bold px-1.5 py-0.2 bg-blue-500/20 text-blue-300 rounded border border-blue-500/30">
                   App PWA
                 </span>
               </div>
-              <p className="text-[11px] text-zinc-300 leading-snug mb-3">
-                Accès direct sur l'écran d'accueil et consultations disponibles <strong>même sans connexion internet</strong>.
+              <p className="text-[11px] text-zinc-300 leading-snug mb-2.5 line-clamp-2 sm:line-clamp-none">
+                Accès direct sur l'écran d'accueil et consultations disponibles <strong>même sans connexion</strong>.
               </p>
 
+              {/* Ligne des boutons entièrement visible et adaptée */}
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleInstallClick}
-                  className="flex-1 py-1.8 px-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-[0_2px_10px_rgba(37,99,235,0.4)] active:scale-97 transition-all cursor-pointer"
+                  className="flex-1 py-2 px-3 rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-500 hover:from-blue-500 hover:to-indigo-500 text-white font-extrabold text-xs flex items-center justify-center gap-1.5 shadow-[0_2px_12px_rgba(37,99,235,0.45)] active:scale-95 transition-all cursor-pointer"
                 >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Installer</span>
+                  <Download className="w-3.5 h-3.5 shrink-0" />
+                  <span>Télécharger</span>
                 </button>
                 <button
                   onClick={handleDismiss}
-                  className="py-1.8 px-3 rounded-xl bg-zinc-800/80 hover:bg-zinc-700/80 text-zinc-300 hover:text-white font-medium text-xs transition-colors cursor-pointer"
+                  className="py-2 px-3 rounded-xl bg-zinc-800/90 hover:bg-zinc-700/90 text-zinc-300 hover:text-white font-semibold text-xs transition-colors cursor-pointer shrink-0"
                 >
                   Plus tard
                 </button>

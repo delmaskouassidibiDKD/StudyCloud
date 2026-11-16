@@ -161,6 +161,25 @@ rect,
   transform: translateZ(0);
 }
 
+/* Bannière d'installation PWA adaptée au mobile (flotte au-dessus de la barre de navigation et du creux) */
+.pwa-prompt-container {
+  position: fixed !important;
+  bottom: calc(68px + env(safe-area-inset-bottom, 0px)) !important;
+  left: 0.75rem !important;
+  right: 0.75rem !important;
+  z-index: 1000000 !important;
+  transform: translateZ(0);
+}
+
+@media (min-width: 640px) {
+  .pwa-prompt-container {
+    bottom: 1.5rem !important;
+    left: auto !important;
+    right: 1.5rem !important;
+    max-width: 26rem !important;
+  }
+}
+
 .no-scrollbar::-webkit-scrollbar {
   display: none;
 }
