@@ -312,7 +312,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
       {/* ====================================================================== */}
       <div className="w-full h-11 sm:h-12 flex items-center justify-between px-2.5 sm:px-4 bg-white/95 dark:bg-[#0d1424] border-b border-stone-200 dark:border-white/10 shrink-0 z-30 shadow-xs select-none backdrop-blur-md">
         {/* Partie gauche : Bouton retour + Titre DKD store ou Site Actif */}
-        <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0">
+        <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink-0">
           <button
             onClick={() => {
               if (activeSite) {
@@ -357,6 +357,32 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
             </span>
           )}
         </div>
+
+        {/* Partie centrale : Champ de recherche petit et bien centré dans l'en-tête */}
+        {!activeSite && (
+          <div className="flex-1 max-w-[200px] xs:max-w-[240px] sm:max-w-xs md:max-w-sm flex items-center justify-center mx-2 sm:mx-4">
+            <div className="relative flex items-center w-full bg-stone-100 hover:bg-stone-200/80 focus-within:bg-white dark:bg-[#111a2f] dark:hover:bg-[#14203b] dark:focus-within:bg-[#14203b] border border-stone-300/80 dark:border-stone-700/80 focus-within:border-blue-500 dark:focus-within:border-blue-500 rounded-xl px-2.5 py-1 transition-all shadow-2xs">
+              <Search className="w-3.5 h-3.5 text-stone-400 dark:text-stone-400 shrink-0" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Rechercher une pépite..."
+                className="w-full bg-transparent border-0 px-2 py-0.5 text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-hidden font-medium"
+              />
+              {searchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setSearchQuery('')}
+                  className="p-0.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 cursor-pointer"
+                  title="Effacer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Partie droite : Actions, Détacher en Fenêtre App, Super Agrandissement & Zoom */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
@@ -647,37 +673,13 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
         )
       ) : (
         /* ==================================================================== */
-        /* 3. MODE CATALOGUE DKD STORE (Recherche, Catégories D1 et Pépites)     */
+        /* 3. MODE CATALOGUE DKD STORE (Catégories D1 en haut à gauche, Sites)  */
         /* ==================================================================== */
-        <div className="flex-1 w-full overflow-y-auto px-3.5 sm:px-6 md:px-8 py-5 sm:py-7 relative min-h-0 flex flex-col items-center">
-          <div className="w-full max-w-5xl flex flex-col items-center space-y-4 sm:space-y-6">
-            
-            {/* 3.1 CHAMP DE RECHERCHE PRINCIPAL */}
-            <div className="w-full relative max-w-2xl mx-auto">
-              <div className="relative flex items-center w-full bg-stone-50 hover:bg-stone-100/90 focus-within:bg-white dark:bg-[#111a2f] dark:hover:bg-[#14203b] dark:focus-within:bg-[#14203b] border-2 border-stone-200 dark:border-stone-700/80 focus-within:border-blue-500 dark:focus-within:border-blue-500 rounded-2xl shadow-xs dark:shadow-xl transition-all overflow-hidden p-1.5 sm:p-2">
-                <Search className="w-5 h-5 text-blue-500 dark:text-blue-400 ml-2.5 shrink-0" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Rechercher une pépite, un simulateur, un cours..."
-                  className="w-full bg-transparent border-0 px-3 py-2 text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 text-sm sm:text-base focus:outline-hidden font-medium"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery('')}
-                    className="p-1.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 transition-colors cursor-pointer"
-                    title="Effacer la recherche"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
+        <div className="flex-1 w-full overflow-y-auto px-3 sm:px-5 md:px-6 py-2.5 sm:py-3.5 relative min-h-0 flex flex-col items-start justify-start">
+          <div className="w-full flex flex-col items-start space-y-3 sm:space-y-3.5">
 
-            {/* 3.2 BARRE HORIZONTALE DES CATÉGORIES ENREGISTRÉES DANS D1 */}
-            <div className="w-full max-w-4xl flex items-center gap-2 overflow-x-auto no-scrollbar py-1 px-1 scroll-smooth">
+            {/* 3.1 BARRE HORIZONTALE DES CATÉGORIES (Commence en haut à gauche sous l'en-tête) */}
+            <div className="w-full flex items-center justify-start gap-2 overflow-x-auto no-scrollbar py-1 scroll-smooth">
               {/* Bouton "Tout" (affiche l'ensemble des sites) */}
               <button
                 type="button"
@@ -685,7 +687,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                   setSelectedCategoryId('all');
                   setShowOnlyPinned(false);
                 }}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                   selectedCategoryId === 'all' && !showOnlyPinned
                     ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-2 ring-blue-500/30'
                     : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] dark:hover:bg-[#17233f] text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700/70'
@@ -707,7 +709,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                 <button
                   type="button"
                   onClick={() => setShowOnlyPinned(prev => !prev)}
-                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                     showOnlyPinned
                       ? 'bg-amber-500 text-white shadow-md shadow-amber-500/25 ring-2 ring-amber-500/30'
                       : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] dark:hover:bg-[#17233f] text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700/70'
@@ -741,7 +743,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                       setSelectedCategoryId(cat.id);
                       setShowOnlyPinned(false);
                     }}
-                    className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                       isSelected
                         ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-2 ring-blue-500/30'
                         : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] dark:hover:bg-[#17233f] text-stone-700 dark:text-stone-300 border border-stone-200 dark:border-stone-700/70'
@@ -763,11 +765,11 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
               })}
             </div>
 
-            {/* 3.3 CONTENU DU CATALOGUE DES SITES ENREGISTRÉS */}
-            <div className="w-full pt-2">
+            {/* 3.2 CONTENU DU CATALOGUE DES SITES ENREGISTRÉS */}
+            <div className="w-full pt-1">
               {/* ÉTAT CHARGEMENT */}
               {isLoading && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 w-full">
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 sm:gap-4 w-full">
                   {[1, 2, 3, 4, 5, 6].map((i) => (
                     <div
                       key={i}
@@ -809,8 +811,8 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
 
               {/* ÉTAT LISTE VIDE */}
               {!isLoading && filteredSites.length === 0 && (
-                <div className="p-10 text-center max-w-md mx-auto space-y-3">
-                  <div className="w-16 h-16 rounded-3xl bg-stone-100 dark:bg-slate-900 border border-stone-200 dark:border-slate-800 flex items-center justify-center mx-auto text-2xl shadow-inner">
+                <div className="p-6 sm:p-8 text-left max-w-md space-y-3">
+                  <div className="w-12 h-12 rounded-2xl bg-stone-100 dark:bg-slate-900 border border-stone-200 dark:border-slate-800 flex items-center justify-center text-xl shadow-inner">
                     🔍
                   </div>
                   <h3 className="text-base font-bold text-stone-800 dark:text-stone-200">
