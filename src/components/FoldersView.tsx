@@ -178,10 +178,20 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [dashboardWallpaper, setDashboardWallpaper] = useState<string>(() => {
     try {
       const local = localStorage.getItem('studycloud_dashboard_wallpaper_local');
-      if (local && !local.startsWith('blob:')) return local;
+      if (local && !local.startsWith('blob:')) {
+        if (local === '/wallpapers/wallpaper-dna.jpg' && !localStorage.getItem('studycloud_user_explicitly_chose_dna')) {
+          return DEFAULT_WALLPAPER_URL;
+        }
+        return local;
+      }
       const cached = localStorage.getItem('studycloud_dashboard_wallpaper');
       // Ignorer les anciens blob: expirés pour éviter l'écran grisé
-      if (cached && !cached.startsWith('blob:')) return cached;
+      if (cached && !cached.startsWith('blob:')) {
+        if (cached === '/wallpapers/wallpaper-dna.jpg' && !localStorage.getItem('studycloud_user_explicitly_chose_dna')) {
+          return DEFAULT_WALLPAPER_URL;
+        }
+        return cached;
+      }
     } catch { }
     return DEFAULT_WALLPAPER_URL;
   });

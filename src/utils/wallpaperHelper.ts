@@ -39,7 +39,7 @@ export function isWallpaperAvatarPollution(val?: string | null): boolean {
     const activeWpLocal = localStorage.getItem(LS_WALLPAPER_LOCAL_KEY);
     if (activeWpUrl && trimmed === activeWpUrl) return true;
     if (activeWpLocal && trimmed === activeWpLocal) return true;
-  } catch {}
+  } catch { }
   return false;
 }
 
@@ -48,9 +48,9 @@ export const LS_WALLPAPER_ROTATION_ENABLED = 'studycloud_wallpaper_auto_rotation
 export const LS_WALLPAPER_LAST_ROTATION_TIME = 'studycloud_wallpaper_last_rotation_time';
 export const WALLPAPER_ROTATION_INTERVAL_MS = 48 * 60 * 60 * 1000; // 48 heures (172 800 000 ms)
 
-// Fond d'écran par défaut lors de la première arrivée : Hélice ADN Cosmique
-export const DEFAULT_WALLPAPER_URL = '/wallpapers/wallpaper-dna.jpg';
-export const DEFAULT_WALLPAPER_NAME = 'Hélice ADN Cosmique';
+// Fond d'écran par défaut lors de la première arrivée : Aurore Boréale Boréalis
+export const DEFAULT_WALLPAPER_URL = '/wallpapers/wallpaper-aurora.jpg';
+export const DEFAULT_WALLPAPER_NAME = 'Aurore Boréale Boréalis';
 
 export interface PresetWallpaperItem {
   id: string;
@@ -123,7 +123,7 @@ export const PRESET_WALLPAPERS: PresetWallpaperItem[] = [
     name: 'Hélice ADN Cosmique',
     subtitle: 'Thème Signature StudyCloud — Néon bleu & étoiles',
     url: '/wallpapers/wallpaper-dna.jpg',
-    isDefault: true,
+    isDefault: false,
   },
   {
     id: 'nebula',
@@ -137,7 +137,7 @@ export const PRESET_WALLPAPERS: PresetWallpaperItem[] = [
     name: 'Aurore Boréale Boréalis',
     subtitle: 'Lueurs nordiques vert émeraude et cimes enneigées',
     url: '/wallpapers/wallpaper-aurora.jpg',
-    isDefault: false,
+    isDefault: true,
   },
   {
     id: 'abstract-dark',
@@ -179,7 +179,7 @@ export function setWallpaperAutoRotationEnabled(enabled: boolean): void {
       // Repartir sur un nouveau cycle de 48h à partir de maintenant
       localStorage.setItem(LS_WALLPAPER_LAST_ROTATION_TIME, String(Date.now()));
     }
-  } catch {}
+  } catch { }
   window.dispatchEvent(new CustomEvent('studycloud_wallpaper_auto_rotation_changed', { detail: { enabled } }));
 }
 
@@ -189,14 +189,14 @@ export function setWallpaperAutoRotationEnabled(enabled: boolean): void {
  */
 export function getNextPresetWallpaper(currentUrl?: string | null): PresetWallpaperItem {
   if (!currentUrl) {
-    const dnaPreset = PRESET_WALLPAPERS.find(p => p.id === 'dna');
-    return dnaPreset || PRESET_WALLPAPERS[0];
+    const auroraPreset = PRESET_WALLPAPERS.find(p => p.id === 'aurora');
+    return auroraPreset || PRESET_WALLPAPERS[0];
   }
   const currentIndex = PRESET_WALLPAPERS.findIndex(p => p.url === currentUrl);
   if (currentIndex === -1) {
-    // Si le fond d'écran actuel n'est pas trouvé dans la liste, enchaîner après Hélice ADN
-    const dnaIdx = PRESET_WALLPAPERS.findIndex(p => p.id === 'dna');
-    const startIdx = dnaIdx !== -1 ? (dnaIdx + 1) % PRESET_WALLPAPERS.length : 0;
+    // Si le fond d'écran actuel n'est pas trouvé dans la liste, enchaîner après Aurore Boréale
+    const auroraIdx = PRESET_WALLPAPERS.findIndex(p => p.id === 'aurora');
+    const startIdx = auroraIdx !== -1 ? (auroraIdx + 1) % PRESET_WALLPAPERS.length : 0;
     return PRESET_WALLPAPERS[startIdx];
   }
   const nextIndex = (currentIndex + 1) % PRESET_WALLPAPERS.length;
@@ -277,7 +277,7 @@ export async function convertToWallpaperDataUrl(
       try {
         const idbBlob = await getFileBlob(fileId);
         if (idbBlob) blob = idbBlob;
-      } catch {}
+      } catch { }
     }
 
     // Si pas trouvé dans IndexedDB et que l'URL est accessible, tenter un fetch
@@ -352,9 +352,9 @@ export async function convertToWallpaperDataUrl(
                         'Cache-Control': 'public, max-age=31536000, immutable'
                       }
                     });
-                    cache.put('/studycloud-custom-wallpaper.jpg', response).catch(() => {});
+                    cache.put('/studycloud-custom-wallpaper.jpg', response).catch(() => { });
                   })
-                  .catch(() => {});
+                  .catch(() => { });
               }
             }, 'image/jpeg', 0.78);
           }
@@ -401,7 +401,7 @@ export async function cacheWallpaperLocally(
 
   // Sauvegarde dans IndexedDB (capacité illimitée pour offline et sécurité)
   if (imageUrlOrDataUrl.startsWith('data:image')) {
-    await storeThumbnailData(IDB_WALLPAPER_KEY, imageUrlOrDataUrl).catch(() => {});
+    await storeThumbnailData(IDB_WALLPAPER_KEY, imageUrlOrDataUrl).catch(() => { });
   }
 
   // Événement réactif pour rafraîchir le fond d'écran instantanément (sans modifier la photo de profil)
@@ -425,7 +425,7 @@ export async function applyDashboardWallpaper(
     const presetId = `preset:${source.replace('/wallpapers/wallpaper-', '').replace(/\.[^.]+$/, '')}`;
     try {
       localStorage.removeItem(LS_WALLPAPER_LOCAL_KEY);
-    } catch {}
+    } catch { }
     await cacheWallpaperLocally(source, { id: presetId, name: name || 'Thème officiel', url: source });
     CloudStorageAPI.saveWallpaper(source, name || 'Thème officiel')
       .then((res) => {
@@ -433,9 +433,9 @@ export async function applyDashboardWallpaper(
           try {
             localStorage.setItem(LS_WALLPAPER_ID_KEY, String(res.wallpaper.id));
             localStorage.setItem(LS_WALLPAPER_META, JSON.stringify(res.wallpaper));
-          } catch {}
+          } catch { }
         }
-        invalidateCloudQueries.wallpaper().catch(() => {});
+        invalidateCloudQueries.wallpaper().catch(() => { });
       })
       .catch((err) => console.warn('[WallpaperHelper] Preset saveWallpaper sync:', err));
     return source;
@@ -460,13 +460,13 @@ export async function applyDashboardWallpaper(
     } else if (source instanceof Blob) {
       try {
         immediateSource = URL.createObjectURL(source);
-      } catch {}
+      } catch { }
     }
     if (!immediateSource && fileId) {
       try {
         const b = await getFileBlob(fileId);
         if (b) immediateSource = URL.createObjectURL(b);
-      } catch {}
+      } catch { }
     }
   }
 
@@ -492,8 +492,8 @@ export async function applyDashboardWallpaper(
           // Met à jour l'ID distant et les métadonnées SANS écraser la version locale rapide 0ms
           localStorage.setItem(LS_WALLPAPER_ID_KEY, String(res.wallpaper.id));
           localStorage.setItem(LS_WALLPAPER_META, JSON.stringify(res.wallpaper));
-        } catch {}
-        invalidateCloudQueries.wallpaper().catch(() => {});
+        } catch { }
+        invalidateCloudQueries.wallpaper().catch(() => { });
       }
     })
     .catch((bgErr) => {
@@ -524,7 +524,7 @@ export async function syncAndCacheCloudWallpaper(
         localStorage.removeItem(LS_WALLPAPER_LOCAL_KEY);
         localStorage.removeItem(LS_WALLPAPER_META);
         localStorage.removeItem(LS_WALLPAPER_ID_KEY);
-      } catch {}
+      } catch { }
       window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: DEFAULT_WALLPAPER_URL } }));
     }
     return DEFAULT_WALLPAPER_URL;
@@ -548,7 +548,7 @@ export async function syncAndCacheCloudWallpaper(
   if (cloudUrl.startsWith('/wallpapers/')) {
     try {
       localStorage.removeItem(LS_WALLPAPER_LOCAL_KEY);
-    } catch {}
+    } catch { }
     await cacheWallpaperLocally(cloudUrl, cloudWp);
     return cloudUrl;
   }
@@ -559,7 +559,7 @@ export async function syncAndCacheCloudWallpaper(
     localStorage.setItem(LS_WALLPAPER_KEY, cloudUrl);
     localStorage.setItem(LS_WALLPAPER_ID_KEY, cloudId);
     localStorage.setItem(LS_WALLPAPER_META, JSON.stringify(cloudWp));
-  } catch {}
+  } catch { }
   window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: cloudUrl } }));
 
   // 2. Téléchargement UNIQUE en arrière-plan du binaire complet pour le figer en local
@@ -602,17 +602,26 @@ export async function getActiveWallpaperReliable(): Promise<string> {
   try {
     const local = localStorage.getItem(LS_WALLPAPER_LOCAL_KEY);
     if (local && !local.startsWith('blob:') && (local.startsWith('data:image') || local.startsWith('/wallpapers/'))) {
+      if (local === '/wallpapers/wallpaper-dna.jpg' && !localStorage.getItem('studycloud_user_explicitly_chose_dna')) {
+        localStorage.setItem(LS_WALLPAPER_KEY, DEFAULT_WALLPAPER_URL);
+        localStorage.setItem(LS_WALLPAPER_LOCAL_KEY, DEFAULT_WALLPAPER_URL);
+        return DEFAULT_WALLPAPER_URL;
+      }
       return local;
     }
-  } catch {}
+  } catch { }
 
   // 2. Vérifier si une URL permanente ou dataUrl est dans localStorage (ignorer les blob: expirés)
   try {
     const lsVal = localStorage.getItem(LS_WALLPAPER_KEY);
     if (lsVal && !lsVal.startsWith('blob:')) {
+      if (lsVal === '/wallpapers/wallpaper-dna.jpg' && !localStorage.getItem('studycloud_user_explicitly_chose_dna')) {
+        localStorage.setItem(LS_WALLPAPER_KEY, DEFAULT_WALLPAPER_URL);
+        return DEFAULT_WALLPAPER_URL;
+      }
       return lsVal;
     }
-  } catch {}
+  } catch { }
 
   // 3. Vérifier dans IndexedDB
   try {
@@ -621,10 +630,10 @@ export async function getActiveWallpaperReliable(): Promise<string> {
       try {
         localStorage.setItem(LS_WALLPAPER_LOCAL_KEY, idbData);
         localStorage.setItem(LS_WALLPAPER_KEY, idbData);
-      } catch {}
+      } catch { }
       return idbData;
     }
-  } catch {}
+  } catch { }
 
   // 4. Vérifier Cache Storage API
   if (typeof caches !== 'undefined') {
@@ -638,15 +647,15 @@ export async function getActiveWallpaperReliable(): Promise<string> {
           try {
             localStorage.setItem(LS_WALLPAPER_LOCAL_KEY, dataUrl);
             localStorage.setItem(LS_WALLPAPER_KEY, dataUrl);
-          } catch {}
+          } catch { }
           return dataUrl;
         }
       }
-    } catch {}
+    } catch { }
   }
 
   // 5. Déclencher la synchronisation arrière-plan sans bloquer
-  syncActiveWallpaperFromCloud().catch(() => {});
+  syncActiveWallpaperFromCloud().catch(() => { });
 
   return DEFAULT_WALLPAPER_URL;
 }

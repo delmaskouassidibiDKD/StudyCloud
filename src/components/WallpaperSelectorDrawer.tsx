@@ -25,9 +25,19 @@ export const WallpaperSelectorDrawer: React.FC = () => {
   const [currentWallpaper, setCurrentWallpaper] = useState<string>(() => {
     try {
       const local = localStorage.getItem('studycloud_dashboard_wallpaper_local');
-      if (local && !local.startsWith('blob:')) return local;
+      if (local && !local.startsWith('blob:')) {
+        if (local === '/wallpapers/wallpaper-dna.jpg' && !localStorage.getItem('studycloud_user_explicitly_chose_dna')) {
+          return DEFAULT_WALLPAPER_URL;
+        }
+        return local;
+      }
       const saved = localStorage.getItem('studycloud_dashboard_wallpaper');
-      if (saved && !saved.startsWith('blob:')) return saved;
+      if (saved && !saved.startsWith('blob:')) {
+        if (saved === '/wallpapers/wallpaper-dna.jpg' && !localStorage.getItem('studycloud_user_explicitly_chose_dna')) {
+          return DEFAULT_WALLPAPER_URL;
+        }
+        return saved;
+      }
     } catch {}
     return DEFAULT_WALLPAPER_URL;
   });
@@ -84,6 +94,11 @@ export const WallpaperSelectorDrawer: React.FC = () => {
   };
 
   const handleSelectPreset = (url: string, name: string) => {
+    if (url === '/wallpapers/wallpaper-dna.jpg') {
+      try { localStorage.setItem('studycloud_user_explicitly_chose_dna', 'true'); } catch {}
+    } else {
+      try { localStorage.removeItem('studycloud_user_explicitly_chose_dna'); } catch {}
+    }
     setCurrentWallpaper(url);
     showToast(`Fond d'écran "${name}" appliqué avec succès !`);
     try {
