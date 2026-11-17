@@ -1,6 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, ArrowRight, X, Search, Globe, Sun, Moon, BookOpen, ChevronLeft, ChevronRight, Menu, Check } from 'lucide-react';
+import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, ArrowRight, X, Search, Globe, Sun, Moon, BookOpen, ChevronLeft, ChevronRight, Menu, Check, RefreshCw } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { getUserDashboardSites, UserDashboardSite } from '../services/api';
 import { MenuDrawer } from './MenuDrawer';
 import { DelmasRobot } from './DelmasRobot';
 import { CreationMenuBookIcon } from './CreationMenuBookIcon';
@@ -148,18 +150,85 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     };
   }, []);
 
+  const { user } = useAuth();
 
-  // État et gestion du carrousel de l'écran d'accueil (Page 0 = Page vide, Page 1 = Écran d'accueil principal)
+  // Applications personnalisées ajoutées au tableau de bord par l'utilisateur connecté
+  const [installedSites, setInstalledSites] = useState<UserDashboardSite[]>(() => {
+    try {
+      const cached = localStorage.getItem(`sc_user_dashboard_sites_${user?.id || 'guest'}`);
+      return cached ? JSON.parse(cached) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Application ouverte dans le lecteur plein écran intégré depuis le tableau de bord
+  const [openedAppSite, setOpenedAppSite] = useState<UserDashboardSite | null>(null);
+  const [openedAppIframeKey, setOpenedAppIframeKey] = useState<number>(0);
+
+  // Synchronisation des applications installées par l'utilisateur
+  useEffect(() => {
+    let isMounted = true;
+    const fetchSites = async () => {
+      try {
+        const sites = await getUserDashboardSites(user?.id);
+        if (isMounted) setInstalledSites(sites);
+      } catch {}
+    };
+    fetchSites();
+
+    const handleUpdate = () => {
+      fetchSites();
+    };
+    window.addEventListener('studycloud_user_sites_updated', handleUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('studycloud_user_sites_updated', handleUpdate);
+    };
+  }, [user?.id]);
+
+  // Découpage des applications en espaces de 12 applications (même grille que l'accueil)
+  const installedAppPages = useMemo(() => {
+    const pages: UserDashboardSite[][] = [];
+    const chunkSize = 12;
+    for (let i = 0; i < installedSites.length; i += chunkSize) {
+      pages.push(installedSites.slice(i, i + chunkSize));
+    }
+    return pages;
+  }, [installedSites]);
+
+  // Ordre des espaces d'applications : les nouveaux espaces créés s'affichent à gauche en avant
+  const orderedAppPages = useMemo(() => {
+    return [...installedAppPages].reverse();
+  }, [installedAppPages]);
+
+  // Nombre total de pages : espaces d'applications + Espace Libre (Robot Rouge) + Écran d'accueil principal
+  const totalPages = useMemo(() => {
+    return orderedAppPages.length + 2;
+  }, [orderedAppPages.length]);
+
+  const maxPageIndex = totalPages - 1;
+  const espaceLibreIndex = orderedAppPages.length;
+  const accueilIndex = orderedAppPages.length + 1;
+
+  // État et gestion du carrousel de l'écran d'accueil
   const [activePageIndex, setActivePageIndex] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('studycloud_dashboard_page_index');
       if (saved !== null) {
         const val = parseInt(saved, 10);
-        if (!isNaN(val) && val >= 0 && val <= 2) return val;
+        if (!isNaN(val) && val >= 0) return val;
       }
     } catch { }
     return 1;
   });
+
+  // Ajuster activePageIndex si le nombre d'espaces change
+  useEffect(() => {
+    if (activePageIndex > maxPageIndex) {
+      setActivePageIndex(maxPageIndex);
+    }
+  }, [maxPageIndex, activePageIndex]);
 
   useEffect(() => {
     try {
@@ -278,23 +347,39 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const hasMovedRef = useRef<boolean>(false);
 
   const handleGoToPage = (targetIndex: number) => {
-    setActivePageIndex(Math.max(0, Math.min(1, targetIndex)));
+    setActivePageIndex(Math.max(0, Math.min(maxPageIndex, targetIndex)));
   };
 
-  // Navigation fluide au clavier (Flèches gauche / droite)
+  // Titre dynamique de l'espace affiché
+  const getPageTitle = (pageIdx: number): string => {
+    if (pageIdx < orderedAppPages.length) {
+      const spaceNum = orderedAppPages.length - pageIdx;
+      return `Mes applications • Espace ${spaceNum}`;
+    }
+    if (pageIdx === espaceLibreIndex) {
+      return `Espace libre • Page ${espaceLibreIndex + 1}`;
+    }
+    return `Écran d'accueil • Page ${totalPages}`;
+  };
+
+  // Navigation fluide au clavier (Flèches gauche / droite et touche Échap)
   useEffect(() => {
     if (viewMode !== 'home') return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'Escape' && openedAppSite) {
+        setOpenedAppSite(null);
+        return;
+      }
       if (e.key === 'ArrowLeft') {
-        setActivePageIndex(0);
+        setActivePageIndex(prev => Math.max(0, prev - 1));
       } else if (e.key === 'ArrowRight') {
-        setActivePageIndex(1);
+        setActivePageIndex(prev => Math.min(maxPageIndex, prev + 1));
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [viewMode]);
+  }, [viewMode, maxPageIndex, openedAppSite]);
 
   // Sur mobile, bloquer strictement tout défilement vertical parasite sur l'écran d'accueil
   useEffect(() => {
@@ -340,7 +425,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       let adjustedDelta = deltaX;
       if (activePageIndex === 0 && deltaX > 0) {
         adjustedDelta = deltaX * 0.25;
-      } else if (activePageIndex === 1 && deltaX < 0) {
+      } else if (activePageIndex === maxPageIndex && deltaX < 0) {
         adjustedDelta = deltaX * 0.25;
       }
       setDragOffset(adjustedDelta);
@@ -366,9 +451,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     const fastFlick = velocity > 0.3 && Math.abs(deltaX) > 15;
 
     if (deltaX > threshold || (deltaX > 15 && fastFlick)) {
-      setActivePageIndex(0);
+      setActivePageIndex(prev => Math.max(0, prev - 1));
     } else if (deltaX < -threshold || (deltaX < -15 && fastFlick)) {
-      setActivePageIndex(1);
+      setActivePageIndex(prev => Math.min(maxPageIndex, prev + 1));
     }
 
     setTimeout(() => {
@@ -400,7 +485,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       let adjustedDelta = deltaX;
       if (activePageIndex === 0 && deltaX > 0) {
         adjustedDelta = deltaX * 0.25;
-      } else if (activePageIndex === 1 && deltaX < 0) {
+      } else if (activePageIndex === maxPageIndex && deltaX < 0) {
         adjustedDelta = deltaX * 0.25;
       }
       setDragOffset(adjustedDelta);
@@ -422,14 +507,83 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     const fastFlick = velocity > 0.3 && Math.abs(deltaX) > 15;
 
     if (deltaX > threshold || (deltaX > 15 && fastFlick)) {
-      setActivePageIndex(0);
+      setActivePageIndex(prev => Math.max(0, prev - 1));
     } else if (deltaX < -threshold || (deltaX < -15 && fastFlick)) {
-      setActivePageIndex(1);
+      setActivePageIndex(prev => Math.min(maxPageIndex, prev + 1));
     }
 
     setTimeout(() => {
       hasMovedRef.current = false;
     }, 60);
+  };
+
+  // Rendu 3D identique aux applications par défaut pour les sites installés depuis DKD Store
+  const renderInstalledApp = (site: UserDashboardSite) => {
+    const domain = (() => {
+      try {
+        const u = new URL(site.url.includes('://') ? site.url : `https://${site.url}`);
+        return u.hostname.replace(/^www\./, '');
+      } catch {
+        return site.url;
+      }
+    })();
+
+    const logoSrc = site.logo_url && site.logo_url.trim() !== ''
+      ? site.logo_url
+      : `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+
+    return (
+      <div
+        key={site.id || site.site_id}
+        onClick={(e) => {
+          if (hasMovedRef.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          setOpenedAppSite(site);
+          setOpenedAppIframeKey(k => k + 1);
+        }}
+        className="flex group flex-col items-center cursor-pointer w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full transition-transform duration-200 select-none hover:scale-105 active:scale-[0.98]"
+        title={`${site.name} — Cliquer pour ouvrir dans StudyCloud`}
+      >
+        {/* Conteneur avec la même taille, dimensions et effets 3D que les icônes par défaut */}
+        <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 lg:w-20 lg:h-20 flex items-center justify-center transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.22)] dark:drop-shadow-[0_10px_24px_rgba(0,0,0,0.6)] group-hover:drop-shadow-[0_14px_28px_rgba(249,115,22,0.35)] group-hover:scale-110 active:scale-95">
+          <div className="relative w-full h-full rounded-[18px] sm:rounded-[22px] md:rounded-[24px] bg-gradient-to-b from-white via-[#fcfbf7] to-[#e4ded5] dark:from-[#24324d] dark:via-[#1a253a] dark:to-[#0f172a] border-2 border-stone-800/80 dark:border-slate-500/80 shadow-[inset_0_2px_4px_rgba(255,255,255,0.7),inset_0_-2px_4px_rgba(0,0,0,0.15)] flex items-center justify-center p-1 sm:p-1.5 overflow-hidden">
+            {/* Reflet lumineux 3D en haut */}
+            <div className="absolute top-0 inset-x-0 h-2/5 bg-gradient-to-b from-white/40 dark:from-white/15 to-transparent pointer-events-none rounded-t-[16px] sm:rounded-t-[20px]" />
+            <img
+              src={logoSrc}
+              alt={site.name}
+              className="w-full h-full object-cover rounded-[13px] sm:rounded-[16px] md:rounded-[18px]"
+              loading="lazy"
+              onError={(e) => {
+                const img = e.currentTarget;
+                if (!img.dataset.fallbackTried) {
+                  img.dataset.fallbackTried = '1';
+                  img.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+                } else {
+                  img.style.display = 'none';
+                  const parent = img.parentElement;
+                  if (parent) {
+                    parent.innerHTML = '<span class="text-xl sm:text-2xl font-black text-orange-600 dark:text-orange-400 select-none">🌐</span>';
+                  }
+                }
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Libellé avec gestion du fond d'écran */}
+        <span className={`text-[8.5px] sm:text-[9.5px] md:text-[10.5px] font-bold mt-1 md:mt-1.5 text-center px-0.5 leading-tight tracking-tight w-full line-clamp-2 transition-colors ${
+          dashboardWallpaper && viewMode === 'home'
+            ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)] bg-black/45 px-1 md:px-1.5 py-0.5 rounded-full border border-white/10'
+            : 'text-stone-900 dark:text-stone-100'
+        }`}>
+          {site.name}
+        </span>
+      </div>
+    );
   };
 
   const [isMatiereMenuOpen, setIsMatiereMenuOpen] = useState(false);
@@ -2140,7 +2294,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'page1-files-menu' && (
         <Page1FilesMenuView
           onBack={() => {
-            setActivePageIndex(0);
+            setActivePageIndex(espaceLibreIndex);
             setViewMode('home');
           }}
           onOpenStudySpace={onOpenStudySpace}
@@ -2150,7 +2304,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'red-robot-menu' && (
         <RedRobotMenuView
           onBack={() => {
-            setActivePageIndex(0);
+            setActivePageIndex(espaceLibreIndex);
             setViewMode('home');
           }}
         />
@@ -2158,7 +2312,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'dkd-store' && (
         <DkdStoreView
           onBack={() => {
-            setActivePageIndex(0);
+            setActivePageIndex(espaceLibreIndex);
             setViewMode('home');
           }}
         />
@@ -2182,7 +2336,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] bg-black/45 px-3 py-1 rounded-full border border-white/10'
                 : 'text-stone-500 dark:text-stone-400'
               }`}>
-              {activePageIndex === 0 ? "Espace libre • Page 1" : "Écran d'accueil • Page 2"}
+              {getPageTitle(activePageIndex)}
             </span>
           </div>
 
@@ -2191,14 +2345,31 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             className="w-full flex-1 overflow-hidden select-none touch-pan-x relative flex flex-col"
           >
             <div
-              className="flex w-[200%] h-full will-change-transform"
+              className="flex h-full will-change-transform"
               style={{
-                transform: `translate3d(calc(-${activePageIndex * 50}% + ${dragOffset}px), 0, 0)`,
+                width: `${totalPages * 100}%`,
+                transform: `translate3d(calc(-${activePageIndex * (100 / totalPages)}% + ${dragOffset}px), 0, 0)`,
                 transition: isDragging ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
               }}
             >
-              {/* PAGE 0 : Page 1 à gauche avec applications 3D (4 par ligne sur mobile, 10 par ligne sur ordinateur) */}
-              <div className="w-1/2 shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start">
+              {/* ESPACES D'APPLICATIONS PERSONNELLES (À GAUCHE DE L'ESPACE LIBRE) */}
+              {orderedAppPages.map((pageSites, pageIdx) => (
+                <div
+                  key={`user-app-page-${pageIdx}`}
+                  style={{ width: `${100 / totalPages}%` }}
+                  className="shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start"
+                >
+                  <div className="grid grid-cols-4 md:grid md:grid-cols-10 md:w-full items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-x-2.5 lg:gap-x-4 md:gap-y-4 gap-x-1.5 sm:gap-x-3">
+                    {pageSites.map((site) => renderInstalledApp(site))}
+                  </div>
+                </div>
+              ))}
+
+              {/* ESPACE LIBRE : À droite des applications avec Robot Rouge et DKD Store */}
+              <div
+                style={{ width: `${100 / totalPages}%` }}
+                className="shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start"
+              >
                 <div className="grid grid-cols-4 md:grid md:grid-cols-10 md:w-full items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-x-2.5 lg:gap-x-4 md:gap-y-4 gap-x-1.5 sm:gap-x-3">
                   {/* Application Fichiers 3D Espace Cloud */}
                   <div
@@ -2208,7 +2379,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                         e.stopPropagation();
                         return;
                       }
-                      setActivePageIndex(0);
+                      setActivePageIndex(espaceLibreIndex);
                       setViewMode('page1-files-menu');
                     }}
                     className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full"
@@ -2359,7 +2530,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                         e.stopPropagation();
                         return;
                       }
-                      setActivePageIndex(0);
+                      setActivePageIndex(espaceLibreIndex);
                       setViewMode('red-robot-menu');
                     }}
                     className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full"
@@ -2417,7 +2588,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                         e.stopPropagation();
                         return;
                       }
-                      setActivePageIndex(0);
+                      setActivePageIndex(espaceLibreIndex);
                       setViewMode('dkd-store');
                     }}
                     className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full"
@@ -2438,8 +2609,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 </div>
               </div>
 
-              {/* PAGE 1 : Écran d'accueil principal à droite */}
-              <div className="w-1/2 shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start">
+              {/* ÉCRAN D'ACCUEIL PRINCIPAL (12 APPLICATIONS PAR DÉFAUT) */}
+              <div
+                style={{ width: `${100 / totalPages}%` }}
+                className="shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start"
+              >
                 {/* Sur mobile : 4 blocs par ligne (Crédits IA + Abonnements sur la 3e ligne) | Sur desktop : 10 colonnes avec Crédits IA et Abonnements sur la 2e ligne */}
                 <div className="grid grid-cols-4 md:grid md:grid-cols-10 md:w-full items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-x-2.5 lg:gap-x-4 md:gap-y-4 gap-x-1.5 sm:gap-x-3">
                   {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'ai-subscriptions', 'subscriptions'].map((id, index) => renderBlock(id, index))}
@@ -2450,7 +2624,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         </div>
       )}
 
-      {/* Pagination dots (Pointillés de navigation des pages) - Presque collé à la limite en bas de l'écran et au milieu */}
+      {/* Pagination dots (Pointillés de navigation des espaces) */}
       {viewMode === 'home' && (
         <div
           className={`fixed bottom-[72px] md:bottom-2.5 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-[calc(50%+8rem)] md:-translate-x-1/2 z-30 flex items-center gap-2.5 px-3.5 py-1.5 rounded-full ${dashboardWallpaper
@@ -2458,66 +2632,105 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               : 'bg-stone-900/10 dark:bg-black/50 border-stone-800/15 dark:border-white/10'
             } backdrop-blur-md border shadow-[0_2px_10px_rgba(0,0,0,0.08)] transition-all select-none`}
           role="navigation"
-          aria-label="Pagination des menus"
+          aria-label="Pagination des espaces"
         >
-          {/* Point 1 (Page vide - index 0) */}
-          <button
-            type="button"
-            onClick={() => handleGoToPage(0)}
-            aria-label="Page 1 : Espace libre"
-            title="Page 1 (Espace libre)"
-            className={`transition-all duration-300 rounded-full cursor-pointer focus:outline-none ${activePageIndex === 0
-                ? 'w-6 h-2 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]'
-                : 'w-2 h-2 bg-stone-400/60 dark:bg-stone-500/50 hover:bg-stone-600 dark:hover:bg-stone-300'
-              }`}
-          />
-          {/* Point 2 (Écran d'accueil principal - index 1) */}
-          <button
-            type="button"
-            onClick={() => handleGoToPage(1)}
-            aria-label="Page 2 : Écran d'accueil"
-            title="Page 2 (Écran d'accueil)"
-            className={`transition-all duration-300 rounded-full cursor-pointer focus:outline-none ${activePageIndex === 1
-                ? 'w-6 h-2 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]'
-                : 'w-2 h-2 bg-stone-400/60 dark:bg-stone-500/50 hover:bg-stone-600 dark:hover:bg-stone-300'
-              }`}
-          />
+          {Array.from({ length: totalPages }).map((_, idx) => (
+            <button
+              key={idx}
+              type="button"
+              onClick={() => handleGoToPage(idx)}
+              aria-label={getPageTitle(idx)}
+              title={getPageTitle(idx)}
+              className={`transition-all duration-300 rounded-full cursor-pointer focus:outline-none ${activePageIndex === idx
+                  ? 'w-6 h-2 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]'
+                  : 'w-2 h-2 bg-stone-400/60 dark:bg-stone-500/50 hover:bg-stone-600 dark:hover:bg-stone-300'
+                }`}
+            />
+          ))}
         </div>
       )}
 
-      {/* Boutons flèches de navigation d'angle (Desktop) pour glisser entre Page 1 et Page 2 */}
+      {/* Boutons flèches de navigation d'angle (Desktop) pour glisser entre les espaces */}
       {viewMode === 'home' && (
         <>
-          {/* Flèche gauche / changement de page - Extrêmement dans l'angle gauche, sous le menu hamburger */}
+          {/* Flèche gauche / changement vers l'espace précédent à gauche */}
           <button
             type="button"
-            onClick={() => handleGoToPage(activePageIndex === 1 ? 0 : 1)}
-            className="hidden md:flex items-center justify-center fixed top-[70px] md:top-[74px] left-3 md:left-[calc(16rem+1.5rem)] z-30 w-10 h-10 rounded-full border-2 border-stone-800 dark:border-slate-500 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5)] cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 select-none"
-            title={activePageIndex === 1 ? "Glisser vers l'espace libre (Page 1)" : "Glisser vers l'écran d'accueil (Page 2)"}
-            aria-label={activePageIndex === 1 ? "Page précédente (Page 1)" : "Page suivante (Page 2)"}
+            disabled={activePageIndex === 0}
+            onClick={() => handleGoToPage(activePageIndex - 1)}
+            className={`hidden md:flex items-center justify-center fixed top-[70px] md:top-[74px] left-3 md:left-[calc(16rem+1.5rem)] z-30 w-10 h-10 rounded-full border-2 border-stone-800 dark:border-slate-500 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5)] cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 select-none ${
+              activePageIndex === 0 ? 'opacity-30 pointer-events-none' : ''
+            }`}
+            title="Glisser vers l'espace précédent à gauche"
+            aria-label="Espace précédent à gauche"
           >
-            {activePageIndex === 1 ? (
-              <ArrowLeft className="w-5 h-5 stroke-[2.5]" strokeLinecap="round" strokeLinejoin="round" />
-            ) : (
-              <ArrowRight className="w-5 h-5 stroke-[2.5]" strokeLinecap="round" strokeLinejoin="round" />
-            )}
+            <ArrowLeft className="w-5 h-5 stroke-[2.5]" strokeLinecap="round" strokeLinejoin="round" />
           </button>
 
           {/* Flèche droite - Angle droit de l'écran */}
           <button
             type="button"
-            onClick={() => handleGoToPage(activePageIndex === 0 ? 1 : 0)}
-            className="hidden md:flex items-center justify-center fixed top-[70px] md:top-[74px] right-3 md:right-6 z-30 w-10 h-10 rounded-full border-2 border-stone-800 dark:border-slate-500 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5)] cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 select-none"
-            title={activePageIndex === 0 ? "Glisser vers l'écran d'accueil (Page 2)" : "Glisser vers l'espace libre (Page 1)"}
-            aria-label={activePageIndex === 0 ? "Page suivante (Page 2)" : "Page précédente (Page 1)"}
+            disabled={activePageIndex === maxPageIndex}
+            onClick={() => handleGoToPage(activePageIndex + 1)}
+            className={`hidden md:flex items-center justify-center fixed top-[70px] md:top-[74px] right-3 md:right-6 z-30 w-10 h-10 rounded-full border-2 border-stone-800 dark:border-slate-500 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_2px_8px_rgba(0,0,0,0.5)] cursor-pointer hover:scale-110 active:scale-95 transition-all duration-200 select-none ${
+              activePageIndex === maxPageIndex ? 'opacity-30 pointer-events-none' : ''
+            }`}
+            title="Glisser vers l'espace suivant à droite"
+            aria-label="Espace suivant à droite"
           >
-            {activePageIndex === 0 ? (
-              <ArrowRight className="w-5 h-5 stroke-[2.5]" strokeLinecap="round" strokeLinejoin="round" />
-            ) : (
-              <ArrowLeft className="w-5 h-5 stroke-[2.5]" strokeLinecap="round" strokeLinejoin="round" />
-            )}
+            <ArrowRight className="w-5 h-5 stroke-[2.5]" strokeLinecap="round" strokeLinejoin="round" />
           </button>
         </>
+      )}
+
+      {/* Lecteur plein écran in-app pour les applications installées depuis DKD Store */}
+      {openedAppSite && (
+        <div className="fixed inset-0 z-[999999] flex flex-col bg-stone-900 select-none animate-in fade-in duration-200">
+          <div className="w-full h-11 sm:h-13 bg-stone-900 border-b border-stone-800 px-3 sm:px-4 flex items-center justify-between text-white shrink-0 shadow-md">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => setOpenedAppSite(null)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-orange-600 hover:bg-orange-500 active:scale-95 text-white font-bold text-xs shadow-md transition-all cursor-pointer"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Retour au tableau de bord</span>
+                <span className="sm:hidden">Retour</span>
+              </button>
+              <span className="text-xs sm:text-sm font-bold text-white truncate max-w-[200px] sm:max-w-xs">
+                {openedAppSite.name}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setOpenedAppIframeKey(k => k + 1)}
+                className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 text-stone-300 hover:text-white transition-colors cursor-pointer"
+                title="Actualiser l'application"
+              >
+                <RefreshCw className="w-4 h-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setOpenedAppSite(null)}
+                className="p-1.5 rounded-lg bg-stone-800 hover:bg-red-500/80 text-stone-300 hover:text-white transition-colors cursor-pointer"
+                title="Fermer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+          <div className="w-full flex-1 relative bg-white min-h-0">
+            <iframe
+              key={openedAppIframeKey}
+              src={openedAppSite.url}
+              title={openedAppSite.name}
+              className="w-full h-full border-0"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads allow-presentation"
+              allow="camera; microphone; fullscreen; clipboard-read; clipboard-write; autoplay;"
+            />
+          </div>
+        </div>
       )}
     </div>
   );

@@ -17915,6 +17915,120 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
     });
   }
 
+  // 11. GESTION DES APPLICATIONS DU TABLEAU DE BORD UTILISATEUR (/api/dkd-store/user-sites & /api/user-dashboard-sites)
+  if (path === '/api/dkd-store/user-sites' || path === '/api/user-dashboard-sites') {
+    let userId = request.headers.get('x-user-id') || url.searchParams.get('userId') || url.searchParams.get('user_id');
+    const authHeader = request.headers.get('Authorization') || '';
+    if (!userId && authHeader.startsWith('Bearer ')) {
+      try {
+        const token = authHeader.substring(7);
+        const parts = token.split('.');
+        if (parts.length >= 2) {
+          const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
+          userId = payload.userId || payload.sub || payload.id;
+        }
+      } catch (e) {}
+    }
+
+    if (!userId) {
+      return new Response(JSON.stringify({ success: false, error: 'Identifiant utilisateur requis' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+
+    await safeRun(db, `
+      CREATE TABLE IF NOT EXISTS user_dashboard_sites (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        site_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        logo_url TEXT DEFAULT '',
+        category_name TEXT DEFAULT '',
+        subcategory_name TEXT DEFAULT '',
+        badge TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        position INTEGER DEFAULT 0,
+        installed_at INTEGER NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    try { await safeRun(db, "CREATE INDEX IF NOT EXISTS idx_user_dash_sites_user ON user_dashboard_sites(user_id)"); } catch(e){}
+
+    if (request.method === 'GET') {
+      const rows = await safeAll(db, "SELECT * FROM user_dashboard_sites WHERE user_id = ? ORDER BY position ASC, installed_at ASC", [userId]);
+      return new Response(JSON.stringify({ success: true, sites: rows || [] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+
+    if (request.method === 'POST') {
+      const body = await request.json().catch(() => ({}));
+      const siteId = (body.site_id || body.id || '').trim();
+      const name = (body.name || '').trim();
+      const siteUrl = (body.url || '').trim();
+      if (!siteId || !name || !siteUrl) {
+        return new Response(JSON.stringify({ success: false, error: 'Champs obligatoires manquants (id, name, url)' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      const id = `uds_${userId}_${siteId}`;
+      const logoUrl = body.logo_url || '';
+      const categoryName = body.category_name || '';
+      const subcategoryName = body.subcategory_name || '';
+      const badge = body.badge || '';
+      const description = body.description || '';
+      const installedAt = Number(body.installed_at || Date.now());
+      const position = Number(body.position || 0);
+
+      await safeRun(db, `
+        INSERT INTO user_dashboard_sites (
+          id, user_id, site_id, name, url, logo_url,
+          category_name, subcategory_name, badge, description,
+          position, installed_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          name = excluded.name,
+          url = excluded.url,
+          logo_url = excluded.logo_url,
+          category_name = excluded.category_name,
+          subcategory_name = excluded.subcategory_name,
+          badge = excluded.badge,
+          description = excluded.description,
+          position = excluded.position
+      `, [id, userId, siteId, name, siteUrl, logoUrl, categoryName, subcategoryName, badge, description, position, installedAt]);
+
+      return new Response(JSON.stringify({
+        success: true,
+        message: 'Application ajoutée à votre tableau de bord',
+        site: { id, user_id: userId, site_id: siteId, name, url: siteUrl, logo_url: logoUrl, category_name: categoryName, subcategory_name: subcategoryName, badge, description, position, installed_at: installedAt }
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+
+    if (request.method === 'DELETE' || (request.method === 'POST' && url.searchParams.get('action') === 'delete')) {
+      const siteId = (url.searchParams.get('site_id') || url.searchParams.get('id') || '').trim();
+      if (!siteId) {
+        return new Response(JSON.stringify({ success: false, error: 'site_id requis' }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      await safeRun(db, "DELETE FROM user_dashboard_sites WHERE user_id = ? AND (site_id = ? OR id = ?)", [userId, siteId, siteId]);
+      return new Response(JSON.stringify({ success: true, message: 'Application retirée de votre tableau de bord' }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+  }
+
   return new Response(JSON.stringify({ success: false, error: `Route DKD store introuvable: ${request.method} ${path}` }), {
     status: 404,
     headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }

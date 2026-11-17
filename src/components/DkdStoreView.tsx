@@ -6,7 +6,6 @@ import {
   Minimize2,
   X,
   RefreshCw,
-  ExternalLink,
   Globe,
   Sparkles,
   Bookmark,
@@ -14,20 +13,28 @@ import {
   AlertCircle,
   Play,
   LayoutGrid,
-  Rows
+  Rows,
+  Download,
+  Trash2
 } from 'lucide-react';
 import { DkdStore3DIcon } from './DkdStore3DIcon';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
+import { useAuth } from '../context/AuthContext';
 import {
   getDkdStorePublicData,
   DkdStoreSite,
   DkdStoreCategory,
-  DkdStoreSubcategory
+  DkdStoreSubcategory,
+  UserDashboardSite,
+  getUserDashboardSites,
+  addUserDashboardSite,
+  removeUserDashboardSite
 } from '../services/api';
 
 interface DkdStoreViewProps {
   onBack: () => void;
+  initialActiveSite?: DkdStoreSite | null;
 }
 
 // Composant Tuile Application style Google Play Store (Grand icône arrondi + titre en dessous)
@@ -122,7 +129,9 @@ const DkdAppTile: React.FC<DkdAppTileProps> = ({
   );
 };
 
-export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
+export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiveSite = null }) => {
+  const { user } = useAuth();
+
   // 1. ÉTAT DES DONNÉES D1 & CHARGEMENT
   const [sites, setSites] = useState<DkdStoreSite[]>([]);
   const [categories, setCategories] = useState<DkdStoreCategory[]>([]);
@@ -131,6 +140,37 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
+
+  // Applications ajoutées au tableau de bord par l'utilisateur connecté
+  const [installedSites, setInstalledSites] = useState<UserDashboardSite[]>([]);
+  const [isActionLoading, setIsActionLoading] = useState<boolean>(false);
+
+  // Charger les applications du tableau de bord de l'utilisateur
+  useEffect(() => {
+    let isMounted = true;
+    const fetchInstalled = async () => {
+      try {
+        const userSites = await getUserDashboardSites(user?.id);
+        if (isMounted) {
+          setInstalledSites(userSites);
+        }
+      } catch {}
+    };
+    fetchInstalled();
+
+    const handleUpdate = () => {
+      fetchInstalled();
+    };
+    window.addEventListener('studycloud_user_sites_updated', handleUpdate);
+    return () => {
+      isMounted = false;
+      window.removeEventListener('studycloud_user_sites_updated', handleUpdate);
+    };
+  }, [user?.id]);
+
+  const installedSiteIds = useMemo(() => {
+    return installedSites.map(s => String(s.site_id));
+  }, [installedSites]);
 
   // 2. FILTRES & RECHERCHE
   const [searchQuery, setSearchQuery] = useState('');
@@ -218,6 +258,38 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
       if (toastTimeoutRef.current) clearTimeout(toastTimeoutRef.current);
     };
   }, []);
+
+  // Gestion de la touche Échap
+  useEffect(() => {
+    if (initialActiveSite) {
+      setActiveSite(initialActiveSite);
+    }
+  }, [initialActiveSite]);
+
+  // Actions d'ajout et suppression au tableau de bord personnel
+  const handleAddToDashboard = async (site: DkdStoreSite) => {
+    try {
+      setIsActionLoading(true);
+      await addUserDashboardSite(site, user?.id);
+      showToast(`✨ "${site.name}" ajouté à votre tableau de bord !`);
+    } catch (e: any) {
+      showToast(`Erreur : ${e?.message || "Impossible d'ajouter le site"}`);
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
+
+  const handleRemoveFromDashboard = async (site: DkdStoreSite) => {
+    try {
+      setIsActionLoading(true);
+      await removeUserDashboardSite(site.id, user?.id);
+      showToast(`"${site.name}" retiré de votre tableau de bord.`);
+    } catch (e: any) {
+      showToast(`Erreur : ${e?.message || "Impossible de retirer le site"}`);
+    } finally {
+      setIsActionLoading(false);
+    }
+  };
 
   // Gestion de la touche Échap
   useEffect(() => {
@@ -592,17 +664,6 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
               >
                 <Bookmark className={`w-3.5 h-3.5 ${pinnedSiteIds.includes(activeSite.id) ? 'fill-current' : ''}`} />
               </button>
-
-              {/* Ouvrir dans un nouvel onglet standard */}
-              <a
-                href={activeSite.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 dark:border-stone-600"
-                title="Ouvrir dans un nouvel onglet"
-              >
-                <ExternalLink className="w-3.5 h-3.5" />
-              </a>
             </>
           ) : (
             <>
@@ -793,14 +854,43 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
 
                     {/* Boutons d'action principaux */}
                     <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenSite(selectedSiteForDetail)}
-                        className="flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm shadow-md shadow-blue-600/25 border border-blue-400/40 transition-all cursor-pointer active:scale-95"
-                      >
-                        <Play className="w-4 h-4 fill-current" />
-                        <span>Ouvrir le site</span>
-                      </button>
+                      {installedSiteIds.includes(String(selectedSiteForDetail.id)) ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenSite(selectedSiteForDetail)}
+                            className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md shadow-emerald-500/20 border border-emerald-400/40 transition-all cursor-pointer active:scale-95"
+                          >
+                            <Play className="w-4 h-4 fill-current" />
+                            <span>Ouvrir l'application</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            disabled={isActionLoading}
+                            onClick={() => handleRemoveFromDashboard(selectedSiteForDetail)}
+                            className="flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 text-xs font-bold transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                            title="Retirer cette application de mon tableau de bord"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                            <span>Retirer</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={isActionLoading}
+                          onClick={() => handleAddToDashboard(selectedSiteForDetail)}
+                          className="flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs sm:text-sm shadow-md shadow-orange-500/30 border border-orange-400/40 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                        >
+                          {isActionLoading ? (
+                            <RefreshCw className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Download className="w-4 h-4" />
+                          )}
+                          <span>Ajouter à mon tableau de bord</span>
+                        </button>
+                      )}
 
                       <button
                         type="button"
@@ -815,16 +905,6 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                         <Bookmark className={`w-4 h-4 ${isDetailPinned ? 'fill-current' : ''}`} />
                         <span className="hidden sm:inline">{isDetailPinned ? 'Favori' : 'Épingler'}</span>
                       </button>
-
-                      <a
-                        href={selectedSiteForDetail.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-center p-3 rounded-2xl bg-white hover:bg-stone-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-700 dark:text-slate-200 border border-stone-200 dark:border-slate-700 transition-all cursor-pointer active:scale-95"
-                        title="Ouvrir dans un nouvel onglet externe"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
                     </div>
                   </div>
                 </div>
@@ -905,7 +985,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                           Aperçu direct de {selectedSiteForDetail.name}
                         </p>
                         <p className="text-[11px] text-stone-500 dark:text-slate-400">
-                          Cliquez sur « Ouvrir le site » ci-dessus pour utiliser directement l'application dans StudyCloud.
+                          Ajoutez cette application à votre tableau de bord ci-dessus pour y accéder directement.
                         </p>
                       </div>
                     )}

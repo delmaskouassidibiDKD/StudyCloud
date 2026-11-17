@@ -3865,6 +3865,199 @@ export async function getDkdStorePublicData(): Promise<DkdStorePublicData> {
   return { success: false, categories: [], sites: [] };
 }
 
+// ============================================================================
+// APPLICATIONS DKD STORE AJOUTÉES AU TABLEAU DE BORD DE L'UTILISATEUR
+// ============================================================================
+
+export interface UserDashboardSite {
+  id: string;
+  user_id: string;
+  site_id: string;
+  name: string;
+  url: string;
+  logo_url?: string;
+  category_name?: string;
+  subcategory_name?: string;
+  badge?: string;
+  description?: string;
+  position?: number;
+  installed_at: number;
+  created_at?: string;
+}
+
+/**
+ * Récupère les sites ajoutés au tableau de bord par l'utilisateur connecté depuis D1
+ * avec cache local immédiat et synchronisation réactive.
+ */
+export async function getUserDashboardSites(userId?: string): Promise<UserDashboardSite[]> {
+  const resolvedUserId = (userId || (typeof localStorage !== 'undefined' ? localStorage.getItem('sc_auth_user_id') : '') || 'default-user').trim();
+  const cacheKey = `sc_user_dashboard_sites_${resolvedUserId}`;
+  const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('sc_auth_token') || '') : '';
+
+  // 1. Lire d'abord depuis le cache local pour réactivité instantanée
+  let cachedSites: UserDashboardSite[] = [];
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) cachedSites = JSON.parse(raw);
+    } catch {}
+  }
+
+  const candidateUrls = [
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getWorkerApiUrl().replace(/\/+$/, ''),
+    'https://studycloud-worker.delmaskouassidibi.workers.dev'
+  ];
+
+  for (const baseUrl of candidateUrls) {
+    if (!baseUrl) continue;
+    try {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timeoutId = controller ? setTimeout(() => controller.abort(), 4000) : null;
+      const res = await fetch(`${baseUrl}/api/dkd-store/user-sites?userId=${encodeURIComponent(resolvedUserId)}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'x-user-id': resolvedUserId
+        },
+        signal: controller ? controller.signal : undefined
+      });
+      if (timeoutId) clearTimeout(timeoutId);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.sites)) {
+          if (typeof localStorage !== 'undefined') {
+            localStorage.setItem(cacheKey, JSON.stringify(data.sites));
+          }
+          return data.sites;
+        }
+      }
+    } catch {}
+  }
+
+  return cachedSites;
+}
+
+/**
+ * Enregistre un site sur le tableau de bord de l'utilisateur dans la base D1
+ */
+export async function addUserDashboardSite(site: DkdStoreSite, userId?: string): Promise<UserDashboardSite> {
+  const resolvedUserId = (userId || (typeof localStorage !== 'undefined' ? localStorage.getItem('sc_auth_user_id') : '') || 'default-user').trim();
+  const cacheKey = `sc_user_dashboard_sites_${resolvedUserId}`;
+  const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('sc_auth_token') || '') : '';
+
+  const installedSite: UserDashboardSite = {
+    id: `uds_${resolvedUserId}_${site.id}`,
+    user_id: resolvedUserId,
+    site_id: site.id,
+    name: site.name,
+    url: site.url,
+    logo_url: site.logo_url || '',
+    category_name: site.category_name || '',
+    subcategory_name: site.subcategory_name || '',
+    badge: site.badge || '',
+    description: site.description || '',
+    installed_at: Date.now()
+  };
+
+  // Mettre à jour immédiatement le cache local
+  if (typeof localStorage !== 'undefined') {
+    try {
+      let list: UserDashboardSite[] = [];
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) list = JSON.parse(raw);
+      const existingIdx = list.findIndex(s => s.site_id === site.id);
+      if (existingIdx >= 0) {
+        list[existingIdx] = installedSite;
+      } else {
+        list.push(installedSite);
+      }
+      localStorage.setItem(cacheKey, JSON.stringify(list));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('studycloud_user_sites_updated', { detail: { sites: list } }));
+      }
+    } catch {}
+  }
+
+  const candidateUrls = [
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getWorkerApiUrl().replace(/\/+$/, ''),
+    'https://studycloud-worker.delmaskouassidibi.workers.dev'
+  ];
+
+  for (const baseUrl of candidateUrls) {
+    if (!baseUrl) continue;
+    try {
+      const res = await fetch(`${baseUrl}/api/dkd-store/user-sites?userId=${encodeURIComponent(resolvedUserId)}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'x-user-id': resolvedUserId
+        },
+        body: JSON.stringify(installedSite)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.success && data.site) {
+          return data.site;
+        }
+      }
+    } catch {}
+  }
+
+  return installedSite;
+}
+
+/**
+ * Retire un site du tableau de bord de l'utilisateur dans la base D1
+ */
+export async function removeUserDashboardSite(siteId: string, userId?: string): Promise<boolean> {
+  const resolvedUserId = (userId || (typeof localStorage !== 'undefined' ? localStorage.getItem('sc_auth_user_id') : '') || 'default-user').trim();
+  const cacheKey = `sc_user_dashboard_sites_${resolvedUserId}`;
+  const token = typeof localStorage !== 'undefined' ? (localStorage.getItem('sc_auth_token') || '') : '';
+
+  // Retirer immédiatement du cache local
+  if (typeof localStorage !== 'undefined') {
+    try {
+      let list: UserDashboardSite[] = [];
+      const raw = localStorage.getItem(cacheKey);
+      if (raw) list = JSON.parse(raw);
+      list = list.filter(s => s.site_id !== siteId && s.id !== siteId);
+      localStorage.setItem(cacheKey, JSON.stringify(list));
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('studycloud_user_sites_updated', { detail: { sites: list } }));
+      }
+    } catch {}
+  }
+
+  const candidateUrls = [
+    'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev',
+    getWorkerApiUrl().replace(/\/+$/, ''),
+    'https://studycloud-worker.delmaskouassidibi.workers.dev'
+  ];
+
+  for (const baseUrl of candidateUrls) {
+    if (!baseUrl) continue;
+    try {
+      const res = await fetch(`${baseUrl}/api/dkd-store/user-sites?site_id=${encodeURIComponent(siteId)}&userId=${encodeURIComponent(resolvedUserId)}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          'x-user-id': resolvedUserId
+        }
+      });
+      if (res.ok) {
+        return true;
+      }
+    } catch {}
+  }
+
+  return true;
+}
+
 
 
 

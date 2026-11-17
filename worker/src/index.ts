@@ -15922,6 +15922,130 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ----------------------------------------------------------------------
+      // 12.B APPLICATIONS AJOUTÉES AU TABLEAU DE BORD PAR UTILISATEUR
+      // (/api/user-dashboard-sites & /api/dkd-store/user-sites)
+      // ----------------------------------------------------------------------
+      if (path === '/api/user-dashboard-sites' || path === '/api/dkd-store/user-sites') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+        if (!env.DB) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        // Initialisation de la table dédiée liée au compte utilisateur
+        await env.DB.prepare(`
+          CREATE TABLE IF NOT EXISTS user_dashboard_sites (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            site_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            logo_url TEXT DEFAULT '',
+            category_name TEXT DEFAULT '',
+            subcategory_name TEXT DEFAULT '',
+            badge TEXT DEFAULT '',
+            description TEXT DEFAULT '',
+            position INTEGER DEFAULT 0,
+            installed_at INTEGER NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run().catch(() => {});
+        try {
+          await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_user_dash_sites_user ON user_dashboard_sites(user_id)").run();
+        } catch (e) {}
+
+        if (method === 'GET') {
+          try {
+            const { results } = await env.DB.prepare(`
+              SELECT * FROM user_dashboard_sites
+              WHERE user_id = ?
+              ORDER BY position ASC, installed_at ASC
+            `).bind(reqUserId).all<any>();
+            return jsonResponse({ success: true, sites: results || [] }, 200, origin);
+          } catch (e: any) {
+            return jsonResponse({ success: false, error: e?.message || 'Erreur D1' }, 500, origin);
+          }
+        }
+
+        if (method === 'POST') {
+          try {
+            const body: any = await request.json().catch(() => ({}));
+            const siteId = (body.site_id || body.id || '').trim();
+            const name = (body.name || '').trim();
+            const siteUrl = (body.url || '').trim();
+            if (!siteId || !name || !siteUrl) {
+              return errorResponse('Données du site incomplètes (id, name, url requis)', 400, origin);
+            }
+
+            const id = `uds_${reqUserId}_${siteId}`;
+            const logoUrl = body.logo_url || '';
+            const categoryName = body.category_name || '';
+            const subcategoryName = body.subcategory_name || '';
+            const badge = body.badge || '';
+            const description = body.description || '';
+            const installedAt = Number(body.installed_at || Date.now());
+            const position = typeof body.position === 'number' ? body.position : 0;
+
+            await env.DB.prepare(`
+              INSERT INTO user_dashboard_sites (
+                id, user_id, site_id, name, url, logo_url,
+                category_name, subcategory_name, badge, description,
+                position, installed_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                url = excluded.url,
+                logo_url = excluded.logo_url,
+                category_name = excluded.category_name,
+                subcategory_name = excluded.subcategory_name,
+                badge = excluded.badge,
+                description = excluded.description,
+                position = excluded.position
+            `).bind(
+              id, reqUserId, siteId, name, siteUrl, logoUrl,
+              categoryName, subcategoryName, badge, description,
+              position, installedAt
+            ).run();
+
+            return jsonResponse({
+              success: true,
+              message: 'Application ajoutée à votre tableau de bord',
+              site: {
+                id,
+                user_id: reqUserId,
+                site_id: siteId,
+                name,
+                url: siteUrl,
+                logo_url: logoUrl,
+                category_name: categoryName,
+                subcategory_name: subcategoryName,
+                badge,
+                description,
+                position,
+                installed_at: installedAt
+              }
+            }, 200, origin);
+          } catch (e: any) {
+            return jsonResponse({ success: false, error: e?.message || 'Erreur D1' }, 500, origin);
+          }
+        }
+
+        if (method === 'DELETE') {
+          try {
+            const siteId = url.searchParams.get('site_id') || url.searchParams.get('id');
+            if (!siteId) return errorResponse('site_id requis', 400, origin);
+
+            await env.DB.prepare(`
+              DELETE FROM user_dashboard_sites
+              WHERE user_id = ? AND (site_id = ? OR id = ?)
+            `).bind(reqUserId, siteId, siteId).run();
+
+            return jsonResponse({ success: true, message: 'Application retirée de votre tableau de bord' }, 200, origin);
+          } catch (e: any) {
+            return jsonResponse({ success: false, error: e?.message || 'Erreur D1' }, 500, origin);
+          }
+        }
+      }
+
+      // ----------------------------------------------------------------------
       // 13. NOTIFICATIONS (Connecté D1 avec purge automatique 3 semaines / 21 jours)
       // ----------------------------------------------------------------------
       if (path === '/api/notifications') {
