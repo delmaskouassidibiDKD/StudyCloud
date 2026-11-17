@@ -144,7 +144,12 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
     }
   });
 
-  // 4. SITE ACTIF OUVERT DANS L'APPLICATION
+  // 4. SITE SÉLECTIONNÉ POUR LA FICHE DE PRÉSENTATION & SITE ACTIF OUVERT DANS L'IFRAME
+  const [selectedSiteForDetail, setSelectedSiteForDetail] = useState<DkdStoreSite | null>(null);
+  const [activePromoImageIdx, setActivePromoImageIdx] = useState<number>(0);
+  const [lightboxImageUrl, setLightboxImageUrl] = useState<string | null>(null);
+  const detailScrollRef = useRef<HTMLDivElement>(null);
+
   const [activeSite, setActiveSite] = useState<DkdStoreSite | null>(null);
   const [iframeKey, setIframeKey] = useState<number>(0);
   const [isIframeLoading, setIsIframeLoading] = useState<boolean>(true);
@@ -210,16 +215,20 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (viewerExpandLevel >= 1) {
+        if (lightboxImageUrl) {
+          setLightboxImageUrl(null);
+        } else if (viewerExpandLevel >= 1) {
           resetViewerExpand();
         } else if (activeSite) {
           setActiveSite(null);
+        } else if (selectedSiteForDetail) {
+          setSelectedSiteForDetail(null);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [viewerExpandLevel, activeSite]);
+  }, [viewerExpandLevel, activeSite, selectedSiteForDetail, lightboxImageUrl]);
 
   // Basculer l'épinglage d'un site
   const togglePinSite = (site: DkdStoreSite, e?: React.MouseEvent) => {
@@ -316,7 +325,53 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
     }
   };
 
-  // Helper pour l'ouverture d'un site directement dans StudyCloud
+  // Extraction propre du tableau d'images publicitaires (1 à 3 images stockées dans R2)
+  const parsePromoImages = (raw?: string | string[]): string[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw.filter(Boolean).slice(0, 3);
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return parsed.filter(Boolean).slice(0, 3);
+      } catch {}
+    }
+    return [];
+  };
+
+  // Sites similaires pour la fiche de présentation du site sélectionné
+  const similarSites = useMemo(() => {
+    if (!selectedSiteForDetail) return [];
+    const current = selectedSiteForDetail;
+    const others = sites.filter(s => String(s.id) !== String(current.id));
+    const sameSub = (current.subcategory_id || current.subcategory_name)
+      ? others.filter(s =>
+          (current.subcategory_id && String(s.subcategory_id) === String(current.subcategory_id)) ||
+          (current.subcategory_name && String(s.subcategory_name).toLowerCase() === String(current.subcategory_name).toLowerCase())
+        )
+      : [];
+    const sameCat = others.filter(s =>
+      !sameSub.some(sub => sub.id === s.id) &&
+      ((current.category_id && String(s.category_id) === String(current.category_id)) ||
+       (current.category_name && String(s.category_name).toLowerCase() === String(current.category_name).toLowerCase()))
+    );
+    const rest = others.filter(s =>
+      !sameSub.some(sub => sub.id === s.id) &&
+      !sameCat.some(cat => cat.id === s.id)
+    );
+    return [...sameSub, ...sameCat, ...rest].slice(0, 8);
+  }, [sites, selectedSiteForDetail]);
+
+  // Helper pour ouvrir la fiche de présentation professionnelle d'un site
+  const handleSelectSiteDetail = (site: DkdStoreSite) => {
+    setSelectedSiteForDetail(site);
+    setActivePromoImageIdx(0);
+    setLightboxImageUrl(null);
+    setTimeout(() => {
+      detailScrollRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }, 20);
+  };
+
+  // Helper pour l'ouverture effective d'un site dans l'iframe StudyCloud
   const handleOpenSite = (site: DkdStoreSite) => {
     setActiveSite(site);
     setIsIframeLoading(true);
@@ -348,15 +403,17 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
             onClick={() => {
               if (activeSite) {
                 setActiveSite(null);
+              } else if (selectedSiteForDetail) {
+                setSelectedSiteForDetail(null);
               } else {
                 onBack();
               }
             }}
             className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800/90 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-xs rounded-xl border border-stone-300 dark:border-stone-600 shadow-xs transition-all cursor-pointer active:scale-95 shrink-0"
-            title={activeSite ? "Retour au catalogue DKD store" : "Retour à l'accueil"}
+            title={activeSite ? "Retour à la fiche du site" : selectedSiteForDetail ? "Retour au catalogue DKD store" : "Retour à l'accueil"}
           >
             <ArrowLeft className="w-3.5 h-3.5 text-[#ff4801] shrink-0" />
-            <span className="leading-none">{activeSite ? "Catalogue" : "Retour"}</span>
+            <span className="leading-none">{activeSite ? "Fiche" : selectedSiteForDetail ? "Catalogue" : "Retour"}</span>
           </button>
 
           {/* Logo et Nom : DKD store aux couleurs Google Play */}
@@ -372,17 +429,17 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
               <span className="text-[#FBBC05]">r</span>
               <span className="text-[#34A853]">e</span>
             </span>
-            {activeSite && (
+            {(activeSite || selectedSiteForDetail) && (
               <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 dark:text-stone-400 border-l border-stone-300 dark:border-stone-700 pl-2 ml-1 truncate">
-                <span>{activeSite.name}</span>
-                {activeSite.category_name && (
+                <span>{(activeSite || selectedSiteForDetail)?.name}</span>
+                {(activeSite || selectedSiteForDetail)?.category_name && (
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-medium border border-stone-300 dark:border-stone-700">
-                    {activeSite.category_name}
+                    {(activeSite || selectedSiteForDetail)?.category_name}
                   </span>
                 )}
-                {activeSite.subcategory_name && (
+                {(activeSite || selectedSiteForDetail)?.subcategory_name && (
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-400 dark:border-indigo-600 font-medium">
-                    🏷️ {activeSite.subcategory_name}
+                    🏷️ {(activeSite || selectedSiteForDetail)?.subcategory_name}
                   </span>
                 )}
               </span>
@@ -392,7 +449,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
         </div>
 
         {/* Partie centrale : Champ de recherche petit et bien centré dans l'en-tête */}
-        {!activeSite && (
+        {!activeSite && !selectedSiteForDetail && (
           <div className="flex-1 max-w-[200px] xs:max-w-[240px] sm:max-w-xs md:max-w-sm flex items-center justify-center mx-2 sm:mx-4">
             <div className="relative flex items-center w-full bg-stone-100 hover:bg-stone-200/80 focus-within:bg-white dark:bg-[#111a2f] dark:hover:bg-[#14203b] dark:focus-within:bg-[#14203b] border border-stone-300 dark:border-stone-600 focus-within:border-blue-500 dark:focus-within:border-blue-500 rounded-xl px-2.5 py-1 transition-all shadow-2xs">
               <Search className="w-3.5 h-3.5 text-stone-400 dark:text-stone-400 shrink-0" />
@@ -572,6 +629,352 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
             </button>
           </div>
         </div>
+      ) : selectedSiteForDetail ? (
+        /* ================================================================== */
+        /* 2.B FICHE DE PRÉSENTATION PROFESSIONNELLE DKD STORE                */
+        /* Modèle exclusif StudyCloud : Images R2 (1-3), Description &        */
+        /* Sites similaires (sans étoiles ni commentaires)                    */
+        /* ================================================================== */
+        (() => {
+          const detailDomain = getDomainFromUrl(selectedSiteForDetail.url);
+          const detailLogoSrc = (selectedSiteForDetail.logo_url && selectedSiteForDetail.logo_url.trim() !== '')
+            ? selectedSiteForDetail.logo_url
+            : `https://www.google.com/s2/favicons?domain=${detailDomain}&sz=128`;
+          const promoImages = parsePromoImages(selectedSiteForDetail.promo_images);
+          const currentHeroPromo = promoImages[activePromoImageIdx] || promoImages[0] || '';
+          const isDetailPinned = pinnedSiteIds.includes(selectedSiteForDetail.id);
+
+          return (
+            <div
+              ref={detailScrollRef}
+              className="flex-1 w-full overflow-y-auto px-3 sm:px-6 md:px-8 py-4 sm:py-6 relative min-h-0 bg-stone-50/60 dark:bg-[#070b14]"
+            >
+              <div className="max-w-6xl mx-auto space-y-5 sm:space-y-6 pb-10">
+
+                {/* 1. BANDEAU D'IDENTITÉ STUDIO DKD STORE */}
+                <div className="relative overflow-hidden rounded-3xl border-2 border-stone-300 dark:border-slate-700 bg-gradient-to-br from-white via-stone-50 to-blue-50/40 dark:from-[#0d1526] dark:via-[#0f192e] dark:to-[#13203d] p-4 sm:p-6 shadow-md">
+                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
+                    {/* Icône Squircle + Titre + Badges */}
+                    <div className="flex items-start sm:items-center gap-4 min-w-0">
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-white dark:bg-[#090f1d] border-2 border-stone-300 dark:border-slate-600 p-1.5 shadow-md flex items-center justify-center shrink-0 overflow-hidden">
+                        <img
+                          src={detailLogoSrc}
+                          alt={selectedSiteForDetail.name}
+                          className="w-full h-full object-cover rounded-2xl"
+                          onError={(e) => {
+                            const img = e.currentTarget;
+                            if (!img.dataset.fallbackTried) {
+                              img.dataset.fallbackTried = '1';
+                              img.src = `https://www.google.com/s2/favicons?domain=${detailDomain}&sz=128`;
+                              img.className = 'w-12 h-12 object-contain';
+                            }
+                          }}
+                        />
+                      </div>
+
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <h1 className="text-lg sm:text-2xl md:text-3xl font-black text-stone-900 dark:text-white tracking-tight leading-tight">
+                            {selectedSiteForDetail.name}
+                          </h1>
+                          {selectedSiteForDetail.badge && (
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40">
+                              {selectedSiteForDetail.badge}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          {selectedSiteForDetail.category_name && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-stone-200/80 dark:bg-slate-800 text-stone-800 dark:text-slate-200 border border-stone-300 dark:border-slate-600">
+                              <span>📁</span>
+                              <span>{selectedSiteForDetail.category_name}</span>
+                            </span>
+                          )}
+                          {selectedSiteForDetail.subcategory_name && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-400 dark:border-indigo-500/50">
+                              <span>🏷️</span>
+                              <span>{selectedSiteForDetail.subcategory_name}</span>
+                            </span>
+                          )}
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-mono font-semibold bg-stone-100 dark:bg-slate-900 text-stone-600 dark:text-slate-400 border border-stone-300 dark:border-slate-700">
+                            <Globe className="w-3.5 h-3.5 text-blue-500" />
+                            <span>{detailDomain}</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Boutons d'action principaux */}
+                    <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenSite(selectedSiteForDetail)}
+                        className="flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm shadow-lg shadow-blue-600/25 border border-blue-400/40 transition-all cursor-pointer active:scale-95"
+                      >
+                        <Play className="w-4 h-4 fill-current" />
+                        <span>Ouvrir le site</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={(e) => togglePinSite(selectedSiteForDetail, e)}
+                        className={`flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl font-bold text-xs border-2 transition-all cursor-pointer active:scale-95 ${
+                          isDetailPinned
+                            ? 'bg-amber-500 text-white border-amber-400 shadow-md shadow-amber-500/20'
+                            : 'bg-white hover:bg-stone-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-700 dark:text-slate-200 border-stone-300 dark:border-slate-700'
+                        }`}
+                        title={isDetailPinned ? "Retirer des favoris" : "Épingler aux favoris"}
+                      >
+                        <Bookmark className={`w-4 h-4 ${isDetailPinned ? 'fill-current' : ''}`} />
+                        <span className="hidden sm:inline">{isDetailPinned ? 'Favori' : 'Épingler'}</span>
+                      </button>
+
+                      <a
+                        href={selectedSiteForDetail.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-center p-3 rounded-2xl bg-white hover:bg-stone-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-700 dark:text-slate-200 border-2 border-stone-300 dark:border-slate-700 transition-all cursor-pointer active:scale-95"
+                        title="Ouvrir dans un nouvel onglet externe"
+                      >
+                        <ExternalLink className="w-4 h-4" />
+                      </a>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. ARCHITECTURE 2 COLONNES : VITRINE VISUELLE + DESCRIPTION (GAUCHE) | SITES SIMILAIRES (DROITE) */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-start">
+
+                  {/* COLONNE PRINCIPALE (8/12) : APERÇUS PUBLICITAIRES R2 & DESCRIPTION */}
+                  <div className="lg:col-span-8 space-y-5 sm:space-y-6">
+
+                    {/* SECTION A : APERÇUS VISUELS & IMAGES PUBLICITAIRES (1 à 3 images stockées dans R2) */}
+                    <div className="rounded-3xl border-2 border-stone-300 dark:border-slate-700 bg-white dark:bg-[#0c1323] p-4 sm:p-5 shadow-xs space-y-3.5">
+                      <div className="flex items-center justify-between border-b border-stone-200 dark:border-slate-800 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">🖼️</span>
+                          <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
+                            Aperçus & Images de présentation
+                          </h2>
+                        </div>
+                        {promoImages.length > 0 && (
+                          <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                            {promoImages.length} / 3 aperçu{promoImages.length > 1 ? 's' : ''}
+                          </span>
+                        )}
+                      </div>
+
+                      {promoImages.length > 0 ? (
+                        <div className="space-y-3">
+                          {/* Visuel principal grand format */}
+                          <div
+                            onClick={() => setLightboxImageUrl(currentHeroPromo)}
+                            className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-stone-300 dark:border-slate-700 bg-stone-950 group cursor-zoom-in shadow-inner flex items-center justify-center"
+                          >
+                            <img
+                              src={currentHeroPromo}
+                              alt={`${selectedSiteForDetail.name} - Aperçu ${activePromoImageIdx + 1}`}
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                            />
+                            <div className="absolute bottom-3 right-3 px-3 py-1 rounded-xl bg-black/70 text-white text-[11px] font-bold backdrop-blur-md border border-white/20 flex items-center gap-1.5 opacity-90 group-hover:opacity-100">
+                              <Maximize2 className="w-3.5 h-3.5" />
+                              <span>Agrandir l'image ({activePromoImageIdx + 1}/{promoImages.length})</span>
+                            </div>
+                          </div>
+
+                          {/* Vignettes de sélection rapide (si 2 ou 3 images) */}
+                          {promoImages.length > 1 && (
+                            <div className="grid grid-cols-3 gap-2.5 sm:gap-3">
+                              {promoImages.map((imgUrl, idx) => {
+                                const isCurrent = idx === activePromoImageIdx;
+                                return (
+                                  <button
+                                    key={idx}
+                                    type="button"
+                                    onClick={() => setActivePromoImageIdx(idx)}
+                                    className={`relative aspect-video rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
+                                      isCurrent
+                                        ? 'border-blue-600 dark:border-blue-400 ring-2 ring-blue-500/30 scale-[1.01]'
+                                        : 'border-stone-300 dark:border-slate-700 opacity-70 hover:opacity-100'
+                                    }`}
+                                  >
+                                    <img
+                                      src={imgUrl}
+                                      alt={`Miniature ${idx + 1}`}
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <span className="absolute top-1.5 left-1.5 px-1.5 py-0.2 rounded bg-black/70 text-white text-[10px] font-mono font-bold">
+                                      #{idx + 1}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        /* Bannière visuelle élégante si aucune image n'a encore été téléversée */
+                        <div className="w-full py-10 px-4 rounded-2xl border-2 border-dashed border-stone-300 dark:border-slate-700 bg-stone-50 dark:bg-[#090f1d] flex flex-col items-center justify-center text-center space-y-2">
+                          <img
+                            src={detailLogoSrc}
+                            alt={selectedSiteForDetail.name}
+                            className="w-16 h-16 rounded-2xl object-contain opacity-90"
+                          />
+                          <p className="text-xs font-bold text-stone-700 dark:text-slate-300">
+                            Aperçu direct de {selectedSiteForDetail.name}
+                          </p>
+                          <p className="text-[11px] text-stone-500 dark:text-slate-400">
+                            Cliquez sur « Ouvrir le site » ci-dessus pour utiliser directement l'application dans StudyCloud.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* SECTION B : DESCRIPTION & PRÉSENTATION DÉTAILLÉE */}
+                    <div className="rounded-3xl border-2 border-stone-300 dark:border-slate-700 bg-white dark:bg-[#0c1323] p-4 sm:p-6 shadow-xs space-y-4">
+                      <div className="flex items-center justify-between border-b border-stone-200 dark:border-slate-800 pb-2.5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-base">📋</span>
+                          <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
+                            Description & Informations sur le site
+                          </h2>
+                        </div>
+                      </div>
+
+                      <div className="text-xs sm:text-sm text-stone-700 dark:text-slate-200 leading-relaxed whitespace-pre-line">
+                        {selectedSiteForDetail.description && selectedSiteForDetail.description.trim() !== ''
+                          ? selectedSiteForDetail.description
+                          : `Découvrez et utilisez ${selectedSiteForDetail.name} directement au sein de votre espace StudyCloud.`}
+                      </div>
+
+                      {/* Fiche signalétique épurée */}
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-3 border-t border-stone-200 dark:border-slate-800">
+                        <div className="p-3 rounded-2xl bg-stone-50 dark:bg-[#090f1d] border border-stone-300 dark:border-slate-700">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">Catégorie</div>
+                          <div className="text-xs font-extrabold text-stone-800 dark:text-white mt-0.5 truncate">
+                            📁 {selectedSiteForDetail.category_name || 'Général'}
+                          </div>
+                        </div>
+                        <div className="p-3 rounded-2xl bg-stone-50 dark:bg-[#090f1d] border border-stone-300 dark:border-slate-700">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">Sous-catégorie</div>
+                          <div className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400 mt-0.5 truncate">
+                            🏷️ {selectedSiteForDetail.subcategory_name || 'Standard'}
+                          </div>
+                        </div>
+                        <div className="p-3 rounded-2xl bg-stone-50 dark:bg-[#090f1d] border border-stone-300 dark:border-slate-700">
+                          <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">Domaine source</div>
+                          <div className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400 mt-0.5 truncate">
+                            {detailDomain}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  {/* COLONNE LATÉRALE (4/12) : SITES & APPLICATIONS SIMILAIRES */}
+                  <div className="lg:col-span-4 rounded-3xl border-2 border-stone-300 dark:border-slate-700 bg-white dark:bg-[#0c1323] p-4 sm:p-5 shadow-xs space-y-3.5">
+                    <div className="flex items-center justify-between border-b border-stone-200 dark:border-slate-800 pb-2.5">
+                      <div>
+                        <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white flex items-center gap-2">
+                          <span>🧭</span>
+                          <span>Sites similaires</span>
+                        </h2>
+                        <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
+                          Autres ressources dans cette thématique
+                        </p>
+                      </div>
+                    </div>
+
+                    {similarSites.length === 0 ? (
+                      <div className="py-8 text-center text-xs text-stone-500 dark:text-slate-400">
+                        Aucun autre site similaire enregistré pour le moment.
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {similarSites.map((simSite) => {
+                          const simDomain = getDomainFromUrl(simSite.url);
+                          const simLogo = (simSite.logo_url && simSite.logo_url.trim() !== '')
+                            ? simSite.logo_url
+                            : `https://www.google.com/s2/favicons?domain=${simDomain}&sz=128`;
+
+                          return (
+                            <div
+                              key={simSite.id}
+                              onClick={() => handleSelectSiteDetail(simSite)}
+                              className="group p-2.5 rounded-2xl bg-stone-50 hover:bg-blue-50/60 dark:bg-[#090f1d] dark:hover:bg-[#111c35] border border-stone-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 flex items-center gap-3 transition-all cursor-pointer active:scale-[0.99]"
+                            >
+                              <div className="w-14 h-14 rounded-2xl bg-white dark:bg-[#111a2e] border border-stone-300 dark:border-slate-700 p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-2xs">
+                                <img
+                                  src={simLogo}
+                                  alt={simSite.name}
+                                  className="w-full h-full object-cover rounded-xl group-hover:scale-105 transition-transform"
+                                  onError={(e) => {
+                                    const img = e.currentTarget;
+                                    if (!img.dataset.fallbackTried) {
+                                      img.dataset.fallbackTried = '1';
+                                      img.src = `https://www.google.com/s2/favicons?domain=${simDomain}&sz=128`;
+                                      img.className = 'w-8 h-8 object-contain';
+                                    }
+                                  }}
+                                />
+                              </div>
+
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-xs sm:text-sm font-extrabold text-stone-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                  {simSite.name}
+                                </h4>
+                                <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                  <span className="text-[10px] font-semibold text-stone-500 dark:text-slate-400 truncate">
+                                    {simSite.subcategory_name || simSite.category_name || simDomain}
+                                  </span>
+                                </div>
+                                {simSite.description && (
+                                  <p className="text-[10px] text-stone-400 dark:text-slate-500 line-clamp-1 mt-0.5">
+                                    {simSite.description}
+                                  </p>
+                                )}
+                              </div>
+
+                              <span className="text-xs font-black text-stone-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 pr-1">
+                                →
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                </div>
+              </div>
+
+              {/* VISIONNEUSE PLEIN ÉCRAN (LIGHTBOX) POUR AGRANDIR UNE IMAGE PUBLICITAIRE */}
+              {lightboxImageUrl && (
+                <div
+                  onClick={() => setLightboxImageUrl(null)}
+                  className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4"
+                >
+                  <button
+                    type="button"
+                    onClick={() => setLightboxImageUrl(null)}
+                    className="absolute top-4 right-4 w-10 h-10 rounded-full bg-white/15 hover:bg-white/25 text-white flex items-center justify-center border border-white/20 cursor-pointer"
+                    title="Fermer l'aperçu"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                  <img
+                    src={lightboxImageUrl}
+                    alt="Aperçu plein écran"
+                    onClick={(e) => e.stopPropagation()}
+                    className="max-w-full max-h-[88vh] object-contain rounded-2xl border-2 border-white/20 shadow-2xl"
+                  />
+                </div>
+              )}
+            </div>
+          );
+        })()
       ) : (
         /* 3. MODE CATALOGUE DKD STORE (Catégories D1 en haut à gauche, Sites)  */
         /* ==================================================================== */
@@ -840,7 +1243,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                                 key={site.id}
                                 site={site}
                                 isPinned={pinnedSiteIds.includes(site.id)}
-                                onOpen={handleOpenSite}
+                                onOpen={handleSelectSiteDetail}
                                 onTogglePin={togglePinSite}
                                 getDomainFromUrl={getDomainFromUrl}
                                 className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
@@ -870,7 +1273,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                                 key={site.id}
                                 site={site}
                                 isPinned={pinnedSiteIds.includes(site.id)}
-                                onOpen={handleOpenSite}
+                                onOpen={handleSelectSiteDetail}
                                 onTogglePin={togglePinSite}
                                 getDomainFromUrl={getDomainFromUrl}
                                 className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
@@ -929,7 +1332,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                             key={site.id}
                             site={site}
                             isPinned={pinnedSiteIds.includes(site.id)}
-                            onOpen={handleOpenSite}
+                            onOpen={handleSelectSiteDetail}
                             onTogglePin={togglePinSite}
                             getDomainFromUrl={getDomainFromUrl}
                             className="w-full"

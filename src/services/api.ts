@@ -3771,6 +3771,7 @@ export interface DkdStoreSite {
   subcategory_name?: string;
   description: string;
   badge: string;
+  promo_images?: string | string[];
   is_active: number;
   sort_order: number;
   created_at?: string;

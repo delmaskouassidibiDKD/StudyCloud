@@ -15843,14 +15843,34 @@ a:hover{transform:translateY(-2px)}
               logo_url TEXT DEFAULT '',
               category_id TEXT DEFAULT '',
               category_name TEXT DEFAULT '',
+              subcategory_id TEXT DEFAULT '',
+              subcategory_name TEXT DEFAULT '',
               description TEXT DEFAULT '',
               badge TEXT DEFAULT '',
+              promo_images TEXT DEFAULT '[]',
               is_active INTEGER DEFAULT 1,
               sort_order INTEGER DEFAULT 0,
               created_at TEXT DEFAULT CURRENT_TIMESTAMP,
               updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
           `).run().catch(() => {});
+
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS dkd_store_subcategories (
+              id TEXT PRIMARY KEY,
+              category_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              icon TEXT DEFAULT '🏷️',
+              sort_order INTEGER DEFAULT 0,
+              is_active INTEGER DEFAULT 1,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {});
+
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN subcategory_id TEXT DEFAULT ''`).run().catch(() => {});
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN subcategory_name TEXT DEFAULT ''`).run().catch(() => {});
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN promo_images TEXT DEFAULT '[]'`).run().catch(() => {});
 
           const config = (await env.DB.prepare("SELECT * FROM dkd_store_config WHERE id = 'default'").first<any>()) || {
             id: 'default',
@@ -15859,9 +15879,11 @@ a:hover{transform:translateY(-2px)}
           };
 
           const catsRes = await env.DB.prepare("SELECT * FROM dkd_store_categories WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC").all<any>();
+          const subcatsRes = await env.DB.prepare("SELECT * FROM dkd_store_subcategories WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC").all<any>().catch(() => ({ results: [] }));
           const sitesRes = await env.DB.prepare("SELECT * FROM dkd_store_sites WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC").all<any>();
 
           let categories = catsRes.results || [];
+          let subcategories = subcatsRes.results || [];
           let sites = sitesRes.results || [];
 
           if (config.sites_sort_mode === 'random') {
@@ -15875,6 +15897,7 @@ a:hover{transform:translateY(-2px)}
             success: true,
             config,
             categories,
+            subcategories,
             sites
           }, 200, origin);
         } catch (e: any) {

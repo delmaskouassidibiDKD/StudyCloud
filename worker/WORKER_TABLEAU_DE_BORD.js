@@ -989,6 +989,10 @@ async function ensureStorageTables(db) {
       ALTER TABLE dkd_store_sites ADD COLUMN subcategory_name TEXT DEFAULT ''
     `).run().catch(() => {});
 
+    await db.prepare(`
+      ALTER TABLE dkd_store_sites ADD COLUMN promo_images TEXT DEFAULT '[]'
+    `).run().catch(() => {});
+
   } catch (e) {
     console.warn('[Storage Tables Init]', e);
   }
@@ -6603,6 +6607,27 @@ function renderDashboardHtml(data) {
               <span class="text-[10px] text-slate-500">PNG, JPG, WebP ou SVG</span>
             </div>
           </div>
+        </div>
+      </div>
+
+      <!-- Images publicitaires / Aperçus du site (Obligatoire : Minimum 1, Maximum 3 -> Dossier R2 dkd-store-promo-images/) -->
+      <div class="p-3.5 rounded-2xl bg-indigo-950/25 border-2 border-indigo-500/40 space-y-2.5">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <label class="text-xs font-extrabold text-indigo-300 flex items-center gap-1.5">
+              <span>🖼️</span>
+              <span>Images publicitaires du site *</span>
+              <span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-black">Obligatoire : Min 1 / Max 3</span>
+            </label>
+            <p class="text-[10px] text-slate-400 mt-0.5">Stockées automatiquement dans le dossier spécial R2 <code class="text-indigo-300 font-mono">dkd-store-promo-images/</code></p>
+          </div>
+          <label class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-extrabold shadow-md cursor-pointer inline-flex items-center gap-1.5 shrink-0 transition active:scale-95">
+            <span>📸 Ajouter des images (1 à 3)</span>
+            <input type="file" accept="image/*" multiple class="hidden" onchange="handleDkdPromoFilesUpload(event, 'modal')" />
+          </label>
+        </div>
+        <div id="dkd-site-form-promo-grid" class="grid grid-cols-3 gap-2.5 pt-1">
+          <!-- Aperçus générés dynamiquement par renderDkdPromoImagesPreview('modal') -->
         </div>
       </div>
 
@@ -15182,6 +15207,25 @@ function renderDashboardHtml(data) {
             '</div>' +
           '</div>' +
 
+          '<!-- Images publicitaires du site (Obligatoire : Minimum 1, Maximum 3 -> Dossier R2 dkd-store-promo-images/) -->' +
+          '<div class="p-3.5 rounded-2xl bg-indigo-950/25 border-2 border-indigo-500/40 space-y-2.5">' +
+            '<div class="flex flex-wrap items-center justify-between gap-2">' +
+              '<div>' +
+                '<label class="text-xs font-extrabold text-indigo-300 flex items-center gap-1.5">' +
+                  '<span>🖼️</span>' +
+                  '<span>Images publicitaires du site *</span>' +
+                  '<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-black">Obligatoire : Min 1 / Max 3</span>' +
+                '</label>' +
+                '<p class="text-[10px] text-slate-400 mt-0.5">Stockées automatiquement dans le dossier spécial R2 <code class="text-indigo-300 font-mono">dkd-store-promo-images/</code></p>' +
+              '</div>' +
+              '<label class="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-extrabold shadow-md cursor-pointer inline-flex items-center gap-1.5 shrink-0 transition active:scale-95">' +
+                '<span>📸 Ajouter des images (1 à 3)</span>' +
+                '<input type="file" accept="image/*" multiple class="hidden" onchange="handleDkdPromoFilesUpload(event, &quot;detail&quot;)" />' +
+              '</label>' +
+            '</div>' +
+            '<div id="detail-dkd-promo-grid" class="grid grid-cols-3 gap-2.5 pt-1"></div>' +
+          '</div>' +
+
           '<div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">' +
             '<div class="space-y-1">' +
               '<div class="flex items-center justify-between">' +
@@ -15221,7 +15265,126 @@ function renderDashboardHtml(data) {
           '</div>' +
         '</div>' +
       '</div>';
+
+      window.detailDkdPromoImages = parseDkdPromoImages(site.promo_images);
+      renderDkdPromoImagesPreview('detail');
     }
+
+    window.modalDkdPromoImages = [];
+    window.detailDkdPromoImages = [];
+
+    function parseDkdPromoImages(raw) {
+      if (!raw) return [];
+      if (Array.isArray(raw)) return raw.filter(Boolean).slice(0, 3);
+      if (typeof raw === 'string') {
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) return parsed.filter(Boolean).slice(0, 3);
+        } catch (e) {}
+      }
+      return [];
+    }
+    window.parseDkdPromoImages = parseDkdPromoImages;
+
+    function renderDkdPromoImagesPreview(targetMode) {
+      const gridId = targetMode === 'modal' ? 'dkd-site-form-promo-grid' : 'detail-dkd-promo-grid';
+      const gridEl = document.getElementById(gridId);
+      if (!gridEl) return;
+      const list = (targetMode === 'modal' ? window.modalDkdPromoImages : window.detailDkdPromoImages) || [];
+
+      let html = '';
+      for (let i = 0; i < 3; i++) {
+        const imgUrl = list[i] || '';
+        const isRequiredSlot = i === 0;
+        if (imgUrl) {
+          html += '<div class="relative group rounded-xl overflow-hidden border-2 border-indigo-500/60 bg-slate-950 aspect-video flex items-center justify-center shadow-md">' +
+            '<img src="' + escapeHtml(imgUrl) + '" alt="Promo ' + (i + 1) + '" class="w-full h-full object-cover" />' +
+            '<span class="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/75 text-indigo-300 font-mono font-black text-[10px] border border-indigo-500/40">#' + (i + 1) + '</span>' +
+            '<button type="button" onclick="removeDkdPromoImage(&quot;' + targetMode + '&quot;, ' + i + ')" title="Retirer cette image" class="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-rose-600 hover:bg-rose-500 text-white text-xs font-black flex items-center justify-center shadow-md cursor-pointer">✕</button>' +
+          '</div>';
+        } else {
+          html += '<label class="rounded-xl border-2 border-dashed ' + (isRequiredSlot ? 'border-amber-500/60 bg-amber-500/5 hover:bg-amber-500/10' : 'border-slate-700 bg-slate-900/60 hover:bg-slate-900') + ' aspect-video flex flex-col items-center justify-center p-2 text-center cursor-pointer transition">' +
+            '<span class="text-lg">' + (isRequiredSlot ? '📸' : '➕') + '</span>' +
+            '<span class="text-[10px] font-extrabold ' + (isRequiredSlot ? 'text-amber-300' : 'text-slate-400') + ' mt-0.5">Image #' + (i + 1) + (isRequiredSlot ? ' (Obligatoire)' : ' (Optionnel)') + '</span>' +
+            '<input type="file" accept="image/*" class="hidden" onchange="handleDkdPromoFilesUpload(event, &quot;' + targetMode + '&quot;, ' + i + ')" />' +
+          '</label>';
+        }
+      }
+      gridEl.innerHTML = html;
+    }
+    window.renderDkdPromoImagesPreview = renderDkdPromoImagesPreview;
+
+    function removeDkdPromoImage(targetMode, index) {
+      const list = (targetMode === 'modal' ? window.modalDkdPromoImages : window.detailDkdPromoImages) || [];
+      list.splice(index, 1);
+      if (targetMode === 'modal') window.modalDkdPromoImages = list;
+      else window.detailDkdPromoImages = list;
+      renderDkdPromoImagesPreview(targetMode);
+    }
+    window.removeDkdPromoImage = removeDkdPromoImage;
+
+    function handleDkdPromoFilesUpload(event, targetMode, slotIndex) {
+      const files = event.target && event.target.files ? Array.from(event.target.files) : [];
+      if (!files.length) return;
+      let list = (targetMode === 'modal' ? window.modalDkdPromoImages : window.detailDkdPromoImages) || [];
+      list = list.slice(0, 3);
+
+      const maxAllowed = typeof slotIndex === 'number' ? 1 : Math.max(0, 3 - list.length);
+      if (maxAllowed <= 0 && typeof slotIndex !== 'number') {
+        showToast("⚠️ Maximum 3 images publicitaires autorisées. Supprimez-en une pour la remplacer.");
+        event.target.value = '';
+        return;
+      }
+
+      const filesToProcess = files.slice(0, maxAllowed || 1);
+      let processedCount = 0;
+
+      filesToProcess.forEach(function(file, fIdx) {
+        const reader = new FileReader();
+        reader.onload = function(ev) {
+          const img = new Image();
+          img.onload = function() {
+            const canvas = document.createElement('canvas');
+            const maxDim = 1280;
+            let w = img.width;
+            let h = img.height;
+            if (w > maxDim || h > maxDim) {
+              if (w > h) {
+                h = Math.round((h * maxDim) / w);
+                w = maxDim;
+              } else {
+                w = Math.round((w * maxDim) / h);
+                h = maxDim;
+              }
+            }
+            canvas.width = w;
+            canvas.height = h;
+            const ctx = canvas.getContext('2d');
+            ctx.drawImage(img, 0, 0, w, h);
+            const dataUrl = canvas.toDataURL('image/jpeg', 0.88);
+
+            if (typeof slotIndex === 'number' && fIdx === 0) {
+              if (slotIndex < list.length) list[slotIndex] = dataUrl;
+              else list.push(dataUrl);
+            } else if (list.length < 3) {
+              list.push(dataUrl);
+            }
+
+            processedCount++;
+            if (processedCount === filesToProcess.length) {
+              if (targetMode === 'modal') window.modalDkdPromoImages = list.slice(0, 3);
+              else window.detailDkdPromoImages = list.slice(0, 3);
+              renderDkdPromoImagesPreview(targetMode);
+              showToast("✓ Image(s) publicitaire(s) prête(s) pour le stockage R2 !");
+            }
+          };
+          img.src = ev.target.result;
+        };
+        reader.readAsDataURL(file);
+      });
+      event.target.value = '';
+    }
+    window.handleDkdPromoFilesUpload = handleDkdPromoFilesUpload;
 
     function updateDkdLogoPreview(logoUrl, previewImgId) {
       const img = document.getElementById(previewImgId);
@@ -15309,6 +15472,8 @@ function renderDashboardHtml(data) {
       document.getElementById('dkd-site-form-desc').value = '';
       document.getElementById('dkd-site-form-active').checked = true;
       updateDkdLogoPreview('', 'dkd-site-form-logo-preview');
+      window.modalDkdPromoImages = [];
+      renderDkdPromoImagesPreview('modal');
       const targetCatId = selectedDkdStoreCategoryId !== 'all' ? selectedDkdStoreCategoryId : null;
       populateDkdCategorySelect('dkd-site-form-category', targetCatId);
       const activeCat = document.getElementById('dkd-site-form-category')?.value;
@@ -15459,9 +15624,14 @@ function renderDashboardHtml(data) {
       const sortOrder = Number(document.getElementById('dkd-site-form-order')?.value || 1);
       const description = (document.getElementById('dkd-site-form-desc')?.value || '').trim();
       const isActive = document.getElementById('dkd-site-form-active')?.checked ? 1 : 0;
+      const promoList = (window.modalDkdPromoImages || []).filter(Boolean).slice(0, 3);
 
       if (!name || !rawUrl) {
         showToast('⚠️ Le nom du site et son lien URL sont obligatoires');
+        return;
+      }
+      if (promoList.length < 1) {
+        showToast("⚠️ Obligatoire : ajoutez au minimum 1 image publicitaire (maximum 3) pour publier ce site !");
         return;
       }
       if (rawUrl.indexOf('://') === -1) rawUrl = 'https://' + rawUrl;
@@ -15492,6 +15662,7 @@ function renderDashboardHtml(data) {
             subcategory_id: subcategoryId,
             subcategory_name: subcategoryName,
             badge: badge,
+            promo_images: promoList,
             sort_order: sortOrder,
             description: description,
             is_active: isActive
@@ -15530,9 +15701,14 @@ function renderDashboardHtml(data) {
       const sortOrder = Number(document.getElementById('detail-dkd-order')?.value || 1);
       const description = (document.getElementById('detail-dkd-desc')?.value || '').trim();
       const isActive = document.getElementById('detail-dkd-active')?.checked ? 1 : 0;
+      const promoList = (window.detailDkdPromoImages || []).filter(Boolean).slice(0, 3);
 
       if (!name || !rawUrl) {
         showToast('⚠️ Le nom et le lien URL sont requis');
+        return;
+      }
+      if (promoList.length < 1) {
+        showToast("⚠️ Obligatoire : ce site doit avoir au minimum 1 image publicitaire (maximum 3) !");
         return;
       }
       if (rawUrl.indexOf('://') === -1) rawUrl = 'https://' + rawUrl;
@@ -15564,6 +15740,7 @@ function renderDashboardHtml(data) {
             subcategory_id: subcategoryId,
             subcategory_name: subcategoryName,
             badge: badge,
+            promo_images: promoList,
             sort_order: sortOrder,
             description: description,
             is_active: isActive
@@ -16931,9 +17108,28 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
     const badge = (body.badge || '').trim();
     const isActive = body.is_active !== undefined ? (Number(body.is_active) ? 1 : 0) : 1;
     const sortOrder = Number(body.sort_order || 1);
+    let rawPromoImages = [];
+    if (Array.isArray(body.promo_images)) {
+      rawPromoImages = body.promo_images.filter(Boolean);
+    } else if (typeof body.promo_images === 'string' && body.promo_images.trim()) {
+      try {
+        const parsed = JSON.parse(body.promo_images);
+        if (Array.isArray(parsed)) rawPromoImages = parsed.filter(Boolean);
+      } catch {}
+    }
 
     if (!name || !siteUrl) {
       return new Response(JSON.stringify({ success: false, error: 'Nom et lien URL requis' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+
+    if (rawPromoImages.length < 1 || rawPromoImages.length > 3) {
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Obligatoire : vous devez fournir au minimum 1 et au maximum 3 images publicitaires.'
+      }), {
         status: 400,
         headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
       });
@@ -16957,6 +17153,40 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
         console.warn('Fallback base64 logo D1:', e);
       }
     }
+
+    // Stocker les images publicitaires (1 à 3) dans le dossier spécial R2 : dkd-store-promo-images/
+    const finalPromoImages = [];
+    if (bucket) {
+      try {
+        await bucket.put('dkd-store-promo-images/.keep', new Uint8Array(0), {
+          httpMetadata: { contentType: 'text/plain' }
+        });
+      } catch {}
+    }
+    for (let idx = 0; idx < Math.min(3, rawPromoImages.length); idx++) {
+      let promoImg = String(rawPromoImages[idx] || '').trim();
+      if (!promoImg) continue;
+      if (promoImg.startsWith('data:image/') && bucket) {
+        try {
+          const mimeMatch = promoImg.match(/^data:([^;]+);base64,/);
+          const contentType = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+          const ext = contentType.includes('png') ? 'png' : contentType.includes('webp') ? 'webp' : 'jpg';
+          const base64Content = promoImg.replace(/^data:[^;]+;base64,/, '');
+          const binStr = atob(base64Content);
+          const bytes = new Uint8Array(binStr.length);
+          for (let i = 0; i < binStr.length; i++) {
+            bytes[i] = binStr.charCodeAt(i);
+          }
+          const promoR2Key = `dkd-store-promo-images/${id}_promo_${idx + 1}_${Date.now()}.${ext}`;
+          await bucket.put(promoR2Key, bytes.buffer, { httpMetadata: { contentType } });
+          promoImg = `${url.origin}/api/storage/file/${encodeURIComponent(promoR2Key)}`;
+        } catch (e) {
+          console.warn('Fallback base64 promo image D1:', e);
+        }
+      }
+      finalPromoImages.push(promoImg);
+    }
+    const promoImagesJson = JSON.stringify(finalPromoImages);
 
     // S'assurer que la catégorie existe dans dkd_store_categories
     const existingCat = await safeFirst(db, "SELECT id FROM dkd_store_categories WHERE id = ?", [categoryId]);
@@ -16988,8 +17218,8 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
 
     await safeRun(db, `
       INSERT INTO dkd_store_sites (
-        id, name, url, logo_url, category_id, category_name, subcategory_id, subcategory_name, description, badge, is_active, sort_order, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        id, name, url, logo_url, category_id, category_name, subcategory_id, subcategory_name, description, badge, promo_images, is_active, sort_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         url = excluded.url,
@@ -17000,10 +17230,11 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
         subcategory_name = excluded.subcategory_name,
         description = excluded.description,
         badge = excluded.badge,
+        promo_images = excluded.promo_images,
         is_active = excluded.is_active,
         sort_order = excluded.sort_order,
         updated_at = CURRENT_TIMESTAMP
-    `, [id, name, siteUrl, logoUrl, categoryId, categoryName, subcategoryId, subcategoryName, description, badge, isActive, sortOrder]);
+    `, [id, name, siteUrl, logoUrl, categoryId, categoryName, subcategoryId, subcategoryName, description, badge, promoImagesJson, isActive, sortOrder]);
 
     const state = await getFullDkdState();
     const savedSite = state.sites.find(s => s.id === id);
