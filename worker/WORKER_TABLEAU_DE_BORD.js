@@ -993,6 +993,30 @@ async function ensureStorageTables(db) {
       ALTER TABLE dkd_store_sites ADD COLUMN promo_images TEXT DEFAULT '[]'
     `).run().catch(() => {});
 
+    await db.prepare(`
+      ALTER TABLE dkd_store_sites ADD COLUMN is_recommended INTEGER DEFAULT 0
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      ALTER TABLE dkd_store_sites ADD COLUMN recommended_duration_type TEXT DEFAULT 'infinite'
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      ALTER TABLE dkd_store_sites ADD COLUMN recommended_duration_value INTEGER DEFAULT 0
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      ALTER TABLE dkd_store_sites ADD COLUMN recommended_started_at INTEGER DEFAULT 0
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      ALTER TABLE dkd_store_sites ADD COLUMN recommended_expires_at INTEGER DEFAULT 0
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      ALTER TABLE dkd_store_config ADD COLUMN recommended_interval_sites INTEGER DEFAULT 6
+    `).run().catch(() => {});
+
   } catch (e) {
     console.warn('[Storage Tables Init]', e);
   }
@@ -5959,6 +5983,17 @@ function renderDashboardHtml(data) {
               <span>🏷️</span>
               <span>Sous-catégories</span>
             </button>
+
+            <!-- Bouton 5 : Recommandée (Publicité DKD store) -->
+            <button
+              type="button"
+              onclick="openRecommendedSitesModal()"
+              class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-stone-950 font-black text-xs shadow-lg shadow-amber-900/30 flex items-center gap-1.5 transition cursor-pointer active:scale-95"
+            >
+              <span>⭐</span>
+              <span>Recommandée</span>
+              <span id="dkd-recommended-btn-count" class="text-[10px] px-1.5 py-0.2 rounded-full bg-black/25 text-white font-mono">0</span>
+            </button>
           </div>
         </div>
 
@@ -7019,6 +7054,103 @@ function renderDashboardHtml(data) {
           class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-stone-950 font-black text-xs shadow-lg cursor-pointer"
         >
           ✓ Enregistrer le classement
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================== -->
+  <!-- MODALE 5 DKD STORE : RECOMMANDÉE (PUBLICITÉ & DURÉE D1)            -->
+  <!-- ================================================================== -->
+  <div id="modal-dkd-recommended" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-3 sm:p-4" onclick="closeRecommendedSitesModal(event)">
+    <div class="relative max-w-4xl w-full bg-[#0e1628] border-2 border-amber-500/50 rounded-3xl p-5 sm:p-6 shadow-2xl space-y-4 max-h-[92vh] flex flex-col overflow-hidden" onclick="event.stopPropagation()">
+      <!-- En-tête -->
+      <div class="flex items-center justify-between border-b border-slate-800 pb-3 shrink-0">
+        <div class="flex items-center gap-3">
+          <div class="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-xl">⭐</div>
+          <div>
+            <h3 class="text-base sm:text-lg font-black text-white flex items-center gap-2">
+              <span>Gestion des Sites Recommandés (Publicité DKD store)</span>
+              <span id="modal-rec-active-badge" class="text-[10px] px-2.5 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono">0 actif</span>
+            </h3>
+            <p class="text-[11px] text-slate-400">Cochez les sites à promouvoir en recommandés, définissez leur durée (jours, mois ou infini) et la fréquence d'apparition dans le défilement.</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeRecommendedSitesModal()" class="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center cursor-pointer text-sm">✕</button>
+      </div>
+
+      <!-- RÉGLAGE DE FRÉQUENCE DANS LE DÉFILEMENT (Connecté D1) -->
+      <div class="p-3.5 rounded-2xl bg-indigo-950/30 border border-indigo-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+        <div class="space-y-0.5">
+          <div class="text-xs font-extrabold text-indigo-300 flex items-center gap-1.5">
+            <span>📏</span>
+            <span>Combien de sites l'utilisateur doit voir avant d'afficher une ligne de Recommandés :</span>
+          </div>
+          <p class="text-[10px] text-slate-400">Dans son défilement (recherche, grille ou rayons), une ligne horizontale défilable de sites recommandés s'affichera tous les N sites vus.</p>
+        </div>
+        <div class="flex items-center gap-2 shrink-0">
+          <input
+            type="number"
+            id="dkd-rec-interval-input"
+            min="1"
+            max="50"
+            value="6"
+            class="w-20 bg-slate-950 text-amber-300 font-mono font-black text-sm text-center rounded-xl px-2.5 py-2 border border-indigo-500/50 focus:border-amber-400 outline-none"
+          />
+          <span class="text-xs font-bold text-slate-300">sites</span>
+          <button
+            type="button"
+            onclick="saveDkdRecommendedInterval()"
+            class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-black text-xs shadow-md cursor-pointer transition active:scale-95"
+          >
+            💾 Définir
+          </button>
+        </div>
+      </div>
+
+      <!-- CORPS DÉFILABLE EN 2 PARTIES : 1) RECOMMANDÉS ACTIFS EN COURS | 2) TOUS LES SITES -->
+      <div class="flex-1 overflow-y-auto space-y-4 pr-1 min-h-0">
+        <!-- PARTIE 1 : SITES ACTUELLEMENT EN RECOMMANDÉ (MODIFIER OU ARRÊTER) -->
+        <div class="p-3.5 rounded-2xl bg-amber-950/15 border border-amber-500/30 space-y-2.5">
+          <div class="flex items-center justify-between">
+            <h4 class="text-xs font-black text-amber-300 uppercase tracking-wider flex items-center gap-1.5">
+              <span>🔥</span>
+              <span>Sites recommandés actifs en cours (Modifier la durée ou Arrêter)</span>
+            </h4>
+            <span class="text-[10px] text-slate-400">Désactivation automatique à la fin des jours/mois</span>
+          </div>
+          <div id="dkd-rec-active-list" class="space-y-2">
+            <!-- Rempli dynamiquement par renderRecommendedSitesModal() -->
+          </div>
+        </div>
+
+        <!-- PARTIE 2 : TOUS LES SITES DU CATALOGUE (COCHER POUR METTRE EN RECOMMANDÉ) -->
+        <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+            <h4 class="text-xs font-black text-white uppercase tracking-wider flex items-center gap-1.5">
+              <span>🌐</span>
+              <span>Tous les sites (Cochez pour mettre en Recommandé avec durée)</span>
+            </h4>
+            <div class="relative w-full sm:w-64">
+              <span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">🔍</span>
+              <input
+                type="text"
+                id="dkd-rec-search-input"
+                oninput="renderRecommendedSitesModal()"
+                placeholder="Chercher un site..."
+                class="w-full bg-slate-900 text-white text-xs rounded-xl pl-8 pr-3 py-1.5 border border-slate-700 focus:border-amber-500 outline-none"
+              />
+            </div>
+          </div>
+          <div id="dkd-rec-all-sites-list" class="space-y-2">
+            <!-- Rempli dynamiquement par renderRecommendedSitesModal() -->
+          </div>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800 shrink-0">
+        <button type="button" onclick="closeRecommendedSitesModal()" class="px-5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs cursor-pointer">
+          Fermer
         </button>
       </div>
     </div>
@@ -14805,6 +14937,19 @@ function renderDashboardHtml(data) {
         hdrBadge.textContent = (dkdStoreSites || []).length + ' site(s) • ' + activeCount + ' actif(s)';
       }
 
+      const recBtnBadge = document.getElementById('dkd-recommended-btn-count');
+      if (recBtnBadge) {
+        const nowMs = Date.now();
+        const recCount = (dkdStoreSites || []).filter(function(s) {
+          if (Number(s.is_recommended) !== 1) return false;
+          if (s.recommended_duration_type !== 'infinite' && Number(s.recommended_expires_at || 0) > 0 && Number(s.recommended_expires_at) <= nowMs) {
+            return false;
+          }
+          return true;
+        }).length;
+        recBtnBadge.textContent = String(recCount);
+      }
+
       const modeBadge = document.getElementById('dkd-store-sort-mode-badge');
       if (modeBadge) {
         const isRandSites = dkdStoreConfig && dkdStoreConfig.sites_sort_mode === 'random';
@@ -16314,6 +16459,237 @@ function renderDashboardHtml(data) {
     }
     window.saveRankedSites = saveRankedSites;
 
+    // ------------------------------------------------------------------------
+    // MODALE 5 : RECOMMANDÉE (PUBLICITÉ DKD STORE, DURÉE & FRÉQUENCE D1)
+    // ------------------------------------------------------------------------
+    function isDkdSiteCurrentlyRecommended(site) {
+      if (!site || Number(site.is_recommended) !== 1) return false;
+      const exp = Number(site.recommended_expires_at || 0);
+      if (site.recommended_duration_type !== 'infinite' && exp > 0 && exp <= Date.now()) {
+        return false;
+      }
+      return true;
+    }
+
+    function formatRecommendedExpirationInfo(site) {
+      if (!isDkdSiteCurrentlyRecommended(site)) return 'Non recommandé';
+      const durType = site.recommended_duration_type || 'infinite';
+      const durVal = Number(site.recommended_duration_value || 0);
+      const exp = Number(site.recommended_expires_at || 0);
+      if (durType === 'infinite' || exp <= 0) {
+        return '♾️ Durée infinie (Permanent)';
+      }
+      const diffMs = Math.max(0, exp - Date.now());
+      const daysLeft = Math.ceil(diffMs / (24 * 60 * 60 * 1000));
+      const expDateStr = new Date(exp).toLocaleDateString('fr-FR');
+      const unitLabel = durType === 'months' ? 'mois' : 'jour(s)';
+      return '⏳ ' + durVal + ' ' + unitLabel + ' • Expire le ' + expDateStr + ' (reste ~' + daysLeft + 'j)';
+    }
+
+    function openRecommendedSitesModal() {
+      const modal = document.getElementById('modal-dkd-recommended');
+      if (!modal) return;
+      const intervalInp = document.getElementById('dkd-rec-interval-input');
+      if (intervalInp) {
+        intervalInp.value = String((dkdStoreConfig && dkdStoreConfig.recommended_interval_sites) || 6);
+      }
+      renderRecommendedSitesModal();
+      modal.classList.remove('hidden');
+    }
+    window.openRecommendedSitesModal = openRecommendedSitesModal;
+
+    function closeRecommendedSitesModal(ev) {
+      if (ev && ev.target && ev.target.id !== 'modal-dkd-recommended') return;
+      document.getElementById('modal-dkd-recommended')?.classList.add('hidden');
+    }
+    window.closeRecommendedSitesModal = closeRecommendedSitesModal;
+
+    function onDkdRecDurationTypeChange(prefix, siteId) {
+      const sel = document.getElementById(prefix + '-type-' + siteId);
+      const valInp = document.getElementById(prefix + '-val-' + siteId);
+      if (!sel || !valInp) return;
+      if (sel.value === 'infinite') {
+        valInp.classList.add('hidden');
+      } else {
+        valInp.classList.remove('hidden');
+        if (!valInp.value || Number(valInp.value) < 1) {
+          valInp.value = sel.value === 'months' ? '1' : '7';
+        }
+      }
+    }
+    window.onDkdRecDurationTypeChange = onDkdRecDurationTypeChange;
+
+    async function saveDkdRecommendedInterval() {
+      const inp = document.getElementById('dkd-rec-interval-input');
+      const val = Math.max(1, parseInt(inp?.value || '6', 10));
+      try {
+        const res = await fetch('/api/dkd-store/recommended-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recommended_interval_sites: val })
+        });
+        const data = await res.json();
+        if (data.success) {
+          if (data.config) dkdStoreConfig = data.config;
+          if (data.sites) dkdStoreSites = data.sites;
+          showToast('✓ Fréquence enregistrée : 1 ligne de recommandés tous les ' + val + ' sites !');
+        } else {
+          showToast('⚠️ ' + (data.error || 'Erreur de sauvegarde'));
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.saveDkdRecommendedInterval = saveDkdRecommendedInterval;
+
+    async function updateDkdSiteRecommendedState(siteId, isRec, prefix) {
+      const typeEl = document.getElementById(prefix + '-type-' + siteId);
+      const valEl = document.getElementById(prefix + '-val-' + siteId);
+      const durType = typeEl ? typeEl.value : 'infinite';
+      const durVal = valEl ? Math.max(1, parseInt(valEl.value || '1', 10)) : 1;
+
+      try {
+        const res = await fetch('/api/dkd-store/recommended', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: siteId,
+            is_recommended: isRec ? 1 : 0,
+            duration_type: durType,
+            duration_value: durVal
+          })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSites = data.sites || dkdStoreSites;
+          if (data.config) dkdStoreConfig = data.config;
+          renderRecommendedSitesModal();
+          renderDkdStoreView();
+          showToast(isRec ? '⭐ Site activé en Recommandé dans DKD store !' : '🛑 Recommandation arrêtée pour ce site.');
+        } else {
+          showToast('⚠️ ' + (data.error || 'Erreur mise à jour'));
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.updateDkdSiteRecommendedState = updateDkdSiteRecommendedState;
+
+    function renderRecommendedSitesModal() {
+      const activeListEl = document.getElementById('dkd-rec-active-list');
+      const allListEl = document.getElementById('dkd-rec-all-sites-list');
+      const badgeEl = document.getElementById('modal-rec-active-badge');
+      if (!activeListEl || !allListEl) return;
+
+      const q = (document.getElementById('dkd-rec-search-input')?.value || '').trim().toLowerCase();
+      const allSites = (dkdStoreSites || []).slice().sort(function(a, b) {
+        return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+      });
+
+      const activeRecSites = allSites.filter(isDkdSiteCurrentlyRecommended);
+      if (badgeEl) {
+        badgeEl.textContent = activeRecSites.length + ' actif(s)';
+      }
+
+      // 1. Rendu de la partie "Sites recommandés actifs en cours"
+      if (activeRecSites.length === 0) {
+        activeListEl.innerHTML = '<div class="p-4 rounded-xl bg-slate-950/60 border border-slate-800/80 text-center text-xs text-slate-400">' +
+          'Aucun site en recommandé actuellement. Cochez un ou plusieurs sites dans la liste ci-dessous pour lancer une campagne de recommandation.' +
+        '</div>';
+      } else {
+        let activeHtml = '';
+        activeRecSites.forEach(function(s) {
+          const safeId = escapeHtml(s.id);
+          const logoSrc = s.logo_url || getAutoFaviconUrl(s.url);
+          const dType = s.recommended_duration_type || 'infinite';
+          const dVal = Number(s.recommended_duration_value || 7);
+          const isInf = dType === 'infinite';
+
+          activeHtml += '<div class="p-3 rounded-xl bg-slate-900/95 border border-amber-500/40 flex flex-col sm:flex-row sm:items-center justify-between gap-3">' +
+            '<div class="flex items-center gap-3 min-w-0">' +
+              '<div class="w-10 h-10 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0">' +
+                (logoSrc ? '<img src="' + escapeHtml(logoSrc) + '" alt="" class="w-7 h-7 object-contain" />' : '<span>🌐</span>') +
+              '</div>' +
+              '<div class="min-w-0">' +
+                '<div class="flex items-center gap-2 flex-wrap">' +
+                  '<span class="text-xs font-black text-white truncate">' + escapeHtml(s.name) + '</span>' +
+                  '<span class="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold">⭐ Recommandé</span>' +
+                  '<span class="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300">' + escapeHtml(s.category_name || 'Général') + '</span>' +
+                '</div>' +
+                '<div class="text-[11px] text-amber-200/90 font-semibold mt-0.5">' + escapeHtml(formatRecommendedExpirationInfo(s)) + '</div>' +
+              '</div>' +
+            '</div>' +
+            '<div class="flex flex-wrap items-center gap-1.5 shrink-0">' +
+              '<select id="rec-act-type-' + safeId + '" onchange="onDkdRecDurationTypeChange(&quot;rec-act&quot;, &quot;' + safeId + '&quot;)" class="bg-slate-950 text-white text-[11px] font-bold rounded-lg px-2 py-1.5 border border-slate-700 outline-none">' +
+                '<option value="infinite"' + (dType === 'infinite' ? ' selected' : '') + '>♾️ Infini</option>' +
+                '<option value="days"' + (dType === 'days' ? ' selected' : '') + '>📅 Jours</option>' +
+                '<option value="months"' + (dType === 'months' ? ' selected' : '') + '>🗓️ Mois</option>' +
+              '</select>' +
+              '<input type="number" id="rec-act-val-' + safeId + '" min="1" max="365" value="' + (dVal > 0 ? dVal : 7) + '" class="' + (isInf ? 'hidden ' : '') + 'w-16 bg-slate-950 text-amber-300 font-mono font-bold text-xs text-center rounded-lg px-2 py-1.5 border border-slate-700 outline-none" />' +
+              '<button type="button" onclick="updateDkdSiteRecommendedState(&quot;' + safeId + '&quot;, true, &quot;rec-act&quot;)" class="px-2.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-bold cursor-pointer">✏️ Modifier</button>' +
+              '<button type="button" onclick="updateDkdSiteRecommendedState(&quot;' + safeId + '&quot;, false, &quot;rec-act&quot;)" class="px-2.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-[11px] font-extrabold cursor-pointer">🛑 Arrêter</button>' +
+            '</div>' +
+          '</div>';
+        });
+        activeListEl.innerHTML = activeHtml;
+      }
+
+      // 2. Rendu de la partie "Tous les sites"
+      const filteredAll = allSites.filter(function(s) {
+        if (!q) return true;
+        const hay = ((s.name || '') + ' ' + (s.category_name || '') + ' ' + (s.subcategory_name || '') + ' ' + (s.url || '')).toLowerCase();
+        return hay.indexOf(q) !== -1;
+      });
+
+      if (filteredAll.length === 0) {
+        allListEl.innerHTML = '<div class="p-4 text-center text-xs text-slate-500">Aucun site trouvé.</div>';
+        return;
+      }
+
+      let allHtml = '';
+      filteredAll.forEach(function(s) {
+        const safeId = escapeHtml(s.id);
+        const isRec = isDkdSiteCurrentlyRecommended(s);
+        const logoSrc = s.logo_url || getAutoFaviconUrl(s.url);
+        const dType = s.recommended_duration_type || 'infinite';
+        const dVal = Number(s.recommended_duration_value || 7);
+        const isInf = dType === 'infinite';
+
+        allHtml += '<div class="p-2.5 rounded-xl border transition flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 ' +
+          (isRec ? 'bg-amber-500/10 border-amber-500/40' : 'bg-slate-900/80 border-slate-800 hover:border-slate-700') + '">' +
+          '<label class="flex items-center gap-3 min-w-0 flex-1 cursor-pointer">' +
+            '<input type="checkbox" ' + (isRec ? 'checked' : '') + ' onchange="updateDkdSiteRecommendedState(&quot;' + safeId + '&quot;, this.checked, &quot;rec-all&quot;)" class="w-4 h-4 accent-amber-500 rounded cursor-pointer shrink-0" />' +
+            '<div class="w-9 h-9 rounded-xl bg-slate-950 border border-slate-800 flex items-center justify-center overflow-hidden shrink-0">' +
+              (logoSrc ? '<img src="' + escapeHtml(logoSrc) + '" alt="" class="w-6 h-6 object-contain" />' : '<span>🌐</span>') +
+            '</div>' +
+            '<div class="min-w-0 flex-1">' +
+              '<div class="flex items-center gap-1.5 flex-wrap">' +
+                '<span class="text-xs font-bold text-white truncate">' + escapeHtml(s.name) + '</span>' +
+                '<span class="text-[10px] px-1.5 py-0.2 rounded bg-slate-800 text-slate-300">' + escapeHtml(s.category_name || 'Général') + '</span>' +
+                (s.subcategory_name ? '<span class="text-[10px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300">🏷️ ' + escapeHtml(s.subcategory_name) + '</span>' : '') +
+              '</div>' +
+              '<div class="text-[10px] ' + (isRec ? 'text-amber-300 font-semibold' : 'text-slate-500') + ' truncate mt-0.5">' +
+                escapeHtml(isRec ? formatRecommendedExpirationInfo(s) : getDomainFromUrl(s.url)) +
+              '</div>' +
+            '</div>' +
+          '</label>' +
+          '<div class="flex items-center gap-1.5 shrink-0">' +
+            '<select id="rec-all-type-' + safeId + '" onchange="onDkdRecDurationTypeChange(&quot;rec-all&quot;, &quot;' + safeId + '&quot;)" class="bg-slate-950 text-white text-[11px] font-bold rounded-lg px-2 py-1.5 border border-slate-700 outline-none">' +
+              '<option value="infinite"' + (dType === 'infinite' ? ' selected' : '') + '>♾️ Infini</option>' +
+              '<option value="days"' + (dType === 'days' ? ' selected' : '') + '>📅 Jours</option>' +
+              '<option value="months"' + (dType === 'months' ? ' selected' : '') + '>🗓️ Mois</option>' +
+            '</select>' +
+            '<input type="number" id="rec-all-val-' + safeId + '" min="1" max="365" value="' + (dVal > 0 ? dVal : 7) + '" class="' + (isInf ? 'hidden ' : '') + 'w-16 bg-slate-950 text-amber-300 font-mono font-bold text-xs text-center rounded-lg px-2 py-1.5 border border-slate-700 outline-none" />' +
+            '<button type="button" onclick="updateDkdSiteRecommendedState(&quot;' + safeId + '&quot;, true, &quot;rec-all&quot;)" class="px-2.5 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 text-[11px] font-black cursor-pointer">' +
+              (isRec ? '💾 Maj' : '⭐ Recommander') +
+            '</button>' +
+          '</div>' +
+        '</div>';
+      });
+      allListEl.innerHTML = allHtml;
+    }
+    window.renderRecommendedSitesModal = renderRecommendedSitesModal;
+
     // Initialiser le badge DKD store dès le chargement
     setTimeout(function() {
       updateDkdSidebarBadge();
@@ -17050,11 +17426,26 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
 // ============================================================================
 async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
   const getFullDkdState = async () => {
+    const nowMs = Date.now();
+    // Désactivation automatique des sites recommandés dont la durée (jours / mois) est arrivée à expiration
+    await safeRun(db, `
+      UPDATE dkd_store_sites
+      SET is_recommended = 0, updated_at = CURRENT_TIMESTAMP
+      WHERE is_recommended = 1
+        AND recommended_duration_type != 'infinite'
+        AND recommended_expires_at > 0
+        AND recommended_expires_at <= ?
+    `, [nowMs]);
+
     const cfg = (await safeFirst(db, "SELECT * FROM dkd_store_config WHERE id = 'default'")) || {
       id: 'default',
       sites_sort_mode: 'custom',
-      categories_sort_mode: 'custom'
+      categories_sort_mode: 'custom',
+      recommended_interval_sites: 6
     };
+    if (!cfg.recommended_interval_sites || Number(cfg.recommended_interval_sites) < 1) {
+      cfg.recommended_interval_sites = 6;
+    }
     const catsRes = await safeQuery(db, "SELECT * FROM dkd_store_categories ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
     const subcatsRes = await safeQuery(db, "SELECT * FROM dkd_store_subcategories ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
     const sitesRes = await safeQuery(db, "SELECT * FROM dkd_store_sites ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
@@ -17447,6 +17838,71 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
     for (let i = 0; i < orderedIds.length; i++) {
       await safeRun(db, "UPDATE dkd_store_sites SET sort_order = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [i + 1, orderedIds[i]]);
     }
+
+    const state = await getFullDkdState();
+    return new Response(JSON.stringify({
+      success: true,
+      config: state.config,
+      sites: state.sites
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 9. POST /api/dkd-store/recommended (Activer, modifier la durée en jours / mois / infini, ou arrêter un site recommandé)
+  if (request.method === 'POST' && path === '/api/dkd-store/recommended') {
+    const body = await request.json().catch(() => ({}));
+    const id = (body.id || '').trim();
+    if (!id) {
+      return new Response(JSON.stringify({ success: false, error: 'Identifiant du site requis' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+    const isRec = Number(body.is_recommended) ? 1 : 0;
+    const durType = ['days', 'months', 'infinite'].includes(body.duration_type) ? body.duration_type : 'infinite';
+    const durVal = (durType === 'infinite' || !isRec) ? 0 : Math.max(1, parseInt(body.duration_value || 1, 10));
+    const startedAt = isRec ? Date.now() : 0;
+    let expiresAt = 0;
+    if (isRec && durType === 'days') {
+      expiresAt = startedAt + durVal * 24 * 60 * 60 * 1000;
+    } else if (isRec && durType === 'months') {
+      expiresAt = startedAt + durVal * 30 * 24 * 60 * 60 * 1000;
+    }
+
+    await safeRun(db, `
+      UPDATE dkd_store_sites
+      SET is_recommended = ?,
+          recommended_duration_type = ?,
+          recommended_duration_value = ?,
+          recommended_started_at = ?,
+          recommended_expires_at = ?,
+          updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `, [isRec, durType, durVal, startedAt, expiresAt, id]);
+
+    const state = await getFullDkdState();
+    return new Response(JSON.stringify({
+      success: true,
+      config: state.config,
+      sites: state.sites
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 10. POST /api/dkd-store/recommended-config (Définir combien de sites l'utilisateur doit voir avant d'afficher un bloc de recommandés)
+  if (request.method === 'POST' && path === '/api/dkd-store/recommended-config') {
+    const body = await request.json().catch(() => ({}));
+    const intervalSites = Math.max(1, parseInt(body.recommended_interval_sites || 6, 10));
+
+    await safeRun(db, `
+      UPDATE dkd_store_config
+      SET recommended_interval_sites = ?, updated_at = CURRENT_TIMESTAMP
+      WHERE id = 'default'
+    `, [intervalSites]);
 
     const state = await getFullDkdState();
     return new Response(JSON.stringify({
@@ -20006,10 +20462,20 @@ export default {
       // ----------------------------------------------------------------------
       // ROUTE PAR DÉFAUT : Page Web Tableau de Bord (HTML)
       // ----------------------------------------------------------------------
+      await safeRun(db, `
+        UPDATE dkd_store_sites
+        SET is_recommended = 0, updated_at = CURRENT_TIMESTAMP
+        WHERE is_recommended = 1
+          AND recommended_duration_type != 'infinite'
+          AND recommended_expires_at > 0
+          AND recommended_expires_at <= ?
+      `, [Date.now()]);
+
       const dkdStoreConfigRow = (await safeFirst(db, "SELECT * FROM dkd_store_config WHERE id = 'default'")) || {
         id: 'default',
         sites_sort_mode: 'custom',
-        categories_sort_mode: 'custom'
+        categories_sort_mode: 'custom',
+        recommended_interval_sites: 6
       };
       const dkdStoreCatsRes = await safeQuery(db, "SELECT * FROM dkd_store_categories ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
       const dkdStoreSubcatsRes = await safeQuery(db, "SELECT * FROM dkd_store_subcategories ORDER BY sort_order ASC, created_at ASC", [], { results: [] });

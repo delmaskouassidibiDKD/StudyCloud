@@ -15871,11 +15871,27 @@ a:hover{transform:translateY(-2px)}
           await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN subcategory_id TEXT DEFAULT ''`).run().catch(() => {});
           await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN subcategory_name TEXT DEFAULT ''`).run().catch(() => {});
           await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN promo_images TEXT DEFAULT '[]'`).run().catch(() => {});
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN is_recommended INTEGER DEFAULT 0`).run().catch(() => {});
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN recommended_duration_type TEXT DEFAULT 'infinite'`).run().catch(() => {});
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN recommended_duration_value INTEGER DEFAULT 0`).run().catch(() => {});
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN recommended_started_at INTEGER DEFAULT 0`).run().catch(() => {});
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN recommended_expires_at INTEGER DEFAULT 0`).run().catch(() => {});
+          await env.DB.prepare(`ALTER TABLE dkd_store_config ADD COLUMN recommended_interval_sites INTEGER DEFAULT 6`).run().catch(() => {});
+
+          await env.DB.prepare(`
+            UPDATE dkd_store_sites
+            SET is_recommended = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE is_recommended = 1
+              AND recommended_duration_type != 'infinite'
+              AND recommended_expires_at > 0
+              AND recommended_expires_at <= ?
+          `).bind(Date.now()).run().catch(() => {});
 
           const config = (await env.DB.prepare("SELECT * FROM dkd_store_config WHERE id = 'default'").first<any>()) || {
             id: 'default',
             sites_sort_mode: 'manual',
-            categories_sort_mode: 'manual'
+            categories_sort_mode: 'manual',
+            recommended_interval_sites: 6
           };
 
           const catsRes = await env.DB.prepare("SELECT * FROM dkd_store_categories WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC").all<any>();

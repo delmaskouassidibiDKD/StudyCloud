@@ -3772,6 +3772,11 @@ export interface DkdStoreSite {
   description: string;
   badge: string;
   promo_images?: string | string[];
+  is_recommended?: number;
+  recommended_duration_type?: 'days' | 'months' | 'infinite' | string;
+  recommended_duration_value?: number;
+  recommended_started_at?: number;
+  recommended_expires_at?: number;
   is_active: number;
   sort_order: number;
   created_at?: string;
@@ -3805,6 +3810,7 @@ export interface DkdStorePublicData {
     id: string;
     sites_sort_mode: string;
     categories_sort_mode: string;
+    recommended_interval_sites?: number;
   };
   categories: DkdStoreCategory[];
   subcategories?: DkdStoreSubcategory[];

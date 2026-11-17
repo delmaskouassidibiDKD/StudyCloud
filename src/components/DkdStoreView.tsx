@@ -97,12 +97,16 @@ const DkdAppTile: React.FC<DkdAppTileProps> = ({
           <Bookmark className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${isPinned ? 'fill-current' : ''}`} />
         </button>
 
-        {/* Badge éventuel (ex: "IA", "Nouveau") */}
-        {site.badge && (
+        {/* Badge éventuel (ex: "IA", "Nouveau" ou "⭐ Recommandé") */}
+        {site.badge ? (
           <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-black/70 text-white backdrop-blur-md border border-white/20">
             {site.badge}
           </span>
-        )}
+        ) : Number(site.is_recommended) === 1 ? (
+          <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider bg-amber-500 text-stone-950 shadow-xs">
+            ⭐ Recommandé
+          </span>
+        ) : null}
       </div>
 
       {/* NOM & SOUS-TITRE EN DESSOUS (Comme Google Play) */}
@@ -123,6 +127,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
   const [sites, setSites] = useState<DkdStoreSite[]>([]);
   const [categories, setCategories] = useState<DkdStoreCategory[]>([]);
   const [subcategories, setSubcategories] = useState<DkdStoreSubcategory[]>([]);
+  const [recommendedIntervalSites, setRecommendedIntervalSites] = useState<number>(6);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -182,6 +187,9 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
         setSites(Array.isArray(data.sites) ? data.sites : []);
         setCategories(Array.isArray(data.categories) ? data.categories : []);
         setSubcategories(Array.isArray(data.subcategories) ? data.subcategories : []);
+        if (data.config && Number(data.config.recommended_interval_sites) >= 1) {
+          setRecommendedIntervalSites(Number(data.config.recommended_interval_sites));
+        }
       } else {
         setFetchError(data?.error || 'Impossible de charger le catalogue.');
       }
@@ -360,6 +368,90 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
     );
     return [...sameSub, ...sameCat, ...rest].slice(0, 8);
   }, [sites, selectedSiteForDetail]);
+
+  // Sites recommandés actifs (filtrés selon expiration et classés en fonction de ce que l'utilisateur cherche ou consulte)
+  const contextualRecommendedSites = useMemo(() => {
+    const nowMs = Date.now();
+    const activeRecs = sites.filter(s => {
+      if (Number(s.is_recommended) !== 1) return false;
+      const exp = Number(s.recommended_expires_at || 0);
+      if (s.recommended_duration_type !== 'infinite' && exp > 0 && exp <= nowMs) {
+        return false;
+      }
+      return true;
+    });
+
+    if (activeRecs.length === 0) return [];
+
+    const q = searchQuery.trim().toLowerCase();
+    return activeRecs.slice().sort((a, b) => {
+      let scoreA = 0;
+      let scoreB = 0;
+
+      if (q) {
+        const hayA = `${a.name || ''} ${a.description || ''} ${a.category_name || ''} ${a.subcategory_name || ''} ${a.badge || ''}`.toLowerCase();
+        const hayB = `${b.name || ''} ${b.description || ''} ${b.category_name || ''} ${b.subcategory_name || ''} ${b.badge || ''}`.toLowerCase();
+        if (hayA.includes(q)) scoreA += 10;
+        if (hayB.includes(q)) scoreB += 10;
+      }
+
+      if (selectedSubcategoryId !== 'all') {
+        if (String(a.subcategory_id) === String(selectedSubcategoryId) || String(a.subcategory_name || '').toLowerCase() === String(selectedSubcategoryId).toLowerCase()) scoreA += 6;
+        if (String(b.subcategory_id) === String(selectedSubcategoryId) || String(b.subcategory_name || '').toLowerCase() === String(selectedSubcategoryId).toLowerCase()) scoreB += 6;
+      }
+
+      if (selectedCategoryId !== 'all') {
+        if (String(a.category_id) === String(selectedCategoryId) || String(a.category_name || '').toLowerCase() === String(selectedCategoryId).toLowerCase()) scoreA += 4;
+        if (String(b.category_id) === String(selectedCategoryId) || String(b.category_name || '').toLowerCase() === String(selectedCategoryId).toLowerCase()) scoreB += 4;
+      }
+
+      if (scoreB !== scoreA) return scoreB - scoreA;
+      return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+    });
+  }, [sites, searchQuery, selectedCategoryId, selectedSubcategoryId]);
+
+  // Helper pour afficher une seule ligne horizontale défilable de sites recommandés (gauche <-> droite)
+  const renderRecommendedHorizontalLine = (blockKey: string) => {
+    if (contextualRecommendedSites.length === 0) return null;
+    return (
+      <div
+        key={`rec-row-${blockKey}`}
+        className="w-full my-4 p-3 sm:p-4 rounded-3xl bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-blue-500/10 dark:from-amber-500/10 dark:via-[#0f182c] dark:to-blue-500/10 border-2 border-amber-400/50 dark:border-amber-500/40 shadow-xs"
+      >
+        <div className="flex items-center justify-between mb-2.5 px-0.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm sm:text-base">⭐</span>
+            <h3 className="text-xs sm:text-sm md:text-base font-black text-stone-900 dark:text-white truncate">
+              {searchQuery.trim()
+                ? `Recommandés pour vous · "${searchQuery.trim()}"`
+                : 'Recommandés pour vous'}
+            </h3>
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 font-extrabold shrink-0">
+              Sponsorisé
+            </span>
+          </div>
+          <span className="text-[10px] sm:text-[11px] font-semibold text-stone-500 dark:text-slate-400 hidden sm:inline shrink-0">
+            Glissez de gauche à droite ↔
+          </span>
+        </div>
+
+        {/* Ligne horizontale unique défilable de gauche à droite */}
+        <div className="flex items-start gap-3 sm:gap-4 md:gap-5 overflow-x-auto no-scrollbar py-1 scroll-smooth">
+          {contextualRecommendedSites.map((recSite) => (
+            <DkdAppTile
+              key={`${blockKey}-rec-${recSite.id}`}
+              site={recSite}
+              isPinned={pinnedSiteIds.includes(recSite.id)}
+              onOpen={handleSelectSiteDetail}
+              onTogglePin={togglePinSite}
+              getDomainFromUrl={getDomainFromUrl}
+              className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
+            />
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   // Helper pour ouvrir la fiche de présentation professionnelle d'un site
   const handleSelectSiteDetail = (site: DkdStoreSite) => {
@@ -948,6 +1040,9 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                   </div>
 
                 </div>
+
+                {/* Ligne horizontale de sites recommandés en bas de la fiche de présentation */}
+                {renderRecommendedHorizontalLine('detail-bottom')}
               </div>
 
               {/* VISIONNEUSE PLEIN ÉCRAN (LIGHTBOX) POUR AGRANDIR UNE IMAGE PUBLICITAIRE */}
@@ -1180,26 +1275,30 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
 
               {/* ÉTAT LISTE VIDE */}
               {!isLoading && filteredSites.length === 0 && (
-                <div className="p-6 sm:p-8 text-left max-w-md space-y-3">
-                  <div className="w-12 h-12 rounded-2xl bg-stone-100 dark:bg-slate-900 border border-stone-200 dark:border-slate-800 flex items-center justify-center text-xl shadow-inner">
-                    🔍
+                <div className="w-full space-y-4">
+                  <div className="p-6 sm:p-8 text-left max-w-md space-y-3">
+                    <div className="w-12 h-12 rounded-2xl bg-stone-100 dark:bg-slate-900 border border-stone-200 dark:border-slate-800 flex items-center justify-center text-xl shadow-inner">
+                      🔍
+                    </div>
+                    <h3 className="text-base font-bold text-stone-800 dark:text-stone-200">
+                      {searchQuery ? `Aucune application trouvée pour "${searchQuery}"` : "Aucune application dans cette catégorie"}
+                    </h3>
+                    <p className="text-xs text-stone-500 dark:text-stone-400">
+                      {searchQuery
+                        ? "Essayez d'autres mots-clés ou consultez l'ensemble des catégories."
+                        : "Les nouvelles applications ajoutées depuis le tableau de bord apparaîtront ici automatiquement."}
+                    </p>
+                    {searchQuery && (
+                      <button
+                        onClick={() => setSearchQuery('')}
+                        className="px-4 py-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                      >
+                        Effacer la recherche
+                      </button>
+                    )}
                   </div>
-                  <h3 className="text-base font-bold text-stone-800 dark:text-stone-200">
-                    {searchQuery ? `Aucune application trouvée pour "${searchQuery}"` : "Aucune application dans cette catégorie"}
-                  </h3>
-                  <p className="text-xs text-stone-500 dark:text-stone-400">
-                    {searchQuery
-                      ? "Essayez d'autres mots-clés ou consultez l'ensemble des catégories."
-                      : "Les nouvelles applications ajoutées depuis le tableau de bord apparaîtront ici automatiquement."}
-                  </p>
-                  {searchQuery && (
-                    <button
-                      onClick={() => setSearchQuery('')}
-                      className="px-4 py-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
-                    >
-                      Effacer la recherche
-                    </button>
-                  )}
+                  {/* Même sans résultat exact, afficher la ligne horizontale de sites recommandés */}
+                  {renderRecommendedHorizontalLine('empty-state')}
                 </div>
               )}
 
@@ -1208,138 +1307,182 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                 <>
                   {/* CAS 1 : VUE RAYONS HORIZONTAUX PAR CATÉGORIE (Comme sur vos images 1 et 2) */}
                   {selectedCategoryId === 'all' && selectedSubcategoryId === 'all' && !searchQuery.trim() && !showOnlyPinned && viewMode === 'shelves' && categoriesWithSites.length > 0 ? (
-                    <div className="w-full space-y-6">
-                      {/* Section pour chaque catégorie contenant des applications */}
-                      {categoriesWithSites.map(({ category, sites: catSites }) => (
-                        <div key={category.id} className="w-full">
-                          {/* En-tête de rayon style Google Play */}
-                          <div className="flex items-center justify-between mb-2.5 px-0.5">
-                            <div>
-                              <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white flex items-center gap-2">
-                                <span>{category.icon || '📁'}</span>
-                                <span>{category.name}</span>
-                              </h3>
-                              <p className="text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-                                {catSites.length} application{catSites.length > 1 ? 's' : ''} disponible{catSites.length > 1 ? 's' : ''}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setSelectedCategoryId(category.id);
-                                setSelectedSubcategoryId('all');
-                              }}
-                              className="text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 flex items-center gap-1 hover:underline cursor-pointer px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/40"
-                            >
-                              <span>Voir tout</span>
-                              <span>→</span>
-                            </button>
-                          </div>
+                    (() => {
+                      const step = Math.max(1, recommendedIntervalSites);
+                      let cumulativeSites = 0;
+                      let nextThreshold = step;
+                      let insertedRecCount = 0;
 
-                          {/* Rangée défilable d'icônes d'applications (Image 1 & 2) */}
-                          <div className="flex items-start gap-3 sm:gap-4 md:gap-5 overflow-x-auto no-scrollbar py-1.5 scroll-smooth">
-                            {catSites.map((site) => (
-                              <DkdAppTile
-                                key={site.id}
-                                site={site}
-                                isPinned={pinnedSiteIds.includes(site.id)}
-                                onOpen={handleSelectSiteDetail}
-                                onTogglePin={togglePinSite}
-                                getDomainFromUrl={getDomainFromUrl}
-                                className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
-                              />
-                            ))}
-                          </div>
-                        </div>
-                      ))}
+                      return (
+                        <div className="w-full space-y-6">
+                          {/* Section pour chaque catégorie contenant des applications */}
+                          {categoriesWithSites.map(({ category, sites: catSites }, catIdx) => {
+                            cumulativeSites += catSites.length;
+                            const shouldInsertRecAfter = cumulativeSites >= nextThreshold;
+                            if (shouldInsertRecAfter) {
+                              insertedRecCount++;
+                              nextThreshold = cumulativeSites + step;
+                            }
 
-                      {/* Applications sans catégorie (s'il y en a) */}
-                      {uncategorizedSites.length > 0 && (
-                        <div className="w-full pt-2">
-                          <div className="flex items-center justify-between mb-2.5 px-0.5">
-                            <div>
-                              <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white flex items-center gap-2">
-                                <span>✨</span>
-                                <span>Autres applications</span>
-                              </h3>
-                              <p className="text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-                                {uncategorizedSites.length} application{uncategorizedSites.length > 1 ? 's' : ''}
-                              </p>
+                            return (
+                              <React.Fragment key={category.id}>
+                                <div className="w-full">
+                                  {/* En-tête de rayon style Google Play */}
+                                  <div className="flex items-center justify-between mb-2.5 px-0.5">
+                                    <div>
+                                      <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                                        <span>{category.icon || '📁'}</span>
+                                        <span>{category.name}</span>
+                                      </h3>
+                                      <p className="text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                                        {catSites.length} application{catSites.length > 1 ? 's' : ''} disponible{catSites.length > 1 ? 's' : ''}
+                                      </p>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setSelectedCategoryId(category.id);
+                                        setSelectedSubcategoryId('all');
+                                      }}
+                                      className="text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 flex items-center gap-1 hover:underline cursor-pointer px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                                    >
+                                      <span>Voir tout</span>
+                                      <span>→</span>
+                                    </button>
+                                  </div>
+
+                                  {/* Rangée défilable d'icônes d'applications (Image 1 & 2) */}
+                                  <div className="flex items-start gap-3 sm:gap-4 md:gap-5 overflow-x-auto no-scrollbar py-1.5 scroll-smooth">
+                                    {catSites.map((site) => (
+                                      <DkdAppTile
+                                        key={site.id}
+                                        site={site}
+                                        isPinned={pinnedSiteIds.includes(site.id)}
+                                        onOpen={handleSelectSiteDetail}
+                                        onTogglePin={togglePinSite}
+                                        getDomainFromUrl={getDomainFromUrl}
+                                        className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
+                                      />
+                                    ))}
+                                  </div>
+                                </div>
+
+                                {/* Insertion de la ligne horizontale de Recommandés tous les N sites vus */}
+                                {shouldInsertRecAfter && renderRecommendedHorizontalLine(`shelf-${catIdx}`)}
+                              </React.Fragment>
+                            );
+                          })}
+
+                          {/* Applications sans catégorie (s'il y en a) */}
+                          {uncategorizedSites.length > 0 && (
+                            <div className="w-full pt-2">
+                              <div className="flex items-center justify-between mb-2.5 px-0.5">
+                                <div>
+                                  <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                                    <span>✨</span>
+                                    <span>Autres applications</span>
+                                  </h3>
+                                  <p className="text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                                    {uncategorizedSites.length} application{uncategorizedSites.length > 1 ? 's' : ''}
+                                  </p>
+                                </div>
+                              </div>
+                              <div className="flex items-start gap-3 sm:gap-4 md:gap-5 overflow-x-auto no-scrollbar py-1.5 scroll-smooth">
+                                {uncategorizedSites.map((site) => (
+                                  <DkdAppTile
+                                    key={site.id}
+                                    site={site}
+                                    isPinned={pinnedSiteIds.includes(site.id)}
+                                    onOpen={handleSelectSiteDetail}
+                                    onTogglePin={togglePinSite}
+                                    getDomainFromUrl={getDomainFromUrl}
+                                    className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
+                                  />
+                                ))}
+                              </div>
                             </div>
-                          </div>
-                          <div className="flex items-start gap-3 sm:gap-4 md:gap-5 overflow-x-auto no-scrollbar py-1.5 scroll-smooth">
-                            {uncategorizedSites.map((site) => (
-                              <DkdAppTile
-                                key={site.id}
-                                site={site}
-                                isPinned={pinnedSiteIds.includes(site.id)}
-                                onOpen={handleSelectSiteDetail}
-                                onTogglePin={togglePinSite}
-                                getDomainFromUrl={getDomainFromUrl}
-                                className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
-                              />
-                            ))}
-                          </div>
+                          )}
+
+                          {/* Si le nombre total de sites était inférieur au seuil, afficher tout de même la ligne de recommandés */}
+                          {insertedRecCount === 0 && renderRecommendedHorizontalLine('shelf-fallback')}
                         </div>
-                      )}
-                    </div>
+                      );
+                    })()
                   ) : (
-                    /* CAS 2 : VUE GRILLE COMPLÈTE PLAY STORE (Responsive, grands icônes carrés arrondis) */
-                    <div className="w-full">
-                      {/* En-tête indicatif */}
-                      <div className="flex items-center justify-between mb-3 px-0.5">
-                        <div>
-                          <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white flex items-center gap-2">
-                            {searchQuery ? (
-                              <>
-                                <span>🔍</span>
-                                <span>Résultats pour "{searchQuery}"</span>
-                              </>
-                            ) : showOnlyPinned ? (
-                              <>
-                                <span>⭐</span>
-                                <span>Mes applications favorites</span>
-                              </>
-                            ) : selectedCategoryId !== 'all' ? (
-                              <>
-                                <span>📁</span>
-                                <span>
-                                  {categories.find(c => String(c.id) === String(selectedCategoryId))?.name || selectedCategoryId}
-                                  {selectedSubcategoryId !== 'all' && (
-                                    <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 ml-2">
-                                      › {subcategories.find(sc => String(sc.id) === String(selectedSubcategoryId))?.name || selectedSubcategoryId}
-                                    </span>
-                                  )}
-                                </span>
-                              </>
-                            ) : (
-                              <>
-                                <span>✨</span>
-                                <span>Toutes les applications</span>
-                              </>
-                            )}
-                          </h3>
-                          <p className="text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-                            {filteredSites.length} application{filteredSites.length > 1 ? 's' : ''} disponible{filteredSites.length > 1 ? 's' : ''}
-                          </p>
-                        </div>
-                      </div>
+                    /* CAS 2 : VUE GRILLE COMPLÈTE / RECHERCHE / FILTRE CATÉGORIE (Avec ligne de Recommandés tous les N sites) */
+                    (() => {
+                      const chunkSize = Math.max(1, recommendedIntervalSites);
+                      const siteChunks: DkdStoreSite[][] = [];
+                      for (let i = 0; i < filteredSites.length; i += chunkSize) {
+                        siteChunks.push(filteredSites.slice(i, i + chunkSize));
+                      }
 
-                      {/* Grille Play Store */}
-                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3 sm:gap-4 md:gap-5 w-full">
-                        {filteredSites.map((site) => (
-                          <DkdAppTile
-                            key={site.id}
-                            site={site}
-                            isPinned={pinnedSiteIds.includes(site.id)}
-                            onOpen={handleSelectSiteDetail}
-                            onTogglePin={togglePinSite}
-                            getDomainFromUrl={getDomainFromUrl}
-                            className="w-full"
-                          />
-                        ))}
-                      </div>
-                    </div>
+                      return (
+                        <div className="w-full">
+                          {/* En-tête indicatif */}
+                          <div className="flex items-center justify-between mb-3 px-0.5">
+                            <div>
+                              <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                                {searchQuery ? (
+                                  <>
+                                    <span>🔍</span>
+                                    <span>Résultats pour "{searchQuery}"</span>
+                                  </>
+                                ) : showOnlyPinned ? (
+                                  <>
+                                    <span>⭐</span>
+                                    <span>Mes applications favorites</span>
+                                  </>
+                                ) : selectedCategoryId !== 'all' ? (
+                                  <>
+                                    <span>📁</span>
+                                    <span>
+                                      {categories.find(c => String(c.id) === String(selectedCategoryId))?.name || selectedCategoryId}
+                                      {selectedSubcategoryId !== 'all' && (
+                                        <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 ml-2">
+                                          › {subcategories.find(sc => String(sc.id) === String(selectedSubcategoryId))?.name || selectedSubcategoryId}
+                                        </span>
+                                      )}
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span>✨</span>
+                                    <span>Toutes les applications</span>
+                                  </>
+                                )}
+                              </h3>
+                              <p className="text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                                {filteredSites.length} application{filteredSites.length > 1 ? 's' : ''} disponible{filteredSites.length > 1 ? 's' : ''}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Grille Play Store découpée par paliers de N sites avec ligne horizontale de Recommandés intercalée */}
+                          <div className="w-full space-y-5">
+                            {siteChunks.map((chunk, chunkIdx) => (
+                              <React.Fragment key={`chunk-${chunkIdx}`}>
+                                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3 sm:gap-4 md:gap-5 w-full">
+                                  {chunk.map((site) => (
+                                    <DkdAppTile
+                                      key={site.id}
+                                      site={site}
+                                      isPinned={pinnedSiteIds.includes(site.id)}
+                                      onOpen={handleSelectSiteDetail}
+                                      onTogglePin={togglePinSite}
+                                      getDomainFromUrl={getDomainFromUrl}
+                                      className="w-full"
+                                    />
+                                  ))}
+                                </div>
+                                {/* Ligne horizontale unique défilable de sites recommandés après chaque groupe de N sites */}
+                                {renderRecommendedHorizontalLine(`grid-chunk-${chunkIdx}`)}
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()
                   )}
                 </>
               )}
