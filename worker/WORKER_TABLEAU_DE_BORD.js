@@ -1014,6 +1014,14 @@ async function ensureStorageTables(db) {
     `).run().catch(() => {});
 
     await db.prepare(`
+      ALTER TABLE dkd_store_sites ADD COLUMN is_external INTEGER DEFAULT 0
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      ALTER TABLE user_dashboard_sites ADD COLUMN is_external INTEGER DEFAULT 0
+    `).run().catch(() => {});
+
+    await db.prepare(`
       ALTER TABLE dkd_store_config ADD COLUMN recommended_interval_sites INTEGER DEFAULT 6
     `).run().catch(() => {});
 
@@ -1582,9 +1590,9 @@ const TABLES_METADATA = [
     table: 'dkd_store_sites',
     label: 'Catalogue des sites et pépites du DKD store',
     uiConnection: "Menu d'Administration > DKD store & Application DKD store (Écran d'accueil)",
-    role: "Enregistre tous les sites web, outils, simulateurs, logos, catégories, statut actif/masqué et ordre d'affichage ajoutés depuis le tableau de bord.",
+    role: "Enregistre tous les sites web, outils, simulateurs, logos, catégories, mode d'ouverture (dans StudyCloud ou hors StudyCloud via is_external), statut actif/masqué et ordre d'affichage ajoutés depuis le tableau de bord.",
     usage: "Alimente en direct l'application DKD store dans StudyCloud.",
-    example: "{ id: 'site_1', name: 'PhET Simulations', url: 'https://phet.colorado.edu', is_active: 1, sort_order: 1 }",
+    example: "{ id: 'site_1', name: 'PhET Simulations', url: 'https://phet.colorado.edu', is_external: 0, is_active: 1, sort_order: 1 }",
     isExempted: true,
     exemptReason: "Catalogue officiel de la plateforme DKD store"
   },
@@ -6805,6 +6813,20 @@ function renderDashboardHtml(data) {
           <div class="text-[10px] text-slate-400">Si décoché, le site est conservé mais ne s'affiche plus dans l'application.</div>
         </div>
         <input type="checkbox" id="dkd-site-form-active" checked class="w-5 h-5 accent-emerald-500 rounded cursor-pointer" />
+      </label>
+
+      <!-- Cocher / Décocher le mode d'ouverture : Hors StudyCloud vs À l'intérieur de StudyCloud -->
+      <label class="p-3 rounded-xl bg-blue-950/25 border border-blue-500/40 flex items-center justify-between cursor-pointer hover:border-blue-400 transition">
+        <div class="pr-3">
+          <div class="text-xs font-bold text-blue-300 flex items-center gap-1.5">
+            <span>🌐</span>
+            <span>Ce site fonctionne hors de StudyCloud (Coché = Hors StudyCloud)</span>
+          </div>
+          <div class="text-[10px] text-slate-300 mt-0.5">
+            Coché : le site s'ouvre hors de StudyCloud (affiche le petit logo internet bleu "Site" dans DKD store et le bouton bleu "Aller vers le site" sur l'en-tête). Décoché : le site fonctionne à l'intérieur de StudyCloud.
+          </div>
+        </div>
+        <input type="checkbox" id="dkd-site-form-external" class="w-5 h-5 accent-blue-500 rounded cursor-pointer shrink-0" />
       </label>
 
       <div class="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-800">
@@ -15168,6 +15190,7 @@ function renderDashboardHtml(data) {
       filtered.forEach(function(s, idx) {
         const isSelected = String(s.id) === String(selectedDkdStoreSiteId);
         const isActive = Number(s.is_active) === 1;
+        const isExternal = Number(s.is_external) === 1;
         const logoSrc = s.logo_url || getAutoFaviconUrl(s.url);
         const domain = getDomainFromUrl(s.url);
         const rankNum = s.sort_order || (idx + 1);
@@ -15188,6 +15211,7 @@ function renderDashboardHtml(data) {
               '<div class="flex items-center gap-1.5">' +
                 '<span class="text-xs font-extrabold text-white truncate">' + escapeHtml(s.name || 'Site sans nom') + '</span>' +
                 (s.badge ? '<span class="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold shrink-0">' + escapeHtml(s.badge) + '</span>' : '') +
+                (isExternal ? '<span class="text-[9px] px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-300 border border-blue-500/30 font-bold shrink-0">🌐 Hors StudyCloud</span>' : '') +
               '</div>' +
               '<div class="flex items-center gap-1.5 text-[10px] text-slate-400 truncate mt-0.5">' +
                 '<span class="px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 font-medium">' + escapeHtml(s.category_name || 'Général') + '</span>' +
@@ -15229,6 +15253,7 @@ function renderDashboardHtml(data) {
       }
 
       const isActive = Number(site.is_active) === 1;
+      const isExternal = Number(site.is_external) === 1;
       const logoSrc = site.logo_url || getAutoFaviconUrl(site.url);
       const cats = (dkdStoreCategories || []).slice().sort(function(a, b) {
         return Number(a.sort_order || 0) - Number(b.sort_order || 0);
@@ -15301,6 +15326,27 @@ function renderDashboardHtml(data) {
             '</div>' +
           '</div>' +
           '<input type="checkbox" id="detail-dkd-active" data-site-id="' + safeSiteId + '" ' + (isActive ? 'checked' : '') + ' onchange="toggleDkdSiteActive(this.getAttribute(&quot;data-site-id&quot;), this.checked)" class="w-5 h-5 accent-emerald-500 rounded cursor-pointer shrink-0" />' +
+        '</label>' +
+
+        '<!-- Bloc Cocher / Décocher : Fonctionne hors de StudyCloud vs à l intérieur de StudyCloud -->' +
+        '<label class="p-3.5 rounded-2xl border transition flex items-center justify-between gap-3 cursor-pointer ' +
+          (isExternal ? 'bg-blue-500/15 border-blue-500/50' : 'bg-slate-900/90 border-slate-700/80') + '">' +
+          '<div class="flex items-center gap-3">' +
+            '<span class="text-xl">' + (isExternal ? '🌐' : '🏠') + '</span>' +
+            '<div>' +
+              '<div class="text-xs font-black ' + (isExternal ? 'text-blue-300' : 'text-slate-200') + '">' +
+                (isExternal
+                  ? 'Mode COCHÉ : Ce site fonctionne HORS de StudyCloud (navigateur externe)'
+                  : 'Mode DÉCOCHÉ : Ce site fonctionne À L&#39;INTÉRIEUR de StudyCloud') +
+              '</div>' +
+              '<div class="text-[11px] text-slate-300">' +
+                (isExternal
+                  ? 'Affiche le petit logo internet bleu "Site" dans DKD store et le bouton bleu "Aller vers le site" sur l&#39;en-tête.'
+                  : 'Cochez cette case si le site fonctionne hors de StudyCloud (ouverture externe).') +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<input type="checkbox" id="detail-dkd-external" data-site-id="' + safeSiteId + '" ' + (isExternal ? 'checked' : '') + ' onchange="toggleDkdSiteExternal(this.getAttribute(&quot;data-site-id&quot;), this.checked)" class="w-5 h-5 accent-blue-500 rounded cursor-pointer shrink-0" />' +
         '</label>' +
 
         '<!-- Formulaire complet d édition des informations et de la description du site -->' +
@@ -15616,6 +15662,8 @@ function renderDashboardHtml(data) {
       document.getElementById('dkd-site-form-order').value = String((dkdStoreSites || []).length + 1);
       document.getElementById('dkd-site-form-desc').value = '';
       document.getElementById('dkd-site-form-active').checked = true;
+      const extCheckbox = document.getElementById('dkd-site-form-external');
+      if (extCheckbox) extCheckbox.checked = false;
       updateDkdLogoPreview('', 'dkd-site-form-logo-preview');
       window.modalDkdPromoImages = [];
       renderDkdPromoImagesPreview('modal');
@@ -15769,6 +15817,7 @@ function renderDashboardHtml(data) {
       const sortOrder = Number(document.getElementById('dkd-site-form-order')?.value || 1);
       const description = (document.getElementById('dkd-site-form-desc')?.value || '').trim();
       const isActive = document.getElementById('dkd-site-form-active')?.checked ? 1 : 0;
+      const isExternal = document.getElementById('dkd-site-form-external')?.checked ? 1 : 0;
       const promoList = (window.modalDkdPromoImages || []).filter(Boolean).slice(0, 3);
 
       if (!name || !rawUrl) {
@@ -15810,7 +15859,8 @@ function renderDashboardHtml(data) {
             promo_images: promoList,
             sort_order: sortOrder,
             description: description,
-            is_active: isActive
+            is_active: isActive,
+            is_external: isExternal
           })
         });
         const data = await res.json();
@@ -15846,6 +15896,7 @@ function renderDashboardHtml(data) {
       const sortOrder = Number(document.getElementById('detail-dkd-order')?.value || 1);
       const description = (document.getElementById('detail-dkd-desc')?.value || '').trim();
       const isActive = document.getElementById('detail-dkd-active')?.checked ? 1 : 0;
+      const isExternal = document.getElementById('detail-dkd-external')?.checked ? 1 : 0;
       const promoList = (window.detailDkdPromoImages || []).filter(Boolean).slice(0, 3);
 
       if (!name || !rawUrl) {
@@ -15888,7 +15939,8 @@ function renderDashboardHtml(data) {
             promo_images: promoList,
             sort_order: sortOrder,
             description: description,
-            is_active: isActive
+            is_active: isActive,
+            is_external: isExternal
           })
         });
         const data = await res.json();
@@ -15930,6 +15982,25 @@ function renderDashboardHtml(data) {
       }
     }
     window.toggleDkdSiteActive = toggleDkdSiteActive;
+
+    async function toggleDkdSiteExternal(siteId, isChecked) {
+      try {
+        const res = await fetch('/api/dkd-store/site/toggle-external', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: siteId, is_external: isChecked ? 1 : 0 })
+        });
+        const data = await res.json();
+        if (data.success) {
+          dkdStoreSites = data.sites || dkdStoreSites;
+          renderDkdStoreView();
+          showToast(isChecked ? '🌐 Mode Hors StudyCloud activé pour ce site' : '🏠 Mode Intérieur StudyCloud activé pour ce site');
+        }
+      } catch (e) {
+        showToast('❌ Erreur : ' + e.message);
+      }
+    }
+    window.toggleDkdSiteExternal = toggleDkdSiteExternal;
 
     async function deleteDkdSite(siteId) {
       const site = (dkdStoreSites || []).find(function(s) { return String(s.id) === String(siteId); });
@@ -17425,6 +17496,9 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
 // GESTIONNAIRE ULTRA-RAPIDE DES ROUTES DKD STORE (/api/dkd-store/* & /api/public/dkd-store)
 // ============================================================================
 async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
+  await safeRun(db, "ALTER TABLE dkd_store_sites ADD COLUMN is_external INTEGER DEFAULT 0");
+  await safeRun(db, "ALTER TABLE user_dashboard_sites ADD COLUMN is_external INTEGER DEFAULT 0");
+
   const getFullDkdState = async () => {
     const nowMs = Date.now();
     // Désactivation automatique des sites recommandés dont la durée (jours / mois) est arrivée à expiration
@@ -17498,6 +17572,7 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
     const description = (body.description || '').trim();
     const badge = (body.badge || '').trim();
     const isActive = body.is_active !== undefined ? (Number(body.is_active) ? 1 : 0) : 1;
+    const isExternal = body.is_external !== undefined ? (Number(body.is_external) ? 1 : 0) : 0;
     const sortOrder = Number(body.sort_order || 1);
     let rawPromoImages = [];
     if (Array.isArray(body.promo_images)) {
@@ -17609,8 +17684,8 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
 
     await safeRun(db, `
       INSERT INTO dkd_store_sites (
-        id, name, url, logo_url, category_id, category_name, subcategory_id, subcategory_name, description, badge, promo_images, is_active, sort_order, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        id, name, url, logo_url, category_id, category_name, subcategory_id, subcategory_name, description, badge, promo_images, is_active, is_external, sort_order, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
       ON CONFLICT(id) DO UPDATE SET
         name = excluded.name,
         url = excluded.url,
@@ -17623,9 +17698,12 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
         badge = excluded.badge,
         promo_images = excluded.promo_images,
         is_active = excluded.is_active,
+        is_external = excluded.is_external,
         sort_order = excluded.sort_order,
         updated_at = CURRENT_TIMESTAMP
-    `, [id, name, siteUrl, logoUrl, categoryId, categoryName, subcategoryId, subcategoryName, description, badge, promoImagesJson, isActive, sortOrder]);
+    `, [id, name, siteUrl, logoUrl, categoryId, categoryName, subcategoryId, subcategoryName, description, badge, promoImagesJson, isActive, isExternal, sortOrder]);
+
+    await safeRun(db, "UPDATE user_dashboard_sites SET is_external = ? WHERE site_id = ?", [isExternal, id]);
 
     const state = await getFullDkdState();
     const savedSite = state.sites.find(s => s.id === id);
@@ -17653,6 +17731,29 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
       });
     }
     await safeRun(db, "UPDATE dkd_store_sites SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [isActive, id]);
+    const state = await getFullDkdState();
+    return new Response(JSON.stringify({
+      success: true,
+      sites: state.sites
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+    });
+  }
+
+  // 3b. POST /api/dkd-store/site/toggle-external (Cocher / décocher le mode Hors StudyCloud d'un site)
+  if (request.method === 'POST' && path === '/api/dkd-store/site/toggle-external') {
+    const body = await request.json().catch(() => ({}));
+    const id = (body.id || '').trim();
+    const isExternal = Number(body.is_external) ? 1 : 0;
+    if (!id) {
+      return new Response(JSON.stringify({ success: false, error: 'Identifiant du site requis' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+    await safeRun(db, "UPDATE dkd_store_sites SET is_external = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?", [isExternal, id]);
+    await safeRun(db, "UPDATE user_dashboard_sites SET is_external = ? WHERE site_id = ?", [isExternal, id]);
     const state = await getFullDkdState();
     return new Response(JSON.stringify({
       success: true,
@@ -17949,6 +18050,7 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
         subcategory_name TEXT DEFAULT '',
         badge TEXT DEFAULT '',
         description TEXT DEFAULT '',
+        is_external INTEGER DEFAULT 0,
         position INTEGER DEFAULT 0,
         installed_at INTEGER NOT NULL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -17957,7 +18059,15 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
     try { await safeRun(db, "CREATE INDEX IF NOT EXISTS idx_user_dash_sites_user ON user_dashboard_sites(user_id)"); } catch(e){}
 
     if (request.method === 'GET') {
-      const rows = await safeAll(db, "SELECT * FROM user_dashboard_sites WHERE user_id = ? ORDER BY position ASC, installed_at ASC", [userId]);
+      const rows = await safeAll(
+        db,
+        `SELECT uds.*, COALESCE(dss.is_external, uds.is_external, 0) AS is_external
+         FROM user_dashboard_sites uds
+         LEFT JOIN dkd_store_sites dss ON uds.site_id = dss.id
+         WHERE uds.user_id = ?
+         ORDER BY uds.position ASC, uds.installed_at ASC`,
+        [userId]
+      );
       return new Response(JSON.stringify({ success: true, sites: rows || [] }), {
         status: 200,
         headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
@@ -17982,15 +18092,16 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
       const subcategoryName = body.subcategory_name || '';
       const badge = body.badge || '';
       const description = body.description || '';
+      const isExternal = Number(body.is_external) ? 1 : 0;
       const installedAt = Number(body.installed_at || Date.now());
       const position = Number(body.position || 0);
 
       await safeRun(db, `
         INSERT INTO user_dashboard_sites (
           id, user_id, site_id, name, url, logo_url,
-          category_name, subcategory_name, badge, description,
+          category_name, subcategory_name, badge, description, is_external,
           position, installed_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
           name = excluded.name,
           url = excluded.url,
@@ -17999,13 +18110,14 @@ async function handleDkdStoreRoutes(request, path, url, origin, db, bucket) {
           subcategory_name = excluded.subcategory_name,
           badge = excluded.badge,
           description = excluded.description,
+          is_external = excluded.is_external,
           position = excluded.position
-      `, [id, userId, siteId, name, siteUrl, logoUrl, categoryName, subcategoryName, badge, description, position, installedAt]);
+      `, [id, userId, siteId, name, siteUrl, logoUrl, categoryName, subcategoryName, badge, description, isExternal, position, installedAt]);
 
       return new Response(JSON.stringify({
         success: true,
         message: 'Application ajoutée à votre tableau de bord',
-        site: { id, user_id: userId, site_id: siteId, name, url: siteUrl, logo_url: logoUrl, category_name: categoryName, subcategory_name: subcategoryName, badge, description, position, installed_at: installedAt }
+        site: { id, user_id: userId, site_id: siteId, name, url: siteUrl, logo_url: logoUrl, category_name: categoryName, subcategory_name: subcategoryName, badge, description, is_external: isExternal, position, installed_at: installedAt }
       }), {
         status: 200,
         headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }

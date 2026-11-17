@@ -4027,7 +4027,7 @@ a:hover{transform:translateY(-2px)}
       async function hashPassword(password) {
         const encoder = new TextEncoder();
         const salt = crypto.getRandomValues(new Uint8Array(16));
-        const iterations = 1e4;
+        const iterations = 1e5;
         const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
         const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, keyMaterial, 256);
         const hashArray = Array.from(new Uint8Array(bits));
@@ -4039,12 +4039,18 @@ a:hover{transform:translateY(-2px)}
           const encoder = new TextEncoder();
           const parsed = JSON.parse(atob(stored));
           const { salt: saltArray, hash: hashArray } = parsed;
+          if (!Array.isArray(saltArray) || !Array.isArray(hashArray)) return false;
           const iterations = parsed.iter || 1e5;
           const salt = new Uint8Array(saltArray);
           const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
           const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, keyMaterial, 256);
-          const newHash = Array.from(new Uint8Array(bits));
-          return JSON.stringify(newHash) === JSON.stringify(hashArray);
+          const newHash = new Uint8Array(bits);
+          if (newHash.length !== hashArray.length) return false;
+          let diff = 0;
+          for (let i = 0; i < newHash.length; i++) {
+            diff |= newHash[i] ^ hashArray[i] & 255;
+          }
+          return diff === 0;
         } catch {
           return false;
         }
@@ -4052,7 +4058,7 @@ a:hover{transform:translateY(-2px)}
       async function createJWT(payload, expiresInHours = 720) {
         const encoder = new TextEncoder();
         const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-        const exp = Math.floor(Date.now() / 1e3) + expiresInHours * 3600;
+        const exp = Math.floor(Date.now() / 1e3) + Math.round(expiresInHours * 3600);
         const body = btoa(JSON.stringify({ ...payload, exp, iat: Math.floor(Date.now() / 1e3) }));
         const key = await crypto.subtle.importKey("raw", encoder.encode(JWT_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
         const signature = await crypto.subtle.sign("HMAC", key, encoder.encode(`${header}.${body}`));
@@ -4063,9 +4069,20 @@ a:hover{transform:translateY(-2px)}
         try {
           const encoder = new TextEncoder();
           const [header, body, sig] = token.split(".");
-          const key = await crypto.subtle.importKey("raw", encoder.encode(JWT_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+          if (!header || !body || !sig) return null;
           const sigBytes = Uint8Array.from(atob(sig.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
-          const valid = await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(`${header}.${body}`));
+          const candidateSecrets = [JWT_SECRET];
+          if (rawEnv.JWT_SECRET && rawEnv.JWT_SECRET !== "studycloud-jwt-secret-key") {
+            candidateSecrets.push("studycloud-jwt-secret-key");
+          }
+          let valid = false;
+          for (const sec of candidateSecrets) {
+            const key = await crypto.subtle.importKey("raw", encoder.encode(sec), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+            if (await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(`${header}.${body}`))) {
+              valid = true;
+              break;
+            }
+          }
           if (!valid) return null;
           const payload = JSON.parse(atob(body));
           if (payload.exp < Math.floor(Date.now() / 1e3)) return null;
@@ -4081,10 +4098,38 @@ a:hover{transform:translateY(-2px)}
       }
       async function getAuthUser(req) {
         const authHeader = req.headers.get("Authorization") || "";
-        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
         if (!token) return null;
         const payload = await verifyJWT(token);
         if (!payload?.userId) return null;
+        if (env.DB) {
+          try {
+            const tokenHash = await hashToken(token);
+            const gSessCache = globalThis.__scSessionCache = globalThis.__scSessionCache || {};
+            const cached = gSessCache[tokenHash];
+            const nowMs = Date.now();
+            if (cached && cached.exp > nowMs) {
+              return cached.ok ? payload : null;
+            }
+            const sessionRow = await env.DB.prepare(
+              "SELECT id, expires_at FROM auth_sessions WHERE token_hash = ? LIMIT 1"
+            ).bind(tokenHash).first();
+            if (sessionRow) {
+              const isNotExpired = !sessionRow.expires_at || new Date(sessionRow.expires_at).getTime() > nowMs;
+              gSessCache[tokenHash] = { ok: isNotExpired, exp: nowMs + 3e4 };
+              return isNotExpired ? payload : null;
+            }
+            const anyUserSession = await env.DB.prepare(
+              "SELECT id FROM auth_sessions WHERE user_id = ? LIMIT 1"
+            ).bind(String(payload.userId)).first();
+            if (anyUserSession) {
+              gSessCache[tokenHash] = { ok: false, exp: nowMs + 3e4 };
+              return null;
+            }
+            gSessCache[tokenHash] = { ok: true, exp: nowMs + 3e4 };
+          } catch {
+          }
+        }
         return payload;
       }
       async function ensureEmailVerificationsTable(_db, _force = false) {
@@ -4802,18 +4847,34 @@ a:hover{transform:translateY(-2px)}
         }
         const isConfirmed = Number(latestVerif.confirmed) === 1 || Number(latestVerif.used) === 1 || Number(latestVerif.clicked) === 1;
         if (isConfirmed) {
-          const user = await env.DB.prepare("SELECT * FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?").bind(latestVerif.user_id, cleanEmail).first();
-          if (user) {
-            let jwtToken = latestVerif?.confirmed_jwt;
-            if (!jwtToken) {
-              jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
-              const tokenHash = await hashToken(jwtToken);
-              const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-              await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId(), user.id, tokenHash, expiresAt).run();
+          const confirmedTimeMs = latestVerif.confirmed_at ? new Date(latestVerif.confirmed_at).getTime() : latestVerif.created_at ? new Date(latestVerif.created_at).getTime() : 0;
+          const ageSinceConfirmMs = confirmedTimeMs > 0 ? Date.now() - confirmedTimeMs : 0;
+          const MAX_POLL_WINDOW_MS = 90 * 1e3;
+          if (ageSinceConfirmMs > MAX_POLL_WINDOW_MS) {
+            if (latestVerif.confirmed_jwt) {
               try {
-                await env.DB.prepare("UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?").bind(jwtToken, latestVerif.id).run();
-              } catch (e3) {
+                await env.DB.prepare("UPDATE email_verifications SET confirmed_jwt = NULL WHERE id = ?").bind(latestVerif.id).run();
+              } catch {
               }
+            }
+            return jsonResponse({
+              success: true,
+              confirmed: false,
+              clicked: false,
+              expired: true,
+              resendCount: 0,
+              maxCount: 5,
+              isBlocked: false,
+              blockedUntil: null,
+              blockStage: 0
+            }, 200, origin);
+          }
+          const user = await env.DB.prepare("SELECT * FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?").bind(latestVerif.user_id, cleanEmail).first();
+          if (user && latestVerif.confirmed_jwt) {
+            const jwtToken = latestVerif.confirmed_jwt;
+            try {
+              await env.DB.prepare("UPDATE email_verifications SET confirmed_jwt = NULL WHERE id = ?").bind(latestVerif.id).run();
+            } catch (e3) {
             }
             return jsonResponse({
               success: true,
@@ -4861,19 +4922,12 @@ a:hover{transform:translateY(-2px)}
             return htmlResponse("Lien expir\xE9 ou d\xE9j\xE0 utilis\xE9", "Ce lien ne peut plus \xEAtre utilis\xE9 ou n'est plus valide. Veuillez vous connecter.", false);
           }
           if (Number(record.used) === 1 || Number(record.confirmed) === 1) {
-            let jwtToken2 = record.confirmed_jwt;
-            if (!jwtToken2) {
-              const user2 = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(record.user_id).first();
-              if (user2) {
-                jwtToken2 = await createJWT({ userId: user2.id, email: user2.email, name: user2.name });
-              }
-            }
             return htmlResponse(
               "Confirmation d\xE9j\xE0 effectu\xE9e !",
               "Ce lien ne peut plus \xEAtre r\xE9utilis\xE9 car la confirmation a d\xE9j\xE0 \xE9t\xE9 valid\xE9e. Cet e-mail est d\xE9j\xE0 associ\xE9 \xE0 un compte. Vous pouvez retourner dans l'application pour vous connecter.",
               true,
               record.user_id,
-              jwtToken2
+              void 0
             );
           }
           const now = Date.now();
@@ -5018,6 +5072,14 @@ a:hover{transform:translateY(-2px)}
         if (!email || !password) return errorResponse("Email et mot de passe requis", 400, origin);
         if (!isValidEmail(email)) return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
+        const loginIp = request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown";
+        const loginLockKey = `login_fail_${cleanEmail}_${loginIp}`;
+        const gLogin = globalThis;
+        if (!gLogin.__scLoginLockMap) gLogin.__scLoginLockMap = /* @__PURE__ */ new Map();
+        const loginAttempt = gLogin.__scLoginLockMap.get(loginLockKey);
+        if (loginAttempt && loginAttempt.resetAt > Date.now() && loginAttempt.count >= 8) {
+          return errorResponse("Trop de tentatives de connexion \xE9chou\xE9es. Veuillez patienter 5 minutes ou r\xE9initialiser votre mot de passe.", 429, origin);
+        }
         const existingUser = await env.DB.prepare("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
         if (!existingUser) {
           return jsonResponse({
@@ -5040,8 +5102,11 @@ a:hover{transform:translateY(-2px)}
         }
         const valid = await verifyPassword(password, existingUser.password_hash);
         if (!valid) {
+          const prevCount = loginAttempt && loginAttempt.resetAt > Date.now() ? loginAttempt.count : 0;
+          gLogin.__scLoginLockMap.set(loginLockKey, { count: prevCount + 1, resetAt: Date.now() + 5 * 60 * 1e3 });
           return errorResponse("Mot de passe incorrect. Veuillez v\xE9rifier votre saisie ou r\xE9initialiser votre mot de passe.", 401, origin);
         }
+        gLogin.__scLoginLockMap.delete(loginLockKey);
         const user = existingUser;
         const verificationToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
         const expiresAt = new Date(Date.now() + 70 * 1e3).toISOString();
@@ -5120,15 +5185,18 @@ a:hover{transform:translateY(-2px)}
           const hash1 = await hashToken(answer1.slice(0, 30).toLowerCase().trim());
           const match1 = hash1 === user.security_answer_1_hash;
           let match2 = true;
-          if (user.security_answer_2_hash && answer2) {
-            const hash2 = await hashToken(answer2.slice(0, 30).toLowerCase().trim());
+          if (user.security_answer_2_hash) {
+            if (!answer2 || !String(answer2).trim()) {
+              return errorResponse("Les deux r\xE9ponses de s\xE9curit\xE9 sont requises.", 400, origin);
+            }
+            const hash2 = await hashToken(String(answer2).slice(0, 30).toLowerCase().trim());
             match2 = hash2 === user.security_answer_2_hash;
           }
           if (!match1 || !match2) {
             return errorResponse("R\xE9ponse(s) de s\xE9curit\xE9 incorrecte(s). Veuillez v\xE9rifier vos informations.", 400, origin);
           }
         }
-        const resetSessionToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+        const resetSessionToken = await createJWT({ purpose: "pwd_reset", email: user.email, userId: user.id }, 0.25);
         return jsonResponse({
           success: true,
           verified: true,
@@ -5146,6 +5214,10 @@ a:hover{transform:translateY(-2px)}
         }
         if (!isValidEmail(email)) return errorResponse("Format d'adresse email du compte invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanAccountEmail = email.toLowerCase().trim();
+        const resetPayload = await verifyJWT(String(resetSessionToken));
+        if (!resetPayload || resetPayload.purpose !== "pwd_reset" || String(resetPayload.email || "").toLowerCase().trim() !== cleanAccountEmail) {
+          return errorResponse("Session de r\xE9initialisation invalide ou expir\xE9e. Veuillez revalider vos questions de s\xE9curit\xE9.", 403, origin);
+        }
         const cleanTargetEmail = cleanAccountEmail;
         const user = await env.DB.prepare("SELECT id, name, email FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanAccountEmail).first();
         if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
@@ -5172,7 +5244,9 @@ a:hover{transform:translateY(-2px)}
             remainingHours
           }, 429, origin);
         }
-        const resetCode = Math.floor(1e5 + Math.random() * 9e5).toString();
+        const randArr = new Uint32Array(1);
+        crypto.getRandomValues(randArr);
+        const resetCode = (1e5 + randArr[0] % 9e5).toString();
         const expiresAt = new Date(now + 3600 * 1e3).toISOString();
         await env.DB.prepare(`
           INSERT INTO password_resets (id, user_id, target_email, reset_code, attempts_today, last_requested_at, expires_at, used)
@@ -5197,16 +5271,26 @@ a:hover{transform:translateY(-2px)}
         const pwdCheck = validatePasswordFormat(newPassword);
         if (!pwdCheck.valid) return errorResponse(pwdCheck.error || "Nouveau mot de passe non conforme", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
-        const user = await env.DB.prepare("SELECT id, name FROM users WHERE email = ?").bind(cleanEmail).first();
+        const user = await env.DB.prepare("SELECT id, name FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
         if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
-        const resetRecord = await env.DB.prepare(`
+        const activeReset = await env.DB.prepare(`
           SELECT * FROM password_resets
-          WHERE user_id = ? AND reset_code = ? AND used = 0 AND expires_at > CURRENT_TIMESTAMP
+          WHERE user_id = ? AND used = 0 AND expires_at > CURRENT_TIMESTAMP
           ORDER BY created_at DESC LIMIT 1
-        `).bind(user.id, code.trim()).first();
-        if (!resetRecord) {
+        `).bind(user.id).first();
+        if (!activeReset) {
           return errorResponse("Code de r\xE9initialisation invalide ou expir\xE9", 400, origin);
         }
+        if (String(activeReset.reset_code).trim() !== String(code).trim()) {
+          const nextAttempts = Number(activeReset.attempts_today || 0) + 1;
+          if (nextAttempts >= 5) {
+            await env.DB.prepare("UPDATE password_resets SET used = 1, attempts_today = ? WHERE id = ?").bind(nextAttempts, activeReset.id).run();
+            return errorResponse("Trop de tentatives incorrectes. Ce code a \xE9t\xE9 invalid\xE9, veuillez en demander un nouveau.", 429, origin);
+          }
+          await env.DB.prepare("UPDATE password_resets SET attempts_today = ? WHERE id = ?").bind(nextAttempts, activeReset.id).run();
+          return errorResponse("Code de r\xE9initialisation incorrect", 400, origin);
+        }
+        const resetRecord = activeReset;
         const newHash = await hashPassword(newPassword);
         await env.DB.prepare("UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(newHash, user.id).run();
         await env.DB.prepare("UPDATE password_resets SET used = 1 WHERE id = ?").bind(resetRecord.id).run();
@@ -5600,30 +5684,14 @@ a:hover{transform:translateY(-2px)}
         return jsonResponse({ success: true, message: "Email de bienvenue envoy\xE9" }, 200, origin);
       }
       if (path === "/api/users/delete-account" && method === "POST") {
-        const body = await request.json().catch(() => ({}));
-        const authHeader = request.headers.get("Authorization") || "";
-        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        let targetUserId = body.userId;
-        let targetEmail = body.email ? String(body.email).toLowerCase().trim() : null;
-        if (token) {
-          try {
-            const payload = await verifyJWT(token);
-            if (payload?.userId) targetUserId = payload.userId;
-            if (payload?.email && !targetEmail) targetEmail = String(payload.email).toLowerCase().trim();
-          } catch (e) {
-          }
+        const authUser = await getAuthUser(request);
+        if (!authUser || !authUser.userId) {
+          return errorResponse("Authentification valide (JWT) requise pour supprimer le compte", 401, origin);
         }
-        if (!targetUserId && !targetEmail) {
-          return errorResponse("userId ou email requis pour supprimer le compte", 400, origin);
-        }
+        const targetUserId = String(authUser.userId);
+        const targetEmail = authUser.email ? String(authUser.email).toLowerCase().trim() : null;
         if (env.DB) {
-          let existingUser = null;
-          if (targetUserId) {
-            existingUser = await env.DB.prepare("SELECT id, email FROM users WHERE id = ?").bind(targetUserId).first();
-          }
-          if (!existingUser && targetEmail) {
-            existingUser = await env.DB.prepare("SELECT id, email FROM users WHERE LOWER(TRIM(email)) = ?").bind(targetEmail).first();
-          }
+          const existingUser = await env.DB.prepare("SELECT id, email FROM users WHERE id = ?").bind(targetUserId).first();
           const resolvedUserId = existingUser?.id || targetUserId;
           const resolvedEmail = existingUser?.email || targetEmail;
           await deleteUserCompletely(env.DB, resolvedUserId, resolvedEmail, env.BUCKET);
@@ -5637,18 +5705,24 @@ a:hover{transform:translateY(-2px)}
         const body = await request.json();
         const { id, name, email, school, filiere, country, avatarUrl } = body;
         if (!id || !email) return errorResponse("ID et email requis", 400, origin);
+        const authUser = await getAuthUser(request);
         const cleanEmail = email.toLowerCase().trim();
         const isPollutedAvatar = isPollutedWallpaperAvatar(avatarUrl);
         const hasAvatar = avatarUrl !== void 0 && !isPollutedAvatar;
         const avatarVal = isPollutedAvatar ? null : avatarUrl ? String(avatarUrl) : null;
+        const targetId = authUser?.userId ? String(authUser.userId) : String(id);
+        if (authUser?.userId && String(authUser.userId) !== String(id)) {
+          return errorResponse("Non autoris\xE9 : discordance d'identit\xE9 utilisateur", 403, origin);
+        }
         const existing = await env.DB.prepare(
-          "SELECT id FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?"
-        ).bind(id, cleanEmail).first();
+          "SELECT id, email, password_hash, email_verified FROM users WHERE id = ?"
+        ).bind(targetId).first();
         if (existing) {
+          const safeEmail = authUser?.userId === existing.id ? existing.email || cleanEmail : existing.email || cleanEmail;
           await env.DB.prepare(`
             UPDATE users SET
               name = COALESCE(?, name),
-              email = ?,
+              email = COALESCE(users.email, ?),
               school = COALESCE(?, school),
               filiere = COALESCE(?, filiere),
               country = COALESCE(?, country),
@@ -5657,7 +5731,7 @@ a:hover{transform:translateY(-2px)}
             WHERE id = ?
           `).bind(
             name || null,
-            cleanEmail,
+            safeEmail,
             school || null,
             filiere || null,
             country || null,
@@ -5666,11 +5740,17 @@ a:hover{transform:translateY(-2px)}
             existing.id
           ).run();
         } else {
+          const emailOwner = await env.DB.prepare(
+            "SELECT id FROM users WHERE LOWER(TRIM(email)) = ?"
+          ).bind(cleanEmail).first();
+          if (emailOwner && emailOwner.id !== targetId) {
+            return jsonResponse({ success: true, message: "Synchronisation ignor\xE9e (email d\xE9j\xE0 rattach\xE9)" }, 200, origin);
+          }
           await env.DB.prepare(`
             INSERT INTO users (id, name, email, school, filiere, country, avatar_url, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
           `).bind(
-            id,
+            targetId,
             name || "\xC9tudiant",
             cleanEmail,
             school || "CME",
@@ -5681,7 +5761,7 @@ a:hover{transform:translateY(-2px)}
         }
         await env.DB.prepare(`
           INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)
-        `).bind(existing ? existing.id : id).run();
+        `).bind(existing ? existing.id : targetId).run();
         return jsonResponse({ success: true, message: "Utilisateur synchronis\xE9" }, 200, origin);
       }
       if (path.startsWith("/api/users/") && !path.includes("/preferences") && method === "GET") {
@@ -5781,7 +5861,7 @@ a:hover{transform:translateY(-2px)}
         const pathId = parts.length > 3 ? decodeURIComponent(parts[3]) : "";
         const body = await request.json().catch(() => ({}));
         const targetId = pathId || body.id;
-        const userId = body.userId;
+        const reqUserId = await extractRequestUserId() || body.userId;
         if (!targetId) return errorResponse("id requis", 400, origin);
         const updates = [];
         const params = [];
@@ -5806,13 +5886,18 @@ a:hover{transform:translateY(-2px)}
           params.push(body.displayOrder);
         }
         if (updates.length > 0) {
-          params.push(targetId);
-          await env.DB.prepare(`UPDATE matieres SET ${updates.join(", ")} WHERE id = ?`).bind(...params).run();
+          if (reqUserId) {
+            params.push(targetId, reqUserId);
+            await env.DB.prepare(`UPDATE matieres SET ${updates.join(", ")} WHERE id = ? AND user_id = ?`).bind(...params).run();
+          } else {
+            params.push(targetId);
+            await env.DB.prepare(`UPDATE matieres SET ${updates.join(", ")} WHERE id = ?`).bind(...params).run();
+          }
         }
-        if (body.oldName && userId) {
+        if (body.oldName && reqUserId) {
           await env.DB.prepare(`
             UPDATE files SET matiere_id = ? WHERE user_id = ? AND (matiere_id = ? OR matiere_id = ?)
-          `).bind(targetId, userId, body.oldName, targetId).run().catch(() => {
+          `).bind(targetId, reqUserId, body.oldName, targetId).run().catch(() => {
           });
         }
         return jsonResponse({ success: true, message: "Mati\xE8re mise \xE0 jour" }, 200, origin);
@@ -5821,15 +5906,12 @@ a:hover{transform:translateY(-2px)}
         if (env.DB) await ensureCloudMediaTables(env.DB);
         const rawId = path.split("/")[3] || "";
         const id = decodeURIComponent(rawId);
-        const matRow = await env.DB.prepare("SELECT name, user_id FROM matieres WHERE id = ? OR name = ?").bind(id, id).first().catch(() => null);
-        await env.DB.prepare("DELETE FROM matieres WHERE id = ? OR name = ?").bind(id, id).run();
-        if (matRow && matRow.user_id) {
-          await env.DB.prepare("DELETE FROM files WHERE user_id = ? AND (matiere_id = ? OR matiere_id = ?)").bind(matRow.user_id, id, matRow.name).run().catch(() => {
-          });
-        } else {
-          await env.DB.prepare("DELETE FROM files WHERE matiere_id = ?").bind(id).run().catch(() => {
-          });
-        }
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const matRow = await env.DB.prepare("SELECT name, user_id FROM matieres WHERE (id = ? OR name = ?) AND user_id = ?").bind(id, id, reqUserId).first().catch(() => null);
+        await env.DB.prepare("DELETE FROM matieres WHERE (id = ? OR name = ?) AND user_id = ?").bind(id, id, reqUserId).run();
+        await env.DB.prepare("DELETE FROM files WHERE user_id = ? AND (matiere_id = ? OR matiere_id = ?)").bind(reqUserId, id, matRow?.name || id).run().catch(() => {
+        });
         return jsonResponse({ success: true, message: "Mati\xE8re et ses fichiers supprim\xE9s" }, 200, origin);
       }
       if (path === "/api/files") {
@@ -5933,9 +6015,14 @@ a:hover{transform:translateY(-2px)}
       if (path.startsWith("/api/files/") && path.endsWith("/favorite") && (method === "PATCH" || method === "PUT" || method === "POST")) {
         if (env.DB) await ensureCloudMediaTables(env.DB);
         const id = path.split("/")[3];
+        const reqUserId = await extractRequestUserId();
         const body = await request.json().catch(() => ({}));
         const isFavoriteVal = body.isFavorite === true || body.isFavorite === 1 ? 1 : 0;
-        await env.DB.prepare("UPDATE files SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(isFavoriteVal, id).run();
+        if (reqUserId) {
+          await env.DB.prepare("UPDATE files SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?").bind(isFavoriteVal, id, reqUserId).run();
+        } else {
+          await env.DB.prepare("UPDATE files SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(isFavoriteVal, id).run();
+        }
         return jsonResponse({ success: true, message: "Favori mis \xE0 jour", isFavorite: isFavoriteVal }, 200, origin);
       }
       if (path.startsWith("/api/files/") && method === "DELETE") {
@@ -5943,6 +6030,9 @@ a:hover{transform:translateY(-2px)}
         const id = path.split("/")[3];
         const reqUserId = await extractRequestUserId();
         const fileRow = await env.DB.prepare("SELECT r2_key, file_url, user_id FROM files WHERE id = ?").bind(id).first().catch(() => null);
+        if (fileRow && fileRow.user_id && reqUserId && fileRow.user_id !== reqUserId) {
+          return errorResponse("Non autoris\xE9 : ce fichier appartient \xE0 un autre utilisateur", 403, origin);
+        }
         const targetUser = fileRow?.user_id || reqUserId;
         const targetR2Key = fileRow?.r2_key;
         const targetUrl = fileRow?.file_url;
@@ -6076,7 +6166,11 @@ a:hover{transform:translateY(-2px)}
       }
       if (path.startsWith("/api/study-files/") && method === "DELETE") {
         const id = path.split("/")[3];
-        const row = await env.DB.prepare("SELECT r2_key FROM study_imported_files WHERE id = ?").bind(id).first().catch(() => null);
+        const reqUserId = await extractRequestUserId();
+        const row = await env.DB.prepare("SELECT r2_key, user_id FROM study_imported_files WHERE id = ?").bind(id).first().catch(() => null);
+        if (row && row.user_id && reqUserId && row.user_id !== reqUserId) {
+          return errorResponse("Non autoris\xE9", 403, origin);
+        }
         if (row && row.r2_key && env.BUCKET) {
           try {
             await env.BUCKET.delete(row.r2_key);
@@ -6093,13 +6187,18 @@ a:hover{transform:translateY(-2px)}
       }
       if (path === "/api/storage/upload" && method === "PUT") {
         const key = url.searchParams.get("key");
-        if (!key) return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
+        if (!key || key.includes("..") || key.startsWith("/")) {
+          return errorResponse("Cl\xE9 de stockage invalide ou manquante", 400, origin);
+        }
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId || reqUserId === "default-user") {
+          return errorResponse("Authentification requise pour t\xE9l\xE9verser un fichier", 401, origin);
+        }
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
         const fileBuffer = await request.arrayBuffer();
         const rawSize = fileBuffer.byteLength;
         const headerSize = Number(request.headers.get("x-original-size-bytes") || request.headers.get("content-length") || 0);
         const effectiveSize = headerSize > 0 ? headerSize : rawSize;
-        const reqUserId = await extractRequestUserId();
         if (reqUserId && env.DB) {
           if (effectiveSize > 0) {
             const quotaCheck = await checkUserStorageQuota(env.DB, reqUserId, effectiveSize);
@@ -6124,6 +6223,7 @@ a:hover{transform:translateY(-2px)}
       }
       if (path.startsWith("/api/storage/file/") && method === "GET") {
         const key = decodeURIComponent(path.replace("/api/storage/file/", ""));
+        if (!key || key.includes("..")) return errorResponse("Cl\xE9 invalide", 400, origin);
         let found = await getObjectFromAnyBucket(rawEnv, "documents", key);
         if (!found || !found.object) {
           found = await getObjectFromAnyBucket(rawEnv, "images", key);
@@ -6143,29 +6243,34 @@ a:hover{transform:translateY(-2px)}
         object.writeHttpMetadata(headers);
         headers.set("etag", object.httpEtag);
         headers.set("Cache-Control", "public, max-age=31536000, immutable");
+        headers.set("X-Content-Type-Options", "nosniff");
         headers.set("Access-Control-Allow-Origin", origin || "*");
         headers.set("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
         headers.set("Access-Control-Allow-Headers", "*");
         headers.set("Cross-Origin-Resource-Policy", "cross-origin");
+        const ext = (key.split(".").pop() || "").toLowerCase();
+        const ct = (headers.get("Content-Type") || "").toLowerCase();
+        if (["html", "htm", "svg", "xml", "xhtml", "js", "mjs"].includes(ext) || ct.includes("html") || ct.includes("svg") || ct.includes("javascript") || ct.includes("xml")) {
+          headers.set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+          if (["html", "htm", "js", "mjs"].includes(ext) || ct.includes("html") || ct.includes("javascript")) {
+            const safeName = key.split("/").pop() || "file";
+            headers.set("Content-Disposition", `attachment; filename="${encodeURIComponent(safeName)}"`);
+          }
+        }
         return new Response(object.body, { headers });
       }
       async function extractRequestUserId() {
-        const queryUserId = url.searchParams.get("userId");
-        if (queryUserId && queryUserId.trim() && queryUserId !== "null" && queryUserId !== "undefined" && queryUserId !== "default-user") {
-          return queryUserId.trim();
+        const authUser = await getAuthUser(request);
+        if (authUser?.userId && authUser.userId !== "default-user") {
+          return String(authUser.userId).trim();
         }
         const xUserId = request.headers.get("x-user-id");
         if (xUserId && xUserId.trim() && xUserId !== "null" && xUserId !== "undefined" && xUserId !== "default-user") {
           return xUserId.trim();
         }
-        const authHeader = request.headers.get("Authorization") || "";
-        if (authHeader.startsWith("Bearer ")) {
-          const token = authHeader.slice(7).trim();
-          try {
-            const payload = await verifyJWT(token);
-            if (payload?.userId && payload.userId !== "default-user") return String(payload.userId);
-          } catch {
-          }
+        const queryUserId = url.searchParams.get("userId");
+        if (queryUserId && queryUserId.trim() && queryUserId !== "null" && queryUserId !== "undefined" && queryUserId !== "default-user") {
+          return queryUserId.trim();
         }
         return "";
       }
@@ -6210,7 +6315,8 @@ a:hover{transform:translateY(-2px)}
         const headers = new Headers();
         object.writeHttpMetadata(headers);
         headers.set("etag", object.httpEtag);
-        headers.set("Cache-Control", "public, max-age=31536000, immutable");
+        headers.set("Cache-Control", category === "secure" ? "private, no-store" : "public, max-age=31536000, immutable");
+        headers.set("X-Content-Type-Options", "nosniff");
         headers.set("Accept-Ranges", "bytes");
         headers.set("Access-Control-Allow-Origin", origin);
         const isDownloadReq = url.searchParams.get("download") === "1" || url.searchParams.get("download") === "true";
@@ -6241,6 +6347,14 @@ a:hover{transform:translateY(-2px)}
             gif: "image/gif"
           };
           if (ext && mimeMap[ext]) headers.set("Content-Type", mimeMap[ext]);
+        }
+        const finalMime = (headers.get("Content-Type") || "").toLowerCase();
+        if (["html", "htm", "svg", "xml", "xhtml", "js", "mjs"].includes(docExt) || finalMime.includes("html") || finalMime.includes("svg") || finalMime.includes("javascript") || finalMime.includes("xml")) {
+          headers.set("Content-Security-Policy", "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; sandbox");
+          if (["html", "htm", "js", "mjs"].includes(docExt) || finalMime.includes("html") || finalMime.includes("javascript")) {
+            const safeName = key.split("/").pop() || "file";
+            headers.set("Content-Disposition", `attachment; filename="${encodeURIComponent(safeName)}"`);
+          }
         }
         if (isDocCategory) {
           const rawBuf = await object.arrayBuffer();
@@ -6307,35 +6421,65 @@ a:hover{transform:translateY(-2px)}
           foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, file_type as extension, title as name, file_url, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(source_category, category, "audio") as category FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(source_category, category, "audio") as category, 1 as is_private_record FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first();
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(original_category, category, "audio") as category FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(original_category, category, "audio") as category, 1 as is_private_record FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
+        const reqStreamUserId = await extractRequestUserId();
+        if (foundRecord && foundRecord.is_private_record && foundRecord.user_id && reqStreamUserId && foundRecord.user_id !== reqStreamUserId) {
+          return errorResponse("Acc\xE8s interdit aux fichiers priv\xE9s d'un autre utilisateur", 403, origin);
         }
         if (!foundRecord || !foundRecord.r2_key) {
           let recoveredKey = "";
           if (foundRecord) {
             const urlKeys = extractR2Keys("", foundRecord.file_url || foundRecord.image_url || foundRecord.video_url || "");
             if (urlKeys.length > 0) recoveredKey = urlKeys[0];
-            if (!recoveredKey) {
+            if (!recoveredKey && foundRecord.user_id) {
+              const ownerId = foundRecord.user_id;
               const rowsToCheck = await env.DB.prepare(`
-                SELECT r2_key FROM files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM image_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM image_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM video_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM video_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM audio_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM audio_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM document_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM document_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM classeur_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM classeur_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM secure_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM secure_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM trash_files WHERE (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM trash_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
                 LIMIT 1
-              `).bind(fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name, fileId, foundRecord.name).first().catch(() => null);
+              `).bind(
+                ownerId,
+                fileId,
+                foundRecord.name,
+                ownerId,
+                fileId,
+                foundRecord.name,
+                ownerId,
+                fileId,
+                foundRecord.name,
+                ownerId,
+                fileId,
+                foundRecord.name,
+                ownerId,
+                fileId,
+                foundRecord.name,
+                ownerId,
+                fileId,
+                foundRecord.name,
+                ownerId,
+                fileId,
+                foundRecord.name,
+                ownerId,
+                fileId,
+                foundRecord.name
+              ).first().catch(() => null);
               if (rowsToCheck?.r2_key) recoveredKey = rowsToCheck.r2_key;
             }
             if (recoveredKey) {
@@ -6356,7 +6500,7 @@ a:hover{transform:translateY(-2px)}
           }
           if (!foundRecord || !foundRecord.r2_key) {
             const searchTarget = (foundRecord?.name || fileId).replace(/[^a-zA-Z0-9._-]/g, "_");
-            const recordUserId = foundRecord?.user_id || "";
+            const recordUserId = foundRecord?.user_id || reqStreamUserId || "";
             if (recordUserId && foundRecord?.name) {
               const candidateKey = `${recordUserId}/${foundRecord.category || "images"}/${fileId}_${searchTarget}`;
               const testFound = await getObjectFromAnyBucket(rawEnv, foundRecord.category || "images", candidateKey);
@@ -6365,15 +6509,13 @@ a:hover{transform:translateY(-2px)}
                 foundRecord.r2_key = candidateKey;
               }
             }
-            if (!recoveredKey) {
+            if (!recoveredKey && recordUserId) {
               const allBuckets = getAllBuckets(rawEnv);
               for (const b of allBuckets) {
                 try {
-                  const listRes = await b.list(recordUserId ? { prefix: `${recordUserId}/`, limit: 500 } : { limit: 500 });
+                  const listRes = await b.list({ prefix: `${recordUserId}/`, limit: 150 });
                   if (listRes && Array.isArray(listRes.objects)) {
-                    const matched = listRes.objects.find(
-                      (o) => o.key.includes(fileId) || searchTarget && o.key.includes(searchTarget) || foundRecord?.name && o.key.toLowerCase().includes(foundRecord.name.toLowerCase())
-                    );
+                    const matched = listRes.objects.find((o) => o.key.includes(fileId));
                     if (matched) {
                       recoveredKey = matched.key;
                       if (!foundRecord) {
@@ -9641,14 +9783,26 @@ a:hover{transform:translateY(-2px)}
             pin_hash = excluded.pin_hash,
             updated_at = CURRENT_TIMESTAMP
         `).bind(reqUserId, pinHash).run();
+        const secureUnlockToken = await createJWT({ userId: reqUserId, scope: "secure_folder" }, 2);
         return jsonResponse({
           success: true,
+          secureUnlockToken,
           message: "Code PIN s\xE9curis\xE9 configur\xE9 avec succ\xE8s"
         }, 200, origin);
       }
       if (path === "/api/cloud/secure/verify-pin" && method === "POST") {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const gPinRate = globalThis.__scPinRateLimit = globalThis.__scPinRateLimit || {};
+        const nowMs = Date.now();
+        const rateEntry = gPinRate[reqUserId];
+        if (rateEntry && rateEntry.until > nowMs && rateEntry.count >= 5) {
+          return jsonResponse({
+            success: false,
+            error: "Trop de tentatives incorrectes. Veuillez patienter quelques minutes avant de r\xE9essayer.",
+            verified: false
+          }, 429, origin);
+        }
         const body = await request.json().catch(() => ({}));
         const pin = String(body.pin || "").trim();
         const existing = await env.DB.prepare(`
@@ -9659,13 +9813,24 @@ a:hover{transform:translateY(-2px)}
         }
         const isValid = await verifyPassword(pin, existing.pin_hash);
         if (!isValid) {
+          const prevCount = rateEntry && rateEntry.until > nowMs ? rateEntry.count : 0;
+          gPinRate[reqUserId] = { count: prevCount + 1, until: nowMs + 5 * 60 * 1e3 };
           return jsonResponse({ success: false, error: "Code PIN incorrect", verified: false }, 401, origin);
         }
-        return jsonResponse({ success: true, verified: true, message: "Dossier s\xE9curis\xE9 d\xE9verrouill\xE9" }, 200, origin);
+        delete gPinRate[reqUserId];
+        const secureUnlockToken = await createJWT({ userId: reqUserId, scope: "secure_folder" }, 2);
+        return jsonResponse({ success: true, verified: true, secureUnlockToken, message: "Dossier s\xE9curis\xE9 d\xE9verrouill\xE9" }, 200, origin);
       }
       if (path === "/api/cloud/secure/files") {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const secTokenHeader = request.headers.get("x-secure-token");
+        if (secTokenHeader && secTokenHeader !== "null" && secTokenHeader !== "undefined") {
+          const secPayload = await verifyJWT(secTokenHeader);
+          if (!secPayload || secPayload.scope !== "secure_folder" || String(secPayload.userId) !== reqUserId) {
+            return errorResponse("Jeton de d\xE9verrouillage du dossier s\xE9curis\xE9 invalide ou expir\xE9", 403, origin);
+          }
+        }
         if (method === "GET") {
           const { results } = await env.DB.prepare(`
             SELECT * FROM secure_files WHERE user_id = ? ORDER BY created_at DESC
@@ -11729,35 +11894,30 @@ a:hover{transform:translateY(-2px)}
       }
       if (path === "/api/shares") {
         if (method === "GET") {
-          const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+          const reqUserId = await extractRequestUserId();
+          const userId = reqUserId || url.searchParams.get("userId") || request.headers.get("x-user-id");
           const isPublicOnly = url.searchParams.get("publicOnly") === "true" || url.searchParams.get("isPublic") === "1";
-          if (userId && userId !== "default-user" && userId !== "all") {
-            await env.DB.prepare(`
-              UPDATE shared_folders
-              SET user_id = ?
-              WHERE user_id = 'default-user'
-            `).bind(userId).run().catch(() => {
-            });
-          }
           let query = "SELECT * FROM shared_folders WHERE id NOT LIKE 'staging_%'";
           const params = [];
-          if (userId && userId !== "all" && userId !== "public") {
+          if (!isPublicOnly && userId && userId !== "all" && userId !== "public" && userId !== "default-user") {
             query += " AND user_id = ?";
             params.push(userId);
           } else {
-            query += " AND is_public = 1";
-          }
-          if (isPublicOnly && !query.includes("is_public = 1")) {
             query += " AND is_public = 1";
           }
           query += " ORDER BY created_at DESC";
           const { results } = await env.DB.prepare(query).bind(...params).all();
           const foldersWithFiles = await Promise.all(
             (results || []).map(async (folder) => {
+              const isOwner = Boolean(reqUserId && folder.user_id && folder.user_id === reqUserId);
+              const { password_hash: _ph, ...safeFolder } = folder;
+              if (folder.is_password_protected && !isOwner) {
+                return { ...safeFolder, files: [], requiresPassword: true };
+              }
               const { results: files } = await env.DB.prepare(
                 "SELECT * FROM shared_folder_files WHERE shared_folder_id = ?"
               ).bind(folder.id).all();
-              return { ...folder, files: files || [] };
+              return { ...safeFolder, files: files || [] };
             })
           );
           return jsonResponse({ success: true, data: foldersWithFiles }, 200, origin);
@@ -11907,10 +12067,11 @@ a:hover{transform:translateY(-2px)}
         if (!folder) return errorResponse("Code de partage introuvable", 404, origin);
         await env.DB.prepare("UPDATE shared_folders SET views_count = views_count + 1 WHERE id = ?").bind(folder.id).run();
         const { results: files } = await env.DB.prepare("SELECT * FROM shared_folder_files WHERE shared_folder_id = ?").bind(folder.id).all();
+        const { password_hash: _ph, ...safeFolder } = folder;
         return jsonResponse({
           success: true,
           data: {
-            ...folder,
+            ...safeFolder,
             files: folder.is_password_protected ? [] : files,
             requiresPassword: !!folder.is_password_protected
           }
@@ -11918,12 +12079,14 @@ a:hover{transform:translateY(-2px)}
       }
       if (path.startsWith("/api/shares/") && path.endsWith("/public") && method === "PUT") {
         const shareId = path.split("/")[3];
-        const requestingUserId = url.searchParams.get("userId") || request.headers.get("x-user-id");
-        if (requestingUserId && requestingUserId !== "admin") {
-          const owner = await env.DB.prepare("SELECT user_id FROM shared_folders WHERE id = ?").bind(shareId).first();
-          if (owner && owner.user_id && owner.user_id !== requestingUserId && owner.user_id !== "default-user") {
-            return errorResponse("Non autoris\xE9 : vous ne pouvez modifier que vos propres partages", 403, origin);
-          }
+        const requestingUserId = await extractRequestUserId();
+        if (!requestingUserId || requestingUserId === "default-user") {
+          return errorResponse("Authentification requise pour modifier un partage", 401, origin);
+        }
+        const owner = await env.DB.prepare("SELECT user_id FROM shared_folders WHERE id = ?").bind(shareId).first();
+        if (!owner) return errorResponse("Partage introuvable", 404, origin);
+        if (owner.user_id && owner.user_id !== "default-user" && owner.user_id !== requestingUserId) {
+          return errorResponse("Non autoris\xE9 : vous ne pouvez modifier que vos propres partages", 403, origin);
         }
         const body = await request.json();
         const isPublic = body.isPublic ? 1 : 0;
@@ -11951,12 +12114,14 @@ a:hover{transform:translateY(-2px)}
       }
       if (path.startsWith("/api/shares/") && method === "DELETE") {
         const shareId = path.split("/")[3];
-        const requestingUserId = url.searchParams.get("userId") || request.headers.get("x-user-id");
-        if (requestingUserId && requestingUserId !== "admin") {
-          const owner = await env.DB.prepare("SELECT user_id FROM shared_folders WHERE id = ?").bind(shareId).first();
-          if (owner && owner.user_id && owner.user_id !== requestingUserId && owner.user_id !== "default-user") {
-            return errorResponse("Non autoris\xE9 : vous ne pouvez supprimer que vos propres partages", 403, origin);
-          }
+        const requestingUserId = await extractRequestUserId();
+        if (!requestingUserId || requestingUserId === "default-user") {
+          return errorResponse("Authentification requise pour supprimer un partage", 401, origin);
+        }
+        const owner = await env.DB.prepare("SELECT user_id FROM shared_folders WHERE id = ?").bind(shareId).first();
+        if (!owner) return errorResponse("Partage introuvable", 404, origin);
+        if (owner.user_id && owner.user_id !== "default-user" && owner.user_id !== requestingUserId) {
+          return errorResponse("Non autoris\xE9 : vous ne pouvez supprimer que vos propres partages", 403, origin);
         }
         try {
           const { results: filesToDelete } = await env.DB.prepare("SELECT r2_key FROM shared_folder_files WHERE shared_folder_id = ?").bind(shareId).all();
@@ -11999,10 +12164,11 @@ a:hover{transform:translateY(-2px)}
         if (!folder) return errorResponse("Partage introuvable", 404, origin);
         await env.DB.prepare("UPDATE shared_folders SET views_count = views_count + 1 WHERE id = ?").bind(shareId).run();
         const { results: files } = await env.DB.prepare("SELECT * FROM shared_folder_files WHERE shared_folder_id = ?").bind(shareId).all();
+        const { password_hash: _ph, ...safeFolder } = folder;
         return jsonResponse({
           success: true,
           data: {
-            ...folder,
+            ...safeFolder,
             files: folder.is_password_protected ? [] : files,
             // Masquer les fichiers si mot de passe requis
             requiresPassword: !!folder.is_password_protected
@@ -12014,11 +12180,15 @@ a:hover{transform:translateY(-2px)}
         const { pin } = await request.json();
         const folder = await env.DB.prepare("SELECT * FROM shared_folders WHERE id = ?").bind(shareId).first();
         if (!folder) return errorResponse("Dossier partag\xE9 introuvable", 404, origin);
-        if (folder.password_hash !== pin) {
+        const storedPin = String(folder.password_hash || "");
+        const cleanPin = String(pin || "");
+        const isMatch = storedPin === cleanPin || (storedPin.includes(":") ? await verifyPassword(cleanPin, storedPin) : false);
+        if (!isMatch) {
           return errorResponse("Code PIN incorrect", 401, origin);
         }
         const { results: files } = await env.DB.prepare("SELECT * FROM shared_folder_files WHERE shared_folder_id = ?").bind(shareId).all();
-        return jsonResponse({ success: true, data: { ...folder, files } }, 200, origin);
+        const { password_hash: _ph, ...safeFolder } = folder;
+        return jsonResponse({ success: true, data: { ...safeFolder, files } }, 200, origin);
       }
       if (path === "/api/shares/check-user" && method === "POST") {
         const body = await request.json().catch(() => ({}));
@@ -12041,16 +12211,24 @@ a:hover{transform:translateY(-2px)}
           if (!user) return errorResponse("Aucun compte associ\xE9 \xE0 cet email", 404, origin);
           const valid = user.password_hash ? await verifyPassword(password, user.password_hash) : false;
           if (!valid) return errorResponse("Mot de passe incorrect", 401, origin);
+          const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
+          const tokenHash = await hashToken(jwtToken);
+          const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
+          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId(), user.id, tokenHash, sessionExpiresAt).run().catch(() => {
+          });
           return jsonResponse({
             success: true,
             message: "Connexion r\xE9ussie",
             userId: user.id,
             name: user.name,
-            email: user.email
+            email: user.email,
+            token: jwtToken
           }, 200, origin);
         } else {
           const existing = await env.DB.prepare("SELECT id FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
           if (existing) return errorResponse("Un compte existe d\xE9j\xE0 avec cet email. Veuillez vous connecter.", 409, origin);
+          const pwdCheck = validatePasswordFormat(password);
+          if (!pwdCheck.valid) return errorResponse(pwdCheck.error || "Mot de passe trop faible", 400, origin);
           const newUserId = generateId();
           const pwdHash = await hashPassword(password);
           const cleanName = (name || cleanEmail.split("@")[0] || "\xC9tudiant").trim();
@@ -12061,20 +12239,26 @@ a:hover{transform:translateY(-2px)}
             VALUES (?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
           `).bind(newUserId, cleanName, cleanEmail, pwdHash, cleanSchool, cleanCountry).run();
           await env.DB.prepare("INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)").bind(newUserId).run();
+          const jwtToken = await createJWT({ userId: newUserId, email: cleanEmail, name: cleanName });
+          const tokenHash = await hashToken(jwtToken);
+          const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
+          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId(), newUserId, tokenHash, sessionExpiresAt).run().catch(() => {
+          });
           return jsonResponse({
             success: true,
             message: "Compte cr\xE9\xE9 avec succ\xE8s",
             userId: newUserId,
             name: cleanName,
-            email: cleanEmail
+            email: cleanEmail,
+            token: jwtToken
           }, 201, origin);
         }
       }
       if (path.startsWith("/api/shares/") && path.endsWith("/save-to-cloud") && method === "POST") {
         const shareId = path.split("/")[3];
         const body = await request.json().catch(() => ({}));
-        const { userId } = body;
-        if (!userId) return errorResponse("userId requis", 400, origin);
+        const userId = await extractRequestUserId() || body.userId;
+        if (!userId || userId === "default-user") return errorResponse("Authentification requise", 401, origin);
         const folder = await env.DB.prepare("SELECT * FROM shared_folders WHERE id = ?").bind(shareId).first();
         if (!folder) return errorResponse("Dossier partag\xE9 introuvable", 404, origin);
         const { results: sharedFiles } = await env.DB.prepare("SELECT * FROM shared_folder_files WHERE shared_folder_id = ?").bind(shareId).all();
@@ -13889,6 +14073,250 @@ Lien vers le produit : ${productShareUrl}`;
         await env.DB.prepare("DELETE FROM published_documents WHERE id = ?").bind(id).run();
         return jsonResponse({ success: true, message: "Document supprim\xE9" }, 200, origin);
       }
+      if (path === "/api/public/dkd-store" && method === "GET") {
+        if (!env.DB) return jsonResponse({ success: false, error: "Database non configur\xE9e" }, 500, origin);
+        try {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS dkd_store_config (
+              id TEXT PRIMARY KEY DEFAULT 'default',
+              sites_sort_mode TEXT DEFAULT 'manual',
+              categories_sort_mode TEXT DEFAULT 'manual',
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {
+          });
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS dkd_store_categories (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              icon TEXT DEFAULT '\u{1F4C1}',
+              sort_order INTEGER DEFAULT 0,
+              is_active INTEGER DEFAULT 1,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {
+          });
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS dkd_store_sites (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              url TEXT NOT NULL,
+              logo_url TEXT DEFAULT '',
+              category_id TEXT DEFAULT '',
+              category_name TEXT DEFAULT '',
+              subcategory_id TEXT DEFAULT '',
+              subcategory_name TEXT DEFAULT '',
+              description TEXT DEFAULT '',
+              badge TEXT DEFAULT '',
+              promo_images TEXT DEFAULT '[]',
+              is_active INTEGER DEFAULT 1,
+              sort_order INTEGER DEFAULT 0,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {
+          });
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS dkd_store_subcategories (
+              id TEXT PRIMARY KEY,
+              category_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              icon TEXT DEFAULT '\u{1F3F7}\uFE0F',
+              sort_order INTEGER DEFAULT 0,
+              is_active INTEGER DEFAULT 1,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {
+          });
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN subcategory_id TEXT DEFAULT ''`).run().catch(() => {
+          });
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN subcategory_name TEXT DEFAULT ''`).run().catch(() => {
+          });
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN promo_images TEXT DEFAULT '[]'`).run().catch(() => {
+          });
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN is_recommended INTEGER DEFAULT 0`).run().catch(() => {
+          });
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN recommended_duration_type TEXT DEFAULT 'infinite'`).run().catch(() => {
+          });
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN recommended_duration_value INTEGER DEFAULT 0`).run().catch(() => {
+          });
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN recommended_started_at INTEGER DEFAULT 0`).run().catch(() => {
+          });
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN recommended_expires_at INTEGER DEFAULT 0`).run().catch(() => {
+          });
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN is_external INTEGER DEFAULT 0`).run().catch(() => {
+          });
+          await env.DB.prepare(`ALTER TABLE dkd_store_config ADD COLUMN recommended_interval_sites INTEGER DEFAULT 6`).run().catch(() => {
+          });
+          await env.DB.prepare(`
+            UPDATE dkd_store_sites
+            SET is_recommended = 0, updated_at = CURRENT_TIMESTAMP
+            WHERE is_recommended = 1
+              AND recommended_duration_type != 'infinite'
+              AND recommended_expires_at > 0
+              AND recommended_expires_at <= ?
+          `).bind(Date.now()).run().catch(() => {
+          });
+          const config = await env.DB.prepare("SELECT * FROM dkd_store_config WHERE id = 'default'").first() || {
+            id: "default",
+            sites_sort_mode: "manual",
+            categories_sort_mode: "manual",
+            recommended_interval_sites: 6
+          };
+          const catsRes = await env.DB.prepare("SELECT * FROM dkd_store_categories WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC").all();
+          const subcatsRes = await env.DB.prepare("SELECT * FROM dkd_store_subcategories WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC").all().catch(() => ({ results: [] }));
+          const sitesRes = await env.DB.prepare("SELECT * FROM dkd_store_sites WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC").all();
+          let categories = catsRes.results || [];
+          let subcategories = subcatsRes.results || [];
+          let sites = sitesRes.results || [];
+          if (config.sites_sort_mode === "random") {
+            sites = sites.slice().sort(() => Math.random() - 0.5);
+          }
+          if (config.categories_sort_mode === "random") {
+            categories = categories.slice().sort(() => Math.random() - 0.5);
+          }
+          return jsonResponse({
+            success: true,
+            config,
+            categories,
+            subcategories,
+            sites
+          }, 200, origin);
+        } catch (e) {
+          return jsonResponse({ success: false, error: e?.message || "Erreur D1" }, 500, origin);
+        }
+      }
+      if (path === "/api/user-dashboard-sites" || path === "/api/dkd-store/user-sites") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        if (!env.DB) return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
+        await env.DB.prepare(`
+          CREATE TABLE IF NOT EXISTS user_dashboard_sites (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            site_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            url TEXT NOT NULL,
+            logo_url TEXT DEFAULT '',
+            category_name TEXT DEFAULT '',
+            subcategory_name TEXT DEFAULT '',
+            badge TEXT DEFAULT '',
+            description TEXT DEFAULT '',
+            is_external INTEGER DEFAULT 0,
+            position INTEGER DEFAULT 0,
+            installed_at INTEGER NOT NULL,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run().catch(() => {
+        });
+        await env.DB.prepare(`ALTER TABLE user_dashboard_sites ADD COLUMN is_external INTEGER DEFAULT 0`).run().catch(() => {
+        });
+        try {
+          await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_user_dash_sites_user ON user_dashboard_sites(user_id)").run();
+        } catch (e) {
+        }
+        if (method === "GET") {
+          try {
+            const { results } = await env.DB.prepare(`
+              SELECT uds.*, COALESCE(dss.is_external, uds.is_external, 0) AS is_external
+              FROM user_dashboard_sites uds
+              LEFT JOIN dkd_store_sites dss ON uds.site_id = dss.id
+              WHERE uds.user_id = ?
+              ORDER BY uds.position ASC, uds.installed_at ASC
+            `).bind(reqUserId).all();
+            return jsonResponse({ success: true, sites: results || [] }, 200, origin);
+          } catch (e) {
+            return jsonResponse({ success: false, error: e?.message || "Erreur D1" }, 500, origin);
+          }
+        }
+        if (method === "POST") {
+          try {
+            const body = await request.json().catch(() => ({}));
+            const siteId = (body.site_id || body.id || "").trim();
+            const name = (body.name || "").trim();
+            const siteUrl = (body.url || "").trim();
+            if (!siteId || !name || !siteUrl) {
+              return errorResponse("Donn\xE9es du site incompl\xE8tes (id, name, url requis)", 400, origin);
+            }
+            const id = `uds_${reqUserId}_${siteId}`;
+            const logoUrl = body.logo_url || "";
+            const categoryName = body.category_name || "";
+            const subcategoryName = body.subcategory_name || "";
+            const badge = body.badge || "";
+            const description = body.description || "";
+            const isExternal = Number(body.is_external) ? 1 : 0;
+            const installedAt = Number(body.installed_at || Date.now());
+            const position = typeof body.position === "number" ? body.position : 0;
+            await env.DB.prepare(`
+              INSERT INTO user_dashboard_sites (
+                id, user_id, site_id, name, url, logo_url,
+                category_name, subcategory_name, badge, description, is_external,
+                position, installed_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                url = excluded.url,
+                logo_url = excluded.logo_url,
+                category_name = excluded.category_name,
+                subcategory_name = excluded.subcategory_name,
+                badge = excluded.badge,
+                description = excluded.description,
+                is_external = excluded.is_external,
+                position = excluded.position
+            `).bind(
+              id,
+              reqUserId,
+              siteId,
+              name,
+              siteUrl,
+              logoUrl,
+              categoryName,
+              subcategoryName,
+              badge,
+              description,
+              isExternal,
+              position,
+              installedAt
+            ).run();
+            return jsonResponse({
+              success: true,
+              message: "Application ajout\xE9e \xE0 votre tableau de bord",
+              site: {
+                id,
+                user_id: reqUserId,
+                site_id: siteId,
+                name,
+                url: siteUrl,
+                logo_url: logoUrl,
+                category_name: categoryName,
+                subcategory_name: subcategoryName,
+                badge,
+                description,
+                is_external: isExternal,
+                position,
+                installed_at: installedAt
+              }
+            }, 200, origin);
+          } catch (e) {
+            return jsonResponse({ success: false, error: e?.message || "Erreur D1" }, 500, origin);
+          }
+        }
+        if (method === "DELETE") {
+          try {
+            const siteId = url.searchParams.get("site_id") || url.searchParams.get("id");
+            if (!siteId) return errorResponse("site_id requis", 400, origin);
+            await env.DB.prepare(`
+              DELETE FROM user_dashboard_sites
+              WHERE user_id = ? AND (site_id = ? OR id = ?)
+            `).bind(reqUserId, siteId, siteId).run();
+            return jsonResponse({ success: true, message: "Application retir\xE9e de votre tableau de bord" }, 200, origin);
+          } catch (e) {
+            return jsonResponse({ success: false, error: e?.message || "Erreur D1" }, 500, origin);
+          }
+        }
+      }
       if (path === "/api/notifications") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
@@ -15571,7 +15999,7 @@ Lien vers le produit : ${productShareUrl}`;
       if (path === "/api/ai/user/credits" && method === "GET") {
         const targetDb = env.DB || env.MON_D1_STUDYCLOUD || env.DATABASE;
         if (!targetDb) return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
-        const targetUserId = (url.searchParams.get("userId") || request.headers.get("x-user-id") || "default-user").trim();
+        const targetUserId = (await extractRequestUserId() || url.searchParams.get("userId") || request.headers.get("x-user-id") || "default-user").trim();
         let cfg = null;
         try {
           cfg = await targetDb.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first();
@@ -15671,7 +16099,7 @@ Lien vers le produit : ${productShareUrl}`;
         const targetDb = env.DB || env.MON_D1_STUDYCLOUD || env.DATABASE;
         if (!targetDb) return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
         const body = await request.json().catch(() => ({}));
-        const targetUserId = (body.userId || body.user_id || request.headers.get("x-user-id") || "default-user").trim();
+        const targetUserId = (await extractRequestUserId() || body.userId || body.user_id || request.headers.get("x-user-id") || "default-user").trim();
         const tokens = Math.max(1, parseInt(body.tokens || 0, 10));
         const model = body.model || "Delmas IA";
         const actionType = body.actionType || body.action_type || "chat_deduction";
@@ -15825,7 +16253,7 @@ Lien vers le produit : ${productShareUrl}`;
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);
     } catch (err) {
       console.error("Worker API Error:", err);
-      return errorResponse(err.message || "Erreur interne du serveur", 500, origin);
+      return errorResponse("Une erreur interne est survenue sur le serveur.", 500, origin);
     }
   },
   // Handler CRON Cloudflare : exécution périodique automatique pour nettoyer les interactions de plus de 30 jours

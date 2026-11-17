@@ -15876,6 +15876,7 @@ a:hover{transform:translateY(-2px)}
           await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN recommended_duration_value INTEGER DEFAULT 0`).run().catch(() => {});
           await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN recommended_started_at INTEGER DEFAULT 0`).run().catch(() => {});
           await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN recommended_expires_at INTEGER DEFAULT 0`).run().catch(() => {});
+          await env.DB.prepare(`ALTER TABLE dkd_store_sites ADD COLUMN is_external INTEGER DEFAULT 0`).run().catch(() => {});
           await env.DB.prepare(`ALTER TABLE dkd_store_config ADD COLUMN recommended_interval_sites INTEGER DEFAULT 6`).run().catch(() => {});
 
           await env.DB.prepare(`
@@ -15943,11 +15944,13 @@ a:hover{transform:translateY(-2px)}
             subcategory_name TEXT DEFAULT '',
             badge TEXT DEFAULT '',
             description TEXT DEFAULT '',
+            is_external INTEGER DEFAULT 0,
             position INTEGER DEFAULT 0,
             installed_at INTEGER NOT NULL,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
         `).run().catch(() => {});
+        await env.DB.prepare(`ALTER TABLE user_dashboard_sites ADD COLUMN is_external INTEGER DEFAULT 0`).run().catch(() => {});
         try {
           await env.DB.prepare("CREATE INDEX IF NOT EXISTS idx_user_dash_sites_user ON user_dashboard_sites(user_id)").run();
         } catch (e) {}
@@ -15955,9 +15958,11 @@ a:hover{transform:translateY(-2px)}
         if (method === 'GET') {
           try {
             const { results } = await env.DB.prepare(`
-              SELECT * FROM user_dashboard_sites
-              WHERE user_id = ?
-              ORDER BY position ASC, installed_at ASC
+              SELECT uds.*, COALESCE(dss.is_external, uds.is_external, 0) AS is_external
+              FROM user_dashboard_sites uds
+              LEFT JOIN dkd_store_sites dss ON uds.site_id = dss.id
+              WHERE uds.user_id = ?
+              ORDER BY uds.position ASC, uds.installed_at ASC
             `).bind(reqUserId).all<any>();
             return jsonResponse({ success: true, sites: results || [] }, 200, origin);
           } catch (e: any) {
@@ -15981,15 +15986,16 @@ a:hover{transform:translateY(-2px)}
             const subcategoryName = body.subcategory_name || '';
             const badge = body.badge || '';
             const description = body.description || '';
+            const isExternal = Number(body.is_external) ? 1 : 0;
             const installedAt = Number(body.installed_at || Date.now());
             const position = typeof body.position === 'number' ? body.position : 0;
 
             await env.DB.prepare(`
               INSERT INTO user_dashboard_sites (
                 id, user_id, site_id, name, url, logo_url,
-                category_name, subcategory_name, badge, description,
+                category_name, subcategory_name, badge, description, is_external,
                 position, installed_at
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
               ON CONFLICT(id) DO UPDATE SET
                 name = excluded.name,
                 url = excluded.url,
@@ -15998,10 +16004,11 @@ a:hover{transform:translateY(-2px)}
                 subcategory_name = excluded.subcategory_name,
                 badge = excluded.badge,
                 description = excluded.description,
+                is_external = excluded.is_external,
                 position = excluded.position
             `).bind(
               id, reqUserId, siteId, name, siteUrl, logoUrl,
-              categoryName, subcategoryName, badge, description,
+              categoryName, subcategoryName, badge, description, isExternal,
               position, installedAt
             ).run();
 
@@ -16019,6 +16026,7 @@ a:hover{transform:translateY(-2px)}
                 subcategory_name: subcategoryName,
                 badge,
                 description,
+                is_external: isExternal,
                 position,
                 installed_at: installedAt
               }

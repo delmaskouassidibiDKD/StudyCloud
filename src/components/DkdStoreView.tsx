@@ -69,7 +69,7 @@ const DkdAppTile: React.FC<DkdAppTileProps> = ({
       title={site.description ? `${site.name} — ${site.description}` : site.name}
     >
       {/* ICÔNE SQUIRCLE STYLE MICROSOFT / GOOGLE STORE (Grand format bien visible) */}
-      <div className="relative w-full aspect-square rounded-2xl sm:rounded-3xl bg-[#282c38] border-2 border-white/10 group-hover:border-[#e06b2c]/80 shadow-xs group-hover:shadow-md transition-all duration-200 overflow-hidden flex items-center justify-center p-1 sm:p-1.5">
+      <div className="relative w-full aspect-square rounded-2xl sm:rounded-3xl bg-[#3d4252] border-2 border-white/15 group-hover:border-[#e06b2c]/80 shadow-xs group-hover:shadow-md transition-all duration-200 overflow-hidden flex items-center justify-center p-1 sm:p-1.5">
         <img
           src={logoSrc}
           alt={site.name}
@@ -222,12 +222,21 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
     try {
       const data = await getDkdStorePublicData();
       if (data && data.success) {
-        setSites(Array.isArray(data.sites) ? data.sites : []);
+        const fetchedSites = Array.isArray(data.sites) ? data.sites : [];
+        setSites(fetchedSites);
         setCategories(Array.isArray(data.categories) ? data.categories : []);
         setSubcategories(Array.isArray(data.subcategories) ? data.subcategories : []);
         if (data.config && Number(data.config.recommended_interval_sites) >= 1) {
           setRecommendedIntervalSites(Number(data.config.recommended_interval_sites));
         }
+        setSelectedSiteForDetail(prev => {
+          if (!prev) return null;
+          return fetchedSites.find(s => String(s.id) === String(prev.id)) || prev;
+        });
+        setActiveSite(prev => {
+          if (!prev) return null;
+          return fetchedSites.find(s => String(s.id) === String(prev.id)) || prev;
+        });
       } else {
         setFetchError(data?.error || 'Impossible de charger le catalogue.');
       }
@@ -281,6 +290,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
           subcategory_name: site.subcategory_name || '',
           badge: site.badge || '',
           description: site.description || '',
+          is_external: Number(site.is_external) ? 1 : 0,
           installed_at: Date.now()
         }];
       });
@@ -495,7 +505,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
     return (
       <div
         key={`rec-row-${blockKey}`}
-        className="w-full my-4 p-3 sm:p-4 rounded-3xl bg-gradient-to-r from-amber-500/10 via-[#262a35] to-orange-500/10 border-2 border-amber-500/30 shadow-xs"
+        className="w-full my-4 p-3 sm:p-4 rounded-3xl bg-gradient-to-r from-amber-500/12 via-[#3d4252] to-orange-500/12 border-2 border-amber-500/30 shadow-xs"
       >
         <div className="flex items-center justify-between mb-2.5 px-0.5">
           <div className="flex items-center gap-2 min-w-0">
@@ -559,12 +569,12 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
   return (
     <div
       style={{
-        backgroundColor: '#20232b',
+        backgroundColor: '#363a46',
         backgroundImage: `
-          radial-gradient(ellipse 90% 60% at 50% 115%, rgba(99, 102, 241, 0.08), transparent 70%),
-          radial-gradient(ellipse 70% 45% at 15% 90%, rgba(224, 107, 44, 0.06), transparent 60%),
-          radial-gradient(ellipse 65% 45% at 85% 92%, rgba(45, 212, 191, 0.06), transparent 60%),
-          radial-gradient(ellipse 80% 45% at 50% -10%, rgba(255, 255, 255, 0.03), transparent 65%)
+          radial-gradient(ellipse 85% 55% at 20% 95%, rgba(210, 130, 110, 0.22), transparent 65%),
+          radial-gradient(ellipse 85% 60% at 50% 105%, rgba(130, 140, 210, 0.20), transparent 70%),
+          radial-gradient(ellipse 75% 50% at 85% 92%, rgba(90, 180, 190, 0.18), transparent 65%),
+          radial-gradient(ellipse 90% 50% at 50% 0%, rgba(185, 135, 145, 0.16), transparent 65%)
         `
       }}
       className={`w-full flex-1 flex flex-col text-slate-100 transition-colors duration-300 overflow-hidden ${viewerExpandLevel >= 2
@@ -577,7 +587,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
       {/* ====================================================================== */}
       {/* 1. BARRE SUPÉRIEURE (Une seule ligne sur Mobile et PC)                   */}
       {/* ====================================================================== */}
-      <div className="w-full h-11 sm:h-12 flex items-center justify-between px-2.5 sm:px-4 bg-[#252934]/90 border-b border-white/10 shrink-0 z-30 shadow-xs select-none backdrop-blur-xl">
+      <div className="w-full h-11 sm:h-12 flex items-center justify-between px-2.5 sm:px-4 bg-[#3b404e]/90 border-b border-white/15 shrink-0 z-30 shadow-xs select-none backdrop-blur-xl">
         {/* Partie gauche : Bouton retour + Titre DKD store ou Site Actif */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink-0">
           <button
@@ -598,7 +608,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
           </button>
 
           {/* Logo et Nom : DKD store aux couleurs Google Play */}
-          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-xl bg-[#2b2f3c] border border-white/10 shadow-2xs shrink-0 max-w-[200px] sm:max-w-none truncate">
+          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-xl bg-[#434858] border border-white/15 shadow-2xs shrink-0 max-w-[200px] sm:max-w-none truncate">
             <DkdStore3DIcon className="w-5 h-5 shrink-0" />
             <span className="text-xs sm:text-sm font-black tracking-tight whitespace-nowrap">
               <span className="text-[#4285F4]">D</span>
@@ -632,7 +642,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
         {/* Partie centrale : Champ de recherche petit et bien centré dans l'en-tête */}
         {!activeSite && !selectedSiteForDetail && (
           <div className="flex-1 max-w-[200px] xs:max-w-[240px] sm:max-w-xs md:max-w-sm flex items-center justify-center mx-2 sm:mx-4">
-            <div className="relative flex items-center w-full bg-[#2b2f3c] border border-white/10 focus-within:border-[#e06b2c] rounded-xl px-2.5 py-1 transition-all shadow-2xs">
+            <div className="relative flex items-center w-full bg-[#434858] border border-white/15 focus-within:border-[#e06b2c] rounded-xl px-2.5 py-1 transition-all shadow-2xs">
               <Search className="w-3.5 h-3.5 text-stone-400 shrink-0" />
               <input
                 type="text"
@@ -657,6 +667,22 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
 
         {/* Partie droite : Actions, Détacher en Fenêtre App, Super Agrandissement & Zoom */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Bouton bleu "Aller vers le site" (affiché uniquement si le site est coché Hors StudyCloud ET ajouté au tableau de bord) */}
+          {(activeSite || selectedSiteForDetail) &&
+            installedSiteIds.includes(String((activeSite || selectedSiteForDetail)?.id)) &&
+            Number((activeSite || selectedSiteForDetail)?.is_external) === 1 && (
+              <a
+                href={(activeSite || selectedSiteForDetail)!.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] sm:text-xs border border-blue-400/50 shadow-sm shadow-blue-600/30 transition-all cursor-pointer active:scale-95 shrink-0"
+                title={`Lancer ${(activeSite || selectedSiteForDetail)!.name} à l'extérieur de StudyCloud dans le navigateur`}
+              >
+                <Globe className="w-3.5 h-3.5 shrink-0" />
+                <span className="leading-none whitespace-nowrap">Aller vers le site</span>
+              </a>
+            )}
+
           {activeSite ? (
             <>
               {/* Actualiser le site actif */}
@@ -833,7 +859,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
                     {/* Icône Squircle + Titre + Badges */}
                     <div className="flex items-start sm:items-center gap-4 min-w-0">
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-[#282c38] border border-white/12 p-1.5 shadow-xs flex items-center justify-center shrink-0 overflow-hidden">
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-[#3d4252] border border-white/15 p-1.5 shadow-xs flex items-center justify-center shrink-0 overflow-hidden">
                         <img
                           src={detailLogoSrc}
                           alt={selectedSiteForDetail.name}
@@ -876,44 +902,63 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                       </div>
                     </div>
 
-                    {/* Boutons d'action principaux */}
-                    <div className="flex flex-wrap items-center gap-2.5 shrink-0">
-                      {installedSiteIds.includes(String(selectedSiteForDetail.id)) ? (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleOpenSite(selectedSiteForDetail)}
-                            className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md shadow-emerald-500/20 border border-emerald-400/40 transition-all cursor-pointer active:scale-95"
-                          >
-                            <Play className="w-4 h-4 fill-current" />
-                            <span>Ouvrir l'application</span>
-                          </button>
+                    {/* Boutons d'action principaux + Petit indicateur bleu "Site" (non cliquable) en dessous */}
+                    <div className="flex flex-col items-end gap-2 shrink-0">
+                      <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+                        {installedSiteIds.includes(String(selectedSiteForDetail.id)) ? (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {Number(selectedSiteForDetail.is_external) !== 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenSite(selectedSiteForDetail)}
+                                className="flex items-center justify-center gap-2 px-5 py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-600 hover:from-emerald-600 hover:to-teal-700 text-white font-black text-xs sm:text-sm shadow-md shadow-emerald-500/20 border border-emerald-400/40 transition-all cursor-pointer active:scale-95"
+                              >
+                                <Play className="w-4 h-4 fill-current" />
+                                <span>Ouvrir l'application</span>
+                              </button>
+                            )}
 
+                            <button
+                              type="button"
+                              disabled={isActionLoading}
+                              onClick={() => handleRemoveFromDashboard(selectedSiteForDetail)}
+                              className="flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 text-xs font-bold transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                              title="Retirer cette application de mon tableau de bord"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Retirer</span>
+                            </button>
+                          </div>
+                        ) : (
                           <button
                             type="button"
                             disabled={isActionLoading}
-                            onClick={() => handleRemoveFromDashboard(selectedSiteForDetail)}
-                            className="flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 text-xs font-bold transition-all cursor-pointer active:scale-95 disabled:opacity-50"
-                            title="Retirer cette application de mon tableau de bord"
+                            onClick={() => handleAddToDashboard(selectedSiteForDetail)}
+                            className="flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs sm:text-sm shadow-md shadow-orange-500/30 border border-orange-400/40 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
-                            <span>Retirer</span>
+                            {isActionLoading ? (
+                              <RefreshCw className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Download className="w-4 h-4" />
+                            )}
+                            <span>Ajouter à mon tableau de bord</span>
                           </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={isActionLoading}
-                          onClick={() => handleAddToDashboard(selectedSiteForDetail)}
-                          className="flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-orange-500 via-amber-500 to-orange-600 hover:from-orange-600 hover:to-amber-600 text-white font-black text-xs sm:text-sm shadow-md shadow-orange-500/30 border border-orange-400/40 transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                        )}
+                      </div>
+
+                      {/* Petit logo internet bleu non cliquable avec "Site" écrit en bas (affiché uniquement si coché Hors StudyCloud) */}
+                      {Number(selectedSiteForDetail.is_external) === 1 && (
+                        <div
+                          className="flex flex-col items-center justify-center gap-0.5 pointer-events-none select-none pr-1"
+                          aria-label="Site externe"
                         >
-                          {isActionLoading ? (
-                            <RefreshCw className="w-4 h-4 animate-spin" />
-                          ) : (
-                            <Download className="w-4 h-4" />
-                          )}
-                          <span>Ajouter à mon tableau de bord</span>
-                        </button>
+                          <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-blue-600 text-white border border-blue-400/60 shadow-xs shadow-blue-500/30 flex items-center justify-center">
+                            <Globe className="w-3.5 h-3.5 stroke-[2.2]" />
+                          </div>
+                          <span className="text-[10px] font-extrabold text-blue-400 leading-none tracking-tight">
+                            Site
+                          </span>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -940,7 +985,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                         {/* Visuel principal grand format */}
                         <div
                           onClick={() => setLightboxImageUrl(currentHeroPromo)}
-                          className="relative w-full aspect-video rounded-2xl overflow-hidden border border-white/10 bg-[#181a22] group cursor-zoom-in flex items-center justify-center shadow-xs"
+                          className="relative w-full aspect-video rounded-2xl overflow-hidden border border-white/15 bg-[#323644] group cursor-zoom-in flex items-center justify-center shadow-xs"
                         >
                           <img
                             src={currentHeroPromo}
@@ -985,7 +1030,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                       </div>
                     ) : (
                       /* Bannière visuelle si aucune image promo */
-                      <div className="w-full py-10 px-4 rounded-2xl border border-dashed border-white/10 bg-[#282c38]/60 flex flex-col items-center justify-center text-center space-y-2">
+                      <div className="w-full py-10 px-4 rounded-2xl border border-dashed border-white/15 bg-[#3e4352]/75 flex flex-col items-center justify-center text-center space-y-2">
                         <img
                           src={detailLogoSrc}
                           alt={selectedSiteForDetail.name}
@@ -1045,9 +1090,9 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                             <div
                               key={simSite.id}
                               onClick={() => handleSelectSiteDetail(simSite)}
-                              className="group p-3 rounded-2xl bg-[#282c38]/80 border border-white/10 hover:border-[#e06b2c]/80 flex items-center gap-3 transition-all cursor-pointer active:scale-[0.99] shadow-2xs hover:bg-[#313645]"
+                              className="group p-3 rounded-2xl bg-[#3e4352]/80 border border-white/15 hover:border-[#e06b2c]/80 flex items-center gap-3 transition-all cursor-pointer active:scale-[0.99] shadow-2xs hover:bg-[#464b5c]"
                             >
-                              <div className="w-12 h-12 rounded-xl bg-[#20232b] border border-white/10 p-1 flex items-center justify-center shrink-0 overflow-hidden">
+                              <div className="w-12 h-12 rounded-xl bg-[#343844] border border-white/15 p-1 flex items-center justify-center shrink-0 overflow-hidden">
                                 <img
                                   src={simLogo}
                                   alt={simSite.name}
@@ -1275,8 +1320,8 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
               {/* ÉTAT LISTE VIDE */}
               {!isLoading && filteredSites.length === 0 && (
                 <div className="w-full space-y-4">
-                  <div className="p-6 sm:p-8 text-left max-w-md space-y-3 rounded-2xl bg-[#282c38]/60 border border-white/10">
-                    <div className="w-12 h-12 rounded-2xl bg-[#20232b] border border-white/10 flex items-center justify-center text-xl shadow-inner">
+                  <div className="p-6 sm:p-8 text-left max-w-md space-y-3 rounded-2xl bg-[#3e4352]/75 border border-white/15">
+                    <div className="w-12 h-12 rounded-2xl bg-[#343844] border border-white/15 flex items-center justify-center text-xl shadow-inner">
                       🔍
                     </div>
                     <h3 className="text-base font-bold text-white">

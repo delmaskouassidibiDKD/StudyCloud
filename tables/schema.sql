@@ -910,4 +910,80 @@ CREATE INDEX IF NOT EXISTS idx_ai_react_user ON ai_reactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_react_content ON ai_reactions(content_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_react_unique ON ai_reactions(user_id, content_id);
 
+-- ============================================================================
+-- 29. DKD STORE & APPLICATIONS DU TABLEAU DE BORD UTILISATEUR
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS dkd_store_config (
+    id TEXT PRIMARY KEY DEFAULT 'default',
+    sites_sort_mode TEXT DEFAULT 'manual',
+    categories_sort_mode TEXT DEFAULT 'manual',
+    recommended_interval_sites INTEGER DEFAULT 6,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS dkd_store_categories (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    icon TEXT DEFAULT '📁',
+    sort_order INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS dkd_store_subcategories (
+    id TEXT PRIMARY KEY,
+    category_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    icon TEXT DEFAULT '🏷️',
+    sort_order INTEGER DEFAULT 0,
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS dkd_store_sites (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    logo_url TEXT DEFAULT '',
+    category_id TEXT DEFAULT '',
+    category_name TEXT DEFAULT '',
+    subcategory_id TEXT DEFAULT '',
+    subcategory_name TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    badge TEXT DEFAULT '',
+    promo_images TEXT DEFAULT '[]',
+    is_recommended INTEGER DEFAULT 0,
+    recommended_duration_type TEXT DEFAULT 'infinite',
+    recommended_duration_value INTEGER DEFAULT 0,
+    recommended_started_at INTEGER DEFAULT 0,
+    recommended_expires_at INTEGER DEFAULT 0,
+    is_external INTEGER DEFAULT 0, -- 1 = Fonctionne hors de StudyCloud, 0 = Fonctionne à l'intérieur de StudyCloud
+    is_active INTEGER DEFAULT 1,
+    sort_order INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS user_dashboard_sites (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    site_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    logo_url TEXT DEFAULT '',
+    category_name TEXT DEFAULT '',
+    subcategory_name TEXT DEFAULT '',
+    badge TEXT DEFAULT '',
+    description TEXT DEFAULT '',
+    is_external INTEGER DEFAULT 0, -- 1 = Fonctionne hors de StudyCloud, 0 = Fonctionne à l'intérieur de StudyCloud
+    position INTEGER DEFAULT 0,
+    installed_at INTEGER NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_dash_sites_user ON user_dashboard_sites(user_id);
+
+
 

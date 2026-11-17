@@ -3777,6 +3777,7 @@ export interface DkdStoreSite {
   recommended_duration_value?: number;
   recommended_started_at?: number;
   recommended_expires_at?: number;
+  is_external?: number;
   is_active: number;
   sort_order: number;
   created_at?: string;
@@ -3855,6 +3856,7 @@ export async function getDkdStorePublicData(): Promise<DkdStorePublicData> {
             success: true,
             config: data.config,
             categories: Array.isArray(data.categories) ? data.categories : [],
+            subcategories: Array.isArray(data.subcategories) ? data.subcategories : [],
             sites: Array.isArray(data.sites) ? data.sites : []
           };
         }
@@ -3880,6 +3882,7 @@ export interface UserDashboardSite {
   subcategory_name?: string;
   badge?: string;
   description?: string;
+  is_external?: number;
   position?: number;
   installed_at: number;
   created_at?: string;
@@ -3958,6 +3961,7 @@ export async function addUserDashboardSite(site: DkdStoreSite, userId?: string):
     subcategory_name: site.subcategory_name || '',
     badge: site.badge || '',
     description: site.description || '',
+    is_external: Number(site.is_external) ? 1 : 0,
     installed_at: Date.now()
   };
 

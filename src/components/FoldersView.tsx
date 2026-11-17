@@ -2702,6 +2702,18 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               </span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
+              {Number(openedAppSite.is_external) === 1 && (
+                <a
+                  href={openedAppSite.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-[11px] sm:text-xs border border-blue-400/50 shadow-sm shadow-blue-600/30 transition-all cursor-pointer active:scale-95 shrink-0"
+                  title={`Lancer ${openedAppSite.name} à l'extérieur de StudyCloud dans le navigateur`}
+                >
+                  <Globe className="w-3.5 h-3.5 shrink-0" />
+                  <span className="leading-none whitespace-nowrap">Aller vers le site</span>
+                </a>
+              )}
               <button
                 type="button"
                 onClick={() => setOpenedAppIframeKey(k => k + 1)}
