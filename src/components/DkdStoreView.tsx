@@ -531,7 +531,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                 )}
                 {(activeSite || selectedSiteForDetail)?.subcategory_name && (
                   <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-400 dark:border-indigo-600 font-medium">
-                    🏷️ {(activeSite || selectedSiteForDetail)?.subcategory_name}
+                    {(activeSite || selectedSiteForDetail)?.subcategory_name}
                   </span>
                 )}
               </span>
@@ -739,20 +739,20 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
           return (
             <div
               ref={detailScrollRef}
-              className="flex-1 w-full overflow-y-auto px-3 sm:px-6 md:px-8 py-4 sm:py-6 relative min-h-0 bg-stone-50/60 dark:bg-[#070b14]"
+              className="flex-1 w-full overflow-y-auto px-2.5 sm:px-6 py-4 sm:py-6 relative min-h-0 bg-transparent"
             >
-              <div className="max-w-6xl mx-auto space-y-5 sm:space-y-6 pb-10">
+              <div className="w-full space-y-6 pb-12">
 
-                {/* 1. BANDEAU D'IDENTITÉ STUDIO DKD STORE */}
-                <div className="relative overflow-hidden rounded-3xl border-2 border-stone-300 dark:border-slate-700 bg-gradient-to-br from-white via-stone-50 to-blue-50/40 dark:from-[#0d1526] dark:via-[#0f192e] dark:to-[#13203d] p-4 sm:p-6 shadow-md">
+                {/* 1. EN-TÊTE DU SITE (Directement sur le fond de page, sans encadré bloc) */}
+                <div className="relative pb-5 border-b border-stone-200 dark:border-white/10">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
                     {/* Icône Squircle + Titre + Badges */}
                     <div className="flex items-start sm:items-center gap-4 min-w-0">
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-3xl bg-white dark:bg-[#090f1d] border-2 border-stone-300 dark:border-slate-600 p-1.5 shadow-md flex items-center justify-center shrink-0 overflow-hidden">
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white dark:bg-[#090f1d] border border-stone-200 dark:border-slate-800 p-1.5 shadow-xs flex items-center justify-center shrink-0 overflow-hidden">
                         <img
                           src={detailLogoSrc}
                           alt={selectedSiteForDetail.name}
-                          className="w-full h-full object-cover rounded-2xl"
+                          className="w-full h-full object-cover rounded-xl"
                           onError={(e) => {
                             const img = e.currentTarget;
                             if (!img.dataset.fallbackTried) {
@@ -766,7 +766,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
 
                       <div className="min-w-0 flex-1 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h1 className="text-lg sm:text-2xl md:text-3xl font-black text-stone-900 dark:text-white tracking-tight leading-tight">
+                          <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-stone-900 dark:text-white tracking-tight leading-tight">
                             {selectedSiteForDetail.name}
                           </h1>
                           {selectedSiteForDetail.badge && (
@@ -778,21 +778,15 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
 
                         <div className="flex flex-wrap items-center gap-2">
                           {selectedSiteForDetail.category_name && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-stone-200/80 dark:bg-slate-800 text-stone-800 dark:text-slate-200 border border-stone-300 dark:border-slate-600">
-                              <span>📁</span>
-                              <span>{selectedSiteForDetail.category_name}</span>
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-stone-200/80 dark:bg-slate-800 text-stone-700 dark:text-slate-300 border border-stone-300/80 dark:border-slate-700">
+                              {selectedSiteForDetail.category_name}
                             </span>
                           )}
                           {selectedSiteForDetail.subcategory_name && (
-                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-400 dark:border-indigo-500/50">
-                              <span>🏷️</span>
-                              <span>{selectedSiteForDetail.subcategory_name}</span>
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                              {selectedSiteForDetail.subcategory_name}
                             </span>
                           )}
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-mono font-semibold bg-stone-100 dark:bg-slate-900 text-stone-600 dark:text-slate-400 border border-stone-300 dark:border-slate-700">
-                            <Globe className="w-3.5 h-3.5 text-blue-500" />
-                            <span>{detailDomain}</span>
-                          </span>
                         </div>
                       </div>
                     </div>
@@ -802,7 +796,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                       <button
                         type="button"
                         onClick={() => handleOpenSite(selectedSiteForDetail)}
-                        className="flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm shadow-lg shadow-blue-600/25 border border-blue-400/40 transition-all cursor-pointer active:scale-95"
+                        className="flex-1 sm:flex-initial flex items-center justify-center gap-2.5 px-6 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-black text-xs sm:text-sm shadow-md shadow-blue-600/25 border border-blue-400/40 transition-all cursor-pointer active:scale-95"
                       >
                         <Play className="w-4 h-4 fill-current" />
                         <span>Ouvrir le site</span>
@@ -811,10 +805,10 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                       <button
                         type="button"
                         onClick={(e) => togglePinSite(selectedSiteForDetail, e)}
-                        className={`flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl font-bold text-xs border-2 transition-all cursor-pointer active:scale-95 ${
+                        className={`flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl font-bold text-xs border transition-all cursor-pointer active:scale-95 ${
                           isDetailPinned
-                            ? 'bg-amber-500 text-white border-amber-400 shadow-md shadow-amber-500/20'
-                            : 'bg-white hover:bg-stone-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-700 dark:text-slate-200 border-stone-300 dark:border-slate-700'
+                            ? 'bg-amber-500 text-white border-amber-400 shadow-sm shadow-amber-500/20'
+                            : 'bg-white hover:bg-stone-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-700 dark:text-slate-200 border-stone-200 dark:border-slate-700'
                         }`}
                         title={isDetailPinned ? "Retirer des favoris" : "Épingler aux favoris"}
                       >
@@ -826,7 +820,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                         href={selectedSiteForDetail.url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="flex items-center justify-center p-3 rounded-2xl bg-white hover:bg-stone-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-700 dark:text-slate-200 border-2 border-stone-300 dark:border-slate-700 transition-all cursor-pointer active:scale-95"
+                        className="flex items-center justify-center p-3 rounded-2xl bg-white hover:bg-stone-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-700 dark:text-slate-200 border border-stone-200 dark:border-slate-700 transition-all cursor-pointer active:scale-95"
                         title="Ouvrir dans un nouvel onglet externe"
                       >
                         <ExternalLink className="w-4 h-4" />
@@ -835,23 +829,20 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                   </div>
                 </div>
 
-                {/* 2. ARCHITECTURE 2 COLONNES : VITRINE VISUELLE + DESCRIPTION (GAUCHE) | SITES SIMILAIRES (DROITE) */}
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 sm:gap-6 items-start">
+                {/* 2. ARCHITECTURE 2 COLONNES : APERÇUS & SITES SIMILAIRES (GAUCHE) | DESCRIPTION (DROITE) */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-                  {/* COLONNE PRINCIPALE (8/12) : APERÇUS PUBLICITAIRES R2 & DESCRIPTION */}
-                  <div className="lg:col-span-8 space-y-5 sm:space-y-6">
+                  {/* COLONNE GAUCHE (7/12 ou 8/12) : APERÇUS PUBLICITAIRES + SITES SIMILAIRES */}
+                  <div className="lg:col-span-7 xl:col-span-8 space-y-6">
 
-                    {/* SECTION A : APERÇUS VISUELS & IMAGES PUBLICITAIRES (1 à 3 images stockées dans R2) */}
-                    <div className="rounded-3xl border-2 border-stone-300 dark:border-slate-700 bg-white dark:bg-[#0c1323] p-4 sm:p-5 shadow-xs space-y-3.5">
-                      <div className="flex items-center justify-between border-b border-stone-200 dark:border-slate-800 pb-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">🖼️</span>
-                          <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
-                            Aperçus & Images de présentation
-                          </h2>
-                        </div>
+                    {/* SECTION APERÇUS VISUELS (Directement sur le fond de page, sans encadré bloc) */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between pb-2 border-b border-stone-200 dark:border-white/10">
+                        <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
+                          Aperçus et images
+                        </h2>
                         {promoImages.length > 0 && (
-                          <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/30">
+                          <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
                             {promoImages.length} / 3 aperçu{promoImages.length > 1 ? 's' : ''}
                           </span>
                         )}
@@ -862,12 +853,12 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                           {/* Visuel principal grand format */}
                           <div
                             onClick={() => setLightboxImageUrl(currentHeroPromo)}
-                            className="relative w-full aspect-video rounded-2xl overflow-hidden border-2 border-stone-300 dark:border-slate-700 bg-stone-950 group cursor-zoom-in shadow-inner flex items-center justify-center"
+                            className="relative w-full aspect-video rounded-2xl overflow-hidden border border-stone-200 dark:border-slate-800 bg-stone-950 group cursor-zoom-in flex items-center justify-center shadow-xs"
                           >
                             <img
                               src={currentHeroPromo}
                               alt={`${selectedSiteForDetail.name} - Aperçu ${activePromoImageIdx + 1}`}
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.01]"
                             />
                             <div className="absolute bottom-3 right-3 px-3 py-1 rounded-xl bg-black/70 text-white text-[11px] font-bold backdrop-blur-md border border-white/20 flex items-center gap-1.5 opacity-90 group-hover:opacity-100">
                               <Maximize2 className="w-3.5 h-3.5" />
@@ -887,8 +878,8 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                                     onClick={() => setActivePromoImageIdx(idx)}
                                     className={`relative aspect-video rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
                                       isCurrent
-                                        ? 'border-blue-600 dark:border-blue-400 ring-2 ring-blue-500/30 scale-[1.01]'
-                                        : 'border-stone-300 dark:border-slate-700 opacity-70 hover:opacity-100'
+                                        ? 'border-blue-600 dark:border-blue-400 ring-2 ring-blue-500/30'
+                                        : 'border-stone-200 dark:border-slate-800 opacity-70 hover:opacity-100'
                                     }`}
                                   >
                                     <img
@@ -896,7 +887,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                                       alt={`Miniature ${idx + 1}`}
                                       className="w-full h-full object-cover"
                                     />
-                                    <span className="absolute top-1.5 left-1.5 px-1.5 py-0.2 rounded bg-black/70 text-white text-[10px] font-mono font-bold">
+                                    <span className="absolute top-1.5 left-1.5 px-1.5 py-0.5 rounded bg-black/70 text-white text-[10px] font-mono font-bold">
                                       #{idx + 1}
                                     </span>
                                   </button>
@@ -906,8 +897,8 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                           )}
                         </div>
                       ) : (
-                        /* Bannière visuelle élégante si aucune image n'a encore été téléversée */
-                        <div className="w-full py-10 px-4 rounded-2xl border-2 border-dashed border-stone-300 dark:border-slate-700 bg-stone-50 dark:bg-[#090f1d] flex flex-col items-center justify-center text-center space-y-2">
+                        /* Bannière visuelle si aucune image promo */
+                        <div className="w-full py-10 px-4 rounded-2xl border border-dashed border-stone-300 dark:border-slate-800 bg-stone-100/60 dark:bg-[#0c1323]/50 flex flex-col items-center justify-center text-center space-y-2">
                           <img
                             src={detailLogoSrc}
                             alt={selectedSiteForDetail.name}
@@ -923,120 +914,94 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                       )}
                     </div>
 
-                    {/* SECTION B : DESCRIPTION & PRÉSENTATION DÉTAILLÉE */}
-                    <div className="rounded-3xl border-2 border-stone-300 dark:border-slate-700 bg-white dark:bg-[#0c1323] p-4 sm:p-6 shadow-xs space-y-4">
-                      <div className="flex items-center justify-between border-b border-stone-200 dark:border-slate-800 pb-2.5">
-                        <div className="flex items-center gap-2">
-                          <span className="text-base">📋</span>
+                    {/* SECTION SITES SIMILAIRES (À la place de l'ancienne description, sous les aperçus, sans encadré bloc) */}
+                    <div className="space-y-3 pt-2">
+                      <div className="flex items-center justify-between pb-2 border-b border-stone-200 dark:border-white/10">
+                        <div>
                           <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
-                            Description & Informations sur le site
+                            Sites similaires
                           </h2>
+                          <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
+                            Autres ressources dans cette thématique
+                          </p>
                         </div>
                       </div>
 
-                      <div className="text-xs sm:text-sm text-stone-700 dark:text-slate-200 leading-relaxed whitespace-pre-line">
-                        {selectedSiteForDetail.description && selectedSiteForDetail.description.trim() !== ''
-                          ? selectedSiteForDetail.description
-                          : `Découvrez et utilisez ${selectedSiteForDetail.name} directement au sein de votre espace StudyCloud.`}
-                      </div>
+                      {similarSites.length === 0 ? (
+                        <div className="py-6 text-xs text-stone-500 dark:text-slate-400">
+                          Aucun autre site similaire enregistré pour le moment.
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                          {similarSites.map((simSite) => {
+                            const simDomain = getDomainFromUrl(simSite.url);
+                            const simLogo = (simSite.logo_url && simSite.logo_url.trim() !== '')
+                              ? simSite.logo_url
+                              : `https://www.google.com/s2/favicons?domain=${simDomain}&sz=128`;
 
-                      {/* Fiche signalétique épurée */}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-3 border-t border-stone-200 dark:border-slate-800">
-                        <div className="p-3 rounded-2xl bg-stone-50 dark:bg-[#090f1d] border border-stone-300 dark:border-slate-700">
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">Catégorie</div>
-                          <div className="text-xs font-extrabold text-stone-800 dark:text-white mt-0.5 truncate">
-                            📁 {selectedSiteForDetail.category_name || 'Général'}
-                          </div>
+                            return (
+                              <div
+                                key={simSite.id}
+                                onClick={() => handleSelectSiteDetail(simSite)}
+                                className="group p-3 rounded-2xl bg-white dark:bg-[#0c1323] border border-stone-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-400 flex items-center gap-3 transition-all cursor-pointer active:scale-[0.99] shadow-2xs"
+                              >
+                                <div className="w-12 h-12 rounded-xl bg-stone-100 dark:bg-[#111a2e] border border-stone-200 dark:border-slate-700 p-1 flex items-center justify-center shrink-0 overflow-hidden">
+                                  <img
+                                    src={simLogo}
+                                    alt={simSite.name}
+                                    className="w-full h-full object-cover rounded-lg group-hover:scale-105 transition-transform"
+                                    onError={(e) => {
+                                      const img = e.currentTarget;
+                                      if (!img.dataset.fallbackTried) {
+                                        img.dataset.fallbackTried = '1';
+                                        img.src = `https://www.google.com/s2/favicons?domain=${simDomain}&sz=128`;
+                                        img.className = 'w-8 h-8 object-contain';
+                                      }
+                                    }}
+                                  />
+                                </div>
+
+                                <div className="min-w-0 flex-1">
+                                  <h4 className="text-xs sm:text-sm font-extrabold text-stone-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                    {simSite.name}
+                                  </h4>
+                                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                    <span className="text-[10px] font-semibold text-stone-500 dark:text-slate-400 truncate">
+                                      {simSite.subcategory_name || simSite.category_name || ''}
+                                    </span>
+                                  </div>
+                                  {simSite.description && (
+                                    <p className="text-[10px] text-stone-400 dark:text-slate-500 line-clamp-1 mt-0.5">
+                                      {simSite.description}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <span className="text-xs font-black text-stone-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 pr-1">
+                                  →
+                                </span>
+                              </div>
+                            );
+                          })}
                         </div>
-                        <div className="p-3 rounded-2xl bg-stone-50 dark:bg-[#090f1d] border border-stone-300 dark:border-slate-700">
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">Sous-catégorie</div>
-                          <div className="text-xs font-extrabold text-indigo-600 dark:text-indigo-400 mt-0.5 truncate">
-                            🏷️ {selectedSiteForDetail.subcategory_name || 'Standard'}
-                          </div>
-                        </div>
-                        <div className="p-3 rounded-2xl bg-stone-50 dark:bg-[#090f1d] border border-stone-300 dark:border-slate-700">
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">Domaine source</div>
-                          <div className="text-xs font-mono font-bold text-blue-600 dark:text-blue-400 mt-0.5 truncate">
-                            {detailDomain}
-                          </div>
-                        </div>
-                      </div>
+                      )}
                     </div>
 
                   </div>
 
-                  {/* COLONNE LATÉRALE (4/12) : SITES & APPLICATIONS SIMILAIRES */}
-                  <div className="lg:col-span-4 rounded-3xl border-2 border-stone-300 dark:border-slate-700 bg-white dark:bg-[#0c1323] p-4 sm:p-5 shadow-xs space-y-3.5">
-                    <div className="flex items-center justify-between border-b border-stone-200 dark:border-slate-800 pb-2.5">
-                      <div>
-                        <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white flex items-center gap-2">
-                          <span>🧭</span>
-                          <span>Sites similaires</span>
-                        </h2>
-                        <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
-                          Autres ressources dans cette thématique
-                        </p>
-                      </div>
+                  {/* COLONNE DROITE (5/12 ou 4/12) : DESCRIPTION (À la place des sites similaires, sans encadré bloc) */}
+                  <div className="lg:col-span-5 xl:col-span-4 space-y-4">
+                    <div className="pb-2 border-b border-stone-200 dark:border-white/10">
+                      <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
+                        Description
+                      </h2>
                     </div>
 
-                    {similarSites.length === 0 ? (
-                      <div className="py-8 text-center text-xs text-stone-500 dark:text-slate-400">
-                        Aucun autre site similaire enregistré pour le moment.
-                      </div>
-                    ) : (
-                      <div className="space-y-2.5">
-                        {similarSites.map((simSite) => {
-                          const simDomain = getDomainFromUrl(simSite.url);
-                          const simLogo = (simSite.logo_url && simSite.logo_url.trim() !== '')
-                            ? simSite.logo_url
-                            : `https://www.google.com/s2/favicons?domain=${simDomain}&sz=128`;
-
-                          return (
-                            <div
-                              key={simSite.id}
-                              onClick={() => handleSelectSiteDetail(simSite)}
-                              className="group p-2.5 rounded-2xl bg-stone-50 hover:bg-blue-50/60 dark:bg-[#090f1d] dark:hover:bg-[#111c35] border border-stone-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 flex items-center gap-3 transition-all cursor-pointer active:scale-[0.99]"
-                            >
-                              <div className="w-14 h-14 rounded-2xl bg-white dark:bg-[#111a2e] border border-stone-300 dark:border-slate-700 p-1 flex items-center justify-center shrink-0 overflow-hidden shadow-2xs">
-                                <img
-                                  src={simLogo}
-                                  alt={simSite.name}
-                                  className="w-full h-full object-cover rounded-xl group-hover:scale-105 transition-transform"
-                                  onError={(e) => {
-                                    const img = e.currentTarget;
-                                    if (!img.dataset.fallbackTried) {
-                                      img.dataset.fallbackTried = '1';
-                                      img.src = `https://www.google.com/s2/favicons?domain=${simDomain}&sz=128`;
-                                      img.className = 'w-8 h-8 object-contain';
-                                    }
-                                  }}
-                                />
-                              </div>
-
-                              <div className="min-w-0 flex-1">
-                                <h4 className="text-xs sm:text-sm font-extrabold text-stone-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                  {simSite.name}
-                                </h4>
-                                <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                                  <span className="text-[10px] font-semibold text-stone-500 dark:text-slate-400 truncate">
-                                    {simSite.subcategory_name || simSite.category_name || simDomain}
-                                  </span>
-                                </div>
-                                {simSite.description && (
-                                  <p className="text-[10px] text-stone-400 dark:text-slate-500 line-clamp-1 mt-0.5">
-                                    {simSite.description}
-                                  </p>
-                                )}
-                              </div>
-
-                              <span className="text-xs font-black text-stone-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 pr-1">
-                                →
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <div className="text-xs sm:text-sm text-stone-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                      {selectedSiteForDetail.description && selectedSiteForDetail.description.trim() !== ''
+                        ? selectedSiteForDetail.description
+                        : `Découvrez et utilisez ${selectedSiteForDetail.name} directement au sein de votre espace StudyCloud.`}
+                    </div>
                   </div>
 
                 </div>
