@@ -8,7 +8,7 @@ import {
   RefreshCw,
   Globe,
   Sparkles,
-  Bookmark,
+  ArrowDown,
   Check,
   AlertCircle,
   Play,
@@ -40,18 +40,20 @@ interface DkdStoreViewProps {
 // Composant Tuile Application style Google Play Store (Grand icône arrondi + titre en dessous)
 interface DkdAppTileProps {
   site: DkdStoreSite;
-  isPinned: boolean;
+  isInstalled: boolean;
+  isLoading?: boolean;
   onOpen: (site: DkdStoreSite) => void;
-  onTogglePin: (site: DkdStoreSite, e: React.MouseEvent) => void;
+  onToggleDashboard: (site: DkdStoreSite, e: React.MouseEvent) => void;
   getDomainFromUrl: (url: string) => string;
   className?: string;
 }
 
 const DkdAppTile: React.FC<DkdAppTileProps> = ({
   site,
-  isPinned,
+  isInstalled,
+  isLoading = false,
   onOpen,
-  onTogglePin,
+  onToggleDashboard,
   getDomainFromUrl,
   className = '',
 }) => {
@@ -67,7 +69,7 @@ const DkdAppTile: React.FC<DkdAppTileProps> = ({
       title={site.description ? `${site.name} — ${site.description}` : site.name}
     >
       {/* ICÔNE SQUIRCLE STYLE GOOGLE PLAY STORE (Grand format bien visible) */}
-      <div className="relative w-full aspect-square rounded-2xl sm:rounded-3xl bg-white dark:bg-[#111a2e] border-2 border-stone-300 dark:border-slate-700 group-hover:border-blue-500 dark:group-hover:border-blue-400 shadow-xs group-hover:shadow-md transition-all duration-200 overflow-hidden flex items-center justify-center p-1 sm:p-1.5">
+      <div className="relative w-full aspect-square rounded-2xl sm:rounded-3xl bg-white dark:bg-[#111a2e] border-2 border-stone-300 dark:border-slate-700 group-hover:border-[#e06b2c]/80 dark:group-hover:border-[#e06b2c]/70 shadow-xs group-hover:shadow-md transition-all duration-200 overflow-hidden flex items-center justify-center p-1 sm:p-1.5">
         <img
           src={logoSrc}
           alt={site.name}
@@ -83,25 +85,31 @@ const DkdAppTile: React.FC<DkdAppTileProps> = ({
               img.style.display = 'none';
               const p = img.parentElement;
               if (p) {
-                p.classList.add('bg-gradient-to-br', 'from-blue-500/10', 'to-indigo-500/20');
+                p.classList.add('bg-gradient-to-br', 'from-orange-500/10', 'to-amber-500/20');
                 p.innerHTML = '<span class="text-3xl sm:text-4xl select-none">🌐</span>';
               }
             }
           }}
         />
 
-        {/* Bouton Épingler / Favori en haut à droite */}
+        {/* Bouton rapide d'ajout au tableau de bord (flèche vers le bas) */}
         <button
           type="button"
-          onClick={(e) => onTogglePin(site, e)}
-          className={`absolute top-1.5 right-1.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-all z-10 cursor-pointer ${
-            isPinned
-              ? 'bg-amber-500 text-white shadow-md ring-2 ring-white/60'
-              : 'bg-black/40 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 sm:opacity-0 max-sm:opacity-80 hover:scale-110 shadow-xs'
+          onClick={(e) => onToggleDashboard(site, e)}
+          className={`absolute top-1.5 right-1.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-all duration-150 z-10 cursor-pointer ${
+            isInstalled
+              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md ring-2 ring-white/60 opacity-100 hover:scale-110'
+              : 'bg-black/50 hover:bg-black/80 text-white opacity-0 group-hover:opacity-100 sm:opacity-0 max-sm:opacity-85 hover:scale-110 shadow-xs'
           }`}
-          title={isPinned ? "Retirer de vos favoris" : "Ajouter aux favoris"}
+          title={isInstalled ? "Retirer de votre tableau de bord" : "Ajouter au tableau de bord"}
         >
-          <Bookmark className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${isPinned ? 'fill-current' : ''}`} />
+          {isLoading ? (
+            <RefreshCw className="w-3 h-3 sm:w-3.5 sm:h-3.5 animate-spin" />
+          ) : isInstalled ? (
+            <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
+          ) : (
+            <ArrowDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
+          )}
         </button>
 
         {/* Badge éventuel (ex: "IA", "Nouveau" ou "⭐ Recommandé") */}
@@ -118,7 +126,7 @@ const DkdAppTile: React.FC<DkdAppTileProps> = ({
 
       {/* NOM & SOUS-TITRE EN DESSOUS (Comme Google Play) */}
       <div className="w-full mt-1.5 sm:mt-2 px-0.5">
-        <h4 className="text-xs sm:text-[13px] md:text-sm font-bold text-stone-900 dark:text-white line-clamp-1 leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+        <h4 className="text-xs sm:text-[13px] md:text-sm font-bold text-stone-900 dark:text-white line-clamp-1 leading-snug group-hover:text-[#e06b2c] dark:group-hover:text-[#ea7d42] transition-colors">
           {site.name}
         </h4>
         <p className="text-[10px] sm:text-[11px] text-stone-500 dark:text-stone-400 font-medium truncate mt-0.5">
@@ -176,18 +184,8 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string>('all');
-  const [showOnlyPinned, setShowOnlyPinned] = useState<boolean>(false);
   const [viewMode, setViewMode] = useState<'shelves' | 'grid'>('shelves');
-
-  // 3. SITES ÉPINGLÉS / FAVORIS (Persistance Locale)
-  const [pinnedSiteIds, setPinnedSiteIds] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_pinned_dkd_sites');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  const [loadingSiteId, setLoadingSiteId] = useState<string | null>(null);
 
   // 4. SITE SÉLECTIONNÉ POUR LA FICHE DE PRÉSENTATION & SITE ACTIF OUVERT DANS L'IFRAME
   const [selectedSiteForDetail, setSelectedSiteForDetail] = useState<DkdStoreSite | null>(null);
@@ -270,6 +268,22 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
   const handleAddToDashboard = async (site: DkdStoreSite) => {
     try {
       setIsActionLoading(true);
+      setInstalledSites(prev => {
+        if (prev.some(s => String(s.site_id) === String(site.id))) return prev;
+        return [...prev, {
+          id: `uds_${user?.id || 'default'}_${site.id}`,
+          user_id: user?.id || 'default',
+          site_id: site.id,
+          name: site.name,
+          url: site.url,
+          logo_url: site.logo_url || '',
+          category_name: site.category_name || '',
+          subcategory_name: site.subcategory_name || '',
+          badge: site.badge || '',
+          description: site.description || '',
+          installed_at: Date.now()
+        }];
+      });
       await addUserDashboardSite(site, user?.id);
       showToast(`✨ "${site.name}" ajouté à votre tableau de bord !`);
     } catch (e: any) {
@@ -282,12 +296,32 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
   const handleRemoveFromDashboard = async (site: DkdStoreSite) => {
     try {
       setIsActionLoading(true);
+      setInstalledSites(prev => prev.filter(s => String(s.site_id) !== String(site.id) && String(s.id) !== String(site.id)));
       await removeUserDashboardSite(site.id, user?.id);
       showToast(`"${site.name}" retiré de votre tableau de bord.`);
     } catch (e: any) {
       showToast(`Erreur : ${e?.message || "Impossible de retirer le site"}`);
     } finally {
       setIsActionLoading(false);
+    }
+  };
+
+  // Basculer l'ajout au tableau de bord d'un site
+  const handleToggleDashboard = async (site: DkdStoreSite, e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const isInstalled = installedSiteIds.includes(String(site.id));
+    setLoadingSiteId(String(site.id));
+    try {
+      if (isInstalled) {
+        await handleRemoveFromDashboard(site);
+      } else {
+        await handleAddToDashboard(site);
+      }
+    } finally {
+      setLoadingSiteId(null);
     }
   };
 
@@ -310,36 +344,9 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [viewerExpandLevel, activeSite, selectedSiteForDetail, lightboxImageUrl]);
 
-  // Basculer l'épinglage d'un site
-  const togglePinSite = (site: DkdStoreSite, e?: React.MouseEvent) => {
-    if (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    }
-    const isPinned = pinnedSiteIds.includes(site.id);
-    const updated = isPinned
-      ? pinnedSiteIds.filter(id => id !== site.id)
-      : [...pinnedSiteIds, site.id];
-    setPinnedSiteIds(updated);
-    try {
-      localStorage.setItem('studycloud_pinned_dkd_sites', JSON.stringify(updated));
-    } catch { }
-
-    if (isPinned) {
-      showToast(`Site "${site.name}" retiré de vos raccourcis.`);
-    } else {
-      showToast(`⭐ "${site.name}" épinglé à vos raccourcis !`);
-    }
-  };
-
-  // Filtrage des sites selon recherche, catégorie, sous-catégorie et favoris
+  // Filtrage des sites selon recherche, catégorie et sous-catégorie
   const filteredSites = useMemo(() => {
     return sites.filter((site) => {
-      // Filtre favoris
-      if (showOnlyPinned && !pinnedSiteIds.includes(site.id)) {
-        return false;
-      }
-
       // Filtre catégorie
       if (selectedCategoryId !== 'all') {
         const matchesId = String(site.category_id) === String(selectedCategoryId);
@@ -368,7 +375,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
 
       return true;
     });
-  }, [sites, searchQuery, selectedCategoryId, selectedSubcategoryId, showOnlyPinned, pinnedSiteIds]);
+  }, [sites, searchQuery, selectedCategoryId, selectedSubcategoryId]);
 
   // Regroupement par catégories pour les rayons horizontaux style Google Play
   const categoriesWithSites = useMemo(() => {
@@ -488,7 +495,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
     return (
       <div
         key={`rec-row-${blockKey}`}
-        className="w-full my-4 p-3 sm:p-4 rounded-3xl bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-blue-500/10 dark:from-amber-500/10 dark:via-[#0f182c] dark:to-blue-500/10 border-2 border-amber-400/50 dark:border-amber-500/40 shadow-xs"
+        className="w-full my-4 p-3 sm:p-4 rounded-3xl bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-amber-500/10 dark:from-amber-500/10 dark:via-[#0f182c] dark:to-orange-500/10 border-2 border-amber-400/50 dark:border-amber-500/40 shadow-xs"
       >
         <div className="flex items-center justify-between mb-2.5 px-0.5">
           <div className="flex items-center gap-2 min-w-0">
@@ -513,9 +520,10 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
             <DkdAppTile
               key={`${blockKey}-rec-${recSite.id}`}
               site={recSite}
-              isPinned={pinnedSiteIds.includes(recSite.id)}
+              isInstalled={installedSiteIds.includes(String(recSite.id))}
+              isLoading={loadingSiteId === String(recSite.id)}
               onOpen={handleSelectSiteDetail}
-              onTogglePin={togglePinSite}
+              onToggleDashboard={handleToggleDashboard}
               getDomainFromUrl={getDomainFromUrl}
               className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
             />
@@ -615,13 +623,13 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
         {/* Partie centrale : Champ de recherche petit et bien centré dans l'en-tête */}
         {!activeSite && !selectedSiteForDetail && (
           <div className="flex-1 max-w-[200px] xs:max-w-[240px] sm:max-w-xs md:max-w-sm flex items-center justify-center mx-2 sm:mx-4">
-            <div className="relative flex items-center w-full bg-stone-100 hover:bg-stone-200/80 focus-within:bg-white dark:bg-[#111a2f] dark:hover:bg-[#14203b] dark:focus-within:bg-[#14203b] border border-stone-300 dark:border-stone-600 focus-within:border-blue-500 dark:focus-within:border-blue-500 rounded-xl px-2.5 py-1 transition-all shadow-2xs">
+            <div className="relative flex items-center w-full bg-stone-100 hover:bg-stone-200/80 focus-within:bg-white dark:bg-[#111a2f] dark:hover:bg-[#14203b] dark:focus-within:bg-[#14203b] border border-stone-300 dark:border-stone-600 focus-within:border-[#e06b2c] dark:focus-within:border-[#e06b2c] rounded-xl px-2.5 py-1 transition-all shadow-2xs">
               <Search className="w-3.5 h-3.5 text-stone-400 dark:text-stone-400 shrink-0" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Rechercher une pépite..."
+                placeholder="Rechercher une application..."
                 className="w-full bg-transparent border-0 px-2 py-0.5 text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-hidden font-medium"
               />
               {searchQuery && (
@@ -649,20 +657,28 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                 className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 dark:border-stone-600"
                 title="Recharger la page"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isIframeLoading ? 'animate-spin text-blue-500' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${isIframeLoading ? 'animate-spin text-[#e06b2c]' : ''}`} />
               </button>
 
-              {/* Épingler à l'accueil / Raccourcis */}
+              {/* Ajouter / Retirer du tableau de bord */}
               <button
                 type="button"
-                onClick={(e) => togglePinSite(activeSite, e)}
-                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 ${pinnedSiteIds.includes(activeSite.id)
-                    ? 'bg-amber-500/15 text-amber-500 border-amber-500/50 ring-1 ring-amber-500/40'
+                onClick={() => handleToggleDashboard(activeSite)}
+                disabled={loadingSiteId === activeSite.id}
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 ${
+                  installedSiteIds.includes(String(activeSite.id))
+                    ? 'bg-emerald-600 text-white border-emerald-500 ring-1 ring-emerald-400/40'
                     : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 dark:border-stone-600'
-                  }`}
-                title={pinnedSiteIds.includes(activeSite.id) ? "Retirer des raccourcis" : "Épingler aux raccourcis"}
+                }`}
+                title={installedSiteIds.includes(String(activeSite.id)) ? "Retirer de votre tableau de bord" : "Ajouter au tableau de bord"}
               >
-                <Bookmark className={`w-3.5 h-3.5 ${pinnedSiteIds.includes(activeSite.id) ? 'fill-current' : ''}`} />
+                {loadingSiteId === activeSite.id ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : installedSiteIds.includes(String(activeSite.id)) ? (
+                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                ) : (
+                  <ArrowDown className="w-3.5 h-3.5 stroke-[2.5]" />
+                )}
               </button>
             </>
           ) : (
@@ -675,7 +691,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                 className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 dark:border-stone-600"
                 title="Actualiser le catalogue depuis la base de données"
               >
-                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-blue-500' : ''}`} />
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-[#e06b2c]' : ''}`} />
               </button>
             </>
           )}
@@ -712,8 +728,8 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
               }
             }}
             className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 shrink-0 ${viewerExpandLevel >= 1
-                ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
-                : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-black/60 dark:hover:bg-blue-600/80 dark:text-white dark:border-white/10'
+                ? 'bg-[#e06b2c] hover:bg-[#cf5f22] text-white border-[#e06b2c] ring-2 ring-[#e06b2c]/40'
+                : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-black/60 dark:hover:bg-stone-800 dark:text-white dark:border-white/10'
               }`}
             title={
               viewerExpandLevel >= 1
@@ -748,9 +764,9 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
           {/* Indicateur de chargement de l'iframe */}
           {isIframeLoading && (
             <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-white/80 dark:bg-[#070b14]/80 backdrop-blur-xs">
-              <div className="w-10 h-10 border-3 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+              <div className="w-10 h-10 border-3 border-[#e06b2c] border-t-transparent rounded-full animate-spin"></div>
               <p className="mt-3 text-xs sm:text-sm font-semibold text-stone-700 dark:text-stone-300">
-                Ouverture de <span className="font-bold text-blue-600 dark:text-blue-400">{activeSite.name}</span>...
+                Ouverture de <span className="font-bold text-[#e06b2c] dark:text-[#ea7d42]">{activeSite.name}</span>...
               </p>
             </div>
           )}
@@ -775,7 +791,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
             <button
               type="button"
               onClick={handleReloadIframe}
-              className="text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold shrink-0 ml-2 cursor-pointer"
+              className="text-[#e06b2c] dark:text-[#ea7d42] hover:underline flex items-center gap-1 font-semibold shrink-0 ml-2 cursor-pointer"
             >
               <RefreshCw className="w-3 h-3" />
               <span>Actualiser</span>
@@ -795,7 +811,6 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
             : `https://www.google.com/s2/favicons?domain=${detailDomain}&sz=128`;
           const promoImages = parsePromoImages(selectedSiteForDetail.promo_images);
           const currentHeroPromo = promoImages[activePromoImageIdx] || promoImages[0] || '';
-          const isDetailPinned = pinnedSiteIds.includes(selectedSiteForDetail.id);
 
           return (
             <div
@@ -844,7 +859,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                             </span>
                           )}
                           {selectedSiteForDetail.subcategory_name && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-orange-500/10 text-[#e06b2c] dark:text-[#ea7d42] border border-[#e06b2c]/20">
                               {selectedSiteForDetail.subcategory_name}
                             </span>
                           )}
@@ -891,20 +906,6 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                           <span>Ajouter à mon tableau de bord</span>
                         </button>
                       )}
-
-                      <button
-                        type="button"
-                        onClick={(e) => togglePinSite(selectedSiteForDetail, e)}
-                        className={`flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl font-bold text-xs border transition-all cursor-pointer active:scale-95 ${
-                          isDetailPinned
-                            ? 'bg-amber-500 text-white border-amber-400 shadow-sm shadow-amber-500/20'
-                            : 'bg-white hover:bg-stone-100 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-700 dark:text-slate-200 border-stone-200 dark:border-slate-700'
-                        }`}
-                        title={isDetailPinned ? "Retirer des favoris" : "Épingler aux favoris"}
-                      >
-                        <Bookmark className={`w-4 h-4 ${isDetailPinned ? 'fill-current' : ''}`} />
-                        <span className="hidden sm:inline">{isDetailPinned ? 'Favori' : 'Épingler'}</span>
-                      </button>
                     </div>
                   </div>
                 </div>
@@ -919,7 +920,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                         Aperçus et images
                       </h2>
                       {promoImages.length > 0 && (
-                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-orange-500/10 text-[#e06b2c] dark:text-[#ea7d42] border border-[#e06b2c]/20">
                           {promoImages.length} / 3 aperçu{promoImages.length > 1 ? 's' : ''}
                         </span>
                       )}
@@ -955,7 +956,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                                   onClick={() => setActivePromoImageIdx(idx)}
                                   className={`relative aspect-video rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
                                     isCurrent
-                                      ? 'border-blue-600 dark:border-blue-400 ring-2 ring-blue-500/30'
+                                      ? 'border-[#e06b2c] dark:border-[#e06b2c] ring-2 ring-[#e06b2c]/30'
                                       : 'border-stone-200 dark:border-slate-800 opacity-70 hover:opacity-100'
                                   }`}
                                 >
@@ -1035,7 +1036,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                             <div
                               key={simSite.id}
                               onClick={() => handleSelectSiteDetail(simSite)}
-                              className="group p-3 rounded-2xl bg-white dark:bg-[#0c1323] border border-stone-200 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-400 flex items-center gap-3 transition-all cursor-pointer active:scale-[0.99] shadow-2xs"
+                              className="group p-3 rounded-2xl bg-white dark:bg-[#0c1323] border border-stone-200 dark:border-slate-800 hover:border-[#e06b2c]/80 dark:hover:border-[#e06b2c]/70 flex items-center gap-3 transition-all cursor-pointer active:scale-[0.99] shadow-2xs"
                             >
                               <div className="w-12 h-12 rounded-xl bg-stone-100 dark:bg-[#111a2e] border border-stone-200 dark:border-slate-700 p-1 flex items-center justify-center shrink-0 overflow-hidden">
                                 <img
@@ -1054,7 +1055,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                               </div>
 
                               <div className="min-w-0 flex-1">
-                                <h4 className="text-xs sm:text-sm font-extrabold text-stone-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                                <h4 className="text-xs sm:text-sm font-extrabold text-stone-900 dark:text-white truncate group-hover:text-[#e06b2c] dark:group-hover:text-[#ea7d42] transition-colors">
                                   {simSite.name}
                                 </h4>
                                 <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
@@ -1069,7 +1070,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                                 )}
                               </div>
 
-                              <span className="text-xs font-black text-stone-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 pr-1">
+                              <span className="text-xs font-black text-stone-400 group-hover:text-[#e06b2c] dark:group-hover:text-[#ea7d42] pr-1">
                                 →
                               </span>
                             </div>
@@ -1124,47 +1125,20 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                 onClick={() => {
                   setSelectedCategoryId('all');
                   setSelectedSubcategoryId('all');
-                  setShowOnlyPinned(false);
                 }}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${selectedCategoryId === 'all' && !showOnlyPinned
-                    ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-2 ring-blue-500/30'
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                  selectedCategoryId === 'all'
+                    ? 'bg-[#e06b2c] text-white shadow-md shadow-[#e06b2c]/25 ring-2 ring-[#e06b2c]/30'
                     : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] dark:hover:bg-[#17233f] text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
-                  }`}
+                }`}
               >
                 <span>✨</span>
                 <span>Tout</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${selectedCategoryId === 'all' && !showOnlyPinned
-                    ? 'bg-white/20 text-white'
-                    : 'bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
-                  }`}>
-                  {sites.length}
-                </span>
               </button>
-
-              {/* Bouton "Mes favoris" (si l'utilisateur a des sites épinglés) */}
-              {pinnedSiteIds.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShowOnlyPinned(prev => !prev)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${showOnlyPinned
-                      ? 'bg-amber-500 text-white shadow-md shadow-amber-500/25 ring-2 ring-amber-500/30'
-                      : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] dark:hover:bg-[#17233f] text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
-                    }`}
-                >
-                  <span>⭐</span>
-                  <span>Mes favoris</span>
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${showOnlyPinned
-                      ? 'bg-white/20 text-white'
-                      : 'bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-400'
-                    }`}>
-                    {pinnedSiteIds.length}
-                  </span>
-                </button>
-              )}
 
               {/* Catégories créées et chargées depuis la base D1 */}
               {categories.map((cat) => {
-                const isSelected = selectedCategoryId === cat.id && !showOnlyPinned;
+                const isSelected = selectedCategoryId === cat.id;
 
                 return (
                   <button
@@ -1173,12 +1147,12 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                     onClick={() => {
                       setSelectedCategoryId(cat.id);
                       setSelectedSubcategoryId('all');
-                      setShowOnlyPinned(false);
                     }}
-                    className={`flex items-center px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${isSelected
-                        ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25 ring-2 ring-blue-500/30'
+                    className={`flex items-center px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
+                      isSelected
+                        ? 'bg-[#e06b2c] text-white shadow-md shadow-[#e06b2c]/25 ring-2 ring-[#e06b2c]/30'
                         : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] dark:hover:bg-[#17233f] text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
-                      }`}
+                    }`}
                   >
                     <span>{cat.name}</span>
                   </button>
@@ -1192,7 +1166,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                   onClick={() => setViewMode('shelves')}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     viewMode === 'shelves'
-                      ? 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-400'
+                      ? 'bg-[#e06b2c] text-white shadow-xs ring-1 ring-[#e06b2c]/40'
                       : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] text-stone-600 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
                   }`}
                   title="Affichage par rayons horizontaux (style Google Play)"
@@ -1205,7 +1179,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                   onClick={() => setViewMode('grid')}
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     viewMode === 'grid'
-                      ? 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-400'
+                      ? 'bg-[#e06b2c] text-white shadow-xs ring-1 ring-[#e06b2c]/40'
                       : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] text-stone-600 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
                   }`}
                   title="Affichage en grille complète"
@@ -1227,7 +1201,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                   onClick={() => setSelectedSubcategoryId('all')}
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 cursor-pointer ${
                     selectedSubcategoryId === 'all'
-                      ? 'bg-indigo-600 text-white shadow-xs'
+                      ? 'bg-[#e06b2c] text-white shadow-xs'
                       : 'bg-stone-100 hover:bg-stone-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-600 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
                   }`}
                 >
@@ -1242,7 +1216,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                       onClick={() => setSelectedSubcategoryId(subcat.id)}
                       className={`flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 cursor-pointer ${
                         isSel
-                          ? 'bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-400'
+                          ? 'bg-[#e06b2c] text-white shadow-xs ring-1 ring-[#e06b2c]/40'
                           : 'bg-stone-100 hover:bg-stone-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-600 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
                       }`}
                     >
@@ -1282,7 +1256,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                   </p>
                   <button
                     onClick={() => loadStoreData(true)}
-                    className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+                    className="px-4 py-2 bg-[#e06b2c] hover:bg-[#cf5f22] text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
                   >
                     Réessayer
                   </button>
@@ -1322,7 +1296,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
               {!isLoading && filteredSites.length > 0 && (
                 <>
                   {/* CAS 1 : VUE RAYONS HORIZONTAUX PAR CATÉGORIE (Comme sur vos images 1 et 2) */}
-                  {selectedCategoryId === 'all' && selectedSubcategoryId === 'all' && !searchQuery.trim() && !showOnlyPinned && viewMode === 'shelves' && categoriesWithSites.length > 0 ? (
+                  {selectedCategoryId === 'all' && selectedSubcategoryId === 'all' && !searchQuery.trim() && viewMode === 'shelves' && categoriesWithSites.length > 0 ? (
                     (() => {
                       const step = Math.max(1, recommendedIntervalSites);
                       let cumulativeSites = 0;
@@ -1356,7 +1330,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                                         setSelectedCategoryId(category.id);
                                         setSelectedSubcategoryId('all');
                                       }}
-                                      className="text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 flex items-center gap-1 hover:underline cursor-pointer px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/40"
+                                      className="text-xs font-bold text-[#e06b2c] hover:text-[#cf5f22] dark:text-[#ea7d42] flex items-center gap-1 hover:underline cursor-pointer px-2 py-1 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-950/30"
                                     >
                                       <span>Voir tout</span>
                                       <span>→</span>
@@ -1369,9 +1343,10 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                                       <DkdAppTile
                                         key={site.id}
                                         site={site}
-                                        isPinned={pinnedSiteIds.includes(site.id)}
+                                        isInstalled={installedSiteIds.includes(String(site.id))}
+                                        isLoading={loadingSiteId === String(site.id)}
                                         onOpen={handleSelectSiteDetail}
-                                        onTogglePin={togglePinSite}
+                                        onToggleDashboard={handleToggleDashboard}
                                         getDomainFromUrl={getDomainFromUrl}
                                         className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
                                       />
@@ -1400,9 +1375,10 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                                   <DkdAppTile
                                     key={site.id}
                                     site={site}
-                                    isPinned={pinnedSiteIds.includes(site.id)}
+                                    isInstalled={installedSiteIds.includes(String(site.id))}
+                                    isLoading={loadingSiteId === String(site.id)}
                                     onOpen={handleSelectSiteDetail}
-                                    onTogglePin={togglePinSite}
+                                    onToggleDashboard={handleToggleDashboard}
                                     getDomainFromUrl={getDomainFromUrl}
                                     className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
                                   />
@@ -1436,16 +1412,11 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                                     <span>🔍</span>
                                     <span>Résultats pour "{searchQuery}"</span>
                                   </>
-                                ) : showOnlyPinned ? (
-                                  <>
-                                    <span>⭐</span>
-                                    <span>Mes applications favorites</span>
-                                  </>
                                 ) : selectedCategoryId !== 'all' ? (
                                   <span>
                                     {categories.find(c => String(c.id) === String(selectedCategoryId))?.name || selectedCategoryId}
                                     {selectedSubcategoryId !== 'all' && (
-                                      <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 ml-2">
+                                      <span className="text-xs font-semibold text-[#e06b2c] dark:text-[#ea7d42] ml-2">
                                         › {subcategories.find(sc => String(sc.id) === String(selectedSubcategoryId))?.name || selectedSubcategoryId}
                                       </span>
                                     )}
@@ -1457,11 +1428,6 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                                   </>
                                 )}
                               </h3>
-                              {selectedCategoryId === 'all' && (
-                                <p className="text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 mt-0.5">
-                                  {filteredSites.length} application{filteredSites.length > 1 ? 's' : ''} disponible{filteredSites.length > 1 ? 's' : ''}
-                                </p>
-                              )}
                             </div>
                           </div>
 
@@ -1474,9 +1440,10 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                                     <DkdAppTile
                                       key={site.id}
                                       site={site}
-                                      isPinned={pinnedSiteIds.includes(site.id)}
+                                      isInstalled={installedSiteIds.includes(String(site.id))}
+                                      isLoading={loadingSiteId === String(site.id)}
                                       onOpen={handleSelectSiteDetail}
-                                      onTogglePin={togglePinSite}
+                                      onToggleDashboard={handleToggleDashboard}
                                       getDomainFromUrl={getDomainFromUrl}
                                       className="w-full"
                                     />
