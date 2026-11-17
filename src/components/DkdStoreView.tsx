@@ -12,7 +12,9 @@ import {
   Bookmark,
   Check,
   AlertCircle,
-  Play
+  Play,
+  LayoutGrid,
+  Rows
 } from 'lucide-react';
 import { DkdStore3DIcon } from './DkdStore3DIcon';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
@@ -28,7 +30,93 @@ interface DkdStoreViewProps {
   onBack: () => void;
 }
 
+// Composant Tuile Application style Google Play Store (Grand icône arrondi + titre en dessous)
+interface DkdAppTileProps {
+  site: DkdStoreSite;
+  isPinned: boolean;
+  onOpen: (site: DkdStoreSite) => void;
+  onTogglePin: (site: DkdStoreSite, e: React.MouseEvent) => void;
+  getDomainFromUrl: (url: string) => string;
+  className?: string;
+}
 
+const DkdAppTile: React.FC<DkdAppTileProps> = ({
+  site,
+  isPinned,
+  onOpen,
+  onTogglePin,
+  getDomainFromUrl,
+  className = '',
+}) => {
+  const domain = getDomainFromUrl(site.url);
+  const logoSrc = (site.logo_url && site.logo_url.trim() !== '')
+    ? site.logo_url
+    : `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+
+  return (
+    <div
+      onClick={() => onOpen(site)}
+      className={`group flex flex-col items-start cursor-pointer select-none transition-all duration-200 active:scale-95 ${className}`}
+      title={site.description ? `${site.name} — ${site.description}` : site.name}
+    >
+      {/* ICÔNE SQUIRCLE STYLE GOOGLE PLAY STORE (Grand format bien visible) */}
+      <div className="relative w-full aspect-square rounded-2xl sm:rounded-3xl bg-white dark:bg-[#111a2e] border-2 border-stone-300 dark:border-slate-700 group-hover:border-blue-500 dark:group-hover:border-blue-400 shadow-xs group-hover:shadow-md transition-all duration-200 overflow-hidden flex items-center justify-center p-1 sm:p-1.5">
+        <img
+          src={logoSrc}
+          alt={site.name}
+          className="w-full h-full object-cover rounded-[14px] sm:rounded-[20px] transition-transform duration-300 group-hover:scale-105"
+          loading="lazy"
+          onError={(e) => {
+            const img = e.currentTarget;
+            if (!img.dataset.fallbackTried) {
+              img.dataset.fallbackTried = '1';
+              img.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
+              img.className = 'w-10 h-10 sm:w-12 sm:h-12 object-contain';
+            } else {
+              img.style.display = 'none';
+              const p = img.parentElement;
+              if (p) {
+                p.classList.add('bg-gradient-to-br', 'from-blue-500/10', 'to-indigo-500/20');
+                p.innerHTML = '<span class="text-3xl sm:text-4xl select-none">🌐</span>';
+              }
+            }
+          }}
+        />
+
+        {/* Bouton Épingler / Favori en haut à droite */}
+        <button
+          type="button"
+          onClick={(e) => onTogglePin(site, e)}
+          className={`absolute top-1.5 right-1.5 w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center backdrop-blur-md transition-all z-10 cursor-pointer ${
+            isPinned
+              ? 'bg-amber-500 text-white shadow-md ring-2 ring-white/60'
+              : 'bg-black/40 hover:bg-black/70 text-white opacity-0 group-hover:opacity-100 sm:opacity-0 max-sm:opacity-80 hover:scale-110 shadow-xs'
+          }`}
+          title={isPinned ? "Retirer de vos favoris" : "Ajouter aux favoris"}
+        >
+          <Bookmark className={`w-3 h-3 sm:w-3.5 sm:h-3.5 ${isPinned ? 'fill-current' : ''}`} />
+        </button>
+
+        {/* Badge éventuel (ex: "IA", "Nouveau") */}
+        {site.badge && (
+          <span className="absolute bottom-1.5 left-1.5 px-1.5 py-0.5 rounded-md text-[9px] sm:text-[10px] font-black uppercase tracking-wider bg-black/70 text-white backdrop-blur-md border border-white/20">
+            {site.badge}
+          </span>
+        )}
+      </div>
+
+      {/* NOM & SOUS-TITRE EN DESSOUS (Comme Google Play) */}
+      <div className="w-full mt-1.5 sm:mt-2 px-0.5">
+        <h4 className="text-xs sm:text-[13px] md:text-sm font-bold text-stone-900 dark:text-white line-clamp-1 leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+          {site.name}
+        </h4>
+        <p className="text-[10px] sm:text-[11px] text-stone-500 dark:text-stone-400 font-medium truncate mt-0.5">
+          {site.subcategory_name ? site.subcategory_name : site.category_name ? site.category_name : domain}
+        </p>
+      </div>
+    </div>
+  );
+};
 
 export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
   // 1. ÉTAT DES DONNÉES D1 & CHARGEMENT
@@ -44,6 +132,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string>('all');
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string>('all');
   const [showOnlyPinned, setShowOnlyPinned] = useState<boolean>(false);
+  const [viewMode, setViewMode] = useState<'shelves' | 'grid'>('shelves');
 
   // 3. SITES ÉPINGLÉS / FAVORIS (Persistance Locale)
   const [pinnedSiteIds, setPinnedSiteIds] = useState<string[]>(() => {
@@ -191,6 +280,31 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
       return true;
     });
   }, [sites, searchQuery, selectedCategoryId, selectedSubcategoryId, showOnlyPinned, pinnedSiteIds]);
+
+  // Regroupement par catégories pour les rayons horizontaux style Google Play
+  const categoriesWithSites = useMemo(() => {
+    return categories
+      .map(cat => ({
+        category: cat,
+        sites: sites.filter(s =>
+          String(s.category_id) === String(cat.id) ||
+          String(s.category_name).toLowerCase() === String(cat.name).toLowerCase()
+        )
+      }))
+      .filter(item => item.sites.length > 0);
+  }, [categories, sites]);
+
+  // Sites orphelins (sans catégorie)
+  const uncategorizedSites = useMemo(() => {
+    return sites.filter(s => {
+      if (!s.category_id && !s.category_name) return true;
+      const inAnyCat = categories.some(c =>
+        String(s.category_id) === String(c.id) ||
+        String(s.category_name).toLowerCase() === String(c.name).toLowerCase()
+      );
+      return !inAnyCat;
+    });
+  }, [categories, sites]);
 
   // Extraction propre du nom de domaine pour affichage
   const getDomainFromUrl = (url: string) => {
@@ -545,6 +659,36 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                   </button>
                 );
               })}
+
+              {/* Bascule de mode d'affichage : Rayons (Carrousels) vs Grille */}
+              <div className="flex items-center gap-1 ml-auto shrink-0 pl-1">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('shelves')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    viewMode === 'shelves'
+                      ? 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-400'
+                      : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] text-stone-600 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
+                  }`}
+                  title="Affichage par rayons horizontaux (style Google Play)"
+                >
+                  <Rows className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[11px]">Rayons</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('grid')}
+                  className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    viewMode === 'grid'
+                      ? 'bg-blue-600 text-white shadow-xs ring-1 ring-blue-400'
+                      : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] text-stone-600 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
+                  }`}
+                  title="Affichage en grille complète"
+                >
+                  <LayoutGrid className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline text-[11px]">Grille</span>
+                </button>
+              </div>
             </div>
 
             {/* 3.1.B SOUS-CATÉGORIES DYNAMIQUES (Rattachées à la catégorie sélectionnée) */}
@@ -599,20 +743,12 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
             <div className="w-full pt-1">
               {/* ÉTAT CHARGEMENT */}
               {isLoading && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 sm:gap-4 w-full">
-                  {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div
-                      key={i}
-                      className="p-4 rounded-3xl bg-stone-100 dark:bg-[#0e1628] border border-stone-200 dark:border-slate-800 animate-pulse space-y-3"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-2xl bg-stone-200 dark:bg-slate-800"></div>
-                        <div className="flex-1 space-y-1.5">
-                          <div className="h-4 bg-stone-200 dark:bg-slate-800 rounded-sm w-3/4"></div>
-                          <div className="h-3 bg-stone-200 dark:bg-slate-800 rounded-sm w-1/2"></div>
-                        </div>
-                      </div>
-                      <div className="h-12 bg-stone-200 dark:bg-slate-800 rounded-xl"></div>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-4 md:gap-5 w-full">
+                  {[1, 2, 3, 4, 5, 6, 7].map((i) => (
+                    <div key={i} className="flex flex-col items-start w-full animate-pulse space-y-2">
+                      <div className="w-full aspect-square rounded-2xl sm:rounded-3xl bg-stone-200 dark:bg-slate-800"></div>
+                      <div className="h-3.5 bg-stone-200 dark:bg-slate-800 rounded-md w-3/4"></div>
+                      <div className="h-2.5 bg-stone-200 dark:bg-slate-800 rounded-md w-1/2"></div>
                     </div>
                   ))}
                 </div>
@@ -646,12 +782,12 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                     🔍
                   </div>
                   <h3 className="text-base font-bold text-stone-800 dark:text-stone-200">
-                    {searchQuery ? `Aucune pépite trouvée pour "${searchQuery}"` : "Aucune application dans cette catégorie"}
+                    {searchQuery ? `Aucune application trouvée pour "${searchQuery}"` : "Aucune application dans cette catégorie"}
                   </h3>
                   <p className="text-xs text-stone-500 dark:text-stone-400">
                     {searchQuery
                       ? "Essayez d'autres mots-clés ou consultez l'ensemble des catégories."
-                      : "Les nouvelles pépites et applications ajoutées depuis le tableau de bord apparaîtront ici automatiquement."}
+                      : "Les nouvelles applications ajoutées depuis le tableau de bord apparaîtront ici automatiquement."}
                   </p>
                   {searchQuery && (
                     <button
@@ -664,128 +800,145 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack }) => {
                 </div>
               )}
 
-              {/* GRILLE DES CARTES DE SITES / PÉPITES */}
+              {/* AFFICHAGE DES APPLICATIONS (Style Google Play Store : Grand icône squircle bien visible) */}
               {!isLoading && filteredSites.length > 0 && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5 w-full">
-                  {filteredSites.map((site) => {
-                    const isPinned = pinnedSiteIds.includes(site.id);
-                    const domain = getDomainFromUrl(site.url);
-
-                    return (
-                      <div
-                        key={site.id}
-                        onClick={() => handleOpenSite(site)}
-                        className="group relative flex flex-col justify-between p-4 sm:p-5 rounded-3xl bg-white hover:bg-stone-50/90 dark:bg-[#0e1628] dark:hover:bg-[#121c33] border-2 border-stone-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 shadow-xs hover:shadow-xl transition-all duration-200 cursor-pointer select-none"
-                      >
-                        {/* Haut de la carte : Logo, Nom, Badge et Épinglage */}
-                        <div>
-                          <div className="flex items-start justify-between gap-3">
-                            {/* Logo ou Favicon (avec gestion fallback propre) */}
-                            <div className="w-12 h-12 sm:w-13 sm:h-13 rounded-2xl bg-stone-100 dark:bg-slate-900 border border-stone-300 dark:border-slate-700 p-1 flex items-center justify-center shrink-0 shadow-2xs group-hover:scale-105 transition-transform overflow-hidden">
-                              {site.logo_url ? (
-                                <img
-                                  src={site.logo_url}
-                                  alt={site.name}
-                                  className="w-full h-full object-contain rounded-xl"
-                                  onError={(e) => {
-                                    const img = e.currentTarget;
-                                    if (!img.dataset.fallbackTried) {
-                                      img.dataset.fallbackTried = '1';
-                                      img.src = `https://www.google.com/s2/favicons?domain=${domain}&sz=128`;
-                                    } else {
-                                      img.style.display = 'none';
-                                      const p = img.parentElement;
-                                      if (p) p.innerHTML = '<span class="text-xl">🌐</span>';
-                                    }
-                                  }}
-                                />
-                              ) : (
-                                <Globe className="w-6 h-6 text-blue-500 dark:text-blue-400" />
-                              )}
-                            </div>
-
-                            {/* Titre, Catégorie et Badges */}
-                            <div className="flex-1 min-w-0 pr-1">
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <h4 className="text-sm sm:text-base font-extrabold text-stone-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                                  {site.name}
-                                </h4>
-                                {site.badge && (
-                                  <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/30 whitespace-nowrap">
-                                    {site.badge}
-                                  </span>
-                                )}
-                              </div>
-                              <p className="text-[11px] text-stone-400 dark:text-stone-500 font-mono truncate mt-0.5">
-                                {domain}
+                <>
+                  {/* CAS 1 : VUE RAYONS HORIZONTAUX PAR CATÉGORIE (Comme sur vos images 1 et 2) */}
+                  {selectedCategoryId === 'all' && selectedSubcategoryId === 'all' && !searchQuery.trim() && !showOnlyPinned && viewMode === 'shelves' && categoriesWithSites.length > 0 ? (
+                    <div className="w-full space-y-6">
+                      {/* Section pour chaque catégorie contenant des applications */}
+                      {categoriesWithSites.map(({ category, sites: catSites }) => (
+                        <div key={category.id} className="w-full">
+                          {/* En-tête de rayon style Google Play */}
+                          <div className="flex items-center justify-between mb-2.5 px-0.5">
+                            <div>
+                              <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                                <span>{category.icon || '📁'}</span>
+                                <span>{category.name}</span>
+                              </h3>
+                              <p className="text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                                {catSites.length} application{catSites.length > 1 ? 's' : ''} disponible{catSites.length > 1 ? 's' : ''}
                               </p>
-                              {/* Catégorie et Sous-catégorie */}
-                              <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                                {site.category_name && (
-                                  <span className="text-[10px] px-2 py-0.5 rounded-lg bg-stone-100 dark:bg-slate-800 text-stone-600 dark:text-stone-300 font-semibold border border-stone-300 dark:border-slate-700">
-                                    📁 {site.category_name}
-                                  </span>
-                                )}
-                                {site.subcategory_name && (
-                                  <span className="text-[10px] px-2 py-0.5 rounded-lg bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 font-semibold border border-indigo-400 dark:border-indigo-600 flex items-center gap-1">
-                                    <span>🏷️</span>
-                                    <span>{site.subcategory_name}</span>
-                                  </span>
-                                )}
-                              </div>
                             </div>
-
-                            {/* Bouton épingler aux raccourcis */}
                             <button
                               type="button"
-                              onClick={(e) => togglePinSite(site, e)}
-                              className={`p-1.5 rounded-xl border transition-all cursor-pointer shrink-0 ${isPinned
-                                  ? 'bg-amber-500/15 text-amber-500 border-amber-500/30'
-                                  : 'bg-stone-100 hover:bg-stone-200 text-stone-400 hover:text-amber-500 dark:bg-slate-800/80 dark:hover:bg-slate-700 border-stone-200 dark:border-slate-700'
-                                }`}
-                              title={isPinned ? "Retirer de vos raccourcis" : "Épingler à vos raccourcis"}
+                              onClick={() => {
+                                setSelectedCategoryId(category.id);
+                                setSelectedSubcategoryId('all');
+                              }}
+                              className="text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 flex items-center gap-1 hover:underline cursor-pointer px-2 py-1 rounded-lg hover:bg-blue-50 dark:hover:bg-blue-950/40"
                             >
-                              <Bookmark className={`w-3.5 h-3.5 ${isPinned ? 'fill-current' : ''}`} />
+                              <span>Voir tout</span>
+                              <span>→</span>
                             </button>
                           </div>
 
-                          {/* INFORMATIONS & DESCRIPTION DU SITE (Enregistrées dans le tableau de bord) */}
-                          <div className="mt-3.5 pt-3 border-t border-stone-100 dark:border-slate-800/80">
-                            {site.description ? (
-                              <p className="text-xs text-stone-600 dark:text-slate-300 line-clamp-3 leading-relaxed">
-                                {site.description}
-                              </p>
-                            ) : (
-                              <p className="text-xs text-stone-400 dark:text-stone-500 italic">
-                                Accédez à cette ressource directement dans StudyCloud.
-                              </p>
-                            )}
+                          {/* Rangée défilable d'icônes d'applications (Image 1 & 2) */}
+                          <div className="flex items-start gap-3 sm:gap-4 md:gap-5 overflow-x-auto no-scrollbar py-1.5 scroll-smooth">
+                            {catSites.map((site) => (
+                              <DkdAppTile
+                                key={site.id}
+                                site={site}
+                                isPinned={pinnedSiteIds.includes(site.id)}
+                                onOpen={handleOpenSite}
+                                onTogglePin={togglePinSite}
+                                getDomainFromUrl={getDomainFromUrl}
+                                className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
+                              />
+                            ))}
                           </div>
                         </div>
+                      ))}
 
-                        {/* Pied de la carte : Bouton d'ouverture */}
-                        <div className="mt-4 pt-3 border-t border-stone-100 dark:border-slate-800/60 flex items-center justify-between">
-                          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            <span>Intégré StudyCloud</span>
-                          </span>
-
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleOpenSite(site);
-                            }}
-                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition-all shadow-xs group-hover:shadow-md cursor-pointer active:scale-95"
-                          >
-                            <span>Ouvrir</span>
-                            <span className="text-xs font-black">→</span>
-                          </button>
+                      {/* Applications sans catégorie (s'il y en a) */}
+                      {uncategorizedSites.length > 0 && (
+                        <div className="w-full pt-2">
+                          <div className="flex items-center justify-between mb-2.5 px-0.5">
+                            <div>
+                              <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                                <span>✨</span>
+                                <span>Autres applications</span>
+                              </h3>
+                              <p className="text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                                {uncategorizedSites.length} application{uncategorizedSites.length > 1 ? 's' : ''}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-start gap-3 sm:gap-4 md:gap-5 overflow-x-auto no-scrollbar py-1.5 scroll-smooth">
+                            {uncategorizedSites.map((site) => (
+                              <DkdAppTile
+                                key={site.id}
+                                site={site}
+                                isPinned={pinnedSiteIds.includes(site.id)}
+                                onOpen={handleOpenSite}
+                                onTogglePin={togglePinSite}
+                                getDomainFromUrl={getDomainFromUrl}
+                                className="w-[100px] sm:w-[120px] md:w-[135px] shrink-0"
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    /* CAS 2 : VUE GRILLE COMPLÈTE PLAY STORE (Responsive, grands icônes carrés arrondis) */
+                    <div className="w-full">
+                      {/* En-tête indicatif */}
+                      <div className="flex items-center justify-between mb-3 px-0.5">
+                        <div>
+                          <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                            {searchQuery ? (
+                              <>
+                                <span>🔍</span>
+                                <span>Résultats pour "{searchQuery}"</span>
+                              </>
+                            ) : showOnlyPinned ? (
+                              <>
+                                <span>⭐</span>
+                                <span>Mes applications favorites</span>
+                              </>
+                            ) : selectedCategoryId !== 'all' ? (
+                              <>
+                                <span>📁</span>
+                                <span>
+                                  {categories.find(c => String(c.id) === String(selectedCategoryId))?.name || selectedCategoryId}
+                                  {selectedSubcategoryId !== 'all' && (
+                                    <span className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 ml-2">
+                                      › {subcategories.find(sc => String(sc.id) === String(selectedSubcategoryId))?.name || selectedSubcategoryId}
+                                    </span>
+                                  )}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                <span>✨</span>
+                                <span>Toutes les applications</span>
+                              </>
+                            )}
+                          </h3>
+                          <p className="text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 mt-0.5">
+                            {filteredSites.length} application{filteredSites.length > 1 ? 's' : ''} disponible{filteredSites.length > 1 ? 's' : ''}
+                          </p>
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
+
+                      {/* Grille Play Store */}
+                      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 2xl:grid-cols-8 gap-3 sm:gap-4 md:gap-5 w-full">
+                        {filteredSites.map((site) => (
+                          <DkdAppTile
+                            key={site.id}
+                            site={site}
+                            isPinned={pinnedSiteIds.includes(site.id)}
+                            onOpen={handleOpenSite}
+                            onTogglePin={togglePinSite}
+                            getDomainFromUrl={getDomainFromUrl}
+                            className="w-full"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
 
