@@ -68,8 +68,8 @@ const DkdAppTile: React.FC<DkdAppTileProps> = ({
       className={`group flex flex-col items-start cursor-pointer select-none transition-all duration-200 active:scale-95 ${className}`}
       title={site.description ? `${site.name} — ${site.description}` : site.name}
     >
-      {/* ICÔNE SQUIRCLE STYLE GOOGLE PLAY STORE (Grand format bien visible) */}
-      <div className="relative w-full aspect-square rounded-2xl sm:rounded-3xl bg-white dark:bg-[#111a2e] border-2 border-stone-300 dark:border-slate-700 group-hover:border-[#e06b2c]/80 dark:group-hover:border-[#e06b2c]/70 shadow-xs group-hover:shadow-md transition-all duration-200 overflow-hidden flex items-center justify-center p-1 sm:p-1.5">
+      {/* ICÔNE SQUIRCLE STYLE MICROSOFT / GOOGLE STORE (Grand format bien visible) */}
+      <div className="relative w-full aspect-square rounded-2xl sm:rounded-3xl bg-[#282c38] border-2 border-white/10 group-hover:border-[#e06b2c]/80 shadow-xs group-hover:shadow-md transition-all duration-200 overflow-hidden flex items-center justify-center p-1 sm:p-1.5">
         <img
           src={logoSrc}
           alt={site.name}
@@ -85,7 +85,7 @@ const DkdAppTile: React.FC<DkdAppTileProps> = ({
               img.style.display = 'none';
               const p = img.parentElement;
               if (p) {
-                p.classList.add('bg-gradient-to-br', 'from-orange-500/10', 'to-amber-500/20');
+                p.classList.add('bg-gradient-to-br', 'from-orange-500/15', 'to-amber-500/20');
                 p.innerHTML = '<span class="text-3xl sm:text-4xl select-none">🌐</span>';
               }
             }
@@ -124,12 +124,12 @@ const DkdAppTile: React.FC<DkdAppTileProps> = ({
         ) : null}
       </div>
 
-      {/* NOM & SOUS-TITRE EN DESSOUS (Comme Google Play) */}
+      {/* NOM & SOUS-TITRE EN DESSOUS (Comme Google Play / Microsoft Store) */}
       <div className="w-full mt-1.5 sm:mt-2 px-0.5">
-        <h4 className="text-xs sm:text-[13px] md:text-sm font-bold text-stone-900 dark:text-white line-clamp-1 leading-snug group-hover:text-[#e06b2c] dark:group-hover:text-[#ea7d42] transition-colors">
+        <h4 className="text-xs sm:text-[13px] md:text-sm font-bold text-white line-clamp-1 leading-snug group-hover:text-[#e06b2c] transition-colors">
           {site.name}
         </h4>
-        <p className="text-[10px] sm:text-[11px] text-stone-500 dark:text-stone-400 font-medium truncate mt-0.5">
+        <p className="text-[10px] sm:text-[11px] text-stone-400 font-medium truncate mt-0.5">
           {site.subcategory_name ? site.subcategory_name : site.category_name ? site.category_name : domain}
         </p>
       </div>
@@ -495,21 +495,21 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
     return (
       <div
         key={`rec-row-${blockKey}`}
-        className="w-full my-4 p-3 sm:p-4 rounded-3xl bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-amber-500/10 dark:from-amber-500/10 dark:via-[#0f182c] dark:to-orange-500/10 border-2 border-amber-400/50 dark:border-amber-500/40 shadow-xs"
+        className="w-full my-4 p-3 sm:p-4 rounded-3xl bg-gradient-to-r from-amber-500/10 via-[#262a35] to-orange-500/10 border-2 border-amber-500/30 shadow-xs"
       >
         <div className="flex items-center justify-between mb-2.5 px-0.5">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-sm sm:text-base">⭐</span>
-            <h3 className="text-xs sm:text-sm md:text-base font-black text-stone-900 dark:text-white truncate">
+            <h3 className="text-xs sm:text-sm md:text-base font-black text-white truncate">
               {searchQuery.trim()
                 ? `Recommandés pour vous · "${searchQuery.trim()}"`
                 : 'Recommandés pour vous'}
             </h3>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/40 font-extrabold shrink-0">
+            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 font-extrabold shrink-0">
               Sponsorisé
             </span>
           </div>
-          <span className="text-[10px] sm:text-[11px] font-semibold text-stone-500 dark:text-slate-400 hidden sm:inline shrink-0">
+          <span className="text-[10px] sm:text-[11px] font-semibold text-stone-400 hidden sm:inline shrink-0">
             Glissez de gauche à droite ↔
           </span>
         </div>
@@ -558,7 +558,16 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
 
   return (
     <div
-      className={`w-full flex-1 flex flex-col bg-white dark:bg-[#070b14] text-stone-900 dark:text-[#f1f5f9] transition-colors duration-300 overflow-hidden ${viewerExpandLevel >= 2
+      style={{
+        backgroundColor: '#20232b',
+        backgroundImage: `
+          radial-gradient(ellipse 90% 60% at 50% 115%, rgba(99, 102, 241, 0.08), transparent 70%),
+          radial-gradient(ellipse 70% 45% at 15% 90%, rgba(224, 107, 44, 0.06), transparent 60%),
+          radial-gradient(ellipse 65% 45% at 85% 92%, rgba(45, 212, 191, 0.06), transparent 60%),
+          radial-gradient(ellipse 80% 45% at 50% -10%, rgba(255, 255, 255, 0.03), transparent 65%)
+        `
+      }}
+      className={`w-full flex-1 flex flex-col text-slate-100 transition-colors duration-300 overflow-hidden ${viewerExpandLevel >= 2
           ? 'fixed inset-0 z-50 w-screen h-screen min-h-screen'
           : viewerExpandLevel === 1
             ? 'relative w-full h-dvh min-h-dvh'
@@ -568,7 +577,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
       {/* ====================================================================== */}
       {/* 1. BARRE SUPÉRIEURE (Une seule ligne sur Mobile et PC)                   */}
       {/* ====================================================================== */}
-      <div className="w-full h-11 sm:h-12 flex items-center justify-between px-2.5 sm:px-4 bg-white/95 dark:bg-[#0d1424] border-b border-stone-300 dark:border-slate-700 shrink-0 z-30 shadow-xs select-none backdrop-blur-md">
+      <div className="w-full h-11 sm:h-12 flex items-center justify-between px-2.5 sm:px-4 bg-[#252934]/90 border-b border-white/10 shrink-0 z-30 shadow-xs select-none backdrop-blur-xl">
         {/* Partie gauche : Bouton retour + Titre DKD store ou Site Actif */}
         <div className="flex items-center gap-1.5 sm:gap-2.5 min-w-0 shrink-0">
           <button
@@ -581,7 +590,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                 onBack();
               }
             }}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800/90 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-xs rounded-xl border border-stone-300 dark:border-stone-600 shadow-xs transition-all cursor-pointer active:scale-95 shrink-0"
+            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-white/10 hover:bg-white/16 text-stone-200 hover:text-white font-bold text-xs rounded-xl border border-white/10 shadow-xs transition-all cursor-pointer active:scale-95 shrink-0"
             title={activeSite ? "Retour à la fiche du site" : selectedSiteForDetail ? "Retour au catalogue DKD store" : "Retour à l'accueil"}
           >
             <ArrowLeft className="w-3.5 h-3.5 text-[#ff4801] shrink-0" />
@@ -589,7 +598,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
           </button>
 
           {/* Logo et Nom : DKD store aux couleurs Google Play */}
-          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-xl bg-stone-100 dark:bg-stone-900 border border-stone-300 dark:border-stone-700 shadow-2xs shrink-0 max-w-[200px] sm:max-w-none truncate">
+          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-xl bg-[#2b2f3c] border border-white/10 shadow-2xs shrink-0 max-w-[200px] sm:max-w-none truncate">
             <DkdStore3DIcon className="w-5 h-5 shrink-0" />
             <span className="text-xs sm:text-sm font-black tracking-tight whitespace-nowrap">
               <span className="text-[#4285F4]">D</span>
@@ -602,15 +611,15 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
               <span className="text-[#34A853]">e</span>
             </span>
             {(activeSite || selectedSiteForDetail) && (
-              <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-stone-500 dark:text-stone-400 border-l border-stone-300 dark:border-stone-700 pl-2 ml-1 truncate">
+              <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-semibold text-stone-400 border-l border-white/10 pl-2 ml-1 truncate">
                 <span>{(activeSite || selectedSiteForDetail)?.name}</span>
                 {(activeSite || selectedSiteForDetail)?.category_name && (
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-stone-200 dark:bg-stone-800 text-stone-600 dark:text-stone-300 font-medium border border-stone-300 dark:border-stone-700">
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-white/10 text-stone-300 font-medium border border-white/10">
                     {(activeSite || selectedSiteForDetail)?.category_name}
                   </span>
                 )}
                 {(activeSite || selectedSiteForDetail)?.subcategory_name && (
-                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-indigo-500/15 text-indigo-700 dark:text-indigo-300 border border-indigo-400 dark:border-indigo-600 font-medium">
+                  <span className="text-[10px] px-1.5 py-0.2 rounded bg-orange-500/15 text-[#ea7d42] border border-[#e06b2c]/30 font-medium">
                     {(activeSite || selectedSiteForDetail)?.subcategory_name}
                   </span>
                 )}
@@ -623,20 +632,20 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
         {/* Partie centrale : Champ de recherche petit et bien centré dans l'en-tête */}
         {!activeSite && !selectedSiteForDetail && (
           <div className="flex-1 max-w-[200px] xs:max-w-[240px] sm:max-w-xs md:max-w-sm flex items-center justify-center mx-2 sm:mx-4">
-            <div className="relative flex items-center w-full bg-stone-100 hover:bg-stone-200/80 focus-within:bg-white dark:bg-[#111a2f] dark:hover:bg-[#14203b] dark:focus-within:bg-[#14203b] border border-stone-300 dark:border-stone-600 focus-within:border-[#e06b2c] dark:focus-within:border-[#e06b2c] rounded-xl px-2.5 py-1 transition-all shadow-2xs">
-              <Search className="w-3.5 h-3.5 text-stone-400 dark:text-stone-400 shrink-0" />
+            <div className="relative flex items-center w-full bg-[#2b2f3c] border border-white/10 focus-within:border-[#e06b2c] rounded-xl px-2.5 py-1 transition-all shadow-2xs">
+              <Search className="w-3.5 h-3.5 text-stone-400 shrink-0" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder="Rechercher une application..."
-                className="w-full bg-transparent border-0 px-2 py-0.5 text-xs text-stone-900 dark:text-stone-100 placeholder:text-stone-400 dark:placeholder:text-stone-500 focus:outline-hidden font-medium"
+                className="w-full bg-transparent border-0 px-2 py-0.5 text-xs text-white placeholder:text-stone-400 focus:outline-hidden font-medium"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="p-0.5 text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 cursor-pointer"
+                  className="p-0.5 text-stone-400 hover:text-white cursor-pointer"
                   title="Effacer"
                 >
                   <X className="w-3 h-3" />
@@ -654,7 +663,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
               <button
                 type="button"
                 onClick={handleReloadIframe}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 dark:border-stone-600"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 bg-white/10 hover:bg-white/16 text-stone-200 border-white/10"
                 title="Recharger la page"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isIframeLoading ? 'animate-spin text-[#e06b2c]' : ''}`} />
@@ -668,7 +677,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                 className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 ${
                   installedSiteIds.includes(String(activeSite.id))
                     ? 'bg-emerald-600 text-white border-emerald-500 ring-1 ring-emerald-400/40'
-                    : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 dark:border-stone-600'
+                    : 'bg-white/10 hover:bg-white/16 text-stone-200 border-white/10'
                 }`}
                 title={installedSiteIds.includes(String(activeSite.id)) ? "Retirer de votre tableau de bord" : "Ajouter au tableau de bord"}
               >
@@ -688,7 +697,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                 type="button"
                 onClick={() => loadStoreData(true)}
                 disabled={isRefreshing}
-                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 dark:text-stone-200 dark:border-stone-600"
+                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 bg-white/10 hover:bg-white/16 text-stone-200 border-white/10"
                 title="Actualiser le catalogue depuis la base de données"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin text-[#e06b2c]' : ''}`} />
@@ -729,7 +738,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
             }}
             className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 shrink-0 ${viewerExpandLevel >= 1
                 ? 'bg-[#e06b2c] hover:bg-[#cf5f22] text-white border-[#e06b2c] ring-2 ring-[#e06b2c]/40'
-                : 'bg-stone-100 hover:bg-stone-200 text-stone-700 border-stone-300 dark:bg-black/60 dark:hover:bg-stone-800 dark:text-white dark:border-white/10'
+                : 'bg-white/10 hover:bg-white/16 text-stone-200 border-white/10'
               }`}
             title={
               viewerExpandLevel >= 1
@@ -820,11 +829,11 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
               <div className="w-full space-y-6 pb-12">
 
                 {/* 1. EN-TÊTE DU SITE (Directement sur le fond de page, sans encadré bloc) */}
-                <div className="relative pb-5 border-b border-stone-200 dark:border-white/10">
+                <div className="relative pb-5 border-b border-white/10">
                   <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 sm:gap-6">
                     {/* Icône Squircle + Titre + Badges */}
                     <div className="flex items-start sm:items-center gap-4 min-w-0">
-                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white dark:bg-[#090f1d] border border-stone-200 dark:border-slate-800 p-1.5 shadow-xs flex items-center justify-center shrink-0 overflow-hidden">
+                      <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-[#282c38] border border-white/12 p-1.5 shadow-xs flex items-center justify-center shrink-0 overflow-hidden">
                         <img
                           src={detailLogoSrc}
                           alt={selectedSiteForDetail.name}
@@ -842,11 +851,11 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
 
                       <div className="min-w-0 flex-1 space-y-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-stone-900 dark:text-white tracking-tight leading-tight">
+                          <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-white tracking-tight leading-tight">
                             {selectedSiteForDetail.name}
                           </h1>
                           {selectedSiteForDetail.badge && (
-                            <span className="px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-500/40">
+                            <span className="px-2.5 py-0.5 rounded-full text-[10px] sm:text-xs font-black uppercase tracking-wider bg-amber-500/15 text-amber-300 border border-amber-500/40">
                               {selectedSiteForDetail.badge}
                             </span>
                           )}
@@ -854,12 +863,12 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
 
                         <div className="flex flex-wrap items-center gap-2">
                           {selectedSiteForDetail.category_name && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-stone-200/80 dark:bg-slate-800 text-stone-700 dark:text-slate-300 border border-stone-300/80 dark:border-slate-700">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-white/10 text-stone-300 border border-white/10">
                               {selectedSiteForDetail.category_name}
                             </span>
                           )}
                           {selectedSiteForDetail.subcategory_name && (
-                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-orange-500/10 text-[#e06b2c] dark:text-[#ea7d42] border border-[#e06b2c]/20">
+                            <span className="inline-flex items-center px-2.5 py-1 rounded-xl text-xs font-semibold bg-orange-500/15 text-[#ea7d42] border border-[#e06b2c]/30">
                               {selectedSiteForDetail.subcategory_name}
                             </span>
                           )}
@@ -884,7 +893,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                             type="button"
                             disabled={isActionLoading}
                             onClick={() => handleRemoveFromDashboard(selectedSiteForDetail)}
-                            className="flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl bg-red-500/10 hover:bg-red-500/20 text-red-600 dark:text-red-400 border border-red-500/30 text-xs font-bold transition-all cursor-pointer active:scale-95 disabled:opacity-50"
+                            className="flex items-center justify-center gap-1.5 px-3.5 py-3 rounded-2xl bg-red-500/15 hover:bg-red-500/25 text-red-400 border border-red-500/30 text-xs font-bold transition-all cursor-pointer active:scale-95 disabled:opacity-50"
                             title="Retirer cette application de mon tableau de bord"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -915,12 +924,12 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
 
                   {/* SECTION A : APERÇUS VISUELS (Ordre 1 sur mobile, Colonne gauche ligne 1 sur grand écran) */}
                   <div className="order-1 lg:col-start-1 lg:col-span-7 xl:col-span-8 lg:row-start-1 space-y-3">
-                    <div className="flex items-center justify-between pb-2 border-b border-stone-200 dark:border-white/10">
-                      <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
+                    <div className="flex items-center justify-between pb-2 border-b border-white/10">
+                      <h2 className="text-sm sm:text-base font-black text-white tracking-tight">
                         Aperçus et images
                       </h2>
                       {promoImages.length > 0 && (
-                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-orange-500/10 text-[#e06b2c] dark:text-[#ea7d42] border border-[#e06b2c]/20">
+                        <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-orange-500/15 text-[#ea7d42] border border-[#e06b2c]/30">
                           {promoImages.length} / 3 aperçu{promoImages.length > 1 ? 's' : ''}
                         </span>
                       )}
@@ -931,7 +940,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                         {/* Visuel principal grand format */}
                         <div
                           onClick={() => setLightboxImageUrl(currentHeroPromo)}
-                          className="relative w-full aspect-video rounded-2xl overflow-hidden border border-stone-200 dark:border-slate-800 bg-stone-950 group cursor-zoom-in flex items-center justify-center shadow-xs"
+                          className="relative w-full aspect-video rounded-2xl overflow-hidden border border-white/10 bg-[#181a22] group cursor-zoom-in flex items-center justify-center shadow-xs"
                         >
                           <img
                             src={currentHeroPromo}
@@ -956,8 +965,8 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                                   onClick={() => setActivePromoImageIdx(idx)}
                                   className={`relative aspect-video rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
                                     isCurrent
-                                      ? 'border-[#e06b2c] dark:border-[#e06b2c] ring-2 ring-[#e06b2c]/30'
-                                      : 'border-stone-200 dark:border-slate-800 opacity-70 hover:opacity-100'
+                                      ? 'border-[#e06b2c] ring-2 ring-[#e06b2c]/30'
+                                      : 'border-white/10 opacity-70 hover:opacity-100'
                                   }`}
                                 >
                                   <img
@@ -976,16 +985,16 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                       </div>
                     ) : (
                       /* Bannière visuelle si aucune image promo */
-                      <div className="w-full py-10 px-4 rounded-2xl border border-dashed border-stone-300 dark:border-slate-800 bg-stone-100/60 dark:bg-[#0c1323]/50 flex flex-col items-center justify-center text-center space-y-2">
+                      <div className="w-full py-10 px-4 rounded-2xl border border-dashed border-white/10 bg-[#282c38]/60 flex flex-col items-center justify-center text-center space-y-2">
                         <img
                           src={detailLogoSrc}
                           alt={selectedSiteForDetail.name}
                           className="w-16 h-16 rounded-2xl object-contain opacity-90"
                         />
-                        <p className="text-xs font-bold text-stone-700 dark:text-slate-300">
+                        <p className="text-xs font-bold text-white">
                           Aperçu direct de {selectedSiteForDetail.name}
                         </p>
-                        <p className="text-[11px] text-stone-500 dark:text-slate-400">
+                        <p className="text-[11px] text-stone-400">
                           Ajoutez cette application à votre tableau de bord ci-dessus pour y accéder directement.
                         </p>
                       </div>
@@ -994,13 +1003,13 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
 
                   {/* SECTION B : DESCRIPTION (Ordre 2 sur mobile : DIRECTEMENT APRÈS LES APERÇUS, et colonne droite sur grand écran) */}
                   <div className="order-2 lg:col-start-8 xl:col-start-9 lg:col-span-5 xl:col-span-4 lg:row-start-1 lg:row-span-2 space-y-4">
-                    <div className="pb-2 border-b border-stone-200 dark:border-white/10">
-                      <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
+                    <div className="pb-2 border-b border-white/10">
+                      <h2 className="text-sm sm:text-base font-black text-white tracking-tight">
                         Description
                       </h2>
                     </div>
 
-                    <div className="text-xs sm:text-sm text-stone-700 dark:text-slate-300 leading-relaxed whitespace-pre-line">
+                    <div className="text-xs sm:text-sm text-stone-300 leading-relaxed whitespace-pre-line">
                       {selectedSiteForDetail.description && selectedSiteForDetail.description.trim() !== ''
                         ? selectedSiteForDetail.description
                         : `Découvrez et utilisez ${selectedSiteForDetail.name} directement au sein de votre espace StudyCloud.`}
@@ -1009,19 +1018,19 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
 
                   {/* SECTION C : SITES SIMILAIRES (Ordre 3 sur mobile : EN BAS APRÈS LA DESCRIPTION, et sous les aperçus sur grand écran) */}
                   <div className="order-3 lg:col-start-1 lg:col-span-7 xl:col-span-8 lg:row-start-2 space-y-3 pt-2">
-                    <div className="flex items-center justify-between pb-2 border-b border-stone-200 dark:border-white/10">
+                    <div className="flex items-center justify-between pb-2 border-b border-white/10">
                       <div>
-                        <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
+                        <h2 className="text-sm sm:text-base font-black text-white tracking-tight">
                           Sites similaires
                         </h2>
-                        <p className="text-[11px] text-stone-500 dark:text-stone-400 mt-0.5">
+                        <p className="text-[11px] text-stone-400 mt-0.5">
                           Autres ressources dans cette thématique
                         </p>
                       </div>
                     </div>
 
                     {similarSites.length === 0 ? (
-                      <div className="py-6 text-xs text-stone-500 dark:text-slate-400">
+                      <div className="py-6 text-xs text-stone-400">
                         Aucun autre site similaire enregistré pour le moment.
                       </div>
                     ) : (
@@ -1036,9 +1045,9 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                             <div
                               key={simSite.id}
                               onClick={() => handleSelectSiteDetail(simSite)}
-                              className="group p-3 rounded-2xl bg-white dark:bg-[#0c1323] border border-stone-200 dark:border-slate-800 hover:border-[#e06b2c]/80 dark:hover:border-[#e06b2c]/70 flex items-center gap-3 transition-all cursor-pointer active:scale-[0.99] shadow-2xs"
+                              className="group p-3 rounded-2xl bg-[#282c38]/80 border border-white/10 hover:border-[#e06b2c]/80 flex items-center gap-3 transition-all cursor-pointer active:scale-[0.99] shadow-2xs hover:bg-[#313645]"
                             >
-                              <div className="w-12 h-12 rounded-xl bg-stone-100 dark:bg-[#111a2e] border border-stone-200 dark:border-slate-700 p-1 flex items-center justify-center shrink-0 overflow-hidden">
+                              <div className="w-12 h-12 rounded-xl bg-[#20232b] border border-white/10 p-1 flex items-center justify-center shrink-0 overflow-hidden">
                                 <img
                                   src={simLogo}
                                   alt={simSite.name}
@@ -1055,22 +1064,22 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                               </div>
 
                               <div className="min-w-0 flex-1">
-                                <h4 className="text-xs sm:text-sm font-extrabold text-stone-900 dark:text-white truncate group-hover:text-[#e06b2c] dark:group-hover:text-[#ea7d42] transition-colors">
+                                <h4 className="text-xs sm:text-sm font-extrabold text-white truncate group-hover:text-[#e06b2c] transition-colors">
                                   {simSite.name}
                                 </h4>
                                 <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                                  <span className="text-[10px] font-semibold text-stone-500 dark:text-slate-400 truncate">
+                                  <span className="text-[10px] font-semibold text-stone-400 truncate">
                                     {simSite.subcategory_name || simSite.category_name || ''}
                                   </span>
                                 </div>
                                 {simSite.description && (
-                                  <p className="text-[10px] text-stone-400 dark:text-slate-500 line-clamp-1 mt-0.5">
+                                  <p className="text-[10px] text-stone-400 line-clamp-1 mt-0.5">
                                     {simSite.description}
                                   </p>
                                 )}
                               </div>
 
-                              <span className="text-xs font-black text-stone-400 group-hover:text-[#e06b2c] dark:group-hover:text-[#ea7d42] pr-1">
+                              <span className="text-xs font-black text-stone-400 group-hover:text-[#e06b2c] pr-1">
                                 →
                               </span>
                             </div>
@@ -1129,7 +1138,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                   selectedCategoryId === 'all'
                     ? 'bg-[#e06b2c] text-white shadow-md shadow-[#e06b2c]/25 ring-2 ring-[#e06b2c]/30'
-                    : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] dark:hover:bg-[#17233f] text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
+                    : 'bg-white/8 hover:bg-white/14 text-stone-300 hover:text-white border border-white/10'
                 }`}
               >
                 <span>✨</span>
@@ -1151,7 +1160,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                     className={`flex items-center px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
                       isSelected
                         ? 'bg-[#e06b2c] text-white shadow-md shadow-[#e06b2c]/25 ring-2 ring-[#e06b2c]/30'
-                        : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] dark:hover:bg-[#17233f] text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
+                        : 'bg-white/8 hover:bg-white/14 text-stone-300 hover:text-white border border-white/10'
                     }`}
                   >
                     <span>{cat.name}</span>
@@ -1167,7 +1176,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     viewMode === 'shelves'
                       ? 'bg-[#e06b2c] text-white shadow-xs ring-1 ring-[#e06b2c]/40'
-                      : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] text-stone-600 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
+                      : 'bg-white/8 hover:bg-white/14 text-stone-300 border border-white/10'
                   }`}
                   title="Affichage par rayons horizontaux (style Google Play)"
                 >
@@ -1180,7 +1189,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                   className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                     viewMode === 'grid'
                       ? 'bg-[#e06b2c] text-white shadow-xs ring-1 ring-[#e06b2c]/40'
-                      : 'bg-stone-100 hover:bg-stone-200 dark:bg-[#111a2f] text-stone-600 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
+                      : 'bg-white/8 hover:bg-white/14 text-stone-300 border border-white/10'
                   }`}
                   title="Affichage en grille complète"
                 >
@@ -1193,7 +1202,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
             {/* 3.1.B SOUS-CATÉGORIES DYNAMIQUES (Rattachées à la catégorie sélectionnée) */}
             {currentCategorySubcategories.length > 0 && (
               <div className="w-full flex items-center justify-start gap-1.5 overflow-x-auto no-scrollbar py-1 scroll-smooth">
-                <span className="text-[10px] font-black uppercase text-stone-400 dark:text-slate-500 tracking-wider shrink-0 mr-1">
+                <span className="text-[10px] font-black uppercase text-stone-400 tracking-wider shrink-0 mr-1">
                   Sous-catégories :
                 </span>
                 <button
@@ -1202,7 +1211,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                   className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 cursor-pointer ${
                     selectedSubcategoryId === 'all'
                       ? 'bg-[#e06b2c] text-white shadow-xs'
-                      : 'bg-stone-100 hover:bg-stone-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-600 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
+                      : 'bg-white/8 hover:bg-white/14 text-stone-300 border border-white/10'
                   }`}
                 >
                   Toutes
@@ -1217,7 +1226,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                       className={`flex items-center px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all shrink-0 cursor-pointer ${
                         isSel
                           ? 'bg-[#e06b2c] text-white shadow-xs ring-1 ring-[#e06b2c]/40'
-                          : 'bg-stone-100 hover:bg-stone-200 dark:bg-slate-900 dark:hover:bg-slate-800 text-stone-600 dark:text-stone-300 border border-stone-300 dark:border-slate-700'
+                          : 'bg-white/8 hover:bg-white/14 text-stone-300 border border-white/10'
                       }`}
                     >
                       <span>{subcat.name}</span>
@@ -1234,9 +1243,9 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                 <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-3 sm:gap-4 md:gap-5 w-full">
                   {[1, 2, 3, 4, 5, 6, 7].map((i) => (
                     <div key={i} className="flex flex-col items-start w-full animate-pulse space-y-2">
-                      <div className="w-full aspect-square rounded-2xl sm:rounded-3xl bg-stone-200 dark:bg-slate-800"></div>
-                      <div className="h-3.5 bg-stone-200 dark:bg-slate-800 rounded-md w-3/4"></div>
-                      <div className="h-2.5 bg-stone-200 dark:bg-slate-800 rounded-md w-1/2"></div>
+                      <div className="w-full aspect-square rounded-2xl sm:rounded-3xl bg-white/10"></div>
+                      <div className="h-3.5 bg-white/10 rounded-md w-3/4"></div>
+                      <div className="h-2.5 bg-white/10 rounded-md w-1/2"></div>
                     </div>
                   ))}
                 </div>
@@ -1248,10 +1257,10 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                   <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-500 flex items-center justify-center mx-auto">
                     <AlertCircle className="w-6 h-6" />
                   </div>
-                  <h3 className="text-base font-bold text-stone-800 dark:text-stone-200">
+                  <h3 className="text-base font-bold text-white">
                     Connexion temporairement indisponible
                   </h3>
-                  <p className="text-xs text-stone-500 dark:text-stone-400">
+                  <p className="text-xs text-stone-400">
                     {fetchError}
                   </p>
                   <button
@@ -1266,14 +1275,14 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
               {/* ÉTAT LISTE VIDE */}
               {!isLoading && filteredSites.length === 0 && (
                 <div className="w-full space-y-4">
-                  <div className="p-6 sm:p-8 text-left max-w-md space-y-3">
-                    <div className="w-12 h-12 rounded-2xl bg-stone-100 dark:bg-slate-900 border border-stone-200 dark:border-slate-800 flex items-center justify-center text-xl shadow-inner">
+                  <div className="p-6 sm:p-8 text-left max-w-md space-y-3 rounded-2xl bg-[#282c38]/60 border border-white/10">
+                    <div className="w-12 h-12 rounded-2xl bg-[#20232b] border border-white/10 flex items-center justify-center text-xl shadow-inner">
                       🔍
                     </div>
-                    <h3 className="text-base font-bold text-stone-800 dark:text-stone-200">
+                    <h3 className="text-base font-bold text-white">
                       {searchQuery ? `Aucune application trouvée pour "${searchQuery}"` : "Aucune application dans cette catégorie"}
                     </h3>
-                    <p className="text-xs text-stone-500 dark:text-stone-400">
+                    <p className="text-xs text-stone-400">
                       {searchQuery
                         ? "Essayez d'autres mots-clés ou consultez l'ensemble des catégories."
                         : "Les nouvelles applications ajoutées depuis le tableau de bord apparaîtront ici automatiquement."}
@@ -1281,7 +1290,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                     {searchQuery && (
                       <button
                         onClick={() => setSearchQuery('')}
-                        className="px-4 py-2 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-200 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                        className="px-4 py-2 bg-white/10 hover:bg-white/16 text-white border border-white/10 rounded-xl text-xs font-bold transition-all cursor-pointer"
                       >
                         Effacer la recherche
                       </button>
@@ -1320,7 +1329,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                                   {/* En-tête de rayon style Google Play */}
                                   <div className="flex items-center justify-between mb-2.5 px-0.5">
                                     <div>
-                                      <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white">
+                                      <h3 className="text-sm sm:text-base md:text-lg font-bold text-white">
                                         {category.name}
                                       </h3>
                                     </div>
@@ -1330,7 +1339,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                                         setSelectedCategoryId(category.id);
                                         setSelectedSubcategoryId('all');
                                       }}
-                                      className="text-xs font-bold text-[#e06b2c] hover:text-[#cf5f22] dark:text-[#ea7d42] flex items-center gap-1 hover:underline cursor-pointer px-2 py-1 rounded-lg hover:bg-orange-50 dark:hover:bg-orange-950/30"
+                                      className="text-xs font-bold text-[#e06b2c] hover:text-[#cf5f22] flex items-center gap-1 hover:underline cursor-pointer px-2 py-1 rounded-lg hover:bg-white/10"
                                     >
                                       <span>Voir tout</span>
                                       <span>→</span>
@@ -1365,7 +1374,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                             <div className="w-full pt-2">
                               <div className="flex items-center justify-between mb-2.5 px-0.5">
                                 <div>
-                                  <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white">
+                                  <h3 className="text-sm sm:text-base md:text-lg font-bold text-white">
                                     Autres applications
                                   </h3>
                                 </div>
@@ -1406,7 +1415,7 @@ export const DkdStoreView: React.FC<DkdStoreViewProps> = ({ onBack, initialActiv
                           {/* En-tête indicatif */}
                           <div className="flex items-center justify-between mb-3 px-0.5">
                             <div>
-                              <h3 className="text-sm sm:text-base md:text-lg font-bold text-stone-900 dark:text-white flex items-center gap-2">
+                              <h3 className="text-sm sm:text-base md:text-lg font-bold text-white flex items-center gap-2">
                                 {searchQuery ? (
                                   <>
                                     <span>🔍</span>
