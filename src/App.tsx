@@ -44,6 +44,8 @@ import { purgeVolatileStorage, safeLocalStorageRemove, sanitizeItemForStorage } 
 import { documentSpeechService, useDocumentSpeech } from './services/documentSpeechService';
 import { getLegalPortalUrl } from './services/api';
 
+const TeacherClassesView = React.lazy(() => import('./components/teacher/TeacherClassesView').then(m => ({ default: m.TeacherClassesView })));
+
 // Nettoyage immédiat au chargement de l'application pour libérer l'espace des appareils saturés
 if (typeof window !== 'undefined') {
   purgeVolatileStorage();
@@ -214,7 +216,7 @@ export default function App() {
       }
     } catch (e) { }
     const saved = localStorage.getItem('unifolder_current_tab');
-    if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file', 'ai-subscriptions', 'storage-menu'].includes(saved)) {
+    if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file', 'ai-subscriptions', 'storage-menu', 'teacher-classes'].includes(saved)) {
       return saved as NavigationTab;
     }
     return 'folders';
@@ -2038,6 +2040,13 @@ export default function App() {
             />
           ) : currentTab === 'settings' ? (
             <SettingsView />
+          ) : currentTab === 'teacher-classes' ? (
+            <React.Suspense fallback={<div className="w-full h-full min-h-[60vh] flex items-center justify-center"><div className="w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+              <TeacherClassesView
+                onBack={() => handleSetTab('folders')}
+                user={user}
+              />
+            </React.Suspense>
           ) : currentTab === 'ai-subscriptions' ? (
             <AiSubscriptionsView
               onBack={() => handleSetTab('folders')}

@@ -1184,6 +1184,47 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         );
         break;
 
+      case 'teacher-classes':
+        label = 'Classes';
+        defaultAction = () => {
+          setTab('teacher-classes');
+        };
+        iconContent = (
+          <div className="w-full h-full flex items-center justify-center">
+            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="p2TeacherGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#002f3a" />
+                  <stop offset="50%" stopColor="#004758" />
+                  <stop offset="100%" stopColor="#0369a1" />
+                </linearGradient>
+                <linearGradient id="p2ScreenGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#E0F2FE" />
+                  <stop offset="100%" stopColor="#BAE6FD" />
+                </linearGradient>
+              </defs>
+              {/* Fond circulaire pétrole sombre */}
+              <circle cx="50" cy="50" r="38" fill="url(#p2TeacherGrad)" stroke="#18181B" strokeWidth="1.3" />
+              {/* Tableau / Écran de classe givré */}
+              <rect x="22" y="24" width="56" height="42" rx="7" fill="url(#p2ScreenGrad)" stroke="#38BDF8" strokeWidth="1.4" />
+              {/* En-tête de carte avec pastilles */}
+              <rect x="26" y="28" width="22" height="15" rx="3.5" fill="#EC4899" />
+              <rect x="52" y="28" width="22" height="15" rx="3.5" fill="#10B981" />
+              {/* Mini cartes de classe en bas de l'écran */}
+              <rect x="26" y="47" width="14" height="12" rx="2.5" fill="#F97316" />
+              <rect x="43" y="47" width="14" height="12" rx="2.5" fill="#3B82F6" />
+              <rect x="60" y="47" width="14" height="12" rx="2.5" fill="#8B5CF6" />
+              {/* Chapeau de diplômé / Professeur doré en haut à droite */}
+              <path d="M 68 18 L 86 24 L 68 30 L 50 24 Z" fill="#FACC15" stroke="#18181B" strokeWidth="1" />
+              <path d="M 58 27.5 v 6 c 0 3 5 5 10 5 s 10 -2 10 -5 v -6" fill="#EAB308" stroke="#18181B" strokeWidth="1" />
+              {/* Cartouche PRO / CLASSES au bas */}
+              <rect x="25" y="71" width="50" height="16" rx="5" fill="#001d24" stroke="#38BDF8" strokeWidth="1.2" />
+              <text x="50" y="82.5" fill="#38BDF8" fontSize="8.5" fontWeight="900" textAnchor="middle" letterSpacing="0.8">CLASSES</text>
+            </svg>
+          </div>
+        );
+        break;
+
       case 'ai-subscriptions':
         label = 'Crédits IA';
         defaultAction = () => {
@@ -2616,7 +2657,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               >
                 {/* Sur mobile : 4 blocs par ligne (Crédits IA + Abonnements sur la 3e ligne) | Sur desktop : 10 colonnes avec Crédits IA et Abonnements sur la 2e ligne */}
                 <div className="grid grid-cols-4 md:grid md:grid-cols-10 md:w-full items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-x-2.5 lg:gap-x-4 md:gap-y-4 gap-x-1.5 sm:gap-x-3">
-                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'ai-subscriptions', 'subscriptions'].map((id, index) => renderBlock(id, index))}
+                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'teacher-classes', 'ai-subscriptions', 'subscriptions'].map((id, index) => renderBlock(id, index))}
                 </div>
               </div>
             </div>
