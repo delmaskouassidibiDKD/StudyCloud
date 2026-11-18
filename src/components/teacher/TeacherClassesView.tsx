@@ -7,6 +7,7 @@ import {
   Users2,
   Layers,
   ArrowLeft,
+  ArrowRight,
   Search,
   Bell,
   Settings,
@@ -17,7 +18,9 @@ import {
   Sparkles,
   Trash2,
   School,
-  FolderPlus
+  FolderPlus,
+  Upload,
+  Building2
 } from 'lucide-react';
 
 export interface SchoolYearItem {
@@ -25,6 +28,18 @@ export interface SchoolYearItem {
   label: string; // ex: "2026 - 2027"
   color: string; // hex ou 'white'
   textColor?: string;
+  createdAt: number;
+}
+
+export interface SchoolItem {
+  id: string;
+  yearId: string; // Attache l'école à la rentrée scolaire sélectionnée
+  name: string; // Nom de l'école (requis)
+  logoUrl?: string; // Logo de l'école (facultatif, image base64)
+  color: string; // hex couleur de la carte
+  textColor: string;
+  borderColor: string;
+  borderDarkColor: string; // pour l'effet 3D en bas
   createdAt: number;
 }
 
@@ -49,6 +64,20 @@ const YEAR_COLOR_OPTIONS = [
   { id: 'purple', label: 'Violet Sombre', bg: '#7c3aed', text: '#ffffff', border: '#6d28d9' },
   { id: 'gold', label: 'Or / Safran', bg: '#d97706', text: '#ffffff', border: '#b45309' },
   { id: 'red', label: 'Rouge Écarlate', bg: '#dc2626', text: '#ffffff', border: '#b91c1c' },
+];
+
+// Couleurs proposées pour les écoles (Blanc par défaut si non choisi)
+const SCHOOL_COLOR_OPTIONS = [
+  { id: 'white', label: 'Blanc (Défaut)', bg: '#ffffff', text: '#0f172a', border: '#e2e8f0', borderDark: '#94a3b8' },
+  { id: 'teal', label: 'Bleu Pétrole', bg: '#00313d', text: '#ffffff', border: '#00252e', borderDark: '#00141a' },
+  { id: 'blue', label: 'Bleu Océan', bg: '#1d4ed8', text: '#ffffff', border: '#1e40af', borderDark: '#172554' },
+  { id: 'cyan', label: 'Cyan Céleste', bg: '#0891b2', text: '#ffffff', border: '#0e7490', borderDark: '#155e75' },
+  { id: 'emerald', label: 'Vert Émeraude', bg: '#047857', text: '#ffffff', border: '#065f46', borderDark: '#064e3b' },
+  { id: 'amber', label: 'Orange Ambré', bg: '#c2410c', text: '#ffffff', border: '#9a3412', borderDark: '#7c2d12' },
+  { id: 'red', label: 'Rouge Carmin', bg: '#b91c1c', text: '#ffffff', border: '#991b1b', borderDark: '#7f1d1d' },
+  { id: 'purple', label: 'Violet Profond', bg: '#6b21a8', text: '#ffffff', border: '#581c87', borderDark: '#3b0764' },
+  { id: 'indigo', label: 'Indigo Nuit', bg: '#3730a3', text: '#ffffff', border: '#312e81', borderDark: '#1e1b4b' },
+  { id: 'slate', label: 'Gris Ardoise', bg: '#334155', text: '#ffffff', border: '#1e293b', borderDark: '#0f172a' },
 ];
 
 // Années suggérées automatiquement à partir de l'année courante (2026)
@@ -94,6 +123,109 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       localStorage.setItem('studycloud_teacher_school_years', JSON.stringify(schoolYears));
     } catch { }
   }, [schoolYears]);
+
+  // Écoles créées attachées à chaque année scolaire (Persistance locale)
+  const [schools, setSchools] = useState<SchoolItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_teacher_schools');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch { }
+    return [];
+  });
+
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
+
+  // Sauvegarde persistante des écoles
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_teacher_schools', JSON.stringify(schools));
+    } catch { }
+  }, [schools]);
+
+  // État du modal "Ajouter une école"
+  const [isAddSchoolModalOpen, setIsAddSchoolModalOpen] = useState(false);
+  const [schoolName, setSchoolName] = useState('');
+  const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
+  const [selectedSchoolColor, setSelectedSchoolColor] = useState(SCHOOL_COLOR_OPTIONS[0]); // Blanc par défaut
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Compression & chargement du logo de l'école (format rond max 256x256 px pour préserver le stockage)
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_SIZE = 256;
+        let width = img.width;
+        let height = img.height;
+
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          }
+        } else {
+          if (height > MAX_SIZE) {
+            width = Math.round((width * MAX_SIZE) / height);
+            height = MAX_SIZE;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/png', 0.85);
+          setSchoolLogo(dataUrl);
+        }
+      };
+      img.src = event.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Création d'une nouvelle école
+  const handleCreateSchool = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanName = schoolName.trim();
+    if (!cleanName || !selectedYearId) return;
+
+    const newSchool: SchoolItem = {
+      id: `school-${Date.now()}`,
+      yearId: selectedYearId,
+      name: cleanName,
+      logoUrl: schoolLogo || undefined,
+      color: selectedSchoolColor.bg,
+      textColor: selectedSchoolColor.text,
+      borderColor: selectedSchoolColor.border,
+      borderDarkColor: selectedSchoolColor.borderDark,
+      createdAt: Date.now(),
+    };
+
+    setSchools(prev => [...prev, newSchool]);
+    setSelectedSchoolId(newSchool.id);
+    setIsAddSchoolModalOpen(false);
+    setSchoolName('');
+    setSchoolLogo(null);
+    setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
+  };
+
+  // Suppression d'une école
+  const handleDeleteSchool = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSchools(prev => prev.filter(s => s.id !== id));
+    if (selectedSchoolId === id) {
+      setSelectedSchoolId(null);
+    }
+  };
 
   // État du menu déroulant "Créer une rentrée scolaire"
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false);
@@ -173,6 +305,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   ] as const;
 
   const currentSelectedYear = schoolYears.find(y => y.id === selectedYearId) || schoolYears[0];
+  const currentYearSchools = schools.filter(s => s.yearId === currentSelectedYear?.id);
 
   return (
     <div 
@@ -550,39 +683,179 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         </section>
 
         {/* ----------------------------------------------------------------------- */}
-        {/* ESPACE DE TRAVAIL ÉPURÉ (MOCK DEMO SUPPRIMÉ COMME DEMANDÉ SUR L'IMAGE 2)*/}
+        {/* ESPACE DE TRAVAIL DES ÉCOLES (REMPLACE L'ANCIENNE CARTE CENTRÉE)       */}
         {/* ----------------------------------------------------------------------- */}
-        <section className="flex-1 flex flex-col justify-center items-center py-10 px-4">
+        <section className="flex-1 flex flex-col justify-start pt-2">
           {currentSelectedYear ? (
-            <div className="w-full max-w-2xl bg-white/80 backdrop-blur-xl border border-white/90 rounded-3xl p-6 sm:p-8 shadow-[0_10px_25px_rgba(0,40,60,0.04)] text-center space-y-4 animate-fade-in">
-              <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-white shadow-md"
-                style={{ backgroundColor: currentSelectedYear.color || '#00313d' }}
-              >
-                <School className="w-8 h-8 text-white" />
-              </div>
+            currentYearSchools.length === 0 ? (
+              // 1. AUCUNE ÉCOLE : Bouton Plus au milieu avec pointillé autour formant un carré
+              <div className="flex-1 flex flex-col items-center justify-center py-12 px-4 animate-fade-in">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSchoolName('');
+                    setSchoolLogo(null);
+                    setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
+                    setIsAddSchoolModalOpen(true);
+                  }}
+                  className="group relative w-64 h-64 sm:w-72 sm:h-72 border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/50 hover:bg-white/85 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
+                  title="Ajouter une école"
+                >
+                  {/* Icône Plus dans un conteneur carré stylisé */}
+                  <div className="w-16 h-16 rounded-2xl bg-[#00313d] text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-[#00242e] transition-all duration-300 mb-4 border border-cyan-300/30">
+                    <Plus className="w-8 h-8 stroke-[3]" />
+                  </div>
 
-              <div>
-                <span className="text-[10px] font-black uppercase tracking-widest text-cyan-700 bg-cyan-50 px-2.5 py-1 rounded-full border border-cyan-200/60 inline-block mb-1.5">
-                  Rentrée scolaire sélectionnée
-                </span>
-                <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight font-mono">
-                  {currentSelectedYear.label}
-                </h2>
-                <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto mt-2 leading-relaxed">
-                  Cette année scolaire est prête pour la gestion de vos classes, étudiants, évaluations et moyennes.
-                </p>
-              </div>
+                  {/* Titre et incitation */}
+                  <span className="text-base font-black text-slate-800 group-hover:text-[#00313d] transition-colors">
+                    Ajouter une école
+                  </span>
+                  <p className="text-xs text-slate-500 max-w-[200px] mt-2 leading-relaxed">
+                    Cliquez ici pour configurer un établissement scolaire pour la rentrée <span className="font-bold text-[#00313d]">{currentSelectedYear.label}</span>
+                  </p>
 
-              <div className="pt-4 border-t border-slate-100 flex items-center justify-center gap-3 text-xs font-bold text-slate-400">
-                <span>0 Classes</span>
-                <span>&bull;</span>
-                <span>0 Étudiants</span>
-                <span>&bull;</span>
-                <span>0 Évaluations</span>
+                  {/* Petit badge subtil */}
+                  <div className="mt-4 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200/60 text-[10px] font-extrabold text-cyan-800">
+                    Nouveau +
+                  </div>
+                </button>
               </div>
-            </div>
+            ) : (
+              // 2. ÉCOLES CRÉÉES : Cartes en 3D sous forme de bouton avec logo rond
+              <div className="space-y-4 pt-1 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-black uppercase tracking-wider text-slate-600">
+                      Établissements scolaires ({currentYearSchools.length})
+                    </span>
+                    <span className="text-xs text-slate-400 font-bold">&bull;</span>
+                    <span className="text-xs font-bold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200/50">
+                      Rentrée {currentSelectedYear.label}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 items-stretch">
+                  {currentYearSchools.map((school) => {
+                    const isSelected = selectedSchoolId === school.id;
+                    const isWhite = !school.color || school.color === '#ffffff' || school.color === 'white';
+
+                    return (
+                      <div
+                        key={school.id}
+                        onClick={() => setSelectedSchoolId(school.id)}
+                        style={{
+                          backgroundColor: school.color || '#ffffff',
+                          color: school.textColor || (isWhite ? '#0f172a' : '#ffffff'),
+                          borderColor: isWhite ? '#e2e8f0' : (school.borderColor || school.color),
+                          borderBottomColor: isWhite ? '#94a3b8' : (school.borderDarkColor || '#00141a'),
+                        }}
+                        className={`group relative rounded-2xl border-2 border-b-[6px] p-4 sm:p-5 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
+                          isWhite 
+                            ? 'shadow-[0_10px_25px_-5px_rgba(0,40,60,0.1),0_4px_6px_-2px_rgba(0,0,0,0.05)] hover:border-b-cyan-600' 
+                            : 'shadow-[0_12px_24px_-6px_rgba(0,0,0,0.3)]'
+                        } ${
+                          isSelected 
+                            ? 'ring-2 ring-cyan-500 ring-offset-2 scale-[1.02]' 
+                            : 'hover:-translate-y-1'
+                        } active:translate-y-1 active:border-b-2`}
+                      >
+                        {/* Haut de la carte : Logo ROND à gauche & Badge année / Menu à droite */}
+                        <div className="flex items-start justify-between gap-3">
+                          {/* Logo de l'école (ROND comme demandé explicitement) */}
+                          <div className="w-14 h-14 rounded-full overflow-hidden shadow-md border-2 border-white/90 shrink-0 flex items-center justify-center bg-white/20 backdrop-blur-xs">
+                            {school.logoUrl ? (
+                              <img 
+                                src={school.logoUrl} 
+                                alt={school.name} 
+                                className="w-full h-full object-cover" 
+                              />
+                            ) : (
+                              <div 
+                                className="w-full h-full flex items-center justify-center font-black text-lg tracking-wider"
+                                style={{ color: isWhite ? '#00313d' : '#ffffff' }}
+                              >
+                                {school.name.slice(0, 2).toUpperCase()}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Badge année et bouton supprimer */}
+                          <div className="flex items-center gap-1.5">
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+                              isWhite 
+                                ? 'bg-slate-100 text-slate-700 border-slate-200' 
+                                : 'bg-black/20 text-white/90 border-white/20'
+                            }`}>
+                              {currentSelectedYear.label}
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={(e) => handleDeleteSchool(school.id, e)}
+                              className={`opacity-0 group-hover:opacity-100 p-1 rounded-lg transition ${
+                                isWhite 
+                                  ? 'hover:bg-red-50 text-slate-400 hover:text-red-600' 
+                                  : 'hover:bg-black/30 text-white/70 hover:text-white'
+                              }`}
+                              title="Supprimer cette école"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Milieu de la carte : Nom de l'école & Type */}
+                        <div className="mt-3.5 space-y-0.5">
+                          <h3 className="font-black text-base sm:text-lg tracking-tight leading-snug line-clamp-2">
+                            {school.name}
+                          </h3>
+                          <span className={`text-[11px] font-semibold block ${
+                            isWhite ? 'text-slate-500' : 'text-white/80'
+                          }`}>
+                            Établissement scolaire
+                          </span>
+                        </div>
+
+                        {/* Bas de la carte : Bouton d'accès 3D intégré */}
+                        <div className={`mt-4 pt-3 border-t flex items-center justify-between text-xs font-black ${
+                          isWhite 
+                            ? 'border-slate-100 text-[#00313d] group-hover:text-cyan-600' 
+                            : 'border-white/20 text-white group-hover:text-cyan-200'
+                        } transition-colors`}>
+                          <span>Accéder aux classes</span>
+                          <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  {/* Bouton carré pointillé pour ajouter une autre école */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSchoolName('');
+                      setSchoolLogo(null);
+                      setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
+                      setIsAddSchoolModalOpen(true);
+                    }}
+                    className="min-h-[170px] border-2 border-dashed border-cyan-800/30 hover:border-cyan-600 bg-white/40 hover:bg-white/70 backdrop-blur-md rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group hover:-translate-y-1 shadow-xs hover:shadow-md"
+                  >
+                    <div className="w-12 h-12 rounded-xl bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-sm transition mb-2.5">
+                      <Plus className="w-6 h-6 stroke-[2.5]" />
+                    </div>
+                    <span className="text-xs font-black text-slate-700 group-hover:text-[#00313d] transition-colors">
+                      Ajouter une autre école
+                    </span>
+                    <span className="text-[10px] text-slate-400 mt-0.5">
+                      Pour {currentSelectedYear.label}
+                    </span>
+                  </button>
+                </div>
+              </div>
+            )
           ) : (
-            <div className="text-center space-y-3 p-8 bg-white/60 backdrop-blur-md rounded-3xl border border-white/80 max-w-md">
+            <div className="text-center space-y-3 p-8 bg-white/60 backdrop-blur-md rounded-3xl border border-white/80 max-w-md mx-auto my-auto">
               <div className="w-12 h-12 rounded-2xl bg-[#00313d] text-white flex items-center justify-center mx-auto shadow-md">
                 <Calendar className="w-6 h-6" />
               </div>
@@ -595,6 +868,213 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             </div>
           )}
         </section>
+
+        {/* ========================================================================= */}
+        {/* MODAL PROFESSIONNEL POUR AJOUTER UNE ÉCOLE (BIEN CARRÉ, BIEN GRAND)      */}
+        {/* ========================================================================= */}
+        {isAddSchoolModalOpen && (
+          <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+            <div 
+              className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 animate-fade-in my-auto"
+              style={{
+                boxShadow: '0 25px 50px -12px rgba(0, 35, 46, 0.35)'
+              }}
+            >
+              {/* En-tête bien carré et professionnel */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#00313d] text-white flex items-center justify-center shadow-md">
+                    <School className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-black text-[#00313d] leading-none">
+                      Ajouter une école
+                    </h2>
+                    <span className="text-[11px] font-semibold text-slate-400 mt-1 inline-block">
+                      Rentrée scolaire {currentSelectedYear?.label}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAddSchoolModalOpen(false)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Formulaire intérieur */}
+              <form onSubmit={handleCreateSchool} className="p-6 space-y-5">
+                
+                {/* 1. Nom de l'école (Requis) */}
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                    Nom de l'établissement / École <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={schoolName}
+                    onChange={(e) => setSchoolName(e.target.value)}
+                    placeholder="Ex : Lycée Moderne d'Excellence, Collège Saint-Joseph..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white font-medium text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                    autoFocus
+                  />
+                  <span className="text-[10px] text-slate-400 block">
+                    Ce nom apparaîtra sur la carte de l'école et dans vos classes.
+                  </span>
+                </div>
+
+                {/* 2. Logo de l'école (Facultatif) avec aperçu ROND */}
+                <div className="space-y-2">
+                  <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                    Logo de l'école <span className="text-[10px] font-normal text-slate-400 lowercase">(facultatif)</span>
+                  </label>
+                  
+                  <div className="flex items-center gap-4 p-3.5 rounded-xl border border-slate-200 bg-slate-50/70">
+                    {/* Aperçu rond du logo */}
+                    <div className="w-16 h-16 rounded-full overflow-hidden border-2 border-cyan-600 bg-white shadow-md shrink-0 flex items-center justify-center">
+                      {schoolLogo ? (
+                        <img src={schoolLogo} alt="Logo aperçu" className="w-full h-full object-cover" />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center bg-slate-100 text-[#00313d] font-black text-sm">
+                          {schoolName.trim() ? schoolName.trim().slice(0, 2).toUpperCase() : <School className="w-6 h-6 text-slate-400" />}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Actions logo */}
+                    <div className="flex-1 space-y-1.5">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoUpload}
+                        className="hidden"
+                        id="school-logo-input"
+                      />
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-lg bg-white border border-slate-300 hover:border-slate-400 text-xs font-bold text-slate-700 shadow-xs hover:bg-slate-50 transition"
+                        >
+                          {schoolLogo ? 'Changer de logo' : 'Importer une image'}
+                        </button>
+                        {schoolLogo && (
+                          <button
+                            type="button"
+                            onClick={() => setSchoolLogo(null)}
+                            className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-red-600 hover:bg-red-50 transition"
+                          >
+                            Supprimer
+                          </button>
+                        )}
+                      </div>
+                      <span className="text-[10px] text-slate-400 block">
+                        Format conseillé (PNG, JPG). S'affiche en rond sur la carte de l'école.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 3. Choisir une couleur (Blanc par défaut si non choisi) */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                      Couleur de la carte <span className="text-[10px] font-normal text-slate-400 lowercase">(blanc par défaut)</span>
+                    </label>
+                    <span className="text-xs font-bold text-slate-500">
+                      {selectedSchoolColor.label}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                    {SCHOOL_COLOR_OPTIONS.map((col) => {
+                      const isSelected = selectedSchoolColor.id === col.id;
+                      return (
+                        <button
+                          key={col.id}
+                          type="button"
+                          onClick={() => setSelectedSchoolColor(col)}
+                          style={{ backgroundColor: col.bg, borderColor: col.border }}
+                          className={`h-9 rounded-xl border flex items-center justify-center transition-all ${
+                            isSelected ? 'scale-110 shadow-md ring-2 ring-offset-1 ring-cyan-500' : 'hover:scale-105'
+                          }`}
+                          title={col.label}
+                        >
+                          {isSelected && (
+                            <Check className={`w-4 h-4 stroke-[3] ${col.id === 'white' ? 'text-slate-800' : 'text-white'}`} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Aperçu en direct de la carte 3D */}
+                <div className="space-y-1.5 pt-1">
+                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                    Aperçu en direct :
+                  </span>
+                  <div 
+                    style={{
+                      backgroundColor: selectedSchoolColor.bg,
+                      color: selectedSchoolColor.text,
+                      borderColor: selectedSchoolColor.id === 'white' ? '#e2e8f0' : selectedSchoolColor.border,
+                      borderBottomColor: selectedSchoolColor.id === 'white' ? '#94a3b8' : selectedSchoolColor.borderDark,
+                    }}
+                    className="rounded-xl border-2 border-b-[5px] p-3.5 flex items-center gap-3 shadow-md max-w-sm transition-all"
+                  >
+                    <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/90 shadow-md shrink-0 flex items-center justify-center bg-white/20">
+                      {schoolLogo ? (
+                        <img src={schoolLogo} alt="Aperçu" className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="font-black text-sm" style={{ color: selectedSchoolColor.id === 'white' ? '#00313d' : '#ffffff' }}>
+                          {schoolName.trim() ? schoolName.trim().slice(0, 2).toUpperCase() : 'EC'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <span className="font-black text-sm block truncate">
+                        {schoolName.trim() || "Nom de l'école"}
+                      </span>
+                      <span className="text-[10px] font-semibold opacity-75 block">
+                        Établissement &bull; {currentSelectedYear?.label}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Bouton Créer accessible quand toutes les informations sont rentrées */}
+                <div className="pt-3 border-t border-slate-100 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddSchoolModalOpen(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"
+                  >
+                    Annuler
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={!schoolName.trim()}
+                    style={{ backgroundColor: schoolName.trim() ? '#00313d' : undefined }}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
+                      schoolName.trim() 
+                        ? 'text-white hover:bg-[#00242e] cursor-pointer' 
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Créer l'école</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </main>
 
       {/* ========================================================================= */}

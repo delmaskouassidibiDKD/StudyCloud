@@ -22,12 +22,16 @@ function swVersionPlugin() {
 
       // 2. Générer dist/version.json pour détection universelle 100% appareils / comptes
       const versionDistPath = path.resolve(__dirname, 'dist', 'version.json');
-      fs.writeFileSync(versionDistPath, JSON.stringify({
-        buildId: currentBuildId,
-        timestamp: Date.now(),
-        version: '1.0.0'
-      }, null, 2));
-      console.log(`[PWA] dist/version.json généré : buildId = ${currentBuildId}`);
+      try {
+        fs.writeFileSync(versionDistPath, JSON.stringify({
+          buildId: currentBuildId,
+          timestamp: Date.now(),
+          version: '1.0.0'
+        }, null, 2));
+        console.log(`[PWA] dist/version.json généré : buildId = ${currentBuildId}`);
+      } catch (err) {
+        console.warn(`[PWA] Avertissement écriture dist/version.json :`, err);
+      }
 
       // 3. Également dans public/version.json
       const versionPublicPath = path.resolve(__dirname, 'public', 'version.json');
