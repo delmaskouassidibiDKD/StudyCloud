@@ -5377,41 +5377,126 @@ a:hover{transform:translateY(-2px)}
         }, 410, origin);
       }
 
-      // Suppression complète, sécurisée et définitive d'un utilisateur et de toutes ses données
+      // Suppression complète, sécurisée et définitive d'un utilisateur et de TOUTES ses données (D1 toutes tables + R2 tous buckets + IA + Algorithme)
       async function deleteUserCompletely(db: any, userId: string, email?: string, bucket?: any) {
         if (!db || !userId) return;
 
-        // 1. Suppression des fichiers physiques dans le Bucket R2 (si configuré)
-        if (bucket) {
-          try {
-            const filesRes = await db.prepare('SELECT r2_key FROM files WHERE user_id = ? AND r2_key IS NOT NULL').bind(userId).all();
-            if (filesRes?.results) {
-              for (const f of filesRes.results) {
-                if (f.r2_key) await bucket.delete(f.r2_key).catch(() => {});
-              }
-            }
-          } catch (e) {}
+        // 0. Collecter tous les buckets R2 disponibles (principal + dédiés par catégorie)
+        const r2Buckets = Array.from(new Set([
+          bucket,
+          env.BUCKET,
+          (rawEnv as any).MON_R2_STUDYCLOUD,
+          (rawEnv as any).BUCKET_MES_FICHIERS,
+          (rawEnv as any).BUCKET_CLASSEUR,
+          (rawEnv as any).BUCKET_AUDIO,
+          (rawEnv as any).BUCKET_IMAGES,
+          (rawEnv as any).BUCKET_VIDEOS,
+          (rawEnv as any).BUCKET_DOCUMENTS,
+          (rawEnv as any).BUCKET_DOWNLOADS,
+          (rawEnv as any).BUCKET_SECURE,
+        ].filter(Boolean)));
 
-          try {
-            const pubDocs = await db.prepare('SELECT r2_key FROM published_documents WHERE user_id = ? AND r2_key IS NOT NULL').bind(userId).all();
-            if (pubDocs?.results) {
-              for (const d of pubDocs.results) {
-                if (d.r2_key) await bucket.delete(d.r2_key).catch(() => {});
-              }
-            }
-          } catch (e) {}
+        const deleteR2KeyFromAllBuckets = async (key: string) => {
+          if (!key || typeof key !== 'string' || !key.trim()) return;
+          const cleanKey = key.trim();
+          await Promise.all(r2Buckets.map((b: any) => b.delete(cleanKey).catch(() => {})));
+        };
 
-          try {
-            const sfFiles = await db.prepare('SELECT r2_key FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?) AND r2_key IS NOT NULL').bind(userId).all();
-            if (sfFiles?.results) {
-              for (const sf of sfFiles.results) {
-                if (sf.r2_key) await bucket.delete(sf.r2_key).catch(() => {});
+        // 1. Suppression des fichiers physiques dans tous les Buckets R2 (via les r2_key stockées en base D1 + balayage des préfixes R2)
+        if (r2Buckets.length > 0) {
+          const r2Queries = [
+            'SELECT r2_key AS k FROM files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM classeur_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM audio_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM image_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM video_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM document_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM download_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM secure_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM trash_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM study_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM study_imported_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM published_documents WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM shared_links WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT thumbnail_r2_key AS k FROM media_thumbnails WHERE user_id = ? AND thumbnail_r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM user_wallpapers WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT receipt_r2_key AS k FROM storage_upgrade_requests WHERE user_id = ? AND receipt_r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM file_compression_records WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT attached_file_r2_key AS k FROM user_ai_workspace WHERE user_id = ? AND attached_file_r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?) AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM shared_folder_files WHERE folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?) AND r2_key IS NOT NULL',
+          ];
+
+          const allR2Keys = new Set<string>();
+          for (const q of r2Queries) {
+            try {
+              const res = await db.prepare(q).bind(userId).all();
+              for (const row of (res?.results || [])) {
+                if (row?.k) allR2Keys.add(String(row.k));
               }
+            } catch (e) {}
+          }
+
+          for (const k of allR2Keys) {
+            await deleteR2KeyFromAllBuckets(k);
+          }
+
+          // Balayage direct par préfixe utilisateur dans tous les buckets R2 pour ne laisser aucun fichier orphelin
+          const r2Prefixes = [
+            `user-files/${userId}/`,
+            `users/${userId}/`,
+            `${userId}/`,
+            `study-files/${userId}/`,
+            `ai-studies/${userId}/`,
+            `published/files/${userId}/`,
+            `shared-links/files/${userId}/`,
+            `products/images/${userId}/`,
+            `avatars/${userId}`,
+            `storage-receipts/${userId}/`,
+            `secure-files/${userId}/`,
+            `trash/${userId}/`,
+            `classeur/${userId}/`,
+            `audio/${userId}/`,
+            `images/${userId}/`,
+            `videos/${userId}/`,
+            `documents/${userId}/`,
+            `downloads/${userId}/`,
+          ];
+
+          for (const b of r2Buckets) {
+            if (typeof (b as any).list !== 'function') continue;
+            for (const prefix of r2Prefixes) {
+              try {
+                const listed = await (b as any).list({ prefix, limit: 500 });
+                for (const obj of (listed?.objects || [])) {
+                  if (obj?.key) await (b as any).delete(obj.key).catch(() => {});
+                }
+              } catch (e) {}
             }
+          }
+        }
+
+        // 2. Suppression des tables dépendantes (relations enfants) avant les tables parentes
+        const childQueries = [
+          { sql: 'DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)', params: [userId] },
+          { sql: 'DELETE FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)', params: [userId] },
+          { sql: 'DELETE FROM shared_folder_files WHERE folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)', params: [userId] },
+          { sql: 'DELETE FROM shared_folder_downloads WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)', params: [userId] },
+          { sql: 'DELETE FROM published_document_downloads WHERE document_id IN (SELECT id FROM published_documents WHERE user_id = ?) OR user_id = ?', params: [userId, userId] },
+          { sql: 'DELETE FROM user_document_interactions WHERE document_id IN (SELECT id FROM published_documents WHERE user_id = ?) OR user_id = ?', params: [userId, userId] },
+          { sql: 'DELETE FROM user_product_interactions WHERE product_id IN (SELECT id FROM products WHERE seller_id = ? OR user_id = ?) OR user_id = ?', params: [userId, userId, userId] },
+          { sql: 'DELETE FROM cart_items WHERE product_id IN (SELECT id FROM products WHERE seller_id = ? OR user_id = ?) OR user_id = ?', params: [userId, userId, userId] },
+          { sql: 'DELETE FROM seller_follows WHERE seller_id = ? OR user_id = ?', params: [userId, userId] },
+          { sql: 'DELETE FROM products WHERE seller_id = ?', params: [userId] },
+          { sql: 'DELETE FROM referrals WHERE referrer_id = ? OR referee_id = ? OR referred_user_id = ?', params: [userId, userId, userId] },
+        ];
+        for (const cq of childQueries) {
+          try {
+            await db.prepare(cq.sql).bind(...cq.params).run();
           } catch (e) {}
         }
 
-        // 2. Suppression dans toutes les tables où user_id est utilisé
+        // 3. Suppression dans toutes les tables connues (fichiers, conversations IA, perceptions IA, étude de l'algorithme, profil, quotas)
         const tablesWithUserId = [
           'email_verifications',
           'auth_sessions',
@@ -5426,17 +5511,25 @@ a:hover{transform:translateY(-2px)}
           'video_files',
           'document_files',
           'download_files',
+          'study_files',
+          'study_imported_files',
+          'media_thumbnails',
+          'user_wallpapers',
+          'file_compression_records',
           'secure_folder_config',
           'secure_files',
           'trash_files',
           'user_favorites',
+          'pinned_items',
           'user_dismissed_recents',
+          'app_external_links',
           'shared_folders',
           'shared_links',
           'schedule_config',
           'schedules',
           'schedule_slots',
           'grades',
+          'grade_settings',
           'notes',
           'calendar_events',
           'alarms',
@@ -5446,27 +5539,42 @@ a:hover{transform:translateY(-2px)}
           'shop_items',
           'seller_follows',
           'user_product_interactions',
+          'user_purchases_history',
           'support_tickets',
           'notifications',
           'chat_messages',
+          'conversations',
+          'messages',
+          'user_ai_workspace',
+          'ai_generated_contents',
+          'ai_creations',
+          'ai_tasks',
+          'study_sessions',
+          'ai_document_perceptions',
+          'ai_reactions',
+          'ai_usage_logs',
+          'user_ai_credits',
+          'ai_credit_purchases',
+          'user_ai_purchases',
+          'user_certificates',
           'user_document_interactions',
           'published_documents',
+          'published_document_downloads',
+          'user_recommendation_profiles',
+          'document_recommendations',
+          'algorithm_user_profiles',
+          'user_search_history',
+          'user_activity_logs',
           'referral_rewards',
           'push_subscriptions',
           'sync_items',
-          'study_imported_files',
-          'ai_document_perceptions',
           'user_storage_usage',
           'user_storage_quotas',
           'storage_upgrade_requests',
-          'user_ai_credits',
-          'ai_credit_purchases',
-          'ai_usage_logs',
-          'ai_reactions',
-          'ai_generated_contents',
+          'user_subscriptions',
+          'user_requests_history_purge',
           'user_dashboard_sites',
           'user_word_counts',
-          'study_sessions',
         ];
 
         for (const table of tablesWithUserId) {
@@ -5475,22 +5583,25 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {}
         }
 
-        // Nettoyer aussi les abonnements reçus en tant que vendeur
+        // 4. Balayage dynamique de TOUTES les tables de la base D1 via sqlite_master pour effacer toute donnée reliée à cet userId
         try {
-          await db.prepare('DELETE FROM seller_follows WHERE seller_id = ?').bind(userId).run();
-        } catch (e) {}
-
-        // 3. Cas spécifiques de tables avec colonnes ou relations différentes
-        try {
-          await db.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)').bind(userId).run();
-        } catch (e) {}
-
-        try {
-          await db.prepare('DELETE FROM shared_folder_downloads WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)').bind(userId).run();
-        } catch (e) {}
-
-        try {
-          await db.prepare('DELETE FROM referrals WHERE referrer_id = ? OR referee_id = ?').bind(userId, userId).run();
+          const allTablesRes = await db.prepare(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT IN ('users', 'blocked_emails', 'deleted_accounts_log')"
+          ).all();
+          for (const tRow of (allTablesRes?.results || [])) {
+            const tName = tRow?.name;
+            if (!tName || !/^[a-zA-Z0-9_]+$/.test(tName)) continue;
+            try {
+              const colsRes = await db.prepare(`PRAGMA table_info(${tName})`).all();
+              const colNames = (colsRes?.results || []).map((c: any) => String(c.name || '').toLowerCase());
+              const idCols = ['user_id', 'seller_id', 'author_id', 'owner_id', 'student_id', 'creator_id', 'referrer_id', 'referee_id', 'referred_user_id'];
+              for (const idCol of idCols) {
+                if (colNames.includes(idCol)) {
+                  await db.prepare(`DELETE FROM ${tName} WHERE ${idCol} = ?`).bind(userId).run().catch(() => {});
+                }
+              }
+            } catch (e) {}
+          }
         } catch (e) {}
 
         if (email) {
@@ -5499,17 +5610,17 @@ a:hover{transform:translateY(-2px)}
             await db.prepare('DELETE FROM email_verifications WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).run();
           } catch (e) {}
           try {
-            await db.prepare('DELETE FROM password_resets WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).run();
+            await db.prepare('DELETE FROM password_resets WHERE LOWER(TRIM(email)) = ? OR LOWER(TRIM(target_email)) = ?').bind(cleanEmail, cleanEmail).run();
           } catch (e) {}
         }
 
-        // 4. Suppression définitive du compte dans la table users
+        // 5. Suppression définitive du compte dans la table users
         try {
           await db.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
           if (email) {
             await db.prepare('DELETE FROM users WHERE LOWER(TRIM(email)) = ?').bind(email.toLowerCase().trim()).run();
           }
-          console.log(`[StudyCloud Delete Account] Compte et toutes les données supprimés pour l'utilisateur : ${userId} (${email || ''})`);
+          console.log(`[StudyCloud Delete Account] Compte et 100% des données (D1 + R2 + IA + Algorithme) supprimés pour : ${userId} (${email || ''})`);
         } catch (e) {
           console.error(`[StudyCloud Delete Account] Erreur suppression users ${userId}:`, e);
         }

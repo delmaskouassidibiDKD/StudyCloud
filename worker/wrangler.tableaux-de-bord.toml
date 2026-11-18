@@ -20,3 +20,36 @@ bucket_name = "r2-studycloud"
 binding = "BUCKET"
 bucket_name = "r2-studycloud"
 
+[[r2_buckets]]
+binding = "BUCKET_MES_FICHIERS"
+bucket_name = "r2-studycloud-mes-fichiers"
+
+[[r2_buckets]]
+binding = "BUCKET_CLASSEUR"
+bucket_name = "r2-studycloud-classeur"
+
+[[r2_buckets]]
+binding = "BUCKET_AUDIO"
+bucket_name = "r2-studycloud-audio"
+
+[[r2_buckets]]
+binding = "BUCKET_IMAGES"
+bucket_name = "r2-studycloud-images"
+
+[[r2_buckets]]
+binding = "BUCKET_VIDEOS"
+bucket_name = "r2-studycloud-videos"
+
+[[r2_buckets]]
+binding = "BUCKET_DOCUMENTS"
+bucket_name = "r2-studycloud-documents"
+
+[[r2_buckets]]
+binding = "BUCKET_DOWNLOADS"
+bucket_name = "r2-studycloud-downloads"
+
+[[r2_buckets]]
+binding = "BUCKET_SECURE"
+bucket_name = "r2-studycloud-secure"
+
+

@@ -7713,23 +7713,156 @@ function renderDashboardHtml(data) {
     }
     window.recalculateUserStorage = recalculateUserStorage;
 
-    async function deleteUserAccount(userId, userName) {
-      const confirmMsg = "Êtes-vous sûr de vouloir supprimer définitivement l'utilisateur (" + (userName || userId) + ") de la base D1 ?";
-      if (!confirm(confirmMsg)) {
+    let pendingDeleteUserTarget = null;
+
+    function closeDeleteUserModal() {
+      pendingDeleteUserTarget = null;
+      const modal = document.getElementById('sc-delete-user-modal');
+      if (modal) modal.remove();
+    }
+    window.closeDeleteUserModal = closeDeleteUserModal;
+
+    function copyDeleteTargetEmail() {
+      if (!pendingDeleteUserTarget || !pendingDeleteUserTarget.email) return;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(pendingDeleteUserTarget.email).then(() => {
+          showToast('📋 Adresse e-mail copiée dans le presse-papiers');
+        }).catch(() => {});
+      }
+    }
+    window.copyDeleteTargetEmail = copyDeleteTargetEmail;
+
+    function onDeleteEmailConfirmInput() {
+      const inp = document.getElementById('sc-delete-email-confirm-input');
+      const btn = document.getElementById('sc-btn-confirm-delete-user');
+      const statusEl = document.getElementById('sc-delete-email-match-status');
+      if (!inp || !btn || !pendingDeleteUserTarget) return;
+      const expected = String(pendingDeleteUserTarget.email || '').trim().toLowerCase();
+      const typed = String(inp.value || '').trim().toLowerCase();
+      const isMatch = expected.length > 0 && typed === expected;
+      if (isMatch) {
+        btn.disabled = false;
+        btn.className = 'px-4 py-2.5 rounded-xl font-extrabold text-xs text-white bg-red-600 hover:bg-red-500 border border-red-400/50 shadow-lg shadow-red-600/30 cursor-pointer transition-all flex items-center gap-2';
+        if (statusEl) {
+          statusEl.className = 'text-[11px] font-bold text-emerald-400 mt-1.5';
+          statusEl.textContent = '✓ Adresse e-mail identique — Le bouton de suppression définitive est déverrouillé.';
+        }
+      } else {
+        btn.disabled = true;
+        btn.className = 'px-4 py-2.5 rounded-xl font-extrabold text-xs text-slate-500 bg-slate-800/80 border border-slate-700/60 opacity-40 cursor-not-allowed pointer-events-none transition-all flex items-center gap-2';
+        if (statusEl) {
+          statusEl.className = 'text-[11px] font-medium text-amber-400/90 mt-1.5';
+          statusEl.textContent = typed.length === 0
+            ? '⚠️ Copiez et collez l adresse e-mail exacte ci-dessus pour déverrouiller le bouton Supprimer.'
+            : '✗ L adresse saisie ne correspond pas encore à l adresse e-mail du compte.';
+        }
+      }
+    }
+    window.onDeleteEmailConfirmInput = onDeleteEmailConfirmInput;
+
+    function deleteUserAccount(userId) {
+      const item = allUsers.find(x => x.user.id === userId);
+      if (!item || !item.user) return;
+      const u = item.user;
+      pendingDeleteUserTarget = {
+        id: u.id,
+        name: u.name || 'Utilisateur',
+        email: (u.email || '').trim()
+      };
+
+      const existing = document.getElementById('sc-delete-user-modal');
+      if (existing) existing.remove();
+
+      const modal = document.createElement('div');
+      modal.id = 'sc-delete-user-modal';
+      modal.className = 'fixed inset-0 z-[99999] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm';
+      modal.innerHTML = \`
+        <div class="w-full max-w-lg rounded-2xl bg-slate-900 border-2 border-red-500/40 shadow-2xl overflow-hidden text-slate-100">
+          <div class="px-6 py-4 bg-red-950/50 border-b border-red-500/30 flex items-center justify-between">
+            <div class="flex items-center gap-2.5">
+              <span class="text-xl">🗑️</span>
+              <h3 class="text-sm sm:text-base font-black text-white uppercase tracking-wide">Confirmation de suppression définitive</h3>
+            </div>
+            <button onclick="closeDeleteUserModal()" class="text-slate-400 hover:text-white text-sm font-bold px-2 py-1 rounded hover:bg-slate-800 cursor-pointer">✕</button>
+          </div>
+          <div class="p-6 space-y-4 text-xs">
+            <div class="p-3.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-200 leading-relaxed">
+              <div class="font-black text-red-400 uppercase mb-1">⚠️ Attention : cet utilisateur perdra absolument tout</div>
+              En confirmant, le compte de <strong class="text-white">\${pendingDeleteUserTarget.name}</strong> sera immédiatement banni de sa session et <strong>100 % de ses données</strong> seront effacées de Cloudflare R2 et D1 : fichiers, dossiers, conversations et créations avec Delmas IA, étude de l algorithme de recommandation, notes, emploi du temps et quotas.
+            </div>
+            <div class="space-y-1.5">
+              <label class="block text-slate-300 font-bold">Adresse e-mail du compte à supprimer :</label>
+              <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-950 border border-slate-800">
+                <span class="font-mono font-bold text-orange-400 select-all break-all">\${pendingDeleteUserTarget.email}</span>
+                <button type="button" onclick="copyDeleteTargetEmail()" class="shrink-0 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-[11px] border border-slate-700 cursor-pointer">📋 Copier</button>
+              </div>
+            </div>
+            <div>
+              <label for="sc-delete-email-confirm-input" class="block text-slate-300 font-bold mb-1.5">Collez ou recopiez l adresse e-mail exacte ci-dessous pour activer la suppression :</label>
+              <input
+                id="sc-delete-email-confirm-input"
+                type="email"
+                autocomplete="off"
+                spellcheck="false"
+                oninput="onDeleteEmailConfirmInput()"
+                placeholder="\${pendingDeleteUserTarget.email}"
+                class="w-full px-3.5 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-white font-mono text-xs focus:outline-none focus:border-red-500"
+              />
+              <div id="sc-delete-email-match-status" class="text-[11px] font-medium text-amber-400/90 mt-1.5">
+                ⚠️ Copiez et collez l adresse e-mail exacte ci-dessus pour déverrouiller le bouton Supprimer.
+              </div>
+            </div>
+          </div>
+          <div class="px-6 py-4 bg-slate-950/80 border-t border-slate-800 flex items-center justify-end gap-3">
+            <button type="button" onclick="closeDeleteUserModal()" class="px-4 py-2.5 rounded-xl font-bold text-xs text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 cursor-pointer">Annuler</button>
+            <button
+              id="sc-btn-confirm-delete-user"
+              type="button"
+              disabled
+              onclick="executeConfirmedUserDelete()"
+              class="px-4 py-2.5 rounded-xl font-extrabold text-xs text-slate-500 bg-slate-800/80 border border-slate-700/60 opacity-40 cursor-not-allowed pointer-events-none transition-all flex items-center gap-2"
+            >
+              <span>🗑️</span>
+              <span>Supprimer définitivement (Tout effacer)</span>
+            </button>
+          </div>
+        </div>
+      \`;
+      document.body.appendChild(modal);
+      setTimeout(() => {
+        const inp = document.getElementById('sc-delete-email-confirm-input');
+        if (inp) inp.focus();
+      }, 50);
+    }
+    window.deleteUserAccount = deleteUserAccount;
+
+    async function executeConfirmedUserDelete() {
+      if (!pendingDeleteUserTarget) return;
+      const inp = document.getElementById('sc-delete-email-confirm-input');
+      const btn = document.getElementById('sc-btn-confirm-delete-user');
+      const confirmEmail = inp ? String(inp.value || '').trim() : '';
+      if (confirmEmail.toLowerCase() !== String(pendingDeleteUserTarget.email || '').trim().toLowerCase()) {
         return;
+      }
+      const userId = pendingDeleteUserTarget.id;
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span><span>Suppression intégrale D1 + R2 + IA en cours...</span>';
       }
       try {
         const res = await fetch('/api/users/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ userId })
+          body: JSON.stringify({ userId, confirmEmail })
         });
         const data = await res.json().catch(() => ({}));
         if (data && data.success) {
-          showToast('✓ Utilisateur supprimé avec succès de la base D1');
+          closeDeleteUserModal();
+          showToast('✓ Compte et 100 % des données (fichiers R2, conversations IA, algorithme et tables D1) supprimés définitivement');
           allUsers = allUsers.filter(x => x.user.id !== userId);
           selectedUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
           renderUsersLeftList(document.getElementById('users-search-left')?.value || '');
+          renderDistributionUsersList();
           if (selectedUserId) {
             renderUserRightDetails(selectedUserId);
           } else {
@@ -7738,12 +7871,20 @@ function renderDashboardHtml(data) {
           }
         } else {
           showToast('⚠️ Erreur: ' + (data?.error || 'Suppression impossible'));
+          if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>🗑️</span><span>Supprimer définitivement (Tout effacer)</span>';
+          }
         }
       } catch (err) {
         showToast('⚠️ Erreur réseau lors de la suppression');
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>🗑️</span><span>Supprimer définitivement (Tout effacer)</span>';
+        }
       }
     }
-    window.deleteUserAccount = deleteUserAccount;
+    window.executeConfirmedUserDelete = executeConfirmedUserDelete;
 
     async function toggleBlockUserAccount(userId) {
       const item = allUsers.find(x => x.user.id === userId);
@@ -19232,46 +19373,162 @@ export default {
 
       const deleteUserCompletelyInDashboard = async (targetId, targetEmail) => {
         if (!targetId) return;
-        if (bucket) {
-          try {
-            const f1 = await safeQuery(db, 'SELECT r2_key FROM files WHERE user_id = ? AND r2_key IS NOT NULL', [targetId]);
-            for (const f of (f1?.results || [])) { if (f.r2_key) await bucket.delete(f.r2_key).catch(() => {}); }
-          } catch (e) {}
-          try {
-            const f2 = await safeQuery(db, 'SELECT r2_key FROM published_documents WHERE user_id = ? AND r2_key IS NOT NULL', [targetId]);
-            for (const d of (f2?.results || [])) { if (d.r2_key) await bucket.delete(d.r2_key).catch(() => {}); }
-          } catch (e) {}
-          try {
-            const f3 = await safeQuery(db, 'SELECT r2_key FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?) AND r2_key IS NOT NULL', [targetId]);
-            for (const sf of (f3?.results || [])) { if (sf.r2_key) await bucket.delete(sf.r2_key).catch(() => {}); }
-          } catch (e) {}
+
+        // 0. Collecter tous les buckets R2 liés (principal + dédiés par catégorie)
+        const allR2Buckets = Array.from(new Set([
+          bucket,
+          env?.BUCKET,
+          env?.MON_R2_STUDYCLOUD,
+          env?.BUCKET_MES_FICHIERS,
+          env?.BUCKET_CLASSEUR,
+          env?.BUCKET_AUDIO,
+          env?.BUCKET_IMAGES,
+          env?.BUCKET_VIDEOS,
+          env?.BUCKET_DOCUMENTS,
+          env?.BUCKET_DOWNLOADS,
+          env?.BUCKET_SECURE
+        ].filter(Boolean)));
+
+        const deleteR2KeyEverywhere = async (r2Key) => {
+          if (!r2Key || typeof r2Key !== 'string' || !r2Key.trim()) return;
+          const cleanKey = r2Key.trim();
+          await Promise.all(allR2Buckets.map(b => b.delete(cleanKey).catch(() => {})));
+        };
+
+        // 1. Suppression physique de tous les fichiers R2 référencés en base D1 et par préfixe utilisateur
+        if (allR2Buckets.length > 0) {
+          const r2KeyQueries = [
+            'SELECT r2_key AS k FROM files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM classeur_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM audio_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM image_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM video_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM document_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM download_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM secure_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM trash_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM study_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM study_imported_files WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM published_documents WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM shared_links WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT thumbnail_r2_key AS k FROM media_thumbnails WHERE user_id = ? AND thumbnail_r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM user_wallpapers WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT receipt_r2_key AS k FROM storage_upgrade_requests WHERE user_id = ? AND receipt_r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM file_compression_records WHERE user_id = ? AND r2_key IS NOT NULL',
+            'SELECT attached_file_r2_key AS k FROM user_ai_workspace WHERE user_id = ? AND attached_file_r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?) AND r2_key IS NOT NULL',
+            'SELECT r2_key AS k FROM shared_folder_files WHERE folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?) AND r2_key IS NOT NULL'
+          ];
+
+          const keysToPurge = new Set();
+          for (const rq of r2KeyQueries) {
+            const res = await safeQuery(db, rq, [targetId]);
+            for (const row of (res?.results || [])) {
+              if (row?.k) keysToPurge.add(String(row.k));
+            }
+          }
+          for (const k of keysToPurge) {
+            await deleteR2KeyEverywhere(k);
+          }
+
+          const userPrefixes = [
+            `user-files/${targetId}/`,
+            `users/${targetId}/`,
+            `${targetId}/`,
+            `study-files/${targetId}/`,
+            `ai-studies/${targetId}/`,
+            `published/files/${targetId}/`,
+            `shared-links/files/${targetId}/`,
+            `products/images/${targetId}/`,
+            `avatars/${targetId}`,
+            `storage-receipts/${targetId}/`,
+            `secure-files/${targetId}/`,
+            `trash/${targetId}/`,
+            `classeur/${targetId}/`,
+            `audio/${targetId}/`,
+            `images/${targetId}/`,
+            `videos/${targetId}/`,
+            `documents/${targetId}/`,
+            `downloads/${targetId}/`
+          ];
+
+          for (const b of allR2Buckets) {
+            if (typeof b.list !== 'function') continue;
+            for (const prefix of userPrefixes) {
+              try {
+                const listed = await b.list({ prefix, limit: 500 });
+                for (const obj of (listed?.objects || [])) {
+                  if (obj?.key) await b.delete(obj.key).catch(() => {});
+                }
+              } catch (e) {}
+            }
+          }
         }
+
+        // 2. Suppression des relations enfants dépendantes
+        await safeRun(db, 'DELETE FROM messages WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)', [targetId]);
+        await safeRun(db, 'DELETE FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)', [targetId]);
+        await safeRun(db, 'DELETE FROM shared_folder_files WHERE folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)', [targetId]);
+        await safeRun(db, 'DELETE FROM shared_folder_downloads WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)', [targetId]);
+        await safeRun(db, 'DELETE FROM published_document_downloads WHERE document_id IN (SELECT id FROM published_documents WHERE user_id = ?) OR user_id = ?', [targetId, targetId]);
+        await safeRun(db, 'DELETE FROM user_document_interactions WHERE document_id IN (SELECT id FROM published_documents WHERE user_id = ?) OR user_id = ?', [targetId, targetId]);
+        await safeRun(db, 'DELETE FROM user_product_interactions WHERE product_id IN (SELECT id FROM products WHERE seller_id = ? OR user_id = ?) OR user_id = ?', [targetId, targetId, targetId]);
+        await safeRun(db, 'DELETE FROM cart_items WHERE product_id IN (SELECT id FROM products WHERE seller_id = ? OR user_id = ?) OR user_id = ?', [targetId, targetId, targetId]);
+        await safeRun(db, 'DELETE FROM seller_follows WHERE seller_id = ? OR user_id = ?', [targetId, targetId]);
+        await safeRun(db, 'DELETE FROM products WHERE seller_id = ?', [targetId]);
+        await safeRun(db, 'DELETE FROM referrals WHERE referrer_id = ? OR referee_id = ? OR referred_user_id = ?', [targetId, targetId, targetId]);
+
+        // 3. Suppression dans toutes les tables connues (fichiers, conversations IA, créations IA, étude de l'algorithme, profil, quotas)
         const tablesToClean = [
           'email_verifications', 'auth_sessions', 'user_preferences', 'password_resets',
           'matieres', 'files', 'classeur_files', 'classeur_folders', 'audio_files',
           'image_files', 'video_files', 'document_files', 'download_files',
-          'secure_folder_config', 'secure_files', 'trash_files', 'user_favorites',
-          'user_dismissed_recents', 'shared_folders', 'shared_links', 'schedule_config',
-          'schedules', 'schedule_slots', 'grades', 'notes', 'calendar_events', 'alarms',
+          'study_files', 'study_imported_files', 'media_thumbnails', 'user_wallpapers', 'file_compression_records',
+          'secure_folder_config', 'secure_files', 'trash_files', 'user_favorites', 'pinned_items',
+          'user_dismissed_recents', 'app_external_links', 'shared_folders', 'shared_links', 'schedule_config',
+          'schedules', 'schedule_slots', 'grades', 'grade_settings', 'notes', 'calendar_events', 'alarms',
           'products', 'cart_items', 'shop_profiles', 'shop_items', 'seller_follows',
-          'user_product_interactions', 'support_tickets', 'notifications', 'chat_messages',
-          'user_document_interactions', 'published_documents', 'referral_rewards',
-          'push_subscriptions', 'sync_items', 'study_imported_files', 'ai_document_perceptions',
+          'user_product_interactions', 'user_purchases_history', 'support_tickets', 'notifications',
+          'chat_messages', 'conversations', 'messages', 'user_ai_workspace',
+          'ai_generated_contents', 'ai_creations', 'ai_tasks', 'study_sessions',
+          'ai_document_perceptions', 'ai_reactions', 'ai_usage_logs',
+          'user_ai_credits', 'ai_credit_purchases', 'user_ai_purchases', 'user_certificates',
+          'user_document_interactions', 'published_documents', 'published_document_downloads',
+          'user_recommendation_profiles', 'document_recommendations', 'algorithm_user_profiles',
+          'user_search_history', 'user_activity_logs',
+          'referral_rewards', 'push_subscriptions', 'sync_items',
           'user_storage_usage', 'user_storage_quotas', 'storage_upgrade_requests',
-          'user_ai_credits', 'ai_credit_purchases', 'ai_usage_logs', 'ai_reactions',
-          'ai_generated_contents', 'user_dashboard_sites', 'user_word_counts', 'study_sessions'
+          'user_subscriptions', 'user_requests_history_purge', 'user_dashboard_sites', 'user_word_counts'
         ];
         for (const tbl of tablesToClean) {
           await safeRun(db, `DELETE FROM ${tbl} WHERE user_id = ?`, [targetId]);
         }
-        await safeRun(db, 'DELETE FROM seller_follows WHERE seller_id = ?', [targetId]);
-        await safeRun(db, 'DELETE FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)', [targetId]);
-        await safeRun(db, 'DELETE FROM shared_folder_downloads WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)', [targetId]);
-        await safeRun(db, 'DELETE FROM referrals WHERE referrer_id = ? OR referee_id = ?', [targetId, targetId]);
+
+        // 4. Balayage dynamique de toutes les tables SQLite de la base D1 via sqlite_master
+        try {
+          const allTablesRes = await safeQuery(
+            db,
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '_cf_%' AND name NOT IN ('users', 'blocked_emails', 'deleted_accounts_log')",
+            []
+          );
+          for (const tRow of (allTablesRes?.results || [])) {
+            const tName = tRow?.name;
+            if (!tName || !/^[a-zA-Z0-9_]+$/.test(tName)) continue;
+            const colsRes = await safeQuery(db, `PRAGMA table_info(${tName})`, []);
+            const colNames = (colsRes?.results || []).map(c => String(c.name || '').toLowerCase());
+            const idCols = ['user_id', 'seller_id', 'author_id', 'owner_id', 'student_id', 'creator_id', 'referrer_id', 'referee_id', 'referred_user_id'];
+            for (const idCol of idCols) {
+              if (colNames.includes(idCol)) {
+                await safeRun(db, `DELETE FROM ${tName} WHERE ${idCol} = ?`, [targetId]);
+              }
+            }
+          }
+        } catch (e) {}
+
         if (targetEmail) {
           const ce = String(targetEmail).toLowerCase().trim();
           await safeRun(db, 'DELETE FROM email_verifications WHERE LOWER(TRIM(email)) = ?', [ce]);
-          await safeRun(db, 'DELETE FROM password_resets WHERE LOWER(TRIM(email)) = ?', [ce]);
+          await safeRun(db, 'DELETE FROM password_resets WHERE LOWER(TRIM(email)) = ? OR LOWER(TRIM(target_email)) = ?', [ce, ce]);
           await safeRun(db, 'DELETE FROM users WHERE LOWER(TRIM(email)) = ?', [ce]);
         }
         await safeRun(db, 'DELETE FROM users WHERE id = ?', [targetId]);
@@ -19354,23 +19611,27 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // ROUTE POST : /api/users/delete (SUPPRESSION DÉFINITIVE D'UN UTILISATEUR)
+      // ROUTE POST : /api/users/delete (SUPPRESSION DÉFINITIVE D'UN UTILISATEUR AVEC CONFIRMATION D'EMAIL OBLIGATOIRE)
       // ----------------------------------------------------------------------
       if (request.method === 'POST' && path === '/api/users/delete') {
         const body = await request.json().catch(() => ({}));
         const targetUserId = body.userId;
+        const confirmEmail = body.confirmEmail ? String(body.confirmEmail).trim().toLowerCase() : '';
         if (!targetUserId) {
           return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
         }
         const targetRow = await safeFirst(db, 'SELECT email, is_onboarded, is_blocked, phone, school, filiere, level FROM users WHERE id = ?', [targetUserId]);
-        const wasOnboarded = (
-          targetRow &&
-          Number(targetRow.is_onboarded) === 1 &&
-          targetRow.phone && String(targetRow.phone).trim() !== '' && targetRow.phone !== 'Non renseigné' &&
-          targetRow.school && String(targetRow.school).trim() !== '' && targetRow.school !== 'Non renseigné' &&
-          targetRow.filiere && String(targetRow.filiere).trim() !== '' && targetRow.filiere !== 'Non renseigné'
-        ) ? 1 : 0;
+        if (!targetRow) {
+          return new Response(JSON.stringify({ success: false, error: 'Utilisateur introuvable' }), { status: 404, headers: corsHeaders(origin) });
+        }
         const cleanEmail = targetRow?.email ? String(targetRow.email).toLowerCase().trim() : '';
+        if (cleanEmail && confirmEmail !== cleanEmail) {
+          return new Response(JSON.stringify({
+            success: false,
+            error: "L'adresse e-mail de confirmation ne correspond pas à l'adresse e-mail du compte."
+          }), { status: 400, headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) } });
+        }
+        const wasOnboarded = Number(targetRow.is_onboarded) === 1 ? 1 : 0;
 
         await safeRun(
           db,
