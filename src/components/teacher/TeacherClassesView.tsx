@@ -17,6 +17,8 @@ import {
   Calendar,
   Sparkles,
   Trash2,
+  Pencil,
+  AlertTriangle,
   School,
   FolderPlus,
   Upload,
@@ -272,7 +274,187 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     } catch { }
   }, [subjects]);
 
-  // État du modal "Ajouter une classe" (modifié en 2 colonnes bien proportionnées, sans filière, sans coupure en haut)
+  // --- ÉTATS POUR LES MENUS CONTEXTUELS "3 TRAITS", ÉDITION ET SUPPRESSION SÉCURISÉE ---
+  interface ActiveMenuState {
+    type: 'school' | 'class' | 'subject';
+    id: string;
+    item: any;
+    position: { top: number; left: number };
+  }
+  const [activeMenu, setActiveMenu] = useState<ActiveMenuState | null>(null);
+
+  // Cible de suppression sécurisée (nécessite la saisie exacte du nom)
+  interface DeleteTargetState {
+    type: 'school' | 'class' | 'subject';
+    id: string;
+    name: string;
+    displayName: string;
+    warningMessage: string;
+  }
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTargetState | null>(null);
+  const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
+
+  // États des éléments en cours de modification
+  const [editingSchool, setEditingSchool] = useState<SchoolItem | null>(null);
+  const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
+  const [editingSubject, setEditingSubject] = useState<SubjectItem | null>(null);
+
+  // Fermer le menu contextuel lors d'un clic extérieur ou du défilement
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.card-dropdown-menu') && !target.closest('.card-menu-trigger')) {
+        setActiveMenu(null);
+      }
+    };
+    const handleScroll = () => {
+      setActiveMenu(null);
+    };
+    if (activeMenu) {
+      document.addEventListener('mousedown', handleOutsideClick);
+      window.addEventListener('scroll', handleScroll, true);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      window.removeEventListener('scroll', handleScroll, true);
+    };
+  }, [activeMenu]);
+
+  // Positionnement intelligent du menu 3 traits (ne se coupe jamais dans le creux, ne déborde pas)
+  const handleOpenMenu = (
+    e: React.MouseEvent<HTMLButtonElement>,
+    type: 'school' | 'class' | 'subject',
+    item: any
+  ) => {
+    e.stopPropagation();
+    if (activeMenu?.type === type && activeMenu?.id === item.id) {
+      setActiveMenu(null);
+      return;
+    }
+
+    const rect = e.currentTarget.getBoundingClientRect();
+    const menuWidth = 195;
+    const menuHeight = 90;
+
+    let left = rect.right - menuWidth;
+    if (left < 10) {
+      left = rect.left;
+    }
+    if (left + menuWidth > window.innerWidth - 10) {
+      left = window.innerWidth - menuWidth - 10;
+    }
+
+    let top = rect.bottom + 4;
+    if (top + menuHeight > window.innerHeight - 10) {
+      top = rect.top - menuHeight - 4;
+    }
+
+    setActiveMenu({
+      type,
+      id: item.id,
+      item,
+      position: { top, left }
+    });
+  };
+
+  const handleTriggerEdit = (type: 'school' | 'class' | 'subject', item: any) => {
+    setActiveMenu(null);
+    if (type === 'school') {
+      const school = item as SchoolItem;
+      setEditingSchool(school);
+      setSchoolName(school.name);
+      setSchoolLogo(school.logoUrl || null);
+      setSelectedSchoolColor(
+        SCHOOL_COLOR_OPTIONS.find(c => c.bg === school.color) ||
+        SCHOOL_COLOR_OPTIONS[0]
+      );
+      setIsAddSchoolModalOpen(true);
+    } else if (type === 'class') {
+      const cls = item as ClassItem;
+      setEditingClass(cls);
+      setClassLevel(cls.level);
+      setClassName(cls.name || '');
+      setClassSlogan(cls.slogan || '');
+      setClassTeacherName(cls.teacherName);
+      setSelectedClassColor(
+        CLASS_COLOR_OPTIONS.find(c => c.bg === cls.color) ||
+        CLASS_COLOR_OPTIONS[0]
+      );
+      setIsAddClassModalOpen(true);
+    } else if (type === 'subject') {
+      const subj = item as SubjectItem;
+      setEditingSubject(subj);
+      setSubjectName(subj.name);
+      setSubjectCoefficient(subj.coefficient !== undefined ? String(subj.coefficient) : '');
+      setSelectedSubjectColor(
+        SUBJECT_COLOR_OPTIONS.find(c => c.bg === subj.color) ||
+        SUBJECT_COLOR_OPTIONS[0]
+      );
+      setIsAddSubjectModalOpen(true);
+    }
+  };
+
+  const handleTriggerDelete = (type: 'school' | 'class' | 'subject', item: any) => {
+    setActiveMenu(null);
+    if (type === 'school') {
+      const school = item as SchoolItem;
+      setDeleteTarget({
+        type: 'school',
+        id: school.id,
+        name: school.name,
+        displayName: `l'établissement "${school.name}"`,
+        warningMessage: "Toutes les classes, matières, évaluations et données associées à cet établissement seront définitivement supprimées."
+      });
+    } else if (type === 'class') {
+      const cls = item as ClassItem;
+      const fullName = `${cls.level}${cls.name ? ' ' + cls.name : ''}`.trim();
+      setDeleteTarget({
+        type: 'class',
+        id: cls.id,
+        name: fullName,
+        displayName: `la classe "${fullName}"`,
+        warningMessage: "Toutes les matières, les élèves enregistrés, les notes et moyennes associées à cette classe seront définitivement supprimés."
+      });
+    } else if (type === 'subject') {
+      const subj = item as SubjectItem;
+      setDeleteTarget({
+        type: 'subject',
+        id: subj.id,
+        name: subj.name,
+        displayName: `la matière "${subj.name}"`,
+        warningMessage: "Toutes les évaluations, notes et coefficients associés à cette matière seront définitivement supprimés."
+      });
+    }
+    setDeleteConfirmInput('');
+  };
+
+  const handleConfirmDelete = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!deleteTarget) return;
+    if (deleteConfirmInput.trim().toLowerCase() !== deleteTarget.name.trim().toLowerCase()) return;
+
+    if (deleteTarget.type === 'school') {
+      const id = deleteTarget.id;
+      setSchools(prev => prev.filter(s => s.id !== id));
+      setClasses(prev => prev.filter(c => c.schoolId !== id));
+      setSubjects(prev => prev.filter(s => s.schoolId !== id));
+      if (selectedSchoolId === id) setSelectedSchoolId(null);
+      if (selectedSchoolInside?.id === id) setSelectedSchoolInside(null);
+    } else if (deleteTarget.type === 'class') {
+      const id = deleteTarget.id;
+      setClasses(prev => prev.filter(c => c.id !== id));
+      setSubjects(prev => prev.filter(s => s.classId !== id));
+      if (selectedClassId === id) setSelectedClassId(null);
+    } else if (deleteTarget.type === 'subject') {
+      const id = deleteTarget.id;
+      setSubjects(prev => prev.filter(s => s.id !== id));
+    }
+
+    setDeleteTarget(null);
+    setDeleteConfirmInput('');
+  };
+
+  // État du modal "Ajouter / Modifier une classe"
   const [isAddClassModalOpen, setIsAddClassModalOpen] = useState(false);
   const [classLevel, setClassLevel] = useState('');
   const [className, setClassName] = useState('');
@@ -286,46 +468,66 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setClassSlogan('');
     setClassTeacherName(user?.name || 'Professeur');
     setSelectedClassColor(CLASS_COLOR_OPTIONS[0]);
+    setEditingClass(null);
   };
+
+  // Vérification de modification (Dirty) pour la classe
+  const isClassDirty = editingClass
+    ? (
+        classLevel.trim() !== editingClass.level ||
+        classTeacherName.trim() !== editingClass.teacherName ||
+        (className.trim() || '') !== (editingClass.name || '') ||
+        (classSlogan.trim() || '') !== (editingClass.slogan || '') ||
+        selectedClassColor.bg !== editingClass.color
+      )
+    : (classLevel.trim().length > 0 && classTeacherName.trim().length > 0);
 
   const handleCreateClass = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!selectedSchoolInside || !classLevel.trim() || !classTeacherName.trim()) return;
+    if (!classLevel.trim() || !classTeacherName.trim()) return;
 
-    const newClass: ClassItem = {
-      id: `class-${Date.now()}`,
-      schoolId: selectedSchoolInside.id,
-      yearId: selectedSchoolInside.yearId,
-      level: classLevel.trim(),
-      name: className.trim() || undefined,
-      slogan: classSlogan.trim() || undefined,
-      teacherName: classTeacherName.trim(),
-      color: selectedClassColor.bg,
-      textColor: selectedClassColor.text,
-      borderColor: selectedClassColor.border,
-      borderDarkColor: selectedClassColor.borderDark,
-      iconGradient: selectedClassColor.iconGradient,
-      createdAt: Date.now()
-    };
-
-    setClasses(prev => [...prev, newClass]);
-    setSelectedClassId(newClass.id);
-    setIsAddClassModalOpen(false);
-    resetClassForm();
-  };
-
-  const handleDeleteClass = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm("Êtes-vous sûr de vouloir supprimer cette classe ? Ses matières associées seront également supprimées.")) {
-      setClasses(prev => prev.filter(c => c.id !== id));
-      setSubjects(prev => prev.filter(s => s.classId !== id));
-      if (selectedClassId === id) {
-        setSelectedClassId(null);
-      }
+    if (editingClass) {
+      if (!isClassDirty) return;
+      const updated: ClassItem = {
+        ...editingClass,
+        level: classLevel.trim(),
+        name: className.trim() || undefined,
+        slogan: classSlogan.trim() || undefined,
+        teacherName: classTeacherName.trim(),
+        color: selectedClassColor.bg,
+        textColor: selectedClassColor.text,
+        borderColor: selectedClassColor.border,
+        borderDarkColor: selectedClassColor.borderDark,
+        iconGradient: selectedClassColor.iconGradient,
+      };
+      setClasses(prev => prev.map(c => c.id === editingClass.id ? updated : c));
+      setIsAddClassModalOpen(false);
+      resetClassForm();
+    } else {
+      if (!selectedSchoolInside) return;
+      const newClass: ClassItem = {
+        id: `class-${Date.now()}`,
+        schoolId: selectedSchoolInside.id,
+        yearId: selectedSchoolInside.yearId,
+        level: classLevel.trim(),
+        name: className.trim() || undefined,
+        slogan: classSlogan.trim() || undefined,
+        teacherName: classTeacherName.trim(),
+        color: selectedClassColor.bg,
+        textColor: selectedClassColor.text,
+        borderColor: selectedClassColor.border,
+        borderDarkColor: selectedClassColor.borderDark,
+        iconGradient: selectedClassColor.iconGradient,
+        createdAt: Date.now()
+      };
+      setClasses(prev => [...prev, newClass]);
+      setSelectedClassId(newClass.id);
+      setIsAddClassModalOpen(false);
+      resetClassForm();
     }
   };
 
-  // État du modal "Créer une matière"
+  // État du modal "Créer / Modifier une matière"
   const [isAddSubjectModalOpen, setIsAddSubjectModalOpen] = useState(false);
   const [subjectName, setSubjectName] = useState('');
   const [subjectCoefficient, setSubjectCoefficient] = useState<string>('');
@@ -335,37 +537,60 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setSubjectName('');
     setSubjectCoefficient('');
     setSelectedSubjectColor(SUBJECT_COLOR_OPTIONS[0]);
+    setEditingSubject(null);
   };
+
+  // Vérification de modification (Dirty) pour la matière
+  const origSubjectCoeff = (editingSubject?.coefficient !== undefined && editingSubject?.coefficient !== null)
+    ? String(editingSubject.coefficient)
+    : '';
+  const isSubjectDirty = editingSubject
+    ? (
+        subjectName.trim() !== editingSubject.name ||
+        subjectCoefficient.trim() !== origSubjectCoeff ||
+        selectedSubjectColor.bg !== editingSubject.color
+      )
+    : subjectName.trim().length > 0;
 
   const handleCreateSubject = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!activeClass || !selectedSchoolInside || !subjectName.trim()) return;
+    if (!subjectName.trim()) return;
 
     const coeffNum = subjectCoefficient.trim() ? parseFloat(subjectCoefficient.trim()) : undefined;
+    const parsedCoeff = (coeffNum !== undefined && !isNaN(coeffNum)) ? coeffNum : undefined;
 
-    const newSubject: SubjectItem = {
-      id: `subject-${Date.now()}`,
-      classId: activeClass.id,
-      schoolId: selectedSchoolInside.id,
-      yearId: selectedSchoolInside.yearId,
-      name: subjectName.trim(),
-      coefficient: (coeffNum !== undefined && !isNaN(coeffNum)) ? coeffNum : undefined,
-      color: selectedSubjectColor.bg,
-      textColor: selectedSubjectColor.text,
-      borderColor: selectedSubjectColor.border,
-      borderDarkColor: selectedSubjectColor.borderDark,
-      createdAt: Date.now()
-    };
-
-    setSubjects(prev => [...prev, newSubject]);
-    setIsAddSubjectModalOpen(false);
-    resetSubjectForm();
-  };
-
-  const handleDeleteSubject = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm("Êtes-vous sûr de vouloir supprimer cette matière ?")) {
-      setSubjects(prev => prev.filter(s => s.id !== id));
+    if (editingSubject) {
+      if (!isSubjectDirty) return;
+      const updated: SubjectItem = {
+        ...editingSubject,
+        name: subjectName.trim(),
+        coefficient: parsedCoeff,
+        color: selectedSubjectColor.bg,
+        textColor: selectedSubjectColor.text,
+        borderColor: selectedSubjectColor.border,
+        borderDarkColor: selectedSubjectColor.borderDark,
+      };
+      setSubjects(prev => prev.map(s => s.id === editingSubject.id ? updated : s));
+      setIsAddSubjectModalOpen(false);
+      resetSubjectForm();
+    } else {
+      if (!activeClass || !selectedSchoolInside) return;
+      const newSubject: SubjectItem = {
+        id: `subject-${Date.now()}`,
+        classId: activeClass.id,
+        schoolId: selectedSchoolInside.id,
+        yearId: selectedSchoolInside.yearId,
+        name: subjectName.trim(),
+        coefficient: parsedCoeff,
+        color: selectedSubjectColor.bg,
+        textColor: selectedSubjectColor.text,
+        borderColor: selectedSubjectColor.border,
+        borderDarkColor: selectedSubjectColor.borderDark,
+        createdAt: Date.now()
+      };
+      setSubjects(prev => [...prev, newSubject]);
+      setIsAddSubjectModalOpen(false);
+      resetSubjectForm();
     }
   };
 
@@ -423,43 +648,60 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     reader.readAsDataURL(file);
   };
 
-  // Création d'une nouvelle école
+  // Vérification de modification (Dirty) pour l'école
+  const isSchoolDirty = editingSchool
+    ? (
+        schoolName.trim() !== editingSchool.name ||
+        (schoolLogo || null) !== (editingSchool.logoUrl || null) ||
+        selectedSchoolColor.bg !== editingSchool.color
+      )
+    : schoolName.trim().length > 0;
+
+  // Création ou modification d'une école
   const handleCreateSchool = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const cleanName = schoolName.trim();
-    if (!cleanName || !selectedYearId) return;
+    if (!cleanName) return;
 
-    const newSchool: SchoolItem = {
-      id: `school-${Date.now()}`,
-      yearId: selectedYearId,
-      name: cleanName,
-      logoUrl: schoolLogo || undefined,
-      color: selectedSchoolColor.bg,
-      textColor: selectedSchoolColor.text,
-      borderColor: selectedSchoolColor.border,
-      borderDarkColor: selectedSchoolColor.borderDark,
-      createdAt: Date.now(),
-    };
+    if (editingSchool) {
+      if (!isSchoolDirty) return;
+      const updated: SchoolItem = {
+        ...editingSchool,
+        name: cleanName,
+        logoUrl: schoolLogo || undefined,
+        color: selectedSchoolColor.bg,
+        textColor: selectedSchoolColor.text,
+        borderColor: selectedSchoolColor.border,
+        borderDarkColor: selectedSchoolColor.borderDark,
+      };
+      setSchools(prev => prev.map(s => s.id === editingSchool.id ? updated : s));
+      if (selectedSchoolInside?.id === editingSchool.id) {
+        setSelectedSchoolInside(updated);
+      }
+      setIsAddSchoolModalOpen(false);
+      setEditingSchool(null);
+    } else {
+      if (!selectedYearId) return;
+      const newSchool: SchoolItem = {
+        id: `school-${Date.now()}`,
+        yearId: selectedYearId,
+        name: cleanName,
+        logoUrl: schoolLogo || undefined,
+        color: selectedSchoolColor.bg,
+        textColor: selectedSchoolColor.text,
+        borderColor: selectedSchoolColor.border,
+        borderDarkColor: selectedSchoolColor.borderDark,
+        createdAt: Date.now(),
+      };
 
-    setSchools(prev => [...prev, newSchool]);
-    setSelectedSchoolId(newSchool.id);
-    setIsAddSchoolModalOpen(false);
+      setSchools(prev => [...prev, newSchool]);
+      setSelectedSchoolId(newSchool.id);
+      setIsAddSchoolModalOpen(false);
+    }
+
     setSchoolName('');
     setSchoolLogo(null);
     setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
-  };
-
-  // Suppression d'une école
-  const handleDeleteSchool = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (window.confirm("Êtes-vous sûr de vouloir supprimer cet établissement et toutes ses classes ?")) {
-      setSchools(prev => prev.filter(s => s.id !== id));
-      setClasses(prev => prev.filter(c => c.schoolId !== id));
-      setSubjects(prev => prev.filter(s => s.schoolId !== id));
-      if (selectedSchoolId === id) {
-        setSelectedSchoolId(null);
-      }
-    }
   };
 
   // État du menu déroulant "Créer une rentrée scolaire"
@@ -1126,11 +1368,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               />
                               <button
                                 type="button"
-                                onClick={(e) => handleDeleteClass(cls.id, e)}
-                                className="opacity-0 group-hover:opacity-100 p-0.5 text-slate-400 hover:text-red-500 rounded-md transition"
-                                title="Supprimer cette classe"
+                                onClick={(e) => handleOpenMenu(e, 'class', cls)}
+                                className="card-menu-trigger w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition z-10"
+                                title="Options de la classe"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <div className="w-3.5 h-2.5 flex flex-col justify-between items-center pointer-events-none">
+                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
+                                </div>
                               </button>
                             </div>
                           </div>
@@ -1239,15 +1485,17 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                               <button
                                 type="button"
-                                onClick={(e) => handleDeleteSubject(subj.id, e)}
-                                className={`opacity-0 group-hover:opacity-100 p-0.5 rounded transition ${
-                                  isWhite
-                                    ? 'hover:bg-red-50 text-slate-400 hover:text-red-600'
-                                    : 'hover:bg-black/30 text-white/70 hover:text-white'
+                                onClick={(e) => handleOpenMenu(e, 'subject', subj)}
+                                className={`card-menu-trigger w-5 h-5 rounded flex items-center justify-center transition ${
+                                  isWhite ? 'text-slate-400 hover:text-slate-800 hover:bg-slate-100' : 'text-white/70 hover:text-white hover:bg-black/20'
                                 }`}
-                                title="Supprimer cette matière"
+                                title="Options de la matière"
                               >
-                                <Trash2 className="w-3 h-3" />
+                                <div className="w-3 h-2 flex flex-col justify-between items-center pointer-events-none">
+                                  <span className="w-full h-[1.6px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.6px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.6px] bg-current rounded-full"></span>
+                                </div>
                               </button>
                             </div>
 
@@ -1303,6 +1551,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   <button
                     type="button"
                     onClick={() => {
+                      setEditingSchool(null);
                       setSchoolName('');
                       setSchoolLogo(null);
                       setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
@@ -1394,7 +1643,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               )}
                             </div>
 
-                            {/* Badge année et bouton supprimer */}
+                            {/* Badge année et menu 3 traits */}
                             <div className="flex items-center gap-1.5">
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
                                 isWhite 
@@ -1406,15 +1655,19 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                               <button
                                 type="button"
-                                onClick={(e) => handleDeleteSchool(school.id, e)}
-                                className={`opacity-0 group-hover:opacity-100 p-1 rounded-lg transition ${
+                                onClick={(e) => handleOpenMenu(e, 'school', school)}
+                                className={`card-menu-trigger w-7 h-7 rounded-lg flex items-center justify-center transition z-10 ${
                                   isWhite 
-                                    ? 'hover:bg-red-50 text-slate-400 hover:text-red-600' 
+                                    ? 'hover:bg-slate-100 text-slate-400 hover:text-slate-800' 
                                     : 'hover:bg-black/30 text-white/70 hover:text-white'
                                 }`}
-                                title="Supprimer cette école"
+                                title="Options de l'établissement"
                               >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <div className="w-3.5 h-2.5 flex flex-col justify-between items-center pointer-events-none">
+                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
+                                </div>
                               </button>
                             </div>
                           </div>
@@ -1456,6 +1709,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     <button
                       type="button"
                       onClick={() => {
+                        setEditingSchool(null);
                         setSchoolName('');
                         setSchoolLogo(null);
                         setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
@@ -1493,7 +1747,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         </section>
 
         {/* ========================================================================= */}
-        {/* MODAL PROFESSIONNEL POUR AJOUTER UNE ÉCOLE (BIEN CARRÉ, BIEN GRAND)      */}
+        {/* MODAL PROFESSIONNEL POUR AJOUTER / MODIFIER UNE ÉCOLE                      */}
         {/* ========================================================================= */}
         {isAddSchoolModalOpen && (
           <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
@@ -1507,11 +1761,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-[#00313d] text-white flex items-center justify-center shadow-md">
-                    <School className="w-5 h-5" />
+                    {editingSchool ? <Pencil className="w-5 h-5" /> : <School className="w-5 h-5" />}
                   </div>
                   <div>
                     <h2 className="text-base sm:text-lg font-black text-[#00313d] leading-none">
-                      Ajouter une école
+                      {editingSchool ? "Modifier l'établissement" : "Ajouter une école"}
                     </h2>
                     <span className="text-[11px] font-semibold text-slate-400 mt-1 inline-block">
                       Rentrée scolaire {currentSelectedYear?.label}
@@ -1521,7 +1775,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                 <button
                   type="button"
-                  onClick={() => setIsAddSchoolModalOpen(false)}
+                  onClick={() => {
+                    setIsAddSchoolModalOpen(false);
+                    setEditingSchool(null);
+                  }}
                   className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
                 >
                   <X className="w-5 h-5" />
@@ -1670,11 +1927,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   </div>
                 </div>
 
-                {/* 4. Bouton Créer accessible quand toutes les informations sont rentrées */}
+                {/* 4. Bouton Créer / Enregistrer accessible */}
                 <div className="pt-3 border-t border-slate-100 flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setIsAddSchoolModalOpen(false)}
+                    onClick={() => {
+                      setIsAddSchoolModalOpen(false);
+                      setEditingSchool(null);
+                    }}
                     className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"
                   >
                     Annuler
@@ -1682,16 +1942,20 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                   <button
                     type="submit"
-                    disabled={!schoolName.trim()}
-                    style={{ backgroundColor: schoolName.trim() ? '#00313d' : undefined }}
+                    disabled={editingSchool ? (!schoolName.trim() || !isSchoolDirty) : !schoolName.trim()}
+                    style={{ 
+                      backgroundColor: (editingSchool ? (schoolName.trim() && isSchoolDirty) : schoolName.trim()) 
+                        ? '#00313d' 
+                        : undefined 
+                    }}
                     className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
-                      schoolName.trim() 
+                      (editingSchool ? (schoolName.trim() && isSchoolDirty) : schoolName.trim())
                         ? 'text-white hover:bg-[#00242e] cursor-pointer' 
                         : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                     }`}
                   >
                     <Check className="w-4 h-4" />
-                    <span>Créer l'école</span>
+                    <span>{editingSchool ? 'Enregistrer' : "Créer l'école"}</span>
                   </button>
                 </div>
               </form>
@@ -1715,11 +1979,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-[#00313d] text-white flex items-center justify-center shadow-md">
-                    <BookOpen className="w-5 h-5" />
+                    {editingClass ? <Pencil className="w-5 h-5" /> : <BookOpen className="w-5 h-5" />}
                   </div>
                   <div>
                     <h2 className="text-base sm:text-lg font-black text-[#00313d] leading-none">
-                      Créer une classe
+                      {editingClass ? "Modifier la classe" : "Créer une classe"}
                     </h2>
                     <span className="text-[11px] font-semibold text-slate-400 mt-1 inline-block">
                       {selectedSchoolInside.name} &bull; {currentSelectedYear?.label}
@@ -1729,7 +1993,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                 <button
                   type="button"
-                  onClick={() => setIsAddClassModalOpen(false)}
+                  onClick={() => {
+                    setIsAddClassModalOpen(false);
+                    resetClassForm();
+                  }}
                   className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
                 >
                   <X className="w-5 h-5" />
@@ -1904,11 +2171,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   </div>
                 </div>
 
-                {/* Bouton Créer accessible quand Niveau et Professeur sont remplis */}
+                {/* Bouton Créer / Enregistrer accessible quand les informations requises sont prêtes */}
                 <div className="p-4 px-6 border-t border-slate-100 flex items-center gap-3 bg-slate-50/50 shrink-0">
                   <button
                     type="button"
-                    onClick={() => setIsAddClassModalOpen(false)}
+                    onClick={() => {
+                      setIsAddClassModalOpen(false);
+                      resetClassForm();
+                    }}
                     className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"
                   >
                     Annuler
@@ -1916,18 +2186,20 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                   <button
                     type="submit"
-                    disabled={!classLevel.trim() || !classTeacherName.trim()}
+                    disabled={editingClass ? (!classLevel.trim() || !classTeacherName.trim() || !isClassDirty) : (!classLevel.trim() || !classTeacherName.trim())}
                     style={{ 
-                      backgroundColor: (classLevel.trim() && classTeacherName.trim()) ? '#00313d' : undefined 
+                      backgroundColor: (editingClass ? (classLevel.trim() && classTeacherName.trim() && isClassDirty) : (classLevel.trim() && classTeacherName.trim())) 
+                        ? '#00313d' 
+                        : undefined 
                     }}
                     className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
-                      (classLevel.trim() && classTeacherName.trim())
+                      (editingClass ? (classLevel.trim() && classTeacherName.trim() && isClassDirty) : (classLevel.trim() && classTeacherName.trim()))
                         ? 'text-white hover:bg-[#00242e] cursor-pointer' 
                         : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                     }`}
                   >
                     <Check className="w-4 h-4" />
-                    <span>Créer la classe</span>
+                    <span>{editingClass ? 'Enregistrer' : "Créer la classe"}</span>
                   </button>
                 </div>
               </form>
@@ -1950,11 +2222,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-red-600 to-orange-500 text-white flex items-center justify-center shadow-md">
-                    <BookOpen className="w-5 h-5" />
+                    {editingSubject ? <Pencil className="w-5 h-5" /> : <BookOpen className="w-5 h-5" />}
                   </div>
                   <div>
                     <h2 className="text-base sm:text-lg font-black text-[#00313d] leading-none">
-                      Créer une matière
+                      {editingSubject ? "Modifier la matière" : "Créer une matière"}
                     </h2>
                     <span className="text-[11px] font-semibold text-slate-400 mt-1 inline-block">
                       Classe : {activeClass.level} {activeClass.name ? `• ${activeClass.name}` : ''}
@@ -1964,7 +2236,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                 <button
                   type="button"
-                  onClick={() => setIsAddSubjectModalOpen(false)}
+                  onClick={() => {
+                    setIsAddSubjectModalOpen(false);
+                    resetSubjectForm();
+                  }}
                   className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
                 >
                   <X className="w-5 h-5" />
@@ -2098,7 +2373,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 <div className="pt-3 border-t border-slate-100 flex items-center gap-3">
                   <button
                     type="button"
-                    onClick={() => setIsAddSubjectModalOpen(false)}
+                    onClick={() => {
+                      setIsAddSubjectModalOpen(false);
+                      resetSubjectForm();
+                    }}
                     className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"
                   >
                     Annuler
@@ -2106,21 +2384,166 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                   <button
                     type="submit"
-                    disabled={!subjectName.trim()}
+                    disabled={editingSubject ? (!subjectName.trim() || !isSubjectDirty) : !subjectName.trim()}
                     style={{ 
-                      backgroundColor: subjectName.trim() ? '#dc2626' : undefined 
+                      backgroundColor: (editingSubject ? (subjectName.trim() && isSubjectDirty) : subjectName.trim()) 
+                        ? '#dc2626' 
+                        : undefined 
                     }}
                     className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
-                      subjectName.trim()
+                      (editingSubject ? (subjectName.trim() && isSubjectDirty) : subjectName.trim())
                         ? 'text-white hover:bg-red-700 cursor-pointer' 
                         : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                     }`}
                   >
                     <Check className="w-4 h-4" />
-                    <span>Créer la matière</span>
+                    <span>{editingSubject ? 'Enregistrer' : "Créer la matière"}</span>
                   </button>
                 </div>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* MENU CONTEXTUEL FLOTTANT "3 TRAITS" INTELLIGENT (NE SE COUPE JAMAIS)      */}
+        {/* ========================================================================= */}
+        {activeMenu && (
+          <div
+            className="card-dropdown-menu fixed z-[9999] bg-white rounded-xl shadow-2xl border border-slate-200/90 py-1.5 w-48 text-slate-800 animate-in fade-in zoom-in-95 duration-150 select-none"
+            style={{
+              top: `${activeMenu.position.top}px`,
+              left: `${activeMenu.position.left}px`,
+              boxShadow: '0 16px 36px -6px rgba(0, 31, 39, 0.28), 0 4px 12px -2px rgba(0, 0, 0, 0.08)'
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              type="button"
+              onClick={() => handleTriggerEdit(activeMenu.type, activeMenu.item)}
+              className="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 hover:text-slate-950 hover:bg-slate-100 flex items-center gap-2.5 transition-colors cursor-pointer"
+            >
+              <Pencil className="w-3.5 h-3.5 text-cyan-700 stroke-[2.2]" />
+              <span>Modifier les informations</span>
+            </button>
+            <div className="my-1 border-t border-slate-100" />
+            <button
+              type="button"
+              onClick={() => handleTriggerDelete(activeMenu.type, activeMenu.item)}
+              className="w-full px-3.5 py-2 text-left text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5 text-red-500 stroke-[2.2]" />
+              <span>Supprimer</span>
+            </button>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* MODAL DE SUPPRESSION SÉCURISÉE AVEC SAISIE EXACTE DU NOM REQUIS          */}
+        {/* ========================================================================= */}
+        {deleteTarget && (
+          <div className="fixed inset-0 z-[10000] bg-[#001820]/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
+            <div 
+              className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-red-200 overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-150"
+              style={{
+                boxShadow: '0 25px 50px -12px rgba(220, 38, 38, 0.35)'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* En-tête alerte rouge */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-red-100 bg-red-50/70">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-red-600 text-white flex items-center justify-center shadow-md shrink-0">
+                    <AlertTriangle className="w-5 h-5 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-red-950 leading-tight">
+                      Confirmation de suppression
+                    </h3>
+                    <span className="text-[11px] font-semibold text-red-600/90 mt-0.5 inline-block">
+                      Action irréversible
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeleteTarget(null);
+                    setDeleteConfirmInput('');
+                  }}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-white/80 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Contenu et avertissement */}
+              <div className="p-5 sm:p-6 space-y-4">
+                <div className="p-3.5 bg-red-50 rounded-xl border border-red-200/80 text-xs text-red-900 leading-relaxed font-medium">
+                  {deleteTarget.warningMessage}
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-xs font-bold text-slate-700">
+                    Pour confirmer la suppression définitive de <span className="font-extrabold text-slate-900">{deleteTarget.displayName}</span>, veuillez recopier son nom ci-dessous :
+                  </p>
+
+                  <div className="px-3.5 py-2 rounded-xl bg-slate-100 border border-slate-200 text-xs font-black text-slate-800 text-center select-all font-mono tracking-wide">
+                    {deleteTarget.name}
+                  </div>
+
+                  <input
+                    type="text"
+                    value={deleteConfirmInput}
+                    onChange={(e) => setDeleteConfirmInput(e.target.value)}
+                    placeholder="Recopiez le nom exact ici..."
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-red-500 shadow-inner"
+                    autoFocus
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleConfirmDelete();
+                      }
+                    }}
+                  />
+                  
+                  {deleteConfirmInput.trim().length > 0 && 
+                   deleteConfirmInput.trim().toLowerCase() !== deleteTarget.name.trim().toLowerCase() && (
+                    <span className="text-[11px] font-bold text-red-600 block">
+                      &bull; Le nom saisi ne correspond pas exactement.
+                    </span>
+                  )}
+                </div>
+
+                {/* Boutons d'action */}
+                <div className="pt-2 border-t border-slate-100 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeleteTarget(null);
+                      setDeleteConfirmInput('');
+                    }}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"
+                  >
+                    Annuler
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleConfirmDelete}
+                    disabled={deleteConfirmInput.trim().toLowerCase() !== deleteTarget.name.trim().toLowerCase()}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
+                      deleteConfirmInput.trim().toLowerCase() === deleteTarget.name.trim().toLowerCase()
+                        ? 'bg-red-600 hover:bg-red-700 text-white cursor-pointer'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    <span>Supprimer définitivement</span>
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         )}
