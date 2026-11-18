@@ -366,84 +366,101 @@ export function OnboardingPage() {
   // Champ spécifique non-étudiant
   const [profession, setProfession] = useState(() => localStorage.getItem('unifolder_user_profession') || '');
 
-  // Champs spécifiques étudiant
-  const [school, setSchool] = useState(user?.school || '');
-  const [filiere, setFiliere] = useState(user?.filiere || '');
-  const [level, setLevel] = useState(user?.level || '');
+  // Champs spécifiques étudiant (ne jamais pré-remplir avec des valeurs par défaut fictives)
+  const [school, setSchool] = useState(
+    user?.school && user.school !== 'Non renseigné' && user.school !== 'CME - Bingerville' ? user.school : ''
+  );
+  const [filiere, setFiliere] = useState(
+    user?.filiere && user.filiere !== 'Non renseigné' && user.filiere !== 'Électrotechnique' ? user.filiere : ''
+  );
+  const [level, setLevel] = useState(
+    user?.level && user.level !== 'Non spécifié' && user.level !== 'Non renseigné' && user.level !== 'Étudiant' ? user.level : ''
+  );
 
-  // ─── Gestion de l'horloge et de la persistance continue d'onboarding ───
-  const TOTAL_DURATION_SEC = 7 * 60; // 7 minutes indicatif
-  const startKey = `sc_onb_start_${user?.id || 'default'}`;
-  const lastActiveKey = `sc_onb_last_active_${user?.id || 'default'}`;
+  // ─── Décompteur strict par étape (5 min par étape + limite globale de 30 min en arrière-plan) ───
+  // Le compteur d'une étape ne repart JAMAIS à zéro si l'utilisateur rafraîchit, quitte ou change d'état
+  const STEP_DURATION_MS = 5 * 60 * 1000;
+  const GLOBAL_DURATION_MS = 30 * 60 * 1000;
+  const globalDeadlineKey = `sc_global_deadline_${user?.id || 'default'}`;
+  const stepDeadlineKey = `sc_step_deadline_${user?.id || 'default'}_step_${step}`;
+  const isPurgingRef = React.useRef(false);
 
-  // Calcul dynamique et continu du temps restant
+  const clearAllOnboardingTimers = React.useCallback(() => {
+    const uid = user?.id || 'default';
+    localStorage.removeItem(`sc_global_deadline_${uid}`);
+    localStorage.removeItem(`sc_step_deadline_${uid}_security`);
+    localStorage.removeItem(`sc_step_deadline_${uid}_step_1`);
+    localStorage.removeItem(`sc_step_deadline_${uid}_step_2`);
+    localStorage.removeItem(`sc_step_deadline_${uid}_step_3`);
+    localStorage.removeItem(`sc_onb_start_${uid}`);
+    localStorage.removeItem(`sc_onb_last_active_${uid}`);
+    localStorage.removeItem('sc_onb_start_default');
+    localStorage.removeItem('sc_onb_last_active_default');
+  }, [user?.id]);
+
+  // Supprime immédiatement le compte non finalisé + l'adresse email en base D1 et renvoie à l'accueil d'inscription
+  const purgeAndRedirectToRegistration = React.useCallback(async (reasonMessage: string) => {
+    if (isPurgingRef.current) return;
+    isPurgingRef.current = true;
+    try {
+      await StudyCloudAPI.cancelUnfinalizedAccount(
+        { userId: user?.id, email: user?.email },
+        token || undefined
+      );
+    } catch {}
+    clearAllOnboardingTimers();
+    localStorage.setItem('sc_auth_redirect_mode', 'register');
+    localStorage.setItem('sc_auth_redirect_notice', reasonMessage);
+    window.dispatchEvent(new Event('studycloud_auth_redirect'));
+    logout();
+  }, [user?.id, user?.email, token, clearAllOnboardingTimers, logout]);
+
+  // Calcul de l'échéance stricte de l'étape courante (ne se réinitialise jamais)
+  const getEffectiveStepDeadlineMs = React.useCallback(() => {
+    const now = Date.now();
+    let globalDl = Number(user?.onboarding_deadline_at || 0);
+    const storedGlobal = Number(localStorage.getItem(globalDeadlineKey) || 0);
+    if (!globalDl && storedGlobal > 0) {
+      globalDl = storedGlobal;
+    } else if (!globalDl) {
+      globalDl = now + GLOBAL_DURATION_MS;
+    }
+    localStorage.setItem(globalDeadlineKey, String(globalDl));
+
+    let stepDl = Number(localStorage.getItem(stepDeadlineKey) || 0);
+    if (!stepDl) {
+      const serverStepDl = (user?.onboarding_step === `step_${step}` && Number(user?.step_deadline_at) > 0)
+        ? Number(user?.step_deadline_at)
+        : 0;
+      stepDl = serverStepDl > 0 ? serverStepDl : Math.min(globalDl, now + STEP_DURATION_MS);
+      localStorage.setItem(stepDeadlineKey, String(stepDl));
+    }
+    return Math.min(globalDl, stepDl);
+  }, [user?.onboarding_deadline_at, user?.step_deadline_at, user?.onboarding_step, step, globalDeadlineKey, stepDeadlineKey]);
+
   const calculateRemainingSeconds = React.useCallback(() => {
-    let start = localStorage.getItem(startKey);
-    if (!start) {
-      start = Date.now().toString();
-      localStorage.setItem(startKey, start);
-    }
-    const elapsed = Math.floor((Date.now() - parseInt(start, 10)) / 1000);
-    // Si le temps indicatif est écoulé, réinitialiser pour permettre à l'utilisateur de terminer en toute sérénité
-    if (elapsed >= TOTAL_DURATION_SEC) {
-      localStorage.setItem(startKey, Date.now().toString());
-      return TOTAL_DURATION_SEC;
-    }
-    return Math.max(0, TOTAL_DURATION_SEC - elapsed);
-  }, [startKey]);
+    const deadlineMs = getEffectiveStepDeadlineMs();
+    const diffSec = Math.ceil((deadlineMs - Date.now()) / 1000);
+    return Math.max(0, diffSec);
+  }, [getEffectiveStepDeadlineMs]);
 
   const [timeLeft, setTimeLeft] = useState<number>(calculateRemainingSeconds);
 
-  const handleSessionExpired = React.useCallback(async (_reason: 'timeout' | 'inactivity') => {
-    // Ne JAMAIS supprimer ni annuler un compte dont l'email est déjà vérifié !
-    localStorage.removeItem(startKey);
-    localStorage.removeItem(lastActiveKey);
-    localStorage.removeItem('sc_onboarding_expired_notice');
-  }, [startKey, lastActiveKey]);
-
-  // Écoute des interactions pour rafraîchir l'activité en continu (même après sortie d'écran)
-  React.useEffect(() => {
-    const updateActivity = () => {
-      localStorage.setItem(lastActiveKey, Date.now().toString());
-    };
-
-    // Initialiser l'activité courante
-    if (!localStorage.getItem(lastActiveKey)) {
-      updateActivity();
-    }
-
-    window.addEventListener('mousemove', updateActivity, { passive: true });
-    window.addEventListener('keydown', updateActivity, { passive: true });
-    window.addEventListener('touchstart', updateActivity, { passive: true });
-    window.addEventListener('scroll', updateActivity, { passive: true });
-    window.addEventListener('click', updateActivity, { passive: true });
-
-    return () => {
-      window.removeEventListener('mousemove', updateActivity);
-      window.removeEventListener('keydown', updateActivity);
-      window.removeEventListener('touchstart', updateActivity);
-      window.removeEventListener('scroll', updateActivity);
-      window.removeEventListener('click', updateActivity);
-    };
-  }, [lastActiveKey]);
-
-  // Décompteur ininterrompu : continue de s'écouler même si l'écran s'éteint ou l'app est minimisée
+  // Décompteur ininterrompu : continue de s'écouler en arrière-plan même si l'utilisateur sort de l'application
   React.useEffect(() => {
     const syncContinuousTimer = () => {
       const remaining = calculateRemainingSeconds();
       setTimeLeft(remaining);
+      if (remaining <= 0) {
+        purgeAndRedirectToRegistration(
+          "Le temps imparti pour remplir cette étape de l'inscription est écoulé. Vos informations et votre adresse e-mail ont été automatiquement supprimées de la base de données. Veuillez recommencer l'inscription depuis l'accueil."
+        );
+      }
     };
 
-    // Synchronisation immédiate
     syncContinuousTimer();
-
-    // 1. Tick régulier toutes les 500ms
     const timer = setInterval(syncContinuousTimer, 500);
-
-    // 2. Réactivation instantanée dès que l'écran se rallume, l'onglet redevient visible, ou l'utilisateur revient
-    const handleWakeUp = () => {
-      syncContinuousTimer();
-    };
+    const handleWakeUp = () => syncContinuousTimer();
 
     document.addEventListener('visibilitychange', handleWakeUp);
     window.addEventListener('focus', handleWakeUp);
@@ -457,9 +474,9 @@ export function OnboardingPage() {
       window.removeEventListener('pageshow', handleWakeUp);
       window.removeEventListener('storage', handleWakeUp);
     };
-  }, [calculateRemainingSeconds, handleSessionExpired, startKey, lastActiveKey]);
+  }, [calculateRemainingSeconds, purgeAndRedirectToRegistration]);
 
-  // Sauvegarde automatique du brouillon pour reprise fluide sur tout appareil
+  // Sauvegarde automatique du brouillon et synchronisation de l'étape en arrière-plan avec D1
   React.useEffect(() => {
     if (!token) return;
     const save = () => {
@@ -472,12 +489,27 @@ export function OnboardingPage() {
         phone,
         bio,
         avatarUrl,
-      }).catch(() => {});
+        onboarding_step: `step_${step}`,
+      })
+        .then((res: any) => {
+          if (res?.accountDeleted || res?.code === 'REGISTRATION_EXPIRED_DELETED') {
+            purgeAndRedirectToRegistration(
+              res?.error || "Votre inscription a expiré après 30 minutes et vos informations ont été automatiquement supprimées."
+            );
+          }
+        })
+        .catch((err: any) => {
+          if (err?.accountDeleted || err?.status === 410 || err?.code === 'REGISTRATION_EXPIRED_DELETED') {
+            purgeAndRedirectToRegistration(
+              err?.message || "Votre inscription a expiré et vos informations ont été automatiquement supprimées."
+            );
+          }
+        });
     };
     save();
-    const interval = setInterval(save, 30000);
+    const interval = setInterval(save, 25000);
     return () => clearInterval(interval);
-  }, [token, step, name, school, filiere, level, country, phone, bio, avatarUrl]);
+  }, [token, step, name, school, filiere, level, country, phone, bio, avatarUrl, purgeAndRedirectToRegistration]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -538,79 +570,80 @@ export function OnboardingPage() {
   const handleStep2Submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!name.trim()) {
-      setError('Le nom complet est obligatoire.');
-      return;
-    }
-    if (!country) {
-      setError('Le pays est obligatoire.');
-      return;
-    }
-    if (!phone.trim()) {
-      setError('Le numéro de téléphone est obligatoire.');
-      return;
-    }
-
-    // Validation stricte du nombre de chiffres exigé par le pays
-    const phoneCheck = validatePhoneNumber(phone, country);
-    if (!phoneCheck.isValid) {
-      setError(phoneCheck.error || 'Numéro de téléphone invalide pour ce pays.');
-      return;
-    }
-
-    if (!isStudent && !profession.trim()) {
-      setError("La profession ou domaine d'activité est obligatoire.");
-      return;
-    }
 
     if (isStudent) {
-      // Pour les étudiants, on passe à l'étape 3 (informations scolaires)
+      // Pour les étudiants, le bouton est "Étape suivante (Études)" : on vérifie l'étape 2 avant d'aller à l'étape 3
+      if (!name.trim() || name.trim().length < 2) {
+        setError('Le nom complet est obligatoire.');
+        return;
+      }
+      if (!country) {
+        setError('Le pays est obligatoire.');
+        return;
+      }
+      if (!phone.trim()) {
+        setError('Le numéro de téléphone est obligatoire.');
+        return;
+      }
+      const phoneCheck = validatePhoneNumber(phone, country);
+      if (!phoneCheck.isValid) {
+        setError(phoneCheck.error || 'Numéro de téléphone invalide pour ce pays.');
+        return;
+      }
       setStep(3);
     } else {
-      // Pour les non-étudiants, on soumet directement le formulaire (questions importantes seulement)
+      // Pour les non-étudiants, le bouton est "Terminer et accéder à StudyCloud" -> Vérification anti-triche stricte
       finalizeOnboarding(false);
     }
   };
 
-  // Validation et soumission finale de l'Étape 3 (Étudiant)
+  // Validation et soumission finale de l'Étape 3 (Bouton "Terminer et accéder à StudyCloud")
   const handleStep3Submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!school.trim()) {
-      setError("Le nom de l'école ou de l'université est obligatoire.");
-      return;
-    }
-    if (!filiere.trim()) {
-      setError('La filière ou spécialité est obligatoire.');
-      return;
-    }
     finalizeOnboarding(true);
   };
 
-  // Envoi final des données à l'API et mise à jour locale
+  // Envoi final des données à l'API, vérification anti-triche en base D1, ou rejet + suppression immédiate si incomplet
   const finalizeOnboarding = async (studentStatus: boolean) => {
     setIsLoading(true);
     setError(null);
 
+    const finalName = name.trim();
     const finalSchool = studentStatus
       ? school.trim()
       : 'Professionnel / Particulier';
 
     const finalFiliere = studentStatus
       ? filiere.trim()
-      : (profession.trim() || 'Général');
+      : profession.trim();
 
     const finalLevel = studentStatus
-      ? (level || 'Non spécifié')
+      ? level.trim()
       : 'Professionnel';
 
-    // Validation et normalisation du téléphone avec l'indicatif correspondant au pays choisi
     const phoneCheck = validatePhoneNumber(phone, country);
-    if (!phoneCheck.isValid) {
-      setError(phoneCheck.error || 'Numéro de téléphone invalide pour ce pays.');
+
+    // VÉRIFICATION STRICTE AU CLIC SUR "Terminer et accéder à StudyCloud" :
+    // Si toutes les informations obligatoires (téléphone, email, niveau, filière, école, nom) ne sont pas remplies,
+    // le compte est refusé, l'email et les informations sont supprimés de la base de données et l'utilisateur est renvoyé à l'accueil
+    const isMissingOrInvalidMandatory =
+      !finalName || finalName.length < 2 ||
+      !user?.email || !user.email.includes('@') ||
+      !country ||
+      !phone.trim() || !phoneCheck.isValid ||
+      !finalSchool || finalSchool.length < 2 || finalSchool === 'Non renseigné' ||
+      !finalFiliere || finalFiliere.length < 2 || finalFiliere === 'Non renseigné' ||
+      !finalLevel || finalLevel.length < 2 || finalLevel === 'Non spécifié' || finalLevel === 'Non renseigné' || finalLevel === 'Étudiant';
+
+    if (isMissingOrInvalidMandatory) {
+      await purgeAndRedirectToRegistration(
+        "Compte refusé : toutes les informations obligatoires (numéro de téléphone, e-mail, niveau, filière, établissement) n'ont pas été remplies. Votre adresse e-mail et vos informations associées ont été automatiquement supprimées. Veuillez recommencer l'inscription depuis le départ."
+      );
       setIsLoading(false);
       return;
     }
+
     const finalPhone = `${currentCountry.dialCode} ${phoneCheck.cleanDigits}`;
 
     // Logo par défaut adapté au profil si aucune image personnalisée importée
@@ -621,27 +654,35 @@ export function OnboardingPage() {
 
     try {
       const res: any = await StudyCloudAPI.completeOnboarding(token!, {
-        name: name.trim(),
+        name: finalName,
         school: finalSchool,
         filiere: finalFiliere,
         level: finalLevel,
         country,
-        phone: finalPhone || undefined,
+        phone: finalPhone,
         bio: bio.trim(),
         avatarUrl: finalAvatar,
         is_student: studentStatus ? 1 : 0,
         profession: !studentStatus ? profession.trim() : undefined,
       });
 
-      if (res.success && res.data) {
+      if (res?.accountDeleted || res?.code === 'INCOMPLETE_REGISTRATION_DELETED' || res?.code === 'REGISTRATION_EXPIRED_DELETED') {
+        await purgeAndRedirectToRegistration(
+          res?.error || "Compte refusé : toutes les informations obligatoires n'ont pas été enregistrées dans la base de données. Votre adresse e-mail et vos informations associées ont été automatiquement supprimées."
+        );
+        return;
+      }
+
+      if (res.success && res.verifiedInDb && res.data) {
         const savedAvatar = res.data.avatar_url || finalAvatar;
 
-        // Enregistrement dans le stockage local
+        // Enregistrement dans le stockage local uniquement après confirmation de la base de données D1
         localStorage.setItem('unifolder_is_student', studentStatus ? 'true' : 'false');
-        localStorage.setItem('unifolder_user_name', res.data.name || name.trim());
+        localStorage.setItem('unifolder_user_name', res.data.name || finalName);
         localStorage.setItem('unifolder_user_country', res.data.country || country);
         localStorage.setItem('unifolder_user_school', res.data.school || finalSchool);
         localStorage.setItem('unifolder_user_filiere', res.data.filiere || finalFiliere);
+        localStorage.setItem('unifolder_user_level', res.data.level || finalLevel);
         if (savedAvatar) {
           localStorage.setItem('unifolder_user_avatar', savedAvatar);
         }
@@ -650,20 +691,33 @@ export function OnboardingPage() {
           localStorage.setItem('unifolder_user_profession', profession.trim());
         }
 
-        localStorage.removeItem(`sc_onb_start_${user?.id || 'default'}`);
-
-        // Déclencher l'envoi de l'email de bienvenue professionnel à son arrivée à l'accueil
-        StudyCloudAPI.sendWelcomeEmail(token!).catch(() => {});
+        clearAllOnboardingTimers();
 
         updateProfile({
           ...res.data,
+          is_onboarded: 1,
+          registration_status: 'termine',
           avatar_url: finalAvatar || null,
           is_student: studentStatus ? 1 : 0,
         });
       } else {
-        setError(res.error || "Une erreur est survenue lors de l'enregistrement de votre profil.");
+        await purgeAndRedirectToRegistration(
+          res?.error || "Compte refusé : la vérification dans la base de données a échoué car toutes les informations obligatoires n'ont pas été remplies. Votre adresse e-mail et vos données ont été automatiquement supprimées."
+        );
       }
     } catch (err: any) {
+      if (
+        err?.accountDeleted ||
+        err?.status === 403 ||
+        err?.status === 410 ||
+        err?.code === 'INCOMPLETE_REGISTRATION_DELETED' ||
+        err?.code === 'REGISTRATION_EXPIRED_DELETED'
+      ) {
+        await purgeAndRedirectToRegistration(
+          err?.message || "Compte refusé : toutes les informations obligatoires n'ont pas été remplies. Votre adresse e-mail et vos informations associées ont été automatiquement supprimées."
+        );
+        return;
+      }
       setError(err.message || 'Impossible de contacter le serveur StudyCloud.');
     } finally {
       setIsLoading(false);
@@ -903,7 +957,7 @@ export function OnboardingPage() {
                 - Si ÉTUDIANT : Coordonnées (Nom, Pays, Tel, Avatar)
                 ════════════════════════════════════════════════════════════════════════ */}
             {step === 2 && (
-              <form onSubmit={handleStep2Submit} className="space-y-6 sm:space-y-8 bg-white/[0.03] border border-white/10 rounded-3xl p-6 sm:p-10 backdrop-blur-xl shadow-2xl">
+              <form onSubmit={handleStep2Submit} noValidate className="space-y-6 sm:space-y-8 bg-white/[0.03] border border-white/10 rounded-3xl p-6 sm:p-10 backdrop-blur-xl shadow-2xl">
                 {/* Bannière explicative pour non-étudiant */}
                 {!isStudent && (
                   <div
@@ -1253,7 +1307,7 @@ export function OnboardingPage() {
                 ÉTAPE 3 : PARCOURS ACADÉMIQUE (UNIQUEMENT POUR LES ÉTUDIANTS)
                 ════════════════════════════════════════════════════════════════════════ */}
             {step === 3 && isStudent && (
-              <form onSubmit={handleStep3Submit} className="space-y-6 sm:space-y-8 bg-white/[0.03] border border-white/10 rounded-3xl p-6 sm:p-10 backdrop-blur-xl shadow-2xl">
+              <form onSubmit={handleStep3Submit} noValidate className="space-y-6 sm:space-y-8 bg-white/[0.03] border border-white/10 rounded-3xl p-6 sm:p-10 backdrop-blur-xl shadow-2xl">
                 <div className="space-y-5">
                   <div className="border-b border-white/10 pb-2">
                     <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest">

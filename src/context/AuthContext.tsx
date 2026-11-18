@@ -29,6 +29,10 @@ export interface AuthUser {
   has_security_questions?: boolean;
   security_question_1?: string;
   security_question_2?: string;
+  registration_status?: 'en_attente_de_finition' | 'termine' | string;
+  onboarding_deadline_at?: number;
+  step_deadline_at?: number;
+  onboarding_step?: string;
 }
 
 interface AuthContextValue {
@@ -95,6 +99,22 @@ function getStoredAuth(): { user: AuthUser | null; token: string | null } {
       try {
         const parsed = JSON.parse(rawCachedUser);
         if (parsed && parsed.id) {
+          // Si le compte est en attente de finition et que le délai global de 30 min ou d'étape est dépassé en arrière-plan
+          if (Number(parsed.is_onboarded) !== 1 || parsed.registration_status === 'en_attente_de_finition') {
+            const nowMs = Date.now();
+            const globalDeadline = Number(parsed.onboarding_deadline_at || 0);
+            const stepDeadline = Number(parsed.step_deadline_at || 0);
+            if ((globalDeadline > 0 && nowMs >= globalDeadline) || (stepDeadline > 0 && nowMs >= stepDeadline)) {
+              StudyCloudAPI.cancelUnfinalizedAccount({ userId: parsed.id, email: parsed.email }, storedToken).catch(() => {});
+              clearUserDataOnLogout();
+              localStorage.setItem('sc_auth_redirect_mode', 'register');
+              localStorage.setItem(
+                'sc_auth_redirect_notice',
+                "Le temps imparti pour finaliser votre inscription est écoulé. Votre compte et votre adresse e-mail ont été automatiquement supprimés. Veuillez recommencer l'inscription depuis le départ."
+              );
+              return { user: null, token: null };
+            }
+          }
           if (isWallpaperAvatarPollution(parsed.avatar_url)) {
             parsed.avatar_url = null;
             try { localStorage.setItem('sc_auth_user', JSON.stringify(parsed)); } catch {}
@@ -117,20 +137,25 @@ function getStoredAuth(): { user: AuthUser | null; token: string | null } {
       if (lsAv && !safeAvatar) {
         try { localStorage.removeItem('unifolder_user_avatar'); } catch {}
       }
+      const lsSchool = localStorage.getItem('unifolder_user_school') || '';
+      const lsFiliere = localStorage.getItem('unifolder_user_filiere') || '';
+      const lsPhone = localStorage.getItem('unifolder_user_phone') || '';
+      const lsLevel = localStorage.getItem('unifolder_user_level') || '';
+      const isCompleteLocal = Boolean(lsSchool && lsFiliere && lsPhone && lsLevel);
       const reconstructed: AuthUser = {
         id: userId,
         name: userName,
         email: localStorage.getItem('unifolder_user_email') || '',
         provider: 'email',
-        school: localStorage.getItem('unifolder_user_school') || '',
-        filiere: localStorage.getItem('unifolder_user_filiere') || '',
+        school: lsSchool,
+        filiere: lsFiliere,
         country: localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire",
-        level: '',
+        level: lsLevel,
         bio: '',
-        phone: localStorage.getItem('unifolder_user_phone') || '',
+        phone: lsPhone,
         avatar_url: safeAvatar,
         profession: localStorage.getItem('unifolder_user_profession') || undefined,
-        is_onboarded: 1,
+        is_onboarded: isCompleteLocal ? 1 : 0,
         is_student: localStorage.getItem('unifolder_is_student') === 'false' ? 0 : 1,
         email_verified: 1,
         created_at: new Date().toISOString(),
@@ -140,7 +165,7 @@ function getStoredAuth(): { user: AuthUser | null; token: string | null } {
       return { user: reconstructed, token: storedToken };
     }
 
-    // 3. Fallback JWT
+    // 3. Fallback JWT (jamais marqué is_onboarded = 1 sans confirmation serveur)
     const payload = parseJwtPayload(storedToken);
     if (payload && (payload.userId || payload.user?.id)) {
       const fallbackUser: AuthUser = {
@@ -155,7 +180,7 @@ function getStoredAuth(): { user: AuthUser | null; token: string | null } {
         bio: '',
         phone: '',
         avatar_url: null,
-        is_onboarded: 1,
+        is_onboarded: 0,
         email_verified: 1,
         created_at: new Date().toISOString(),
         has_password: true,
@@ -223,6 +248,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.setItem('unifolder_user_school', sanitizedUser.school || '');
           localStorage.setItem('unifolder_user_country', sanitizedUser.country || "Côte d'Ivoire");
           if (sanitizedUser.filiere) localStorage.setItem('unifolder_user_filiere', sanitizedUser.filiere);
+          if (sanitizedUser.level) localStorage.setItem('unifolder_user_level', sanitizedUser.level);
           if (sanitizedUser.email) localStorage.setItem('unifolder_user_email', sanitizedUser.email);
           if (sanitizedUser.phone) localStorage.setItem('unifolder_user_phone', sanitizedUser.phone);
           if (cleanAvatar) {
@@ -233,9 +259,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Hydrater automatiquement les données Cloudflare D1 de l'utilisateur
           restoreUserDataFromCloud(sanitizedUser.id).catch(() => {});
           CloudDataStore.sync(true).catch(() => {});
+        } else if (res?.accountDeleted || res?.code === 'REGISTRATION_EXPIRED_DELETED' || res?.code === 'INCOMPLETE_REGISTRATION_DELETED') {
+          clearUserDataOnLogout();
+          CloudDataStore.clearCache().catch(() => {});
+          localStorage.setItem('sc_auth_redirect_mode', 'register');
+          localStorage.setItem(
+            'sc_auth_redirect_notice',
+            res?.error || "Votre inscription n'a pas été finalisée dans le délai imparti. Votre compte et votre adresse e-mail ont été automatiquement supprimés."
+          );
+          setUser(null);
+          setToken(null);
         }
       })
       .catch((err: any) => {
+        if (
+          err?.status === 410 ||
+          err?.accountDeleted ||
+          err?.code === 'REGISTRATION_EXPIRED_DELETED' ||
+          err?.code === 'INCOMPLETE_REGISTRATION_DELETED' ||
+          err?.data?.accountDeleted
+        ) {
+          clearUserDataOnLogout();
+          CloudDataStore.clearCache().catch(() => {});
+          localStorage.setItem('sc_auth_redirect_mode', 'register');
+          localStorage.setItem(
+            'sc_auth_redirect_notice',
+            err?.message || err?.data?.error || "Votre inscription n'a pas été finalisée dans le délai imparti. Votre compte et votre adresse e-mail ont été automatiquement supprimés. Veuillez recommencer l'inscription depuis le départ."
+          );
+          setUser(null);
+          setToken(null);
+          return;
+        }
         // SEULEMENT si le serveur signale explicitement que le compte a été supprimé (404)
         // ou que la session a dépassé 1 mois d'inactivité côté serveur
         if (
@@ -243,32 +297,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           err?.data?.code === 'SESSION_EXPIRED_INACTIVE' ||
           err?.message?.includes("1 mois d'inactivité")
         ) {
+          const wasPendingOnboarding = Boolean(initialSession.user && Number(initialSession.user.is_onboarded) !== 1);
           clearUserDataOnLogout();
           CloudDataStore.clearCache().catch(() => {});
+          if (wasPendingOnboarding) {
+            localStorage.setItem('sc_auth_redirect_mode', 'register');
+            localStorage.setItem(
+              'sc_auth_redirect_notice',
+              "Votre inscription non finalisée a expiré après 30 minutes et vos informations ont été automatiquement supprimées. Veuillez recommencer l'inscription depuis le départ."
+            );
+          }
           setUser(null);
           setToken(null);
         }
-        // En cas d'erreur réseau, de coupure temporaire ou de rechargement de page :
-        // ON NE DÉCONNECTE JAMAIS l'utilisateur ! Il reste dans sa session.
       })
       .finally(() => {
         setIsLoading(false);
       });
   }, []);
 
-  // Heartbeat automatique : signale la présence en ligne auprès du serveur toutes les 45s
+  // Heartbeat automatique : signale la présence en ligne auprès du serveur toutes les 45s et vérifie l'expiration en arrière-plan
   useEffect(() => {
     if (!token) return;
-    
-    StudyCloudAPI.sendHeartbeat(token).catch(() => {});
 
-    const interval = setInterval(() => {
-      StudyCloudAPI.sendHeartbeat(token).catch(() => {});
-    }, 45000);
+    const checkHeartbeat = async () => {
+      try {
+        const hbRes: any = await StudyCloudAPI.sendHeartbeat(token);
+        if (hbRes && (hbRes.accountDeleted || hbRes.code === 'REGISTRATION_EXPIRED_DELETED')) {
+          clearUserDataOnLogout();
+          CloudDataStore.clearCache().catch(() => {});
+          localStorage.setItem('sc_auth_redirect_mode', 'register');
+          localStorage.setItem(
+            'sc_auth_redirect_notice',
+            hbRes.error || "Le temps imparti pour finaliser votre inscription est écoulé. Votre compte et vos informations ont été automatiquement supprimés."
+          );
+          setUser(null);
+          setToken(null);
+        }
+      } catch {}
+    };
+
+    checkHeartbeat();
+
+    const interval = setInterval(checkHeartbeat, 45000);
 
     const onFocusOrVisible = () => {
       if (!document.hidden) {
-        StudyCloudAPI.sendHeartbeat(token).catch(() => {});
+        checkHeartbeat();
       }
     };
 
@@ -344,6 +419,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (data.name) localStorage.setItem('unifolder_user_name', data.name);
     if (data.school) localStorage.setItem('unifolder_user_school', data.school);
     if (data.filiere) localStorage.setItem('unifolder_user_filiere', data.filiere);
+    if (data.level) localStorage.setItem('unifolder_user_level', data.level);
     if (data.country) localStorage.setItem('unifolder_user_country', data.country);
     if (data.email) localStorage.setItem('unifolder_user_email', data.email);
     if (data.phone) localStorage.setItem('unifolder_user_phone', data.phone);
@@ -369,12 +445,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user &&
     (user.has_password === false || user.has_security_questions === false)
   );
-  // 2. Ensuite les questions personnelles d'onboarding (nom, école, filière, niveau, pays, téléphone, photo/logo)
+  // 2. Ensuite les questions personnelles obligatoires d'onboarding (nom, école, filière, niveau, pays, téléphone, photo/logo)
+  // Tant que toutes ces informations obligatoires ne sont pas renseignées et que is_onboarded !== 1, l'accès à l'application est bloqué
+  const isMissingMandatoryFields = Boolean(
+    user && (
+      Number(user.is_onboarded) !== 1 ||
+      user.registration_status === 'en_attente_de_finition' ||
+      !user.phone || String(user.phone).trim().length < 6 || user.phone === 'Non renseigné' ||
+      !user.school || String(user.school).trim().length < 2 || user.school === 'Non renseigné' ||
+      !user.filiere || String(user.filiere).trim().length < 2 || user.filiere === 'Non renseigné' ||
+      !user.level || String(user.level).trim().length < 2 || user.level === 'Non spécifié' || user.level === 'Non renseigné' || user.level === 'Étudiant'
+    )
+  );
   const needsOnboarding = Boolean(
     isAuthenticated &&
     !needsSecuritySetup &&
-    user &&
-    Number(user.is_onboarded) !== 1
+    isMissingMandatoryFields
   );
 
   return (

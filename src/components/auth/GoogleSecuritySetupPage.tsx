@@ -34,79 +34,74 @@ export function GoogleSecuritySetupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ─── Gestion de l'expiration 7 minutes et inactivité 5 minutes (Horloge réelle continue) ───
-  const TOTAL_DURATION_SEC = 7 * 60;
-  const INACTIVITY_LIMIT_MS = 5 * 60 * 1000;
-  const startKey = `sc_onb_start_${user?.id || 'default'}`;
-  const lastActiveKey = `sc_onb_last_active_${user?.id || 'default'}`;
+  // ─── Décompteur strict par étape (5 minutes, ne repart jamais à zéro, fonctionne en arrière-plan) ───
+  const STEP_DURATION_MS = 5 * 60 * 1000;
+  const GLOBAL_DURATION_MS = 30 * 60 * 1000;
+  const stepDeadlineKey = `sc_step_deadline_${user?.id || 'default'}_security`;
+  const globalDeadlineKey = `sc_global_deadline_${user?.id || 'default'}`;
+  const isExpiringRef = useRef(false);
 
-  // Calcul dynamique et continu du temps restant
+  const getEffectiveDeadlineMs = useCallback(() => {
+    const now = Date.now();
+    let globalDl = Number(user?.onboarding_deadline_at || 0);
+    const storedGlobal = Number(localStorage.getItem(globalDeadlineKey) || 0);
+    if (!globalDl && storedGlobal > 0) {
+      globalDl = storedGlobal;
+    } else if (!globalDl) {
+      globalDl = now + GLOBAL_DURATION_MS;
+    }
+    localStorage.setItem(globalDeadlineKey, String(globalDl));
+
+    let stepDl = Number(localStorage.getItem(stepDeadlineKey) || 0);
+    const serverStepDl = Number(user?.step_deadline_at || 0);
+    if (!stepDl) {
+      stepDl = serverStepDl > 0 ? serverStepDl : Math.min(globalDl, now + STEP_DURATION_MS);
+      localStorage.setItem(stepDeadlineKey, String(stepDl));
+    }
+    return Math.min(globalDl, stepDl);
+  }, [user?.onboarding_deadline_at, user?.step_deadline_at, globalDeadlineKey, stepDeadlineKey]);
+
   const calculateRemainingSeconds = useCallback(() => {
-    let start = localStorage.getItem(startKey);
-    if (!start) {
-      start = Date.now().toString();
-      localStorage.setItem(startKey, start);
-    }
-    const elapsed = Math.floor((Date.now() - parseInt(start, 10)) / 1000);
-    if (elapsed >= TOTAL_DURATION_SEC) {
-      localStorage.setItem(startKey, Date.now().toString());
-      return TOTAL_DURATION_SEC;
-    }
-    return Math.max(0, TOTAL_DURATION_SEC - elapsed);
-  }, [startKey]);
+    const deadlineMs = getEffectiveDeadlineMs();
+    const diffSec = Math.ceil((deadlineMs - Date.now()) / 1000);
+    return Math.max(0, diffSec);
+  }, [getEffectiveDeadlineMs]);
 
   const [timeLeft, setTimeLeft] = useState<number>(calculateRemainingSeconds);
 
-  const handleSessionExpired = useCallback(async (_reason: 'timeout' | 'inactivity') => {
-    // Ne jamais supprimer ni annuler un compte dont la session Google est active
-    localStorage.removeItem(startKey);
-    localStorage.removeItem(lastActiveKey);
-    localStorage.removeItem('sc_onboarding_expired_notice');
-  }, [startKey, lastActiveKey]);
+  const handleSessionExpired = useCallback(async () => {
+    if (isExpiringRef.current) return;
+    isExpiringRef.current = true;
+    try {
+      await StudyCloudAPI.cancelUnfinalizedAccount(
+        { userId: user?.id, email: user?.email },
+        token || undefined
+      );
+    } catch {}
+    localStorage.removeItem(stepDeadlineKey);
+    localStorage.removeItem(globalDeadlineKey);
+    localStorage.setItem('sc_auth_redirect_mode', 'register');
+    localStorage.setItem(
+      'sc_auth_redirect_notice',
+      "Le temps imparti pour cette étape de l'inscription est écoulé. Vos informations et votre adresse e-mail ont été automatiquement supprimées de la base de données. Veuillez recommencer l'inscription depuis l'accueil."
+    );
+    window.dispatchEvent(new Event('studycloud_auth_redirect'));
+    logout();
+  }, [user?.id, user?.email, token, stepDeadlineKey, globalDeadlineKey, logout]);
 
-  // Écoute des interactions pour rafraîchir l'activité en continu (même après sortie d'écran)
-  useEffect(() => {
-    const updateActivity = () => {
-      localStorage.setItem(lastActiveKey, Date.now().toString());
-    };
-
-    // Initialiser l'activité courante
-    if (!localStorage.getItem(lastActiveKey)) {
-      updateActivity();
-    }
-
-    window.addEventListener('mousemove', updateActivity, { passive: true });
-    window.addEventListener('keydown', updateActivity, { passive: true });
-    window.addEventListener('touchstart', updateActivity, { passive: true });
-    window.addEventListener('scroll', updateActivity, { passive: true });
-    window.addEventListener('click', updateActivity, { passive: true });
-
-    return () => {
-      window.removeEventListener('mousemove', updateActivity);
-      window.removeEventListener('keydown', updateActivity);
-      window.removeEventListener('touchstart', updateActivity);
-      window.removeEventListener('scroll', updateActivity);
-      window.removeEventListener('click', updateActivity);
-    };
-  }, [lastActiveKey]);
-
-  // Décompteur ininterrompu : continue de s'écouler même si l'écran s'éteint ou l'app est minimisée
+  // Décompteur ininterrompu : continue de s'écouler en arrière-plan même si l'utilisateur quitte l'application
   useEffect(() => {
     const syncContinuousTimer = () => {
       const remaining = calculateRemainingSeconds();
       setTimeLeft(remaining);
+      if (remaining <= 0) {
+        handleSessionExpired();
+      }
     };
 
-    // Synchronisation immédiate
     syncContinuousTimer();
-
-    // 1. Tick régulier toutes les 500ms
     const timer = setInterval(syncContinuousTimer, 500);
-
-    // 2. Réactivation instantanée dès que l'écran se rallume, l'onglet redevient visible, ou l'utilisateur revient
-    const handleWakeUp = () => {
-      syncContinuousTimer();
-    };
+    const handleWakeUp = () => syncContinuousTimer();
 
     document.addEventListener('visibilitychange', handleWakeUp);
     window.addEventListener('focus', handleWakeUp);
@@ -120,7 +115,7 @@ export function GoogleSecuritySetupPage() {
       window.removeEventListener('pageshow', handleWakeUp);
       window.removeEventListener('storage', handleWakeUp);
     };
-  }, [calculateRemainingSeconds, handleSessionExpired, startKey, lastActiveKey]);
+  }, [calculateRemainingSeconds, handleSessionExpired]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);
@@ -178,14 +173,14 @@ export function GoogleSecuritySetupPage() {
       });
 
       if (res.success && res.user) {
-        localStorage.removeItem(`sc_onb_start_${user?.id || 'default'}`);
+        localStorage.removeItem(stepDeadlineKey);
         updateProfile(res.user);
       } else {
         setError(res.message || 'Une erreur est survenue lors de la configuration.');
       }
     } catch (err: any) {
-      if (err.message?.includes('expirée') || err.message?.includes('410')) {
-        handleSessionExpired('timeout');
+      if (err?.accountDeleted || err?.status === 410 || err.message?.includes('expir') || err.message?.includes('410') || err.message?.includes('écoulé')) {
+        handleSessionExpired();
         return;
       }
       setError(err.message || 'Erreur réseau. Veuillez réessayer.');

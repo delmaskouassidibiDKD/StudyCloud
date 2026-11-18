@@ -3722,12 +3722,35 @@ var index_default = {
         if (!val || typeof val !== "string") return false;
         const v = val.trim();
         return v.startsWith("/wallpapers/") || v.includes("/api/cloud/wallpaper/");
+      }, isUserFullyRegisteredInDb = function(user) {
+        if (!user) return false;
+        if (Number(user.is_onboarded) !== 1) return false;
+        if (user.registration_status === "en_attente_de_finition") return false;
+        const email = String(user.email || "").trim();
+        const name = String(user.name || "").trim();
+        const phone = String(user.phone || "").trim();
+        const school = String(user.school || "").trim();
+        const filiere = String(user.filiere || "").trim();
+        const level = String(user.level || "").trim();
+        if (!email || !email.includes("@")) return false;
+        if (name.length < 2) return false;
+        if (!phone || phone.length < 6 || phone === "Non renseign\xE9") return false;
+        if (!school || school.length < 2 || school === "Non renseign\xE9") return false;
+        if (!filiere || filiere.length < 2 || filiere === "Non renseign\xE9") return false;
+        if (!level || level.length < 2 || level === "Non sp\xE9cifi\xE9" || level === "Non renseign\xE9" || level === "\xC9tudiant") return false;
+        return true;
       }, sanitizeUser = function(user) {
         if (!user) return null;
         const { password_hash: _ph, security_answer_1_hash: _s1, security_answer_2_hash: _s2, ...rest } = user;
         const cleanAvatarUrl = isPollutedWallpaperAvatar(user.avatar_url) ? null : user.avatar_url ?? null;
+        const fullyRegistered = isUserFullyRegisteredInDb(user);
         return {
           ...rest,
+          is_onboarded: fullyRegistered ? 1 : 0,
+          registration_status: fullyRegistered ? "termine" : "en_attente_de_finition",
+          onboarding_deadline_at: Number(user.onboarding_deadline_at || 0),
+          step_deadline_at: Number(user.step_deadline_at || 0),
+          onboarding_step: user.onboarding_step || "step_1",
           avatar_url: cleanAvatarUrl,
           has_password: Boolean(user.password_hash && typeof user.password_hash === "string" && user.password_hash.trim().length > 0),
           has_security_questions: Boolean(
@@ -4471,6 +4494,24 @@ a:hover{transform:translateY(-2px)}
       async function ensureUsersTableUniqueIndex(_db) {
         return;
       }
+      async function ensureRegistrationColumns(db) {
+        if (!db) return;
+        const g = globalThis;
+        if (g.__scRegColsEnsured) return;
+        g.__scRegColsEnsured = true;
+        const alterQueries = [
+          "ALTER TABLE users ADD COLUMN registration_status TEXT DEFAULT 'en_attente_de_finition'",
+          "ALTER TABLE users ADD COLUMN onboarding_deadline_at INTEGER DEFAULT 0",
+          "ALTER TABLE users ADD COLUMN step_deadline_at INTEGER DEFAULT 0",
+          "ALTER TABLE users ADD COLUMN onboarding_step TEXT DEFAULT 'step_1'"
+        ];
+        for (const q of alterQueries) {
+          try {
+            await db.prepare(q).run();
+          } catch (e) {
+          }
+        }
+      }
       async function deleteUserCompletely(db, userId, email, bucket) {
         if (!db || !userId) return;
         if (bucket) {
@@ -4549,7 +4590,17 @@ a:hover{transform:translateY(-2px)}
           "sync_items",
           "study_imported_files",
           "ai_document_perceptions",
-          "user_storage_usage"
+          "user_storage_usage",
+          "user_storage_quotas",
+          "storage_upgrade_requests",
+          "user_ai_credits",
+          "ai_credit_purchases",
+          "ai_usage_logs",
+          "ai_reactions",
+          "ai_generated_contents",
+          "user_dashboard_sites",
+          "user_word_counts",
+          "study_sessions"
         ];
         for (const table of tablesWithUserId) {
           try {
@@ -4594,8 +4645,61 @@ a:hover{transform:translateY(-2px)}
           console.error(`[StudyCloud Delete Account] Erreur suppression users ${userId}:`, e);
         }
       }
-      async function cleanupExpiredUnfinishedAccounts(db) {
-        return;
+      async function cleanupExpiredUnfinishedAccounts(db, bucket) {
+        if (!db) return;
+        await ensureRegistrationColumns(db);
+        const nowMs = Date.now();
+        const THIRTY_MINUTES_MS = 30 * 60 * 1e3;
+        try {
+          await db.prepare("DELETE FROM email_verifications WHERE created_at < datetime('now', '-30 minutes')").run();
+        } catch (e) {
+        }
+        try {
+          const pendingRes = await db.prepare(`
+            SELECT * FROM users
+            WHERE is_onboarded = 0
+               OR registration_status = 'en_attente_de_finition'
+               OR phone IS NULL OR TRIM(phone) = '' OR phone = 'Non renseign\xE9'
+               OR school IS NULL OR TRIM(school) = '' OR school = 'Non renseign\xE9'
+               OR filiere IS NULL OR TRIM(filiere) = '' OR filiere = 'Non renseign\xE9'
+               OR level IS NULL OR TRIM(level) = '' OR level = 'Non sp\xE9cifi\xE9' OR level = 'Non renseign\xE9' OR level = '\xC9tudiant'
+          `).all();
+          const rows = pendingRes?.results || [];
+          for (const u of rows) {
+            if (isUserFullyRegisteredInDb(u)) {
+              if (u.registration_status !== "termine" || Number(u.is_onboarded) !== 1) {
+                try {
+                  await db.prepare("UPDATE users SET is_onboarded = 1, registration_status = 'termine', onboarding_deadline_at = 0, step_deadline_at = 0 WHERE id = ?").bind(u.id).run();
+                } catch (e) {
+                }
+              }
+              continue;
+            }
+            const createdAtMs = u.created_at ? new Date(String(u.created_at).includes("T") ? u.created_at : `${u.created_at}Z`).getTime() : nowMs - THIRTY_MINUTES_MS - 1e3;
+            const validCreatedMs = Number.isNaN(createdAtMs) ? nowMs - THIRTY_MINUTES_MS - 1e3 : createdAtMs;
+            const globalDeadlineMs = Number(u.onboarding_deadline_at) > 0 ? Number(u.onboarding_deadline_at) : validCreatedMs + THIRTY_MINUTES_MS;
+            const stepDeadlineMs = Number(u.step_deadline_at || 0);
+            const isGlobalExpired = nowMs >= globalDeadlineMs;
+            const isStepExpired = stepDeadlineMs > 0 && nowMs >= stepDeadlineMs;
+            if (isGlobalExpired || isStepExpired) {
+              await deleteUserCompletely(db, u.id, u.email, bucket || env.BUCKET);
+              console.log(`[StudyCloud Auto-Purge] Compte non finalis\xE9 supprim\xE9 automatiquement (${isStepExpired ? "\xE9tape expir\xE9e" : "30 min d\xE9pass\xE9es"}) : ${u.email} (${u.id})`);
+            } else {
+              try {
+                await db.prepare(`
+                  UPDATE users SET
+                    is_onboarded = 0,
+                    registration_status = 'en_attente_de_finition',
+                    onboarding_deadline_at = ?
+                  WHERE id = ?
+                `).bind(globalDeadlineMs, u.id).run();
+              } catch (e) {
+              }
+            }
+          }
+        } catch (e) {
+          console.error("[StudyCloud Auto-Purge Error]", e);
+        }
       }
       if (path.startsWith("/api/auth/") && path !== "/api/auth/check-verification-status" && !isSchemaInitialized) {
         await ensureDatabaseSchema(env.DB);
@@ -4604,6 +4708,7 @@ a:hover{transform:translateY(-2px)}
       if (path === "/api/auth/register" && method === "POST") {
         if (!isEmailVerifTableInitialized) await ensureEmailVerificationsTable(env.DB);
         if (!isSchemaInitialized) await ensureDatabaseSchema(env.DB);
+        await cleanupExpiredUnfinishedAccounts(env.DB, env.BUCKET);
         const body = await request.json();
         const {
           name,
@@ -4626,7 +4731,7 @@ a:hover{transform:translateY(-2px)}
         const answer1Hash = securityAnswer1 ? await hashToken(securityAnswer1.slice(0, 30).toLowerCase().trim()) : "";
         const answer2Hash = securityAnswer2 ? await hashToken(securityAnswer2.slice(0, 30).toLowerCase().trim()) : "";
         if (existing) {
-          if (existing.is_onboarded === 1 || existing.email_verified === 1 || existing.password_hash) {
+          if (isUserFullyRegisteredInDb(existing)) {
             return jsonResponse({
               success: false,
               alreadyRegistered: true,
@@ -4634,10 +4739,7 @@ a:hover{transform:translateY(-2px)}
               error: "Cet e-mail est d\xE9j\xE0 associ\xE9 \xE0 un compte. Veuillez vous connecter ou utiliser une autre adresse"
             }, 409, origin);
           }
-          try {
-            await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(existing.id).run();
-          } catch (e) {
-          }
+          await deleteUserCompletely(env.DB, existing.id, existing.email, env.BUCKET);
         }
         const userId = generateId();
         const passwordHash = await hashPassword(password);
@@ -4940,17 +5042,26 @@ a:hover{transform:translateY(-2px)}
           let isNewUser = false;
           if (record.payload) {
             try {
+              await ensureRegistrationColumns(env.DB);
               const userData = JSON.parse(record.payload);
               const userId = userData.userId || record.user_id || generateId();
+              const globalDeadlineMs = Date.now() + 30 * 60 * 1e3;
+              const stepDeadlineMs = Date.now() + 5 * 60 * 1e3;
               await env.DB.prepare(`
                 INSERT INTO users (
                   id, name, email, password_hash, provider, email_verified, is_onboarded,
+                  school, filiere, level, phone,
+                  registration_status, onboarding_deadline_at, step_deadline_at, onboarding_step,
                   security_question_1, security_answer_1_hash, security_question_2, security_answer_2_hash,
                   last_active_at, created_at, updated_at
                 )
-                VALUES (?, ?, ?, ?, 'email', 1, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                VALUES (?, ?, ?, ?, 'email', 1, 0, NULL, NULL, NULL, NULL, 'en_attente_de_finition', ?, ?, 'step_1', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                 ON CONFLICT(id) DO UPDATE SET
                   email_verified = 1,
+                  registration_status = 'en_attente_de_finition',
+                  onboarding_deadline_at = excluded.onboarding_deadline_at,
+                  step_deadline_at = excluded.step_deadline_at,
+                  onboarding_step = 'step_1',
                   last_active_at = CURRENT_TIMESTAMP,
                   updated_at = CURRENT_TIMESTAMP
               `).bind(
@@ -4958,6 +5069,8 @@ a:hover{transform:translateY(-2px)}
                 userData.name || "\xC9tudiant",
                 userData.email,
                 userData.passwordHash || "",
+                globalDeadlineMs,
+                stepDeadlineMs,
                 userData.securityQuestion1 || "Quelle est votre ville de naissance ?",
                 userData.securityAnswer1Hash || "",
                 userData.securityQuestion2 || "Quel est le pr\xE9nom de votre m\xE8re ?",
@@ -4989,22 +5102,21 @@ a:hover{transform:translateY(-2px)}
           if (!user) {
             return htmlResponse("Compte introuvable", "Le compte associ\xE9 \xE0 ce lien de confirmation est introuvable.", false);
           }
+          const isAlreadyFinalized = isUserFullyRegisteredInDb(user);
           await env.DB.prepare(`
             UPDATE users SET
               email_verified = 1,
-              status = 'verified',
+              status = ?,
+              registration_status = ?,
               last_active_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-          `).bind(user.id).run();
-          await createNotification(
-            env.DB,
-            user.id,
-            "Bienvenue sur StudyCloud !",
-            "F\xE9licitations ! Votre compte StudyCloud a \xE9t\xE9 activ\xE9 avec succ\xE8s. Vous pouvez d\xE9sormais stocker, classer et prot\xE9ger vos cours, devoirs et documents universitaires en toute s\xE9r\xE9nit\xE9.",
-            "Guide de d\xE9marrage StudyCloud",
-            "welcome"
-          );
+          `).bind(
+            isAlreadyFinalized ? "verified" : "en_attente_de_finition",
+            isAlreadyFinalized ? "termine" : "en_attente_de_finition",
+            user.id
+          ).run();
+          user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
           const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
           const tokenHash = await hashToken(jwtToken);
           const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
@@ -5031,17 +5143,6 @@ a:hover{transform:translateY(-2px)}
             } catch (e2) {
             }
           }
-          if (isNewUser) {
-            const isUserStudent = user.is_student === 1 || user.is_student === null && user.school && user.school !== "Particulier / Professionnel" && user.school !== "Professionnel / Particulier";
-            sendWelcomeEmail(
-              user.email,
-              user.name || (isUserStudent ? "\xC9tudiant" : "Membre"),
-              Boolean(isUserStudent),
-              user.school || "",
-              user.filiere || "",
-              origin !== "*" ? origin : "https://studycloud.dkd-technologies.com"
-            );
-          }
           const accept = request.headers.get("Accept") || "";
           if (accept.includes("application/json") && !accept.includes("text/html")) {
             const safeUser = sanitizeUser(user);
@@ -5054,7 +5155,7 @@ a:hover{transform:translateY(-2px)}
           }
           return htmlResponse(
             "Confirmation r\xE9ussie !",
-            "Votre compte a \xE9t\xE9 confirm\xE9 avec succ\xE8s. Vous pouvez maintenant retourner dans l'application pour continuer.",
+            isNewUser ? "Votre adresse email est v\xE9rifi\xE9e. Vous disposez maintenant de 30 minutes pour finaliser les informations obligatoires de votre profil dans l'application." : "Votre connexion a \xE9t\xE9 confirm\xE9e avec succ\xE8s. Vous pouvez maintenant retourner dans l'application pour continuer.",
             true,
             user.id,
             jwtToken
@@ -5324,7 +5425,8 @@ a:hover{transform:translateY(-2px)}
         if (!profile.id || !profile.email) return errorResponse("Impossible de r\xE9cup\xE9rer le profil Google", 400, origin);
         const cleanGoogleEmail = profile.email.toLowerCase().trim();
         await ensureUsersTableUniqueIndex(env.DB);
-        await cleanupExpiredUnfinishedAccounts(env.DB);
+        await ensureRegistrationColumns(env.DB);
+        await cleanupExpiredUnfinishedAccounts(env.DB, env.BUCKET);
         let user = await env.DB.prepare("SELECT * FROM users WHERE google_id = ? OR LOWER(TRIM(email)) = ?").bind(profile.id, cleanGoogleEmail).first();
         if (!user) {
           const userId = generateId();
@@ -5337,33 +5439,56 @@ a:hover{transform:translateY(-2px)}
             }
           } catch (e) {
           }
+          const globalDeadlineMs = Date.now() + 30 * 60 * 1e3;
+          const stepDeadlineMs = Date.now() + 5 * 60 * 1e3;
           await env.DB.prepare(`
-            INSERT INTO users (id, name, email, provider, google_id, email_verified, avatar_url, is_onboarded, referral_code, last_active_at, created_at, updated_at)
-            VALUES (?, ?, ?, 'google', ?, 1, ?, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-          `).bind(userId, profile.name || cleanGoogleEmail, cleanGoogleEmail, profile.id, profile.picture || null, newRefCode).run();
+            INSERT INTO users (
+              id, name, email, provider, google_id, email_verified, avatar_url, is_onboarded,
+              school, filiere, level, phone,
+              registration_status, onboarding_deadline_at, step_deadline_at, onboarding_step,
+              referral_code, last_active_at, created_at, updated_at
+            )
+            VALUES (?, ?, ?, 'google', ?, 1, ?, 0, NULL, NULL, NULL, NULL, 'en_attente_de_finition', ?, ?, 'security', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `).bind(
+            userId,
+            profile.name || cleanGoogleEmail,
+            cleanGoogleEmail,
+            profile.id,
+            profile.picture || null,
+            globalDeadlineMs,
+            stepDeadlineMs,
+            newRefCode
+          ).run();
           await env.DB.prepare("INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)").bind(userId).run();
           user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
           if (body.referralCode) {
             await processReferralAttribution(env.DB, body.referralCode, userId, profile.name || cleanGoogleEmail, cleanGoogleEmail);
           }
-          await createNotification(
-            env.DB,
-            userId,
-            "Bienvenue sur StudyCloud !",
-            "F\xE9licitations ! Votre compte StudyCloud a \xE9t\xE9 activ\xE9 avec succ\xE8s via Google. Vous pouvez d\xE9sormais stocker, classer et prot\xE9ger vos cours, devoirs et documents universitaires en toute s\xE9r\xE9nit\xE9.",
-            "Guide de d\xE9marrage StudyCloud",
-            "welcome"
-          );
         } else {
+          const alreadyFinalized = isUserFullyRegisteredInDb(user);
+          const nextGlobalDeadline = alreadyFinalized ? 0 : Number(user.onboarding_deadline_at) > 0 ? Number(user.onboarding_deadline_at) : Date.now() + 30 * 60 * 1e3;
+          const nextStepDeadline = alreadyFinalized ? 0 : Number(user.step_deadline_at) > 0 ? Number(user.step_deadline_at) : Math.min(nextGlobalDeadline, Date.now() + 5 * 60 * 1e3);
           await env.DB.prepare(`
             UPDATE users SET
               google_id = COALESCE(google_id, ?),
               avatar_url = COALESCE(avatar_url, ?),
               email_verified = 1,
+              is_onboarded = ?,
+              registration_status = ?,
+              onboarding_deadline_at = ?,
+              step_deadline_at = ?,
               last_active_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-          `).bind(profile.id, profile.picture || null, user.id).run();
+          `).bind(
+            profile.id,
+            profile.picture || null,
+            alreadyFinalized ? 1 : 0,
+            alreadyFinalized ? "termine" : "en_attente_de_finition",
+            nextGlobalDeadline,
+            nextStepDeadline,
+            user.id
+          ).run();
           user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
         }
         const token = await createJWT({ userId: user.id, email: user.email, name: user.name });
@@ -5375,7 +5500,7 @@ a:hover{transform:translateY(-2px)}
           success: true,
           token,
           user: safeUser,
-          requiresOnboarding: user.is_onboarded === 0
+          requiresOnboarding: !isUserFullyRegisteredInDb(user)
         }, 200, origin);
       }
       if (path === "/api/auth/logout" && method === "POST") {
@@ -5393,8 +5518,16 @@ a:hover{transform:translateY(-2px)}
         if (!token) return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
         if (!payload?.userId) return errorResponse("Token invalide ou expir\xE9", 401, origin);
+        await cleanupExpiredUnfinishedAccounts(env.DB, env.BUCKET);
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
-        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user) {
+          return jsonResponse({
+            success: false,
+            accountDeleted: true,
+            code: "REGISTRATION_EXPIRED_DELETED",
+            error: "Votre inscription n'a pas \xE9t\xE9 finalis\xE9e dans le d\xE9lai imparti. Votre compte et votre adresse e-mail ont \xE9t\xE9 automatiquement supprim\xE9s. Veuillez recommencer l'inscription depuis le d\xE9part."
+          }, 410, origin);
+        }
         if (user.last_active_at) {
           const inactiveMs = Date.now() - new Date(user.last_active_at).getTime();
           const THIRTY_DAYS_MS = 30 * 24 * 3600 * 1e3;
@@ -5430,6 +5563,16 @@ a:hover{transform:translateY(-2px)}
         if (!token) return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
         if (!payload?.userId) return errorResponse("Token invalide ou expir\xE9", 401, origin);
+        await cleanupExpiredUnfinishedAccounts(env.DB, env.BUCKET);
+        const existingHbUser = await env.DB.prepare("SELECT id FROM users WHERE id = ?").bind(payload.userId).first();
+        if (!existingHbUser) {
+          return jsonResponse({
+            success: false,
+            accountDeleted: true,
+            code: "REGISTRATION_EXPIRED_DELETED",
+            error: "Votre inscription a expir\xE9 et votre compte non finalis\xE9 a \xE9t\xE9 automatiquement supprim\xE9."
+          }, 410, origin);
+        }
         await env.DB.prepare("UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?").bind(payload.userId).run();
         try {
           const tokenHash = await hashToken(token);
@@ -5445,6 +5588,16 @@ a:hover{transform:translateY(-2px)}
         if (!token) return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
         if (!payload?.userId) return errorResponse("Token invalide ou expir\xE9", 401, origin);
+        await cleanupExpiredUnfinishedAccounts(env.DB, env.BUCKET);
+        const existingSecUser = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
+        if (!existingSecUser) {
+          return jsonResponse({
+            success: false,
+            accountDeleted: true,
+            code: "REGISTRATION_EXPIRED_DELETED",
+            error: "Le temps imparti pour cette \xE9tape est \xE9coul\xE9. Vos informations et votre adresse e-mail ont \xE9t\xE9 supprim\xE9es. Veuillez recommencer l'inscription depuis l'accueil."
+          }, 410, origin);
+        }
         const body = await request.json();
         const { name, password, securityQuestion1, securityAnswer1, securityQuestion2, securityAnswer2 } = body;
         const pwdCheck = validatePasswordFormat(password);
@@ -5458,6 +5611,8 @@ a:hover{transform:translateY(-2px)}
         const q1 = securityQuestion1 || "Quelle est votre ville de naissance ?";
         const q2 = securityQuestion2 || "Quel est le pr\xE9nom de votre m\xE8re ?";
         const finalName = name && typeof name === "string" && name.trim() ? name.trim() : null;
+        const globalDeadlineMs = Number(existingSecUser.onboarding_deadline_at) > 0 ? Number(existingSecUser.onboarding_deadline_at) : Date.now() + 30 * 60 * 1e3;
+        const nextStepDeadlineMs = Math.min(globalDeadlineMs, Date.now() + 5 * 60 * 1e3);
         await env.DB.prepare(`
           UPDATE users SET
             name = COALESCE(?, name),
@@ -5466,10 +5621,14 @@ a:hover{transform:translateY(-2px)}
             security_answer_1_hash = ?,
             security_question_2 = ?,
             security_answer_2_hash = ?,
+            registration_status = 'en_attente_de_finition',
+            onboarding_step = 'step_1',
+            onboarding_deadline_at = ?,
+            step_deadline_at = ?,
             last_active_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
-        `).bind(finalName, passwordHash, q1, ans1Hash, q2, ans2Hash, payload.userId).run();
+        `).bind(finalName, passwordHash, q1, ans1Hash, q2, ans2Hash, globalDeadlineMs, nextStepDeadlineMs, payload.userId).run();
         const updatedUser = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
         const safeUser = sanitizeUser(updatedUser);
         return jsonResponse({
@@ -5484,19 +5643,41 @@ a:hover{transform:translateY(-2px)}
         if (!token) return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
         if (!payload?.userId) return errorResponse("Token invalide", 401, origin);
-        const existingUser = await env.DB.prepare("SELECT id, email, is_onboarded FROM users WHERE id = ?").bind(payload.userId).first();
+        await cleanupExpiredUnfinishedAccounts(env.DB, env.BUCKET);
+        const existingUser = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
         if (!existingUser) {
-          return errorResponse("Session introuvable ou expir\xE9e. Veuillez vous reconnecter.", 401, origin);
+          return jsonResponse({
+            success: false,
+            accountDeleted: true,
+            code: "REGISTRATION_EXPIRED_DELETED",
+            error: "Le d\xE9lai de 30 minutes ou le d\xE9compteur d'\xE9tape est d\xE9pass\xE9. Votre compte et votre adresse e-mail ont \xE9t\xE9 automatiquement supprim\xE9s. Veuillez recommencer l'inscription depuis l'accueil."
+          }, 410, origin);
         }
-        const body = await request.json();
+        const body = await request.json().catch(() => ({}));
         const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
         const isStudent = body.is_student === 0 || body.isStudent === false ? false : true;
         const profession = body.profession ? String(body.profession).trim() : "";
-        const finalSchool = !isStudent ? "Professionnel / Particulier" : school;
-        const finalFiliere = !isStudent ? profession || filiere || "G\xE9n\xE9ral" : filiere;
-        const finalLevel = !isStudent ? "Professionnel" : level || "";
-        if (!country) return errorResponse("Le pays est obligatoire", 400, origin);
-        if (!phone || !String(phone).trim()) return errorResponse("Le num\xE9ro de t\xE9l\xE9phone est obligatoire", 400, origin);
+        const finalName = String(name || existingUser.name || "").trim();
+        const finalSchool = !isStudent ? "Professionnel / Particulier" : String(school || "").trim();
+        const finalFiliere = !isStudent ? String(profession || filiere || "").trim() : String(filiere || "").trim();
+        const finalLevel = !isStudent ? "Professionnel" : String(level || "").trim();
+        const finalCountry = String(country || "").trim();
+        const finalPhone = String(phone || "").trim();
+        const rejectAndPurgeIncompleteAccount = async (reasonMessage) => {
+          await deleteUserCompletely(env.DB, existingUser.id, existingUser.email, env.BUCKET);
+          console.log(`[StudyCloud Anti-Triche] Compte refus\xE9 et supprim\xE9 (${reasonMessage}) : ${existingUser.email} (${existingUser.id})`);
+          return jsonResponse({
+            success: false,
+            accountDeleted: true,
+            code: "INCOMPLETE_REGISTRATION_DELETED",
+            error: reasonMessage
+          }, 403, origin);
+        };
+        if (!finalName || finalName.length < 2 || !existingUser.email || !String(existingUser.email).includes("@") || !finalCountry || !finalPhone || finalPhone === "Non renseign\xE9" || !finalSchool || finalSchool === "Non renseign\xE9" || !finalFiliere || finalFiliere === "Non renseign\xE9" || !finalLevel || finalLevel === "Non sp\xE9cifi\xE9" || finalLevel === "Non renseign\xE9" || finalLevel === "\xC9tudiant") {
+          return await rejectAndPurgeIncompleteAccount(
+            "Compte refus\xE9 : toutes les informations obligatoires (num\xE9ro de t\xE9l\xE9phone, e-mail, niveau, fili\xE8re, \xE9tablissement) n'ont pas \xE9t\xE9 remplies. Votre adresse e-mail et vos informations associ\xE9es ont \xE9t\xE9 automatiquement supprim\xE9es. Veuillez recommencer l'inscription depuis le d\xE9part."
+          );
+        }
         const COUNTRY_PHONE_CONFIG = {
           "C\xF4te d'Ivoire": { dial: "225", lengths: [10], hint: "10 chiffres" },
           "S\xE9n\xE9gal": { dial: "221", lengths: [9], hint: "9 chiffres" },
@@ -5520,9 +5701,9 @@ a:hover{transform:translateY(-2px)}
           "Belgique": { dial: "32", lengths: [9, 10], hint: "9 ou 10 chiffres" },
           "Canada": { dial: "1", lengths: [10], hint: "10 chiffres" }
         };
-        const countryCfg = COUNTRY_PHONE_CONFIG[country];
+        const countryCfg = COUNTRY_PHONE_CONFIG[finalCountry];
         if (countryCfg) {
-          let pDigits = String(phone).replace(/\D/g, "");
+          let pDigits = String(finalPhone).replace(/\D/g, "");
           if (countryCfg.dial && pDigits.startsWith(countryCfg.dial) && !countryCfg.lengths.includes(pDigits.length)) {
             const withoutDial = pDigits.slice(countryCfg.dial.length);
             if (countryCfg.lengths.includes(withoutDial.length)) {
@@ -5530,41 +5711,39 @@ a:hover{transform:translateY(-2px)}
             }
           }
           if (!countryCfg.lengths.includes(pDigits.length)) {
-            return errorResponse(
-              `Le num\xE9ro de t\xE9l\xE9phone pour ${country} doit comporter ${countryCfg.hint} (${pDigits.length} saisi${pDigits.length > 1 ? "s" : ""})`,
-              400,
-              origin
+            return await rejectAndPurgeIncompleteAccount(
+              `Compte refus\xE9 : le num\xE9ro de t\xE9l\xE9phone est invalide ou incomplet (${pDigits.length} chiffre(s) au lieu de ${countryCfg.hint}). Votre adresse e-mail et vos informations associ\xE9es ont \xE9t\xE9 automatiquement supprim\xE9es. Veuillez recommencer l'inscription depuis le d\xE9part.`
             );
           }
         }
-        if (!isStudent && !profession) return errorResponse("La profession ou domaine d'activit\xE9 est obligatoire", 400, origin);
-        if (isStudent && (!finalSchool || !finalFiliere)) {
-          return errorResponse("L'\xE9cole et la fili\xE8re sont obligatoires pour les \xE9tudiants", 400, origin);
-        }
-        const finalAvatar = avatarUrl ? String(avatarUrl).trim() : existingUser.avatar_url || generateEmailAvatar(existingUser.email, name || "");
+        const finalAvatar = avatarUrl ? String(avatarUrl).trim() : existingUser.avatar_url || generateEmailAvatar(existingUser.email, finalName);
         await env.DB.prepare(`
           UPDATE users SET
-            name = COALESCE(?, name),
+            name = ?,
             school = ?,
             filiere = ?,
             level = ?,
             country = ?,
-            phone = COALESCE(?, phone),
+            phone = ?,
             bio = COALESCE(?, bio),
             avatar_url = COALESCE(?, avatar_url),
             profession = ?,
             is_student = ?,
             is_onboarded = 1,
+            registration_status = 'termine',
+            onboarding_deadline_at = 0,
+            step_deadline_at = 0,
+            onboarding_step = 'completed',
             last_active_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `).bind(
-          name || null,
+          finalName,
           finalSchool,
           finalFiliere,
           finalLevel,
-          country,
-          phone || null,
+          finalCountry,
+          finalPhone,
           bio || null,
           finalAvatar,
           profession || null,
@@ -5572,11 +5751,27 @@ a:hover{transform:translateY(-2px)}
           payload.userId
         ).run();
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
+        if (!user || !isUserFullyRegisteredInDb(user)) {
+          return await rejectAndPurgeIncompleteAccount(
+            "Compte refus\xE9 apr\xE8s v\xE9rification dans la base de donn\xE9es : toutes les informations obligatoires n'ont pas \xE9t\xE9 enregistr\xE9es. Votre adresse e-mail et vos donn\xE9es ont \xE9t\xE9 automatiquement supprim\xE9es."
+          );
+        }
+        try {
+          await createNotification(
+            env.DB,
+            user.id,
+            "Bienvenue sur StudyCloud !",
+            "F\xE9licitations ! Votre inscription est compl\xE8te et votre compte StudyCloud a \xE9t\xE9 v\xE9rifi\xE9 avec succ\xE8s.",
+            "Guide de d\xE9marrage StudyCloud",
+            "welcome"
+          );
+        } catch (e) {
+        }
         if (user && user.email) {
           const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
           sendWelcomeEmail(
             user.email,
-            user.name || name || (isStudent ? "\xC9tudiant" : "Membre"),
+            user.name || finalName || (isStudent ? "\xC9tudiant" : "Membre"),
             Boolean(isStudent),
             finalSchool,
             finalFiliere,
@@ -5588,7 +5783,7 @@ a:hover{transform:translateY(-2px)}
           });
         }
         const safeUser = sanitizeUser(user);
-        return jsonResponse({ success: true, data: safeUser }, 200, origin);
+        return jsonResponse({ success: true, verifiedInDb: true, data: safeUser }, 200, origin);
       }
       if (path === "/api/auth/onboarding/draft" && method === "PUT") {
         const authHeader = request.headers.get("Authorization") || "";
@@ -5596,8 +5791,25 @@ a:hover{transform:translateY(-2px)}
         if (!token) return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
         if (!payload?.userId) return errorResponse("Token invalide", 401, origin);
+        await cleanupExpiredUnfinishedAccounts(env.DB, env.BUCKET);
+        const existingDraftUser = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
+        if (!existingDraftUser) {
+          return jsonResponse({
+            success: false,
+            accountDeleted: true,
+            code: "REGISTRATION_EXPIRED_DELETED",
+            error: "Le temps imparti pour votre inscription est \xE9coul\xE9. Vos informations et votre adresse e-mail ont \xE9t\xE9 automatiquement supprim\xE9es."
+          }, 410, origin);
+        }
         const body = await request.json().catch(() => ({}));
-        const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
+        const { name, school, filiere, level, country, phone, bio, avatarUrl, onboarding_step } = body;
+        const globalDeadlineMs = Number(existingDraftUser.onboarding_deadline_at) > 0 ? Number(existingDraftUser.onboarding_deadline_at) : Date.now() + 30 * 60 * 1e3;
+        let nextStep = existingDraftUser.onboarding_step || "step_1";
+        let nextStepDeadlineMs = Number(existingDraftUser.step_deadline_at) > 0 ? Number(existingDraftUser.step_deadline_at) : Math.min(globalDeadlineMs, Date.now() + 5 * 60 * 1e3);
+        if (onboarding_step && typeof onboarding_step === "string" && onboarding_step !== existingDraftUser.onboarding_step) {
+          nextStep = onboarding_step;
+          nextStepDeadlineMs = Math.min(globalDeadlineMs, Date.now() + 5 * 60 * 1e3);
+        }
         await env.DB.prepare(`
           UPDATE users SET
             name = COALESCE(?, name),
@@ -5608,6 +5820,10 @@ a:hover{transform:translateY(-2px)}
             phone = COALESCE(?, phone),
             bio = COALESCE(?, bio),
             avatar_url = COALESCE(?, avatar_url),
+            registration_status = 'en_attente_de_finition',
+            onboarding_step = ?,
+            onboarding_deadline_at = ?,
+            step_deadline_at = ?,
             last_active_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = ? AND is_onboarded = 0
@@ -5620,11 +5836,22 @@ a:hover{transform:translateY(-2px)}
           phone || null,
           bio || null,
           avatarUrl || null,
+          nextStep,
+          globalDeadlineMs,
+          nextStepDeadlineMs,
           payload.userId
         ).run();
-        return jsonResponse({ success: true, message: "Brouillon sauvegard\xE9." }, 200, origin);
+        return jsonResponse({
+          success: true,
+          message: "Brouillon sauvegard\xE9.",
+          onboarding_deadline_at: globalDeadlineMs,
+          step_deadline_at: nextStepDeadlineMs,
+          onboarding_step: nextStep
+        }, 200, origin);
       }
       if (path === "/api/auth/cancel-unfinalized-account" && method === "POST") {
+        await ensureRegistrationColumns(env.DB);
+        await cleanupExpiredUnfinishedAccounts(env.DB, env.BUCKET);
         const body = await request.json().catch(() => ({}));
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -5638,30 +5865,35 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
         }
+        if (targetEmail) {
+          try {
+            await env.DB.prepare("DELETE FROM email_verifications WHERE LOWER(TRIM(email)) = ?").bind(targetEmail).run();
+          } catch (e) {
+          }
+        }
         let user = null;
         if (targetUserId) {
-          user = await env.DB.prepare("SELECT id, email, is_onboarded FROM users WHERE id = ?").bind(targetUserId).first();
+          user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(targetUserId).first();
         }
         if (!user && targetEmail) {
-          user = await env.DB.prepare("SELECT id, email, is_onboarded FROM users WHERE LOWER(TRIM(email)) = ?").bind(targetEmail).first();
+          user = await env.DB.prepare("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?").bind(targetEmail).first();
         }
         if (user) {
-          const isEmailVerified = Number(user.email_verified) === 1;
-          const isOnboarded = Number(user.is_onboarded) === 1;
-          if (isEmailVerified || isOnboarded) {
+          if (isUserFullyRegisteredInDb(user)) {
             return jsonResponse({
               success: true,
-              message: "Compte actif et v\xE9rifi\xE9 conserv\xE9."
+              message: "Compte enti\xE8rement finalis\xE9 conserv\xE9."
             }, 200, origin);
           }
-          await deleteUserCompletely(env.DB, user.id);
-          console.log(`[StudyCloud Expiration] Compte non v\xE9rifi\xE9 annul\xE9 : ${user.email} (${user.id})`);
+          await deleteUserCompletely(env.DB, user.id, user.email, env.BUCKET);
+          console.log(`[StudyCloud Expiration] Compte non finalis\xE9 supprim\xE9 avec son email et ses donn\xE9es : ${user.email} (${user.id})`);
           return jsonResponse({
             success: true,
-            message: "Compte non finalis\xE9 annul\xE9 et donn\xE9es supprim\xE9es avec succ\xE8s."
+            accountDeleted: true,
+            message: "Compte non finalis\xE9 et adresse e-mail supprim\xE9s avec succ\xE8s."
           }, 200, origin);
         }
-        return jsonResponse({ success: true, message: "Aucun compte non finalis\xE9 \xE0 supprimer." }, 200, origin);
+        return jsonResponse({ success: true, accountDeleted: true, message: "Aucun compte non finalis\xE9 restant." }, 200, origin);
       }
       if (path === "/api/auth/welcome-email" && method === "POST") {
         const authHeader = request.headers.get("Authorization") || "";
@@ -16256,10 +16488,19 @@ Lien vers le produit : ${productShareUrl}`;
       return errorResponse("Une erreur interne est survenue sur le serveur.", 500, origin);
     }
   },
-  // Handler CRON Cloudflare : exécution périodique automatique pour nettoyer les interactions de plus de 30 jours
+  // Handler CRON Cloudflare : exécution périodique automatique pour nettoyer les comptes non finalisés (> 30 min) et les interactions de plus de 30 jours
   async scheduled(event, env, ctx) {
     if (env && env.DB) {
       try {
+        await this.fetch(
+          new Request("https://internal.studycloud.local/api/auth/cancel-unfinalized-account", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: "{}"
+          }),
+          env
+        );
+        console.log("[StudyCloud Cron] Purge automatique des comptes en attente de finition (> 30 minutes) effectu\xE9e avec succ\xE8s.");
         await env.DB.prepare(`
           DELETE FROM user_document_interactions 
           WHERE created_at < datetime('now', '-30 days')

@@ -30,10 +30,15 @@ export function EmailPendingVerification({
   const COOLDOWN_KEY = `sc_resend_target_${email.toLowerCase()}`;
   const BLOCKED_KEY = `sc_resend_blocked_${email.toLowerCase()}`;
   const COUNT_KEY = `sc_resend_count_${email.toLowerCase()}`;
+  const VERIF_START_KEY = `sc_verif_start_${email.toLowerCase()}`;
   const COOLDOWN_DURATION_MS = 70 * 1000; // 70 secondes entre deux demandes de renvoi
+  const MAX_VERIF_WINDOW_MS = 30 * 60 * 1000; // 30 minutes max pour finaliser l'inscription
 
   // Initialisation et restauration de l'état persistant
   useEffect(() => {
+    if (!localStorage.getItem(VERIF_START_KEY)) {
+      localStorage.setItem(VERIF_START_KEY, Date.now().toString());
+    }
     // Vérifier notice d'expiration éventuelle stockée lors d'un clic sur lien expiré
     const expiredNotice = localStorage.getItem('sc_verification_expired_notice');
     if (expiredNotice) {
@@ -97,6 +102,26 @@ export function EmailPendingVerification({
           setBlockedUntil(null);
           setResendCount(0);
         }
+      }
+
+      // Vérifier l'expiration globale de 30 minutes en arrière-plan
+      const verifStartStr = localStorage.getItem(VERIF_START_KEY);
+      if (verifStartStr && Date.now() - parseInt(verifStartStr, 10) >= MAX_VERIF_WINDOW_MS) {
+        localStorage.removeItem(VERIF_START_KEY);
+        localStorage.removeItem(COOLDOWN_KEY);
+        localStorage.removeItem('sc_pending_verification_email');
+        localStorage.removeItem('sc_pending_verification_is_login');
+        if (!isLogin) {
+          StudyCloudAPI.cancelUnfinalizedAccount({ email }).catch(() => {});
+          localStorage.setItem('sc_auth_redirect_mode', 'register');
+          localStorage.setItem(
+            'sc_auth_redirect_notice',
+            "Le délai de 30 minutes pour finaliser votre inscription est écoulé. Vos informations et votre adresse e-mail ont été automatiquement supprimées. Veuillez recommencer l'inscription depuis le départ."
+          );
+          window.dispatchEvent(new Event('studycloud_auth_redirect'));
+        }
+        onBackToLogin();
+        return;
       }
 
       // Vérifier le décompteur de 70 secondes

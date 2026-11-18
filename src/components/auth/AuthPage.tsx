@@ -663,24 +663,32 @@ export function AuthPage({ onBack }: AuthPageProps) {
                       : 'Accédez à vos cours, documents et dossiers sauvegardés en toute sécurité'}
                   </p>
 
-                  {/* Bannière professionnelle d'information quand aucun compte n'est trouvé */}
-                  {accountNotFoundNotice && mode === 'register' && (
+                  {/* Bannière professionnelle d'information (compte refusé/expiré ou compte non trouvé) */}
+                  {accountNotFoundNotice && (
                     <div
                       className="mb-6 p-4 sm:p-5 rounded-2xl flex items-start gap-3.5 border transition-all animate-fadeIn"
                       style={{
-                        background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.16) 0%, rgba(37, 99, 235, 0.12) 100%)',
-                        borderColor: 'rgba(249, 115, 22, 0.35)',
+                        background: accountNotFoundNotice.toLowerCase().includes('supprim') || accountNotFoundNotice.toLowerCase().includes('refus') || accountNotFoundNotice.toLowerCase().includes('écoulé') || accountNotFoundNotice.toLowerCase().includes('expir')
+                          ? 'linear-gradient(135deg, rgba(239, 68, 68, 0.20) 0%, rgba(234, 88, 12, 0.14) 100%)'
+                          : 'linear-gradient(135deg, rgba(234, 88, 12, 0.16) 0%, rgba(37, 99, 235, 0.12) 100%)',
+                        borderColor: accountNotFoundNotice.toLowerCase().includes('supprim') || accountNotFoundNotice.toLowerCase().includes('refus') || accountNotFoundNotice.toLowerCase().includes('écoulé') || accountNotFoundNotice.toLowerCase().includes('expir')
+                          ? 'rgba(239, 68, 68, 0.45)'
+                          : 'rgba(249, 115, 22, 0.35)',
                         boxShadow: '0 8px 30px rgba(234, 88, 12, 0.15)',
                       }}
                     >
                       <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500/25 to-amber-500/20 border border-orange-500/40 flex items-center justify-center shrink-0 mt-0.5 text-orange-400 shadow-sm">
-                        <UserPlus className="w-4.5 h-4.5" />
+                        <AlertCircle className="w-4.5 h-4.5" />
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center justify-between gap-2 mb-1.5">
                           <div className="flex items-center gap-1.5">
                             <span className="text-xs font-black text-orange-300 uppercase tracking-wider">
-                              Compte non trouvé
+                              {accountNotFoundNotice.toLowerCase().includes('refus')
+                                ? 'Compte refusé — Informations incomplètes'
+                                : accountNotFoundNotice.toLowerCase().includes('supprim') || accountNotFoundNotice.toLowerCase().includes('écoulé') || accountNotFoundNotice.toLowerCase().includes('expir')
+                                  ? 'Temps écoulé — Inscription annulée'
+                                  : 'Compte non trouvé'}
                             </span>
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-500/20 text-orange-200 border border-orange-500/30">
                               <Sparkles className="w-2.5 h-2.5" /> Inscription
@@ -698,10 +706,12 @@ export function AuthPage({ onBack }: AuthPageProps) {
                         <p className="text-xs sm:text-sm text-white/90 leading-relaxed font-normal">
                           {accountNotFoundNotice}
                         </p>
-                        <p className="text-[11px] text-orange-200/70 font-semibold mt-2 flex items-center gap-1.5">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                          <span>Votre adresse email a été conservée ci-dessous pour vous faire gagner du temps.</span>
-                        </p>
+                        {email && !accountNotFoundNotice.toLowerCase().includes('supprim') && (
+                          <p className="text-[11px] text-orange-200/70 font-semibold mt-2 flex items-center gap-1.5">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            <span>Votre adresse email a été conservée ci-dessous pour vous faire gagner du temps.</span>
+                          </p>
+                        )}
                       </div>
                     </div>
                   )}

@@ -2303,6 +2303,24 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig, preloade
     'trash/': { count: media.trash?.count || 0, bytes: media.trash?.compressedBytes || 0, formatted: formatBytes(media.trash?.compressedBytes || 0), isExempted: false }
   };
 
+  const isPendingCompletion =
+    Number(user.is_onboarded) !== 1 ||
+    user.registration_status === 'en_attente_de_finition' ||
+    !user.phone || String(user.phone).trim() === '' || user.phone === 'Non renseigné' ||
+    !user.school || String(user.school).trim() === '' || user.school === 'Non renseigné' ||
+    !user.filiere || String(user.filiere).trim() === '' || user.filiere === 'Non renseigné' ||
+    !user.level || String(user.level).trim() === '' || user.level === 'Non spécifié' || user.level === 'Non renseigné' || user.level === 'Étudiant';
+  const createdAtMs = user.created_at
+    ? new Date(String(user.created_at).includes('T') ? user.created_at : `${user.created_at}Z`).getTime()
+    : Date.now();
+  const validCreatedMs = Number.isNaN(createdAtMs) ? Date.now() : createdAtMs;
+  const globalDeadlineMs = Number(user.onboarding_deadline_at) > 0
+    ? Number(user.onboarding_deadline_at)
+    : (validCreatedMs + 30 * 60 * 1000);
+  const remainingMinutes = isPendingCompletion
+    ? Math.max(0, Math.ceil((globalDeadlineMs - Date.now()) / 60000))
+    : 0;
+
   return {
     user: {
       id: user.id,
@@ -2316,6 +2334,13 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig, preloade
       avatar_url: user.avatar_url || '',
       created_at: user.created_at || '',
       last_active_at: user.last_active_at || '',
+      is_onboarded: isPendingCompletion ? 0 : 1,
+      isPendingCompletion,
+      registration_status: isPendingCompletion ? 'en_attente_de_finition' : 'termine',
+      registrationStatusLabel: isPendingCompletion
+        ? ('En attente de finition' + (remainingMinutes > 0 ? ' (' + remainingMinutes + ' min)' : ''))
+        : 'Terminé',
+      remainingMinutes,
       isOnline,
       lastSeenText,
       hasActiveSession: Boolean(activeSession),
@@ -7630,8 +7655,9 @@ function renderDashboardHtml(data) {
                 <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 \${u.isOnline ? 'bg-emerald-500' : 'bg-slate-600'}" title="\${u.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
               </div>
               <div class="truncate">
-                <div class="font-bold text-white truncate text-xs flex items-center gap-1">
+                <div class="font-bold text-white truncate text-xs flex items-center gap-1 flex-wrap">
                   <span>\${u.name}</span>
+                  \${u.isPendingCompletion ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold" title="Compte en attente de finition (suppression auto après 30 min)">⏳ En attente de finition</span>' : ''}
                   \${u.hasShop ? '<span class="text-[9px] px-1 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30" title="Boutique active">🏪</span>' : ''}
                 </div>
                 <div class="text-[10px] text-slate-400 truncate">📞 \${u.phone || 'Sans numéro'} • \${u.level}</div>
@@ -7779,6 +7805,11 @@ function renderDashboardHtml(data) {
               <!-- Ligne 2 : Statut de connexion / En ligne & Bouton d'action -->
               <div class="flex items-center gap-2.5 flex-wrap">
                 <span class="text-slate-400 font-medium">Statut :</span>
+                \${u.isPendingCompletion ? \`
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    ⏳ En attente de finition \${u.remainingMinutes > 0 ? '(' + u.remainingMinutes + ' min avant suppression auto)' : '(Suppression auto imminente)'}
+                  </span>
+                \` : ''}
                 \${u.isOnline ? \`
                   <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                     <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> En ligne (\${u.lastSeenText})
@@ -8101,8 +8132,9 @@ function renderDashboardHtml(data) {
                 <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 \${u.isOnline ? 'bg-emerald-500' : 'bg-slate-600'}" title="\${u.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
               </div>
               <div class="truncate">
-                <div class="font-bold text-white truncate text-xs flex items-center gap-1">
+                <div class="font-bold text-white truncate text-xs flex items-center gap-1 flex-wrap">
                   <span>\${u.name}</span>
+                  \${u.isPendingCompletion ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold" title="Compte en attente de finition (suppression auto après 30 min)">⏳ En attente de finition</span>' : ''}
                   \${u.hasShop ? '<span class="text-[9px] px-1 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30" title="Boutique active">🏪</span>' : ''}
                 </div>
                 <div class="text-[10px] text-slate-400 truncate">📞 \${u.phone || 'Sans numéro'} • \${u.level}</div>
@@ -8154,6 +8186,11 @@ function renderDashboardHtml(data) {
               <!-- Ligne 2 : Statut de connexion / En ligne & Bouton d'action -->
               <div class="flex items-center gap-2.5 flex-wrap">
                 <span class="text-slate-400 font-medium">Statut :</span>
+                \${u.isPendingCompletion ? \`
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
+                    ⏳ En attente de finition \${u.remainingMinutes > 0 ? '(' + u.remainingMinutes + ' min avant suppression auto)' : '(Suppression auto imminente)'}
+                  </span>
+                \` : ''}
                 \${u.isOnline ? \`
                   <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
                     <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> En ligne (\${u.lastSeenText})
@@ -19108,8 +19145,115 @@ export default {
         };
       }
 
-      // Nettoyage automatique des comptes invités résiduels
+      // Nettoyage automatique des comptes invités résiduels et des comptes en attente de finition (> 30 min ou étape expirée)
       await safeRun(db, "DELETE FROM users WHERE id IN ('default-user', 'user_anonymous') OR email = 'guest@studycloud.com'");
+
+      try {
+        const regCols = [
+          "ALTER TABLE users ADD COLUMN registration_status TEXT DEFAULT 'en_attente_de_finition'",
+          "ALTER TABLE users ADD COLUMN onboarding_deadline_at INTEGER DEFAULT 0",
+          "ALTER TABLE users ADD COLUMN step_deadline_at INTEGER DEFAULT 0",
+          "ALTER TABLE users ADD COLUMN onboarding_step TEXT DEFAULT 'step_1'"
+        ];
+        for (const q of regCols) {
+          await safeRun(db, q);
+        }
+      } catch (e) {}
+
+      const deleteUserCompletelyInDashboard = async (targetId, targetEmail) => {
+        if (!targetId) return;
+        if (bucket) {
+          try {
+            const f1 = await safeQuery(db, 'SELECT r2_key FROM files WHERE user_id = ? AND r2_key IS NOT NULL', [targetId]);
+            for (const f of (f1?.results || [])) { if (f.r2_key) await bucket.delete(f.r2_key).catch(() => {}); }
+          } catch (e) {}
+          try {
+            const f2 = await safeQuery(db, 'SELECT r2_key FROM published_documents WHERE user_id = ? AND r2_key IS NOT NULL', [targetId]);
+            for (const d of (f2?.results || [])) { if (d.r2_key) await bucket.delete(d.r2_key).catch(() => {}); }
+          } catch (e) {}
+          try {
+            const f3 = await safeQuery(db, 'SELECT r2_key FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?) AND r2_key IS NOT NULL', [targetId]);
+            for (const sf of (f3?.results || [])) { if (sf.r2_key) await bucket.delete(sf.r2_key).catch(() => {}); }
+          } catch (e) {}
+        }
+        const tablesToClean = [
+          'email_verifications', 'auth_sessions', 'user_preferences', 'password_resets',
+          'matieres', 'files', 'classeur_files', 'classeur_folders', 'audio_files',
+          'image_files', 'video_files', 'document_files', 'download_files',
+          'secure_folder_config', 'secure_files', 'trash_files', 'user_favorites',
+          'user_dismissed_recents', 'shared_folders', 'shared_links', 'schedule_config',
+          'schedules', 'schedule_slots', 'grades', 'notes', 'calendar_events', 'alarms',
+          'products', 'cart_items', 'shop_profiles', 'shop_items', 'seller_follows',
+          'user_product_interactions', 'support_tickets', 'notifications', 'chat_messages',
+          'user_document_interactions', 'published_documents', 'referral_rewards',
+          'push_subscriptions', 'sync_items', 'study_imported_files', 'ai_document_perceptions',
+          'user_storage_usage', 'user_storage_quotas', 'storage_upgrade_requests',
+          'user_ai_credits', 'ai_credit_purchases', 'ai_usage_logs', 'ai_reactions',
+          'ai_generated_contents', 'user_dashboard_sites', 'user_word_counts', 'study_sessions'
+        ];
+        for (const tbl of tablesToClean) {
+          await safeRun(db, `DELETE FROM ${tbl} WHERE user_id = ?`, [targetId]);
+        }
+        await safeRun(db, 'DELETE FROM seller_follows WHERE seller_id = ?', [targetId]);
+        await safeRun(db, 'DELETE FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)', [targetId]);
+        await safeRun(db, 'DELETE FROM shared_folder_downloads WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)', [targetId]);
+        await safeRun(db, 'DELETE FROM referrals WHERE referrer_id = ? OR referee_id = ?', [targetId, targetId]);
+        if (targetEmail) {
+          const ce = String(targetEmail).toLowerCase().trim();
+          await safeRun(db, 'DELETE FROM email_verifications WHERE LOWER(TRIM(email)) = ?', [ce]);
+          await safeRun(db, 'DELETE FROM password_resets WHERE LOWER(TRIM(email)) = ?', [ce]);
+          await safeRun(db, 'DELETE FROM users WHERE LOWER(TRIM(email)) = ?', [ce]);
+        }
+        await safeRun(db, 'DELETE FROM users WHERE id = ?', [targetId]);
+      };
+
+      // Purge automatique en arrière-plan des comptes en attente de finition (> 30 minutes ou décompteur d'étape expiré)
+      try {
+        await safeRun(db, "DELETE FROM email_verifications WHERE created_at < datetime('now', '-30 minutes')");
+        const incompleteRes = await safeQuery(db, `
+          SELECT * FROM users
+          WHERE is_onboarded = 0
+             OR registration_status = 'en_attente_de_finition'
+             OR phone IS NULL OR TRIM(phone) = '' OR phone = 'Non renseigné'
+             OR school IS NULL OR TRIM(school) = '' OR school = 'Non renseigné'
+             OR filiere IS NULL OR TRIM(filiere) = '' OR filiere = 'Non renseigné'
+             OR level IS NULL OR TRIM(level) = '' OR level = 'Non spécifié' OR level = 'Non renseigné' OR level = 'Étudiant'
+        `, []);
+        const nowMs = Date.now();
+        const THIRTY_MINUTES_MS = 30 * 60 * 1000;
+        for (const u of (incompleteRes?.results || [])) {
+          const fullyRegistered =
+            Number(u.is_onboarded) === 1 &&
+            u.registration_status !== 'en_attente_de_finition' &&
+            u.email && String(u.email).includes('@') &&
+            u.name && String(u.name).trim().length >= 2 &&
+            u.phone && String(u.phone).trim().length >= 6 && String(u.phone).trim() !== 'Non renseigné' &&
+            u.school && String(u.school).trim().length >= 2 && String(u.school).trim() !== 'Non renseigné' &&
+            u.filiere && String(u.filiere).trim().length >= 2 && String(u.filiere).trim() !== 'Non renseigné' &&
+            u.level && String(u.level).trim().length >= 2 && String(u.level).trim() !== 'Non spécifié' && String(u.level).trim() !== 'Non renseigné' && String(u.level).trim() !== 'Étudiant';
+
+          if (fullyRegistered) continue;
+
+          const createdAtMs = u.created_at
+            ? new Date(String(u.created_at).includes('T') ? u.created_at : `${u.created_at}Z`).getTime()
+            : (nowMs - THIRTY_MINUTES_MS - 1000);
+          const validCreatedMs = Number.isNaN(createdAtMs) ? (nowMs - THIRTY_MINUTES_MS - 1000) : createdAtMs;
+          const globalDeadlineMs = Number(u.onboarding_deadline_at) > 0
+            ? Number(u.onboarding_deadline_at)
+            : (validCreatedMs + THIRTY_MINUTES_MS);
+          const stepDeadlineMs = Number(u.step_deadline_at || 0);
+
+          if (nowMs >= globalDeadlineMs || (stepDeadlineMs > 0 && nowMs >= stepDeadlineMs)) {
+            await deleteUserCompletelyInDashboard(u.id, u.email);
+          } else {
+            await safeRun(
+              db,
+              "UPDATE users SET is_onboarded = 0, registration_status = 'en_attente_de_finition', onboarding_deadline_at = ? WHERE id = ?",
+              [globalDeadlineMs, u.id]
+            );
+          }
+        }
+      } catch (e) {}
 
       // Récupération de tous les utilisateurs réels (sélection résiliente)
       let usersQuery = await safeQuery(db, `
@@ -19132,9 +19276,8 @@ export default {
         if (!targetUserId) {
           return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
         }
-        await safeRun(db, 'DELETE FROM users WHERE id = ?', [targetUserId]);
-        await safeRun(db, 'DELETE FROM user_storage_quotas WHERE user_id = ?', [targetUserId]);
-        await safeRun(db, 'DELETE FROM user_storage_usage WHERE user_id = ?', [targetUserId]);
+        const targetRow = await safeFirst(db, 'SELECT email FROM users WHERE id = ?', [targetUserId]);
+        await deleteUserCompletelyInDashboard(targetUserId, targetRow?.email);
         return new Response(JSON.stringify({ success: true, deletedUserId: targetUserId }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }

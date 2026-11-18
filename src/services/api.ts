@@ -1509,6 +1509,8 @@ async function requestAuth<T = any>(endpoint: string, options: RequestInit = {},
     err.status = response.status;
     err.userNotFound = Boolean((data as any)?.userNotFound || response.status === 404);
     err.isGoogleAccount = Boolean((data as any)?.isGoogleAccount);
+    err.accountDeleted = Boolean((data as any)?.accountDeleted || response.status === 410);
+    err.code = (data as any)?.code;
     err.data = data;
     throw err;
   }
