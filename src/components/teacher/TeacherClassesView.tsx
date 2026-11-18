@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -26,7 +26,8 @@ import {
   BookOpen,
   UserCheck,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Copy
 } from 'lucide-react';
 
 export interface SchoolYearItem {
@@ -66,9 +67,20 @@ export interface ClassItem {
   createdAt: number;
 }
 
+export interface TermItem {
+  id: string;
+  classId: string; // Attache le trimestre à sa classe
+  schoolId: string;
+  yearId: string;
+  number: number; // 1, 2, 3, 4...
+  name: string; // ex: "Trimestre 1", "Trimestre 2"...
+  createdAt: number;
+}
+
 export interface SubjectItem {
   id: string;
   classId: string; // Attache la matière à la classe sélectionnée
+  termId?: string; // Attache la matière au trimestre sélectionné de la classe
   schoolId: string; // Attache à l'école
   yearId: string; // Attache à l'année scolaire
   name: string; // Nom de la matière (ex: Mathématiques)
@@ -274,6 +286,76 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     } catch { }
   }, [subjects]);
 
+  // Trimestres des classes (Trimestre 1, 2, 3 créés automatiquement par classe)
+  const [terms, setTerms] = useState<TermItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_teacher_terms');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch { }
+    return [];
+  });
+
+  // Sauvegarde persistante des trimestres
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_teacher_terms', JSON.stringify(terms));
+    } catch { }
+  }, [terms]);
+
+  // Trimestre actif sélectionné
+  const [selectedTermId, setSelectedTermId] = useState<string | null>(null);
+
+  // Référence pour le défilement horizontal fluide des trimestres
+  const termsScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollTerms = (direction: 'left' | 'right') => {
+    if (termsScrollRef.current) {
+      const scrollAmount = 250;
+      termsScrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  // État du modal d'ajout d'un nouveau trimestre
+  const [isAddTermModalOpen, setIsAddTermModalOpen] = useState(false);
+
+  // État pour le bouton de copie rapide du nom dans la modale de suppression
+  const [isCopiedDeleteName, setIsCopiedDeleteName] = useState(false);
+  const handleCopyDeleteName = (name: string) => {
+    try {
+      navigator.clipboard.writeText(name);
+    } catch { }
+    setDeleteConfirmInput(name);
+    setIsCopiedDeleteName(true);
+    setTimeout(() => setIsCopiedDeleteName(false), 2000);
+  };
+
+  // Migration automatique : s'assurer que toutes les classes existantes ont leurs 3 trimestres par défaut
+  useEffect(() => {
+    if (classes.length === 0) return;
+    setTerms(prev => {
+      let updated = [...prev];
+      let added = false;
+      classes.forEach(c => {
+        const classTerms = updated.filter(t => t.classId === c.id);
+        if (classTerms.length === 0) {
+          added = true;
+          updated.push(
+            { id: `term-${c.id}-1`, classId: c.id, schoolId: c.schoolId, yearId: c.yearId, number: 1, name: 'Trimestre 1', createdAt: Date.now() },
+            { id: `term-${c.id}-2`, classId: c.id, schoolId: c.schoolId, yearId: c.yearId, number: 2, name: 'Trimestre 2', createdAt: Date.now() + 1 },
+            { id: `term-${c.id}-3`, classId: c.id, schoolId: c.schoolId, yearId: c.yearId, number: 3, name: 'Trimestre 3', createdAt: Date.now() + 2 }
+          );
+        }
+      });
+      return added ? updated : prev;
+    });
+  }, [classes]);
+
   // --- ÉTATS POUR LES MENUS CONTEXTUELS "3 TRAITS", ÉDITION ET SUPPRESSION SÉCURISÉE ---
   interface ActiveMenuState {
     type: 'school' | 'class' | 'subject';
@@ -438,12 +520,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSchools(prev => prev.filter(s => s.id !== id));
       setClasses(prev => prev.filter(c => c.schoolId !== id));
       setSubjects(prev => prev.filter(s => s.schoolId !== id));
+      setTerms(prev => prev.filter(t => t.schoolId !== id));
       if (selectedSchoolId === id) setSelectedSchoolId(null);
       if (selectedSchoolInside?.id === id) setSelectedSchoolInside(null);
     } else if (deleteTarget.type === 'class') {
       const id = deleteTarget.id;
       setClasses(prev => prev.filter(c => c.id !== id));
       setSubjects(prev => prev.filter(s => s.classId !== id));
+      setTerms(prev => prev.filter(t => t.classId !== id));
       if (selectedClassId === id) setSelectedClassId(null);
     } else if (deleteTarget.type === 'subject') {
       const id = deleteTarget.id;
@@ -505,8 +589,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       resetClassForm();
     } else {
       if (!selectedSchoolInside) return;
+      const newClassId = `class-${Date.now()}`;
       const newClass: ClassItem = {
-        id: `class-${Date.now()}`,
+        id: newClassId,
         schoolId: selectedSchoolInside.id,
         yearId: selectedSchoolInside.yearId,
         level: classLevel.trim(),
@@ -520,8 +605,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         iconGradient: selectedClassColor.iconGradient,
         createdAt: Date.now()
       };
+      const defaultTerms: TermItem[] = [
+        { id: `term-${newClassId}-1`, classId: newClassId, schoolId: selectedSchoolInside.id, yearId: selectedSchoolInside.yearId, number: 1, name: 'Trimestre 1', createdAt: Date.now() },
+        { id: `term-${newClassId}-2`, classId: newClassId, schoolId: selectedSchoolInside.id, yearId: selectedSchoolInside.yearId, number: 2, name: 'Trimestre 2', createdAt: Date.now() + 1 },
+        { id: `term-${newClassId}-3`, classId: newClassId, schoolId: selectedSchoolInside.id, yearId: selectedSchoolInside.yearId, number: 3, name: 'Trimestre 3', createdAt: Date.now() + 2 }
+      ];
       setClasses(prev => [...prev, newClass]);
+      setTerms(prev => [...prev, ...defaultTerms]);
       setSelectedClassId(newClass.id);
+      setSelectedTermId(defaultTerms[0].id);
       setIsAddClassModalOpen(false);
       resetClassForm();
     }
@@ -565,6 +657,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         ...editingSubject,
         name: subjectName.trim(),
         coefficient: parsedCoeff,
+        termId: editingSubject.termId || activeTerm?.id,
         color: selectedSubjectColor.bg,
         textColor: selectedSubjectColor.text,
         borderColor: selectedSubjectColor.border,
@@ -575,9 +668,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       resetSubjectForm();
     } else {
       if (!activeClass || !selectedSchoolInside) return;
+      const targetTermId = activeTerm?.id || currentClassTerms[0]?.id || `term-${activeClass.id}-1`;
       const newSubject: SubjectItem = {
         id: `subject-${Date.now()}`,
         classId: activeClass.id,
+        termId: targetTermId,
         schoolId: selectedSchoolInside.id,
         yearId: selectedSchoolInside.yearId,
         name: subjectName.trim(),
@@ -803,10 +898,62 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     }
   }, [currentSchoolClasses, selectedClassId]);
 
-  // Matières de la classe active
-  const currentClassSubjects = activeClass
-    ? subjects.filter(s => s.classId === activeClass.id)
-    : [];
+  // Trimestres de la classe active (Trimestre 1, Trimestre 2, Trimestre 3...)
+  const currentClassTerms = useMemo(() => {
+    if (!activeClass) return [];
+    return terms
+      .filter(t => t.classId === activeClass.id)
+      .sort((a, b) => a.number - b.number);
+  }, [terms, activeClass]);
+
+  // Trimestre actif
+  const activeTerm = (selectedTermId && currentClassTerms.find(t => t.id === selectedTermId))
+    || currentClassTerms[0]
+    || null;
+
+  // Assurer que selectedTermId pointe toujours vers un trimestre valide
+  useEffect(() => {
+    if (currentClassTerms.length > 0) {
+      if (!selectedTermId || !currentClassTerms.some(t => t.id === selectedTermId)) {
+        setSelectedTermId(currentClassTerms[0].id);
+      }
+    } else {
+      setSelectedTermId(null);
+    }
+  }, [currentClassTerms, selectedTermId]);
+
+  // Prochain numéro de trimestre pour l'ajout
+  const nextTermNumber = useMemo(() => {
+    if (currentClassTerms.length === 0) return 1;
+    return Math.max(...currentClassTerms.map(t => t.number)) + 1;
+  }, [currentClassTerms]);
+
+  // Confirmation de l'ajout d'un nouveau trimestre pour la classe active
+  const handleConfirmAddTerm = () => {
+    if (!activeClass || !selectedSchoolInside) return;
+    const newTerm: TermItem = {
+      id: `term-${activeClass.id}-${Date.now()}`,
+      classId: activeClass.id,
+      schoolId: selectedSchoolInside.id,
+      yearId: selectedSchoolInside.yearId,
+      number: nextTermNumber,
+      name: `Trimestre ${nextTermNumber}`,
+      createdAt: Date.now()
+    };
+    setTerms(prev => [...prev, newTerm]);
+    setSelectedTermId(newTerm.id);
+    setIsAddTermModalOpen(false);
+  };
+
+  // Matières de la classe active DANS LE TRIMESTRE ACTIF SÉLECTIONNÉ
+  const currentClassSubjects = useMemo(() => {
+    if (!activeClass || !activeTerm) return [];
+    return subjects.filter(s => {
+      if (s.classId !== activeClass.id) return false;
+      const effectiveTermId = s.termId || currentClassTerms[0]?.id;
+      return effectiveTermId === activeTerm.id;
+    });
+  }, [subjects, activeClass, activeTerm, currentClassTerms]);
 
   return (
     <div 
@@ -1426,20 +1573,122 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 </div>
 
                 {/* ------------------------------------------------------------- */}
+                {/* ZONE DES TRIMESTRES : HORIZONTALE AVEC FLÈCHES & AJOUT (+)   */}
+                {/* ------------------------------------------------------------- */}
+                {activeClass && (
+                  <div className="space-y-2 pt-2 animate-fade-in">
+                    {/* En-tête de la section trimestres avec flèches */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-700">
+                          Trimestres ({currentClassTerms.length})
+                        </span>
+                        <span className="text-xs text-slate-400 font-bold">&bull;</span>
+                        <span className="text-xs font-bold text-[#00313d] bg-white/80 px-2.5 py-0.5 rounded-lg border border-cyan-200/60 shadow-2xs">
+                          {activeClass.level} {activeClass.name ? `• ${activeClass.name}` : ''}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => scrollTerms('left')}
+                          className="w-7 h-7 rounded-lg bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200/80 shadow-2xs flex items-center justify-center transition active:scale-90 cursor-pointer"
+                          title="Défiler les trimestres à gauche"
+                        >
+                          <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => scrollTerms('right')}
+                          className="w-7 h-7 rounded-lg bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200/80 shadow-2xs flex items-center justify-center transition active:scale-90 cursor-pointer"
+                          title="Défiler les trimestres à droite"
+                        >
+                          <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Rangée horizontale des trimestres avec overflow-x-auto */}
+                    <div 
+                      ref={termsScrollRef}
+                      className="flex items-center gap-2.5 overflow-x-auto pb-2 scrollbar-none scroll-smooth select-none pt-0.5"
+                    >
+                      {currentClassTerms.map((term) => {
+                        const isSelected = activeTerm?.id === term.id;
+                        const termSubjCount = subjects.filter(s => {
+                          if (s.classId !== activeClass.id) return false;
+                          const effectiveTermId = s.termId || currentClassTerms[0]?.id;
+                          return effectiveTermId === term.id;
+                        }).length;
+
+                        return (
+                          <button
+                            key={term.id}
+                            type="button"
+                            onClick={() => setSelectedTermId(term.id)}
+                            className={`group shrink-0 px-4 py-2 sm:px-4.5 sm:py-2 rounded-xl border-2 transition-all duration-200 flex items-center gap-2.5 cursor-pointer ${
+                              isSelected
+                                ? 'bg-[#00313d] text-white border-[#002028] border-b-[4px] shadow-md scale-[1.02]'
+                                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 border-b-[3px] shadow-xs hover:-translate-y-0.5'
+                            } active:translate-y-0.5`}
+                          >
+                            <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-cyan-400 ring-2 ring-cyan-200/50' : 'bg-slate-300 group-hover:bg-cyan-500'}`} />
+                            <span className="text-xs sm:text-sm font-black tracking-tight">
+                              {term.name}
+                            </span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md border ${
+                              isSelected 
+                                ? 'bg-white/20 text-cyan-200 border-white/20' 
+                                : 'bg-slate-100 text-slate-500 border-slate-200'
+                            }`}>
+                              {termSubjCount} mat.
+                            </span>
+                          </button>
+                        );
+                      })}
+
+                      {/* Bouton Plus derrière le dernier trimestre pour ajouter un nouveau trimestre */}
+                      <button
+                        type="button"
+                        onClick={() => setIsAddTermModalOpen(true)}
+                        className="shrink-0 px-3.5 py-2 rounded-xl border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/60 hover:bg-white text-slate-700 hover:text-[#00313d] flex items-center gap-1.5 transition-all duration-200 shadow-2xs hover:shadow-xs group hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                        title={`Ajouter le Trimestre ${nextTermNumber}`}
+                      >
+                        <div className="w-5 h-5 rounded-md bg-[#00313d] text-white flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                        </div>
+                        <span className="text-xs font-black">
+                          + Trimestre {nextTermNumber}
+                        </span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* ------------------------------------------------------------- */}
                 {/* ZONE DES MATIÈRES : DÉFILEMENT VERTICAL EN DESSOUS DES CLASSES */}
                 {/* ------------------------------------------------------------- */}
                 {activeClass && (
-                  <div className="space-y-3.5 pt-1 animate-fade-in">
+                  <div className="space-y-3.5 pt-2 animate-fade-in">
                     {/* En-tête de la section matières */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-black uppercase tracking-wider text-slate-700">
-                          Matières de la classe ({currentClassSubjects.length})
+                          Matières ({currentClassSubjects.length})
                         </span>
                         <span className="text-xs text-slate-400 font-bold">&bull;</span>
                         <span className="text-xs font-bold text-cyan-900 bg-white/80 px-2.5 py-0.5 rounded-lg border border-cyan-200/60 shadow-2xs">
                           {activeClass.level} {activeClass.name ? `• ${activeClass.name}` : ''}
                         </span>
+                        {activeTerm && (
+                          <>
+                            <span className="text-xs text-slate-400 font-bold">&bull;</span>
+                            <span className="text-xs font-black text-white bg-[#00313d] px-2.5 py-0.5 rounded-lg shadow-2xs">
+                              {activeTerm.name}
+                            </span>
+                          </>
+                        )}
                       </div>
 
                       {currentClassSubjects.length > 0 && (
@@ -1530,7 +1779,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             + Créer une matière
                           </span>
                           <span className="text-[9px] text-slate-400 leading-tight">
-                            Pour {activeClass.level}
+                            Pour {activeClass.level} &bull; {activeTerm?.name || 'Trimestre 1'}
                           </span>
                         </div>
                       </button>
@@ -2229,7 +2478,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       {editingSubject ? "Modifier la matière" : "Créer une matière"}
                     </h2>
                     <span className="text-[11px] font-semibold text-slate-400 mt-1 inline-block">
-                      Classe : {activeClass.level} {activeClass.name ? `• ${activeClass.name}` : ''}
+                      Classe : {activeClass.level} {activeClass.name ? `• ${activeClass.name}` : ''} &bull; {activeTerm?.name || 'Trimestre 1'}
                     </span>
                   </div>
                 </div>
@@ -2489,8 +2738,32 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     Pour confirmer la suppression définitive de <span className="font-extrabold text-slate-900">{deleteTarget.displayName}</span>, veuillez recopier son nom ci-dessous :
                   </p>
 
-                  <div className="px-3.5 py-2 rounded-xl bg-slate-100 border border-slate-200 text-xs font-black text-slate-800 text-center select-all font-mono tracking-wide">
-                    {deleteTarget.name}
+                  <div className="flex items-center gap-2">
+                    <div className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-100 border border-slate-200 text-xs font-black text-slate-800 font-mono tracking-wide truncate select-all">
+                      {deleteTarget.name}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleCopyDeleteName(deleteTarget.name)}
+                      className={`px-3.5 py-2.5 rounded-xl text-xs font-black flex items-center gap-1.5 transition-all shrink-0 cursor-pointer shadow-2xs active:scale-95 border ${
+                        isCopiedDeleteName
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                          : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-200'
+                      }`}
+                      title="Copier et insérer directement le nom"
+                    >
+                      {isCopiedDeleteName ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+                          <span>Copié !</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5 text-slate-600" />
+                          <span>Copier</span>
+                        </>
+                      )}
+                    </button>
                   </div>
 
                   <input
@@ -2541,6 +2814,72 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   >
                     <Trash2 className="w-4 h-4" />
                     <span>Supprimer définitivement</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* MODAL DE CONFIRMATION D'AJOUT D'UN TRIMESTRE                             */}
+        {/* ========================================================================= */}
+        {isAddTermModalOpen && activeClass && (
+          <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
+            <div 
+              className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-150"
+              style={{
+                boxShadow: '0 25px 50px -12px rgba(0, 49, 61, 0.35)'
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#00313d] text-white flex items-center justify-center shadow-md">
+                    <Plus className="w-5 h-5 stroke-[2.5]" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-black text-[#00313d] leading-tight">
+                      Ajouter un trimestre
+                    </h3>
+                    <span className="text-[11px] font-semibold text-slate-400 mt-0.5 inline-block">
+                      Classe : {activeClass.level} {activeClass.name ? `• ${activeClass.name}` : ''}
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAddTermModalOpen(false)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="p-5 sm:p-6 space-y-4">
+                <div className="p-4 rounded-xl bg-cyan-50/70 border border-cyan-200/80 text-xs sm:text-sm text-cyan-950 leading-relaxed font-semibold">
+                  Voulez-vous ajouter le <span className="font-black text-[#00313d]">Trimestre {nextTermNumber}</span> pour la classe <span className="font-black">{activeClass.level} {activeClass.name || ''}</span> ?
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Ce nouveau trimestre vous permettra d'enregistrer et de gérer des matières, notes et évaluations indépendantes des autres trimestres.
+                </p>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setIsAddTermModalOpen(false)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmAddTerm}
+                    className="flex-1 py-2.5 rounded-xl bg-[#00313d] hover:bg-[#00242e] text-white text-xs font-black shadow-md transition active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Oui, ajouter Trimestre {nextTermNumber}</span>
                   </button>
                 </div>
               </div>
