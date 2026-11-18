@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -10,36 +10,22 @@ import {
   Search,
   Bell,
   Settings,
-  Grid,
-  List,
-  SlidersHorizontal,
   Plus,
-  MoreVertical,
   X,
   Check,
-  BookOpen,
+  Calendar,
   Sparkles,
-  Award,
-  ChevronRight,
-  TrendingUp,
-  FolderOpen
+  Trash2,
+  School,
+  FolderPlus
 } from 'lucide-react';
 
-export interface ClassItem {
+export interface SchoolYearItem {
   id: string;
-  title: string;
-  subtitle?: string;
-  description?: string;
-  traineesCount: number;
-  materialsCount: number;
-  progressPercent: number;
-  status: 'active' | 'warning' | 'completed';
-  instructorName: string;
-  instructorAvatar?: string;
-  gradientTheme: string;
-  accentOutline?: boolean;
-  category?: string;
-  traineeAvatars: { initial: string; bg: string }[];
+  label: string; // ex: "2026 - 2027"
+  color: string; // hex ou 'white'
+  textColor?: string;
+  createdAt: number;
 }
 
 interface TeacherClassesViewProps {
@@ -51,234 +37,130 @@ interface TeacherClassesViewProps {
   } | null;
 }
 
-const INITIAL_FEATURED_CLASSES: ClassItem[] = [
-  {
-    id: 'feat-1',
-    title: 'JavaScript Essentials',
-    description: 'In this course, you will learn web front-end development through the development of applications that run on a single browser.',
-    traineesCount: 120,
-    materialsCount: 15,
-    progressPercent: 68,
-    status: 'active',
-    instructorName: 'David Wallace',
-    gradientTheme: 'from-pink-500 via-rose-500 to-purple-600',
-    category: 'Web',
-    traineeAvatars: [
-      { initial: 'J', bg: 'bg-emerald-500' },
-      { initial: 'O', bg: 'bg-cyan-500' },
-      { initial: 'T', bg: 'bg-amber-500' },
-      { initial: 'S', bg: 'bg-rose-500' },
-    ]
-  },
-  {
-    id: 'feat-2',
-    title: '自動アンロックしない',
-    subtitle: 'Bases de données & Systèmes SQL',
-    description: 'このコースは、Webシステム開発において必要なデータベースについてや、SQLを用いたプログラミングを学んでいきます。',
-    traineesCount: 48,
-    materialsCount: 10,
-    progressPercent: 42,
-    status: 'active',
-    instructorName: 'John Doe',
-    gradientTheme: 'from-emerald-400 via-teal-500 to-cyan-600',
-    category: 'Database',
-    traineeAvatars: [
-      { initial: 'J', bg: 'bg-indigo-500' },
-      { initial: 'O', bg: 'bg-teal-500' },
-      { initial: 'T', bg: 'bg-amber-500' },
-      { initial: 'S', bg: 'bg-purple-500' },
-    ]
-  }
+// Couleurs proposées pour la rentrée scolaire
+const YEAR_COLOR_OPTIONS = [
+  { id: 'white', label: 'Blanc (Défaut)', bg: '#ffffff', text: '#0f172a', border: '#cbd5e1' },
+  { id: 'teal', label: 'Pétrole / Lagon', bg: '#00313d', text: '#ffffff', border: '#00252e' },
+  { id: 'blue', label: 'Bleu Roi', bg: '#2563eb', text: '#ffffff', border: '#1d4ed8' },
+  { id: 'cyan', label: 'Cyan Céleste', bg: '#0891b2', text: '#ffffff', border: '#0e7490' },
+  { id: 'emerald', label: 'Émeraude', bg: '#059669', text: '#ffffff', border: '#047857' },
+  { id: 'orange', label: 'Orange Ambré', bg: '#ea580c', text: '#ffffff', border: '#c2410c' },
+  { id: 'rose', label: 'Rose Framboise', bg: '#db2777', text: '#ffffff', border: '#be185d' },
+  { id: 'purple', label: 'Violet Sombre', bg: '#7c3aed', text: '#ffffff', border: '#6d28d9' },
+  { id: 'gold', label: 'Or / Safran', bg: '#d97706', text: '#ffffff', border: '#b45309' },
+  { id: 'red', label: 'Rouge Écarlate', bg: '#dc2626', text: '#ffffff', border: '#b91c1c' },
 ];
 
-const INITIAL_ALL_CLASSES: ClassItem[] = [
-  {
-    id: 'class-1',
-    title: 'JavaScript Essentials',
-    traineesCount: 120,
-    materialsCount: 15,
-    progressPercent: 65,
-    status: 'active',
-    instructorName: 'David Wallace',
-    gradientTheme: 'from-orange-500 to-rose-500',
-    category: 'Web',
-    traineeAvatars: [
-      { initial: 'J', bg: 'bg-cyan-500' },
-      { initial: 'G', bg: 'bg-emerald-500' },
-    ]
-  },
-  {
-    id: 'class-2',
-    title: 'Problem Solving',
-    traineesCount: 120,
-    materialsCount: 15,
-    progressPercent: 50,
-    status: 'warning',
-    instructorName: 'Sarah Connor',
-    gradientTheme: 'from-amber-400 to-orange-500',
-    accentOutline: true,
-    category: 'Algorithm',
-    traineeAvatars: [
-      { initial: 'J', bg: 'bg-rose-500' },
-      { initial: 'G', bg: 'bg-amber-500' },
-    ]
-  },
-  {
-    id: 'class-3',
-    title: 'Front End Fundamentals',
-    traineesCount: 120,
-    materialsCount: 15,
-    progressPercent: 80,
-    status: 'active',
-    instructorName: 'Michael Scott',
-    gradientTheme: 'from-blue-600 to-sky-400',
-    category: 'Web',
-    traineeAvatars: [
-      { initial: 'J', bg: 'bg-purple-500' },
-      { initial: 'G', bg: 'bg-cyan-500' },
-    ]
-  },
-  {
-    id: 'class-4',
-    title: 'JavaScript',
-    traineesCount: 120,
-    materialsCount: 15,
-    progressPercent: 72,
-    status: 'active',
-    instructorName: 'David Wallace',
-    gradientTheme: 'from-teal-400 to-emerald-500',
-    category: 'Web',
-    traineeAvatars: [
-      { initial: 'J', bg: 'bg-emerald-500' },
-      { initial: 'G', bg: 'bg-teal-500' },
-    ]
-  },
-  {
-    id: 'class-5',
-    title: 'Learning Soft Skills',
-    traineesCount: 120,
-    materialsCount: 15,
-    progressPercent: 40,
-    status: 'active',
-    instructorName: 'Pam Beesly',
-    gradientTheme: 'from-sky-400 to-blue-500',
-    category: 'Soft Skills',
-    traineeAvatars: [
-      { initial: 'J', bg: 'bg-amber-500' },
-      { initial: 'G', bg: 'bg-indigo-500' },
-    ]
-  },
-  {
-    id: 'class-6',
-    title: 'PHP 101',
-    traineesCount: 120,
-    materialsCount: 15,
-    progressPercent: 35,
-    status: 'active',
-    instructorName: 'Jim Halpert',
-    gradientTheme: 'from-purple-500 to-indigo-600',
-    category: 'Backend',
-    traineeAvatars: [
-      { initial: 'J', bg: 'bg-pink-500' },
-      { initial: 'G', bg: 'bg-sky-500' },
-    ]
-  },
-  {
-    id: 'class-7',
-    title: 'Intro to JS',
-    traineesCount: 120,
-    materialsCount: 15,
-    progressPercent: 90,
-    status: 'warning',
-    instructorName: 'Dwight Schrute',
-    gradientTheme: 'from-yellow-400 to-amber-500',
-    category: 'Web',
-    traineeAvatars: [
-      { initial: 'J', bg: 'bg-orange-500' },
-      { initial: 'G', bg: 'bg-rose-500' },
-    ]
-  },
-  {
-    id: 'class-8',
-    title: 'SQL Essentials',
-    traineesCount: 120,
-    materialsCount: 15,
-    progressPercent: 60,
-    status: 'active',
-    instructorName: 'Stanley Hudson',
-    gradientTheme: 'from-teal-400 to-cyan-600',
-    category: 'Database',
-    traineeAvatars: [
-      { initial: 'J', bg: 'bg-cyan-500' },
-      { initial: 'G', bg: 'bg-emerald-500' },
-    ]
-  }
+// Années suggérées automatiquement à partir de l'année courante (2026)
+const CURRENT_YEAR = new Date().getFullYear() || 2026;
+const SUGGESTED_YEARS = [
+  `${CURRENT_YEAR} - ${CURRENT_YEAR + 1}`,
+  `${CURRENT_YEAR + 1} - ${CURRENT_YEAR + 2}`,
+  `${CURRENT_YEAR + 2} - ${CURRENT_YEAR + 3}`,
+  `${CURRENT_YEAR + 3} - ${CURRENT_YEAR + 4}`,
+  `${CURRENT_YEAR - 1} - ${CURRENT_YEAR}`,
 ];
 
 export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, user }) => {
-  // Navigation active tab dans la barre latérale / barre du bas
-  const [activeNavTab, setActiveNavTab] = useState<'dashboard' | 'trainees' | 'classes' | 'discussions' | 'groups' | 'library'>('classes');
-  
-  // États de recherche, filtres et affichage
+  // 1. Accueil par défaut de cette application : le bouton "Tableau de bord" (comme entouré sur l'image 1)
+  const [activeNavTab, setActiveNavTab] = useState<'dashboard' | 'trainees' | 'classes' | 'discussions' | 'groups' | 'library'>('dashboard');
+
+  // Recherche dans l'en-tête
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
-  const [selectedFilterCategory, setSelectedFilterCategory] = useState<string>('all');
-  const [isFilterMenuOpen, setIsFilterMenuOpen] = useState(false);
 
-  // Liste des classes (dynamique)
-  const [featuredClasses, setFeaturedClasses] = useState<ClassItem[]>(INITIAL_FEATURED_CLASSES);
-  const [allClasses, setAllClasses] = useState<ClassItem[]>(INITIAL_ALL_CLASSES);
-  const [selectedCardId, setSelectedCardId] = useState<string>('class-2');
+  // Années scolaires créées (Persistance locale)
+  const [schoolYears, setSchoolYears] = useState<SchoolYearItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_teacher_school_years');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+    } catch { }
+    // Par défaut, première rentrée scolaire 2026 - 2027 pré-initialisée
+    return [
+      { id: 'year-default', label: `${CURRENT_YEAR} - ${CURRENT_YEAR + 1}`, color: '#00313d', textColor: '#ffffff', createdAt: Date.now() }
+    ];
+  });
 
-  // Modal Création de classe
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [newTitle, setNewTitle] = useState('');
-  const [newDescription, setNewDescription] = useState('');
-  const [newTrainees, setNewTrainees] = useState(30);
-  const [newMaterials, setNewMaterials] = useState(12);
-  const [newInstructor, setNewInstructor] = useState(user?.name || 'Professeur');
-  const [newTheme, setNewTheme] = useState('from-cyan-500 to-blue-600');
-  const [newCategory, setNewCategory] = useState('Général');
+  const [selectedYearId, setSelectedYearId] = useState<string>(() => {
+    return schoolYears[0]?.id || '';
+  });
 
-  // Filtrage
-  const filteredAllClasses = useMemo(() => {
-    return allClasses.filter((item) => {
-      const matchSearch = searchQuery.trim() === '' || 
-        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-        item.instructorName.toLowerCase().includes(searchQuery.toLowerCase());
+  // Sauvegarde persistante des années scolaires
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_teacher_school_years', JSON.stringify(schoolYears));
+    } catch { }
+  }, [schoolYears]);
 
-      const matchCategory = selectedFilterCategory === 'all' || item.category === selectedFilterCategory;
-      return matchSearch && matchCategory;
-    });
-  }, [allClasses, searchQuery, selectedFilterCategory]);
+  // État du menu déroulant "Créer une rentrée scolaire"
+  const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false);
+  const [inputYearValue, setInputYearValue] = useState(`${CURRENT_YEAR} - ${CURRENT_YEAR + 1}`);
+  const [selectedColorObj, setSelectedColorObj] = useState(YEAR_COLOR_OPTIONS[0]); // Par défaut blanc / aucune couleur
+  const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const handleCreateClass = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTitle.trim()) return;
+  // Fermer le menu déroulant lors d'un clic en dehors
+  useEffect(() => {
+    const handleOutsideClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsCreateMenuOpen(false);
+      }
+    };
+    if (isCreateMenuOpen) {
+      document.addEventListener('mousedown', handleOutsideClick);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [isCreateMenuOpen]);
 
-    const newClass: ClassItem = {
-      id: `class-${Date.now()}`,
-      title: newTitle.trim(),
-      description: newDescription.trim(),
-      traineesCount: Number(newTrainees) || 25,
-      materialsCount: Number(newMaterials) || 10,
-      progressPercent: 0,
-      status: 'active',
-      instructorName: newInstructor.trim() || (user?.name || 'Professeur'),
-      gradientTheme: newTheme,
-      category: newCategory,
-      traineeAvatars: [
-        { initial: 'A', bg: 'bg-cyan-500' },
-        { initial: 'B', bg: 'bg-emerald-500' }
-      ]
+  // Gestion de la saisie manuelle : Uniquement chiffres et tiret/espace, max 12 caractères
+  const handleYearInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const raw = e.target.value;
+    // Seulement les chiffres, espaces et tirets sont autorisés, max 12 caractères
+    const filtered = raw.replace(/[^0-9\s-]/g, '').slice(0, 12);
+    setInputYearValue(filtered);
+  };
+
+  // Création / Application de l'année scolaire
+  const handleApplyYear = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanLabel = inputYearValue.trim();
+    if (!cleanLabel) return;
+
+    // Vérifier si l'année existe déjà
+    const existing = schoolYears.find(y => y.label.toLowerCase() === cleanLabel.toLowerCase());
+    if (existing) {
+      setSelectedYearId(existing.id);
+      setIsCreateMenuOpen(false);
+      return;
+    }
+
+    const newYearItem: SchoolYearItem = {
+      id: `year-${Date.now()}`,
+      label: cleanLabel,
+      color: selectedColorObj.bg,
+      textColor: selectedColorObj.text,
+      createdAt: Date.now()
     };
 
-    setAllClasses([newClass, ...allClasses]);
-    setIsCreateModalOpen(false);
-    setNewTitle('');
-    setNewDescription('');
+    setSchoolYears(prev => [...prev, newYearItem]);
+    setSelectedYearId(newYearItem.id);
+    setIsCreateMenuOpen(false);
+  };
+
+  // Suppression d'une rentrée scolaire
+  const handleDeleteYear = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSchoolYears(prev => {
+      const updated = prev.filter(y => y.id !== id);
+      if (selectedYearId === id && updated.length > 0) {
+        setSelectedYearId(updated[0].id);
+      }
+      return updated;
+    });
   };
 
   const navItems = [
@@ -289,6 +171,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     { id: 'groups', label: 'Groups', icon: Users2 },
     { id: 'library', label: 'Library', icon: Layers },
   ] as const;
+
+  const currentSelectedYear = schoolYears.find(y => y.id === selectedYearId) || schoolYears[0];
 
   return (
     <div 
@@ -316,7 +200,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           </span>
         </div>
 
-        {/* Éléments de navigation verticaux Desktop */}
+        {/* Éléments de navigation verticaux Desktop (Accueil actif sur Dashboard - Image 1) */}
         <nav className="flex flex-col items-center gap-4 my-auto w-full px-2">
           {navItems.map((item) => {
             const isActive = activeNavTab === item.id;
@@ -372,41 +256,42 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       <main className="flex-1 flex flex-col h-full min-h-dvh overflow-y-auto overflow-x-hidden p-3.5 sm:p-6 lg:p-8 pb-24 md:pb-8 space-y-5 md:space-y-6">
         
         {/* ----------------------------------------------------------------------- */}
-        {/* EN-TÊTE RESPONSIVE : BREADCRUMB, TITRE, ACTIONS & PROFIL */}
+        {/* EN-TÊTE : BOUTON RETOUR (ET NON CLASSE), ACTIONS & PROFIL */}
         {/* ----------------------------------------------------------------------- */}
         <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-          {/* Titre & Fil d'Ariane */}
+          {/* Bouton Retour (nommé "Retour" comme demandé) et Titre */}
           <div>
-            <div className="text-[11px] font-semibold text-slate-400 tracking-wider flex items-center gap-1 mb-0.5">
-              <span>Dashboard</span>
+            <div className="text-[11px] font-semibold text-slate-400 tracking-wider flex items-center gap-1 mb-1">
+              <span>Tableau de bord</span>
             </div>
             <div className="flex items-center gap-2">
               <button
                 type="button"
                 onClick={onBack}
-                className="p-1 rounded-lg hover:bg-black/5 text-slate-700 transition"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white text-slate-700 hover:text-slate-900 border border-white/90 shadow-xs transition active:scale-95 font-bold text-xs sm:text-sm"
                 title="Retour à l'accueil"
               >
-                <ArrowLeft className="w-5 h-5 stroke-[2.5]" />
+                <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
+                <span>Retour</span>
               </button>
-              <h1 className="text-2xl sm:text-3xl font-black text-[#0f2430] tracking-tight">
-                Classes
+              <h1 className="text-xl sm:text-2xl font-black text-[#0f2430] tracking-tight ml-1">
+                Tableau de bord
               </h1>
             </div>
           </div>
 
-          {/* Contrôles du haut : Recherche, Notifs, Paramètres, Profil */}
+          {/* Contrôles du haut : Recherche, Notifs, Paramètres, Profil & Bouton "Créer une rentrée scolaire" */}
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-between sm:justify-end">
             {/* Barre de recherche dynamique */}
             <div className="relative flex items-center">
               {isSearchOpen ? (
-                <div className="flex items-center bg-white/95 backdrop-blur-md rounded-2xl px-3 py-1.5 shadow-sm border border-white/90 transition-all w-48 sm:w-60">
+                <div className="flex items-center bg-white/95 backdrop-blur-md rounded-2xl px-3 py-1.5 shadow-sm border border-white/90 transition-all w-44 sm:w-56">
                   <Search className="w-4 h-4 text-slate-400 shrink-0 mr-2" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search classes..."
+                    placeholder="Recherche..."
                     className="w-full bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none"
                     autoFocus
                   />
@@ -424,7 +309,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   type="button"
                   onClick={() => setIsSearchOpen(true)}
                   className="w-9 h-9 rounded-2xl bg-white/80 backdrop-blur-md hover:bg-white text-slate-600 flex items-center justify-center shadow-sm border border-white/90 transition"
-                  title="Search classes"
+                  title="Rechercher"
                 >
                   <Search className="w-4 h-4" />
                 </button>
@@ -445,319 +330,275 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             <button
               type="button"
               className="w-9 h-9 rounded-2xl bg-white/80 backdrop-blur-md hover:bg-white text-slate-600 flex items-center justify-center shadow-sm border border-white/90 transition"
-              title="Settings"
+              title="Paramètres"
             >
               <Settings className="w-4 h-4" />
             </button>
 
-            {/* Profil Utilisateur (Capsule comme sur l'image) */}
+            {/* Profil Enseignant */}
             <div className="flex items-center gap-2 pl-1 pr-3 py-1 bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-white/90">
               <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-cyan-600 to-teal-400 text-white font-bold text-xs flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
                 {user?.avatar_url ? (
                   <img src={user.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                 ) : (
-                  (user?.name ? user.name.charAt(0).toUpperCase() : 'M')
+                  (user?.name ? user.name.charAt(0).toUpperCase() : 'DKD')
                 )}
               </div>
               <div className="flex flex-col text-left">
                 <span className="text-xs font-bold text-slate-800 leading-none">
-                  {user?.name || 'Michael'}
+                  {user?.name || 'Professeur'}
                 </span>
                 <span className="text-[9px] text-slate-400 font-medium">
-                  Instructor
+                  Enseignant Pro
                 </span>
               </div>
+            </div>
+
+            {/* ------------------------------------------------------------------- */}
+            {/* BOUTON "Créer une rentrée scolaire" AVEC MENU DÉROULANT RECTANGLE */}
+            {/* ------------------------------------------------------------------- */}
+            <div className="relative" ref={dropdownRef}>
+              <button
+                type="button"
+                onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
+                className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0"
+                style={{ backgroundColor: '#00313d' }}
+                title="Créer une rentrée scolaire"
+              >
+                <Plus className="w-4 h-4 stroke-[3]" />
+                <span className="tracking-wide text-[11px] sm:text-xs">
+                  Créer une rentrée scolaire
+                </span>
+              </button>
+
+              {/* Petit menu déroulant bien rectangle qui descend vers le bas */}
+              {isCreateMenuOpen && (
+                <div 
+                  className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-white/95 backdrop-blur-2xl rounded-2xl p-4 shadow-2xl border border-white/90 z-50 text-slate-800 space-y-3 animate-fade-in"
+                  style={{
+                    boxShadow: '0 20px 40px -10px rgba(0, 49, 61, 0.25)'
+                  }}
+                >
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                    <span className="text-xs font-extrabold text-[#00313d] flex items-center gap-1.5">
+                      <Calendar className="w-4 h-4 text-cyan-600" />
+                      <span>Nouvelle rentrée scolaire</span>
+                    </span>
+                    <button 
+                      type="button" 
+                      onClick={() => setIsCreateMenuOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  {/* 1. Champ en haut bien rectangle avec bouton Créer / Appliquer à côté */}
+                  <form onSubmit={handleApplyYear} className="space-y-1.5">
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                      Année scolaire (max 12 chiffres)
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={inputYearValue}
+                        onChange={handleYearInputChange}
+                        maxLength={12}
+                        placeholder="ex: 2026 - 2027"
+                        className="flex-1 px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono font-bold text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                        autoFocus
+                      />
+                      <button
+                        type="submit"
+                        disabled={!inputYearValue.trim()}
+                        className="px-3.5 py-2 rounded-xl text-xs font-black text-white shadow-sm transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                        style={{ backgroundColor: '#00313d' }}
+                      >
+                        Créer
+                      </button>
+                    </div>
+                    <span className="text-[9px] text-slate-400 block">
+                      {inputYearValue.length}/12 caractères &bull; Chiffres autorisés
+                    </span>
+                  </form>
+
+                  {/* 2. Palette de couleurs à appliquer */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                      Couleur du bouton de l'année
+                    </label>
+                    <div className="grid grid-cols-5 gap-2">
+                      {YEAR_COLOR_OPTIONS.map((col) => {
+                        const isSelected = selectedColorObj.id === col.id;
+                        return (
+                          <button
+                            key={col.id}
+                            type="button"
+                            onClick={() => setSelectedColorObj(col)}
+                            style={{ backgroundColor: col.bg, borderColor: col.border }}
+                            className={`w-full h-7 rounded-lg border flex items-center justify-center transition-all ${
+                              isSelected ? 'scale-110 shadow-md ring-2 ring-offset-1 ring-cyan-500' : 'hover:scale-105'
+                            }`}
+                            title={col.label}
+                          >
+                            {isSelected && (
+                              <Check className={`w-3.5 h-3.5 ${col.id === 'white' ? 'text-slate-800' : 'text-white'} stroke-[3]`} />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* 3. Propositions d'années qui commencent cette année (2026 - 2027...) */}
+                  <div>
+                    <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
+                      Propositions rapides
+                    </label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {SUGGESTED_YEARS.map((sug) => (
+                        <button
+                          key={sug}
+                          type="button"
+                          onClick={() => setInputYearValue(sug)}
+                          className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition-all ${
+                            inputYearValue === sug
+                              ? 'bg-cyan-500 text-white shadow-sm'
+                              : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                          }`}
+                        >
+                          {sug}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Bouton Appliquer bas du menu */}
+                  <div className="pt-2 border-t border-slate-100 flex items-center justify-end">
+                    <button
+                      type="button"
+                      onClick={() => handleApplyYear()}
+                      className="w-full py-2 rounded-xl text-xs font-black text-white shadow-sm transition active:scale-95"
+                      style={{ backgroundColor: '#00313d' }}
+                    >
+                      Appliquer cette rentrée scolaire
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </header>
 
         {/* ----------------------------------------------------------------------- */}
-        {/* BARRE D'ACTIONS : TOGGLES DE VUE & BOUTON PRINCIPAL + CREATE CLASS */}
+        {/* EMPLACEMENT DE L'IMAGE 3 : AFFICHAGE DES ANNÉES CRÉÉES SOUS FORME */}
+        {/* DE PETITS RECTANGLES SUCCESSIFS AVEC LA COULEUR CHOISIE               */}
         {/* ----------------------------------------------------------------------- */}
-        <div className="flex items-center justify-between gap-3 pt-1">
-          {/* Toggles Vue (Grid 2x2, List, Filtre) */}
-          <div className="flex items-center gap-1.5 bg-white/70 backdrop-blur-md p-1 rounded-2xl border border-white/90 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-xl transition ${
-                viewMode === 'grid' 
-                  ? 'bg-cyan-500 text-white shadow-sm' 
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
-              }`}
-              title="Grid view"
-            >
-              <Grid className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('list')}
-              className={`p-1.5 rounded-xl transition ${
-                viewMode === 'list' 
-                  ? 'bg-cyan-500 text-white shadow-sm' 
-                  : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
-              }`}
-              title="List view"
-            >
-              <List className="w-4 h-4" />
-            </button>
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)}
-                className={`p-1.5 rounded-xl transition ${
-                  selectedFilterCategory !== 'all' 
-                    ? 'bg-teal-600 text-white shadow-sm' 
-                    : 'text-slate-500 hover:text-slate-800 hover:bg-white/60'
-                }`}
-                title="Filter by category"
-              >
-                <SlidersHorizontal className="w-4 h-4" />
-              </button>
-
-              {/* Menu dropdown de filtre */}
-              {isFilterMenuOpen && (
-                <div className="absolute left-0 mt-2 w-44 bg-white/95 backdrop-blur-xl border border-white/90 rounded-2xl shadow-xl p-2 z-40 text-xs">
-                  <div className="text-[10px] font-bold text-slate-400 px-2 py-1 uppercase tracking-wider">Categories</div>
-                  {['all', 'Web', 'Database', 'Algorithm', 'Soft Skills', 'Backend'].map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => {
-                        setSelectedFilterCategory(cat);
-                        setIsFilterMenuOpen(false);
-                      }}
-                      className={`w-full text-left px-2.5 py-1.5 rounded-xl flex items-center justify-between transition ${
-                        selectedFilterCategory === cat ? 'bg-cyan-50 font-bold text-cyan-700' : 'text-slate-600 hover:bg-slate-100'
-                      }`}
-                    >
-                      <span>{cat === 'all' ? 'All Categories' : cat}</span>
-                      {selectedFilterCategory === cat && <Check className="w-3.5 h-3.5 text-cyan-600" />}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Bouton Pro : + CREATE CLASS (Pétrole sombre identique au modèle) */}
-          <button
-            type="button"
-            onClick={() => setIsCreateModalOpen(true)}
-            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-2xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0"
-            style={{ backgroundColor: '#00313d' }}
-            title="Create a new class"
-          >
-            <Plus className="w-4 h-4 stroke-[3]" />
-            <span className="tracking-wide uppercase text-[10px] sm:text-[11px]">CREATE CLASS</span>
-          </button>
-        </div>
-
-        {/* ----------------------------------------------------------------------- */}
-        {/* SECTION 1 : LES 2 GRANDES CARTES EN VEDETTE (Top In-Progress Classes) */}
-        {/* ----------------------------------------------------------------------- */}
-        <section className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
-          {featuredClasses.map((item) => (
-            <div
-              key={item.id}
-              className="bg-white/80 backdrop-blur-xl border border-white/90 rounded-3xl p-4 sm:p-6 shadow-[0_10px_25px_rgba(0,40,60,0.04)] hover:shadow-lg transition-all flex flex-col justify-between gap-4 relative overflow-hidden"
-            >
-              {/* Partie supérieure de la carte */}
-              <div className="flex items-start gap-3 sm:gap-4">
-                {/* Miniature abstraite moderne */}
-                <div className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl bg-gradient-to-br ${item.gradientTheme} shadow-md flex items-center justify-center text-white shrink-0 relative overflow-hidden`}>
-                  <div className="absolute -bottom-3 -left-3 w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm"></div>
-                  <div className="absolute top-2 -right-2 w-10 h-10 rounded-full bg-white/15"></div>
-                  <BookOpen className="w-6 h-6 sm:w-7 sm:h-7 text-white/90 drop-shadow relative z-10" />
-                </div>
-
-                {/* Infos du cours */}
-                <div className="flex-1 min-w-0 pr-6">
-                  <div className="text-[10px] sm:text-[11px] font-semibold text-slate-400 mb-0.5">
-                    {item.traineesCount} Trainees &bull; {item.materialsCount} Materials
-                  </div>
-                  <h3 className="text-sm sm:text-base md:text-lg font-black text-slate-800 tracking-tight leading-snug">
-                    {item.title}
-                  </h3>
-                  {item.subtitle && (
-                    <div className="text-[10px] sm:text-[11px] font-bold text-teal-600 mt-0.5">
-                      {item.subtitle}
-                    </div>
-                  )}
-                  <p className="text-[11px] sm:text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
-                    {item.description}
-                  </p>
-                </div>
-
-                {/* Statut & Menu options */}
-                <div className="absolute top-4 right-4 flex items-center gap-1.5">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" title="Classe active"></span>
-                  <button type="button" className="text-slate-400 hover:text-slate-700 p-1 rounded-lg transition">
-                    <MoreVertical className="w-4 h-4" />
-                  </button>
-                </div>
-              </div>
-
-              {/* Partie inférieure de la carte (Progression, Trainees, Enseignant) */}
-              <div className="pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2.5 sm:gap-3">
-                {/* Progression de la classe */}
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
-                    Class Progress
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-6 h-6 rounded-full bg-teal-500/15 border border-teal-500/30 text-teal-700 font-extrabold text-[10px] flex items-center justify-center">
-                      12
-                    </div>
-                    <div className="w-3 sm:w-4 h-0.5 bg-teal-400"></div>
-                    <div className="w-6 h-6 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 font-extrabold text-[10px] flex items-center justify-center">
-                      5
-                    </div>
-                    <div className="w-3 sm:w-4 h-0.5 bg-slate-200"></div>
-                    <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-300 text-slate-500 font-extrabold text-[10px] flex items-center justify-center">
-                      8
-                    </div>
-                  </div>
-                </div>
-
-                {/* Stacks d'avatars des apprenants */}
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
-                    Trainees
-                  </span>
-                  <div className="flex items-center -space-x-1.5">
-                    {item.traineeAvatars.map((avatar, idx) => (
-                      <div
-                        key={idx}
-                        className={`w-6 h-6 rounded-full ${avatar.bg} border-2 border-white text-white font-black text-[9px] flex items-center justify-center shadow-xs`}
-                      >
-                        {avatar.initial}
-                      </div>
-                    ))}
-                    <div className="w-6 h-6 rounded-full bg-cyan-100 border-2 border-white text-cyan-800 font-black text-[8px] flex items-center justify-center">
-                      +{item.traineesCount - 4}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Instructeur */}
-                <div className="flex flex-col">
-                  <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
-                    Instructor
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 font-bold text-[10px] flex items-center justify-center border border-white">
-                      {item.instructorName.charAt(0)}
-                    </div>
-                    <span className="text-xs font-bold text-slate-700">
-                      {item.instructorName}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </section>
-
-        {/* ----------------------------------------------------------------------- */}
-        {/* SECTION 2 : TOUTES LES CLASSES ("All Classes") */}
-        {/* ----------------------------------------------------------------------- */}
-        <section className="space-y-3.5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-base sm:text-lg font-black text-[#0f2430] tracking-tight">
-              All Classes
-            </h2>
-            <span className="text-xs font-bold text-slate-400">
-              {filteredAllClasses.length} {filteredAllClasses.length > 1 ? 'classes' : 'classe'}
+        <section className="space-y-2 pt-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+              Rentrées scolaires enregistrées :
+            </span>
+            <span className="text-[11px] font-extrabold text-[#00313d]">
+              ({schoolYears.length})
             </span>
           </div>
 
-          {/* Grille de cartes adaptée Mobile & Bureau */}
-          <div className={`grid gap-3.5 sm:gap-4 ${
-            viewMode === 'grid' 
-              ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' 
-              : 'grid-cols-1'
-          }`}>
-            {filteredAllClasses.map((c) => {
-              const isSelected = selectedCardId === c.id;
+          {/* Ligne des boutons d'années successifs (Emplacement entouré en rouge sur l'image 3) */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            {schoolYears.map((year) => {
+              const isSelected = selectedYearId === year.id;
+              const isWhite = !year.color || year.color === '#ffffff' || year.color === 'white';
 
               return (
                 <div
-                  key={c.id}
-                  onClick={() => setSelectedCardId(c.id)}
-                  className={`bg-white/80 backdrop-blur-xl rounded-2xl p-4 shadow-[0_6px_20px_rgba(0,40,60,0.03)] hover:shadow-md transition-all cursor-pointer flex flex-col justify-between gap-3 relative ${
-                    isSelected || c.accentOutline
-                      ? 'border-2 border-orange-400/80 shadow-orange-500/10'
-                      : 'border border-white/90 hover:border-cyan-300/60'
+                  key={year.id}
+                  onClick={() => setSelectedYearId(year.id)}
+                  style={{
+                    backgroundColor: year.color || '#ffffff',
+                    color: year.textColor || (isWhite ? '#0f172a' : '#ffffff'),
+                    borderColor: isWhite ? '#cbd5e1' : year.color
+                  }}
+                  className={`group relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-extrabold tracking-wide cursor-pointer transition-all shadow-xs select-none ${
+                    isSelected 
+                      ? 'ring-2 ring-offset-2 ring-cyan-500 scale-105 shadow-md' 
+                      : 'hover:scale-102 hover:shadow'
                   }`}
+                  title={`Sélectionner l'année scolaire ${year.label}`}
                 >
-                  {/* Ligne du haut : Miniature + Titre + Nombre d'étudiants */}
-                  <div className="flex items-start gap-3">
-                    <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${c.gradientTheme} shadow-sm flex items-center justify-center text-white shrink-0 relative overflow-hidden`}>
-                      <div className="absolute -bottom-2 -left-2 w-8 h-8 rounded-full bg-white/20"></div>
-                      <BookOpen className="w-5 h-5 text-white/90" />
-                    </div>
+                  <Calendar className="w-3.5 h-3.5 opacity-80" />
+                  <span className="font-mono">{year.label}</span>
+                  {isSelected && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 ring-2 ring-white ml-0.5"></span>
+                  )}
 
-                    <div className="flex-1 min-w-0 pr-4">
-                      <div className="text-[10px] font-semibold text-slate-400">
-                        {c.traineesCount} Trainees &bull; {c.materialsCount} Materials
-                      </div>
-                      <h4 className="text-xs sm:text-sm font-extrabold text-slate-800 truncate mt-0.5" title={c.title}>
-                        {c.title}
-                      </h4>
-                    </div>
-
-                    {/* Statut & Menu options */}
-                    <div className="absolute top-3.5 right-3 flex items-center gap-1">
-                      <span className={`w-2 h-2 rounded-full ${c.status === 'warning' ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
-                      <button type="button" className="text-slate-400 hover:text-slate-600 p-0.5">
-                        <MoreVertical className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Ligne du bas : Barre de progression + Avatars */}
-                  <div className="pt-2 border-t border-slate-100 flex items-center justify-between">
-                    <div className="flex flex-col">
-                      <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">
-                        Class Progress
-                      </span>
-                      <div className="w-24 sm:w-20 bg-slate-100 h-1.5 rounded-full overflow-hidden mt-1">
-                        <div
-                          className={`h-full rounded-full ${c.status === 'warning' ? 'bg-orange-500' : 'bg-teal-500'}`}
-                          style={{ width: `${c.progressPercent}%` }}
-                        ></div>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col items-end">
-                      <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">
-                        Trainees
-                      </span>
-                      <div className="flex items-center -space-x-1 mt-0.5">
-                        {c.traineeAvatars.map((a, i) => (
-                          <div
-                            key={i}
-                            className={`w-5 h-5 rounded-full ${a.bg} border border-white text-white font-black text-[8px] flex items-center justify-center`}
-                          >
-                            {a.initial}
-                          </div>
-                        ))}
-                        <div className="w-5 h-5 rounded-full bg-cyan-100 border border-white text-cyan-800 font-bold text-[7px] flex items-center justify-center">
-                          +{c.traineesCount - 2}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
+                  {/* Bouton de suppression au survol si plusieurs années */}
+                  {schoolYears.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteYear(year.id, e)}
+                      className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded-full hover:bg-black/20 text-current transition"
+                      title="Supprimer cette année"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
               );
             })}
           </div>
         </section>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* ESPACE DE TRAVAIL ÉPURÉ (MOCK DEMO SUPPRIMÉ COMME DEMANDÉ SUR L'IMAGE 2)*/}
+        {/* ----------------------------------------------------------------------- */}
+        <section className="flex-1 flex flex-col justify-center items-center py-10 px-4">
+          {currentSelectedYear ? (
+            <div className="w-full max-w-2xl bg-white/80 backdrop-blur-xl border border-white/90 rounded-3xl p-6 sm:p-8 shadow-[0_10px_25px_rgba(0,40,60,0.04)] text-center space-y-4 animate-fade-in">
+              <div className="w-16 h-16 rounded-2xl mx-auto flex items-center justify-center text-white shadow-md"
+                style={{ backgroundColor: currentSelectedYear.color || '#00313d' }}
+              >
+                <School className="w-8 h-8 text-white" />
+              </div>
+
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-widest text-cyan-700 bg-cyan-50 px-2.5 py-1 rounded-full border border-cyan-200/60 inline-block mb-1.5">
+                  Rentrée scolaire sélectionnée
+                </span>
+                <h2 className="text-2xl sm:text-3xl font-black text-slate-800 tracking-tight font-mono">
+                  {currentSelectedYear.label}
+                </h2>
+                <p className="text-xs sm:text-sm text-slate-500 max-w-md mx-auto mt-2 leading-relaxed">
+                  Cette année scolaire est prête pour la gestion de vos classes, étudiants, évaluations et moyennes.
+                </p>
+              </div>
+
+              <div className="pt-4 border-t border-slate-100 flex items-center justify-center gap-3 text-xs font-bold text-slate-400">
+                <span>0 Classes</span>
+                <span>&bull;</span>
+                <span>0 Étudiants</span>
+                <span>&bull;</span>
+                <span>0 Évaluations</span>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center space-y-3 p-8 bg-white/60 backdrop-blur-md rounded-3xl border border-white/80 max-w-md">
+              <div className="w-12 h-12 rounded-2xl bg-[#00313d] text-white flex items-center justify-center mx-auto shadow-md">
+                <Calendar className="w-6 h-6" />
+              </div>
+              <h3 className="text-base font-extrabold text-slate-800">
+                Aucune rentrée scolaire active
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed">
+                Cliquez sur le bouton « Créer une rentrée scolaire » en haut à droite pour ajouter votre première année scolaire (ex: 2026 - 2027).
+              </p>
+            </div>
+          )}
+        </section>
       </main>
 
       {/* ========================================================================= */}
-      {/* 3. BARRE DE NAVIGATION INFÉRIEURE MOBILE (< md : Évite de coincer l'écran) */}
+      {/* 3. BARRE DE NAVIGATION INFÉRIEURE MOBILE (< md : Reste responsive)       */}
       {/* ========================================================================= */}
       <nav 
         className="md:hidden fixed bottom-0 inset-x-0 h-16 z-50 flex items-center justify-around px-2 border-t border-cyan-900/40 shadow-2xl backdrop-blur-md"
@@ -794,164 +635,6 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           );
         })}
       </nav>
-
-      {/* ========================================================================= */}
-      {/* 4. MODALE RESPONSIVE "CREATE CLASS" */}
-      {/* ========================================================================= */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg bg-white/95 backdrop-blur-2xl rounded-3xl p-5 sm:p-6 shadow-2xl border border-white/80 space-y-4 max-h-[92vh] overflow-y-auto">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-xl bg-[#00313d] text-white flex items-center justify-center">
-                  <GraduationCap className="w-4 h-4" />
-                </div>
-                <div>
-                  <h3 className="text-sm sm:text-base font-black text-slate-800">Créer une nouvelle classe</h3>
-                  <p className="text-[10px] sm:text-[11px] text-slate-400">Configurez l'intitulé et les paramètres</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCreateModalOpen(false)}
-                className="w-8 h-8 rounded-full hover:bg-slate-100 text-slate-400 hover:text-slate-600 flex items-center justify-center transition"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateClass} className="space-y-3.5 text-xs">
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Intitulé de la classe *
-                </label>
-                <input
-                  type="text"
-                  required
-                  value={newTitle}
-                  onChange={(e) => setNewTitle(e.target.value)}
-                  placeholder="ex: Mathématiques Avancées, JavaScript..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500 font-semibold"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                  Description du cours
-                </label>
-                <textarea
-                  rows={2}
-                  value={newDescription}
-                  onChange={(e) => setNewDescription(e.target.value)}
-                  placeholder="Bref résumé des objectifs pédagogiques..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                ></textarea>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Nombre d'apprenants
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={newTrainees}
-                    onChange={(e) => setNewTrainees(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Modules / Matériels
-                  </label>
-                  <input
-                    type="number"
-                    min="1"
-                    value={newMaterials}
-                    onChange={(e) => setNewMaterials(Number(e.target.value))}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Professeur / Instructeur
-                  </label>
-                  <input
-                    type="text"
-                    value={newInstructor}
-                    onChange={(e) => setNewInstructor(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Catégorie
-                  </label>
-                  <select
-                    value={newCategory}
-                    onChange={(e) => setNewCategory(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                  >
-                    <option value="Général">Général</option>
-                    <option value="Web">Web</option>
-                    <option value="Database">Database</option>
-                    <option value="Algorithm">Algorithm</option>
-                    <option value="Soft Skills">Soft Skills</option>
-                    <option value="Backend">Backend</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Sélection du dégradé thématique */}
-              <div>
-                <label className="block text-[11px] font-bold text-slate-700 mb-1.5">
-                  Thème visuel de la vignette
-                </label>
-                <div className="flex items-center gap-2">
-                  {[
-                    { id: 'from-pink-500 to-purple-600', label: 'Rose/Violet' },
-                    { id: 'from-emerald-400 to-teal-600', label: 'Menthe' },
-                    { id: 'from-orange-500 to-rose-500', label: 'Orange' },
-                    { id: 'from-blue-600 to-sky-400', label: 'Bleu Roi' },
-                    { id: 'from-amber-400 to-orange-500', label: 'Doré' },
-                  ].map((grad) => (
-                    <button
-                      key={grad.id}
-                      type="button"
-                      onClick={() => setNewTheme(grad.id)}
-                      className={`w-7 h-7 rounded-full bg-gradient-to-tr ${grad.id} transition-transform ${
-                        newTheme === grad.id ? 'scale-125 ring-2 ring-offset-2 ring-slate-800' : 'hover:scale-110'
-                      }`}
-                      title={grad.label}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-slate-500 hover:text-slate-800 font-semibold"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl font-bold text-white shadow-md transition active:scale-95"
-                  style={{ backgroundColor: '#00313d' }}
-                >
-                  Créer la classe
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 };
