@@ -8004,16 +8004,17 @@ function renderDashboardHtml(data) {
                   <span>\${u.isOnline ? '🔴' : '🟢'}</span>
                   <span>Basculer en \${u.isOnline ? 'Hors ligne' : 'En ligne'}</span>
                 </button>
-                <div
+                <button
+                  type="button"
                   onclick="toggleBlockUserAccount('\${u.id}')"
-                  class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md cursor-pointer transition select-none border shadow-sm \${u.isBlocked ? 'bg-red-950/70 border-red-500/60 text-red-200 hover:bg-red-900/70' : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:border-slate-500'}"
+                  class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md cursor-pointer transition select-none border shadow-sm \${u.isBlocked ? 'bg-red-950/80 border-red-500 text-red-200 hover:bg-red-900' : 'bg-slate-800 border-slate-600 text-slate-200 hover:border-slate-400'}"
                   title="\${u.isBlocked ? 'Compte actuellement BLOQUÉ — Cliquez pour débloquer' : 'Glisser pour bloquer cet utilisateur et son e-mail'}"
                 >
-                  <span class="text-[10px] font-bold">\${u.isBlocked ? '🚫 Bloqué' : 'Bloquer'}</span>
+                  <span class="text-[10px] font-bold tracking-wide">\${u.isBlocked ? '🚫 Bloqué' : 'Bloquer'}</span>
                   <div class="relative w-8 h-4 rounded-full transition-colors duration-200 \${u.isBlocked ? 'bg-red-600' : 'bg-slate-600'}">
                     <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform duration-200 \${u.isBlocked ? 'translate-x-4' : 'translate-x-0'}"></span>
                   </div>
-                </div>
+                </button>
                 <button 
                   onclick="deleteUserAccount('\${u.id}', '\${(u.name || '').replace(/'/g, '')}')" 
                   class="px-2.5 py-1 text-[10px] font-bold rounded-md cursor-pointer transition flex items-center gap-1 shadow-sm bg-rose-950/40 text-rose-300 hover:bg-rose-900/60 border border-rose-800/50"
@@ -8396,16 +8397,17 @@ function renderDashboardHtml(data) {
                   <span>\${u.isOnline ? '🔴' : '🟢'}</span>
                   <span>Basculer en \${u.isOnline ? 'Hors ligne' : 'En ligne'}</span>
                 </button>
-                <div
+                <button
+                  type="button"
                   onclick="toggleBlockUserAccount('\${u.id}')"
-                  class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md cursor-pointer transition select-none border shadow-sm \${u.isBlocked ? 'bg-red-950/70 border-red-500/60 text-red-200 hover:bg-red-900/70' : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:border-slate-500'}"
+                  class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md cursor-pointer transition select-none border shadow-sm \${u.isBlocked ? 'bg-red-950/80 border-red-500 text-red-200 hover:bg-red-900' : 'bg-slate-800 border-slate-600 text-slate-200 hover:border-slate-400'}"
                   title="\${u.isBlocked ? 'Compte actuellement BLOQUÉ — Cliquez pour débloquer' : 'Glisser pour bloquer cet utilisateur et son e-mail'}"
                 >
-                  <span class="text-[10px] font-bold">\${u.isBlocked ? '🚫 Bloqué' : 'Bloquer'}</span>
+                  <span class="text-[10px] font-bold tracking-wide">\${u.isBlocked ? '🚫 Bloqué' : 'Bloquer'}</span>
                   <div class="relative w-8 h-4 rounded-full transition-colors duration-200 \${u.isBlocked ? 'bg-red-600' : 'bg-slate-600'}">
                     <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform duration-200 \${u.isBlocked ? 'translate-x-4' : 'translate-x-0'}"></span>
                   </div>
-                </div>
+                </button>
               </div>
 
               <!-- Ligne 3 : Numéro de téléphone -->
