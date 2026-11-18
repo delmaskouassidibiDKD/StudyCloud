@@ -4127,6 +4127,12 @@ a:hover{transform:translateY(-2px)}
         if (!payload?.userId) return null;
         if (env.DB) {
           try {
+            const uRow = await env.DB.prepare(
+              "SELECT id, is_blocked FROM users WHERE id = ? LIMIT 1"
+            ).bind(String(payload.userId)).first();
+            if (!uRow || Number(uRow.is_blocked) === 1) {
+              return null;
+            }
             const tokenHash = await hashToken(token);
             const gSessCache = globalThis.__scSessionCache = globalThis.__scSessionCache || {};
             const cached = gSessCache[tokenHash];
@@ -4139,17 +4145,17 @@ a:hover{transform:translateY(-2px)}
             ).bind(tokenHash).first();
             if (sessionRow) {
               const isNotExpired = !sessionRow.expires_at || new Date(sessionRow.expires_at).getTime() > nowMs;
-              gSessCache[tokenHash] = { ok: isNotExpired, exp: nowMs + 3e4 };
+              gSessCache[tokenHash] = { ok: isNotExpired, exp: nowMs + 1e4 };
               return isNotExpired ? payload : null;
             }
             const anyUserSession = await env.DB.prepare(
               "SELECT id FROM auth_sessions WHERE user_id = ? LIMIT 1"
             ).bind(String(payload.userId)).first();
             if (anyUserSession) {
-              gSessCache[tokenHash] = { ok: false, exp: nowMs + 3e4 };
+              gSessCache[tokenHash] = { ok: false, exp: nowMs + 1e4 };
               return null;
             }
-            gSessCache[tokenHash] = { ok: true, exp: nowMs + 3e4 };
+            gSessCache[tokenHash] = { ok: true, exp: nowMs + 1e4 };
           } catch {
           }
         }
@@ -4503,7 +4509,20 @@ a:hover{transform:translateY(-2px)}
           "ALTER TABLE users ADD COLUMN registration_status TEXT DEFAULT 'en_attente_de_finition'",
           "ALTER TABLE users ADD COLUMN onboarding_deadline_at INTEGER DEFAULT 0",
           "ALTER TABLE users ADD COLUMN step_deadline_at INTEGER DEFAULT 0",
-          "ALTER TABLE users ADD COLUMN onboarding_step TEXT DEFAULT 'step_1'"
+          "ALTER TABLE users ADD COLUMN onboarding_step TEXT DEFAULT 'step_1'",
+          "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0",
+          `CREATE TABLE IF NOT EXISTS blocked_emails (
+            email TEXT PRIMARY KEY,
+            user_id TEXT,
+            reason TEXT DEFAULT 'Bloqu\xE9 par l''administrateur',
+            blocked_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )`,
+          `CREATE TABLE IF NOT EXISTS deleted_accounts_log (
+            user_id TEXT PRIMARY KEY,
+            email TEXT,
+            was_onboarded INTEGER DEFAULT 1,
+            deleted_at INTEGER DEFAULT 0
+          )`
         ];
         for (const q of alterQueries) {
           try {
@@ -4511,6 +4530,83 @@ a:hover{transform:translateY(-2px)}
           } catch (e) {
           }
         }
+      }
+      const BLOCKED_ACCOUNT_MESSAGE = "Ce compte n'est pas autoris\xE9 (compte bloqu\xE9). Cette mesure peut r\xE9sulter du non-respect de nos conditions g\xE9n\xE9rales d'utilisation ou de notre politique de s\xE9curit\xE9. S'il s'agit d'un malentendu, nous vous invitons \xE0 contacter le service client StudyCloud.";
+      const DELETED_ACCOUNT_MESSAGE = "Votre compte utilisateur a \xE9t\xE9 retir\xE9 de la plateforme StudyCloud et votre session a \xE9t\xE9 cl\xF4tur\xE9e. Pour continuer \xE0 b\xE9n\xE9ficier de nos services et acc\xE9der \xE0 l'application, veuillez recr\xE9er un nouveau compte depuis la page d'inscription.";
+      async function isEmailOrUserBlocked(db, email, userId) {
+        if (!db) return false;
+        await ensureRegistrationColumns(db);
+        if (email) {
+          const ce = String(email).toLowerCase().trim();
+          if (ce) {
+            try {
+              const bRow = await db.prepare("SELECT email FROM blocked_emails WHERE LOWER(TRIM(email)) = ? LIMIT 1").bind(ce).first();
+              if (bRow) return true;
+            } catch {
+            }
+            try {
+              const uRow = await db.prepare("SELECT is_blocked FROM users WHERE LOWER(TRIM(email)) = ? LIMIT 1").bind(ce).first();
+              if (uRow && Number(uRow.is_blocked) === 1) return true;
+            } catch {
+            }
+          }
+        }
+        if (userId) {
+          try {
+            const uRow = await db.prepare("SELECT is_blocked, email FROM users WHERE id = ? LIMIT 1").bind(String(userId)).first();
+            if (uRow && Number(uRow.is_blocked) === 1) return true;
+            if (uRow?.email) {
+              const ce = String(uRow.email).toLowerCase().trim();
+              const bRow = await db.prepare("SELECT email FROM blocked_emails WHERE LOWER(TRIM(email)) = ? LIMIT 1").bind(ce).first();
+              if (bRow) return true;
+            }
+          } catch {
+          }
+        }
+        return false;
+      }
+      async function buildMissingUserSanctionResponse(db, userId, email, origin2) {
+        await ensureRegistrationColumns(db);
+        if (await isEmailOrUserBlocked(db, email, userId)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: "ACCOUNT_BLOCKED",
+            error: BLOCKED_ACCOUNT_MESSAGE
+          }, 403, origin2);
+        }
+        try {
+          const delLog = await db.prepare("SELECT was_onboarded FROM deleted_accounts_log WHERE user_id = ? LIMIT 1").bind(userId).first();
+          if (delLog) {
+            if (Number(delLog.was_onboarded) === 0) {
+              return jsonResponse({
+                success: false,
+                accountDeleted: true,
+                accountDeletedByAdmin: true,
+                wasOnboarded: false,
+                code: "REGISTRATION_DELETED_BY_ADMIN",
+                error: "Votre inscription en cours a \xE9t\xE9 interrompue et vos informations ont \xE9t\xE9 supprim\xE9es. Veuillez recommencer l'inscription depuis l'accueil."
+              }, 410, origin2);
+            }
+            return jsonResponse({
+              success: false,
+              accountDeleted: true,
+              accountDeletedByAdmin: true,
+              wasOnboarded: true,
+              code: "ACCOUNT_DELETED_BY_ADMIN",
+              error: DELETED_ACCOUNT_MESSAGE
+            }, 410, origin2);
+          }
+        } catch {
+        }
+        return jsonResponse({
+          success: false,
+          accountDeleted: true,
+          accountDeletedByAdmin: true,
+          wasOnboarded: true,
+          code: "ACCOUNT_DELETED_BY_ADMIN",
+          error: DELETED_ACCOUNT_MESSAGE
+        }, 410, origin2);
       }
       async function deleteUserCompletely(db, userId, email, bucket) {
         if (!db || !userId) return;
@@ -4701,6 +4797,36 @@ a:hover{transform:translateY(-2px)}
           console.error("[StudyCloud Auto-Purge Error]", e);
         }
       }
+      if (path.startsWith("/api/") && env.DB && path !== "/api/auth/register" && path !== "/api/auth/login" && path !== "/api/auth/google" && path !== "/api/auth/logout" && path !== "/api/auth/cancel-unfinalized-account" && path !== "/api/health") {
+        const authHeader = request.headers.get("Authorization") || "";
+        const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : null;
+        if (bearerToken) {
+          const jwtPayload = await verifyJWT(bearerToken);
+          if (jwtPayload?.userId) {
+            await ensureRegistrationColumns(env.DB);
+            if (await isEmailOrUserBlocked(env.DB, jwtPayload.email, jwtPayload.userId)) {
+              return jsonResponse({
+                success: false,
+                accountBlocked: true,
+                code: "ACCOUNT_BLOCKED",
+                error: BLOCKED_ACCOUNT_MESSAGE
+              }, 403, origin);
+            }
+            const activeUserRow = await env.DB.prepare("SELECT id, is_blocked FROM users WHERE id = ? LIMIT 1").bind(String(jwtPayload.userId)).first();
+            if (!activeUserRow) {
+              return await buildMissingUserSanctionResponse(env.DB, String(jwtPayload.userId), jwtPayload.email, origin);
+            }
+            if (Number(activeUserRow.is_blocked) === 1) {
+              return jsonResponse({
+                success: false,
+                accountBlocked: true,
+                code: "ACCOUNT_BLOCKED",
+                error: BLOCKED_ACCOUNT_MESSAGE
+              }, 403, origin);
+            }
+          }
+        }
+      }
       if (path.startsWith("/api/auth/") && path !== "/api/auth/check-verification-status" && !isSchemaInitialized) {
         await ensureDatabaseSchema(env.DB);
         await ensureEmailVerificationsTable(env.DB);
@@ -4725,6 +4851,18 @@ a:hover{transform:translateY(-2px)}
         const pwdCheck = validatePasswordFormat(password);
         if (!pwdCheck.valid) return errorResponse(pwdCheck.error || "Mot de passe non conforme", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
+        if (await isEmailOrUserBlocked(env.DB, cleanEmail)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: "ACCOUNT_BLOCKED",
+            error: BLOCKED_ACCOUNT_MESSAGE
+          }, 403, origin);
+        }
+        try {
+          await env.DB.prepare("DELETE FROM deleted_accounts_log WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).run();
+        } catch (e) {
+        }
         const existing = await env.DB.prepare("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
         const q1 = securityQuestion1 || "Quelle est votre ville de naissance ?";
         const q2 = securityQuestion2 || "Quel est le pr\xE9nom de votre m\xE8re ?";
@@ -4795,6 +4933,14 @@ a:hover{transform:translateY(-2px)}
         if (!email) return errorResponse("Email requis", 400, origin);
         if (!isValidEmail(email)) return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
+        if (await isEmailOrUserBlocked(env.DB, cleanEmail)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: "ACCOUNT_BLOCKED",
+            error: BLOCKED_ACCOUNT_MESSAGE
+          }, 403, origin);
+        }
         const user = await env.DB.prepare("SELECT id, name, email_verified FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
         const verif = await env.DB.prepare("SELECT * FROM email_verifications WHERE LOWER(TRIM(email)) = ? ORDER BY created_at DESC LIMIT 1").bind(cleanEmail).first();
         if (!user && !verif) return errorResponse("Aucune demande en attente pour cet email", 404, origin);
@@ -4918,6 +5064,14 @@ a:hover{transform:translateY(-2px)}
         const userIdParam = url.searchParams.get("userId");
         if (!emailParam && !userIdParam) return errorResponse("Email ou userId requis", 400, origin);
         const cleanEmail = (emailParam || "").toLowerCase().trim();
+        if (await isEmailOrUserBlocked(env.DB, cleanEmail, userIdParam)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: "ACCOUNT_BLOCKED",
+            error: BLOCKED_ACCOUNT_MESSAGE
+          }, 403, origin);
+        }
         let latestVerif = null;
         try {
           latestVerif = await env.DB.prepare(`
@@ -5022,6 +5176,13 @@ a:hover{transform:translateY(-2px)}
           ).bind(token).first();
           if (!record) {
             return htmlResponse("Lien expir\xE9 ou d\xE9j\xE0 utilis\xE9", "Ce lien ne peut plus \xEAtre utilis\xE9 ou n'est plus valide. Veuillez vous connecter.", false);
+          }
+          if (await isEmailOrUserBlocked(env.DB, record.email, record.user_id)) {
+            return htmlResponse(
+              "Ce compte n'est pas autoris\xE9 \u2014 Compte bloqu\xE9",
+              BLOCKED_ACCOUNT_MESSAGE,
+              false
+            );
           }
           if (Number(record.used) === 1 || Number(record.confirmed) === 1) {
             return htmlResponse(
@@ -5173,6 +5334,14 @@ a:hover{transform:translateY(-2px)}
         if (!email || !password) return errorResponse("Email et mot de passe requis", 400, origin);
         if (!isValidEmail(email)) return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
+        if (await isEmailOrUserBlocked(env.DB, cleanEmail)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: "ACCOUNT_BLOCKED",
+            error: BLOCKED_ACCOUNT_MESSAGE
+          }, 403, origin);
+        }
         const loginIp = request.headers.get("CF-Connecting-IP") || request.headers.get("X-Forwarded-For") || "unknown";
         const loginLockKey = `login_fail_${cleanEmail}_${loginIp}`;
         const gLogin = globalThis;
@@ -5427,6 +5596,18 @@ a:hover{transform:translateY(-2px)}
         await ensureUsersTableUniqueIndex(env.DB);
         await ensureRegistrationColumns(env.DB);
         await cleanupExpiredUnfinishedAccounts(env.DB, env.BUCKET);
+        if (await isEmailOrUserBlocked(env.DB, cleanGoogleEmail)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: "ACCOUNT_BLOCKED",
+            error: BLOCKED_ACCOUNT_MESSAGE
+          }, 403, origin);
+        }
+        try {
+          await env.DB.prepare("DELETE FROM deleted_accounts_log WHERE LOWER(TRIM(email)) = ?").bind(cleanGoogleEmail).run();
+        } catch (e) {
+        }
         let user = await env.DB.prepare("SELECT * FROM users WHERE google_id = ? OR LOWER(TRIM(email)) = ?").bind(profile.id, cleanGoogleEmail).first();
         if (!user) {
           const userId = generateId();

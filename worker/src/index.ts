@@ -4672,9 +4672,15 @@ a:hover{transform:translateY(-2px)}
         const payload = await verifyJWT(token);
         if (!payload?.userId) return null;
 
-        // Révocation effective des sessions via auth_sessions (H-2) avec cache mémoire court (30s)
+        // Révocation effective des sessions & contrôle de suppression/blocage en direct
         if (env.DB) {
           try {
+            const uRow: any = await env.DB.prepare(
+              'SELECT id, is_blocked FROM users WHERE id = ? LIMIT 1'
+            ).bind(String(payload.userId)).first();
+            if (!uRow || Number(uRow.is_blocked) === 1) {
+              return null;
+            }
             const tokenHash = await hashToken(token);
             const gSessCache: Record<string, { ok: boolean; exp: number }> = ((globalThis as any).__scSessionCache = (globalThis as any).__scSessionCache || {});
             const cached = gSessCache[tokenHash];
@@ -4687,7 +4693,7 @@ a:hover{transform:translateY(-2px)}
             ).bind(tokenHash).first();
             if (sessionRow) {
               const isNotExpired = !sessionRow.expires_at || new Date(sessionRow.expires_at).getTime() > nowMs;
-              gSessCache[tokenHash] = { ok: isNotExpired, exp: nowMs + 30000 };
+              gSessCache[tokenHash] = { ok: isNotExpired, exp: nowMs + 10000 };
               return isNotExpired ? payload : null;
             }
             // Vérifier si l'utilisateur possède d'autres sessions enregistrées (si oui, ce jeton a été révoqué par logout/reset)
@@ -4695,10 +4701,10 @@ a:hover{transform:translateY(-2px)}
               'SELECT id FROM auth_sessions WHERE user_id = ? LIMIT 1'
             ).bind(String(payload.userId)).first();
             if (anyUserSession) {
-              gSessCache[tokenHash] = { ok: false, exp: nowMs + 30000 };
+              gSessCache[tokenHash] = { ok: false, exp: nowMs + 10000 };
               return null;
             }
-            gSessCache[tokenHash] = { ok: true, exp: nowMs + 30000 };
+            gSessCache[tokenHash] = { ok: true, exp: nowMs + 10000 };
           } catch {}
         }
         return payload;
@@ -5266,11 +5272,104 @@ a:hover{transform:translateY(-2px)}
           "ALTER TABLE users ADD COLUMN registration_status TEXT DEFAULT 'en_attente_de_finition'",
           "ALTER TABLE users ADD COLUMN onboarding_deadline_at INTEGER DEFAULT 0",
           "ALTER TABLE users ADD COLUMN step_deadline_at INTEGER DEFAULT 0",
-          "ALTER TABLE users ADD COLUMN onboarding_step TEXT DEFAULT 'step_1'"
+          "ALTER TABLE users ADD COLUMN onboarding_step TEXT DEFAULT 'step_1'",
+          "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0",
+          `CREATE TABLE IF NOT EXISTS blocked_emails (
+            email TEXT PRIMARY KEY,
+            user_id TEXT,
+            reason TEXT DEFAULT 'Bloqué par l''administrateur',
+            blocked_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )`,
+          `CREATE TABLE IF NOT EXISTS deleted_accounts_log (
+            user_id TEXT PRIMARY KEY,
+            email TEXT,
+            was_onboarded INTEGER DEFAULT 1,
+            deleted_at INTEGER DEFAULT 0
+          )`
         ];
         for (const q of alterQueries) {
           try { await db.prepare(q).run(); } catch (e) {}
         }
+      }
+
+      const BLOCKED_ACCOUNT_MESSAGE =
+        "Ce compte n'est pas autorisé (compte bloqué). Cette mesure peut résulter du non-respect de nos conditions générales d'utilisation ou de notre politique de sécurité. S'il s'agit d'un malentendu, nous vous invitons à contacter le service client StudyCloud.";
+
+      const DELETED_ACCOUNT_MESSAGE =
+        "Votre compte utilisateur a été retiré de la plateforme StudyCloud et votre session a été clôturée. Pour continuer à bénéficier de nos services et accéder à l'application, veuillez recréer un nouveau compte depuis la page d'inscription.";
+
+      async function isEmailOrUserBlocked(db: any, email?: string | null, userId?: string | null): Promise<boolean> {
+        if (!db) return false;
+        await ensureRegistrationColumns(db);
+        if (email) {
+          const ce = String(email).toLowerCase().trim();
+          if (ce) {
+            try {
+              const bRow: any = await db.prepare('SELECT email FROM blocked_emails WHERE LOWER(TRIM(email)) = ? LIMIT 1').bind(ce).first();
+              if (bRow) return true;
+            } catch {}
+            try {
+              const uRow: any = await db.prepare('SELECT is_blocked FROM users WHERE LOWER(TRIM(email)) = ? LIMIT 1').bind(ce).first();
+              if (uRow && Number(uRow.is_blocked) === 1) return true;
+            } catch {}
+          }
+        }
+        if (userId) {
+          try {
+            const uRow: any = await db.prepare('SELECT is_blocked, email FROM users WHERE id = ? LIMIT 1').bind(String(userId)).first();
+            if (uRow && Number(uRow.is_blocked) === 1) return true;
+            if (uRow?.email) {
+              const ce = String(uRow.email).toLowerCase().trim();
+              const bRow: any = await db.prepare('SELECT email FROM blocked_emails WHERE LOWER(TRIM(email)) = ? LIMIT 1').bind(ce).first();
+              if (bRow) return true;
+            }
+          } catch {}
+        }
+        return false;
+      }
+
+      async function buildMissingUserSanctionResponse(db: any, userId: string, email: string | undefined, origin: string) {
+        await ensureRegistrationColumns(db);
+        if (await isEmailOrUserBlocked(db, email, userId)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: 'ACCOUNT_BLOCKED',
+            error: BLOCKED_ACCOUNT_MESSAGE,
+          }, 403, origin);
+        }
+        try {
+          const delLog: any = await db.prepare('SELECT was_onboarded FROM deleted_accounts_log WHERE user_id = ? LIMIT 1').bind(userId).first();
+          if (delLog) {
+            if (Number(delLog.was_onboarded) === 0) {
+              return jsonResponse({
+                success: false,
+                accountDeleted: true,
+                accountDeletedByAdmin: true,
+                wasOnboarded: false,
+                code: 'REGISTRATION_DELETED_BY_ADMIN',
+                error: "Votre inscription en cours a été interrompue et vos informations ont été supprimées. Veuillez recommencer l'inscription depuis l'accueil.",
+              }, 410, origin);
+            }
+            return jsonResponse({
+              success: false,
+              accountDeleted: true,
+              accountDeletedByAdmin: true,
+              wasOnboarded: true,
+              code: 'ACCOUNT_DELETED_BY_ADMIN',
+              error: DELETED_ACCOUNT_MESSAGE,
+            }, 410, origin);
+          }
+        } catch {}
+
+        return jsonResponse({
+          success: false,
+          accountDeleted: true,
+          accountDeletedByAdmin: true,
+          wasOnboarded: true,
+          code: 'ACCOUNT_DELETED_BY_ADMIN',
+          error: DELETED_ACCOUNT_MESSAGE,
+        }, 410, origin);
       }
 
       // Suppression complète, sécurisée et définitive d'un utilisateur et de toutes ses données
@@ -5481,6 +5580,49 @@ a:hover{transform:translateY(-2px)}
 
 
       // ----------------------------------------------------------------------
+      // CONTRÔLE GLOBAL TEMPS RÉEL : COMPTE SUPPRIMÉ OU BLOQUÉ DANS LE TABLEAU DE BORD
+      // ----------------------------------------------------------------------
+      if (
+        path.startsWith('/api/') &&
+        env.DB &&
+        path !== '/api/auth/register' &&
+        path !== '/api/auth/login' &&
+        path !== '/api/auth/google' &&
+        path !== '/api/auth/logout' &&
+        path !== '/api/auth/cancel-unfinalized-account' &&
+        path !== '/api/health'
+      ) {
+        const authHeader = request.headers.get('Authorization') || '';
+        const bearerToken = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+        if (bearerToken) {
+          const jwtPayload = await verifyJWT(bearerToken);
+          if (jwtPayload?.userId) {
+            await ensureRegistrationColumns(env.DB);
+            if (await isEmailOrUserBlocked(env.DB, jwtPayload.email, jwtPayload.userId)) {
+              return jsonResponse({
+                success: false,
+                accountBlocked: true,
+                code: 'ACCOUNT_BLOCKED',
+                error: BLOCKED_ACCOUNT_MESSAGE,
+              }, 403, origin);
+            }
+            const activeUserRow: any = await env.DB.prepare('SELECT id, is_blocked FROM users WHERE id = ? LIMIT 1').bind(String(jwtPayload.userId)).first();
+            if (!activeUserRow) {
+              return await buildMissingUserSanctionResponse(env.DB, String(jwtPayload.userId), jwtPayload.email, origin);
+            }
+            if (Number(activeUserRow.is_blocked) === 1) {
+              return jsonResponse({
+                success: false,
+                accountBlocked: true,
+                code: 'ACCOUNT_BLOCKED',
+                error: BLOCKED_ACCOUNT_MESSAGE,
+              }, 403, origin);
+            }
+          }
+        }
+      }
+
+      // ----------------------------------------------------------------------
       // 0. AUTH — /api/auth/*
       // ----------------------------------------------------------------------
 
@@ -5513,6 +5655,22 @@ a:hover{transform:translateY(-2px)}
         if (!pwdCheck.valid) return errorResponse(pwdCheck.error || 'Mot de passe non conforme', 400, origin);
 
         const cleanEmail = email.toLowerCase().trim();
+
+        // REJET IMMÉDIAT EN BASE DE DONNÉES SI L'E-MAIL EST BLOQUÉ
+        if (await isEmailOrUserBlocked(env.DB, cleanEmail)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: 'ACCOUNT_BLOCKED',
+            error: BLOCKED_ACCOUNT_MESSAGE,
+          }, 403, origin);
+        }
+
+        // Nettoyer un éventuel log de suppression précédent pour permettre à un utilisateur supprimé (non bloqué) de recréer un compte
+        try {
+          await env.DB.prepare('DELETE FROM deleted_accounts_log WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).run();
+        } catch (e) {}
+
         const existing: any = await env.DB.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
 
         const q1 = securityQuestion1 || 'Quelle est votre ville de naissance ?';
@@ -5601,6 +5759,14 @@ a:hover{transform:translateY(-2px)}
         if (!isValidEmail(email)) return errorResponse('Format d\'adresse email invalide (ex: exemple@gmail.com)', 400, origin);
 
         const cleanEmail = email.toLowerCase().trim();
+        if (await isEmailOrUserBlocked(env.DB, cleanEmail)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: 'ACCOUNT_BLOCKED',
+            error: BLOCKED_ACCOUNT_MESSAGE,
+          }, 403, origin);
+        }
         const user: any = await env.DB.prepare('SELECT id, name, email_verified FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
         const verif: any = await env.DB.prepare('SELECT * FROM email_verifications WHERE LOWER(TRIM(email)) = ? ORDER BY created_at DESC LIMIT 1').bind(cleanEmail).first();
 
@@ -5750,6 +5916,15 @@ a:hover{transform:translateY(-2px)}
         if (!emailParam && !userIdParam) return errorResponse('Email ou userId requis', 400, origin);
         const cleanEmail = (emailParam || '').toLowerCase().trim();
 
+        if (await isEmailOrUserBlocked(env.DB, cleanEmail, userIdParam)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: 'ACCOUNT_BLOCKED',
+            error: BLOCKED_ACCOUNT_MESSAGE,
+          }, 403, origin);
+        }
+
         // 1. Récupérer TOUJOURS la demande de vérification la plus RÉCENTE pour cet email
         // IMPORTANT : Ne JAMAIS filtrer sur confirmed=1, afin d'inspecter la tentative en cours !
         let latestVerif: any = null;
@@ -5877,6 +6052,14 @@ a:hover{transform:translateY(-2px)}
 
           if (!record) {
             return htmlResponse("Lien expiré ou déjà utilisé", "Ce lien ne peut plus être utilisé ou n'est plus valide. Veuillez vous connecter.", false);
+          }
+
+          if (await isEmailOrUserBlocked(env.DB, record.email, record.user_id)) {
+            return htmlResponse(
+              "Ce compte n'est pas autorisé — Compte bloqué",
+              BLOCKED_ACCOUNT_MESSAGE,
+              false
+            );
           }
 
           // Si déjà validé : ne jamais régénérer ni exposer de JWT sur un lien déjà utilisé (M-5)
@@ -6057,6 +6240,16 @@ a:hover{transform:translateY(-2px)}
         if (!isValidEmail(email)) return errorResponse('Format d\'adresse email invalide (ex: exemple@gmail.com)', 400, origin);
 
         const cleanEmail = email.toLowerCase().trim();
+
+        // REJET IMMÉDIAT EN BASE DE DONNÉES SI L'E-MAIL EST BLOQUÉ
+        if (await isEmailOrUserBlocked(env.DB, cleanEmail)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: 'ACCOUNT_BLOCKED',
+            error: BLOCKED_ACCOUNT_MESSAGE,
+          }, 403, origin);
+        }
         // Protection anti-force brute sur le login (H-5 : max 8 échecs par 5 minutes par email/IP)
         const loginIp = request.headers.get('CF-Connecting-IP') || request.headers.get('X-Forwarded-For') || 'unknown';
         const loginLockKey = `login_fail_${cleanEmail}_${loginIp}`;
@@ -6366,6 +6559,21 @@ a:hover{transform:translateY(-2px)}
         await ensureUsersTableUniqueIndex(env.DB);
         await ensureRegistrationColumns(env.DB);
         await cleanupExpiredUnfinishedAccounts(env.DB, env.BUCKET);
+
+        // REJET IMMÉDIAT EN BASE DE DONNÉES SI L'E-MAIL GOOGLE EST BLOQUÉ
+        if (await isEmailOrUserBlocked(env.DB, cleanGoogleEmail)) {
+          return jsonResponse({
+            success: false,
+            accountBlocked: true,
+            code: 'ACCOUNT_BLOCKED',
+            error: BLOCKED_ACCOUNT_MESSAGE,
+          }, 403, origin);
+        }
+
+        // Nettoyer un éventuel log de suppression précédent pour cet email
+        try {
+          await env.DB.prepare('DELETE FROM deleted_accounts_log WHERE LOWER(TRIM(email)) = ?').bind(cleanGoogleEmail).run();
+        } catch (e) {}
 
         let user: any = await env.DB.prepare('SELECT * FROM users WHERE google_id = ? OR LOWER(TRIM(email)) = ?').bind(profile.id, cleanGoogleEmail).first();
         if (!user) {

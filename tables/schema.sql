@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS users (
     onboarding_deadline_at INTEGER DEFAULT 0,    -- Timestamp limite global (30 minutes)
     step_deadline_at INTEGER DEFAULT 0,          -- Timestamp limite de l'étape d'inscription en cours
     onboarding_step TEXT DEFAULT 'step_1',       -- Étape en cours ('security', 'step_1', 'step_2', 'step_3', 'completed')
+    is_blocked INTEGER DEFAULT 0,                -- 1 = compte bloqué par l'administrateur
     last_active_at TEXT DEFAULT CURRENT_TIMESTAMP, -- Dernière activité (expiration après 1 mois)
     security_question_1 TEXT DEFAULT 'Quelle est votre ville de naissance ?',
     security_answer_1_hash TEXT DEFAULT '',      -- Hash SHA-256 réponse secrète 1

@@ -97,6 +97,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
       const savedName = localStorage.getItem('sc_auth_prefill_name');
       if (savedMode === 'register' || savedMode === 'login') {
         setMode(savedMode);
+        setPendingVerificationEmail(null);
       }
       if (savedNotice) {
         setAccountNotFoundNotice(savedNotice);
@@ -113,10 +114,22 @@ export function AuthPage({ onBack }: AuthPageProps) {
       localStorage.removeItem('sc_auth_prefill_name');
     };
 
+    const handleSanctionConfirmed = () => {
+      setPendingVerificationEmail(null);
+      setMode('register');
+      setEmail('');
+      setPassword('');
+      setError(null);
+      setIsLoading(false);
+      setIsGoogleLoading(false);
+    };
+
     handleRedirectEvent();
     window.addEventListener('studycloud_auth_redirect', handleRedirectEvent);
+    window.addEventListener('studycloud_sanction_confirmed', handleSanctionConfirmed);
     return () => {
       window.removeEventListener('studycloud_auth_redirect', handleRedirectEvent);
+      window.removeEventListener('studycloud_sanction_confirmed', handleSanctionConfirmed);
     };
   }, []);
 
@@ -258,6 +271,13 @@ export function AuthPage({ onBack }: AuthPageProps) {
         res = await StudyCloudAPI.login({ email: email.trim(), password });
       }
 
+      // Si l'adresse e-mail est bloquée en base de données : la modale carrée noire forcée s'affiche sans laisser poursuivre
+      if (res?.accountBlocked || (res as any)?.code === 'ACCOUNT_BLOCKED') {
+        setPassword('');
+        setError(null);
+        return;
+      }
+
       // Si aucun compte trouvé : Redirection automatique vers l'inscription avec message professionnel
       if (res.userNotFound || (res as any).code === 'USER_NOT_FOUND') {
         setMode('register');
@@ -316,7 +336,10 @@ export function AuthPage({ onBack }: AuthPageProps) {
         setError(res.error || 'Une erreur est survenue.');
       }
     } catch (err: any) {
-      if (err.alreadyRegistered || err.code === 'ACCOUNT_ALREADY_EXISTS' || err.status === 409 || err.message?.includes('existe déjà') || err.message?.includes('associé à un compte')) {
+      if (err?.accountBlocked || err?.code === 'ACCOUNT_BLOCKED' || err?.data?.accountBlocked) {
+        setPassword('');
+        setError(null);
+      } else if (err.alreadyRegistered || err.code === 'ACCOUNT_ALREADY_EXISTS' || err.status === 409 || err.message?.includes('existe déjà') || err.message?.includes('associé à un compte')) {
         setMode('login');
         setPassword('');
         setError(

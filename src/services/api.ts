@@ -486,6 +486,12 @@ export async function sendChatMessageToAi(params: {
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: response.statusText }));
+    if (
+      typeof window !== 'undefined' &&
+      (err?.accountBlocked || err?.accountDeletedByAdmin || err?.code === 'ACCOUNT_BLOCKED' || err?.code === 'ACCOUNT_DELETED_BY_ADMIN' || err?.code === 'REGISTRATION_DELETED_BY_ADMIN')
+    ) {
+      window.dispatchEvent(new CustomEvent('studycloud_account_sanction', { detail: err }));
+    }
     const errorText = String(err.error || response.statusText || '');
 
     // 0. Détection stricte d'épuisement des crédits IA (Code HTTP 402 ou INSUFFICIENT_CREDITS)
@@ -1426,6 +1432,12 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: response.statusText }));
+    if (
+      typeof window !== 'undefined' &&
+      (err?.accountBlocked || err?.accountDeletedByAdmin || err?.code === 'ACCOUNT_BLOCKED' || err?.code === 'ACCOUNT_DELETED_BY_ADMIN' || err?.code === 'REGISTRATION_DELETED_BY_ADMIN')
+    ) {
+      window.dispatchEvent(new CustomEvent('studycloud_account_sanction', { detail: err }));
+    }
     // Si une anomalie survient et qu'une mise à jour est en attente, exiger l'actualisation
     if (isUpdatePending && (response.status === 400 || response.status === 404 || response.status === 500)) {
       if (typeof window !== 'undefined') {
@@ -1489,6 +1501,12 @@ async function aiRequest<T>(endpoint: string, options: RequestInit = {}): Promis
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: response.statusText }));
+    if (
+      typeof window !== 'undefined' &&
+      (err?.accountBlocked || err?.accountDeletedByAdmin || err?.code === 'ACCOUNT_BLOCKED' || err?.code === 'ACCOUNT_DELETED_BY_ADMIN' || err?.code === 'REGISTRATION_DELETED_BY_ADMIN')
+    ) {
+      window.dispatchEvent(new CustomEvent('studycloud_account_sanction', { detail: err }));
+    }
     throw new Error(err.error || `Erreur API IA: ${response.status}`);
   }
 
@@ -1504,11 +1522,19 @@ async function requestAuth<T = any>(endpoint: string, options: RequestInit = {},
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const response = await fetch(url, { ...options, headers: { ...headers, ...(options.headers as any || {}) } });
   const data = await response.json().catch(() => ({ error: response.statusText }));
+  if (
+    typeof window !== 'undefined' &&
+    ((data as any)?.accountBlocked || (data as any)?.accountDeletedByAdmin || (data as any)?.code === 'ACCOUNT_BLOCKED' || (data as any)?.code === 'ACCOUNT_DELETED_BY_ADMIN' || (data as any)?.code === 'REGISTRATION_DELETED_BY_ADMIN')
+  ) {
+    window.dispatchEvent(new CustomEvent('studycloud_account_sanction', { detail: data }));
+  }
   if (!response.ok && response.status !== 409 && response.status !== 404 && !(data as any)?.isGoogleAccount && !(data as any)?.userNotFound) {
     const err: any = new Error((data as any).error || `Erreur ${response.status}`);
     err.status = response.status;
     err.userNotFound = Boolean((data as any)?.userNotFound || response.status === 404);
     err.isGoogleAccount = Boolean((data as any)?.isGoogleAccount);
+    err.accountBlocked = Boolean((data as any)?.accountBlocked || (data as any)?.code === 'ACCOUNT_BLOCKED');
+    err.accountDeletedByAdmin = Boolean((data as any)?.accountDeletedByAdmin || (data as any)?.code === 'ACCOUNT_DELETED_BY_ADMIN');
     err.accountDeleted = Boolean((data as any)?.accountDeleted || response.status === 410);
     err.code = (data as any)?.code;
     err.data = data;
@@ -2610,6 +2636,12 @@ export async function gradeExamPaper(payload: {
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: response.statusText }));
+    if (
+      typeof window !== 'undefined' &&
+      (err?.accountBlocked || err?.accountDeletedByAdmin || err?.code === 'ACCOUNT_BLOCKED' || err?.code === 'ACCOUNT_DELETED_BY_ADMIN' || err?.code === 'REGISTRATION_DELETED_BY_ADMIN')
+    ) {
+      window.dispatchEvent(new CustomEvent('studycloud_account_sanction', { detail: err }));
+    }
     throw new Error(err.error || `Erreur lors de la correction par l'IA (${response.status})`);
   }
 

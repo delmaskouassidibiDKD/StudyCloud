@@ -2336,6 +2336,7 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig, preloade
       last_active_at: user.last_active_at || '',
       is_onboarded: isPendingCompletion ? 0 : 1,
       isPendingCompletion,
+      isBlocked: Number(user.is_blocked) === 1,
       registration_status: isPendingCompletion ? 'en_attente_de_finition' : 'termine',
       registrationStatusLabel: isPendingCompletion
         ? ('En attente de finition' + (remainingMinutes > 0 ? ' (' + remainingMinutes + ' min)' : ''))
@@ -7657,6 +7658,7 @@ function renderDashboardHtml(data) {
               <div class="truncate">
                 <div class="font-bold text-white truncate text-xs flex items-center gap-1 flex-wrap">
                   <span>\${u.name}</span>
+                  \${u.isBlocked ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-red-500/25 text-red-300 border border-red-500/50 font-bold" title="Compte et e-mail bloqués">🚫 Bloqué</span>' : ''}
                   \${u.isPendingCompletion ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold" title="Compte en attente de finition (suppression auto après 30 min)">⏳ En attente de finition</span>' : ''}
                   \${u.hasShop ? '<span class="text-[9px] px-1 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30" title="Boutique active">🏪</span>' : ''}
                 </div>
@@ -7749,6 +7751,43 @@ function renderDashboardHtml(data) {
     }
     window.deleteUserAccount = deleteUserAccount;
 
+    async function toggleBlockUserAccount(userId, userName, userEmail, currentlyBlocked) {
+      const targetBlockedState = !currentlyBlocked;
+      const confirmMsg = targetBlockedState
+        ? "⚠️ CONFIRMATION DE BLOCAGE\n\nVoulez-vous vraiment BLOQUER le compte de \"" + (userName || userId) + "\" (" + (userEmail || '') + ") ?\n\n• L'utilisateur sera immédiatement bloqué et déconnecté de StudyCloud.\n• Son adresse e-mail sera rejetée s'il tente de se reconnecter ou de recréer un compte."
+        : "✅ CONFIRMATION DE DÉBLOCAGE\n\nVoulez-vous vraiment DÉBLOQUER le compte de \"" + (userName || userId) + "\" (" + (userEmail || '') + ") et autoriser à nouveau son adresse e-mail sur StudyCloud ?";
+      if (!confirm(confirmMsg)) {
+        return;
+      }
+      try {
+        const res = await fetch('/api/users/toggle-block', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, blocked: targetBlockedState })
+        });
+        const data = await res.json().catch(() => ({}));
+        if (data && data.success) {
+          const item = allUsers.find(x => x.user.id === userId);
+          if (item) {
+            item.user.isBlocked = Boolean(data.isBlocked);
+            if (data.isBlocked) {
+              item.user.isOnline = false;
+            }
+          }
+          renderUsersLeftList(document.getElementById('users-search-left')?.value || '');
+          if (selectedUserId === userId) renderUserRightDetails(userId);
+          renderDistributionUsersList();
+          if (selectedDistributionUserId === userId) renderDistributionRightDetails(userId);
+          showToast(data.isBlocked ? '🚫 Compte et adresse e-mail bloqués avec succès' : '✓ Compte débloqué avec succès');
+        } else {
+          showToast('⚠️ Erreur: ' + (data?.error || 'Action impossible'));
+        }
+      } catch (err) {
+        showToast('⚠️ Erreur réseau lors du changement de statut de blocage');
+      }
+    }
+    window.toggleBlockUserAccount = toggleBlockUserAccount;
+
     function selectUser(userId) {
       selectedUserId = userId;
       renderUsersLeftList(document.getElementById('users-search-left').value);
@@ -7827,6 +7866,16 @@ function renderDashboardHtml(data) {
                   <span>\${u.isOnline ? '🔴' : '🟢'}</span>
                   <span>Basculer en \${u.isOnline ? 'Hors ligne' : 'En ligne'}</span>
                 </button>
+                <div
+                  onclick="toggleBlockUserAccount('\${u.id}', '\${(u.name || '').replace(/'/g, \"\\\\'\")}', '\${(u.email || '').replace(/'/g, \"\\\\'\")}', \${Boolean(u.isBlocked)})"
+                  class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md cursor-pointer transition select-none border shadow-sm \${u.isBlocked ? 'bg-red-950/70 border-red-500/60 text-red-200 hover:bg-red-900/70' : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:border-slate-500'}"
+                  title="\${u.isBlocked ? 'Compte actuellement BLOQUÉ — Cliquez pour débloquer' : 'Glisser pour bloquer cet utilisateur et son e-mail'}"
+                >
+                  <span class="text-[10px] font-bold">\${u.isBlocked ? '🚫 Bloqué' : 'Bloquer'}</span>
+                  <div class="relative w-8 h-4 rounded-full transition-colors duration-200 \${u.isBlocked ? 'bg-red-600' : 'bg-slate-600'}">
+                    <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform duration-200 \${u.isBlocked ? 'translate-x-4' : 'translate-x-0'}"></span>
+                  </div>
+                </div>
                 <button 
                   onclick="deleteUserAccount('\${u.id}', '\${(u.name || '').replace(/'/g, \"\\\\'\")}')" 
                   class="px-2.5 py-1 text-[10px] font-bold rounded-md cursor-pointer transition flex items-center gap-1 shadow-sm bg-rose-950/40 text-rose-300 hover:bg-rose-900/60 border border-rose-800/50"
@@ -8134,6 +8183,7 @@ function renderDashboardHtml(data) {
               <div class="truncate">
                 <div class="font-bold text-white truncate text-xs flex items-center gap-1 flex-wrap">
                   <span>\${u.name}</span>
+                  \${u.isBlocked ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-red-500/25 text-red-300 border border-red-500/50 font-bold" title="Compte et e-mail bloqués">🚫 Bloqué</span>' : ''}
                   \${u.isPendingCompletion ? '<span class="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-bold" title="Compte en attente de finition (suppression auto après 30 min)">⏳ En attente de finition</span>' : ''}
                   \${u.hasShop ? '<span class="text-[9px] px-1 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30" title="Boutique active">🏪</span>' : ''}
                 </div>
@@ -8208,6 +8258,16 @@ function renderDashboardHtml(data) {
                   <span>\${u.isOnline ? '🔴' : '🟢'}</span>
                   <span>Basculer en \${u.isOnline ? 'Hors ligne' : 'En ligne'}</span>
                 </button>
+                <div
+                  onclick="toggleBlockUserAccount('\${u.id}', '\${(u.name || '').replace(/'/g, \"\\\\'\")}', '\${(u.email || '').replace(/'/g, \"\\\\'\")}', \${Boolean(u.isBlocked)})"
+                  class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md cursor-pointer transition select-none border shadow-sm \${u.isBlocked ? 'bg-red-950/70 border-red-500/60 text-red-200 hover:bg-red-900/70' : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:border-slate-500'}"
+                  title="\${u.isBlocked ? 'Compte actuellement BLOQUÉ — Cliquez pour débloquer' : 'Glisser pour bloquer cet utilisateur et son e-mail'}"
+                >
+                  <span class="text-[10px] font-bold">\${u.isBlocked ? '🚫 Bloqué' : 'Bloquer'}</span>
+                  <div class="relative w-8 h-4 rounded-full transition-colors duration-200 \${u.isBlocked ? 'bg-red-600' : 'bg-slate-600'}">
+                    <span class="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white shadow transition-transform duration-200 \${u.isBlocked ? 'translate-x-4' : 'translate-x-0'}"></span>
+                  </div>
+                </div>
               </div>
 
               <!-- Ligne 3 : Numéro de téléphone -->
@@ -19153,7 +19213,20 @@ export default {
           "ALTER TABLE users ADD COLUMN registration_status TEXT DEFAULT 'en_attente_de_finition'",
           "ALTER TABLE users ADD COLUMN onboarding_deadline_at INTEGER DEFAULT 0",
           "ALTER TABLE users ADD COLUMN step_deadline_at INTEGER DEFAULT 0",
-          "ALTER TABLE users ADD COLUMN onboarding_step TEXT DEFAULT 'step_1'"
+          "ALTER TABLE users ADD COLUMN onboarding_step TEXT DEFAULT 'step_1'",
+          "ALTER TABLE users ADD COLUMN is_blocked INTEGER DEFAULT 0",
+          `CREATE TABLE IF NOT EXISTS blocked_emails (
+            email TEXT PRIMARY KEY,
+            user_id TEXT,
+            reason TEXT DEFAULT 'Bloqué par l''administrateur',
+            blocked_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )`,
+          `CREATE TABLE IF NOT EXISTS deleted_accounts_log (
+            user_id TEXT PRIMARY KEY,
+            email TEXT,
+            was_onboarded INTEGER DEFAULT 1,
+            deleted_at INTEGER DEFAULT 0
+          )`
         ];
         for (const q of regCols) {
           await safeRun(db, q);
@@ -19268,6 +19341,49 @@ export default {
       }
 
       // ----------------------------------------------------------------------
+      // ROUTE POST : /api/users/toggle-block (BLOQUER / DÉBLOQUER UN COMPTE ET SON EMAIL)
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/users/toggle-block') {
+        const body = await request.json().catch(() => ({}));
+        const targetUserId = body.userId;
+        if (!targetUserId) {
+          return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+        const targetRow = await safeFirst(db, 'SELECT id, email, name, is_blocked FROM users WHERE id = ?', [targetUserId]);
+        if (!targetRow) {
+          return new Response(JSON.stringify({ success: false, error: 'Utilisateur introuvable' }), { status: 404, headers: corsHeaders(origin) });
+        }
+        const newBlocked = body.blocked !== undefined ? (body.blocked ? 1 : 0) : (Number(targetRow.is_blocked) === 1 ? 0 : 1);
+        await safeRun(db, 'UPDATE users SET is_blocked = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?', [newBlocked, targetUserId]);
+
+        const cleanEmail = targetRow.email ? String(targetRow.email).toLowerCase().trim() : '';
+        if (newBlocked === 1) {
+          await safeRun(db, 'DELETE FROM auth_sessions WHERE user_id = ?', [targetUserId]);
+          if (cleanEmail) {
+            await safeRun(
+              db,
+              "INSERT OR REPLACE INTO blocked_emails (email, user_id, reason, blocked_at) VALUES (?, ?, 'Bloqué depuis le tableau de bord', CURRENT_TIMESTAMP)",
+              [cleanEmail, targetUserId]
+            );
+          }
+        } else {
+          if (cleanEmail) {
+            await safeRun(db, 'DELETE FROM blocked_emails WHERE LOWER(TRIM(email)) = ?', [cleanEmail]);
+          }
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          userId: targetUserId,
+          email: cleanEmail,
+          isBlocked: newBlocked === 1
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
       // ROUTE POST : /api/users/delete (SUPPRESSION DÉFINITIVE D'UN UTILISATEUR)
       // ----------------------------------------------------------------------
       if (request.method === 'POST' && path === '/api/users/delete') {
@@ -19276,7 +19392,27 @@ export default {
         if (!targetUserId) {
           return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
         }
-        const targetRow = await safeFirst(db, 'SELECT email FROM users WHERE id = ?', [targetUserId]);
+        const targetRow = await safeFirst(db, 'SELECT email, is_onboarded, is_blocked, phone, school, filiere, level FROM users WHERE id = ?', [targetUserId]);
+        const wasOnboarded = (
+          targetRow &&
+          Number(targetRow.is_onboarded) === 1 &&
+          targetRow.phone && String(targetRow.phone).trim() !== '' && targetRow.phone !== 'Non renseigné' &&
+          targetRow.school && String(targetRow.school).trim() !== '' && targetRow.school !== 'Non renseigné' &&
+          targetRow.filiere && String(targetRow.filiere).trim() !== '' && targetRow.filiere !== 'Non renseigné'
+        ) ? 1 : 0;
+        const cleanEmail = targetRow?.email ? String(targetRow.email).toLowerCase().trim() : '';
+
+        await safeRun(
+          db,
+          'INSERT OR REPLACE INTO deleted_accounts_log (user_id, email, was_onboarded, deleted_at) VALUES (?, ?, ?, ?)',
+          [targetUserId, cleanEmail, wasOnboarded, Date.now()]
+        );
+
+        // Si le compte n'était pas bloqué, s'assurer que son email n'est pas dans blocked_emails afin qu'il puisse recréer un nouveau compte
+        if (cleanEmail && Number(targetRow?.is_blocked) !== 1) {
+          await safeRun(db, 'DELETE FROM blocked_emails WHERE LOWER(TRIM(email)) = ?', [cleanEmail]);
+        }
+
         await deleteUserCompletelyInDashboard(targetUserId, targetRow?.email);
         return new Response(JSON.stringify({ success: true, deletedUserId: targetUserId }), {
           status: 200,

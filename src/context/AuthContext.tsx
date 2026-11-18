@@ -204,6 +204,83 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [token, setToken] = useState<string | null>(() => initialSession.token);
   // Si on a déjà un utilisateur connecté en cache, aucun chargement bloquant n'est nécessaire
   const [isLoading, setIsLoading] = useState<boolean>(() => !initialSession.user && Boolean(initialSession.token));
+  // Modale carrée noire forcée (impossible à fermer sans appuyer sur OK) en cas de suppression ou blocage par l'admin
+  const [forcedSanctionModal, setForcedSanctionModal] = useState<{
+    type: 'deleted' | 'blocked';
+    title: string;
+    message: string;
+  } | null>(null);
+
+  const handleSanctionSignal = useCallback((detail: any) => {
+    if (!detail) return;
+    const isBlocked = Boolean(detail.accountBlocked || detail.code === 'ACCOUNT_BLOCKED');
+    const isDeletedDuringReg = Boolean(
+      detail.code === 'REGISTRATION_DELETED_BY_ADMIN' ||
+      detail.wasOnboarded === false ||
+      (user && Number(user.is_onboarded) !== 1 && (detail.accountDeletedByAdmin || detail.code === 'ACCOUNT_DELETED_BY_ADMIN'))
+    );
+    const isDeletedWhileConnected = Boolean(
+      !isDeletedDuringReg &&
+      (detail.accountDeletedByAdmin || detail.code === 'ACCOUNT_DELETED_BY_ADMIN')
+    );
+
+    if (!isBlocked && !isDeletedDuringReg && !isDeletedWhileConnected) return;
+
+    // 1. Nettoyer IMMÉDIATEMENT la session locale et préparer le retour à la page d'inscription
+    // Ainsi, même si l'utilisateur n'appuie pas sur OK et recharge la page, il se retrouve directement à la page d'inscription !
+    clearUserDataOnLogout();
+    CloudDataStore.clearCache().catch(() => {});
+    queryClient.clear();
+    localStorage.removeItem('sc_pending_verification_email');
+    localStorage.removeItem('sc_pending_verification_is_login');
+    localStorage.setItem('sc_auth_redirect_mode', 'register');
+
+    if (isDeletedDuringReg) {
+      // S'il était en train de créer son compte et qu'il a été supprimé -> renvoyé automatiquement à l'accueil d'inscription
+      localStorage.setItem(
+        'sc_auth_redirect_notice',
+        detail.error || "Votre inscription en cours a été interrompue. Veuillez recommencer la création de votre compte depuis l'accueil."
+      );
+      setToken(null);
+      setUser(null);
+      window.dispatchEvent(new Event('studycloud_auth_redirect'));
+      return;
+    }
+
+    if (isBlocked) {
+      setForcedSanctionModal({
+        type: 'blocked',
+        title: "Ce compte n'est pas autorisé — Compte bloqué",
+        message:
+          detail.error ||
+          "L'accès à votre compte StudyCloud a été bloqué. Cette mesure peut résulter du non-respect de nos conditions générales d'utilisation ou de notre politique de sécurité. S'il s'agit d'un malentendu, nous vous invitons à contacter le service client StudyCloud.",
+      });
+      return;
+    }
+
+    if (isDeletedWhileConnected) {
+      setForcedSanctionModal({
+        type: 'deleted',
+        title: 'Session clôturée — Compte retiré',
+        message:
+          detail.error ||
+          "Votre compte utilisateur a été retiré de la plateforme StudyCloud et votre session a été clôturée. Pour continuer à bénéficier de nos services et accéder à l'application, veuillez recréer un nouveau compte depuis la page d'inscription.",
+      });
+    }
+  }, [user]);
+
+  useEffect(() => {
+    const onSanctionEvent = (ev: Event) => {
+      const customEv = ev as CustomEvent;
+      if (customEv?.detail) {
+        handleSanctionSignal(customEv.detail);
+      }
+    };
+    window.addEventListener('studycloud_account_sanction', onSanctionEvent);
+    return () => {
+      window.removeEventListener('studycloud_account_sanction', onSanctionEvent);
+    };
+  }, [handleSanctionSignal]);
 
   // Au montage : rafraîchir l'activité et synchroniser les données avec le Worker
   useEffect(() => {
@@ -273,6 +350,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       })
       .catch((err: any) => {
         if (
+          err?.accountBlocked ||
+          err?.accountDeletedByAdmin ||
+          err?.code === 'ACCOUNT_BLOCKED' ||
+          err?.code === 'ACCOUNT_DELETED_BY_ADMIN' ||
+          err?.code === 'REGISTRATION_DELETED_BY_ADMIN' ||
+          err?.data?.accountBlocked ||
+          err?.data?.accountDeletedByAdmin
+        ) {
+          handleSanctionSignal(err?.data || err);
+          return;
+        }
+        if (
           err?.status === 410 ||
           err?.accountDeleted ||
           err?.code === 'REGISTRATION_EXPIRED_DELETED' ||
@@ -316,14 +405,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
   }, []);
 
-  // Heartbeat automatique : signale la présence en ligne auprès du serveur toutes les 45s et vérifie l'expiration en arrière-plan
+  // Heartbeat temps réel (toutes les 4 secondes) : détecte immédiatement toute suppression ou tout blocage dans le tableau de bord
   useEffect(() => {
     if (!token) return;
 
     const checkHeartbeat = async () => {
       try {
         const hbRes: any = await StudyCloudAPI.sendHeartbeat(token);
-        if (hbRes && (hbRes.accountDeleted || hbRes.code === 'REGISTRATION_EXPIRED_DELETED')) {
+        if (!hbRes) return;
+        if (
+          hbRes.accountBlocked ||
+          hbRes.accountDeletedByAdmin ||
+          hbRes.code === 'ACCOUNT_BLOCKED' ||
+          hbRes.code === 'ACCOUNT_DELETED_BY_ADMIN' ||
+          hbRes.code === 'REGISTRATION_DELETED_BY_ADMIN'
+        ) {
+          handleSanctionSignal(hbRes);
+          return;
+        }
+        if (hbRes.accountDeleted || hbRes.code === 'REGISTRATION_EXPIRED_DELETED') {
           clearUserDataOnLogout();
           CloudDataStore.clearCache().catch(() => {});
           localStorage.setItem('sc_auth_redirect_mode', 'register');
@@ -339,7 +439,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     checkHeartbeat();
 
-    const interval = setInterval(checkHeartbeat, 45000);
+    const interval = setInterval(() => {
+      if (typeof document === 'undefined' || !document.hidden) {
+        checkHeartbeat();
+      }
+    }, 4000);
 
     const onFocusOrVisible = () => {
       if (!document.hidden) {
@@ -355,7 +459,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener('focus', onFocusOrVisible);
       document.removeEventListener('visibilitychange', onFocusOrVisible);
     };
-  }, [token]);
+  }, [token, handleSanctionSignal]);
 
   const loginWithToken = useCallback((newToken: string, newUser: AuthUser) => {
     // Si l'utilisateur connecté change ou si une session précédente existait, nettoyer pour une isolation parfaite
@@ -463,6 +567,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isMissingMandatoryFields
   );
 
+  const handleConfirmForcedSanction = useCallback(() => {
+    clearUserDataOnLogout();
+    CloudDataStore.clearCache().catch(() => {});
+    queryClient.clear();
+    localStorage.removeItem('sc_pending_verification_email');
+    localStorage.removeItem('sc_pending_verification_is_login');
+    localStorage.setItem('sc_auth_redirect_mode', 'register');
+    setForcedSanctionModal(null);
+    setToken(null);
+    setUser(null);
+    window.dispatchEvent(new Event('studycloud_auth_redirect'));
+    window.dispatchEvent(new Event('studycloud_sanction_confirmed'));
+  }, []);
+
   return (
     <AuthContext.Provider value={{
       user,
@@ -476,6 +594,69 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       logout,
     }}>
       {children}
+
+      {/* MODALE CARRÉE NOIRE FORCÉE (IMPOSSIBLE À FERMER SANS APPUYER SUR OK) */}
+      {forcedSanctionModal && (
+        <div
+          className="fixed inset-0 z-[9999999] flex items-center justify-center p-4 select-none"
+          style={{
+            backgroundColor: 'rgba(0, 0, 0, 0.88)',
+            backdropFilter: 'blur(10px)',
+          }}
+          onClick={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') e.preventDefault();
+          }}
+        >
+          <div
+            className="w-full max-w-[400px] min-h-[370px] flex flex-col items-center justify-between text-center p-8 shadow-2xl"
+            style={{
+              backgroundColor: '#050505',
+              border: '2px solid rgba(255, 255, 255, 0.18)',
+              borderRadius: '0px',
+              boxShadow: '0 25px 80px rgba(0, 0, 0, 0.98), 0 0 0 1px rgba(255, 255, 255, 0.08)',
+            }}
+          >
+            <div className="flex flex-col items-center pt-2">
+              <div
+                className="w-14 h-14 flex items-center justify-center mb-5"
+                style={{
+                  backgroundColor: forcedSanctionModal.type === 'blocked' ? 'rgba(220, 38, 38, 0.16)' : 'rgba(234, 88, 12, 0.16)',
+                  border: forcedSanctionModal.type === 'blocked' ? '1px solid rgba(239, 68, 68, 0.45)' : '1px solid rgba(249, 115, 22, 0.45)',
+                  borderRadius: '0px',
+                }}
+              >
+                <span className="text-2xl">
+                  {forcedSanctionModal.type === 'blocked' ? '🚫' : '⚠️'}
+                </span>
+              </div>
+
+              <h3 className="text-base sm:text-lg font-black text-white uppercase tracking-wider mb-4 leading-snug">
+                {forcedSanctionModal.title}
+              </h3>
+
+              <p className="text-xs sm:text-sm text-neutral-300 font-medium leading-relaxed">
+                {forcedSanctionModal.message}
+              </p>
+            </div>
+
+            <div className="w-full pt-6">
+              <button
+                type="button"
+                onClick={handleConfirmForcedSanction}
+                className="w-full py-3.5 px-6 font-black text-sm uppercase tracking-widest cursor-pointer transition-all active:scale-[0.99]"
+                style={{
+                  backgroundColor: '#ffffff',
+                  color: '#000000',
+                  borderRadius: '0px',
+                }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </AuthContext.Provider>
   );
 }
