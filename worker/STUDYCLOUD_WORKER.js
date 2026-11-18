@@ -3724,8 +3724,11 @@ var index_default = {
         return v.startsWith("/wallpapers/") || v.includes("/api/cloud/wallpaper/");
       }, isUserFullyRegisteredInDb = function(user) {
         if (!user) return false;
+        if (Number(user.is_onboarded) === 1) return true;
+        return false;
+      }, verifyNewOnboardingFieldsInDb = function(user) {
+        if (!user) return false;
         if (Number(user.is_onboarded) !== 1) return false;
-        if (user.registration_status === "en_attente_de_finition") return false;
         const email = String(user.email || "").trim();
         const name = String(user.name || "").trim();
         const phone = String(user.phone || "").trim();
@@ -4745,7 +4748,6 @@ a:hover{transform:translateY(-2px)}
         if (!db) return;
         await ensureRegistrationColumns(db);
         const nowMs = Date.now();
-        const THIRTY_MINUTES_MS = 30 * 60 * 1e3;
         try {
           await db.prepare("DELETE FROM email_verifications WHERE created_at < datetime('now', '-30 minutes')").run();
         } catch (e) {
@@ -4754,43 +4756,18 @@ a:hover{transform:translateY(-2px)}
           const pendingRes = await db.prepare(`
             SELECT * FROM users
             WHERE is_onboarded = 0
-               OR registration_status = 'en_attente_de_finition'
-               OR phone IS NULL OR TRIM(phone) = '' OR phone = 'Non renseign\xE9'
-               OR school IS NULL OR TRIM(school) = '' OR school = 'Non renseign\xE9'
-               OR filiere IS NULL OR TRIM(filiere) = '' OR filiere = 'Non renseign\xE9'
-               OR level IS NULL OR TRIM(level) = '' OR level = 'Non sp\xE9cifi\xE9' OR level = 'Non renseign\xE9' OR level = '\xC9tudiant'
+              AND onboarding_deadline_at > 0
           `).all();
           const rows = pendingRes?.results || [];
           for (const u of rows) {
-            if (isUserFullyRegisteredInDb(u)) {
-              if (u.registration_status !== "termine" || Number(u.is_onboarded) !== 1) {
-                try {
-                  await db.prepare("UPDATE users SET is_onboarded = 1, registration_status = 'termine', onboarding_deadline_at = 0, step_deadline_at = 0 WHERE id = ?").bind(u.id).run();
-                } catch (e) {
-                }
-              }
-              continue;
-            }
-            const createdAtMs = u.created_at ? new Date(String(u.created_at).includes("T") ? u.created_at : `${u.created_at}Z`).getTime() : nowMs - THIRTY_MINUTES_MS - 1e3;
-            const validCreatedMs = Number.isNaN(createdAtMs) ? nowMs - THIRTY_MINUTES_MS - 1e3 : createdAtMs;
-            const globalDeadlineMs = Number(u.onboarding_deadline_at) > 0 ? Number(u.onboarding_deadline_at) : validCreatedMs + THIRTY_MINUTES_MS;
+            if (Number(u.is_onboarded) === 1) continue;
+            const globalDeadlineMs = Number(u.onboarding_deadline_at || 0);
             const stepDeadlineMs = Number(u.step_deadline_at || 0);
-            const isGlobalExpired = nowMs >= globalDeadlineMs;
+            const isGlobalExpired = globalDeadlineMs > 0 && nowMs >= globalDeadlineMs;
             const isStepExpired = stepDeadlineMs > 0 && nowMs >= stepDeadlineMs;
             if (isGlobalExpired || isStepExpired) {
               await deleteUserCompletely(db, u.id, u.email, bucket || env.BUCKET);
-              console.log(`[StudyCloud Auto-Purge] Compte non finalis\xE9 supprim\xE9 automatiquement (${isStepExpired ? "\xE9tape expir\xE9e" : "30 min d\xE9pass\xE9es"}) : ${u.email} (${u.id})`);
-            } else {
-              try {
-                await db.prepare(`
-                  UPDATE users SET
-                    is_onboarded = 0,
-                    registration_status = 'en_attente_de_finition',
-                    onboarding_deadline_at = ?
-                  WHERE id = ?
-                `).bind(globalDeadlineMs, u.id).run();
-              } catch (e) {
-              }
+              console.log(`[StudyCloud Auto-Purge] Nouvelle inscription non finalis\xE9e supprim\xE9e automatiquement (${isStepExpired ? "\xE9tape expir\xE9e" : "30 min d\xE9pass\xE9es"}) : ${u.email} (${u.id})`);
             }
           }
         } catch (e) {
@@ -5932,7 +5909,7 @@ a:hover{transform:translateY(-2px)}
           payload.userId
         ).run();
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
-        if (!user || !isUserFullyRegisteredInDb(user)) {
+        if (!user || !verifyNewOnboardingFieldsInDb(user)) {
           return await rejectAndPurgeIncompleteAccount(
             "Compte refus\xE9 apr\xE8s v\xE9rification dans la base de donn\xE9es : toutes les informations obligatoires n'ont pas \xE9t\xE9 enregistr\xE9es. Votre adresse e-mail et vos donn\xE9es ont \xE9t\xE9 automatiquement supprim\xE9es."
           );

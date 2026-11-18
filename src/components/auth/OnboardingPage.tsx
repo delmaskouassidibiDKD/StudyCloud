@@ -415,28 +415,22 @@ export function OnboardingPage() {
     logout();
   }, [user?.id, user?.email, token, clearAllOnboardingTimers, logout]);
 
-  // Calcul de l'échéance stricte de l'étape courante (ne se réinitialise jamais)
+  // Calcul de l'échéance stricte de l'étape courante basée sur l'horloge locale (ne se réinitialise jamais)
   const getEffectiveStepDeadlineMs = React.useCallback(() => {
     const now = Date.now();
-    let globalDl = Number(user?.onboarding_deadline_at || 0);
-    const storedGlobal = Number(localStorage.getItem(globalDeadlineKey) || 0);
-    if (!globalDl && storedGlobal > 0) {
-      globalDl = storedGlobal;
-    } else if (!globalDl) {
+    let globalDl = Number(localStorage.getItem(globalDeadlineKey) || 0);
+    if (!globalDl) {
       globalDl = now + GLOBAL_DURATION_MS;
+      localStorage.setItem(globalDeadlineKey, String(globalDl));
     }
-    localStorage.setItem(globalDeadlineKey, String(globalDl));
 
     let stepDl = Number(localStorage.getItem(stepDeadlineKey) || 0);
     if (!stepDl) {
-      const serverStepDl = (user?.onboarding_step === `step_${step}` && Number(user?.step_deadline_at) > 0)
-        ? Number(user?.step_deadline_at)
-        : 0;
-      stepDl = serverStepDl > 0 ? serverStepDl : Math.min(globalDl, now + STEP_DURATION_MS);
+      stepDl = Math.min(globalDl, now + STEP_DURATION_MS);
       localStorage.setItem(stepDeadlineKey, String(stepDl));
     }
     return Math.min(globalDl, stepDl);
-  }, [user?.onboarding_deadline_at, user?.step_deadline_at, user?.onboarding_step, step, globalDeadlineKey, stepDeadlineKey]);
+  }, [step, globalDeadlineKey, stepDeadlineKey]);
 
   const calculateRemainingSeconds = React.useCallback(() => {
     const deadlineMs = getEffectiveStepDeadlineMs();

@@ -2303,13 +2303,7 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig, preloade
     'trash/': { count: media.trash?.count || 0, bytes: media.trash?.compressedBytes || 0, formatted: formatBytes(media.trash?.compressedBytes || 0), isExempted: false }
   };
 
-  const isPendingCompletion =
-    Number(user.is_onboarded) !== 1 ||
-    user.registration_status === 'en_attente_de_finition' ||
-    !user.phone || String(user.phone).trim() === '' || user.phone === 'Non renseigné' ||
-    !user.school || String(user.school).trim() === '' || user.school === 'Non renseigné' ||
-    !user.filiere || String(user.filiere).trim() === '' || user.filiere === 'Non renseigné' ||
-    !user.level || String(user.level).trim() === '' || user.level === 'Non spécifié' || user.level === 'Non renseigné' || user.level === 'Étudiant';
+  const isPendingCompletion = Number(user.is_onboarded) !== 1;
   const createdAtMs = user.created_at
     ? new Date(String(user.created_at).includes('T') ? user.created_at : `${user.created_at}Z`).getTime()
     : Date.now();
@@ -19283,50 +19277,23 @@ export default {
         await safeRun(db, 'DELETE FROM users WHERE id = ?', [targetId]);
       };
 
-      // Purge automatique en arrière-plan des comptes en attente de finition (> 30 minutes ou décompteur d'étape expiré)
+      // Purge automatique en arrière-plan UNIQUEMENT des nouvelles inscriptions en attente de finition (is_onboarded = 0 et onboarding_deadline_at > 0)
+      // Ne touche JAMAIS aux comptes déjà inscrits (is_onboarded = 1) ni aux anciens comptes !
       try {
         await safeRun(db, "DELETE FROM email_verifications WHERE created_at < datetime('now', '-30 minutes')");
         const incompleteRes = await safeQuery(db, `
           SELECT * FROM users
           WHERE is_onboarded = 0
-             OR registration_status = 'en_attente_de_finition'
-             OR phone IS NULL OR TRIM(phone) = '' OR phone = 'Non renseigné'
-             OR school IS NULL OR TRIM(school) = '' OR school = 'Non renseigné'
-             OR filiere IS NULL OR TRIM(filiere) = '' OR filiere = 'Non renseigné'
-             OR level IS NULL OR TRIM(level) = '' OR level = 'Non spécifié' OR level = 'Non renseigné' OR level = 'Étudiant'
+            AND onboarding_deadline_at > 0
         `, []);
         const nowMs = Date.now();
-        const THIRTY_MINUTES_MS = 30 * 60 * 1000;
         for (const u of (incompleteRes?.results || [])) {
-          const fullyRegistered =
-            Number(u.is_onboarded) === 1 &&
-            u.registration_status !== 'en_attente_de_finition' &&
-            u.email && String(u.email).includes('@') &&
-            u.name && String(u.name).trim().length >= 2 &&
-            u.phone && String(u.phone).trim().length >= 6 && String(u.phone).trim() !== 'Non renseigné' &&
-            u.school && String(u.school).trim().length >= 2 && String(u.school).trim() !== 'Non renseigné' &&
-            u.filiere && String(u.filiere).trim().length >= 2 && String(u.filiere).trim() !== 'Non renseigné' &&
-            u.level && String(u.level).trim().length >= 2 && String(u.level).trim() !== 'Non spécifié' && String(u.level).trim() !== 'Non renseigné' && String(u.level).trim() !== 'Étudiant';
-
-          if (fullyRegistered) continue;
-
-          const createdAtMs = u.created_at
-            ? new Date(String(u.created_at).includes('T') ? u.created_at : `${u.created_at}Z`).getTime()
-            : (nowMs - THIRTY_MINUTES_MS - 1000);
-          const validCreatedMs = Number.isNaN(createdAtMs) ? (nowMs - THIRTY_MINUTES_MS - 1000) : createdAtMs;
-          const globalDeadlineMs = Number(u.onboarding_deadline_at) > 0
-            ? Number(u.onboarding_deadline_at)
-            : (validCreatedMs + THIRTY_MINUTES_MS);
+          if (Number(u.is_onboarded) === 1) continue;
+          const globalDeadlineMs = Number(u.onboarding_deadline_at || 0);
           const stepDeadlineMs = Number(u.step_deadline_at || 0);
 
-          if (nowMs >= globalDeadlineMs || (stepDeadlineMs > 0 && nowMs >= stepDeadlineMs)) {
+          if ((globalDeadlineMs > 0 && nowMs >= globalDeadlineMs) || (stepDeadlineMs > 0 && nowMs >= stepDeadlineMs)) {
             await deleteUserCompletelyInDashboard(u.id, u.email);
-          } else {
-            await safeRun(
-              db,
-              "UPDATE users SET is_onboarded = 0, registration_status = 'en_attente_de_finition', onboarding_deadline_at = ? WHERE id = ?",
-              [globalDeadlineMs, u.id]
-            );
           }
         }
       } catch (e) {}

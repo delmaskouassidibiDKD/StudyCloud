@@ -43,23 +43,19 @@ export function GoogleSecuritySetupPage() {
 
   const getEffectiveDeadlineMs = useCallback(() => {
     const now = Date.now();
-    let globalDl = Number(user?.onboarding_deadline_at || 0);
-    const storedGlobal = Number(localStorage.getItem(globalDeadlineKey) || 0);
-    if (!globalDl && storedGlobal > 0) {
-      globalDl = storedGlobal;
-    } else if (!globalDl) {
+    let globalDl = Number(localStorage.getItem(globalDeadlineKey) || 0);
+    if (!globalDl) {
       globalDl = now + GLOBAL_DURATION_MS;
+      localStorage.setItem(globalDeadlineKey, String(globalDl));
     }
-    localStorage.setItem(globalDeadlineKey, String(globalDl));
 
     let stepDl = Number(localStorage.getItem(stepDeadlineKey) || 0);
-    const serverStepDl = Number(user?.step_deadline_at || 0);
     if (!stepDl) {
-      stepDl = serverStepDl > 0 ? serverStepDl : Math.min(globalDl, now + STEP_DURATION_MS);
+      stepDl = Math.min(globalDl, now + STEP_DURATION_MS);
       localStorage.setItem(stepDeadlineKey, String(stepDl));
     }
     return Math.min(globalDl, stepDl);
-  }, [user?.onboarding_deadline_at, user?.step_deadline_at, globalDeadlineKey, stepDeadlineKey]);
+  }, [globalDeadlineKey, stepDeadlineKey]);
 
   const calculateRemainingSeconds = useCallback(() => {
     const deadlineMs = getEffectiveDeadlineMs();

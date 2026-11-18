@@ -4623,8 +4623,13 @@ a:hover{transform:translateY(-2px)}
 
       function isUserFullyRegisteredInDb(user: any): boolean {
         if (!user) return false;
+        if (Number(user.is_onboarded) === 1) return true;
+        return false;
+      }
+
+      function verifyNewOnboardingFieldsInDb(user: any): boolean {
+        if (!user) return false;
         if (Number(user.is_onboarded) !== 1) return false;
-        if (user.registration_status === 'en_attente_de_finition') return false;
         const email = String(user.email || '').trim();
         const name = String(user.name || '').trim();
         const phone = String(user.phone || '').trim();
@@ -5510,67 +5515,39 @@ a:hover{transform:translateY(-2px)}
         }
       }
 
-      // Nettoyage automatique en arrière-plan des comptes en attente de finition (> 30 minutes ou décompteur d'étape expiré)
+      // Nettoyage automatique en arrière-plan UNIQUEMENT des nouvelles inscriptions en attente de finition (is_onboarded = 0 et onboarding_deadline_at > 0)
+      // Ne touche JAMAIS aux comptes déjà inscrits (is_onboarded = 1) ni aux anciens comptes !
       async function cleanupExpiredUnfinishedAccounts(db: any, bucket?: any) {
         if (!db) return;
         await ensureRegistrationColumns(db);
         const nowMs = Date.now();
-        const THIRTY_MINUTES_MS = 30 * 60 * 1000;
 
         // 1. Purger les demandes de vérification email expirées (> 30 min)
         try {
           await db.prepare("DELETE FROM email_verifications WHERE created_at < datetime('now', '-30 minutes')").run();
         } catch (e) {}
 
-        // 2. Inspecter tous les comptes non finalisés ou aux informations obligatoires manquantes
+        // 2. Inspecter UNIQUEMENT les comptes en cours de création ayant un compteur actif (is_onboarded = 0 AND onboarding_deadline_at > 0)
         try {
           const pendingRes = await db.prepare(`
             SELECT * FROM users
             WHERE is_onboarded = 0
-               OR registration_status = 'en_attente_de_finition'
-               OR phone IS NULL OR TRIM(phone) = '' OR phone = 'Non renseigné'
-               OR school IS NULL OR TRIM(school) = '' OR school = 'Non renseigné'
-               OR filiere IS NULL OR TRIM(filiere) = '' OR filiere = 'Non renseigné'
-               OR level IS NULL OR TRIM(level) = '' OR level = 'Non spécifié' OR level = 'Non renseigné' OR level = 'Étudiant'
+              AND onboarding_deadline_at > 0
           `).all();
 
           const rows = pendingRes?.results || [];
           for (const u of rows) {
-            if (isUserFullyRegisteredInDb(u)) {
-              if (u.registration_status !== 'termine' || Number(u.is_onboarded) !== 1) {
-                try {
-                  await db.prepare("UPDATE users SET is_onboarded = 1, registration_status = 'termine', onboarding_deadline_at = 0, step_deadline_at = 0 WHERE id = ?").bind(u.id).run();
-                } catch (e) {}
-              }
-              continue;
-            }
+            if (Number(u.is_onboarded) === 1) continue;
 
-            const createdAtMs = u.created_at
-              ? new Date(String(u.created_at).includes('T') ? u.created_at : `${u.created_at}Z`).getTime()
-              : (nowMs - THIRTY_MINUTES_MS - 1000);
-            const validCreatedMs = Number.isNaN(createdAtMs) ? (nowMs - THIRTY_MINUTES_MS - 1000) : createdAtMs;
-
-            const globalDeadlineMs = Number(u.onboarding_deadline_at) > 0
-              ? Number(u.onboarding_deadline_at)
-              : (validCreatedMs + THIRTY_MINUTES_MS);
+            const globalDeadlineMs = Number(u.onboarding_deadline_at || 0);
             const stepDeadlineMs = Number(u.step_deadline_at || 0);
 
-            const isGlobalExpired = nowMs >= globalDeadlineMs;
+            const isGlobalExpired = globalDeadlineMs > 0 && nowMs >= globalDeadlineMs;
             const isStepExpired = stepDeadlineMs > 0 && nowMs >= stepDeadlineMs;
 
             if (isGlobalExpired || isStepExpired) {
               await deleteUserCompletely(db, u.id, u.email, bucket || env.BUCKET);
-              console.log(`[StudyCloud Auto-Purge] Compte non finalisé supprimé automatiquement (${isStepExpired ? 'étape expirée' : '30 min dépassées'}) : ${u.email} (${u.id})`);
-            } else {
-              try {
-                await db.prepare(`
-                  UPDATE users SET
-                    is_onboarded = 0,
-                    registration_status = 'en_attente_de_finition',
-                    onboarding_deadline_at = ?
-                  WHERE id = ?
-                `).bind(globalDeadlineMs, u.id).run();
-              } catch (e) {}
+              console.log(`[StudyCloud Auto-Purge] Nouvelle inscription non finalisée supprimée automatiquement (${isStepExpired ? 'étape expirée' : '30 min dépassées'}) : ${u.email} (${u.id})`);
             }
           }
         } catch (e) {
@@ -6967,7 +6944,7 @@ a:hover{transform:translateY(-2px)}
 
         // 4. VÉRIFICATION ANTI-TRICHE EN BASE DE DONNÉES D1 : Relire la ligne SQL et contrôler que TOUT est bien enregistré
         const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
-        if (!user || !isUserFullyRegisteredInDb(user)) {
+        if (!user || !verifyNewOnboardingFieldsInDb(user)) {
           return await rejectAndPurgeIncompleteAccount(
             "Compte refusé après vérification dans la base de données : toutes les informations obligatoires n'ont pas été enregistrées. Votre adresse e-mail et vos données ont été automatiquement supprimées."
           );

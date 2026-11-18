@@ -99,12 +99,11 @@ function getStoredAuth(): { user: AuthUser | null; token: string | null } {
       try {
         const parsed = JSON.parse(rawCachedUser);
         if (parsed && parsed.id) {
-          // Si le compte est en attente de finition et que le délai global de 30 min ou d'étape est dépassé en arrière-plan
-          if (Number(parsed.is_onboarded) !== 1 || parsed.registration_status === 'en_attente_de_finition') {
+          // Si le compte est en cours de création (is_onboarded !== 1) et que le délai local de 30 min est dépassé en arrière-plan
+          if (Number(parsed.is_onboarded) !== 1) {
             const nowMs = Date.now();
-            const globalDeadline = Number(parsed.onboarding_deadline_at || 0);
-            const stepDeadline = Number(parsed.step_deadline_at || 0);
-            if ((globalDeadline > 0 && nowMs >= globalDeadline) || (stepDeadline > 0 && nowMs >= stepDeadline)) {
+            const localGlobalDeadline = Number(localStorage.getItem(`sc_global_deadline_${parsed.id}`) || 0);
+            if (localGlobalDeadline > 0 && nowMs >= localGlobalDeadline) {
               StudyCloudAPI.cancelUnfinalizedAccount({ userId: parsed.id, email: parsed.email }, storedToken).catch(() => {});
               clearUserDataOnLogout();
               localStorage.setItem('sc_auth_redirect_mode', 'register');
@@ -549,22 +548,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     user &&
     (user.has_password === false || user.has_security_questions === false)
   );
-  // 2. Ensuite les questions personnelles obligatoires d'onboarding (nom, école, filière, niveau, pays, téléphone, photo/logo)
-  // Tant que toutes ces informations obligatoires ne sont pas renseignées et que is_onboarded !== 1, l'accès à l'application est bloqué
-  const isMissingMandatoryFields = Boolean(
-    user && (
-      Number(user.is_onboarded) !== 1 ||
-      user.registration_status === 'en_attente_de_finition' ||
-      !user.phone || String(user.phone).trim().length < 6 || user.phone === 'Non renseigné' ||
-      !user.school || String(user.school).trim().length < 2 || user.school === 'Non renseigné' ||
-      !user.filiere || String(user.filiere).trim().length < 2 || user.filiere === 'Non renseigné' ||
-      !user.level || String(user.level).trim().length < 2 || user.level === 'Non spécifié' || user.level === 'Non renseigné' || user.level === 'Étudiant'
-    )
-  );
+  // 2. Ensuite les questions personnelles obligatoires d'onboarding (tant que is_onboarded !== 1, l'accès à l'application est bloqué)
   const needsOnboarding = Boolean(
     isAuthenticated &&
     !needsSecuritySetup &&
-    isMissingMandatoryFields
+    user &&
+    Number(user.is_onboarded) !== 1
   );
 
   const handleConfirmForcedSanction = useCallback(() => {
