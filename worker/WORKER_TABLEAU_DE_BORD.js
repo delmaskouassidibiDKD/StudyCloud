@@ -7751,11 +7751,15 @@ function renderDashboardHtml(data) {
     }
     window.deleteUserAccount = deleteUserAccount;
 
-    async function toggleBlockUserAccount(userId, userName, userEmail, currentlyBlocked) {
+    async function toggleBlockUserAccount(userId) {
+      const item = allUsers.find(x => x.user.id === userId);
+      const u = item ? item.user : null;
+      const currentlyBlocked = Boolean(u && u.isBlocked);
       const targetBlockedState = !currentlyBlocked;
+      const userLabel = (u && u.name ? u.name : userId) + (u && u.email ? ' - ' + u.email : '');
       const confirmMsg = targetBlockedState
-        ? "⚠️ CONFIRMATION DE BLOCAGE\n\nVoulez-vous vraiment BLOQUER le compte de \"" + (userName || userId) + "\" (" + (userEmail || '') + ") ?\n\n• L'utilisateur sera immédiatement bloqué et déconnecté de StudyCloud.\n• Son adresse e-mail sera rejetée s'il tente de se reconnecter ou de recréer un compte."
-        : "✅ CONFIRMATION DE DÉBLOCAGE\n\nVoulez-vous vraiment DÉBLOQUER le compte de \"" + (userName || userId) + "\" (" + (userEmail || '') + ") et autoriser à nouveau son adresse e-mail sur StudyCloud ?";
+        ? "Confirmation requise : Voulez-vous vraiment BLOQUER le compte de (" + userLabel + ") ? Cet utilisateur sera immédiatement bloqué sur StudyCloud et son adresse e-mail sera rejetée."
+        : "Confirmation requise : Voulez-vous vraiment DÉBLOQUER le compte de (" + userLabel + ") et autoriser à nouveau son adresse e-mail sur StudyCloud ?";
       if (!confirm(confirmMsg)) {
         return;
       }
@@ -7767,7 +7771,6 @@ function renderDashboardHtml(data) {
         });
         const data = await res.json().catch(() => ({}));
         if (data && data.success) {
-          const item = allUsers.find(x => x.user.id === userId);
           if (item) {
             item.user.isBlocked = Boolean(data.isBlocked);
             if (data.isBlocked) {
@@ -7867,7 +7870,7 @@ function renderDashboardHtml(data) {
                   <span>Basculer en \${u.isOnline ? 'Hors ligne' : 'En ligne'}</span>
                 </button>
                 <div
-                  onclick="toggleBlockUserAccount('\${u.id}', '\${(u.name || '').replace(/'/g, \"\\\\'\")}', '\${(u.email || '').replace(/'/g, \"\\\\'\")}', \${Boolean(u.isBlocked)})"
+                  onclick="toggleBlockUserAccount('\${u.id}')"
                   class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md cursor-pointer transition select-none border shadow-sm \${u.isBlocked ? 'bg-red-950/70 border-red-500/60 text-red-200 hover:bg-red-900/70' : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:border-slate-500'}"
                   title="\${u.isBlocked ? 'Compte actuellement BLOQUÉ — Cliquez pour débloquer' : 'Glisser pour bloquer cet utilisateur et son e-mail'}"
                 >
@@ -7877,7 +7880,7 @@ function renderDashboardHtml(data) {
                   </div>
                 </div>
                 <button 
-                  onclick="deleteUserAccount('\${u.id}', '\${(u.name || '').replace(/'/g, \"\\\\'\")}')" 
+                  onclick="deleteUserAccount('\${u.id}', '\${(u.name || '').replace(/'/g, '')}')" 
                   class="px-2.5 py-1 text-[10px] font-bold rounded-md cursor-pointer transition flex items-center gap-1 shadow-sm bg-rose-950/40 text-rose-300 hover:bg-rose-900/60 border border-rose-800/50"
                   title="Supprimer définitivement cet utilisateur de la base D1"
                 >
@@ -8259,7 +8262,7 @@ function renderDashboardHtml(data) {
                   <span>Basculer en \${u.isOnline ? 'Hors ligne' : 'En ligne'}</span>
                 </button>
                 <div
-                  onclick="toggleBlockUserAccount('\${u.id}', '\${(u.name || '').replace(/'/g, \"\\\\'\")}', '\${(u.email || '').replace(/'/g, \"\\\\'\")}', \${Boolean(u.isBlocked)})"
+                  onclick="toggleBlockUserAccount('\${u.id}')"
                   class="inline-flex items-center gap-2 px-2.5 py-1 rounded-md cursor-pointer transition select-none border shadow-sm \${u.isBlocked ? 'bg-red-950/70 border-red-500/60 text-red-200 hover:bg-red-900/70' : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:border-slate-500'}"
                   title="\${u.isBlocked ? 'Compte actuellement BLOQUÉ — Cliquez pour débloquer' : 'Glisser pour bloquer cet utilisateur et son e-mail'}"
                 >
