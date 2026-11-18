@@ -24,6 +24,7 @@ import { MatiereMenuView } from './MatiereMenuView';
 import { StorageMenuView } from './StorageMenuView';
 import { Page1FilesMenuView } from './Page1FilesMenuView';
 import { RedRobotMenuView } from './RedRobotMenuView';
+import { TeacherClassesView } from './teacher/TeacherClassesView';
 import { DkdStoreView } from './DkdStoreView';
 import { DkdStore3DIcon } from './DkdStore3DIcon';
 import { NavigationTab } from '../types';
@@ -1187,7 +1188,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       case 'teacher-classes':
         label = 'Classes';
         defaultAction = () => {
-          setTab('teacher-classes');
+          setViewMode('teacher-classes-menu');
         };
         iconContent = (
           <div className="w-full h-full flex items-center justify-center">
@@ -2322,6 +2323,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'clock-menu' && <ClockMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'level-menu' && <LevelMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
+      {viewMode === 'teacher-classes-menu' && (
+        <div className="absolute inset-x-0 md:left-64 md:right-0 bottom-0 top-[62px] md:top-[66px] z-30 w-full md:w-[calc(100%-16rem)] overflow-hidden">
+          <TeacherClassesView
+            onBack={() => setViewMode('home')}
+            user={user}
+          />
+        </div>
+      )}
       {viewMode === 'storage-menu' && (
         <StorageMenuView
           onBack={() => setViewMode('home')}

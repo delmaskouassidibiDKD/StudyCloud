@@ -18,7 +18,11 @@ import {
   X,
   Check,
   BookOpen,
-  Sparkles
+  Sparkles,
+  Award,
+  ChevronRight,
+  TrendingUp,
+  FolderOpen
 } from 'lucide-react';
 
 export interface ClassItem {
@@ -32,7 +36,7 @@ export interface ClassItem {
   status: 'active' | 'warning' | 'completed';
   instructorName: string;
   instructorAvatar?: string;
-  gradientTheme: string; // Tailwind gradient classes
+  gradientTheme: string;
   accentOutline?: boolean;
   category?: string;
   traineeAvatars: { initial: string; bg: string }[];
@@ -212,7 +216,7 @@ const INITIAL_ALL_CLASSES: ClassItem[] = [
 ];
 
 export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, user }) => {
-  // Navigation active tab dans la barre latérale
+  // Navigation active tab dans la barre latérale / barre du bas
   const [activeNavTab, setActiveNavTab] = useState<'dashboard' | 'trainees' | 'classes' | 'discussions' | 'groups' | 'library'>('classes');
   
   // États de recherche, filtres et affichage
@@ -287,16 +291,17 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   ] as const;
 
   return (
-    <div className="relative w-full h-full min-h-[calc(100vh-4rem)] flex overflow-hidden font-sans select-none"
+    <div 
+      className="relative w-full h-full min-h-dvh flex flex-col md:flex-row overflow-hidden font-sans select-none"
       style={{
         background: 'linear-gradient(135deg, #dcf0fa 0%, #e6f4fb 35%, #edf7fc 70%, #dff2fa 100%)'
       }}
     >
       {/* ========================================================================= */}
-      {/* 1. BARRE LATÉRALE GAUCHE (Couleur identique : Deep Teal / Pétrole Foncé) */}
+      {/* 1. BARRE LATÉRALE BUREAU (Desktop >= md : Deep Teal / Pétrole Foncé) */}
       {/* ========================================================================= */}
       <aside 
-        className="w-18 sm:w-20 md:w-22 shrink-0 flex flex-col items-center py-5 justify-between z-30 transition-all border-r border-[#002830]/30 shadow-2xl"
+        className="hidden md:flex w-20 lg:w-24 shrink-0 flex-col items-center py-5 justify-between z-30 transition-all border-r border-[#002830]/30 shadow-2xl h-full"
         style={{ backgroundColor: '#002f3a' }}
       >
         {/* Logo supérieur (Vague circulaire cyan / StudyCloud Pro) */}
@@ -311,7 +316,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           </span>
         </div>
 
-        {/* Éléments de navigation verticaux */}
+        {/* Éléments de navigation verticaux Desktop */}
         <nav className="flex flex-col items-center gap-4 my-auto w-full px-2">
           {navItems.map((item) => {
             const isActive = activeNavTab === item.id;
@@ -362,14 +367,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       </aside>
 
       {/* ========================================================================= */}
-      {/* 2. ESPACE PRINCIPAL DE TRAVAIL (Fond doux dégradé bleu ciel / givré) */}
+      {/* 2. ESPACE PRINCIPAL DE TRAVAIL (Plein écran Edge-to-Edge & Défilement fluide) */}
       {/* ========================================================================= */}
-      <main className="flex-1 flex flex-col h-full overflow-y-auto overflow-x-hidden p-3.5 sm:p-6 md:p-8 space-y-6">
+      <main className="flex-1 flex flex-col h-full min-h-dvh overflow-y-auto overflow-x-hidden p-3.5 sm:p-6 lg:p-8 pb-24 md:pb-8 space-y-5 md:space-y-6">
         
         {/* ----------------------------------------------------------------------- */}
-        {/* EN-TÊTE : BREADCRUMB, TITRE, ACTIONS & PROFIL */}
+        {/* EN-TÊTE RESPONSIVE : BREADCRUMB, TITRE, ACTIONS & PROFIL */}
         {/* ----------------------------------------------------------------------- */}
-        <header className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
           {/* Titre & Fil d'Ariane */}
           <div>
             <div className="text-[11px] font-semibold text-slate-400 tracking-wider flex items-center gap-1 mb-0.5">
@@ -380,7 +385,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 type="button"
                 onClick={onBack}
                 className="p-1 rounded-lg hover:bg-black/5 text-slate-700 transition"
-                title="Retour"
+                title="Retour à l'accueil"
               >
                 <ArrowLeft className="w-5 h-5 stroke-[2.5]" />
               </button>
@@ -390,18 +395,18 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             </div>
           </div>
 
-          {/* Contrôles du haut : Recherche, Notifs, Paramètres, Profil & Bouton Create Class */}
-          <div className="flex items-center gap-2.5 sm:gap-3.5 flex-wrap">
+          {/* Contrôles du haut : Recherche, Notifs, Paramètres, Profil */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-between sm:justify-end">
             {/* Barre de recherche dynamique */}
             <div className="relative flex items-center">
               {isSearchOpen ? (
-                <div className="flex items-center bg-white/90 backdrop-blur-md rounded-2xl px-3 py-1.5 shadow-sm border border-white/80 transition-all w-52 sm:w-64">
+                <div className="flex items-center bg-white/95 backdrop-blur-md rounded-2xl px-3 py-1.5 shadow-sm border border-white/90 transition-all w-48 sm:w-60">
                   <Search className="w-4 h-4 text-slate-400 shrink-0 mr-2" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Search classes, instructors..."
+                    placeholder="Search classes..."
                     className="w-full bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none"
                     autoFocus
                   />
@@ -458,7 +463,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 <span className="text-xs font-bold text-slate-800 leading-none">
                   {user?.name || 'Michael'}
                 </span>
-                <span className="text-[10px] text-slate-400 font-medium">
+                <span className="text-[9px] text-slate-400 font-medium">
                   Instructor
                 </span>
               </div>
@@ -471,7 +476,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* ----------------------------------------------------------------------- */}
         <div className="flex items-center justify-between gap-3 pt-1">
           {/* Toggles Vue (Grid 2x2, List, Filtre) */}
-          <div className="flex items-center gap-1.5 bg-white/60 backdrop-blur-md p-1 rounded-2xl border border-white/80 shadow-sm">
+          <div className="flex items-center gap-1.5 bg-white/70 backdrop-blur-md p-1 rounded-2xl border border-white/90 shadow-sm">
             <button
               type="button"
               onClick={() => setViewMode('grid')}
@@ -535,58 +540,57 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             </div>
           </div>
 
-          {/* Bouton Pro : + CREATE CLASS (Couleur pétrole sombre comme sur l'image) */}
+          {/* Bouton Pro : + CREATE CLASS (Pétrole sombre identique au modèle) */}
           <button
             type="button"
             onClick={() => setIsCreateModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 rounded-2xl text-xs font-black text-white shadow-md transition-all active:scale-95"
+            className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 rounded-2xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0"
             style={{ backgroundColor: '#00313d' }}
             title="Create a new class"
           >
             <Plus className="w-4 h-4 stroke-[3]" />
-            <span className="tracking-wide uppercase text-[11px]">CREATE CLASS</span>
+            <span className="tracking-wide uppercase text-[10px] sm:text-[11px]">CREATE CLASS</span>
           </button>
         </div>
 
         {/* ----------------------------------------------------------------------- */}
-        {/* SECTION 1 : LES 2 GRANDES CARTES À LA UNE (En vedette / En cours) */}
+        {/* SECTION 1 : LES 2 GRANDES CARTES EN VEDETTE (Top In-Progress Classes) */}
         {/* ----------------------------------------------------------------------- */}
-        <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <section className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-5">
           {featuredClasses.map((item) => (
             <div
               key={item.id}
-              className="bg-white/80 backdrop-blur-xl border border-white/90 rounded-3xl p-5 md:p-6 shadow-[0_10px_25px_rgba(0,40,60,0.04)] hover:shadow-lg transition-all flex flex-col justify-between gap-5 relative overflow-hidden"
+              className="bg-white/80 backdrop-blur-xl border border-white/90 rounded-3xl p-4 sm:p-6 shadow-[0_10px_25px_rgba(0,40,60,0.04)] hover:shadow-lg transition-all flex flex-col justify-between gap-4 relative overflow-hidden"
             >
               {/* Partie supérieure de la carte */}
-              <div className="flex items-start gap-4">
-                {/* Miniature abstraite moderne avec vagues arrondies */}
-                <div className={`w-20 h-20 md:w-24 md:h-24 rounded-2xl bg-gradient-to-br ${item.gradientTheme} shadow-md flex items-center justify-center text-white shrink-0 relative overflow-hidden`}>
-                  {/* Formes organiques douces pour répliquer le design de l'image */}
-                  <div className="absolute -bottom-3 -left-3 w-16 h-16 rounded-full bg-white/20 backdrop-blur-sm"></div>
-                  <div className="absolute top-2 -right-2 w-12 h-12 rounded-full bg-white/15"></div>
-                  <BookOpen className="w-7 h-7 text-white/90 drop-shadow relative z-10" />
+              <div className="flex items-start gap-3 sm:gap-4">
+                {/* Miniature abstraite moderne */}
+                <div className={`w-16 h-16 sm:w-20 sm:h-20 md:w-24 md:h-24 rounded-2xl bg-gradient-to-br ${item.gradientTheme} shadow-md flex items-center justify-center text-white shrink-0 relative overflow-hidden`}>
+                  <div className="absolute -bottom-3 -left-3 w-14 h-14 rounded-full bg-white/20 backdrop-blur-sm"></div>
+                  <div className="absolute top-2 -right-2 w-10 h-10 rounded-full bg-white/15"></div>
+                  <BookOpen className="w-6 h-6 sm:w-7 sm:h-7 text-white/90 drop-shadow relative z-10" />
                 </div>
 
                 {/* Infos du cours */}
                 <div className="flex-1 min-w-0 pr-6">
-                  <div className="text-[11px] font-semibold text-slate-400 mb-0.5">
+                  <div className="text-[10px] sm:text-[11px] font-semibold text-slate-400 mb-0.5">
                     {item.traineesCount} Trainees &bull; {item.materialsCount} Materials
                   </div>
-                  <h3 className="text-base sm:text-lg font-black text-slate-800 tracking-tight leading-snug">
+                  <h3 className="text-sm sm:text-base md:text-lg font-black text-slate-800 tracking-tight leading-snug">
                     {item.title}
                   </h3>
                   {item.subtitle && (
-                    <div className="text-[11px] font-bold text-teal-600 mt-0.5">
+                    <div className="text-[10px] sm:text-[11px] font-bold text-teal-600 mt-0.5">
                       {item.subtitle}
                     </div>
                   )}
-                  <p className="text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+                  <p className="text-[11px] sm:text-xs text-slate-500 mt-1 line-clamp-2 leading-relaxed">
                     {item.description}
                   </p>
                 </div>
 
                 {/* Statut & Menu options */}
-                <div className="absolute top-5 right-5 flex items-center gap-1.5">
+                <div className="absolute top-4 right-4 flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20" title="Classe active"></span>
                   <button type="button" className="text-slate-400 hover:text-slate-700 p-1 rounded-lg transition">
                     <MoreVertical className="w-4 h-4" />
@@ -595,7 +599,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               </div>
 
               {/* Partie inférieure de la carte (Progression, Trainees, Enseignant) */}
-              <div className="pt-3 border-t border-slate-100/80 flex items-center justify-between flex-wrap gap-3">
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between flex-wrap gap-2.5 sm:gap-3">
                 {/* Progression de la classe */}
                 <div className="flex flex-col">
                   <span className="text-[9px] font-black uppercase tracking-wider text-slate-400 mb-1">
@@ -605,11 +609,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     <div className="w-6 h-6 rounded-full bg-teal-500/15 border border-teal-500/30 text-teal-700 font-extrabold text-[10px] flex items-center justify-center">
                       12
                     </div>
-                    <div className="w-4 h-0.5 bg-teal-400"></div>
+                    <div className="w-3 sm:w-4 h-0.5 bg-teal-400"></div>
                     <div className="w-6 h-6 rounded-full bg-amber-500/15 border border-amber-500/30 text-amber-700 font-extrabold text-[10px] flex items-center justify-center">
                       5
                     </div>
-                    <div className="w-4 h-0.5 bg-slate-200"></div>
+                    <div className="w-3 sm:w-4 h-0.5 bg-slate-200"></div>
                     <div className="w-6 h-6 rounded-full bg-slate-100 border border-slate-300 text-slate-500 font-extrabold text-[10px] flex items-center justify-center">
                       8
                     </div>
@@ -660,7 +664,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* ----------------------------------------------------------------------- */}
         <section className="space-y-3.5">
           <div className="flex items-center justify-between">
-            <h2 className="text-lg font-black text-[#0f2430] tracking-tight">
+            <h2 className="text-base sm:text-lg font-black text-[#0f2430] tracking-tight">
               All Classes
             </h2>
             <span className="text-xs font-bold text-slate-400">
@@ -668,8 +672,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             </span>
           </div>
 
-          {/* Grille de cartes */}
-          <div className={`grid gap-4 ${
+          {/* Grille de cartes adaptée Mobile & Bureau */}
+          <div className={`grid gap-3.5 sm:gap-4 ${
             viewMode === 'grid' 
               ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4' 
               : 'grid-cols-1'
@@ -718,7 +722,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">
                         Class Progress
                       </span>
-                      <div className="w-20 bg-slate-100 h-1.5 rounded-full overflow-hidden mt-1">
+                      <div className="w-24 sm:w-20 bg-slate-100 h-1.5 rounded-full overflow-hidden mt-1">
                         <div
                           className={`h-full rounded-full ${c.status === 'warning' ? 'bg-orange-500' : 'bg-teal-500'}`}
                           style={{ width: `${c.progressPercent}%` }}
@@ -753,19 +757,58 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       </main>
 
       {/* ========================================================================= */}
-      {/* 3. MODALE "CREATE CLASS" (Pour créer une nouvelle classe en direct) */}
+      {/* 3. BARRE DE NAVIGATION INFÉRIEURE MOBILE (< md : Évite de coincer l'écran) */}
+      {/* ========================================================================= */}
+      <nav 
+        className="md:hidden fixed bottom-0 inset-x-0 h-16 z-50 flex items-center justify-around px-2 border-t border-cyan-900/40 shadow-2xl backdrop-blur-md"
+        style={{ backgroundColor: '#002f3a' }}
+      >
+        {navItems.map((item) => {
+          const isActive = activeNavTab === item.id;
+          const IconComponent = item.icon;
+
+          return (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => setActiveNavTab(item.id)}
+              className={`flex flex-col items-center justify-center py-1 transition-all flex-1 ${
+                isActive ? 'opacity-100 scale-105' : 'opacity-65'
+              }`}
+            >
+              {isActive ? (
+                <div className="w-8 h-8 rounded-xl bg-white text-[#002f3a] shadow-md flex items-center justify-center">
+                  <IconComponent className="w-4 h-4 stroke-[2.4]" />
+                </div>
+              ) : (
+                <div className="w-8 h-8 flex items-center justify-center text-cyan-100/80">
+                  <IconComponent className="w-4 h-4 stroke-[1.8]" />
+                </div>
+              )}
+              <span className={`text-[8.5px] mt-0.5 font-semibold tracking-tight ${
+                isActive ? 'text-white font-bold' : 'text-cyan-100/70'
+              }`}>
+                {item.label}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* ========================================================================= */}
+      {/* 4. MODALE RESPONSIVE "CREATE CLASS" */}
       {/* ========================================================================= */}
       {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/40 backdrop-blur-sm animate-fade-in">
-          <div className="w-full max-w-lg bg-white/95 backdrop-blur-2xl rounded-3xl p-6 shadow-2xl border border-white/80 space-y-4">
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 sm:p-4 bg-slate-950/50 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-lg bg-white/95 backdrop-blur-2xl rounded-3xl p-5 sm:p-6 shadow-2xl border border-white/80 space-y-4 max-h-[92vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-xl bg-[#00313d] text-white flex items-center justify-center">
                   <GraduationCap className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-base font-black text-slate-800">Créer une nouvelle classe</h3>
-                  <p className="text-[11px] text-slate-400">Configurez l'intitulé et les paramètres de la classe</p>
+                  <h3 className="text-sm sm:text-base font-black text-slate-800">Créer une nouvelle classe</h3>
+                  <p className="text-[10px] sm:text-[11px] text-slate-400">Configurez l'intitulé et les paramètres</p>
                 </div>
               </div>
               <button
@@ -835,7 +878,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
-                    Nom du Professeur / Instructeur
+                    Professeur / Instructeur
                   </label>
                   <input
                     type="text"
