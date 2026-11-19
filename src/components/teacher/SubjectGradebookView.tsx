@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   ArrowLeft,
+  ArrowRight,
   Maximize2,
   Minimize2,
   Paintbrush,
@@ -21,7 +22,14 @@ import {
   Download,
   ChevronDown,
   Camera,
-  Trash2
+  Trash2,
+  MoreVertical,
+  Edit2,
+  Eraser,
+  Palette,
+  Check,
+  X,
+  AlertCircle
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SubjectItem, ClassItem, SchoolItem, SchoolYearItem, TermItem } from './TeacherClassesView';
@@ -37,13 +45,74 @@ interface SubjectGradebookViewProps {
   onBack: () => void;
 }
 
+// Métadonnées d'une colonne de notes (intitulé, barème max, couleur de case, couleur de colonne)
+export interface GradebookColumnMeta {
+  title?: string;        // Intitulé personnalisable (ex: "NOTE", "DEVOIR", "INTERRO", "TP")
+  maxScore: number;     // Barème maximal par défaut (ex: 20, 10, 40)
+  headerBgColor?: string;// Couleur de fond de l'en-tête seul
+  columnBgColor?: string;// Couleur de fond de toute la colonne
+}
+
 // Structure d'un élève dans le tableau moderne de notes
 export interface StudentGradeRow {
   id: string;
   name: string;
   photoUrl?: string;
-  notes: string[]; // Notes dynamiques sans limite
+  notes: string[]; // Notes dynamiques stockées sous forme "score/max" ou "score"
 }
+
+// Analyse d'une note d'élève stockée ("score/max" ou "score")
+export interface ParsedNote {
+  scoreStr: string;
+  maxScore: number;
+  scoreNum: number | null;
+  isInvalid: boolean; // true si scoreNum > maxScore
+}
+
+export const parseStudentNote = (rawVal: string, defaultMax = 20): ParsedNote => {
+  const safe = (rawVal || '').trim();
+  let scoreStr = '';
+  let maxScore = defaultMax > 0 ? defaultMax : 20;
+
+  if (safe.includes('/')) {
+    const parts = safe.split('/');
+    scoreStr = (parts[0] || '').trim();
+    const parsedMax = parseFloat((parts[1] || '').trim().replace(',', '.'));
+    if (!isNaN(parsedMax) && parsedMax > 0) {
+      maxScore = parsedMax;
+    }
+  } else {
+    scoreStr = safe;
+  }
+
+  scoreStr = scoreStr.replace(/[^0-9.,]/g, '');
+  const scoreNum = scoreStr !== '' ? parseFloat(scoreStr.replace(',', '.')) : null;
+  const isInvalid = scoreNum !== null && !isNaN(scoreNum) && scoreNum > maxScore;
+
+  return {
+    scoreStr,
+    maxScore,
+    scoreNum: scoreNum !== null && !isNaN(scoreNum) ? scoreNum : null,
+    isInvalid
+  };
+};
+
+export const formatStudentNote = (scoreStr: string, maxScore: number): string => {
+  const cleanScore = (scoreStr || '').trim().replace(/[^0-9.,]/g, '');
+  return `${cleanScore}/${maxScore > 0 ? maxScore : 20}`;
+};
+
+// Palette de couleurs pastel pour la coloration
+export const PASTEL_PALETTE = [
+  { name: 'Par défaut', bg: '', headerBg: '', label: 'Défaut' },
+  { name: 'Bleu ciel', bg: '#eff6ff', headerBg: '#dbeafe', label: 'Bleu' },
+  { name: 'Vert menthe', bg: '#f0fdf4', headerBg: '#dcfce7', label: 'Vert' },
+  { name: 'Jaune doux', bg: '#fefce8', headerBg: '#fef9c3', label: 'Jaune' },
+  { name: 'Rose pastel', bg: '#fff1f2', headerBg: '#ffe4e6', label: 'Rose' },
+  { name: 'Violet lavande', bg: '#faf5ff', headerBg: '#f3e8ff', label: 'Violet' },
+  { name: 'Pêche / Orange', bg: '#fff7ed', headerBg: '#ffedd5', label: 'Orange' },
+  { name: 'Gris ardoise', bg: '#f8fafc', headerBg: '#e2e8f0', label: 'Gris' },
+];
 
 // Nombre de colonnes de cases vides supplémentaires à droite du tableau (dépasse toujours les notes)
 const RIGHT_EXTRA_COLS = 32;
@@ -96,6 +165,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const colWidthAvgKey = `studycloud_col_width_avg_${subject.id}_${term?.id || 't1'}`;
   const customNoteWidthsKey = `studycloud_custom_note_widths_${subject.id}_${term?.id || 't1'}`;
   const rowHeightsKey = `studycloud_row_heights_${subject.id}_${term?.id || 't1'}`;
+  const colMetasKey = `studycloud_col_metas_${subject.id}_${term?.id || 't1'}`;
 
   // Référence du conteneur de défilement
   const gridContainerRef = useRef<HTMLDivElement>(null);
@@ -118,6 +188,37 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     } catch { }
     return 7;
   });
+
+  // Métadonnées de chaque colonne de note (titre, barème max, couleur de fond)
+  const [columnMetas, setColumnMetas] = useState<{ [colIndex: number]: GradebookColumnMeta }>(() => {
+    try {
+      const s = localStorage.getItem(colMetasKey);
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (typeof parsed === 'object') return parsed;
+      }
+    } catch { }
+    return {};
+  });
+
+  // Menu contextuel 3 points de colonne
+  const [activeMenuCol, setActiveMenuCol] = useState<number | null>(null);
+
+  // Palette de couleur active
+  const [activeColorPicker, setActiveColorPicker] = useState<{
+    target: 'header' | 'column';
+    colIndex: number;
+  } | null>(null);
+
+  // Modale de modification d'intitulé et barème de la colonne
+  const [editingColModal, setEditingColModal] = useState<{
+    colIndex: number;
+    title: string;
+    maxScore: number;
+  } | null>(null);
+
+  // Mode déplacement actif pour une colonne (flèches bleues affichées)
+  const [movingColIndex, setMovingColIndex] = useState<number | null>(null);
 
   // Largeurs personnalisables et modelables des colonnes
   const [colWidthRank, setColWidthRank] = useState<number>(() => {
@@ -271,9 +372,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       localStorage.setItem(colWidthAvgKey, colWidthAverage.toString());
       localStorage.setItem(customNoteWidthsKey, JSON.stringify(customNoteWidths));
       localStorage.setItem(rowHeightsKey, JSON.stringify(customRowHeights));
+      localStorage.setItem(colMetasKey, JSON.stringify(columnMetas));
       setIsSaved(true);
     } catch { }
-  }, [students, noteColumnCount, noteColWidth, colWidthRank, colWidthPhoto, colWidthName, colWidthAverage, customNoteWidths, customRowHeights, storageKey, colCountKey, colWidthKey, colWidthRankKey, colWidthPhotoKey, colWidthNameKey, colWidthAvgKey, customNoteWidthsKey, rowHeightsKey]);
+  }, [students, noteColumnCount, noteColWidth, colWidthRank, colWidthPhoto, colWidthName, colWidthAverage, customNoteWidths, customRowHeights, columnMetas, storageKey, colCountKey, colWidthKey, colWidthRankKey, colWidthPhotoKey, colWidthNameKey, colWidthAvgKey, customNoteWidthsKey, rowHeightsKey, colMetasKey]);
 
   // Synchroniser la taille du tableau de notes de chaque élève avec noteColumnCount
   useEffect(() => {
@@ -349,27 +451,56 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   }, [zoomPercent]);
 
   // Calcul dynamique des moyennes et des rangs en temps réel
+  // Si un élève a une note > noteMaximale, sa moyenne n'est pas calculée (grisée avec '...') et rang '-'
   const studentsWithStats = useMemo(() => {
     const withAverage = students.map((std, idx) => {
-      const validNotes = std.notes
-        .slice(0, noteColumnCount)
-        .map(n => parseFloat(n.replace(',', '.').trim()))
-        .filter(n => !isNaN(n) && n >= 0 && n <= 20);
+      let hasInvalidNote = false;
+      const studentNotes = std.notes.slice(0, noteColumnCount);
 
-      const avg = validNotes.length > 0
-        ? validNotes.reduce((sum, val) => sum + val, 0) / validNotes.length
+      const parsedNotes = studentNotes.map((rawNote, cIdx) => {
+        const colDefaultMax = columnMetas[cIdx]?.maxScore || 20;
+        return parseStudentNote(rawNote, colDefaultMax);
+      });
+
+      for (const p of parsedNotes) {
+        if (p.isInvalid) {
+          hasInvalidNote = true;
+          break;
+        }
+      }
+
+      if (hasInvalidNote) {
+        return {
+          ...std,
+          rowNumber: idx + 1,
+          average: null,
+          averageFormatted: '...',
+          hasInvalidNote: true,
+          rank: '-'
+        };
+      }
+
+      // Notes valides ramenées sur 20 pour un calcul équitable
+      const validScoresOn20 = parsedNotes
+        .filter(p => p.scoreNum !== null && !p.isInvalid)
+        .map(p => (p.scoreNum! / p.maxScore) * 20);
+
+      const avg = validScoresOn20.length > 0
+        ? validScoresOn20.reduce((sum, val) => sum + val, 0) / validScoresOn20.length
         : null;
 
       return {
         ...std,
         rowNumber: idx + 1,
         average: avg,
-        averageFormatted: avg !== null ? avg.toFixed(2) : ''
+        averageFormatted: avg !== null ? avg.toFixed(2) : '',
+        hasInvalidNote: false,
+        rank: ''
       };
     });
 
     const sortedActive = [...withAverage]
-      .filter(s => s.average !== null)
+      .filter(s => s.average !== null && !s.hasInvalidNote)
       .sort((a, b) => b.average! - a.average!);
 
     const rankMap = new Map<string, string>();
@@ -384,11 +515,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       }
     });
 
-    return withAverage.map(s => ({
-      ...s,
-      rank: rankMap.get(s.id) || (s.name.trim() ? '-' : '')
-    }));
-  }, [students, noteColumnCount]);
+    return withAverage.map(s => {
+      if (s.hasInvalidNote) {
+        return { ...s, rank: '-' };
+      }
+      return {
+        ...s,
+        rank: rankMap.get(s.id) || (s.name.trim() ? '-' : '')
+      };
+    });
+  }, [students, noteColumnCount, columnMetas]);
 
   // Modification du nom d'un élève
   const handleNameChange = (studentId: string, newName: string) => {
@@ -396,13 +532,66 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     setIsSaved(false);
   };
 
-  // Modification d'une note N
-  const handleNoteChange = (studentId: string, noteIndex: number, newVal: string) => {
-    const sanitized = newVal.replace(/[^0-9.,]/g, '');
+  // Modification brute d'une note (format "score/max")
+  const handleRawNoteChange = (studentId: string, noteIndex: number, newRawVal: string) => {
     setStudents(prev => prev.map(s => {
       if (s.id !== studentId) return s;
       const copyNotes = [...s.notes];
-      copyNotes[noteIndex] = sanitized;
+      copyNotes[noteIndex] = newRawVal;
+      return { ...s, notes: copyNotes };
+    }));
+    setIsSaved(false);
+  };
+
+  // Permutation de deux colonnes avec les flèches bleues
+  const handleSwapColumns = (fromIdx: number, toIdx: number) => {
+    if (fromIdx < 0 || fromIdx >= noteColumnCount || toIdx < 0 || toIdx >= noteColumnCount) return;
+
+    // Permutation des notes de tous les élèves
+    setStudents(prev => prev.map(s => {
+      const copy = [...s.notes];
+      const temp = copy[fromIdx];
+      copy[fromIdx] = copy[toIdx];
+      copy[toIdx] = temp;
+      return { ...s, notes: copy };
+    }));
+
+    // Permutation des métadonnées de colonnes
+    setColumnMetas(prev => {
+      const copy = { ...prev };
+      const metaFrom = copy[fromIdx];
+      const metaTo = copy[toIdx];
+      if (metaFrom !== undefined) copy[toIdx] = metaFrom;
+      else delete copy[toIdx];
+      if (metaTo !== undefined) copy[fromIdx] = metaTo;
+      else delete copy[fromIdx];
+      return copy;
+    });
+
+    // Permutation des largeurs de colonnes
+    setCustomNoteWidths(prev => {
+      const copy = { ...prev };
+      const widthFrom = copy[fromIdx];
+      const widthTo = copy[toIdx];
+      if (widthFrom !== undefined) copy[toIdx] = widthFrom;
+      else delete copy[toIdx];
+      if (widthTo !== undefined) copy[fromIdx] = widthTo;
+      else delete copy[fromIdx];
+      return copy;
+    });
+
+    // Le focus de déplacement suit la colonne sur sa nouvelle place
+    setMovingColIndex(toIdx);
+    setIsSaved(false);
+  };
+
+  // Vider toute une colonne (efface les notes saisies chez tous les élèves en conservant le barème max)
+  const handleClearColumnNotes = (colIndex: number) => {
+    setStudents(prev => prev.map(s => {
+      const copyNotes = [...s.notes];
+      const meta = columnMetas[colIndex];
+      const parsed = parseStudentNote(copyNotes[colIndex], meta?.maxScore || 20);
+      copyNotes[colIndex] = formatStudentNote('', parsed.maxScore);
       return { ...s, notes: copyNotes };
     }));
     setIsSaved(false);
@@ -448,7 +637,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     });
   };
 
-  // Suppression d'une colonne de note
+  // Suppression d'une colonne de note avec réajustement des métadonnées
   const handleDeleteNoteColumn = (colIndex: number) => {
     if (noteColumnCount <= 1) return;
     setNoteColumnCount(prev => prev - 1);
@@ -457,6 +646,42 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       updated.splice(colIndex, 1);
       return { ...s, notes: updated };
     }));
+
+    // Réajustement des clés de columnMetas
+    setColumnMetas(prev => {
+      const next: { [idx: number]: GradebookColumnMeta } = {};
+      Object.keys(prev).forEach(k => {
+        const idx = parseInt(k, 10);
+        if (idx < colIndex) {
+          next[idx] = prev[idx];
+        } else if (idx > colIndex) {
+          next[idx - 1] = prev[idx];
+        }
+      });
+      return next;
+    });
+
+    // Réajustement des clés de customNoteWidths
+    setCustomNoteWidths(prev => {
+      const next: { [idx: number]: number } = {};
+      Object.keys(prev).forEach(k => {
+        const idx = parseInt(k, 10);
+        if (idx < colIndex) {
+          next[idx] = prev[idx];
+        } else if (idx > colIndex) {
+          next[idx - 1] = prev[idx];
+        }
+      });
+      return next;
+    });
+
+    if (movingColIndex === colIndex) {
+      setMovingColIndex(null);
+    } else if (movingColIndex !== null && movingColIndex > colIndex) {
+      setMovingColIndex(movingColIndex - 1);
+    }
+
+    setActiveMenuCol(null);
     setIsSaved(false);
   };
 
@@ -726,14 +951,26 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Export Excel (.xlsx)
   const handleExportExcel = () => {
     try {
-      const noteHeaders = Array.from({ length: noteColumnCount }, (_, i) => `Note ${i + 1}`);
+      const noteHeaders = Array.from({ length: noteColumnCount }, (_, i) => {
+        const meta = columnMetas[i];
+        const title = meta?.title || 'NOTE';
+        const max = meta?.maxScore || 20;
+        return `${title} ${i + 1} (/${max})`;
+      });
       const headers = ['Rang', 'Nom & Prénom', ...noteHeaders, 'Moyenne'];
-      const dataRows = studentsWithStats.map(s => [
-        s.rank,
-        s.name,
-        ...s.notes.slice(0, noteColumnCount),
-        s.averageFormatted
-      ]);
+      const dataRows = studentsWithStats.map(s => {
+        const notesFormatted = s.notes.slice(0, noteColumnCount).map((n, i) => {
+          const meta = columnMetas[i];
+          const parsed = parseStudentNote(n, meta?.maxScore || 20);
+          return parsed.scoreStr ? `${parsed.scoreStr}/${parsed.maxScore}` : '';
+        });
+        return [
+          s.rank,
+          s.name,
+          ...notesFormatted,
+          s.hasInvalidNote ? '...' : s.averageFormatted
+        ];
+      });
 
       const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
       const wb = XLSX.utils.book_new();
@@ -760,8 +997,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   return (
     <div 
       onClick={() => {
-        // Clic sur l'espace extérieur désélectionne toute ligne
+        // Clic sur l'espace extérieur désélectionne toute ligne et ferme les menus
         if (selectedLine) setSelectedLine(null);
+        if (activeMenuCol !== null) setActiveMenuCol(null);
+        if (activeColorPicker !== null) setActiveColorPicker(null);
       }}
       className={`w-full flex flex-col bg-[#eef2f6] text-slate-800 font-sans select-none overflow-hidden transition-all duration-300 ${
         viewerExpandLevel >= 2
@@ -1002,7 +1241,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               if (std) handleNameChange(std.id, val);
             } else if (activeCellInfo.type === 'note' && activeCellInfo.noteColIndex !== undefined) {
               const std = students[activeCellInfo.rowIndex];
-              if (std) handleNoteChange(std.id, activeCellInfo.noteColIndex, val);
+              if (std) handleRawNoteChange(std.id, activeCellInfo.noteColIndex, val);
             }
           }}
           placeholder="Sélectionnez une case du tableau pour voir ou modifier sa valeur..."
@@ -1125,36 +1364,254 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {renderColDivider('col-name')}
 
                     {/* 4. COLONNES DE NOTES DYNAMIQUES */}
-                    {Array.from({ length: noteColumnCount }).map((_, i) => (
-                      <React.Fragment key={`header-note-fragment-${i}`}>
-                        <div 
-                          style={{ width: `${getColWidth(`col-note-${i}`)}px` }}
-                          className="h-12 sm:h-14 flex items-center justify-center p-1 text-center relative group bg-[#f1f5f9] shrink-0"
-                          title={`Note ${i + 1}`}
-                        >
-                          <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase truncate px-1">
-                            NOTE {i + 1}
-                          </span>
+                    {Array.from({ length: noteColumnCount }).map((_, i) => {
+                      const colMeta = columnMetas[i] || { maxScore: 20 };
+                      const colTitle = colMeta.title || 'NOTE';
+                      const headerBg = colMeta.headerBgColor || colMeta.columnBgColor || '#f1f5f9';
+                      const isMovingThis = movingColIndex === i;
+                      const isMenuOpen = activeMenuCol === i;
 
-                          {noteColumnCount > 1 && (
+                      return (
+                        <React.Fragment key={`header-note-fragment-${i}`}>
+                          <div 
+                            style={{ 
+                              width: `${getColWidth(`col-note-${i}`)}px`,
+                              backgroundColor: headerBg 
+                            }}
+                            className={`h-12 sm:h-14 flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors ${
+                              isMovingThis ? 'ring-2 ring-blue-500 bg-blue-50' : ''
+                            }`}
+                            title={`${colTitle} ${i + 1} (sur ${colMeta.maxScore})`}
+                          >
+                            {/* BANDEAU FLÈCHES BLEUES DE DÉPLACEMENT AU SOMMET DE LA COLONNE */}
+                            {isMovingThis && (
+                              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2 flex items-center gap-0.5 bg-blue-600 text-white rounded-full px-1.5 py-0.5 shadow-lg z-30 animate-in fade-in select-none">
+                                <button
+                                  type="button"
+                                  disabled={i === 0}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSwapColumns(i, i - 1);
+                                  }}
+                                  className={`w-5 h-5 flex items-center justify-center rounded-full hover:bg-blue-700 transition active:scale-90 ${
+                                    i === 0 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                                  }`}
+                                  title="Déplacer cette colonne vers la gauche (←)"
+                                >
+                                  <ArrowLeft className="w-3 h-3 stroke-[3]" />
+                                </button>
+                                <span className="text-[9px] font-bold px-0.5 whitespace-nowrap">
+                                  Déplacer
+                                </span>
+                                <button
+                                  type="button"
+                                  disabled={i >= noteColumnCount - 1}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSwapColumns(i, i + 1);
+                                  }}
+                                  className={`w-5 h-5 flex items-center justify-center rounded-full hover:bg-blue-700 transition active:scale-90 ${
+                                    i >= noteColumnCount - 1 ? 'opacity-30 cursor-not-allowed' : 'cursor-pointer'
+                                  }`}
+                                  title="Déplacer cette colonne vers la droite (→)"
+                                >
+                                  <ArrowRight className="w-3 h-3 stroke-[3]" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setMovingColIndex(null);
+                                  }}
+                                  className="w-4 h-4 ml-0.5 flex items-center justify-center rounded-full hover:bg-red-500 text-white transition cursor-pointer"
+                                  title="Fermer le mode déplacement"
+                                >
+                                  <X className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
+                            )}
+
+                            {/* TITRE ET NUMÉRO AUTOMATIQUE */}
+                            <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase truncate px-1">
+                              {colTitle} {i + 1}
+                            </span>
+                            <span className="text-[9.5px] font-bold text-slate-500">
+                              /{colMeta.maxScore}
+                            </span>
+
+                            {/* BOUTON 3 POINTS ⋮ À LA PLACE DE LA POUBELLE */}
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleDeleteNoteColumn(i);
+                                setActiveMenuCol(prev => prev === i ? null : i);
+                                setActiveColorPicker(null);
                               }}
-                              className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-red-100 text-red-600 transition"
-                              title={`Supprimer la colonne Note ${i + 1}`}
+                              className={`absolute top-1 right-1 p-0.5 rounded transition cursor-pointer ${
+                                isMenuOpen
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'text-slate-400 hover:text-slate-800 hover:bg-slate-200/80 opacity-0 group-hover:opacity-100'
+                              }`}
+                              title={`Options de la colonne ${colTitle} ${i + 1}`}
                             >
-                              <Trash2 className="w-2.5 h-2.5" />
+                              <MoreVertical className="w-3.5 h-3.5 stroke-[2.5]" />
                             </button>
-                          )}
-                        </div>
 
-                        {/* SÉPARATEUR VERTICAL UNIQUE POUR CETTE NOTE */}
-                        {renderColDivider(`col-note-${i}`)}
-                      </React.Fragment>
-                    ))}
+                            {/* MENU CONTEXTUEL RECTANGULAIRE SOIGNÉ */}
+                            {isMenuOpen && (
+                              <div 
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute top-full mt-1 right-0 w-52 bg-white border border-slate-300 rounded-lg shadow-xl z-50 text-left py-1 animate-in fade-in zoom-in-95 select-none"
+                              >
+                                {/* 1. Modifier */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setEditingColModal({
+                                      colIndex: i,
+                                      title: colTitle,
+                                      maxScore: colMeta.maxScore
+                                    });
+                                    setActiveMenuCol(null);
+                                    setActiveColorPicker(null);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 font-semibold transition cursor-pointer"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>Modifier l'intitulé & barème</span>
+                                </button>
+
+                                {/* 2. Déplacer la colonne */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setMovingColIndex(i);
+                                    setActiveMenuCol(null);
+                                    setActiveColorPicker(null);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 hover:bg-blue-50 hover:text-blue-700 font-semibold transition cursor-pointer"
+                                >
+                                  <div className="flex items-center text-blue-600">
+                                    <ArrowLeft className="w-3 h-3 stroke-[3]" />
+                                    <ArrowRight className="w-3 h-3 stroke-[3]" />
+                                  </div>
+                                  <span>Déplacer la colonne</span>
+                                </button>
+
+                                {/* 3. Supprimer toute la colonne */}
+                                {noteColumnCount > 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      handleDeleteNoteColumn(i);
+                                    }}
+                                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-red-600 hover:bg-red-50 font-semibold transition cursor-pointer"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5 text-red-600" />
+                                    <span>Supprimer toute la colonne</span>
+                                  </button>
+                                )}
+
+                                {/* 4. Vider toute la colonne */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    handleClearColumnNotes(i);
+                                    setActiveMenuCol(null);
+                                    setActiveColorPicker(null);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50 font-semibold transition cursor-pointer"
+                                >
+                                  <Eraser className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>Vider toute la colonne</span>
+                                </button>
+
+                                <div className="my-1 border-t border-slate-200" />
+
+                                {/* 5. Colorer la case */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveColorPicker(prev => (prev?.colIndex === i && prev.target === 'header') ? null : { target: 'header', colIndex: i });
+                                  }}
+                                  className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 font-semibold transition cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Palette className="w-3.5 h-3.5 text-purple-600" />
+                                    <span>Colorer la case</span>
+                                  </div>
+                                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                                </button>
+
+                                {/* 6. Colorer toute la colonne */}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveColorPicker(prev => (prev?.colIndex === i && prev.target === 'column') ? null : { target: 'column', colIndex: i });
+                                  }}
+                                  className="w-full flex items-center justify-between px-3 py-1.5 text-xs text-slate-700 hover:bg-slate-100 font-semibold transition cursor-pointer"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Palette className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>Colorer toute la colonne</span>
+                                  </div>
+                                  <ChevronDown className="w-3 h-3 text-slate-400" />
+                                </button>
+
+                                {/* PALETTE DE COULEURS INTÉGRÉE AU MENU */}
+                                {activeColorPicker && activeColorPicker.colIndex === i && (
+                                  <div className="p-2 mt-1 bg-slate-50 border-t border-slate-200 rounded-b-lg">
+                                    <div className="text-[10px] font-bold text-slate-600 mb-1.5">
+                                      {activeColorPicker.target === 'header' ? 'Couleur case en-tête :' : 'Couleur toute la colonne :'}
+                                    </div>
+                                    <div className="grid grid-cols-4 gap-1">
+                                      {PASTEL_PALETTE.map((c, pIdx) => {
+                                        const currentVal = activeColorPicker.target === 'header'
+                                          ? colMeta.headerBgColor
+                                          : colMeta.columnBgColor;
+                                        const isSel = (c.headerBg === '' && !currentVal) || currentVal === (activeColorPicker.target === 'header' ? c.headerBg : c.bg);
+
+                                        return (
+                                          <button
+                                            key={`palette-${i}-${pIdx}`}
+                                            type="button"
+                                            onClick={() => {
+                                              setColumnMetas(prev => ({
+                                                ...prev,
+                                                [i]: {
+                                                  ...prev[i],
+                                                  maxScore: prev[i]?.maxScore || 20,
+                                                  ...(activeColorPicker.target === 'header'
+                                                    ? { headerBgColor: c.headerBg }
+                                                    : { columnBgColor: c.bg, headerBgColor: c.headerBg })
+                                                }
+                                              }));
+                                              setActiveColorPicker(null);
+                                              setActiveMenuCol(null);
+                                              setIsSaved(false);
+                                            }}
+                                            className={`h-6 rounded border flex items-center justify-center transition hover:scale-105 cursor-pointer ${
+                                              isSel ? 'ring-2 ring-blue-500 border-blue-500' : 'border-slate-300 hover:border-slate-400'
+                                            }`}
+                                            style={{ backgroundColor: c.headerBg || '#ffffff' }}
+                                            title={c.name}
+                                          >
+                                            {isSel && <Check className="w-3 h-3 text-blue-600 stroke-[3]" />}
+                                          </button>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+
+                          {/* SÉPARATEUR VERTICAL UNIQUE POUR CETTE NOTE */}
+                          {renderColDivider(`col-note-${i}`)}
+                        </React.Fragment>
+                      );
+                    })}
 
                     {/* 5. BOUTON [+] AJOUTER UNE NOUVELLE NOTE */}
                     <div 
@@ -1321,13 +1778,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             {/* NOTES DYNAMIQUES */}
                             {Array.from({ length: noteColumnCount }).map((_, cIdx) => {
                               const noteVal = std.notes[cIdx] || '';
+                              const colMeta = columnMetas[cIdx] || { maxScore: 20 };
+                              const parsed = parseStudentNote(noteVal, colMeta.maxScore);
                               const isSelectedNote = activeCellInfo.id === `cell-note-${rIdx}-${cIdx}`;
                               const thisNoteWidth = getColWidth(`col-note-${cIdx}`);
+                              const isInvalid = parsed.isInvalid;
+                              const colBg = colMeta.columnBgColor;
 
                               return (
                                 <React.Fragment key={`note-cell-fragment-${std.id}-${cIdx}`}>
                                   <div 
-                                    style={{ width: `${thisNoteWidth}px` }}
+                                    style={{ 
+                                      width: `${thisNoteWidth}px`,
+                                      backgroundColor: isInvalid ? '#fef2f2' : (colBg || undefined)
+                                    }}
                                     onClick={() => {
                                       setActiveCellInfo({
                                         id: `cell-note-${rIdx}-${cIdx}`,
@@ -1335,33 +1799,79 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         rowIndex: rIdx,
                                         noteColIndex: cIdx,
                                         coordDisplay: `N${cIdx + 1}_${rIdx + 1}`,
-                                        value: noteVal
+                                        value: noteVal || `.../${parsed.maxScore}`
                                       });
                                     }}
-                                    className={`flex items-center justify-center p-1 relative shrink-0 ${
-                                      isSelectedNote ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
+                                    className={`flex items-center justify-center p-0.5 relative shrink-0 transition-colors ${
+                                      isInvalid 
+                                        ? 'bg-red-50 border-2 border-red-500 z-10' 
+                                        : isSelectedNote 
+                                        ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' 
+                                        : ''
                                     }`}
                                   >
-                                    <input
-                                      type="text"
-                                      value={noteVal}
-                                      onChange={(e) => handleNoteChange(std.id, cIdx, e.target.value)}
-                                      onFocus={() => {
-                                        setActiveCellInfo({
-                                          id: `cell-note-${rIdx}-${cIdx}`,
-                                          type: 'note',
-                                          rowIndex: rIdx,
-                                          noteColIndex: cIdx,
-                                          coordDisplay: `N${cIdx + 1}_${rIdx + 1}`,
-                                          value: noteVal
-                                        });
-                                      }}
-                                      placeholder="-"
-                                      maxLength={5}
-                                      className="w-full h-full text-center text-xs font-bold text-slate-800 placeholder:text-slate-300 bg-transparent outline-none border border-transparent focus:border-blue-400 focus:bg-white rounded transition"
-                                    />
+                                    {/* INFOBULLE FLOTTANTE SANS BLOQUER LA VUE SI NOTE > MAX */}
+                                    {isInvalid && (
+                                      <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1 bg-red-600 text-white text-[10px] font-bold rounded-lg shadow-xl whitespace-nowrap z-50 pointer-events-none flex items-center gap-1.5 animate-in fade-in zoom-in-95">
+                                        <AlertCircle className="w-3.5 h-3.5 text-white shrink-0" />
+                                        <span>⚠️ La note ne peut pas être supérieure à la note maximale ({parsed.maxScore})</span>
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-0.5 border-4 border-transparent border-t-red-600" />
+                                      </div>
+                                    )}
 
-                                    {isSelectedNote && (
+                                    <div className="flex items-center justify-center w-full min-w-0 px-0.5">
+                                      {/* Note saisie par l'utilisateur */}
+                                      <input
+                                        type="text"
+                                        value={parsed.scoreStr}
+                                        onChange={(e) => {
+                                          const sanitizedScore = e.target.value.replace(/[^0-9.,]/g, '');
+                                          const newRaw = formatStudentNote(sanitizedScore, parsed.maxScore);
+                                          handleRawNoteChange(std.id, cIdx, newRaw);
+                                        }}
+                                        onFocus={() => {
+                                          setActiveCellInfo({
+                                            id: `cell-note-${rIdx}-${cIdx}`,
+                                            type: 'note',
+                                            rowIndex: rIdx,
+                                            noteColIndex: cIdx,
+                                            coordDisplay: `N${cIdx + 1}_${rIdx + 1}`,
+                                            value: noteVal || `.../${parsed.maxScore}`
+                                          });
+                                        }}
+                                        placeholder="..."
+                                        maxLength={6}
+                                        className={`w-[50%] text-right text-xs transition outline-none bg-transparent ${
+                                          isInvalid
+                                            ? 'text-red-600 underline font-black decoration-red-600 decoration-2'
+                                            : 'font-bold text-slate-800 placeholder:text-slate-300'
+                                        }`}
+                                      />
+
+                                      {/* SÉPARATEUR FIXE NON MODIFIABLE */}
+                                      <span className={`px-0.5 text-xs font-bold select-none pointer-events-none ${
+                                        isInvalid ? 'text-red-500' : 'text-slate-400'
+                                      }`}>
+                                        /
+                                      </span>
+
+                                      {/* Barème maximal (défaut 20, modifiable) */}
+                                      <input
+                                        type="text"
+                                        value={parsed.maxScore}
+                                        onChange={(e) => {
+                                          const sanitizedMax = e.target.value.replace(/[^0-9.]/g, '');
+                                          const newMax = parseFloat(sanitizedMax) || 20;
+                                          const newRaw = formatStudentNote(parsed.scoreStr, newMax);
+                                          handleRawNoteChange(std.id, cIdx, newRaw);
+                                        }}
+                                        maxLength={4}
+                                        className="w-[45%] text-left text-[11px] font-semibold text-slate-500 hover:text-slate-800 focus:text-blue-600 transition outline-none bg-transparent"
+                                        title="Barème maximal pour cette case"
+                                      />
+                                    </div>
+
+                                    {isSelectedNote && !isInvalid && (
                                       <div className="absolute -bottom-[3px] -right-[3px] w-2 h-2 bg-[#107c41] border border-white cursor-crosshair z-20 pointer-events-none" />
                                     )}
                                   </div>
@@ -1389,16 +1899,30 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   type: 'average',
                                   rowIndex: rIdx,
                                   coordDisplay: `MOY${rIdx + 1}`,
-                                  value: std.average !== null ? `=MOYENNE(Notes) => ${std.averageFormatted}` : ''
+                                  value: std.hasInvalidNote
+                                    ? 'Moyenne bloquée : une ou plusieurs notes dépassent le barème maximal'
+                                    : std.average !== null 
+                                    ? `=MOYENNE(Notes) => ${std.averageFormatted}` 
+                                    : ''
                                 });
                               }}
-                              className={`flex items-center justify-between px-2 cursor-pointer relative bg-blue-50/40 shrink-0 ${
-                                activeCellInfo.id === `cell-avg-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-100/50' : ''
+                              className={`flex items-center justify-between px-2 cursor-pointer relative shrink-0 transition-colors ${
+                                std.hasInvalidNote
+                                  ? 'bg-slate-200 text-slate-400 border border-slate-300'
+                                  : 'bg-blue-50/40'
+                              } ${
+                                activeCellInfo.id === `cell-avg-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10' : ''
                               }`}
-                              title="Moyenne automatique calculée d'après les notes saisies"
+                              title={
+                                std.hasInvalidNote
+                                  ? 'Moyenne non calculée : une note dépasse le barème maximal'
+                                  : 'Moyenne générale de l\'élève'
+                              }
                             >
                               <span className={`w-full text-center text-xs font-black tracking-tight ${
-                                std.average === null
+                                std.hasInvalidNote
+                                  ? 'text-slate-400 font-mono text-sm tracking-widest'
+                                  : std.average === null
                                   ? 'text-slate-300'
                                   : std.average >= 12
                                   ? 'text-emerald-700 bg-emerald-50/90 py-0.5 px-1.5 rounded border border-emerald-300'
@@ -1406,7 +1930,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   ? 'text-blue-700 bg-blue-50/90 py-0.5 px-1.5 rounded border border-blue-300'
                                   : 'text-rose-700 bg-rose-50/90 py-0.5 px-1.5 rounded border border-rose-300'
                               }`}>
-                                {std.averageFormatted || '-'}
+                                {std.hasInvalidNote ? '...' : (std.averageFormatted || '-')}
                               </span>
 
                               <button
@@ -1618,6 +2142,117 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           </span>
         </div>
       </footer>
+
+      {/* ========================================================================= */}
+      {/* 6. MODALE DE MODIFICATION D'INTITULÉ & BARÈME DE COLONNE                   */}
+      {/* ========================================================================= */}
+      {editingColModal && (
+        <div 
+          className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in"
+          onClick={() => setEditingColModal(null)}
+        >
+          <div 
+            className="bg-white rounded-xl shadow-2xl border border-slate-300 w-full max-w-sm overflow-hidden animate-in zoom-in-95"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Edit2 className="w-4 h-4 text-blue-600" />
+                <h3 className="font-bold text-slate-800 text-sm">
+                  Modifier la colonne {editingColModal.colIndex + 1}
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingColModal(null)}
+                className="p-1 rounded-md text-slate-400 hover:text-slate-600 hover:bg-slate-200/60 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-4 space-y-4">
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Intitulé de la colonne (numéro automatique {editingColModal.colIndex + 1} conservé)
+                </label>
+                <input
+                  type="text"
+                  value={editingColModal.title}
+                  onChange={(e) => setEditingColModal(prev => prev ? { ...prev, title: e.target.value } : null)}
+                  placeholder="Ex: NOTE, DEVOIR, INTERRO, TP, EXAMEN..."
+                  className="w-full h-9 px-3 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 uppercase"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Aperçu : <strong className="text-slate-700">{editingColModal.title.trim().toUpperCase() || 'NOTE'} {editingColModal.colIndex + 1}</strong>
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Barème maximal par défaut (sur combien)
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={100}
+                  value={editingColModal.maxScore}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setEditingColModal(prev => prev ? { ...prev, maxScore: isNaN(val) ? 20 : val } : null);
+                  }}
+                  className="w-full h-9 px-3 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Exemple : 20 pour une note sur 20, 10 pour une note sur 10.
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-50 border-t border-slate-200 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setEditingColModal(null)}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-bold text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const idx = editingColModal.colIndex;
+                  const cleanTitle = editingColModal.title.trim().toUpperCase() || 'NOTE';
+                  const cleanMax = editingColModal.maxScore > 0 ? editingColModal.maxScore : 20;
+
+                  setColumnMetas(prev => ({
+                    ...prev,
+                    [idx]: {
+                      ...prev[idx],
+                      title: cleanTitle,
+                      maxScore: cleanMax
+                    }
+                  }));
+
+                  // Mettre à jour le barème max chez les élèves
+                  setStudents(prev => prev.map(s => {
+                    const currentNote = s.notes[idx] || '';
+                    const parsed = parseStudentNote(currentNote, cleanMax);
+                    const copyNotes = [...s.notes];
+                    copyNotes[idx] = formatStudentNote(parsed.scoreStr, cleanMax);
+                    return { ...s, notes: copyNotes };
+                  }));
+
+                  setEditingColModal(null);
+                  setIsSaved(false);
+                }}
+                className="px-4 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-xs transition active:scale-95 cursor-pointer"
+              >
+                Enregistrer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
