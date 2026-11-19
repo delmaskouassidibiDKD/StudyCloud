@@ -394,6 +394,19 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     }));
   }, [noteColumnCount]);
 
+  // Désélectionner les lignes et fermer les menus avec la touche Échap
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedLine(null);
+        setActiveMenuCol(null);
+        setActiveColorPicker(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   // Gestion du zoom avec touchpad (Ctrl + wheel) et tactile 2 doigts
   useEffect(() => {
     const container = gridContainerRef.current;
@@ -773,30 +786,37 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   };
 
   // Lancement du redimensionnement d'une colonne verticale spécifique
+  // Lancement du redimensionnement d'une colonne verticale spécifique
   const handleStartColResize = (e: React.MouseEvent | React.TouchEvent, colId: string) => {
     e.preventDefault();
     e.stopPropagation();
-    // Sélectionne et redimensionne STRICTEMENT cette ligne, efface toute autre sélection
-    setSelectedLine({ type: 'col', id: colId });
-    setResizingLine({ type: 'col', id: colId });
 
     const startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
     const initialWidth = getColWidth(colId);
     const minWidth = getColMinWidth(colId);
+    let hasMoved = false;
 
     const handleMouseMove = (moveEvent: MouseEvent | TouchEvent) => {
-      moveEvent.preventDefault();
-      moveEvent.stopPropagation();
       const curX = 'touches' in moveEvent ? moveEvent.touches[0].clientX : moveEvent.clientX;
       const deltaX = curX - startX;
-      // Arrêt automatique bloqué à minWidth pour que le texte ne soit jamais tronqué ni coupé par des pointillés
-      const newWidth = Math.max(minWidth, Math.round(initialWidth + deltaX));
-      setColWidth(colId, newWidth);
+      if (Math.abs(deltaX) > 2) {
+        if (!hasMoved) {
+          hasMoved = true;
+          setSelectedLine({ type: 'col', id: colId });
+          setResizingLine({ type: 'col', id: colId });
+        }
+        moveEvent.preventDefault();
+        moveEvent.stopPropagation();
+        const newWidth = Math.max(minWidth, Math.round(initialWidth + deltaX));
+        setColWidth(colId, newWidth);
+      }
     };
 
     const handleMouseUp = (upEvent: MouseEvent | TouchEvent) => {
-      upEvent.stopPropagation();
-      setResizingLine(null);
+      if (hasMoved) {
+        upEvent.stopPropagation();
+        setResizingLine(null);
+      }
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('touchmove', handleMouseMove);
@@ -814,30 +834,36 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     e.preventDefault();
     e.stopPropagation();
     const rowKey = `row-${rowIndex}`;
-    // Sélectionne et redimensionne STRICTEMENT cette ligne horizontale, efface toute sélection verticale
-    setSelectedLine({ type: 'row', id: rowKey });
-    setResizingLine({ type: 'row', id: rowKey });
 
     const startY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     const initialHeight = customRowHeights[rowIndex] || 44;
-    const minHeight = 42;
+    const minHeight = 44;
+    let hasMoved = false;
 
     const handleMouseMove = (moveEvent: MouseEvent | TouchEvent) => {
-      moveEvent.preventDefault();
-      moveEvent.stopPropagation();
       const curY = 'touches' in moveEvent ? moveEvent.touches[0].clientY : moveEvent.clientY;
       const deltaY = curY - startY;
-      const newHeight = Math.max(minHeight, Math.round(initialHeight + deltaY));
-
-      setCustomRowHeights(prev => ({
-        ...prev,
-        [rowIndex]: newHeight
-      }));
+      if (Math.abs(deltaY) > 2) {
+        if (!hasMoved) {
+          hasMoved = true;
+          setSelectedLine({ type: 'row', id: rowKey });
+          setResizingLine({ type: 'row', id: rowKey });
+        }
+        moveEvent.preventDefault();
+        moveEvent.stopPropagation();
+        const newHeight = Math.max(minHeight, Math.round(initialHeight + deltaY));
+        setCustomRowHeights(prev => ({
+          ...prev,
+          [rowIndex]: newHeight
+        }));
+      }
     };
 
     const handleMouseUp = (upEvent: MouseEvent | TouchEvent) => {
-      upEvent.stopPropagation();
-      setResizingLine(null);
+      if (hasMoved) {
+        upEvent.stopPropagation();
+        setResizingLine(null);
+      }
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('touchmove', handleMouseMove);
@@ -850,8 +876,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     window.addEventListener('touchend', handleMouseUp);
   };
 
-  // Composant réutilisable pour afficher un séparateur vertical continu de haut en bas
-  const renderColDivider = (colId: string) => {
+  // Poignée interactive discrète superposée sur la bordure droite de chaque colonne
+  // Ne casse PAS le flex ni les bordures CSS normales : position absolue z-20
+  const renderColHandle = (colId: string) => {
     const active = isColActive(colId);
     return (
       <div
@@ -862,19 +889,40 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         }}
         onMouseDown={(e) => handleStartColResize(e, colId)}
         onTouchStart={(e) => handleStartColResize(e, colId)}
-        className="relative w-[10px] -mx-[5px] h-full cursor-col-resize z-20 flex items-center justify-center shrink-0 select-none"
-        title="Double-cliquer pour sélectionner ou faire glisser pour redimensionner"
+        className="absolute top-0 -right-2 w-4 h-full cursor-col-resize z-20 select-none flex items-center justify-center pointer-events-auto"
+        title="Double-cliquer pour sélectionner la ligne, glisser pour agrandir/réduire la colonne"
       >
-        <div className={`transition-all duration-150 ${
-          active
-            ? 'w-[3px] h-full bg-blue-600 shadow-[0_0_8px_#2563eb] z-30'
-            : 'w-[1px] h-full bg-slate-700/80 hover:bg-slate-400'
-        }`} />
+        {active && (
+          <div className="w-[3px] h-full bg-blue-600 shadow-[0_0_8px_#2563eb] pointer-events-none" />
+        )}
       </div>
     );
   };
 
-  // Poignée astérisque rouge (*) extérieure
+  // Poignée interactive discrète superposée sur la bordure inférieure de chaque ligne d'élève
+  // Ne casse PAS la hauteur ni les bordures : position absolue z-20
+  const renderRowHandle = (rowIndex: number) => {
+    const active = isRowActive(rowIndex);
+    return (
+      <div
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          const rowKey = `row-${rowIndex}`;
+          setSelectedLine(prev => (prev?.type === 'row' && prev.id === rowKey) ? null : { type: 'row', id: rowKey });
+        }}
+        onMouseDown={(e) => handleStartRowResize(e, rowIndex)}
+        onTouchStart={(e) => handleStartRowResize(e, rowIndex)}
+        className="absolute -bottom-2 left-0 w-full h-4 cursor-row-resize z-20 select-none flex items-center justify-center pointer-events-auto"
+        title="Double-cliquer pour sélectionner la ligne, glisser pour agrandir/réduire la ligne"
+      >
+        {active && (
+          <div className="w-full h-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb] pointer-events-none" />
+        )}
+      </div>
+    );
+  };
+
   const handleStartRightResize = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     setIsDraggingRight(true);
@@ -1315,6 +1363,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                 {/* =================================================================== */}
                 {/* =================================================================== */}
+                {/* =================================================================== */}
                 {/* LE TABLEAU MODERNE PROFESSIONNEL (Bordures bien visibles et carrées) */}
                 {/* RANG | PROFIL | NOM & PRÉNOM | NOTE 1... NOTE N | [+] | MOYENNE     */}
                 {/* =================================================================== */}
@@ -1323,32 +1372,38 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   <div className="flex bg-[#f1f5f9] border-b-2 border-slate-900 select-none items-stretch text-slate-900">
                     {/* 1. RANG */}
                     <div 
-                      className="w-16 sm:w-18 h-12 border-r border-slate-700 flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0"
+                      style={{ width: `${colWidthRank}px` }}
+                      className="h-12 border-r border-slate-700 flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative"
                       title="Rang de l'élève (classement)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         RANG
                       </span>
+                      {renderColHandle('col-rank')}
                     </div>
 
                     {/* 2. PROFIL / PHOTO */}
                     <div 
-                      className="w-18 sm:w-20 h-12 border-r border-slate-700 flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0"
+                      style={{ width: `${colWidthPhoto}px` }}
+                      className="h-12 border-r border-slate-700 flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative"
                       title="Profil / Photo de l'élève"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         PROFIL
                       </span>
+                      {renderColHandle('col-photo')}
                     </div>
 
                     {/* 3. NOM & PRÉNOM */}
                     <div 
-                      className="w-60 sm:w-72 h-12 border-r border-slate-700 flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0"
+                      style={{ width: `${colWidthName}px` }}
+                      className="h-12 border-r border-slate-700 flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative"
                       title="Nom et Prénom de l'élève"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         NOM & PRÉNOM
                       </span>
+                      {renderColHandle('col-name')}
                     </div>
 
                     {/* 4. COLONNES DE NOTES DYNAMIQUES */}
@@ -1358,12 +1413,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       const headerBg = colMeta.headerBgColor || colMeta.columnBgColor || '#f1f5f9';
                       const isMovingThis = movingColIndex === i;
                       const isMenuOpen = activeMenuCol === i;
+                      const thisColWidth = getColWidth(`col-note-${i}`);
 
                       return (
                         <div 
                           key={`header-note-${i}`}
                           style={{ 
-                            width: `${noteColWidth}px`,
+                            width: `${thisColWidth}px`,
                             backgroundColor: headerBg 
                           }}
                           className={`h-12 border-r border-slate-700 flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors ${
@@ -1571,13 +1627,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               )}
                             </div>
                           )}
+
+                          {/* Poignée interactive de sélection & redimensionnement de colonne */}
+                          {renderColHandle(`col-note-${i}`)}
                         </div>
                       );
                     })}
 
                     {/* 5. BOUTON [+] AJOUTER UNE NOUVELLE NOTE */}
                     <div 
-                      className="w-12 h-12 border-r border-slate-700 flex items-center justify-center bg-slate-200/70 hover:bg-blue-100 transition cursor-pointer shrink-0"
+                      className="w-12 h-12 border-r border-slate-700 flex items-center justify-center bg-slate-200/70 hover:bg-blue-100 transition cursor-pointer shrink-0 relative"
                       onClick={handleAddNoteColumn}
                       title="Ajouter une colonne de note (Note suivante)"
                     >
@@ -1587,11 +1646,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       >
                         <Plus className="w-4 h-4 stroke-[3]" />
                       </button>
+                      {renderColHandle('col-moyenne')}
                     </div>
 
                     {/* 6. MOYENNE */}
                     <div 
-                      className="w-24 sm:w-28 h-12 flex items-center justify-center p-1 text-center bg-blue-100/70 shrink-0"
+                      style={{ width: `${colWidthAverage}px` }}
+                      className="h-12 flex items-center justify-center p-1 text-center bg-blue-100/70 shrink-0 relative"
                       title="Moyenne générale de l'élève"
                     >
                       <span className="font-black text-xs sm:text-sm text-blue-950 tracking-wider uppercase">
@@ -1606,16 +1667,22 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   <div className="divide-y divide-slate-400 bg-white">
                     {studentsWithStats.map((std, rIdx) => {
                       const isRowSelected = activeCellInfo.rowIndex === rIdx;
+                      const customHeight = customRowHeights[rIdx];
 
                       return (
                         <div 
                           key={std.id}
-                          className={`flex items-stretch h-11 transition-colors ${
+                          style={{ 
+                            height: customHeight ? `${customHeight}px` : undefined,
+                            minHeight: '44px'
+                          }}
+                          className={`flex items-stretch transition-colors relative ${
                             isRowSelected ? 'bg-blue-50/30' : 'hover:bg-slate-50/70'
                           }`}
                         >
                           {/* RANG */}
                           <div 
+                            style={{ width: `${colWidthRank}px` }}
                             onClick={() => {
                               setActiveCellInfo({
                                 id: `cell-rank-${rIdx}`,
@@ -1625,7 +1692,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.rank ? `=RANG(M${rIdx + 1})` : ''
                               });
                             }}
-                            className={`w-16 sm:w-18 h-11 border-r border-slate-700 flex items-center justify-center p-1 cursor-pointer relative shrink-0 ${
+                            className={`h-full border-r border-slate-700 flex items-center justify-center p-1 cursor-pointer relative shrink-0 ${
                               activeCellInfo.id === `cell-rank-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-emerald-50/40' : ''
                             }`}
                           >
@@ -1644,10 +1711,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             ) : (
                               <span className="text-slate-300 text-xs font-semibold">-</span>
                             )}
+                            {renderColHandle('col-rank')}
                           </div>
 
                           {/* PROFIL / PHOTO */}
                           <div 
+                            style={{ width: `${colWidthPhoto}px` }}
                             onClick={() => {
                               setActiveCellInfo({
                                 id: `cell-photo-${rIdx}`,
@@ -1657,7 +1726,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.photoUrl ? 'Photo chargée' : 'Aucune photo'
                               });
                             }}
-                            className={`w-18 sm:w-20 h-11 border-r border-slate-700 flex items-center justify-center p-1 cursor-pointer relative group shrink-0 ${
+                            className={`h-full border-r border-slate-700 flex items-center justify-center p-1 cursor-pointer relative group shrink-0 ${
                               activeCellInfo.id === `cell-photo-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
                             }`}
                             title="Cliquer pour changer la photo de l'élève"
@@ -1674,10 +1743,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 </div>
                               )}
                             </div>
+                            {renderColHandle('col-photo')}
                           </div>
 
                           {/* NOM & PRÉNOM */}
                           <div 
+                            style={{ width: `${colWidthName}px` }}
                             onClick={() => {
                               setActiveCellInfo({
                                 id: `cell-name-${rIdx}`,
@@ -1687,12 +1758,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.name
                               });
                             }}
-                            className={`w-60 sm:w-72 h-11 border-r border-slate-700 flex items-center p-1.5 relative shrink-0 ${
+                            className={`h-full border-r border-slate-700 flex items-center justify-center p-1.5 relative shrink-0 ${
                               activeCellInfo.id === `cell-name-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
                             }`}
                           >
-                            <input
-                              type="text"
+                            <textarea
                               value={std.name}
                               onChange={(e) => handleNameChange(std.id, e.target.value)}
                               onFocus={() => {
@@ -1704,8 +1774,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   value: std.name
                                 });
                               }}
+                              rows={1}
                               placeholder={`Nom et prénom élève ${rIdx + 1}...`}
-                              className="w-full h-full text-center px-2 text-xs font-semibold text-slate-800 placeholder:text-slate-300 bg-transparent outline-none border border-transparent focus:border-blue-400 focus:bg-white rounded transition"
+                              className="w-full text-center text-xs font-semibold text-slate-800 placeholder:text-slate-300 bg-transparent outline-none border border-transparent focus:border-blue-400 focus:bg-white rounded transition resize-none overflow-hidden py-1 px-2 leading-snug my-auto whitespace-pre-wrap break-words"
                               style={{
                                 textAlign,
                                 fontWeight: isBold ? 'bold' : '600',
@@ -1713,6 +1784,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 textDecoration: isUnderline ? 'underline' : isStrikethrough ? 'line-through' : 'none',
                               }}
                             />
+                            {renderColHandle('col-name')}
                           </div>
 
                           {/* NOTES DYNAMIQUES */}
@@ -1723,12 +1795,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             const isSelectedNote = activeCellInfo.id === `cell-note-${rIdx}-${cIdx}`;
                             const isInvalid = parsed.isInvalid;
                             const colBg = colMeta.columnBgColor;
+                            const thisNoteWidth = getColWidth(`col-note-${cIdx}`);
 
                             return (
                               <div 
                                 key={`note-cell-${std.id}-${cIdx}`}
                                 style={{ 
-                                  width: `${noteColWidth}px`,
+                                  width: `${thisNoteWidth}px`,
                                   backgroundColor: isInvalid ? '#fef2f2' : (colBg || undefined)
                                 }}
                                 onClick={() => {
@@ -1741,7 +1814,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     value: noteVal || `.../${parsed.maxScore}`
                                   });
                                 }}
-                                className={`h-11 border-r border-slate-700 flex items-center justify-center px-1 relative shrink-0 transition-colors ${
+                                className={`h-full border-r border-slate-700 flex items-center justify-center px-1 relative shrink-0 transition-colors ${
                                   isInvalid 
                                     ? 'bg-red-50 ring-2 ring-red-500 z-10' 
                                     : isSelectedNote 
@@ -1813,17 +1886,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 {isSelectedNote && !isInvalid && (
                                   <div className="absolute -bottom-[3px] -right-[3px] w-2 h-2 bg-[#107c41] border border-white cursor-crosshair z-20 pointer-events-none" />
                                 )}
+                                {renderColHandle(`col-note-${cIdx}`)}
                               </div>
                             );
                           })}
 
                           {/* Case vide sous le bouton [+] */}
-                          <div className="w-12 h-11 border-r border-slate-700 bg-slate-50/60 flex items-center justify-center shrink-0">
+                          <div className="w-12 h-full border-r border-slate-700 bg-slate-50/60 flex items-center justify-center shrink-0 relative">
                             <span className="text-slate-200 text-xs">•</span>
+                            {renderColHandle('col-moyenne')}
                           </div>
 
                           {/* MOYENNE */}
                           <div 
+                            style={{ width: `${colWidthAverage}px` }}
                             onClick={() => {
                               setActiveCellInfo({
                                 id: `cell-avg-${rIdx}`,
@@ -1837,7 +1913,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   : ''
                               });
                             }}
-                            className={`w-24 sm:w-28 h-11 flex items-center justify-between px-2 cursor-pointer relative shrink-0 transition-colors ${
+                            className={`h-full flex items-center justify-between px-2 cursor-pointer relative shrink-0 transition-colors ${
                               std.hasInvalidNote
                                 ? 'bg-slate-200 text-slate-400 border border-slate-300'
                                 : 'bg-blue-50/40'
@@ -1876,6 +1952,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
+
+                          {/* POIGNÉE DE SÉLECTION & REDIMENSIONNEMENT DE LA LIGNE HORIZONTALE */}
+                          {renderRowHandle(rIdx)}
                         </div>
                       );
                     })}
