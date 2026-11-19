@@ -368,8 +368,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Cellule active pour la barre de formule
   const [activeCellInfo, setActiveCellInfo] = useState<{
     id: string;
-    type: 'rank' | 'photo' | 'name' | 'note' | 'average';
-    rowIndex: number;
+    type: 'rank' | 'photo' | 'name' | 'note' | 'average' | 'column';
+    rowIndex?: number;
     noteColIndex?: number;
     coordDisplay: string;
     value: string;
@@ -1090,11 +1090,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         onDoubleClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
-          setSelectedLine(prev => (prev?.type === 'col' && prev.id === colId) ? null : { type: 'col', id: colId });
+          // Le double-clic garantit toujours la sélection de la ligne verticale
+          setSelectedLine({ type: 'col', id: colId });
         }}
         onMouseDown={(e) => handleStartColResize(e, colId)}
         onTouchStart={(e) => handleStartColResize(e, colId)}
-        className="absolute top-0 -right-2.5 w-5 h-full cursor-col-resize z-20 select-none flex items-center justify-center pointer-events-auto hover:bg-blue-500/20 transition-colors"
+        className="absolute top-0 -right-2.5 w-5 h-full cursor-col-resize z-20 select-none flex items-center justify-center pointer-events-auto hover:bg-blue-500/25 transition-colors"
         title="Cliquer ou double-cliquer pour sélectionner le trait vertical, glisser pour agrandir/réduire la colonne"
       >
         {active ? (
@@ -1589,13 +1590,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {/* 1. RANG */}
                     <div 
                       style={{ width: `${colWidthRank}px` }}
-                      onClick={() => setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-rank') ? null : { type: 'col', id: 'col-rank' })}
+                      onClick={() => {
+                        setActiveCellInfo({
+                          id: 'header-rank',
+                          type: 'column',
+                          coordDisplay: 'RANG',
+                          value: 'RANG'
+                        });
+                      }}
                       onDoubleClick={(e) => {
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-rank') ? null : { type: 'col', id: 'col-rank' });
                       }}
                       className={`h-12 border-r ${isColActive('col-rank') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
-                      title="Rang de l'élève (Cliquer pour sélectionner le trait vertical)"
+                      title="Rang de l'élève (Double-cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         RANG
@@ -1606,13 +1614,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {/* 2. PROFIL / PHOTO */}
                     <div 
                       style={{ width: `${colWidthPhoto}px` }}
-                      onClick={() => setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-photo') ? null : { type: 'col', id: 'col-photo' })}
+                      onClick={() => {
+                        setActiveCellInfo({
+                          id: 'header-photo',
+                          type: 'column',
+                          coordDisplay: 'PROFIL',
+                          value: 'PROFIL'
+                        });
+                      }}
                       onDoubleClick={(e) => {
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-photo') ? null : { type: 'col', id: 'col-photo' });
                       }}
                       className={`h-12 border-r ${isColActive('col-photo') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
-                      title="Profil / Photo (Cliquer pour sélectionner le trait vertical)"
+                      title="Profil / Photo (Double-cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         PROFIL
@@ -1623,13 +1638,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {/* 3. NOM & PRÉNOM */}
                     <div 
                       style={{ width: `${colWidthName}px` }}
-                      onClick={() => setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-name') ? null : { type: 'col', id: 'col-name' })}
+                      onClick={() => {
+                        setActiveCellInfo({
+                          id: 'header-name',
+                          type: 'column',
+                          coordDisplay: 'NOM & PRÉNOM',
+                          value: 'NOM & PRÉNOM'
+                        });
+                      }}
                       onDoubleClick={(e) => {
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-name') ? null : { type: 'col', id: 'col-name' });
                       }}
                       className={`h-12 border-r ${isColActive('col-name') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative group cursor-pointer`}
-                      title="Nom et Prénom (Cliquer pour sélectionner le trait vertical)"
+                      title="Nom et Prénom (Double-cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         NOM & PRÉNOM
@@ -1776,7 +1798,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             width: `${thisColWidth}px`,
                             backgroundColor: headerBg 
                           }}
-                          onClick={() => setSelectedLine(prev => (prev?.type === 'col' && prev.id === `col-note-${i}`) ? null : { type: 'col', id: `col-note-${i}` })}
+                          onClick={() => {
+                            setActiveCellInfo({
+                              id: `header-note-${i}`,
+                              type: 'column',
+                              noteColIndex: i,
+                              coordDisplay: `${colTitle} ${i + 1}`,
+                              value: `${colTitle} ${i + 1} (Barème: ${colMeta.maxScore})`
+                            });
+                          }}
                           onDoubleClick={(e) => {
                             e.stopPropagation();
                             setSelectedLine(prev => (prev?.type === 'col' && prev.id === `col-note-${i}`) ? null : { type: 'col', id: `col-note-${i}` });
@@ -1784,7 +1814,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           className={`h-12 border-r ${isColActive(`col-note-${i}`) ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors cursor-pointer ${
                             isMovingThis ? 'ring-2 ring-blue-500 bg-blue-50' : ''
                           }`}
-                          title={`${colTitle} ${i + 1} (Cliquer pour sélectionner le trait vertical)`}
+                          title={`${colTitle} ${i + 1} (Double-cliquer pour sélectionner le trait vertical)`}
                         >
                           {/* BANDEAU FLÈCHES BLEUES DE DÉPLACEMENT AU SOMMET DE LA COLONNE */}
                           {isMovingThis && (
@@ -2008,7 +2038,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                     {/* 5. BOUTON [+] AJOUTER UNE NOUVELLE NOTE */}
                     <div 
-                      className={`w-12 h-12 border-r ${isColActive('col-moyenne') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center bg-slate-200/70 hover:bg-blue-100 transition cursor-pointer shrink-0 relative`}
+                      className="w-12 h-12 border-r border-slate-700 flex items-center justify-center bg-slate-200/70 hover:bg-blue-100 transition cursor-pointer shrink-0 relative"
                       onClick={handleAddNoteColumn}
                       title="Ajouter une colonne de note (Note suivante)"
                     >
@@ -2018,25 +2048,32 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       >
                         <Plus className="w-4 h-4 stroke-[3]" />
                       </button>
-                      {renderColHandle('col-moyenne')}
                     </div>
 
                     {/* 6. MOYENNE */}
                     <div 
                       style={{ width: `${colWidthAverage}px` }}
-                      onClick={() => setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' })}
+                      onClick={() => {
+                        setActiveCellInfo({
+                          id: 'header-average',
+                          type: 'column',
+                          coordDisplay: 'MOYENNE',
+                          value: 'MOYENNE'
+                        });
+                      }}
                       onDoubleClick={(e) => {
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' });
                       }}
-                      className={`h-12 flex items-center justify-center p-1 text-center bg-blue-100/70 shrink-0 relative cursor-pointer ${
-                        isColActive('col-moyenne') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : ''
-                      }`}
-                      title="Moyenne générale (Cliquer pour sélectionner le trait vertical)"
+                      className={`h-12 border-r ${
+                        isColActive('col-moyenne') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'
+                      } flex items-center justify-center p-1 text-center bg-blue-100/70 shrink-0 relative cursor-pointer`}
+                      title="Moyenne générale (Double-cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-blue-950 tracking-wider uppercase">
                         MOYENNE
                       </span>
+                      {renderColHandle('col-moyenne')}
                     </div>
                   </div>
 
@@ -2100,6 +2137,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             ) : (
                               <span className="text-slate-300 text-sm font-bold">-</span>
                             )}
+                            {renderColHandle('col-rank')}
                           </div>
 
                           {/* PROFIL / PHOTO : IMAGE CARRÉE OCCUPANT TOUT L'ESPACE AVEC MENU 3 POINTS */}
@@ -2109,13 +2147,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               height: `${rowHeight}px`,
                               backgroundColor: rowBg || undefined
                             }}
-                            className={`border-r ${isColActive('col-photo') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center p-0 relative group shrink-0 overflow-hidden ${
+                            className={`border-r ${isColActive('col-photo') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center p-0 relative group shrink-0 ${
                               activeCellInfo.id === `cell-photo-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
                             }`}
                             title={std.photoUrl ? "Cliquer pour voir la photo de l'élève" : "Cliquer pour ajouter une photo"}
                           >
                             {std.photoUrl ? (
-                              <div className="w-full h-full relative group/photo">
+                              <div className="w-full h-full relative group/photo overflow-hidden">
                                 <img 
                                   src={std.photoUrl} 
                                   alt={std.name || 'Élève'} 
@@ -2196,6 +2234,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 <span className="text-[8.5px] font-bold mt-0.5 text-slate-400 leading-none">+ Photo</span>
                               </button>
                             )}
+                            {renderColHandle('col-photo')}
                           </div>
 
                           {/* NOM & PRÉNOM */}
@@ -2367,6 +2406,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 </button>
                               </div>
                             )}
+                            {renderColHandle('col-name')}
                           </div>
 
                           {/* NOTES DYNAMIQUES */}
@@ -2631,6 +2671,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     title="Cliquer pour recopier cette note vers le bas (remplir toutes les lignes suivantes)"
                                   />
                                 )}
+                                {renderColHandle(`col-note-${cIdx}`)}
                               </div>
                             );
                           })}
@@ -2642,7 +2683,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               height: `${rowHeight}px`,
                               backgroundColor: rowBg || undefined
                             }}
-                            className={`border-r ${isColActive('col-moyenne') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} bg-slate-50/60 flex items-center justify-center shrink-0 relative`}
+                            className={`border-r border-slate-700 ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} bg-slate-50/60 flex items-center justify-center shrink-0 relative`}
                           >
                             <span className="text-slate-200 text-xs">•</span>
                           </div>
@@ -2667,7 +2708,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   : ''
                               });
                             }}
-                            className={`flex items-center justify-between px-2 cursor-pointer relative shrink-0 transition-colors ${
+                            onDoubleClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' });
+                            }}
+                            className={`border-r ${isColActive('col-moyenne') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-between px-2 cursor-pointer relative shrink-0 transition-colors ${
                               isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'
                             } ${
                               std.hasInvalidNote
@@ -2707,6 +2752,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>
+                            {renderColHandle('col-moyenne')}
                           </div>
 
                           {/* POIGNÉE DE SÉLECTION & REDIMENSIONNEMENT DE LA LIGNE HORIZONTALE */}
