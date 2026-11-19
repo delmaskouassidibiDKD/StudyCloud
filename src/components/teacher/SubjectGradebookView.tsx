@@ -25,7 +25,11 @@ import {
   Download,
   Save,
   Check,
-  ChevronDown
+  ChevronDown,
+  User,
+  Camera,
+  Trash2,
+  Award
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SubjectItem, ClassItem, SchoolItem, SchoolYearItem, TermItem } from './TeacherClassesView';
@@ -41,21 +45,20 @@ interface SubjectGradebookViewProps {
   onBack: () => void;
 }
 
-// Générateur des lettres de colonnes Excel : A, B, C ... Z, AA, AB, AC ...
-const getColumnLabel = (index: number): string => {
-  let label = '';
-  let num = index;
-  while (num >= 0) {
-    label = String.fromCharCode((num % 26) + 65) + label;
-    num = Math.floor(num / 26) - 1;
-  }
-  return label;
-};
+// Structure d'un élève dans le tableau moderne de notes
+export interface StudentGradeRow {
+  id: string;
+  name: string;
+  photoUrl?: string;
+  notes: string[]; // 7 notes (N 1 à N 7)
+}
 
-// 30 colonnes (A à AD)
-const TOTAL_COLUMNS = 30;
-// 45 lignes (1 à 45)
-const TOTAL_ROWS = 45;
+// 7 colonnes de notes comme dessiné sur l'image
+const TOTAL_NOTE_COLS = 7;
+
+// Grille de fond de tableur entourant le tableau (lignes et colonnes)
+const BACKGROUND_EXTRA_COLS = 12;
+const BACKGROUND_EXTRA_ROWS = 25;
 
 export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   subject,
@@ -68,48 +71,45 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const viewerExpandLevel = useViewerExpandLevel();
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
 
-  // Clé de persistance pour les notes de cette matière et ce trimestre
-  const storageKey = `studycloud_gradebook_${subject.id}_${term?.id || 't1'}`;
+  // Clé de persistance pour ce tableau de notes par matière et trimestre
+  const storageKey = `studycloud_student_gradebook_${subject.id}_${term?.id || 't1'}`;
 
-  // Initialisation des données du tableur (Entièrement vierge, aucune valeur pré-enregistrée)
-  const [gridData, setGridData] = useState<string[][]>(() => {
+  // Liste des élèves avec leurs notes (Persistance locale)
+  const [students, setStudents] = useState<StudentGradeRow[]>(() => {
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Si les données sauvegardées contiennent encore les anciens CP-1 ou N°, on les purge
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const hasOldDefaults = parsed.some((r: any) =>
-            Array.isArray(r) && r.some((v: any) => typeof v === 'string' && (v.includes('CP-') || v === 'N°' || v === 'MATRICULE'))
-          );
-          if (!hasOldDefaults) return parsed;
-        }
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
       }
     } catch { }
 
-    // Grille 100% vierge sans aucune valeur pré-enregistrée (sans CP-1, sans N°, sans 1, 2, 3)
-    return Array.from({ length: TOTAL_ROWS }, () =>
-      Array.from({ length: TOTAL_COLUMNS }, () => '')
-    );
+    // 8 lignes d'élèves prêtes à l'emploi par défaut
+    return Array.from({ length: 8 }, (_, i) => ({
+      id: `student-${Date.now()}-${i}`,
+      name: '',
+      photoUrl: undefined,
+      notes: Array(TOTAL_NOTE_COLS).fill('')
+    }));
   });
 
-  // Nettoyage immédiat au montage si l'ancienne clé contenait les valeurs pré-enregistrées
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved && (saved.includes('CP-') || saved.includes('MATRICULE') || saved.includes('N°'))) {
-        localStorage.removeItem(storageKey);
-      }
-    } catch { }
-  }, [storageKey]);
+  // Cellule active sélectionnée pour la barre de formule (champ, ligne, colonne)
+  const [activeCellInfo, setActiveCellInfo] = useState<{
+    id: string;
+    type: 'rank' | 'photo' | 'name' | 'note' | 'average';
+    rowIndex: number;
+    noteColIndex?: number;
+    coordDisplay: string;
+    value: string;
+  }>({
+    id: 'cell-name-0',
+    type: 'name',
+    rowIndex: 0,
+    coordDisplay: 'NO1',
+    value: ''
+  });
 
-  // Cellule active : initialisée sur la première cellule
-  const [selectedCell, setSelectedCell] = useState<{ r: number; c: number }>({ r: 0, c: 0 });
-  const [editingCell, setEditingCell] = useState<{ r: number; c: number } | null>(null);
-  const [formulaValue, setFormulaValue] = useState<string>('');
-  const [editInputVal, setEditInputVal] = useState<string>('');
-
-  // Styles de formatage
+  // Styles de formatage du ruban
   const [isBold, setIsBold] = useState<boolean>(false);
   const [isItalic, setIsItalic] = useState<boolean>(false);
   const [isUnderline, setIsUnderline] = useState<boolean>(false);
@@ -128,166 +128,148 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // État de sauvegarde automatique
   const [isSaved, setIsSaved] = useState<boolean>(true);
 
-  // Référence pour le conteneur du tableau
-  const tableRef = useRef<HTMLDivElement>(null);
-  const cellInputRef = useRef<HTMLInputElement>(null);
-  const formulaInputRef = useRef<HTMLInputElement>(null);
+  // Référence pour l'upload de photo d'élève
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [uploadingStudentId, setUploadingStudentId] = useState<string | null>(null);
 
-  // Coordonnée textuelle de la cellule sélectionnée (ex: "E21")
-  const activeCoordinate = useMemo(() => {
-    return `${getColumnLabel(selectedCell.c)}${selectedCell.r + 1}`;
-  }, [selectedCell]);
-
-  // Synchronisation de la barre de formule lorsque la cellule active change
-  useEffect(() => {
-    const val = gridData[selectedCell.r]?.[selectedCell.c] || '';
-    setFormulaValue(val);
-  }, [selectedCell, gridData]);
-
-  // Focus sur l'input lors de l'édition en cellule
-  useEffect(() => {
-    if (editingCell && cellInputRef.current) {
-      cellInputRef.current.focus();
-    }
-  }, [editingCell]);
-
-  // Sauvegarde persistante avec auto-save
+  // Sauvegarde persistante dans le localStorage
   useEffect(() => {
     try {
-      localStorage.setItem(storageKey, JSON.stringify(gridData));
+      localStorage.setItem(storageKey, JSON.stringify(students));
       setIsSaved(true);
     } catch { }
-  }, [gridData, storageKey]);
+  }, [students, storageKey]);
 
-  // Gestion des raccourcis clavier globaux (Échap, Flèches, Tab, Entrée)
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (editingCell) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          commitCellEdit(editInputVal);
-          // Aller à la cellule du dessous
-          setSelectedCell(prev => ({
-            r: Math.min(TOTAL_ROWS - 1, prev.r + 1),
-            c: prev.c
-          }));
-          setEditingCell(null);
-        } else if (e.key === 'Tab') {
-          e.preventDefault();
-          commitCellEdit(editInputVal);
-          // Aller à la cellule de droite
-          setSelectedCell(prev => ({
-            r: prev.r,
-            c: Math.min(TOTAL_COLUMNS - 1, prev.c + 1)
-          }));
-          setEditingCell(null);
-        } else if (e.key === 'Escape') {
-          setEditingCell(null);
-        }
-        return;
-      }
+  // Calcul dynamique des moyennes (M) et des rangs (R) en temps réel
+  const studentsWithStats = useMemo(() => {
+    // 1. Calcul de la moyenne pour chaque élève
+    const withAverage = students.map((std, idx) => {
+      const validNotes = std.notes
+        .map(n => parseFloat(n.replace(',', '.').trim()))
+        .filter(n => !isNaN(n) && n >= 0 && n <= 20);
 
-      // Si on n'est pas en édition, les flèches déplacent la cellule active
-      if (document.activeElement === formulaInputRef.current) {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          formulaInputRef.current?.blur();
-        }
-        return;
-      }
+      const avg = validNotes.length > 0
+        ? validNotes.reduce((sum, val) => sum + val, 0) / validNotes.length
+        : null;
 
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        setSelectedCell(prev => ({ r: Math.max(0, prev.r - 1), c: prev.c }));
-      } else if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        setSelectedCell(prev => ({ r: Math.min(TOTAL_ROWS - 1, prev.r + 1), c: prev.c }));
-      } else if (e.key === 'ArrowLeft') {
-        e.preventDefault();
-        setSelectedCell(prev => ({ r: prev.r, c: Math.max(0, prev.c - 1) }));
-      } else if (e.key === 'ArrowRight') {
-        e.preventDefault();
-        setSelectedCell(prev => ({ r: prev.r, c: Math.min(TOTAL_COLUMNS - 1, prev.c + 1) }));
-      } else if (e.key === 'Enter') {
-        e.preventDefault();
-        startCellEdit(selectedCell.r, selectedCell.c);
-      } else if (e.key === 'Delete' || e.key === 'Backspace') {
-        commitCellEdit('', selectedCell.r, selectedCell.c);
-      } else if (e.key.length === 1 && !e.ctrlKey && !e.altKey && !e.metaKey) {
-        // Commencer à taper directement dans la cellule
-        startCellEdit(selectedCell.r, selectedCell.c, e.key);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedCell, editingCell, editInputVal]);
-
-  // Commencer l'édition d'une cellule
-  const startCellEdit = (r: number, c: number, initialChar?: string) => {
-    setEditingCell({ r, c });
-    const currentVal = gridData[r]?.[c] || '';
-    setEditInputVal(initialChar !== undefined ? initialChar : currentVal);
-  };
-
-  // Valider et enregistrer la valeur d'une cellule
-  const commitCellEdit = (newVal: string, targetR?: number, targetC?: number) => {
-    const r = targetR !== undefined ? targetR : (editingCell?.r ?? selectedCell.r);
-    const c = targetC !== undefined ? targetC : (editingCell?.c ?? selectedCell.c);
-
-    setGridData(prev => {
-      const copy = prev.map(row => [...row]);
-      while (copy.length <= r) copy.push([]);
-      while (copy[r].length <= c) copy[r].push('');
-      copy[r][c] = newVal;
-      return copy;
+      return {
+        ...std,
+        rowNumber: idx + 1,
+        average: avg,
+        averageFormatted: avg !== null ? avg.toFixed(2) : ''
+      };
     });
 
-    setFormulaValue(newVal);
+    // 2. Attribution automatique des rangs selon la moyenne décroissante
+    const sortedActive = [...withAverage]
+      .filter(s => s.average !== null)
+      .sort((a, b) => b.average! - a.average!);
+
+    const rankMap = new Map<string, string>();
+    let currentRank = 1;
+
+    sortedActive.forEach((s, i) => {
+      if (i > 0 && sortedActive[i - 1].average === s.average) {
+        rankMap.set(s.id, `${currentRank}e ex`);
+      } else {
+        currentRank = i + 1;
+        rankMap.set(s.id, currentRank === 1 ? '1er' : `${currentRank}e`);
+      }
+    });
+
+    return withAverage.map(s => ({
+      ...s,
+      rank: rankMap.get(s.id) || (s.name.trim() ? '-' : '')
+    }));
+  }, [students]);
+
+  // Modification du nom d'un élève
+  const handleNameChange = (studentId: string, newName: string) => {
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, name: newName } : s));
     setIsSaved(false);
   };
 
-  // Modification directe depuis la barre de formule fx
-  const handleFormulaBarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setFormulaValue(val);
-    commitCellEdit(val, selectedCell.r, selectedCell.c);
+  // Modification d'une note N
+  const handleNoteChange = (studentId: string, noteIndex: number, newVal: string) => {
+    // Autorise seulement les chiffres, virgules et points
+    const sanitized = newVal.replace(/[^0-9.,]/g, '');
+    setStudents(prev => prev.map(s => {
+      if (s.id !== studentId) return s;
+      const copyNotes = [...s.notes];
+      copyNotes[noteIndex] = sanitized;
+      return { ...s, notes: copyNotes };
+    }));
+    setIsSaved(false);
   };
 
-  // Export officiel en fichier Excel (.xlsx)
+  // Ajout d'une ligne d'élève
+  const handleAddStudentRow = () => {
+    const newStudent: StudentGradeRow = {
+      id: `student-${Date.now()}-${students.length}`,
+      name: '',
+      photoUrl: undefined,
+      notes: Array(TOTAL_NOTE_COLS).fill('')
+    };
+    setStudents(prev => [...prev, newStudent]);
+    setIsSaved(false);
+  };
+
+  // Suppression d'un élève
+  const handleDeleteStudentRow = (studentId: string) => {
+    if (students.length <= 1) {
+      // Si une seule ligne, juste vider son contenu
+      setStudents([{
+        id: `student-${Date.now()}-0`,
+        name: '',
+        photoUrl: undefined,
+        notes: Array(TOTAL_NOTE_COLS).fill('')
+      }]);
+      return;
+    }
+    setStudents(prev => prev.filter(s => s.id !== studentId));
+    setIsSaved(false);
+  };
+
+  // Déclenchement de l'upload de photo d'élève
+  const handleTriggerPhotoUpload = (studentId: string) => {
+    setUploadingStudentId(studentId);
+    photoInputRef.current?.click();
+  };
+
+  // Réception de l'image sélectionnée
+  const handlePhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !uploadingStudentId) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setStudents(prev => prev.map(s => s.id === uploadingStudentId ? { ...s, photoUrl: base64 } : s));
+      setIsSaved(false);
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
+
+  // Export officiel vers Excel (.xlsx)
   const handleExportExcel = () => {
     try {
-      const ws = XLSX.utils.aoa_to_sheet(gridData);
+      const headers = ['Rang (R)', 'Nom & Prénom (NO)', 'N1', 'N2', 'N3', 'N4', 'N5', 'N6', 'N7', 'Moyenne (M)'];
+      const dataRows = studentsWithStats.map(s => [
+        s.rank,
+        s.name,
+        ...s.notes,
+        s.averageFormatted
+      ]);
+
+      const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, activeSheetTab);
-      const safeName = `${subject.name}_${schoolClass.level}_${term?.name || 'Notes'}.xlsx`.replace(/[^\w\d-_.]/g, '_');
+
+      const safeName = `Releve_Notes_${subject.name}_${schoolClass.level}_${term?.name || 'T1'}.xlsx`.replace(/[^\w\d-_.]/g, '_');
       XLSX.writeFile(wb, safeName);
     } catch (err) {
       console.error('Erreur export Excel:', err);
-    }
-  };
-
-  // Calcul automatique de la moyenne ou somme (AutoSum / Sigma)
-  const handleAutoSum = () => {
-    // Calcule la moyenne des notes CP pour l'élève de la ligne active
-    const r = selectedCell.r;
-    if (r < 4) return; // Ne pas calculer sur les en-têtes
-
-    let total = 0;
-    let count = 0;
-    for (let c = 3; c <= 24; c++) {
-      const raw = (gridData[r]?.[c] || '').replace(',', '.').trim();
-      const num = parseFloat(raw);
-      if (!isNaN(num)) {
-        total += num;
-        count++;
-      }
-    }
-
-    if (count > 0) {
-      const avg = (total / count).toFixed(2);
-      commitCellEdit(avg, r, 25); // Col 25 = Moy. CP
-      commitCellEdit(avg, r, 27); // Col 27 = Moyenne
     }
   };
 
@@ -306,8 +288,17 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           : 'relative w-full h-full min-h-dvh'
       }`}
     >
+      {/* Input invisible pour l'upload des photos d'élèves */}
+      <input
+        ref={photoInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handlePhotoFileChange}
+        className="hidden"
+      />
+
       {/* ========================================================================= */}
-      {/* 1. EN-TÊTE ÉPURÉ AVEC BOUTON RETOUR À GAUCHE ET BOUTONS ZOOMER À DROITE */}
+      {/* 1. EN-TÊTE ÉPURÉ : BOUTON RETOUR À GAUCHE & BOUTONS ZOOMER À DROITE */}
       {/* ========================================================================= */}
       <header className="h-11 sm:h-12 bg-white border-b border-slate-300 px-3 sm:px-4 flex items-center justify-between gap-3 shrink-0 z-20 shadow-xs">
         {/* À GAUCHE : Bouton Retour sur la même ligne horizontale */}
@@ -610,9 +601,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         <div className="flex flex-col items-center justify-between px-1.5">
           <button
             type="button"
-            onClick={handleAutoSum}
             className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-slate-200 transition text-slate-800 mt-0.5 active:scale-95"
-            title="Calculer automatiquement la moyenne des notes CP"
+            title="Moyennes calculées automatiquement"
           >
             <Sigma className="w-4 h-4 text-emerald-700 stroke-[2.5]" />
             <span className="text-[10px] font-bold">Moyenne</span>
@@ -624,12 +614,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       </section>
 
       {/* ========================================================================= */}
-      {/* 3. BARRE DE FORMULE EXCEL (Coordonnée ex: E21 | fx | Champ de saisie) */}
+      {/* 3. BARRE DE FORMULE EXCEL (Coordonnée active | fx | Champ de saisie) */}
       {/* ========================================================================= */}
       <section className="h-7 sm:h-8 bg-white border-b border-slate-300 px-2 flex items-center gap-2 text-xs shrink-0 select-none">
-        {/* Zone de nom / coordonnée active (ex: E21) */}
-        <div className="flex items-center justify-between w-14 sm:w-16 h-6 px-1.5 bg-[#f9fafb] border border-slate-300 rounded text-slate-700 font-mono font-bold text-[11px]">
-          <span>{activeCoordinate}</span>
+        {/* Zone de nom / coordonnée active */}
+        <div className="flex items-center justify-between w-16 sm:w-20 h-6 px-1.5 bg-[#f9fafb] border border-slate-300 rounded text-slate-700 font-mono font-bold text-[11px]">
+          <span>{activeCellInfo.coordDisplay}</span>
           <ChevronDown className="w-3 h-3 text-slate-400" />
         </div>
 
@@ -643,88 +633,367 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
         {/* Champ de saisie de formule étendu */}
         <input
-          ref={formulaInputRef}
           type="text"
-          value={formulaValue}
-          onChange={handleFormulaBarChange}
-          placeholder="Entrez une note, un texte ou une valeur..."
+          value={activeCellInfo.value}
+          readOnly={activeCellInfo.type === 'rank' || activeCellInfo.type === 'average' || activeCellInfo.type === 'photo'}
+          onChange={(e) => {
+            const val = e.target.value;
+            setActiveCellInfo(prev => ({ ...prev, value: val }));
+            if (activeCellInfo.type === 'name') {
+              const std = students[activeCellInfo.rowIndex];
+              if (std) handleNameChange(std.id, val);
+            } else if (activeCellInfo.type === 'note' && activeCellInfo.noteColIndex !== undefined) {
+              const std = students[activeCellInfo.rowIndex];
+              if (std) handleNoteChange(std.id, activeCellInfo.noteColIndex, val);
+            }
+          }}
+          placeholder="Sélectionnez une case du tableau pour voir ou modifier sa valeur..."
           className="flex-1 h-6 px-2 bg-transparent text-slate-800 font-medium text-xs outline-none focus:bg-blue-50/40 rounded transition"
         />
       </section>
 
       {/* ========================================================================= */}
-      {/* 4. GRILLE DE TABLEUR EXCEL / WPS (A, B, C... et 1, 2, 3... avec CP-1 à CP-22) */}
+      {/* 4. GRILLE DE TABLEUR EXCEL / WPS : TABLEAU ENRICHI AVEC CARREAUX AGRANDIS */}
+      {/* ET CARREAUX DE FOND AUTOUR QUI RESTENT PETITS (Conforme à l'image tracée) */}
       {/* ========================================================================= */}
       <div 
-        ref={tableRef}
-        className="flex-1 overflow-auto bg-white relative"
+        className="flex-1 overflow-auto bg-white relative p-2 sm:p-3"
         style={{
-          // Zoom appliqué à la grille comme sur la capture d'écran
           zoom: `${zoomPercent}%`
         }}
       >
-        <table className="border-collapse table-fixed w-max min-w-full text-xs">
-          <tbody>
-            {/* Grille 100% vierge sans les A,B.., sans les 123.., sans les cp-1.. et sans le N°.. */}
-            {gridData.map((row, rIdx) => {
-              const rowNum = rIdx + 1;
+        <div className="inline-block min-w-full">
+          {/* Ligne 0 : Rangée de petites cases de fond au-dessus pour l'effet tableur authentique */}
+          <div className="flex mb-[1px]">
+            {Array.from({ length: 22 }).map((_, c) => (
+              <div 
+                key={`top-bg-${c}`} 
+                className="w-16 h-5 border-r border-b border-slate-200/50 bg-[#fafbfc]"
+              />
+            ))}
+          </div>
 
-              return (
-                <tr key={rowNum} className="border-b border-slate-200 hover:bg-slate-50/40">
-                  {/* Cellules de la ligne */}
-                  {Array.from({ length: TOTAL_COLUMNS }).map((_, cIdx) => {
-                    const isSelected = selectedCell.r === rIdx && selectedCell.c === cIdx;
-                    const isEditing = editingCell?.r === rIdx && editingCell?.c === cIdx;
-                    const cellVal = row[cIdx] || '';
+          <div className="flex items-start">
+            {/* Colonne 0 : Petites cases de fond à gauche */}
+            <div className="flex flex-col shrink-0 mr-[1px]">
+              {Array.from({ length: studentsWithStats.length + 3 }).map((_, r) => (
+                <div 
+                  key={`left-bg-${r}`} 
+                  className="w-8 h-11 border-b border-r border-slate-200/50 bg-[#fafbfc]"
+                />
+              ))}
+            </div>
 
-                    return (
-                      <td
-                        key={cIdx}
+            {/* =================================================================== */}
+            {/* LE TABLEAU MODERNE TRACÉ (LIGNES BIEN VISIBLES & CARREAUX AGRANDIS) */}
+            {/* R : Rang | I : Photo | NO : Nom | N.. : Notes 1 à 7 | M : Moyenne   */}
+            {/* =================================================================== */}
+            <div className="shrink-0 rounded-sm border-2 border-slate-800 shadow-md bg-white">
+              {/* EN-TÊTE DU TABLEAU : LETTRES BLEUES IDENTIQUES À LA PHOTO */}
+              <div className="flex bg-[#f8fafc] border-b-2 border-slate-800 select-none text-blue-600 font-black">
+                {/* R : RANG */}
+                <div 
+                  className="w-14 sm:w-16 h-11 border-r border-slate-400 flex flex-col items-center justify-center p-0.5 text-center"
+                  title="R : Rang de l'élève (classement)"
+                >
+                  <span className="text-base sm:text-lg leading-none tracking-tight">R</span>
+                  <span className="text-[8.5px] font-bold text-slate-500 mt-0.5">Rang</span>
+                </div>
+
+                {/* I : PROFIL / PHOTO */}
+                <div 
+                  className="w-16 sm:w-18 h-11 border-r border-slate-400 flex flex-col items-center justify-center p-0.5 text-center"
+                  title="I : Profil / Photo de l'élève"
+                >
+                  <span className="text-base sm:text-lg leading-none tracking-tight">I</span>
+                  <span className="text-[8.5px] font-bold text-slate-500 mt-0.5">Photo</span>
+                </div>
+
+                {/* NO : NOM ET PRÉNOM */}
+                <div 
+                  className="w-56 sm:w-64 h-11 border-r border-slate-400 flex flex-col items-center justify-center p-0.5 text-center"
+                  title="NO : Nom et Prénom de l'élève"
+                >
+                  <span className="text-base sm:text-lg leading-none tracking-tight">NO</span>
+                  <span className="text-[8.5px] font-bold text-slate-500 mt-0.5">Nom et Prénom</span>
+                </div>
+
+                {/* N.. : LES 7 COLONNES DE NOTES */}
+                {Array.from({ length: TOTAL_NOTE_COLS }).map((_, i) => (
+                  <div 
+                    key={`header-note-${i}`}
+                    className="w-16 sm:w-18 h-11 border-r border-slate-400 flex flex-col items-center justify-center p-0.5 text-center"
+                    title={`N : Note ${i + 1} de l'élève`}
+                  >
+                    <span className="text-base sm:text-lg leading-none tracking-tight">N</span>
+                    <span className="text-[8.5px] font-bold text-slate-500 mt-0.5">Note {i + 1}</span>
+                  </div>
+                ))}
+
+                {/* M : LA MOYENNE */}
+                <div 
+                  className="w-20 sm:w-24 h-11 flex flex-col items-center justify-center p-0.5 text-center bg-blue-50/40"
+                  title="M : Moyenne générale de l'élève"
+                >
+                  <span className="text-base sm:text-lg leading-none tracking-tight text-blue-700">M</span>
+                  <span className="text-[8.5px] font-bold text-slate-600 mt-0.5">Moyenne</span>
+                </div>
+              </div>
+
+              {/* CORPS DU TABLEAU : LIGNES D'ÉLÈVES MODÈLE PROFESSIONNEL */}
+              <div className="divide-y divide-slate-300">
+                {studentsWithStats.map((std, rIdx) => {
+                  const isRowSelected = activeCellInfo.rowIndex === rIdx;
+
+                  return (
+                    <div 
+                      key={std.id}
+                      className={`flex items-stretch transition-colors ${
+                        isRowSelected ? 'bg-blue-50/20' : 'hover:bg-slate-50/60'
+                      }`}
+                    >
+                      {/* R : RANG (Automatique d'après la moyenne) */}
+                      <div 
                         onClick={() => {
-                          setSelectedCell({ r: rIdx, c: cIdx });
-                          setEditingCell(null);
+                          setActiveCellInfo({
+                            id: `cell-rank-${rIdx}`,
+                            type: 'rank',
+                            rowIndex: rIdx,
+                            coordDisplay: `R${rIdx + 1}`,
+                            value: std.rank ? `=RANG(M${rIdx + 1})` : ''
+                          });
                         }}
-                        onDoubleClick={() => startCellEdit(rIdx, cIdx)}
-                        className={`w-24 min-w-[85px] h-6 px-2 text-xs border-r border-slate-200 relative transition-colors ${
-                          isSelected
-                            ? 'outline-2 outline-[#107c41] -outline-offset-2 z-1 bg-blue-50/20'
-                            : ''
+                        className={`w-14 sm:w-16 h-11 border-r border-slate-400 flex items-center justify-center p-1 cursor-pointer relative ${
+                          activeCellInfo.id === `cell-rank-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-emerald-50/40' : ''
                         }`}
-                        style={{
-                          textAlign,
-                          fontWeight: isBold ? 'bold' : 'normal',
-                          fontStyle: isItalic ? 'italic' : 'normal',
-                          textDecoration: isUnderline ? 'underline' : isStrikethrough ? 'line-through' : 'none',
-                        }}
                       >
-                        {isEditing ? (
-                          <input
-                            ref={cellInputRef}
-                            type="text"
-                            value={editInputVal}
-                            onChange={(e) => setEditInputVal(e.target.value)}
-                            onBlur={() => {
-                              commitCellEdit(editInputVal, rIdx, cIdx);
-                              setEditingCell(null);
-                            }}
-                            className="w-full h-full p-0 m-0 bg-white text-slate-900 outline-none border-none text-xs"
-                          />
+                        {std.rank ? (
+                          <span className={`px-2 py-0.5 rounded-md text-xs font-black shadow-2xs ${
+                            std.rank === '1er'
+                              ? 'bg-gradient-to-r from-amber-400 to-yellow-300 text-amber-950 border border-amber-400 ring-1 ring-amber-300/50'
+                              : std.rank.startsWith('2e')
+                              ? 'bg-slate-200 text-slate-800 border border-slate-300'
+                              : std.rank.startsWith('3e')
+                              ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                              : 'bg-slate-100 text-slate-600 font-bold'
+                          }`}>
+                            {std.rank}
+                          </span>
                         ) : (
-                          <span className="block truncate">{cellVal}</span>
+                          <span className="text-slate-300 text-xs font-semibold">-</span>
                         )}
+                      </div>
 
-                        {/* Petit carré de poignée de recopie Excel en bas à droite de la cellule active */}
-                        {isSelected && !isEditing && (
-                          <div className="absolute -bottom-[3px] -right-[3px] w-2 h-2 bg-[#107c41] border border-white cursor-crosshair z-2" />
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                      {/* I : PHOTO / PROFIL (Avatar avec clic pour téléverser) */}
+                      <div 
+                        onClick={() => {
+                          setActiveCellInfo({
+                            id: `cell-photo-${rIdx}`,
+                            type: 'photo',
+                            rowIndex: rIdx,
+                            coordDisplay: `I${rIdx + 1}`,
+                            value: std.photoUrl ? 'Photo chargée' : 'Aucune photo'
+                          });
+                        }}
+                        className={`w-16 sm:w-18 h-11 border-r border-slate-400 flex items-center justify-center p-1 cursor-pointer relative group ${
+                          activeCellInfo.id === `cell-photo-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
+                        }`}
+                        title="Cliquer pour changer la photo de l'élève"
+                      >
+                        <div 
+                          onClick={() => handleTriggerPhotoUpload(std.id)}
+                          className="w-8 h-8 rounded-full border border-slate-300 shadow-2xs overflow-hidden flex items-center justify-center bg-slate-100 group-hover:ring-2 group-hover:ring-blue-400 transition"
+                        >
+                          {std.photoUrl ? (
+                            <img src={std.photoUrl} alt={std.name || 'Élève'} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-slate-400 group-hover:text-blue-600 transition">
+                              <Camera className="w-3.5 h-3.5" />
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* NO : NOM ET PRÉNOM (Champ de saisie étendu) */}
+                      <div 
+                        onClick={() => {
+                          setActiveCellInfo({
+                            id: `cell-name-${rIdx}`,
+                            type: 'name',
+                            rowIndex: rIdx,
+                            coordDisplay: `NO${rIdx + 1}`,
+                            value: std.name
+                          });
+                        }}
+                        className={`w-56 sm:w-64 h-11 border-r border-slate-400 flex items-center p-1.5 relative ${
+                          activeCellInfo.id === `cell-name-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
+                        }`}
+                      >
+                        <input
+                          type="text"
+                          value={std.name}
+                          onChange={(e) => handleNameChange(std.id, e.target.value)}
+                          onFocus={() => {
+                            setActiveCellInfo({
+                              id: `cell-name-${rIdx}`,
+                              type: 'name',
+                              rowIndex: rIdx,
+                              coordDisplay: `NO${rIdx + 1}`,
+                              value: std.name
+                            });
+                          }}
+                          placeholder={`Nom et prénom élève ${rIdx + 1}...`}
+                          className="w-full h-full px-2 text-xs font-semibold text-slate-800 placeholder:text-slate-300 bg-transparent outline-none border border-transparent focus:border-blue-400 focus:bg-white rounded transition"
+                          style={{
+                            textAlign,
+                            fontWeight: isBold ? 'bold' : '600',
+                            fontStyle: isItalic ? 'italic' : 'normal',
+                            textDecoration: isUnderline ? 'underline' : isStrikethrough ? 'line-through' : 'none',
+                          }}
+                        />
+                      </div>
+
+                      {/* N.. : LES 7 COLONNES DE NOTES ÉDITABLES */}
+                      {Array.from({ length: TOTAL_NOTE_COLS }).map((_, cIdx) => {
+                        const noteVal = std.notes[cIdx] || '';
+                        const isSelectedNote = activeCellInfo.id === `cell-note-${rIdx}-${cIdx}`;
+
+                        return (
+                          <div 
+                            key={`note-cell-${std.id}-${cIdx}`}
+                            onClick={() => {
+                              setActiveCellInfo({
+                                id: `cell-note-${rIdx}-${cIdx}`,
+                                type: 'note',
+                                rowIndex: rIdx,
+                                noteColIndex: cIdx,
+                                coordDisplay: `N${cIdx + 1}_${rIdx + 1}`,
+                                value: noteVal
+                              });
+                            }}
+                            className={`w-16 sm:w-18 h-11 border-r border-slate-400 flex items-center justify-center p-1 relative ${
+                              isSelectedNote ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
+                            }`}
+                          >
+                            <input
+                              type="text"
+                              value={noteVal}
+                              onChange={(e) => handleNoteChange(std.id, cIdx, e.target.value)}
+                              onFocus={() => {
+                                setActiveCellInfo({
+                                  id: `cell-note-${rIdx}-${cIdx}`,
+                                  type: 'note',
+                                  rowIndex: rIdx,
+                                  noteColIndex: cIdx,
+                                  coordDisplay: `N${cIdx + 1}_${rIdx + 1}`,
+                                  value: noteVal
+                                });
+                              }}
+                              placeholder="-"
+                              maxLength={5}
+                              className="w-full h-full text-center text-xs font-bold text-slate-800 placeholder:text-slate-300 bg-transparent outline-none border border-transparent focus:border-blue-400 focus:bg-white rounded transition"
+                            />
+
+                            {/* Poignée de recopie verte style Excel si sélectionnée */}
+                            {isSelectedNote && (
+                              <div className="absolute -bottom-[3px] -right-[3px] w-2 h-2 bg-[#107c41] border border-white cursor-crosshair z-20 pointer-events-none" />
+                            )}
+                          </div>
+                        );
+                      })}
+
+                      {/* M : MOYENNE GÉNÉRALE (Calculée automatiquement) */}
+                      <div 
+                        onClick={() => {
+                          setActiveCellInfo({
+                            id: `cell-avg-${rIdx}`,
+                            type: 'average',
+                            rowIndex: rIdx,
+                            coordDisplay: `M${rIdx + 1}`,
+                            value: std.average !== null ? `=MOYENNE(N1:N7) => ${std.averageFormatted}` : ''
+                          });
+                        }}
+                        className={`w-20 sm:w-24 h-11 flex items-center justify-between px-2 cursor-pointer relative bg-slate-50/50 ${
+                          activeCellInfo.id === `cell-avg-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/40' : ''
+                        }`}
+                        title="Moyenne automatique calculée d'après les notes N1 à N7"
+                      >
+                        <span className={`w-full text-center text-xs font-black tracking-tight ${
+                          std.average === null
+                            ? 'text-slate-300'
+                            : std.average >= 12
+                            ? 'text-emerald-700 bg-emerald-50/80 py-0.5 px-1.5 rounded border border-emerald-200'
+                            : std.average >= 10
+                            ? 'text-blue-700 bg-blue-50/80 py-0.5 px-1.5 rounded border border-blue-200'
+                            : 'text-rose-700 bg-rose-50/80 py-0.5 px-1.5 rounded border border-rose-200'
+                        }`}>
+                          {std.averageFormatted || '-'}
+                        </span>
+
+                        {/* Bouton supprimer la ligne au survol */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteStudentRow(std.id);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 hover:text-red-600 p-0.5 rounded text-slate-300 hover:bg-red-50 transition"
+                          title="Supprimer cette ligne d'élève"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* PIED DU TABLEAU : BOUTON AJOUTER UN ÉLÈVE */}
+              <div className="p-2 bg-[#f8fafc] border-t border-slate-300 flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={handleAddStudentRow}
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold shadow-2xs transition active:scale-95 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-blue-600 stroke-[3]" />
+                  <span>+ Ajouter un élève</span>
+                </button>
+
+                <div className="text-[11px] font-semibold text-slate-500">
+                  Total : <span className="font-bold text-slate-800">{students.length}</span> élèves
+                </div>
+              </div>
+            </div>
+
+            {/* Petites cases de fond à droite qui restent petites comme actuellement */}
+            <div className="flex shrink-0 ml-[1px]">
+              {Array.from({ length: BACKGROUND_EXTRA_COLS }).map((_, c) => (
+                <div key={`right-bg-col-${c}`} className="flex flex-col">
+                  {Array.from({ length: studentsWithStats.length + 3 }).map((_, r) => (
+                    <div 
+                      key={`right-bg-cell-${c}-${r}`}
+                      className="w-16 h-11 border-r border-b border-slate-200/50 bg-[#fafbfc]"
+                    />
+                  ))}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Petites cases de fond en bas du tableau qui restent petites comme actuellement */}
+          <div className="mt-[1px]">
+            {Array.from({ length: BACKGROUND_EXTRA_ROWS }).map((_, r) => (
+              <div key={`bottom-bg-row-${r}`} className="flex">
+                {Array.from({ length: 30 }).map((_, c) => (
+                  <div 
+                    key={`bottom-bg-cell-${r}-${c}`}
+                    className="w-16 h-6 border-r border-b border-slate-200/50 bg-[#fafbfc]"
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* ========================================================================= */}
@@ -791,7 +1060,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             className="w-5 h-5 rounded hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
             title="Zoom avant (+10%)"
           >
-            <Plus className="w-3 h-3" />
+            <Plus className="w-3.5 h-3.5" />
           </button>
 
           {/* Valeur du zoom affichée (70% comme sur l'image) */}
