@@ -245,8 +245,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Prévisualisation centrée de photo d'élève (nom, photo, moyenne)
   const [previewPhotoStudent, setPreviewPhotoStudent] = useState<StudentGradeRow | null>(null);
 
-  // Message rouge d'alerte si tentative de saisie d'une note sans nom d'élève
-  const [blockedNoteStudentId, setBlockedNoteStudentId] = useState<string | null>(null);
+  // Message rouge d'alerte ciblé sur la case où l'utilisateur tente d'écrire une note sans nom d'élève
+  const [blockedNoteTarget, setBlockedNoteTarget] = useState<{ studentId: string; colIndex: number } | null>(null);
 
   // Un seul petit menu peut être ouvert à la fois
   const isAnyMenuOpen = activeMenuCol !== null || activeMenuRow !== null || activeMenuCell !== null || activeMenuNameCol || activeMenuPhoto !== null;
@@ -457,7 +457,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         setActiveMenuPhoto(null);
         setActiveColorPicker(null);
         setPreviewPhotoStudent(null);
-        setBlockedNoteStudentId(null);
+        setBlockedNoteTarget(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -783,8 +783,18 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     const reader = new FileReader();
     reader.onload = (event) => {
       const base64 = event.target?.result as string;
-      setStudents(prev => prev.map(s => s.id === uploadingStudentId ? { ...s, photoUrl: base64 } : s));
-      // La case grandit automatiquement quand une image est importée pour un affichage carré optimal
+      const targetStudentId = uploadingStudentId;
+      setStudents(prev => {
+        const studentIndex = prev.findIndex(s => s.id === targetStudentId);
+        if (studentIndex >= 0) {
+          setCustomRowHeights(rowPrev => ({
+            ...rowPrev,
+            [studentIndex]: Math.max(rowPrev[studentIndex] || 44, 80)
+          }));
+        }
+        return prev.map(s => s.id === targetStudentId ? { ...s, photoUrl: base64 } : s);
+      });
+      // La case grandit automatiquement en largeur et en hauteur pour un affichage carré optimal
       setColWidthPhoto(prev => Math.max(prev, 80));
       setIsSaved(false);
     };
@@ -986,10 +996,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     return false;
   };
 
-  // Lancement du redimensionnement d'une colonne verticale spécifique
-  // Lancement du redimensionnement d'une colonne verticale spécifique
+  // Lancement du redimensionnement ou de la sélection d'une colonne verticale spécifique
   const handleStartColResize = (e: React.MouseEvent | React.TouchEvent, colId: string) => {
-    e.preventDefault();
     e.stopPropagation();
 
     const startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
@@ -1014,8 +1022,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     };
 
     const handleMouseUp = (upEvent: MouseEvent | TouchEvent) => {
-      if (hasMoved) {
-        upEvent.stopPropagation();
+      upEvent.stopPropagation();
+      if (!hasMoved) {
+        // Clic direct sur le trait vertical : on bascule sa sélection (comme pour les lignes horizontales)
+        setSelectedLine(prev => (prev?.type === 'col' && prev.id === colId) ? null : { type: 'col', id: colId });
+      } else {
         setResizingLine(null);
       }
       window.removeEventListener('mousemove', handleMouseMove);
@@ -1030,15 +1041,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     window.addEventListener('touchend', handleMouseUp);
   };
 
-  // Lancement du redimensionnement d'une ligne d'élève horizontale spécifique
+  // Lancement du redimensionnement ou de la sélection d'une ligne d'élève horizontale spécifique
   const handleStartRowResize = (e: React.MouseEvent | React.TouchEvent, rowIndex: number) => {
-    e.preventDefault();
     e.stopPropagation();
     const rowKey = `row-${rowIndex}`;
 
     const startY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     const initialHeight = customRowHeights[rowIndex] || 44;
-    const minHeight = 44;
+    const hasPhoto = Boolean(students[rowIndex]?.photoUrl);
+    const minHeight = hasPhoto ? 76 : 44;
     let hasMoved = false;
 
     const handleMouseMove = (moveEvent: MouseEvent | TouchEvent) => {
@@ -1061,8 +1072,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     };
 
     const handleMouseUp = (upEvent: MouseEvent | TouchEvent) => {
-      if (hasMoved) {
-        upEvent.stopPropagation();
+      upEvent.stopPropagation();
+      if (!hasMoved) {
+        // Clic direct sur la ligne horizontale : on bascule sa sélection
+        setSelectedLine(prev => (prev?.type === 'row' && prev.id === rowKey) ? null : { type: 'row', id: rowKey });
+      } else {
         setResizingLine(null);
       }
       window.removeEventListener('mousemove', handleMouseMove);
@@ -1078,7 +1092,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   };
 
   // Poignée interactive discrète superposée sur la bordure droite de chaque colonne
-  // Ne casse PAS le flex ni les bordures CSS normales : position absolue z-20
+  // Ne casse PAS le flex ni les bordures CSS normales : position absolue z-30
   const renderColHandle = (colId: string) => {
     const active = isColActive(colId);
     return (
@@ -1090,18 +1104,17 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         onDoubleClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
-          // Le double-clic garantit toujours la sélection de la ligne verticale
           setSelectedLine({ type: 'col', id: colId });
         }}
         onMouseDown={(e) => handleStartColResize(e, colId)}
         onTouchStart={(e) => handleStartColResize(e, colId)}
-        className="absolute top-0 -right-2.5 w-5 h-full cursor-col-resize z-20 select-none flex items-center justify-center pointer-events-auto hover:bg-blue-500/25 transition-colors"
-        title="Cliquer ou double-cliquer pour sélectionner le trait vertical, glisser pour agrandir/réduire la colonne"
+        className="absolute top-0 -right-2.5 w-5 h-full cursor-col-resize z-30 select-none flex items-center justify-center pointer-events-auto hover:bg-blue-500/25 transition-colors"
+        title="Cliquer pour sélectionner le trait vertical, glisser pour agrandir/réduire la colonne"
       >
         {active ? (
           <div className="w-[3px] h-full bg-blue-600 shadow-[0_0_8px_#2563eb] pointer-events-none" />
         ) : (
-          <div className="w-[1.5px] h-3/4 bg-slate-400 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
+          <div className="w-[1.5px] h-full bg-slate-400 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
         )}
       </div>
     );
@@ -1265,7 +1278,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         if (activeMenuNameCol) setActiveMenuNameCol(false);
         if (activeMenuPhoto !== null) setActiveMenuPhoto(null);
         if (activeColorPicker !== null) setActiveColorPicker(null);
-        if (blockedNoteStudentId) setBlockedNoteStudentId(null);
+        if (blockedNoteTarget) setBlockedNoteTarget(null);
       }}
       className={`w-full flex flex-col bg-[#eef2f6] text-slate-800 font-sans select-none overflow-hidden transition-all duration-300 ${
         viewerExpandLevel >= 2
@@ -2254,7 +2267,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               });
                             }}
                             className={`border-r ${isColActive('col-name') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center p-1.5 relative group shrink-0 ${
-                              blockedNoteStudentId === std.id && !(std.name || '').trim() ? 'ring-2 ring-red-500 bg-red-50/60' : ''
+                              blockedNoteTarget?.studentId === std.id && !(std.name || '').trim() ? 'ring-2 ring-red-500 bg-red-50/60' : ''
                             } ${
                               activeCellInfo.id === `cell-name-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
                             }`}
@@ -2265,8 +2278,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               value={std.name}
                               onChange={(e) => {
                                 handleNameChange(std.id, e.target.value);
-                                if (blockedNoteStudentId === std.id && e.target.value.trim()) {
-                                  setBlockedNoteStudentId(null);
+                                if (blockedNoteTarget?.studentId === std.id && e.target.value.trim()) {
+                                  setBlockedNoteTarget(null);
                                 }
                               }}
                               onFocus={() => {
@@ -2279,10 +2292,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 });
                               }}
                               placeholder={`Nom et prénom élève ${rIdx + 1}...`}
-                              className="w-full h-full text-center px-2 text-xs font-semibold text-slate-900 placeholder:text-slate-400 bg-transparent outline-none border border-transparent focus:border-blue-400 focus:bg-white rounded transition pr-5"
+                              className="w-full h-full text-center px-2 text-xs sm:text-sm font-black text-slate-950 placeholder:text-slate-400 placeholder:font-semibold bg-transparent outline-none border border-transparent focus:border-blue-500 focus:bg-white rounded transition pr-5"
                               style={{
                                 textAlign,
-                                fontWeight: isBold ? 'bold' : '600',
+                                fontWeight: isBold ? '900' : '800',
                                 fontStyle: isItalic ? 'italic' : 'normal',
                                 textDecoration: isUnderline ? 'underline' : isStrikethrough ? 'line-through' : 'none',
                               }}
@@ -2423,7 +2436,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             const isThisColActive = isColActive(`col-note-${cIdx}`);
                             const isNoteCellMenuOpen = activeMenuCell?.studentId === std.id && activeMenuCell?.colIndex === cIdx;
                             const hasStudentName = Boolean((std.name || '').trim());
-                            const isBlockedForName = blockedNoteStudentId === std.id && !hasStudentName;
+                            const isBlockedForName = blockedNoteTarget?.studentId === std.id && blockedNoteTarget?.colIndex === cIdx && !hasStudentName;
 
                             return (
                               <div 
@@ -2434,12 +2447,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   backgroundColor: noteCellBg
                                 }}
                                 onClick={() => {
-                                  if (!hasStudentName) {
-                                    setBlockedNoteStudentId(std.id);
-                                    document.getElementById(`input-name-${std.id}`)?.focus();
-                                    setTimeout(() => setBlockedNoteStudentId(prev => prev === std.id ? null : prev), 3500);
-                                    return;
-                                  }
                                   setActiveCellInfo({
                                     id: `cell-note-${rIdx}-${cIdx}`,
                                     type: 'note',
@@ -2449,7 +2456,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     value: noteVal || `.../${parsed.maxScore}`
                                   });
                                 }}
-                                className={`border-r ${isThisColActive ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center px-1 relative shrink-0 transition-colors group ${
+                                className={`border-r ${isThisColActive ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center px-1 relative shrink-0 transition-colors group cursor-text ${
                                   isInvalid 
                                     ? 'bg-red-50 ring-2 ring-red-500 z-10' 
                                     : isSelectedNote 
@@ -2584,10 +2591,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   </div>
                                 )}
 
-                                {/* MESSAGE ROUGE BLOQUANT SI PAS DE NOM D'ÉLÈVE */}
+                                {/* MESSAGE ROUGE FLOTTANT UNIQUE SI TENTATIVE DE SAISIE SANS NOM D'ÉLÈVE */}
                                 {isBlockedForName && (
-                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-red-600 text-white text-[11px] font-black rounded-lg shadow-2xl whitespace-nowrap z-50 pointer-events-none flex items-center gap-1.5 animate-bounce ring-2 ring-white">
-                                    <AlertCircle className="w-4 h-4 text-white shrink-0 animate-pulse" />
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-red-600 text-white text-[11px] font-black rounded-lg shadow-2xl whitespace-nowrap z-50 pointer-events-none flex items-center gap-1.5 animate-in fade-in zoom-in-95 ring-2 ring-white">
+                                    <AlertCircle className="w-3.5 h-3.5 text-white shrink-0" />
                                     <span>⚠️ Écrivez le nom de l'élève d'abord !</span>
                                   </div>
                                 )}
@@ -2598,20 +2605,30 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   <input
                                     type="text"
                                     value={hasStudentName ? parsed.scoreStr : ''}
-                                    disabled={!hasStudentName}
+                                    onKeyDown={(e) => {
+                                      if (!hasStudentName && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                                        e.preventDefault();
+                                        setBlockedNoteTarget({ studentId: std.id, colIndex: cIdx });
+                                        document.getElementById(`input-name-${std.id}`)?.focus();
+                                        setTimeout(() => {
+                                          setBlockedNoteTarget(prev => (prev?.studentId === std.id && prev?.colIndex === cIdx) ? null : prev);
+                                        }, 3500);
+                                      }
+                                    }}
                                     onChange={(e) => {
-                                      if (!hasStudentName) return;
+                                      if (!hasStudentName) {
+                                        setBlockedNoteTarget({ studentId: std.id, colIndex: cIdx });
+                                        document.getElementById(`input-name-${std.id}`)?.focus();
+                                        setTimeout(() => {
+                                          setBlockedNoteTarget(prev => (prev?.studentId === std.id && prev?.colIndex === cIdx) ? null : prev);
+                                        }, 3500);
+                                        return;
+                                      }
                                       const sanitized = e.target.value.replace(/[^0-9.]/g, '');
                                       const newRaw = formatStudentNote(sanitized, parsed.maxScore);
                                       handleRawNoteChange(std.id, cIdx, newRaw);
                                     }}
                                     onFocus={() => {
-                                      if (!hasStudentName) {
-                                        setBlockedNoteStudentId(std.id);
-                                        document.getElementById(`input-name-${std.id}`)?.focus();
-                                        setTimeout(() => setBlockedNoteStudentId(prev => prev === std.id ? null : prev), 3500);
-                                        return;
-                                      }
                                       setActiveCellInfo({
                                         id: `cell-note-${rIdx}-${cIdx}`,
                                         type: 'note',
@@ -2621,12 +2638,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         value: noteVal || `.../${parsed.maxScore}`
                                       });
                                     }}
-                                    placeholder={hasStudentName ? "-" : ""}
+                                    placeholder="-"
                                     maxLength={6}
-                                    className={`w-[48%] text-right text-xs sm:text-sm transition outline-none bg-transparent ${
-                                      !hasStudentName
-                                        ? 'cursor-not-allowed opacity-40'
-                                        : isInvalid
+                                    className={`w-[48%] text-right text-xs sm:text-sm transition outline-none bg-transparent cursor-text ${
+                                      isInvalid
                                         ? 'text-red-600 underline font-black decoration-red-600 decoration-2'
                                         : 'font-black text-slate-900 placeholder:text-slate-400 focus:text-blue-700'
                                     }`}
@@ -2643,20 +2658,32 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   <input
                                     type="text"
                                     value={parsed.maxScore}
-                                    disabled={!hasStudentName}
+                                    onKeyDown={(e) => {
+                                      if (!hasStudentName && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                                        e.preventDefault();
+                                        setBlockedNoteTarget({ studentId: std.id, colIndex: cIdx });
+                                        document.getElementById(`input-name-${std.id}`)?.focus();
+                                        setTimeout(() => {
+                                          setBlockedNoteTarget(prev => (prev?.studentId === std.id && prev?.colIndex === cIdx) ? null : prev);
+                                        }, 3500);
+                                      }
+                                    }}
                                     onChange={(e) => {
-                                      if (!hasStudentName) return;
+                                      if (!hasStudentName) {
+                                        setBlockedNoteTarget({ studentId: std.id, colIndex: cIdx });
+                                        document.getElementById(`input-name-${std.id}`)?.focus();
+                                        setTimeout(() => {
+                                          setBlockedNoteTarget(prev => (prev?.studentId === std.id && prev?.colIndex === cIdx) ? null : prev);
+                                        }, 3500);
+                                        return;
+                                      }
                                       const sanitizedMax = e.target.value.replace(/[^0-9.]/g, '');
                                       const newMax = parseFloat(sanitizedMax) || 20;
                                       const newRaw = formatStudentNote(parsed.scoreStr, newMax);
                                       handleRawNoteChange(std.id, cIdx, newRaw);
                                     }}
                                     maxLength={4}
-                                    className={`w-[44%] text-left text-xs sm:text-[12px] font-black transition outline-none bg-transparent ${
-                                      !hasStudentName
-                                        ? 'cursor-not-allowed opacity-40 text-slate-400'
-                                        : 'text-slate-900 hover:text-blue-700 focus:text-blue-700'
-                                    }`}
+                                    className="w-[44%] text-left text-xs sm:text-[12px] font-black transition outline-none bg-transparent cursor-text text-slate-900 hover:text-blue-700 focus:text-blue-700"
                                     title="Barème maximal pour cette case"
                                   />
                                 </div>
