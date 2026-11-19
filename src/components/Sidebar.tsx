@@ -107,17 +107,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
       accentColor: '#22d3ee'
     },
     { 
-      id: 'teacher-classes' as NavigationTab, 
-      label: 'Classes Pro', 
-      icon: GraduationCap, 
-      specialGlow: true,
-      aura: 'radial-gradient(circle, rgba(14, 165, 233, 0.75) 0%, rgba(6, 182, 212, 0.35) 45%, transparent 72%)',
-      activeBg: 'linear-gradient(90deg, rgba(14, 165, 233, 0.16) 0%, rgba(6, 182, 212, 0.08) 100%)',
-      activeBorder: 'rgba(14, 165, 233, 0.45)',
-      activeShadow: '0 0 24px -2px rgba(14, 165, 233, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.25)',
-      accentColor: '#0ea5e9'
-    },
-    { 
       id: 'ai-subscriptions' as NavigationTab, 
       label: 'Crédits IA', 
       icon: Sparkles, 
