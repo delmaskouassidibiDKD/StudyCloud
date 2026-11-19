@@ -684,6 +684,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         createdAt: Date.now()
       };
       setSubjects(prev => [...prev, newSubject]);
+      // Si l'espace de 3 lignes (15 matières) vient d'être totalement rempli, on bascule vers le nouvel espace vide
+      if ((currentClassSubjects.length + 1) % 15 === 0) {
+        setSubjectPageIndex(Math.floor((currentClassSubjects.length + 1) / 15));
+      }
       setIsAddSubjectModalOpen(false);
       resetSubjectForm();
     }
@@ -954,6 +958,34 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       return effectiveTermId === activeTerm.id;
     });
   }, [subjects, activeClass, activeTerm, currentClassTerms]);
+
+  // --- GESTION PAR ESPACE / PAGE DE 3 LIGNES (15 EMPLACEMENTS PAR ESPACE) SANS DÉFILEMENT VERTICAL ---
+  const SUBJECTS_PER_PAGE = 15; // 3 lignes de 5 colonnes
+  const [subjectPageIndex, setSubjectPageIndex] = useState<number>(0);
+
+  const totalSubjectPages = useMemo(() => {
+    return Math.floor(currentClassSubjects.length / SUBJECTS_PER_PAGE) + 1;
+  }, [currentClassSubjects.length]);
+
+  // Réinitialiser la page quand on change de classe ou de trimestre
+  useEffect(() => {
+    setSubjectPageIndex(0);
+  }, [selectedClassId, selectedTermId]);
+
+  // S'assurer que subjectPageIndex ne dépasse pas totalSubjectPages
+  useEffect(() => {
+    if (subjectPageIndex >= totalSubjectPages) {
+      setSubjectPageIndex(Math.max(0, totalSubjectPages - 1));
+    }
+  }, [totalSubjectPages, subjectPageIndex]);
+
+  // Matières découpées pour l'espace actuellement affiché
+  const pagedSubjects = useMemo(() => {
+    const start = subjectPageIndex * SUBJECTS_PER_PAGE;
+    return currentClassSubjects.slice(start, start + SUBJECTS_PER_PAGE);
+  }, [currentClassSubjects, subjectPageIndex]);
+
+  const isLastSubjectPage = subjectPageIndex === totalSubjectPages - 1;
 
   return (
     <div 
@@ -1666,12 +1698,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   </div>
                 )}
 
-                {/* ------------------------------------------------------------- */}
-                {/* ZONE DES MATIÈRES : DÉFILEMENT VERTICAL EN DESSOUS DES CLASSES */}
-                {/* ------------------------------------------------------------- */}
+                {/* ------------------------------------------------------------------------- */}
+                {/* ZONE DES MATIÈRES : PAGINATION HORIZONTALE PAR ESPACES DE 3 LIGNES (15)  */}
+                {/* ------------------------------------------------------------------------- */}
                 {activeClass && (
-                  <div className="space-y-3.5 pt-2 animate-fade-in">
-                    {/* En-tête de la section matières */}
+                  <div className="space-y-3 pt-2 animate-fade-in">
+                    {/* En-tête de la section matières avec navigation par espace */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-black uppercase tracking-wider text-slate-700">
@@ -1689,20 +1721,61 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             </span>
                           </>
                         )}
+                        <span className="text-[11px] font-black text-slate-700 bg-white/80 px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                          Espace {subjectPageIndex + 1} / {totalSubjectPages}
+                        </span>
                       </div>
 
-                      {currentClassSubjects.length > 0 && (
+                      <div className="flex items-center gap-2">
                         <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline-block">
-                          5 matières par ligne &bull; Rectangles compacts
+                          {pagedSubjects.length}/15 dans cet espace &bull; 3 lignes max
                         </span>
-                      )}
+
+                        <div className="flex items-center gap-1.5">
+                          {/* Flèche gauche : Espace précédent */}
+                          <button
+                            type="button"
+                            onClick={() => setSubjectPageIndex(prev => Math.max(0, prev - 1))}
+                            disabled={subjectPageIndex === 0}
+                            className={`w-7 h-7 rounded-lg border shadow-2xs flex items-center justify-center transition-all ${
+                              subjectPageIndex === 0
+                                ? 'bg-slate-100/60 text-slate-300 border-slate-200/50 cursor-not-allowed'
+                                : 'bg-white hover:bg-slate-50 text-slate-700 hover:text-[#00313d] border-slate-200 active:scale-90 cursor-pointer'
+                            }`}
+                            title={subjectPageIndex === 0 ? "Premier espace atteint" : "Espace précédent"}
+                          >
+                            <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                          </button>
+
+                          {/* Flèche droite : Espace suivant (disponible seulement si les 3 lignes de l'espace actuel sont remplies) */}
+                          <button
+                            type="button"
+                            onClick={() => setSubjectPageIndex(prev => Math.min(totalSubjectPages - 1, prev + 1))}
+                            disabled={subjectPageIndex >= totalSubjectPages - 1}
+                            className={`w-7 h-7 rounded-lg border shadow-2xs flex items-center justify-center transition-all ${
+                              subjectPageIndex >= totalSubjectPages - 1
+                                ? 'bg-slate-100/60 text-slate-300 border-slate-200/50 cursor-not-allowed'
+                                : 'bg-[#00313d] hover:bg-[#00242e] text-white border-[#00242e] shadow-xs active:scale-90 cursor-pointer'
+                            }`}
+                            title={
+                              subjectPageIndex >= totalSubjectPages - 1
+                                ? "Remplissez les 3 lignes (15 matières) pour ouvrir le prochain espace"
+                                : "Espace suivant"
+                            }
+                          >
+                            <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
 
-                    {/* Grille : 5 matières par ligne sur desktop (lg:grid-cols-5) */}
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-3.5 items-stretch">
-                      
-                      {/* 1. LES CARTES DES MATIÈRES CRÉÉES S'AFFICHENT EN PREMIER (FORMAT RECTANGULAIRE COMPACT) */}
-                      {currentClassSubjects.map((subj) => {
+                    {/* Grille : 3 lignes fixes de 5 colonnes par espace (ne défile plus verticalement) */}
+                    <div 
+                      key={subjectPageIndex}
+                      className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-3.5 items-stretch animate-in fade-in duration-200"
+                    >
+                      {/* 1. Matières de cet espace (jusqu'à 15 matières) */}
+                      {pagedSubjects.map((subj) => {
                         const isWhite = !subj.color || subj.color === '#ffffff' || subj.color === 'white';
 
                         return (
@@ -1761,28 +1834,30 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         );
                       })}
 
-                      {/* 2. LE BOUTON « CRÉER UNE MATIÈRE » S'AFFICHE DERRIÈRE LES MATIÈRES CRÉÉES (FORMAT RECTANGLE IDENTIQUE) */}
-                      <button
-                        type="button"
-                        onClick={() => {
-                          resetSubjectForm();
-                          setIsAddSubjectModalOpen(true);
-                        }}
-                        className="rounded-xl border-2 border-dashed border-red-500/80 hover:border-red-600 bg-white/60 hover:bg-white/95 backdrop-blur-md p-2.5 sm:p-3 min-h-[68px] sm:min-h-[76px] flex items-center justify-center gap-2 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs hover:shadow-sm active:translate-y-0"
-                        title="Créer une nouvelle matière pour cette classe"
-                      >
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-red-600 to-orange-500 text-white flex items-center justify-center group-hover:scale-110 shadow-xs transition-transform shrink-0">
-                          <Plus className="w-4 h-4 stroke-[3]" />
-                        </div>
-                        <div className="flex flex-col text-left">
-                          <span className="text-xs font-black text-slate-800 group-hover:text-red-600 transition-colors leading-tight">
-                            + Créer une matière
-                          </span>
-                          <span className="text-[9px] text-slate-400 leading-tight">
-                            Pour {activeClass.level} &bull; {activeTerm?.name || 'Trimestre 1'}
-                          </span>
-                        </div>
-                      </button>
+                      {/* 2. LE BOUTON « CRÉER UNE MATIÈRE » : présent uniquement sur le dernier espace si non plein */}
+                      {isLastSubjectPage && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            resetSubjectForm();
+                            setIsAddSubjectModalOpen(true);
+                          }}
+                          className="rounded-xl border-2 border-dashed border-red-500/80 hover:border-red-600 bg-white/60 hover:bg-white/95 backdrop-blur-md p-2.5 sm:p-3 min-h-[68px] sm:min-h-[76px] flex items-center justify-center gap-2 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs hover:shadow-sm active:translate-y-0"
+                          title="Créer une nouvelle matière pour cette classe"
+                        >
+                          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-red-600 to-orange-500 text-white flex items-center justify-center group-hover:scale-110 shadow-xs transition-transform shrink-0">
+                            <Plus className="w-4 h-4 stroke-[3]" />
+                          </div>
+                          <div className="flex flex-col text-left">
+                            <span className="text-xs font-black text-slate-800 group-hover:text-red-600 transition-colors leading-tight">
+                              + Créer une matière
+                            </span>
+                            <span className="text-[9px] text-slate-400 leading-tight">
+                              Pour {activeClass.level} &bull; {activeTerm?.name || 'Trimestre 1'}
+                            </span>
+                          </div>
+                        </button>
+                      )}
 
                     </div>
                   </div>
