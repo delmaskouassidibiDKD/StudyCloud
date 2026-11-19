@@ -240,6 +240,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const [activeMenuCell, setActiveMenuCell] = useState<{ studentId: string; colIndex: number } | null>(null);
   const [activeMenuRow, setActiveMenuRow] = useState<string | null>(null);
   const [activeMenuNameCol, setActiveMenuNameCol] = useState<boolean>(false);
+  const [activeMenuPhoto, setActiveMenuPhoto] = useState<string | null>(null);
+
+  // Prévisualisation centrée de photo d'élève (nom, photo, moyenne)
+  const [previewPhotoStudent, setPreviewPhotoStudent] = useState<StudentGradeRow | null>(null);
+
+  // Message rouge d'alerte si tentative de saisie d'une note sans nom d'élève
+  const [blockedNoteStudentId, setBlockedNoteStudentId] = useState<string | null>(null);
+
+  // Un seul petit menu peut être ouvert à la fois
+  const isAnyMenuOpen = activeMenuCol !== null || activeMenuRow !== null || activeMenuCell !== null || activeMenuNameCol || activeMenuPhoto !== null;
 
   // Palette de couleur active
   const [activeColorPicker, setActiveColorPicker] = useState<{
@@ -444,7 +454,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         setActiveMenuCell(null);
         setActiveMenuRow(null);
         setActiveMenuNameCol(false);
+        setActiveMenuPhoto(null);
         setActiveColorPicker(null);
+        setPreviewPhotoStudent(null);
+        setBlockedNoteStudentId(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -771,6 +784,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     reader.onload = (event) => {
       const base64 = event.target?.result as string;
       setStudents(prev => prev.map(s => s.id === uploadingStudentId ? { ...s, photoUrl: base64 } : s));
+      // La case grandit automatiquement quand une image est importée pour un affichage carré optimal
+      setColWidthPhoto(prev => Math.max(prev, 80));
       setIsSaved(false);
     };
     reader.readAsDataURL(file);
@@ -929,8 +944,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   };
 
   const getColMinWidth = (colId: string): number => {
-    if (colId === 'col-rank') return 55;
-    if (colId === 'col-photo') return 60;
+    if (colId === 'col-rank') return 60;
+    if (colId === 'col-photo') {
+      const hasAnyPhoto = students.some(s => Boolean(s.photoUrl));
+      return hasAnyPhoto ? 76 : 60;
+    }
     if (colId === 'col-name') return getMinNameColWidth(students);
     if (colId.startsWith('col-note-')) return 52;
     if (colId === 'col-moyenne') return 80;
@@ -939,7 +957,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   const setColWidth = (colId: string, w: number) => {
     if (colId === 'col-rank') setColWidthRank(w);
-    else if (colId === 'col-photo') setColWidthPhoto(w);
+    else if (colId === 'col-photo') {
+      const hasAnyPhoto = students.some(s => Boolean(s.photoUrl));
+      const minW = hasAnyPhoto ? 76 : 60;
+      setColWidthPhoto(Math.max(minW, w));
+    }
     else if (colId === 'col-name') setColWidthName(w);
     else if (colId.startsWith('col-note-')) {
       const idx = parseInt(colId.replace('col-note-', ''), 10);
@@ -1061,6 +1083,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     const active = isColActive(colId);
     return (
       <div
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedLine(prev => (prev?.type === 'col' && prev.id === colId) ? null : { type: 'col', id: colId });
+        }}
         onDoubleClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
@@ -1068,11 +1094,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         }}
         onMouseDown={(e) => handleStartColResize(e, colId)}
         onTouchStart={(e) => handleStartColResize(e, colId)}
-        className="absolute top-0 -right-2 w-4 h-full cursor-col-resize z-20 select-none flex items-center justify-center pointer-events-auto"
-        title="Double-cliquer pour sélectionner la ligne, glisser pour agrandir/réduire la colonne"
+        className="absolute top-0 -right-2.5 w-5 h-full cursor-col-resize z-20 select-none flex items-center justify-center pointer-events-auto hover:bg-blue-500/20 transition-colors"
+        title="Cliquer ou double-cliquer pour sélectionner le trait vertical, glisser pour agrandir/réduire la colonne"
       >
-        {active && (
+        {active ? (
           <div className="w-[3px] h-full bg-blue-600 shadow-[0_0_8px_#2563eb] pointer-events-none" />
+        ) : (
+          <div className="w-[1.5px] h-3/4 bg-slate-400 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
         )}
       </div>
     );
@@ -1082,18 +1110,22 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Ne casse PAS la hauteur ni les bordures : position absolue z-20
   const renderRowHandle = (rowIndex: number) => {
     const active = isRowActive(rowIndex);
+    const rowKey = `row-${rowIndex}`;
     return (
       <div
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedLine(prev => (prev?.type === 'row' && prev.id === rowKey) ? null : { type: 'row', id: rowKey });
+        }}
         onDoubleClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
-          const rowKey = `row-${rowIndex}`;
           setSelectedLine(prev => (prev?.type === 'row' && prev.id === rowKey) ? null : { type: 'row', id: rowKey });
         }}
         onMouseDown={(e) => handleStartRowResize(e, rowIndex)}
         onTouchStart={(e) => handleStartRowResize(e, rowIndex)}
-        className="absolute -bottom-2 left-0 w-full h-4 cursor-row-resize z-20 select-none flex items-center justify-center pointer-events-auto"
-        title="Double-cliquer pour sélectionner la ligne, glisser pour agrandir/réduire la ligne"
+        className="absolute -bottom-2.5 left-0 w-full h-5 cursor-row-resize z-20 select-none flex items-center justify-center pointer-events-auto hover:bg-blue-500/20 transition-colors"
+        title="Cliquer ou double-cliquer pour sélectionner la ligne, glisser pour agrandir/réduire"
       >
         {active && (
           <div className="w-full h-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb] pointer-events-none" />
@@ -1230,7 +1262,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         if (activeMenuCell !== null) setActiveMenuCell(null);
         if (activeMenuRow !== null) setActiveMenuRow(null);
         if (activeMenuNameCol) setActiveMenuNameCol(false);
+        if (activeMenuPhoto !== null) setActiveMenuPhoto(null);
         if (activeColorPicker !== null) setActiveColorPicker(null);
+        if (blockedNoteStudentId) setBlockedNoteStudentId(null);
       }}
       className={`w-full flex flex-col bg-[#eef2f6] text-slate-800 font-sans select-none overflow-hidden transition-all duration-300 ${
         viewerExpandLevel >= 2
@@ -1555,8 +1589,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {/* 1. RANG */}
                     <div 
                       style={{ width: `${colWidthRank}px` }}
-                      className={`h-12 border-r ${isColActive('col-rank') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative`}
-                      title="Rang de l'élève (classement)"
+                      onClick={() => setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-rank') ? null : { type: 'col', id: 'col-rank' })}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-rank') ? null : { type: 'col', id: 'col-rank' });
+                      }}
+                      className={`h-12 border-r ${isColActive('col-rank') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
+                      title="Rang de l'élève (Cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         RANG
@@ -1567,8 +1606,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {/* 2. PROFIL / PHOTO */}
                     <div 
                       style={{ width: `${colWidthPhoto}px` }}
-                      className={`h-12 border-r ${isColActive('col-photo') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative`}
-                      title="Profil / Photo de l'élève"
+                      onClick={() => setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-photo') ? null : { type: 'col', id: 'col-photo' })}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-photo') ? null : { type: 'col', id: 'col-photo' });
+                      }}
+                      className={`h-12 border-r ${isColActive('col-photo') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
+                      title="Profil / Photo (Cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         PROFIL
@@ -1579,8 +1623,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {/* 3. NOM & PRÉNOM */}
                     <div 
                       style={{ width: `${colWidthName}px` }}
-                      className={`h-12 border-r ${isColActive('col-name') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative group`}
-                      title="Nom et Prénom de l'élève"
+                      onClick={() => setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-name') ? null : { type: 'col', id: 'col-name' })}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-name') ? null : { type: 'col', id: 'col-name' });
+                      }}
+                      className={`h-12 border-r ${isColActive('col-name') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative group cursor-pointer`}
+                      title="Nom et Prénom (Cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         NOM & PRÉNOM
@@ -1727,10 +1776,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             width: `${thisColWidth}px`,
                             backgroundColor: headerBg 
                           }}
-                          className={`h-12 border-r ${isColActive(`col-note-${i}`) ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors ${
+                          onClick={() => setSelectedLine(prev => (prev?.type === 'col' && prev.id === `col-note-${i}`) ? null : { type: 'col', id: `col-note-${i}` })}
+                          onDoubleClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedLine(prev => (prev?.type === 'col' && prev.id === `col-note-${i}`) ? null : { type: 'col', id: `col-note-${i}` });
+                          }}
+                          className={`h-12 border-r ${isColActive(`col-note-${i}`) ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors cursor-pointer ${
                             isMovingThis ? 'ring-2 ring-blue-500 bg-blue-50' : ''
                           }`}
-                          title={`${colTitle} ${i + 1} (sur ${colMeta.maxScore})`}
+                          title={`${colTitle} ${i + 1} (Cliquer pour sélectionner le trait vertical)`}
                         >
                           {/* BANDEAU FLÈCHES BLEUES DE DÉPLACEMENT AU SOMMET DE LA COLONNE */}
                           {isMovingThis && (
@@ -1970,8 +2024,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {/* 6. MOYENNE */}
                     <div 
                       style={{ width: `${colWidthAverage}px` }}
-                      className="h-12 flex items-center justify-center p-1 text-center bg-blue-100/70 shrink-0 relative"
-                      title="Moyenne générale de l'élève"
+                      onClick={() => setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' })}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' });
+                      }}
+                      className={`h-12 flex items-center justify-center p-1 text-center bg-blue-100/70 shrink-0 relative cursor-pointer ${
+                        isColActive('col-moyenne') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : ''
+                      }`}
+                      title="Moyenne générale (Cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-blue-950 tracking-wider uppercase">
                         MOYENNE
@@ -2025,55 +2086,116 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             title="Cliquer pour sélectionner, double-cliquer pour sélectionner la ligne"
                           >
                             {std.rank ? (
-                              <span className={`px-2 py-0.5 rounded text-xs font-black shadow-2xs ${
+                              <span className={`px-2.5 py-1 rounded-md text-sm sm:text-base font-black shadow-xs tracking-tight ${
                                 std.rank === '1er'
-                                  ? 'bg-gradient-to-r from-amber-400 to-yellow-300 text-amber-950 border border-amber-400 ring-1 ring-amber-300/50'
+                                  ? 'bg-gradient-to-r from-amber-400 to-yellow-300 text-amber-950 border border-amber-400 ring-2 ring-amber-300/60'
                                   : std.rank.startsWith('2e')
-                                  ? 'bg-slate-200 text-slate-800 border border-slate-300'
+                                  ? 'bg-slate-200 text-slate-900 border border-slate-300'
                                   : std.rank.startsWith('3e')
-                                  ? 'bg-amber-100 text-amber-800 border border-amber-200'
-                                  : 'bg-slate-100 text-slate-700 font-bold'
+                                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                  : 'bg-slate-100 text-slate-800 border border-slate-200'
                               }`}>
                                 {std.rank}
                               </span>
                             ) : (
-                              <span className="text-slate-300 text-xs font-semibold">-</span>
+                              <span className="text-slate-300 text-sm font-bold">-</span>
                             )}
                           </div>
 
-                          {/* PROFIL / PHOTO */}
+                          {/* PROFIL / PHOTO : IMAGE CARRÉE OCCUPANT TOUT L'ESPACE AVEC MENU 3 POINTS */}
                           <div 
                             style={{ 
                               width: `${colWidthPhoto}px`, 
                               height: `${rowHeight}px`,
                               backgroundColor: rowBg || undefined
                             }}
-                            onClick={() => {
-                              setActiveCellInfo({
-                                id: `cell-photo-${rIdx}`,
-                                type: 'photo',
-                                rowIndex: rIdx,
-                                coordDisplay: `PHOTO${rIdx + 1}`,
-                                value: std.photoUrl ? 'Photo chargée' : 'Aucune photo'
-                              });
-                            }}
-                            className={`border-r ${isColActive('col-photo') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center p-1 cursor-pointer relative group shrink-0 ${
+                            className={`border-r ${isColActive('col-photo') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center p-0 relative group shrink-0 overflow-hidden ${
                               activeCellInfo.id === `cell-photo-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
                             }`}
-                            title="Cliquer pour changer la photo de l'élève"
+                            title={std.photoUrl ? "Cliquer pour voir la photo de l'élève" : "Cliquer pour ajouter une photo"}
                           >
-                            <div 
-                              onClick={() => handleTriggerPhotoUpload(std.id)}
-                              className="w-8 h-8 rounded-full border border-slate-300 shadow-2xs overflow-hidden flex items-center justify-center bg-slate-100 group-hover:ring-2 group-hover:ring-blue-400 transition"
-                            >
-                              {std.photoUrl ? (
-                                <img src={std.photoUrl} alt={std.name || 'Élève'} className="w-full h-full object-cover" />
-                              ) : (
-                                <div className="w-full h-full flex items-center justify-center text-slate-400 group-hover:text-blue-600 transition">
-                                  <Camera className="w-3.5 h-3.5" />
-                                </div>
-                              )}
-                            </div>
+                            {std.photoUrl ? (
+                              <div className="w-full h-full relative group/photo">
+                                <img 
+                                  src={std.photoUrl} 
+                                  alt={std.name || 'Élève'} 
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPreviewPhotoStudent(std);
+                                  }}
+                                  className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition duration-200" 
+                                />
+
+                                {/* BOUTON 3 POINTS ⋮ POUR LA PHOTO */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuPhoto(prev => prev === std.id ? null : std.id);
+                                    setActiveMenuRow(null);
+                                    setActiveMenuCol(null);
+                                    setActiveMenuCell(null);
+                                    setActiveMenuNameCol(false);
+                                    setActiveColorPicker(null);
+                                  }}
+                                  className={`absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-20 ${
+                                    activeMenuPhoto === std.id
+                                      ? 'bg-blue-600 text-white shadow-xs opacity-100'
+                                      : 'bg-black/50 text-white hover:bg-black/80 opacity-0 group-hover:opacity-100'
+                                  }`}
+                                  title="Options de la photo"
+                                >
+                                  <MoreVertical className="w-2.5 h-2.5 stroke-[2.5]" />
+                                </button>
+
+                                {/* MENU CONTEXTUEL PHOTO */}
+                                {activeMenuPhoto === std.id && (
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95"
+                                  >
+                                    <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate border-b border-slate-100 pb-1 mb-1">
+                                      Photo : {std.name || `Élève ${rIdx + 1}`}
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveMenuPhoto(null);
+                                        handleTriggerPhotoUpload(std.id);
+                                      }}
+                                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition"
+                                    >
+                                      <Camera className="w-3.5 h-3.5 text-blue-600" />
+                                      <span>Remplacer la photo</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setActiveMenuPhoto(null);
+                                        setStudents(prev => prev.map(s => s.id === std.id ? { ...s, photoUrl: undefined } : s));
+                                        setIsSaved(false);
+                                      }}
+                                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-red-50 text-red-600 transition"
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                      <span>Supprimer la photo</span>
+                                    </button>
+                                  </div>
+                                )}
+                              </div>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => handleTriggerPhotoUpload(std.id)}
+                                className="w-full h-full flex flex-col items-center justify-center bg-slate-50 hover:bg-blue-50/70 text-slate-400 hover:text-blue-600 transition cursor-pointer p-0.5"
+                                title="Cliquer pour importer une photo carrée"
+                              >
+                                <Camera className="w-4 h-4 stroke-[2]" />
+                                <span className="text-[8.5px] font-bold mt-0.5 text-slate-400 leading-none">+ Photo</span>
+                              </button>
+                            )}
                           </div>
 
                           {/* NOM & PRÉNOM */}
@@ -2093,13 +2215,21 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               });
                             }}
                             className={`border-r ${isColActive('col-name') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center p-1.5 relative group shrink-0 ${
+                              blockedNoteStudentId === std.id && !(std.name || '').trim() ? 'ring-2 ring-red-500 bg-red-50/60' : ''
+                            } ${
                               activeCellInfo.id === `cell-name-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
                             }`}
                           >
                             <input
+                              id={`input-name-${std.id}`}
                               type="text"
                               value={std.name}
-                              onChange={(e) => handleNameChange(std.id, e.target.value)}
+                              onChange={(e) => {
+                                handleNameChange(std.id, e.target.value);
+                                if (blockedNoteStudentId === std.id && e.target.value.trim()) {
+                                  setBlockedNoteStudentId(null);
+                                }
+                              }}
                               onFocus={() => {
                                 setActiveCellInfo({
                                   id: `cell-name-${rIdx}`,
@@ -2128,6 +2258,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 setActiveMenuCol(null);
                                 setActiveMenuNameCol(false);
                                 setActiveMenuCell(null);
+                                setActiveMenuPhoto(null);
                                 setActiveColorPicker(null);
                               }}
                               className={`absolute top-1 right-1 p-0.5 rounded transition cursor-pointer z-10 ${
@@ -2251,6 +2382,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             const thisNoteWidth = getColWidth(`col-note-${cIdx}`);
                             const isThisColActive = isColActive(`col-note-${cIdx}`);
                             const isNoteCellMenuOpen = activeMenuCell?.studentId === std.id && activeMenuCell?.colIndex === cIdx;
+                            const hasStudentName = Boolean((std.name || '').trim());
+                            const isBlockedForName = blockedNoteStudentId === std.id && !hasStudentName;
 
                             return (
                               <div 
@@ -2261,6 +2394,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   backgroundColor: noteCellBg
                                 }}
                                 onClick={() => {
+                                  if (!hasStudentName) {
+                                    setBlockedNoteStudentId(std.id);
+                                    document.getElementById(`input-name-${std.id}`)?.focus();
+                                    setTimeout(() => setBlockedNoteStudentId(prev => prev === std.id ? null : prev), 3500);
+                                    return;
+                                  }
                                   setActiveCellInfo({
                                     id: `cell-note-${rIdx}-${cIdx}`,
                                     type: 'note',
@@ -2286,6 +2425,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     setActiveMenuCell(prev => (prev?.studentId === std.id && prev?.colIndex === cIdx) ? null : { studentId: std.id, colIndex: cIdx });
                                     setActiveMenuCol(null);
                                     setActiveMenuRow(null);
+                                    setActiveMenuPhoto(null);
                                     setActiveMenuNameCol(false);
                                     setActiveColorPicker(null);
                                   }}
@@ -2404,18 +2544,34 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   </div>
                                 )}
 
+                                {/* MESSAGE ROUGE BLOQUANT SI PAS DE NOM D'ÉLÈVE */}
+                                {isBlockedForName && (
+                                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-red-600 text-white text-[11px] font-black rounded-lg shadow-2xl whitespace-nowrap z-50 pointer-events-none flex items-center gap-1.5 animate-bounce ring-2 ring-white">
+                                    <AlertCircle className="w-4 h-4 text-white shrink-0 animate-pulse" />
+                                    <span>⚠️ Écrivez le nom de l'élève d'abord !</span>
+                                  </div>
+                                )}
+
                                 {/* SAISIE HAUTE VISIBILITÉ AVEC SÉPARATEUR ET BARÈME ULTRA LISIBLES ET NETS */}
                                 <div className="flex items-center justify-center w-full h-full">
                                   {/* Note de l'élève (modifiable, rouge et soulignée si > max) */}
                                   <input
                                     type="text"
-                                    value={parsed.scoreStr}
+                                    value={hasStudentName ? parsed.scoreStr : ''}
+                                    disabled={!hasStudentName}
                                     onChange={(e) => {
+                                      if (!hasStudentName) return;
                                       const sanitized = e.target.value.replace(/[^0-9.]/g, '');
                                       const newRaw = formatStudentNote(sanitized, parsed.maxScore);
                                       handleRawNoteChange(std.id, cIdx, newRaw);
                                     }}
                                     onFocus={() => {
+                                      if (!hasStudentName) {
+                                        setBlockedNoteStudentId(std.id);
+                                        document.getElementById(`input-name-${std.id}`)?.focus();
+                                        setTimeout(() => setBlockedNoteStudentId(prev => prev === std.id ? null : prev), 3500);
+                                        return;
+                                      }
                                       setActiveCellInfo({
                                         id: `cell-note-${rIdx}-${cIdx}`,
                                         type: 'note',
@@ -2425,10 +2581,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         value: noteVal || `.../${parsed.maxScore}`
                                       });
                                     }}
-                                    placeholder="-"
+                                    placeholder={hasStudentName ? "-" : ""}
                                     maxLength={6}
                                     className={`w-[48%] text-right text-xs sm:text-sm transition outline-none bg-transparent ${
-                                      isInvalid
+                                      !hasStudentName
+                                        ? 'cursor-not-allowed opacity-40'
+                                        : isInvalid
                                         ? 'text-red-600 underline font-black decoration-red-600 decoration-2'
                                         : 'font-black text-slate-900 placeholder:text-slate-400 focus:text-blue-700'
                                     }`}
@@ -2445,14 +2603,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   <input
                                     type="text"
                                     value={parsed.maxScore}
+                                    disabled={!hasStudentName}
                                     onChange={(e) => {
+                                      if (!hasStudentName) return;
                                       const sanitizedMax = e.target.value.replace(/[^0-9.]/g, '');
                                       const newMax = parseFloat(sanitizedMax) || 20;
                                       const newRaw = formatStudentNote(parsed.scoreStr, newMax);
                                       handleRawNoteChange(std.id, cIdx, newRaw);
                                     }}
                                     maxLength={4}
-                                    className="w-[44%] text-left text-xs sm:text-[12px] font-black text-slate-900 hover:text-blue-700 focus:text-blue-700 transition outline-none bg-transparent"
+                                    className={`w-[44%] text-left text-xs sm:text-[12px] font-black transition outline-none bg-transparent ${
+                                      !hasStudentName
+                                        ? 'cursor-not-allowed opacity-40 text-slate-400'
+                                        : 'text-slate-900 hover:text-blue-700 focus:text-blue-700'
+                                    }`}
                                     title="Barème maximal pour cette case"
                                   />
                                 </div>
@@ -2827,6 +2991,109 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* BACKDROP DÉSACTIVATION ARRIÈRE-PLAN QUAND UN MENU EST OUVERT */}
+      {isAnyMenuOpen && (
+        <div 
+          className="fixed inset-0 z-40 bg-black/5 cursor-default"
+          onClick={(e) => {
+            e.stopPropagation();
+            setActiveMenuCol(null);
+            setActiveMenuRow(null);
+            setActiveMenuCell(null);
+            setActiveMenuPhoto(null);
+            setActiveMenuNameCol(false);
+            setActiveColorPicker(null);
+          }}
+        />
+      )}
+
+      {/* MODALE POPUP CARTE AU MILIEU : APERÇU PHOTO, NOM & MOYENNE */}
+      {previewPhotoStudent && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs select-none animate-in fade-in duration-150"
+          onClick={() => setPreviewPhotoStudent(null)}
+        >
+          {(() => {
+            const previewStats = studentsWithStats.find(s => s.id === previewPhotoStudent.id);
+            return (
+              <div 
+                onClick={(e) => e.stopPropagation()}
+                className="w-72 sm:w-80 bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden p-5 flex flex-col items-center relative animate-in fade-in zoom-in-95 duration-200"
+              >
+                {/* Bouton fermer ✕ */}
+                <button
+                  type="button"
+                  onClick={() => setPreviewPhotoStudent(null)}
+                  className="absolute top-3 right-3 w-7 h-7 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center transition active:scale-95 cursor-pointer"
+                  title="Fermer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+
+                {/* Image carrée de l'élève */}
+                <div className="w-48 h-48 rounded-xl overflow-hidden border-2 border-slate-200 shadow-md bg-slate-100 shrink-0 mt-2">
+                  {previewPhotoStudent.photoUrl ? (
+                    <img 
+                      src={previewPhotoStudent.photoUrl} 
+                      alt={previewPhotoStudent.name || 'Élève'} 
+                      className="w-full h-full object-cover" 
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-slate-400">
+                      <Camera className="w-12 h-12 stroke-[1.5]" />
+                    </div>
+                  )}
+                </div>
+
+                {/* Nom & prénom en bas de la photo */}
+                <h3 className="mt-4 font-black text-slate-900 text-base text-center px-2 truncate w-full">
+                  {previewPhotoStudent.name || 'Nom non renseigné'}
+                </h3>
+
+                {/* Moyenne générale de l'élève */}
+                <div className="mt-2 flex items-center gap-2 text-xs font-bold text-slate-600 bg-slate-50 px-3 py-1.5 rounded-full border border-slate-200">
+                  <span>Moyenne générale :</span>
+                  <span className={`font-black text-sm ${
+                    !previewStats || previewStats.average === null
+                      ? 'text-slate-400'
+                      : previewStats.average >= 12
+                      ? 'text-emerald-700'
+                      : previewStats.average >= 10
+                      ? 'text-blue-700'
+                      : 'text-rose-700'
+                  }`}>
+                    {previewStats?.averageFormatted || '-'}
+                  </span>
+                </div>
+
+                {/* Actions rapides */}
+                <div className="mt-5 flex items-center gap-2 w-full">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const sId = previewPhotoStudent.id;
+                      setPreviewPhotoStudent(null);
+                      handleTriggerPhotoUpload(sId);
+                    }}
+                    className="flex-1 py-2 px-3 bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold text-xs rounded-xl transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                    <Camera className="w-3.5 h-3.5" />
+                    <span>Remplacer</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewPhotoStudent(null)}
+                    className="py-2 px-5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl transition active:scale-95 cursor-pointer"
+                  >
+                    Fermer
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       )}
     </div>
