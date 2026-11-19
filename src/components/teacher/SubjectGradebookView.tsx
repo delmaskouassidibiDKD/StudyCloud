@@ -21,8 +21,7 @@ import {
   Download,
   ChevronDown,
   Camera,
-  Trash2,
-  MoveRight
+  Trash2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SubjectItem, ClassItem, SchoolItem, SchoolYearItem, TermItem } from './TeacherClassesView';
@@ -43,13 +42,20 @@ export interface StudentGradeRow {
   id: string;
   name: string;
   photoUrl?: string;
-  notes: string[]; // Notes dynamiques (Note 1, Note 2...)
+  notes: string[]; // Notes dynamiques (Note 1, Note 2, ...) sans limite
 }
 
-// Générateur de libellé de colonne Excel (A, B, C, ... Z, AA, AB...)
+// Nombre de colonnes de cases vides supplémentaires à droite du tableau (dépasse toujours les notes)
+const RIGHT_EXTRA_COLS = 32;
+
+// Générateur de libellé de colonne Excel :
+// De A (0) jusqu'à AV (47). Arrivé à AV, reprend à zéro (A, B, C...) si le tableau continue !
 const getExcelColumnLabel = (index: number): string => {
+  // Cycle de 48 colonnes : A ... Z (0-25) puis AA ... AV (26-47).
+  // Arrivé à AV, index % 48 reprend à zéro (A, B, C...)
+  const cycleIndex = index % 48;
   let label = '';
-  let i = index;
+  let i = cycleIndex;
   while (i >= 0) {
     label = String.fromCharCode((i % 26) + 65) + label;
     i = Math.floor(i / 26) - 1;
@@ -73,7 +79,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const colCountKey = `studycloud_note_col_count_${subject.id}_${term?.id || 't1'}`;
   const colWidthKey = `studycloud_note_col_width_${subject.id}_${term?.id || 't1'}`;
 
-  // Nombre de colonnes de notes dynamique (7 par défaut)
+  // Référence du conteneur de défilement pour les gestes de zoom (touchpad et tactile 2 doigts)
+  const gridContainerRef = useRef<HTMLDivElement>(null);
+
+  // Nombre de colonnes de notes dynamique (infini, minimum 1, 7 par défaut)
   const [noteColumnCount, setNoteColumnCount] = useState<number>(() => {
     try {
       const savedCount = localStorage.getItem(colCountKey);
@@ -92,19 +101,19 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     return 7;
   });
 
-  // Largeur des colonnes de notes étirable (72px par défaut)
+  // Largeur des colonnes de notes étirable (72px par défaut, élargissable jusqu'à 220px)
   const [noteColWidth, setNoteColWidth] = useState<number>(() => {
     try {
       const saved = localStorage.getItem(colWidthKey);
       if (saved) {
         const w = parseInt(saved, 10);
-        if (!isNaN(w) && w >= 55 && w <= 160) return w;
+        if (!isNaN(w) && w >= 55 && w <= 220) return w;
       }
     } catch { }
     return 72;
   });
 
-  // Liste des élèves avec leurs notes (Persistance locale)
+  // Liste des élèves avec leurs notes (Infini, persistance locale)
   const [students, setStudents] = useState<StudentGradeRow[]>(() => {
     try {
       const saved = localStorage.getItem(storageKey);
@@ -122,7 +131,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       }
     } catch { }
 
-    // 8 lignes d'élèves prêtes à l'emploi par défaut avec 7 notes
     return Array.from({ length: 8 }, (_, i) => ({
       id: `student-${Date.now()}-${i}`,
       name: '',
@@ -185,7 +193,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     } catch { }
   }, [students, noteColumnCount, noteColWidth, storageKey, colCountKey, colWidthKey]);
 
-  // Synchroniser la taille du tableau de notes de chaque élève avec noteColumnCount
+  // Synchroniser la taille du tableau de notes de chaque élève avec noteColumnCount (ajout infini)
   useEffect(() => {
     setStudents(prev => prev.map(s => {
       if (s.notes.length === noteColumnCount) return s;
@@ -202,9 +210,66 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     }));
   }, [noteColumnCount]);
 
+  // Gestion du zoom avec le curseur (trackpad avec 2 doigts / Ctrl + molette) et zoom tactile 2 doigts sur mobile
+  useEffect(() => {
+    const container = gridContainerRef.current;
+    if (!container) return;
+
+    // 1. Zoom fluide avec deux doigts sur touchpad d'ordinateur (Ctrl + Wheel)
+    const handleWheel = (e: WheelEvent) => {
+      if (e.ctrlKey) {
+        e.preventDefault();
+        const delta = -e.deltaY * 0.12;
+        setZoomPercent(prev => Math.min(200, Math.max(30, Math.round(prev + delta))));
+      }
+    };
+
+    // 2. Zoom tactile à 2 doigts sur mobile / tablette (Pinch-to-zoom équilibré et fluide)
+    let initialDistance: number | null = null;
+    let initialZoom: number = zoomPercent;
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length === 2) {
+        initialDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        initialZoom = zoomPercent;
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (e.touches.length === 2 && initialDistance !== null) {
+        e.preventDefault();
+        const currentDistance = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        const factor = currentDistance / initialDistance;
+        const newZoom = Math.min(200, Math.max(30, Math.round(initialZoom * factor)));
+        setZoomPercent(newZoom);
+      }
+    };
+
+    const handleTouchEnd = () => {
+      initialDistance = null;
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    container.addEventListener('touchstart', handleTouchStart, { passive: true });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+    };
+  }, [zoomPercent]);
+
   // Calcul dynamique des moyennes et des rangs en temps réel
   const studentsWithStats = useMemo(() => {
-    // 1. Calcul de la moyenne pour chaque élève
     const withAverage = students.map((std, idx) => {
       const validNotes = std.notes
         .slice(0, noteColumnCount)
@@ -223,7 +288,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       };
     });
 
-    // 2. Attribution automatique des rangs selon la moyenne décroissante
     const sortedActive = [...withAverage]
       .filter(s => s.average !== null)
       .sort((a, b) => b.average! - a.average!);
@@ -264,7 +328,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     setIsSaved(false);
   };
 
-  // Ajout d'une ligne d'élève
+  // Ajout d'une ligne d'élève (Infini)
   const handleAddStudentRow = () => {
     const newStudent: StudentGradeRow = {
       id: `student-${Date.now()}-${students.length}`,
@@ -291,7 +355,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     setIsSaved(false);
   };
 
-  // Ajout d'une colonne de note
+  // Ajout d'une colonne de note (Infini)
   const handleAddNoteColumn = () => {
     setNoteColumnCount(prev => {
       const next = prev + 1;
@@ -352,7 +416,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     e.target.value = '';
   };
 
-  // Poignée astérisque rouge (*) sur le bord droit : étirer vers la droite pour allonger le tableau
+  // Poignée astérisque rouge (*) avancée à l'extérieur : glissement doux, fluide et allongement augmenté
   const handleStartRightResize = (e: React.MouseEvent | React.TouchEvent) => {
     e.preventDefault();
     setIsDraggingRight(true);
@@ -361,8 +425,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
     const handleMouseMove = (moveEvent: MouseEvent | TouchEvent) => {
       const curX = 'touches' in moveEvent ? moveEvent.touches[0].clientX : moveEvent.clientX;
-      const deltaX = curX - clientX;
-      const newWidth = Math.max(56, Math.min(145, Math.round(startWidth + deltaX)));
+      // Glissement doux et fluide avec facteur d'amortissement (0.42)
+      const deltaX = (curX - clientX) * 0.42;
+      // Allongement augmenté jusqu'à 220px
+      const newWidth = Math.max(56, Math.min(220, Math.round(startWidth + deltaX)));
       setNoteColWidth(newWidth);
     };
 
@@ -396,10 +462,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       const deltaY = curY - startY;
       const deltaX = curX - startX;
 
-      // Chaque tranche de 40px vers le bas = 1 ligne supplémentaire
-      rowsToAdd = Math.max(0, Math.floor(deltaY / 40));
-      // Chaque tranche de 70px vers la droite = 1 colonne de note
-      colsToAdd = Math.max(0, Math.floor(deltaX / 70));
+      // Chaque tranche de 42px vers le bas = 1 ligne supplémentaire
+      rowsToAdd = Math.max(0, Math.floor(deltaY / 42));
+      // Chaque tranche de 68px vers la droite = 1 colonne de note supplémentaire
+      colsToAdd = Math.max(0, Math.floor(deltaX / 68));
       setDragPreviewRows(rowsToAdd);
     };
 
@@ -418,7 +484,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           handleAddNoteColumn();
         }
       } else {
-        // Si simple clic sans glisser, ajouter 1 ligne
         handleAddStudentRow();
       }
     };
@@ -459,9 +524,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     setActiveSheetTab(newName);
   };
 
-  // Calcul du nombre total de colonnes et de lignes pour remplir tout l'écran de petits carreaux
-  const backgroundColCount = Math.max(48, noteColumnCount + 32);
-  const backgroundRowCount = Math.max(65, students.length + 40);
+  // Nombre total de colonnes et de lignes qui s'étend au fur et à mesure qu'on ajoute des notes et dépasse toujours le tableau
+  const backgroundColCount = Math.max(68, noteColumnCount + RIGHT_EXTRA_COLS + 16);
+  const backgroundRowCount = Math.max(65, students.length + 35);
 
   return (
     <div 
@@ -481,19 +546,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       />
 
       {/* ========================================================================= */}
-      {/* 1. EN-TÊTE ÉPURÉ : BOUTON RETOUR À GAUCHE & BOUTONS ZOOMER À DROITE */}
+      {/* 1. EN-TÊTE ÉPURÉ AVEC BOUTON RETOUR, BOUTONS DE ZOOM (+) ET (-) EN HAUT   */}
+      {/* (Où l'utilisateur a mis la couleur rouge sur l'image 3) & PLEIN ÉCRAN     */}
       {/* ========================================================================= */}
-      <header className="h-11 sm:h-12 bg-white border-b border-slate-300 px-3 sm:px-4 flex items-center justify-between gap-3 shrink-0 z-20 shadow-xs">
+      <header className="h-11 sm:h-12 bg-white border-b border-slate-300 px-2 sm:px-4 flex items-center justify-between gap-2 shrink-0 z-20 shadow-xs">
         {/* À GAUCHE : Bouton Retour sur la même ligne horizontale */}
-        <div className="flex items-center gap-2.5 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300/90 shadow-2xs transition active:scale-95 cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300/90 shadow-2xs transition active:scale-95 cursor-pointer shrink-0"
             title="Retour à la liste des matières"
           >
             <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5] text-slate-700" />
-            <span className="leading-none">Retour</span>
+            <span className="leading-none hidden xs:inline">Retour</span>
           </button>
 
           {/* Badge & Titre de la matière sélectionnée */}
@@ -507,18 +573,49 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             />
             <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 truncate">
               <span className="truncate">{subject.name}</span>
-              <span className="text-slate-400 font-normal">•</span>
-              <span className="text-slate-600 font-semibold truncate">{schoolClass.level} {schoolClass.name || ''}</span>
               <span className="text-slate-400 font-normal hidden sm:inline">•</span>
-              <span className="text-cyan-800 font-bold bg-cyan-50 px-2 py-0.5 rounded text-[10px] border border-cyan-200/80 hidden sm:inline-block">
+              <span className="text-slate-600 font-semibold truncate hidden sm:inline">{schoolClass.level} {schoolClass.name || ''}</span>
+              <span className="text-slate-400 font-normal hidden md:inline">•</span>
+              <span className="text-cyan-800 font-bold bg-cyan-50 px-2 py-0.5 rounded text-[10px] border border-cyan-200/80 hidden md:inline-block">
                 {term?.name || 'Trimestre 1'}
               </span>
             </div>
           </div>
         </div>
 
-        {/* AU CENTRE / DROITE : Indicateur de sauvegarde & Export Excel rapide */}
+        {/* AU CENTRE / DROITE : BOUTONS ZOOM (+) ET (-) EN HAUT (IMAGE 3) & ACTIONS */}
         <div className="flex items-center gap-2 shrink-0">
+          {/* BOUTONS PLUS ET MOINS DE ZOOM EN HAUT (IMAGE 3 - FLÈCHE ROUGE) */}
+          <div 
+            className="flex items-center bg-slate-100 hover:bg-slate-200/90 border border-slate-300 rounded-lg p-0.5 shadow-2xs transition"
+            title="Contrôle du zoom d'affichage"
+          >
+            <button
+              type="button"
+              onClick={() => setZoomPercent(prev => Math.max(30, prev - 10))}
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white text-slate-700 transition active:scale-90 cursor-pointer"
+              title="Zoom arrière (-10%)"
+            >
+              <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
+            </button>
+            <span 
+              onClick={() => setZoomPercent(70)}
+              className="text-[11px] font-mono font-black text-slate-800 px-1.5 min-w-[36px] text-center cursor-pointer hover:text-blue-600 transition select-none"
+              title="Cliquer pour réinitialiser le zoom à 70%"
+            >
+              {zoomPercent}%
+            </span>
+            <button
+              type="button"
+              onClick={() => setZoomPercent(prev => Math.min(200, prev + 10))}
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white text-slate-700 transition active:scale-90 cursor-pointer"
+              title="Zoom avant (+10%)"
+            >
+              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            </button>
+          </div>
+
+          {/* Export Excel rapide */}
           <button
             type="button"
             onClick={handleExportExcel}
@@ -526,15 +623,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             title="Télécharger cette feuille au format Excel (.xlsx)"
           >
             <Download className="w-3 h-3 text-emerald-700" />
-            <span>Exporter .xlsx</span>
+            <span className="hidden md:inline">Exporter .xlsx</span>
           </button>
 
-          <span className="text-[10px] text-slate-400 font-medium hidden md:inline">
-            {isSaved ? 'Enregistré automatiquement' : 'Enregistrement...'}
+          <span className="text-[10px] text-slate-400 font-medium hidden lg:inline">
+            {isSaved ? 'Enregistré' : 'Enregistrement...'}
           </span>
 
-          {/* À DROITE : BOUTONS ZOOMER PROGRESSIF & PLEIN ÉCRAN (Desktop) */}
-          <div className="hidden md:flex items-center gap-1.5 shrink-0 ml-1">
+          {/* BOUTONS ZOOMER PROGRESSIF & PLEIN ÉCRAN */}
+          <div className="flex items-center gap-1.5 shrink-0 ml-0.5">
             <ViewerSuperExpandButton
               expandLevel={viewerExpandLevel}
               onExpandChange={(lvl) => {
@@ -580,7 +677,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       {/* ========================================================================= */}
       <section className="bg-[#f3f4f6] border-b border-slate-300 px-2 py-1 flex items-stretch gap-1 sm:gap-2 overflow-x-auto text-slate-700 shrink-0 select-none">
         {/* GROUPE 1 : PRESSE-PAPIERS / FORMAT PAINTER */}
-        <div className="flex flex-col items-center justify-between px-1.5 border-r border-slate-300/80 min-w-[55px]">
+        <div className="flex flex-col items-center justify-between px-1.5 border-r border-slate-300/80 min-w-[52px]">
           <div className="flex items-center gap-1 mt-0.5">
             <button 
               type="button" 
@@ -791,22 +888,22 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
       {/* ========================================================================= */}
       {/* 4. GRILLE DE TABLEUR EXCEL / WPS : TABLEAU ENRICHI AVEC CARREAUX AGRANDIS */}
-      {/* ET PETITS CARREAUX AUTOUR VISIBLES QUI REMPLISSENT TOUT L'ÉCRAN           */}
+      {/* DEUX DOIGTS POUR ZOOMER SUR TOUCHPAD & MOBILE, DÉPLACEMENT ÉQUILIBRÉ      */}
+      {/* CARREAUX DE FOND QUI DÉPASSENT TOUJOURS ET REPRENNENT À ZÉRO APRÈS AV     */}
       {/* ========================================================================= */}
       <div 
-        className="flex-1 overflow-auto bg-[#fafbfc] relative p-2 sm:p-3"
+        ref={gridContainerRef}
+        className="flex-1 overflow-auto bg-[#fafbfc] relative p-2 sm:p-3 touch-pan-x touch-pan-y"
         style={{
           zoom: `${zoomPercent}%`
         }}
       >
         <div className="inline-block min-w-full">
-          {/* Ligne d'en-tête de colonnes Excel (A, B, C, D...) pour l'effet tableur complet */}
+          {/* Ligne d'en-tête de colonnes Excel (A, B, C, ... AV puis reprend à zéro A, B...) */}
           <div className="flex items-center mb-0 sticky top-0 z-10 select-none">
-            {/* Coin supérieur gauche vide au-dessus des numéros de lignes */}
             <div className="w-9 h-6 bg-[#f1f5f9] border-r border-b border-slate-300 text-[10px] flex items-center justify-center font-mono text-slate-400 shrink-0">
               ◢
             </div>
-            {/* Lettres de colonnes A, B, C... */}
             {Array.from({ length: backgroundColCount }).map((_, c) => (
               <div 
                 key={`excel-col-letter-${c}`} 
@@ -858,12 +955,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 {/* RANG | PROFIL | NOM & PRÉNOM | NOTE 1... NOTE N | [+] | MOYENNE     */}
                 {/* =================================================================== */}
                 <div className="relative shrink-0 border-2 border-slate-900 bg-white shadow-xl">
-                  {/* ================================================================= */}
-                  {/* EN-TÊTE DU TABLEAU : MOTS EN GRAND CARACTÈRE, BIEN CENTRÉS         */}
-                  {/* PAS DE LETTRES BLEUES (R, I, NO, N, M SUPPRIMÉES)                 */}
-                  {/* ================================================================= */}
+                  {/* EN-TÊTE DU TABLEAU : MOTS EN GRAND CARACTÈRE, BIEN CENTRÉS */}
                   <div className="flex bg-[#f1f5f9] border-b-2 border-slate-900 select-none items-stretch text-slate-900">
-                    {/* 1. RANG (Grand caractère, bien centré) */}
+                    {/* 1. RANG */}
                     <div 
                       className="w-16 sm:w-18 h-12 border-r border-slate-700 flex items-center justify-center p-1 text-center bg-[#f1f5f9]"
                       title="Rang de l'élève (classement)"
@@ -873,7 +967,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       </span>
                     </div>
 
-                    {/* 2. PROFIL / PHOTO (Grand caractère, bien centré) */}
+                    {/* 2. PROFIL / PHOTO */}
                     <div 
                       className="w-18 sm:w-20 h-12 border-r border-slate-700 flex items-center justify-center p-1 text-center bg-[#f1f5f9]"
                       title="Profil / Photo de l'élève"
@@ -883,7 +977,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       </span>
                     </div>
 
-                    {/* 3. NOM & PRÉNOM (Grand caractère, bien centré) */}
+                    {/* 3. NOM & PRÉNOM */}
                     <div 
                       className="w-60 sm:w-72 h-12 border-r border-slate-700 flex items-center justify-center p-1 text-center bg-[#f1f5f9]"
                       title="Nom et Prénom de l'élève"
@@ -893,7 +987,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       </span>
                     </div>
 
-                    {/* 4. COLONNES DE NOTES DYNAMIQUES (NOTE 1, NOTE 2, ... NOTE N) */}
+                    {/* 4. COLONNES DE NOTES DYNAMIQUES (NOTE 1, NOTE 2, ... NOTE N - SANS LIMITE) */}
                     {Array.from({ length: noteColumnCount }).map((_, i) => (
                       <div 
                         key={`header-note-${i}`}
@@ -905,7 +999,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           NOTE {i + 1}
                         </span>
 
-                        {/* Petite croix de suppression au survol si plus d'une colonne */}
                         {noteColumnCount > 1 && (
                           <button
                             type="button"
@@ -922,7 +1015,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       </div>
                     ))}
 
-                    {/* 5. BOUTON DÉDIÉ POUR AJOUTER UNE NOUVELLE COLONNE DE NOTE DANS L'EN-TÊTE */}
+                    {/* 5. BOUTON [+] AJOUTER UNE NOUVELLE COLONNE DE NOTE DANS L'EN-TÊTE */}
                     <div 
                       className="w-12 h-12 border-r border-slate-700 flex items-center justify-center bg-slate-200/70 hover:bg-blue-100 transition cursor-pointer shrink-0"
                       onClick={handleAddNoteColumn}
@@ -936,7 +1029,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       </button>
                     </div>
 
-                    {/* 6. MOYENNE (Grand caractère, bien centré) */}
+                    {/* 6. MOYENNE */}
                     <div 
                       className="w-24 sm:w-28 h-12 flex items-center justify-center p-1 text-center bg-blue-100/70 shrink-0"
                       title="Moyenne générale de l'élève"
@@ -947,9 +1040,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     </div>
                   </div>
 
-                  {/* ================================================================= */}
                   {/* CORPS DU TABLEAU : LIGNES D'ÉLÈVES */}
-                  {/* ================================================================= */}
                   <div className="divide-y divide-slate-400">
                     {studentsWithStats.map((std, rIdx) => {
                       const isRowSelected = activeCellInfo.rowIndex === rIdx;
@@ -961,7 +1052,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             isRowSelected ? 'bg-blue-50/30' : 'hover:bg-slate-50/70'
                           }`}
                         >
-                          {/* RANG (Automatique selon la moyenne) */}
+                          {/* RANG */}
                           <div 
                             onClick={() => {
                               setActiveCellInfo({
@@ -1111,12 +1202,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             );
                           })}
 
-                          {/* Case vide alignée sous le bouton [+] d'ajout de note */}
+                          {/* Case vide sous le bouton [+] */}
                           <div className="w-12 h-11 border-r border-slate-700 bg-slate-50/60 flex items-center justify-center shrink-0">
                             <span className="text-slate-200 text-xs">•</span>
                           </div>
 
-                          {/* MOYENNE GÉNÉRALE */}
+                          {/* MOYENNE */}
                           <div 
                             onClick={() => {
                               setActiveCellInfo({
@@ -1144,7 +1235,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               {std.averageFormatted || '-'}
                             </span>
 
-                            {/* Suppression rapide de la ligne */}
                             <button
                               type="button"
                               onClick={(e) => {
@@ -1179,14 +1269,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   </div>
 
                   {/* ================================================================= */}
-                  {/* POIGNÉE DE REDIMENSIONNEMENT DROITE (*) : ALLONGER VERS LA DROITE   */}
-                  {/* Conforme au repère "astérisque en rouge au milieu droit"          */}
+                  {/* POIGNÉE DE REDIMENSIONNEMENT DROITE (*) : AVANCÉE À L'EXTÉRIEUR   */}
+                  {/* (Image 1) - Glissement doux et fluide, allongement augmenté       */}
                   {/* ================================================================= */}
                   <div
                     onMouseDown={handleStartRightResize}
                     onTouchStart={handleStartRightResize}
-                    className={`absolute -right-3.5 top-1/2 -translate-y-1/2 w-7 h-14 bg-white hover:bg-blue-600 text-slate-700 hover:text-white border-2 border-slate-800 hover:border-blue-700 rounded-md shadow-lg flex flex-col items-center justify-center cursor-ew-resize z-30 group transition-all select-none ${
-                      isDraggingRight ? 'bg-blue-600 text-white ring-2 ring-blue-400' : ''
+                    style={{ right: '-34px' }}
+                    className={`absolute top-1/2 -translate-y-1/2 w-7 h-14 bg-white hover:bg-blue-600 text-slate-700 hover:text-white border-2 border-slate-800 hover:border-blue-700 rounded-md shadow-lg flex flex-col items-center justify-center cursor-ew-resize z-30 group transition-all select-none ${
+                      isDraggingRight ? 'bg-blue-600 text-white ring-4 ring-blue-400/50 scale-105' : 'hover:scale-105'
                     }`}
                     title="Tirer vers la droite pour allonger le tableau (largeur des colonnes de notes)"
                   >
@@ -1198,8 +1289,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   </div>
 
                   {/* ================================================================= */}
-                  {/* POIGNÉE D'ANGLE EXCEL (◢) : TIRER POUR AJOUTER DES LIGNES         */}
-                  {/* Conforme au repère "entouré en rouge dans le coin inférieur droit" */}
+                  {/* POIGNÉE D'ANGLE EXCEL (◢) : AJOUTER DES LIGNES EN TIRANT LE COIN  */}
                   {/* ================================================================= */}
                   <div
                     onMouseDown={handleStartCornerResize}
@@ -1213,7 +1303,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       <path d="M14 14H9V12H12V9H14V14ZM14 7H12V5H14V7ZM7 14H5V12H7V14ZM14 3H12V1H14V3ZM3 14H1V12H3V14Z" opacity="0.95" />
                     </svg>
 
-                    {/* Infobulle dynamique pendant le glissement */}
                     {isDraggingCorner && dragPreviewRows > 0 && (
                       <div className="absolute top-9 right-0 bg-slate-900 text-white text-[10px] font-bold px-2 py-0.5 rounded shadow-lg whitespace-nowrap z-50 pointer-events-none">
                         + {dragPreviewRows} ligne{dragPreviewRows > 1 ? 's' : ''}
@@ -1222,9 +1311,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   </div>
                 </div>
 
-                {/* Petites cases de fond à droite du tableau qui remplissent l'écran */}
+                {/* Petites cases de fond à droite du tableau qui dépassent et remplissent l'écran sans interruption */}
                 <div className="flex shrink-0">
-                  {Array.from({ length: backgroundColCount - noteColumnCount - 6 }).map((_, c) => (
+                  {Array.from({ length: RIGHT_EXTRA_COLS }).map((_, c) => (
                     <div key={`right-grid-col-${c}`} className="flex flex-col">
                       {Array.from({ length: studentsWithStats.length + 3 }).map((_, r) => (
                         <div 
@@ -1239,7 +1328,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
               {/* Petites cases de fond en bas du tableau qui remplissent l'écran */}
               <div className="flex flex-col">
-                {Array.from({ length: backgroundRowCount - studentsWithStats.length - 3 }).map((_, r) => (
+                {Array.from({ length: backgroundRowCount }).map((_, r) => (
                   <div key={`bottom-grid-row-${r}`} className="flex">
                     {Array.from({ length: backgroundColCount }).map((_, c) => (
                       <div 
@@ -1256,7 +1345,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* 5. BARRE INFÉRIEURE : ONGLETS FEUILLES & CURSEUR ZOOM (70% par défaut)    */}
+      {/* 5. BARRE INFÉRIEURE : ONGLETS FEUILLES & CURSEUR ZOOM                     */}
       {/* ========================================================================= */}
       <footer className="h-7 bg-[#f3f4f6] border-t border-slate-300 px-3 flex items-center justify-between text-xs text-slate-600 shrink-0 select-none">
         {/* À GAUCHE : Onglets de feuilles */}
@@ -1289,20 +1378,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           </button>
         </div>
 
-        {/* AU CENTRE : Raccourci d'information */}
+        {/* AU CENTRE : Raccourcis d'information */}
         <div className="hidden lg:flex items-center gap-3 text-[10.5px] text-slate-500 font-medium">
-          <span>Tirer le coin <strong className="text-blue-600">◢</strong> pour ajouter des lignes</span>
+          <span>Tirer le coin <strong className="text-blue-600">◢</strong> pour ajouter des élèves</span>
           <span>•</span>
-          <span>Tirer <strong className="text-red-500">*</strong> pour élargir</span>
+          <span>Tirer <strong className="text-red-500">*</strong> pour allonger</span>
           <span>•</span>
-          <span>Bouton <strong className="text-blue-600">[+]</strong> pour ajouter des colonnes de notes</span>
+          <span>Zoom avec 2 doigts ou boutons <strong className="text-slate-800">[-] [+]</strong> en haut</span>
         </div>
 
-        {/* À DROITE : Curseur de Zoom (Affichant 70% comme sur la photo du professeur) */}
+        {/* À DROITE : Curseur de Zoom */}
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => setZoomPercent(prev => Math.max(40, prev - 10))}
+            onClick={() => setZoomPercent(prev => Math.max(30, prev - 10))}
             className="w-5 h-5 rounded hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
             title="Zoom arrière (-10%)"
           >
@@ -1311,8 +1400,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
           <input
             type="range"
-            min="40"
-            max="150"
+            min="30"
+            max="200"
             step="5"
             value={zoomPercent}
             onChange={(e) => setZoomPercent(Number(e.target.value))}
@@ -1321,11 +1410,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
           <button
             type="button"
-            onClick={() => setZoomPercent(prev => Math.min(150, prev + 10))}
+            onClick={() => setZoomPercent(prev => Math.min(200, prev + 10))}
             className="w-5 h-5 rounded hover:bg-slate-200 flex items-center justify-center text-slate-600 cursor-pointer"
             title="Zoom avant (+10%)"
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="w-3 h-3" />
           </button>
 
           <span className="text-[11px] font-mono font-bold text-slate-700 min-w-[36px] text-right">
