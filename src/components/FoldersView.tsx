@@ -35,7 +35,7 @@ import { invalidateCloudQueries } from '../services/queryClient';
 import { getActiveWallpaperReliable, DEFAULT_WALLPAPER_URL } from '../utils/wallpaperHelper';
 import { HeaderMelodyControl } from './HeaderMelodyControl';
 import { useBackHandler } from '../services/backNavigation';
-import { useViewerExpandLevel } from '../utils/viewerExpandManager';
+import { useViewerExpandLevel, resetViewerExpand } from '../utils/viewerExpandManager';
 
 interface FoldersViewProps {
   onOpenUpload: () => void;
@@ -2324,9 +2324,12 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'level-menu' && <LevelMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'teacher-classes-menu' && (
-        <div className="absolute inset-x-0 md:left-64 md:right-0 bottom-0 top-[62px] md:top-[66px] z-30 w-full md:w-[calc(100%-16rem)] overflow-hidden">
+        <div className={`absolute inset-x-0 ${viewerExpandLevel >= 2 ? 'md:left-0 md:w-full z-50' : 'md:left-64 md:w-[calc(100%-16rem)] z-30'} md:right-0 bottom-0 ${viewerExpandLevel >= 1 ? 'top-0' : 'top-[62px] md:top-[66px]'} w-full overflow-hidden transition-all duration-300`}>
           <TeacherClassesView
-            onBack={() => setViewMode('home')}
+            onBack={() => {
+              resetViewerExpand();
+              setViewMode('home');
+            }}
             user={user}
           />
         </div>

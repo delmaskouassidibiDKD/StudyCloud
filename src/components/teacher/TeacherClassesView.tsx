@@ -27,8 +27,12 @@ import {
   UserCheck,
   ChevronLeft,
   ChevronRight,
-  Copy
+  Copy,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
+import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
+import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
 
 export interface SchoolYearItem {
   id: string;
@@ -188,6 +192,31 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // Recherche dans l'en-tête
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+
+  // Agrandissement progressif et plein écran (Image 2 & 3 - Desktop uniquement)
+  const viewerExpandLevel = useViewerExpandLevel();
+  const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+
+  // Nettoyage complet de l'agrandissement au démontage du composant
+  useEffect(() => {
+    return () => {
+      resetViewerExpand();
+    };
+  }, []);
+
+  // Touche Échap pour restaurer l'affichage normal
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (viewerExpandLevel >= 1 || isViewerMaximized) {
+          setIsViewerMaximized(false);
+          resetViewerExpand();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewerExpandLevel, isViewerMaximized]);
 
   // Années scolaires créées (Persistance locale)
   const [schoolYears, setSchoolYears] = useState<SchoolYearItem[]>(() => {
@@ -989,7 +1018,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   return (
     <div 
-      className="relative w-full h-full min-h-dvh flex flex-col md:flex-row overflow-hidden font-sans select-none"
+      className={`w-full flex flex-col md:flex-row overflow-hidden font-sans select-none transition-all duration-300 ${
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-50 w-screen h-screen min-h-screen'
+          : 'relative w-full h-full min-h-dvh'
+      }`}
       style={{
         background: 'linear-gradient(135deg, #dcf0fa 0%, #e6f4fb 35%, #edf7fc 70%, #dff2fa 100%)'
       }}
@@ -1002,7 +1035,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         style={{ backgroundColor: '#002f3a' }}
       >
         {/* Logo supérieur (Vague circulaire cyan / StudyCloud Pro) */}
-        <div className="flex flex-col items-center gap-1.5 cursor-pointer" onClick={onBack} title="Retour à l'accueil StudyCloud">
+        <div className="flex flex-col items-center gap-1.5 cursor-pointer" onClick={() => { setIsViewerMaximized(false); resetViewerExpand(); onBack(); }} title="Retour à l'accueil StudyCloud">
           <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-400 via-sky-300 to-teal-200 flex items-center justify-center shadow-lg shadow-cyan-900/40 border border-white/40 group hover:scale-105 transition">
             <svg className="w-6 h-6 text-[#002f3a]" viewBox="0 0 24 24" fill="currentColor">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
@@ -1051,16 +1084,6 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             );
           })}
         </nav>
-
-        {/* Bouton retour bas de page */}
-        <button
-          type="button"
-          onClick={onBack}
-          className="w-9 h-9 rounded-xl flex items-center justify-center text-cyan-200/70 hover:text-white hover:bg-white/10 transition"
-          title="Quitter et revenir à StudyCloud"
-        >
-          <ArrowLeft className="w-4 h-4" />
-        </button>
       </aside>
 
       {/* ========================================================================= */}
@@ -1089,7 +1112,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={selectedSchoolInside ? () => setSelectedSchoolInside(null) : onBack}
+                onClick={() => {
+                  if (selectedSchoolInside) {
+                    setSelectedSchoolInside(null);
+                  } else {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                    onBack();
+                  }
+                }}
                 className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white text-slate-700 hover:text-slate-900 border border-white/90 shadow-xs transition active:scale-95 font-bold text-xs sm:text-sm"
                 title={selectedSchoolInside ? "Retour à la liste des écoles" : "Retour à l'accueil"}
               >
@@ -1177,6 +1208,46 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             >
               <Settings className="w-4 h-4" />
             </button>
+
+            {/* Boutons Super Agrandissement & Plein écran (Desktop uniquement - Image 2 & 3) */}
+            <div className="hidden md:flex items-center gap-1.5 shrink-0">
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => {
+                  if (lvl >= 1) {
+                    setIsViewerMaximized(true);
+                  } else {
+                    setIsViewerMaximized(false);
+                  }
+                  setViewerExpandLevel(lvl);
+                }}
+              />
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (viewerExpandLevel >= 1 || isViewerMaximized) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(1);
+                  }
+                }}
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 ${
+                  viewerExpandLevel >= 1 || isViewerMaximized
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
+                    : 'bg-[#101827] hover:bg-[#1a2538] text-white border-white/20'
+                }`}
+                title={viewerExpandLevel >= 1 || isViewerMaximized ? 'Réduire la vue' : "Agrandir l'espace"}
+              >
+                {viewerExpandLevel >= 1 || isViewerMaximized ? (
+                  <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                )}
+              </button>
+            </div>
 
             {/* Profil Enseignant */}
             <div className="flex items-center gap-2 pl-1 pr-3 py-1 bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-white/90">
