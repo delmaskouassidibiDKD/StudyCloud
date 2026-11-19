@@ -63,7 +63,7 @@ const getExcelColumnLabel = (index: number): string => {
 
 // Mesure de la largeur minimale nécessaire pour le mot le plus long (empêche les pointillés / textes coupés)
 const getMinNameColWidth = (studentsList: StudentGradeRow[]): number => {
-  let maxWordPx = 150; // Largeur minimale de sécurité
+  let maxWordPx = 150; // Largeur minimale de base
   for (const s of studentsList) {
     if (!s.name) continue;
     const words = s.name.trim().split(/\s+/);
@@ -94,6 +94,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const colWidthPhotoKey = `studycloud_col_width_photo_${subject.id}_${term?.id || 't1'}`;
   const colWidthNameKey = `studycloud_col_width_name_${subject.id}_${term?.id || 't1'}`;
   const colWidthAvgKey = `studycloud_col_width_avg_${subject.id}_${term?.id || 't1'}`;
+  const customNoteWidthsKey = `studycloud_custom_note_widths_${subject.id}_${term?.id || 't1'}`;
   const rowHeightsKey = `studycloud_row_heights_${subject.id}_${term?.id || 't1'}`;
 
   // Référence du conteneur de défilement
@@ -154,6 +155,18 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     return 72;
   });
 
+  // Largeurs individuelles pour chaque colonne de note
+  const [customNoteWidths, setCustomNoteWidths] = useState<{ [index: number]: number }>(() => {
+    try {
+      const s = localStorage.getItem(customNoteWidthsKey);
+      if (s) {
+        const parsed = JSON.parse(s);
+        if (typeof parsed === 'object') return parsed;
+      }
+    } catch { }
+    return {};
+  });
+
   const [colWidthAverage, setColWidthAverage] = useState<number>(() => {
     try {
       const s = localStorage.getItem(colWidthAvgKey);
@@ -171,11 +184,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     return {};
   });
 
-  // État de sélection et de redimensionnement des lignes (double clic / glissement)
-  const [selectedLine, setSelectedLine] = useState<{ type: 'col' | 'row'; id: string | number } | null>(null);
-  const [resizingLine, setResizingLine] = useState<{ type: 'col' | 'row'; id: string | number } | null>(null);
-  const [hoveredColDivider, setHoveredColDivider] = useState<string | null>(null);
-  const [hoveredRowDivider, setHoveredRowDivider] = useState<number | null>(null);
+  // ÉTAT DE SÉLECTION STRICT : Une seule ligne sélectionnée à la fois (exclusive)
+  // Double-clic requis pour sélectionner. Le simple survol ne sélectionne PAS !
+  const [selectedLine, setSelectedLine] = useState<{ type: 'col' | 'row'; id: string } | null>(null);
+  const [resizingLine, setResizingLine] = useState<{ type: 'col' | 'row'; id: string } | null>(null);
 
   // Liste des élèves avec leurs notes (Infini, persistance locale)
   const [students, setStudents] = useState<StudentGradeRow[]>(() => {
@@ -238,7 +250,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // État de sauvegarde
   const [isSaved, setIsSaved] = useState<boolean>(true);
 
-  // Référence pour l'upload de photo d'élève
+  // Référence upload photo
   const photoInputRef = useRef<HTMLInputElement>(null);
   const [uploadingStudentId, setUploadingStudentId] = useState<string | null>(null);
 
@@ -257,10 +269,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       localStorage.setItem(colWidthPhotoKey, colWidthPhoto.toString());
       localStorage.setItem(colWidthNameKey, colWidthName.toString());
       localStorage.setItem(colWidthAvgKey, colWidthAverage.toString());
+      localStorage.setItem(customNoteWidthsKey, JSON.stringify(customNoteWidths));
       localStorage.setItem(rowHeightsKey, JSON.stringify(customRowHeights));
       setIsSaved(true);
     } catch { }
-  }, [students, noteColumnCount, noteColWidth, colWidthRank, colWidthPhoto, colWidthName, colWidthAverage, customRowHeights, storageKey, colCountKey, colWidthKey, colWidthRankKey, colWidthPhotoKey, colWidthNameKey, colWidthAvgKey, rowHeightsKey]);
+  }, [students, noteColumnCount, noteColWidth, colWidthRank, colWidthPhoto, colWidthName, colWidthAverage, customNoteWidths, customRowHeights, storageKey, colCountKey, colWidthKey, colWidthRankKey, colWidthPhotoKey, colWidthNameKey, colWidthAvgKey, customNoteWidthsKey, rowHeightsKey]);
 
   // Synchroniser la taille du tableau de notes de chaque élève avec noteColumnCount
   useEffect(() => {
@@ -483,46 +496,81 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   };
 
   // =========================================================================
-  // GESTION DU REDIMENSIONNEMENT DES LIGNES VERTICALES (COLONNES)
-  // Double-clic = sélection et changement de couleur immédiat
-  // Glissement = élargit ou rétrécit la colonne en bloquant à la limite du texte
+  // GESTION INDIVIDUELLE DES COLONNES : Chaque séparateur a son ID unique !
+  // Aucune ligne ne se mélange. Double-clic obligatoire pour sélectionner.
   // =========================================================================
+  const getColWidth = (colId: string): number => {
+    if (colId === 'col-rank') return colWidthRank;
+    if (colId === 'col-photo') return colWidthPhoto;
+    if (colId === 'col-name') return colWidthName;
+    if (colId.startsWith('col-note-')) {
+      const idx = parseInt(colId.replace('col-note-', ''), 10);
+      return customNoteWidths[idx] || noteColWidth;
+    }
+    if (colId === 'col-moyenne') return colWidthAverage;
+    return 72;
+  };
+
+  const getColMinWidth = (colId: string): number => {
+    if (colId === 'col-rank') return 55;
+    if (colId === 'col-photo') return 60;
+    if (colId === 'col-name') return getMinNameColWidth(students);
+    if (colId.startsWith('col-note-')) return 52;
+    if (colId === 'col-moyenne') return 80;
+    return 50;
+  };
+
+  const setColWidth = (colId: string, w: number) => {
+    if (colId === 'col-rank') setColWidthRank(w);
+    else if (colId === 'col-photo') setColWidthPhoto(w);
+    else if (colId === 'col-name') setColWidthName(w);
+    else if (colId.startsWith('col-note-')) {
+      const idx = parseInt(colId.replace('col-note-', ''), 10);
+      setCustomNoteWidths(prev => ({ ...prev, [idx]: w }));
+    }
+    else if (colId === 'col-moyenne') setColWidthAverage(w);
+  };
+
+  // Vérification stricte si un séparateur vertical est sélectionné ou en cours de glissement
+  // LE SIMPLE SURVOL NE SÉLECTIONNE PLUS LA LIGNE !
+  const isColActive = (colId: string): boolean => {
+    if (resizingLine?.type === 'col' && resizingLine.id === colId) return true;
+    if (selectedLine?.type === 'col' && selectedLine.id === colId) return true;
+    return false;
+  };
+
+  // Vérification stricte si un séparateur horizontal est sélectionné ou en cours de glissement
+  const isRowActive = (rowIndex: number): boolean => {
+    const rowKey = `row-${rowIndex}`;
+    if (resizingLine?.type === 'row' && resizingLine.id === rowKey) return true;
+    if (selectedLine?.type === 'row' && selectedLine.id === rowKey) return true;
+    return false;
+  };
+
+  // Lancement du redimensionnement d'une colonne verticale spécifique
   const handleStartColResize = (e: React.MouseEvent | React.TouchEvent, colId: string) => {
     e.preventDefault();
     e.stopPropagation();
+    // Sélectionne et redimensionne STRICTEMENT cette ligne, efface toute autre sélection
     setSelectedLine({ type: 'col', id: colId });
     setResizingLine({ type: 'col', id: colId });
 
     const startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
-    const initialWidth = 
-      colId === 'rank' ? colWidthRank :
-      colId === 'photo' ? colWidthPhoto :
-      colId === 'name' ? colWidthName :
-      colId === 'note' ? noteColWidth :
-      colId === 'average' ? colWidthAverage : 72;
-
-    // Limite minimale bloquante pour ne jamais masquer le texte ni créer de pointillés
-    const minWidth = 
-      colId === 'rank' ? 55 :
-      colId === 'photo' ? 60 :
-      colId === 'name' ? getMinNameColWidth(students) :
-      colId === 'note' ? 52 :
-      colId === 'average' ? 80 : 50;
+    const initialWidth = getColWidth(colId);
+    const minWidth = getColMinWidth(colId);
 
     const handleMouseMove = (moveEvent: MouseEvent | TouchEvent) => {
+      moveEvent.preventDefault();
+      moveEvent.stopPropagation();
       const curX = 'touches' in moveEvent ? moveEvent.touches[0].clientX : moveEvent.clientX;
       const deltaX = curX - startX;
-      // Arrêt automatique bloqué à minWidth pour que l'écriture ne soit jamais tronquée
+      // Arrêt automatique bloqué à minWidth pour que le texte ne soit jamais tronqué ni coupé par des pointillés
       const newWidth = Math.max(minWidth, Math.round(initialWidth + deltaX));
-
-      if (colId === 'rank') setColWidthRank(newWidth);
-      else if (colId === 'photo') setColWidthPhoto(newWidth);
-      else if (colId === 'name') setColWidthName(newWidth);
-      else if (colId === 'note') setNoteColWidth(newWidth);
-      else if (colId === 'average') setColWidthAverage(newWidth);
+      setColWidth(colId, newWidth);
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (upEvent: MouseEvent | TouchEvent) => {
+      upEvent.stopPropagation();
       setResizingLine(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -530,28 +578,28 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       window.removeEventListener('touchend', handleMouseUp);
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: false });
     window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('touchmove', handleMouseMove);
+    window.addEventListener('touchmove', handleMouseMove, { passive: false });
     window.addEventListener('touchend', handleMouseUp);
   };
 
-  // =========================================================================
-  // GESTION DU REDIMENSIONNEMENT DES LIGNES HORIZONTALES (LIGNES D'ÉLÈVES)
-  // Double-clic = sélection et changement de couleur immédiat
-  // Glissement = agrandit ou réduit la hauteur de la ligne associée
-  // =========================================================================
+  // Lancement du redimensionnement d'une ligne d'élève horizontale spécifique
   const handleStartRowResize = (e: React.MouseEvent | React.TouchEvent, rowIndex: number) => {
     e.preventDefault();
     e.stopPropagation();
-    setSelectedLine({ type: 'row', id: rowIndex });
-    setResizingLine({ type: 'row', id: rowIndex });
+    const rowKey = `row-${rowIndex}`;
+    // Sélectionne et redimensionne STRICTEMENT cette ligne horizontale, efface toute sélection verticale
+    setSelectedLine({ type: 'row', id: rowKey });
+    setResizingLine({ type: 'row', id: rowKey });
 
     const startY = 'touches' in e ? e.touches[0].clientY : e.clientY;
     const initialHeight = customRowHeights[rowIndex] || 44;
-    const minHeight = 42; // Hauteur minimale bloquante pour préserver le texte
+    const minHeight = 42;
 
     const handleMouseMove = (moveEvent: MouseEvent | TouchEvent) => {
+      moveEvent.preventDefault();
+      moveEvent.stopPropagation();
       const curY = 'touches' in moveEvent ? moveEvent.touches[0].clientY : moveEvent.clientY;
       const deltaY = curY - startY;
       const newHeight = Math.max(minHeight, Math.round(initialHeight + deltaY));
@@ -562,7 +610,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       }));
     };
 
-    const handleMouseUp = () => {
+    const handleMouseUp = (upEvent: MouseEvent | TouchEvent) => {
+      upEvent.stopPropagation();
       setResizingLine(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -570,24 +619,34 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       window.removeEventListener('touchend', handleMouseUp);
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mousemove', handleMouseMove, { passive: false });
     window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('touchmove', handleMouseMove);
+    window.addEventListener('touchmove', handleMouseMove, { passive: false });
     window.addEventListener('touchend', handleMouseUp);
   };
 
-  // Vérification de l'état actif d'un séparateur de colonne
-  const isColDividerActive = (id: string) => {
-    return (resizingLine?.type === 'col' && resizingLine.id === id) || 
-           (selectedLine?.type === 'col' && selectedLine.id === id) ||
-           (hoveredColDivider === id);
-  };
-
-  // Vérification de l'état actif d'un séparateur de ligne
-  const isRowDividerActive = (rIdx: number) => {
-    return (resizingLine?.type === 'row' && resizingLine.id === rIdx) || 
-           (selectedLine?.type === 'row' && selectedLine.id === rIdx) ||
-           (hoveredRowDivider === rIdx);
+  // Composant réutilisable pour afficher un séparateur vertical continu de haut en bas
+  const renderColDivider = (colId: string) => {
+    const active = isColActive(colId);
+    return (
+      <div
+        onDoubleClick={(e) => {
+          e.stopPropagation();
+          e.preventDefault();
+          setSelectedLine(prev => (prev?.type === 'col' && prev.id === colId) ? null : { type: 'col', id: colId });
+        }}
+        onMouseDown={(e) => handleStartColResize(e, colId)}
+        onTouchStart={(e) => handleStartColResize(e, colId)}
+        className="relative w-[10px] -mx-[5px] h-full cursor-col-resize z-20 flex items-center justify-center shrink-0 select-none"
+        title="Double-cliquer pour sélectionner ou faire glisser pour redimensionner"
+      >
+        <div className={`transition-all duration-150 ${
+          active
+            ? 'w-[3px] h-full bg-blue-600 shadow-[0_0_8px_#2563eb] z-30'
+            : 'w-[1px] h-full bg-slate-700/80 hover:bg-slate-400'
+        }`} />
+      </div>
+    );
   };
 
   // Poignée astérisque rouge (*) extérieure
@@ -700,7 +759,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   return (
     <div 
-      onClick={() => setSelectedLine(null)}
+      onClick={() => {
+        // Clic sur l'espace extérieur désélectionne toute ligne
+        if (selectedLine) setSelectedLine(null);
+      }}
       className={`w-full flex flex-col bg-[#eef2f6] text-slate-800 font-sans select-none overflow-hidden transition-all duration-300 ${
         viewerExpandLevel >= 2
           ? 'fixed inset-0 z-50 w-screen h-screen min-h-screen'
@@ -1032,24 +1094,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     </div>
 
                     {/* SÉPARATEUR VERTICAL 1 : RANG / PROFIL */}
-                    <div
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedLine(prev => prev?.id === 'rank' ? null : { type: 'col', id: 'rank' });
-                      }}
-                      onMouseDown={(e) => handleStartColResize(e, 'rank')}
-                      onTouchStart={(e) => handleStartColResize(e, 'rank')}
-                      onMouseEnter={() => setHoveredColDivider('rank')}
-                      onMouseLeave={() => setHoveredColDivider(null)}
-                      className="relative w-[7px] -mx-[3.5px] cursor-col-resize z-20 flex items-center justify-center group/col shrink-0 select-none"
-                      title="Double-cliquer pour sélectionner ou faire glisser pour redimensionner"
-                    >
-                      <div className={`w-[1px] h-full transition-all duration-150 ${
-                        isColDividerActive('rank')
-                          ? 'w-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb]'
-                          : 'bg-slate-700 group-hover/col:bg-blue-500 group-hover/col:w-[2px]'
-                      }`} />
-                    </div>
+                    {renderColDivider('col-rank')}
 
                     {/* 2. PROFIL / PHOTO */}
                     <div 
@@ -1063,24 +1108,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     </div>
 
                     {/* SÉPARATEUR VERTICAL 2 : PROFIL / NOM & PRÉNOM */}
-                    <div
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedLine(prev => prev?.id === 'photo' ? null : { type: 'col', id: 'photo' });
-                      }}
-                      onMouseDown={(e) => handleStartColResize(e, 'photo')}
-                      onTouchStart={(e) => handleStartColResize(e, 'photo')}
-                      onMouseEnter={() => setHoveredColDivider('photo')}
-                      onMouseLeave={() => setHoveredColDivider(null)}
-                      className="relative w-[7px] -mx-[3.5px] cursor-col-resize z-20 flex items-center justify-center group/col shrink-0 select-none"
-                      title="Double-cliquer pour sélectionner ou faire glisser pour redimensionner"
-                    >
-                      <div className={`w-[1px] h-full transition-all duration-150 ${
-                        isColDividerActive('photo')
-                          ? 'w-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb]'
-                          : 'bg-slate-700 group-hover/col:bg-blue-500 group-hover/col:w-[2px]'
-                      }`} />
-                    </div>
+                    {renderColDivider('col-photo')}
 
                     {/* 3. NOM & PRÉNOM */}
                     <div 
@@ -1093,31 +1121,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       </span>
                     </div>
 
-                    {/* SÉPARATEUR VERTICAL 3 : NOM & PRÉNOM / NOTE 1 (IMAGE 1 - ENTOURE EN ROUGE) */}
-                    <div
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedLine(prev => prev?.id === 'name' ? null : { type: 'col', id: 'name' });
-                      }}
-                      onMouseDown={(e) => handleStartColResize(e, 'name')}
-                      onTouchStart={(e) => handleStartColResize(e, 'name')}
-                      onMouseEnter={() => setHoveredColDivider('name')}
-                      onMouseLeave={() => setHoveredColDivider(null)}
-                      className="relative w-[7px] -mx-[3.5px] cursor-col-resize z-20 flex items-center justify-center group/col shrink-0 select-none"
-                      title="Double-cliquer pour sélectionner ou faire glisser pour redimensionner la colonne"
-                    >
-                      <div className={`w-[1px] h-full transition-all duration-150 ${
-                        isColDividerActive('name')
-                          ? 'w-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb]'
-                          : 'bg-slate-700 group-hover/col:bg-blue-500 group-hover/col:w-[2px]'
-                      }`} />
-                    </div>
+                    {/* SÉPARATEUR VERTICAL 3 : NOM & PRÉNOM / NOTE 1 (IMAGE 1) */}
+                    {renderColDivider('col-name')}
 
                     {/* 4. COLONNES DE NOTES DYNAMIQUES */}
                     {Array.from({ length: noteColumnCount }).map((_, i) => (
                       <React.Fragment key={`header-note-fragment-${i}`}>
                         <div 
-                          style={{ width: `${noteColWidth}px` }}
+                          style={{ width: `${getColWidth(`col-note-${i}`)}px` }}
                           className="h-12 sm:h-14 flex items-center justify-center p-1 text-center relative group bg-[#f1f5f9] shrink-0"
                           title={`Note ${i + 1}`}
                         >
@@ -1140,25 +1151,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           )}
                         </div>
 
-                        {/* SÉPARATEUR VERTICAL ENTRE NOTES */}
-                        <div
-                          onDoubleClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedLine(prev => prev?.id === 'note' ? null : { type: 'col', id: 'note' });
-                          }}
-                          onMouseDown={(e) => handleStartColResize(e, 'note')}
-                          onTouchStart={(e) => handleStartColResize(e, 'note')}
-                          onMouseEnter={() => setHoveredColDivider('note')}
-                          onMouseLeave={() => setHoveredColDivider(null)}
-                          className="relative w-[7px] -mx-[3.5px] cursor-col-resize z-20 flex items-center justify-center group/col shrink-0 select-none"
-                          title="Double-cliquer pour sélectionner ou faire glisser pour redimensionner les notes"
-                        >
-                          <div className={`w-[1px] h-full transition-all duration-150 ${
-                            isColDividerActive('note')
-                              ? 'w-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb]'
-                              : 'bg-slate-700 group-hover/col:bg-blue-500 group-hover/col:w-[2px]'
-                          }`} />
-                        </div>
+                        {/* SÉPARATEUR VERTICAL UNIQUE POUR CETTE NOTE */}
+                        {renderColDivider(`col-note-${i}`)}
                       </React.Fragment>
                     ))}
 
@@ -1177,24 +1171,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     </div>
 
                     {/* SÉPARATEUR VERTICAL : BOUTON [+] / MOYENNE */}
-                    <div
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedLine(prev => prev?.id === 'average' ? null : { type: 'col', id: 'average' });
-                      }}
-                      onMouseDown={(e) => handleStartColResize(e, 'average')}
-                      onTouchStart={(e) => handleStartColResize(e, 'average')}
-                      onMouseEnter={() => setHoveredColDivider('average')}
-                      onMouseLeave={() => setHoveredColDivider(null)}
-                      className="relative w-[7px] -mx-[3.5px] cursor-col-resize z-20 flex items-center justify-center group/col shrink-0 select-none"
-                      title="Double-cliquer pour sélectionner ou faire glisser pour redimensionner"
-                    >
-                      <div className={`w-[1px] h-full transition-all duration-150 ${
-                        isColDividerActive('average')
-                          ? 'w-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb]'
-                          : 'bg-slate-700 group-hover/col:bg-blue-500 group-hover/col:w-[2px]'
-                      }`} />
-                    </div>
+                    {renderColDivider('col-moyenne')}
 
                     {/* 6. MOYENNE */}
                     <div 
@@ -1210,7 +1187,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                   {/* ================================================================= */}
                   {/* CORPS DU TABLEAU : LIGNES D'ÉLÈVES MODÉLABLES                     */}
-                  {/* (Image 2 : pourtour modelable, lignes intérieures redimensionnables) */}
                   {/* ================================================================= */}
                   <div className="flex flex-col">
                     {studentsWithStats.map((std, rIdx) => {
@@ -1263,23 +1239,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             </div>
 
                             {/* SÉPARATEUR VERTICAL LIGNE ÉLÈVE : RANG / PROFIL */}
-                            <div
-                              onDoubleClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedLine(prev => prev?.id === 'rank' ? null : { type: 'col', id: 'rank' });
-                              }}
-                              onMouseDown={(e) => handleStartColResize(e, 'rank')}
-                              onTouchStart={(e) => handleStartColResize(e, 'rank')}
-                              onMouseEnter={() => setHoveredColDivider('rank')}
-                              onMouseLeave={() => setHoveredColDivider(null)}
-                              className="relative w-[7px] -mx-[3.5px] cursor-col-resize z-20 flex items-center justify-center group/col shrink-0 select-none"
-                            >
-                              <div className={`w-[1px] h-full transition-all duration-150 ${
-                                isColDividerActive('rank')
-                                  ? 'w-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb]'
-                                  : 'bg-slate-600 group-hover/col:bg-blue-500 group-hover/col:w-[2px]'
-                              }`} />
-                            </div>
+                            {renderColDivider('col-rank')}
 
                             {/* PROFIL / PHOTO */}
                             <div 
@@ -1313,25 +1273,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             </div>
 
                             {/* SÉPARATEUR VERTICAL LIGNE ÉLÈVE : PROFIL / NOM */}
-                            <div
-                              onDoubleClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedLine(prev => prev?.id === 'photo' ? null : { type: 'col', id: 'photo' });
-                              }}
-                              onMouseDown={(e) => handleStartColResize(e, 'photo')}
-                              onTouchStart={(e) => handleStartColResize(e, 'photo')}
-                              onMouseEnter={() => setHoveredColDivider('photo')}
-                              onMouseLeave={() => setHoveredColDivider(null)}
-                              className="relative w-[7px] -mx-[3.5px] cursor-col-resize z-20 flex items-center justify-center group/col shrink-0 select-none"
-                            >
-                              <div className={`w-[1px] h-full transition-all duration-150 ${
-                                isColDividerActive('photo')
-                                  ? 'w-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb]'
-                                  : 'bg-slate-600 group-hover/col:bg-blue-500 group-hover/col:w-[2px]'
-                              }`} />
-                            </div>
+                            {renderColDivider('col-photo')}
 
-                            {/* NOM & PRÉNOM (Centré verticalement/horizontalement, retour à la ligne automatique si étroit, sans pointillés) */}
+                            {/* NOM & PRÉNOM (Centré verticalement/horizontalement, retour à la ligne automatique sans coupure de texte) */}
                             <div 
                               style={{ width: `${colWidthName}px` }}
                               onClick={() => {
@@ -1371,35 +1315,19 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               />
                             </div>
 
-                            {/* SÉPARATEUR VERTICAL LIGNE ÉLÈVE : NOM / NOTE 1 (IMAGE 1 - ENTOURÉ EN ROUGE) */}
-                            <div
-                              onDoubleClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedLine(prev => prev?.id === 'name' ? null : { type: 'col', id: 'name' });
-                              }}
-                              onMouseDown={(e) => handleStartColResize(e, 'name')}
-                              onTouchStart={(e) => handleStartColResize(e, 'name')}
-                              onMouseEnter={() => setHoveredColDivider('name')}
-                              onMouseLeave={() => setHoveredColDivider(null)}
-                              className="relative w-[7px] -mx-[3.5px] cursor-col-resize z-20 flex items-center justify-center group/col shrink-0 select-none"
-                              title="Double-cliquer pour sélectionner ou faire glisser pour redimensionner"
-                            >
-                              <div className={`w-[1px] h-full transition-all duration-150 ${
-                                isColDividerActive('name')
-                                  ? 'w-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb]'
-                                  : 'bg-slate-600 group-hover/col:bg-blue-500 group-hover/col:w-[2px]'
-                              }`} />
-                            </div>
+                            {/* SÉPARATEUR VERTICAL LIGNE ÉLÈVE : NOM / NOTE 1 (IMAGE 1) */}
+                            {renderColDivider('col-name')}
 
                             {/* NOTES DYNAMIQUES */}
                             {Array.from({ length: noteColumnCount }).map((_, cIdx) => {
                               const noteVal = std.notes[cIdx] || '';
                               const isSelectedNote = activeCellInfo.id === `cell-note-${rIdx}-${cIdx}`;
+                              const thisNoteWidth = getColWidth(`col-note-${cIdx}`);
 
                               return (
                                 <React.Fragment key={`note-cell-fragment-${std.id}-${cIdx}`}>
                                   <div 
-                                    style={{ width: `${noteColWidth}px` }}
+                                    style={{ width: `${thisNoteWidth}px` }}
                                     onClick={() => {
                                       setActiveCellInfo({
                                         id: `cell-note-${rIdx}-${cIdx}`,
@@ -1438,24 +1366,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     )}
                                   </div>
 
-                                  {/* SÉPARATEUR VERTICAL ENTRE NOTES */}
-                                  <div
-                                    onDoubleClick={(e) => {
-                                      e.stopPropagation();
-                                      setSelectedLine(prev => prev?.id === 'note' ? null : { type: 'col', id: 'note' });
-                                    }}
-                                    onMouseDown={(e) => handleStartColResize(e, 'note')}
-                                    onTouchStart={(e) => handleStartColResize(e, 'note')}
-                                    onMouseEnter={() => setHoveredColDivider('note')}
-                                    onMouseLeave={() => setHoveredColDivider(null)}
-                                    className="relative w-[7px] -mx-[3.5px] cursor-col-resize z-20 flex items-center justify-center group/col shrink-0 select-none"
-                                  >
-                                    <div className={`w-[1px] h-full transition-all duration-150 ${
-                                      isColDividerActive('note')
-                                        ? 'w-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb]'
-                                        : 'bg-slate-600 group-hover/col:bg-blue-500 group-hover/col:w-[2px]'
-                                    }`} />
-                                  </div>
+                                  {/* SÉPARATEUR VERTICAL STRICT DE CETTE NOTE */}
+                                  {renderColDivider(`col-note-${cIdx}`)}
                                 </React.Fragment>
                               );
                             })}
@@ -1466,23 +1378,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             </div>
 
                             {/* SÉPARATEUR VERTICAL [+] / MOYENNE */}
-                            <div
-                              onDoubleClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedLine(prev => prev?.id === 'average' ? null : { type: 'col', id: 'average' });
-                              }}
-                              onMouseDown={(e) => handleStartColResize(e, 'average')}
-                              onTouchStart={(e) => handleStartColResize(e, 'average')}
-                              onMouseEnter={() => setHoveredColDivider('average')}
-                              onMouseLeave={() => setHoveredColDivider(null)}
-                              className="relative w-[7px] -mx-[3.5px] cursor-col-resize z-20 flex items-center justify-center group/col shrink-0 select-none"
-                            >
-                              <div className={`w-[1px] h-full transition-all duration-150 ${
-                                isColDividerActive('average')
-                                  ? 'w-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb]'
-                                  : 'bg-slate-600 group-hover/col:bg-blue-500 group-hover/col:w-[2px]'
-                              }`} />
-                            </div>
+                            {renderColDivider('col-moyenne')}
 
                             {/* MOYENNE */}
                             <div 
@@ -1528,26 +1424,26 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           </div>
 
                           {/* ============================================================= */}
-                          {/* SÉPARATEUR HORIZONTAL INTERACTIF ENTRE DEUX LIGNES D'ÉLÈVES   */}
-                          {/* (IMAGE 1 - ENTOURÉ EN ROUGE HORIZONTALEMENT)                  */}
+                          {/* SÉPARATEUR HORIZONTAL INTERACTIF UNIQUE (LIGNE PAR LIGNE)     */}
                           {/* ============================================================= */}
                           {rIdx < studentsWithStats.length - 1 && (
                             <div
+                              key={`row-divider-${rIdx}`}
                               onDoubleClick={(e) => {
                                 e.stopPropagation();
-                                setSelectedLine(prev => prev?.id === rIdx ? null : { type: 'row', id: rIdx });
+                                e.preventDefault();
+                                const rowKey = `row-${rIdx}`;
+                                setSelectedLine(prev => (prev?.type === 'row' && prev.id === rowKey) ? null : { type: 'row', id: rowKey });
                               }}
                               onMouseDown={(e) => handleStartRowResize(e, rIdx)}
                               onTouchStart={(e) => handleStartRowResize(e, rIdx)}
-                              onMouseEnter={() => setHoveredRowDivider(rIdx)}
-                              onMouseLeave={() => setHoveredRowDivider(null)}
-                              className="relative h-[7px] -my-[3.5px] w-full cursor-row-resize z-20 flex items-center justify-center group/row select-none"
-                              title="Double-cliquer pour sélectionner ou faire glisser pour agrandir/réduire la hauteur"
+                              className="relative h-[10px] -my-[5px] w-full cursor-row-resize z-20 flex items-center justify-center shrink-0 select-none"
+                              title="Double-cliquer pour sélectionner la ligne ou faire glisser pour redimensionner"
                             >
-                              <div className={`h-[1px] w-full transition-all duration-150 ${
-                                isRowDividerActive(rIdx)
-                                  ? 'h-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb]'
-                                  : 'bg-slate-400 group-hover/row:bg-blue-500 group-hover/row:h-[2px]'
+                              <div className={`transition-all duration-150 ${
+                                isRowActive(rIdx)
+                                  ? 'h-[3px] w-full bg-blue-600 shadow-[0_0_8px_#2563eb] z-30'
+                                  : 'h-[1px] w-full bg-slate-400/80 hover:bg-slate-400'
                               }`} />
                             </div>
                           )}
@@ -1683,7 +1579,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         <div className="hidden lg:flex items-center gap-3 text-[10.5px] text-slate-500 font-medium">
           <span>Double-clic sur un trait pour <strong className="text-blue-600">sélectionner & glisser</strong></span>
           <span>•</span>
-          <span>Largeur & hauteur <strong className="text-blue-600">ajustables sans coupure de texte</strong></span>
+          <span>Sélection individuelle stricte sans mélange</span>
           <span>•</span>
           <span>Zoom à deux doigts ou en haut <strong className="text-slate-800">[-] [+]</strong></span>
         </div>
