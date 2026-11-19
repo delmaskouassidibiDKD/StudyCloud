@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
+import { SubjectGradebookView } from './SubjectGradebookView';
 
 export interface SchoolYearItem {
   id: string;
@@ -337,6 +338,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // Trimestre actif sélectionné
   const [selectedTermId, setSelectedTermId] = useState<string | null>(null);
 
+  // Matière sélectionnée dans laquelle on est "rentré" à l'intérieur pour afficher le tableur de notes & moyennes
+  const [selectedSubjectInside, setSelectedSubjectInside] = useState<SubjectItem | null>(null);
+
+  // Réinitialiser la matière affichée si l'on change de classe, d'école ou de trimestre
+  useEffect(() => {
+    setSelectedSubjectInside(null);
+  }, [selectedClassId, selectedSchoolInside, selectedTermId]);
+
   // Référence pour le défilement horizontal fluide des trimestres
   const termsScrollRef = useRef<HTMLDivElement>(null);
 
@@ -561,6 +570,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     } else if (deleteTarget.type === 'subject') {
       const id = deleteTarget.id;
       setSubjects(prev => prev.filter(s => s.id !== id));
+      if (selectedSubjectInside?.id === id) setSelectedSubjectInside(null);
     }
 
     setDeleteTarget(null);
@@ -1015,6 +1025,21 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   }, [currentClassSubjects, subjectPageIndex]);
 
   const isLastSubjectPage = subjectPageIndex === totalSubjectPages - 1;
+
+  // Si le professeur clique et rentre à l'intérieur d'une matière créée :
+  // Affichage du tableur de notes et moyennes plein écran (identique à WPS/Excel)
+  if (selectedSubjectInside && activeClass) {
+    return (
+      <SubjectGradebookView
+        subject={selectedSubjectInside}
+        schoolClass={activeClass}
+        schoolYear={currentSelectedYear}
+        school={selectedSchoolInside}
+        term={activeTerm}
+        onBack={() => setSelectedSubjectInside(null)}
+      />
+    );
+  }
 
   return (
     <div 
@@ -1852,6 +1877,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         return (
                           <div
                             key={subj.id}
+                            onClick={() => setSelectedSubjectInside(subj)}
                             style={{
                               backgroundColor: subj.color || '#ffffff',
                               color: subj.textColor || (isWhite ? '#0f172a' : '#ffffff'),
@@ -1859,6 +1885,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               borderBottomColor: isWhite ? '#cbd5e1' : (subj.borderDarkColor || '#94a3b8'),
                             }}
                             className="group relative rounded-xl border-2 border-b-[4px] p-2.5 sm:p-3 min-h-[68px] sm:min-h-[76px] flex flex-col justify-between cursor-pointer transition-all duration-200 select-none shadow-xs hover:shadow-md hover:-translate-y-0.5 active:translate-y-0.5 active:border-b-2"
+                            title={`Ouvrir le tableur de notes et moyennes pour ${subj.name}`}
                           >
                             {/* Ligne haute : Badge Coeff & Bouton supprimer */}
                             <div className="flex items-center justify-between w-full">
@@ -1878,7 +1905,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                               <button
                                 type="button"
-                                onClick={(e) => handleOpenMenu(e, 'subject', subj)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleOpenMenu(e, 'subject', subj);
+                                }}
                                 className={`card-menu-trigger w-5 h-5 rounded flex items-center justify-center transition ${
                                   isWhite ? 'text-slate-400 hover:text-slate-800 hover:bg-slate-100' : 'text-white/70 hover:text-white hover:bg-black/20'
                                 }`}
