@@ -106,16 +106,24 @@ export const formatStudentNote = (scoreStr: string, maxScore: number): string =>
   return `${cleanScore}/${maxScore > 0 ? maxScore : 20}`;
 };
 
-// Palette de couleurs pastel pour la coloration
+// Palette de couleurs pastel pour la coloration (16 teintes riches, nettes et bien contrastées)
 export const PASTEL_PALETTE = [
-  { name: 'Par défaut', bg: '', headerBg: '', label: 'Défaut' },
-  { name: 'Bleu ciel', bg: '#eff6ff', headerBg: '#dbeafe', label: 'Bleu' },
-  { name: 'Vert menthe', bg: '#f0fdf4', headerBg: '#dcfce7', label: 'Vert' },
-  { name: 'Jaune doux', bg: '#fefce8', headerBg: '#fef9c3', label: 'Jaune' },
-  { name: 'Rose pastel', bg: '#fff1f2', headerBg: '#ffe4e6', label: 'Rose' },
-  { name: 'Violet lavande', bg: '#faf5ff', headerBg: '#f3e8ff', label: 'Violet' },
-  { name: 'Pêche / Orange', bg: '#fff7ed', headerBg: '#ffedd5', label: 'Orange' },
-  { name: 'Gris ardoise', bg: '#f8fafc', headerBg: '#e2e8f0', label: 'Gris' },
+  { name: 'Aucune couleur (Défaut)', bg: '', headerBg: '', label: 'Défaut' },
+  { name: 'Jaune canari', bg: '#fef08a', headerBg: '#fde047', label: 'Jaune' },
+  { name: 'Ambre doux', bg: '#fed7aa', headerBg: '#fb923c', label: 'Ambre' },
+  { name: 'Pêche corail', bg: '#ffedd5', headerBg: '#fdba74', label: 'Pêche' },
+  { name: 'Rose poudré', bg: '#fbcfe8', headerBg: '#f472b6', label: 'Rose' },
+  { name: 'Rose framboise', bg: '#fecdd3', headerBg: '#fb7185', label: 'Framboise' },
+  { name: 'Rouge clair doux', bg: '#fee2e2', headerBg: '#f87171', label: 'Rouge' },
+  { name: 'Violet lilas', bg: '#e9d5ff', headerBg: '#c084fc', label: 'Lilas' },
+  { name: 'Lavande indigo', bg: '#c7d2fe', headerBg: '#818cf8', label: 'Lavande' },
+  { name: 'Bleu ciel', bg: '#bae6fd', headerBg: '#38bdf8', label: 'Bleu ciel' },
+  { name: 'Bleu azur', bg: '#bfdbfe', headerBg: '#60a5fa', label: 'Azur' },
+  { name: 'Cyan lagon', bg: '#a5f3fc', headerBg: '#22d3ee', label: 'Cyan' },
+  { name: 'Vert menthe', bg: '#a7f3d0', headerBg: '#34d399', label: 'Menthe' },
+  { name: 'Vert prairie', bg: '#bbf7d0', headerBg: '#4ade80', label: 'Vert' },
+  { name: 'Vert lime', bg: '#d9f99d', headerBg: '#a3e635', label: 'Lime' },
+  { name: 'Sable doré', bg: '#fef3c7', headerBg: '#fcd34d', label: 'Sable' },
 ];
 
 // Nombre de colonnes de cases vides supplémentaires à droite du tableau (dépasse toujours les notes)
@@ -787,7 +795,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   // Application d'une couleur pour une case individuelle unique
   const handleApplySingleCellColor = (studentId: string, colIndex: number, color?: string) => {
-    const key = `${studentId}_${colIndex}`;
+    const key = colIndex === -1 ? `${studentId}_name` : `${studentId}_${colIndex}`;
     setCellColors(prev => {
       const next = { ...prev };
       if (!color) delete next[key];
@@ -807,6 +815,55 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     });
     setIsSaved(false);
   };
+
+  // Sélection d'une couleur depuis la palette unifiée
+  const handleSelectPaletteColor = (colorHex: string) => {
+    if (!activeColorPicker) return;
+    const { mode, colIndex, studentId } = activeColorPicker;
+    if (mode === 'cell' && typeof colIndex === 'number') {
+      handleApplyColor(colIndex, 'cell', colorHex);
+    } else if (mode === 'column' && typeof colIndex === 'number') {
+      handleApplyColor(colIndex, 'column', colorHex);
+    } else if (mode === 'singleCell' && studentId && typeof colIndex === 'number') {
+      handleApplySingleCellColor(studentId, colIndex, colorHex);
+    } else if (mode === 'row' && studentId) {
+      handleApplyRowColor(studentId, colorHex);
+    }
+    setActiveColorPicker(null);
+    setActiveMenuCol(null);
+    setActiveMenuRow(null);
+    setActiveMenuCell(null);
+  };
+
+  // Rendu de la grille de palette de couleurs (16 nuances nettes et bien contrastées)
+  const renderPaletteGrid = (title: string) => (
+    <div className="mt-1 p-2 bg-slate-50 border-t border-slate-200 rounded-b-lg">
+      <div className="text-[10px] text-slate-700 font-bold mb-1.5 flex items-center justify-between">
+        <span>{title}</span>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {PASTEL_PALETTE.map((color, idx) => (
+          <button
+            key={color.name || idx}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              handleSelectPaletteColor(color.bg);
+            }}
+            style={{ backgroundColor: color.bg || '#ffffff' }}
+            className="h-7 rounded-md border-2 border-slate-300 hover:border-slate-800 hover:scale-105 active:scale-95 transition flex items-center justify-center text-[10px] font-black text-slate-800 shadow-xs cursor-pointer"
+            title={color.name}
+          >
+            {!color.bg ? (
+              <span className="text-red-500 font-black text-xs">✕</span>
+            ) : (
+              <span className="sr-only">{color.name}</span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
 
   // Vider toutes les notes d'un élève
   const handleClearStudentNotes = (studentId: string) => {
@@ -1832,7 +1889,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                               <button
                                 type="button"
-                                onClick={() => setActiveColorPicker(activeColorPicker?.mode === 'cell' ? null : { colIndex: i, mode: 'cell' })}
+                                onClick={() => setActiveColorPicker(activeColorPicker?.mode === 'cell' && activeColorPicker?.colIndex === i ? null : { mode: 'cell', colIndex: i })}
                                 className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-slate-50 text-slate-700 transition"
                               >
                                 <div className="flex items-center gap-2">
@@ -1845,7 +1902,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               {/* 6. Colorer toute la colonne */}
                               <button
                                 type="button"
-                                onClick={() => setActiveColorPicker(activeColorPicker?.mode === 'column' ? null : { colIndex: i, mode: 'column' })}
+                                onClick={() => setActiveColorPicker(activeColorPicker?.mode === 'column' && activeColorPicker?.colIndex === i ? null : { mode: 'column', colIndex: i })}
                                 className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-slate-50 text-slate-700 transition"
                               >
                                 <div className="flex items-center gap-2">
@@ -1855,34 +1912,36 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 <span className="text-[10px] text-slate-400">▸</span>
                               </button>
 
-                              {/* Palette popup */}
-                              {activeColorPicker?.colIndex === i && (
-                                <div className="mt-1 p-2 bg-slate-50 border-t border-slate-200 rounded-b-lg">
-                                  <div className="text-[10px] text-slate-500 font-semibold mb-1.5">
-                                    {activeColorPicker.mode === 'cell' ? 'Couleur de la case :' : 'Couleur de toute la colonne :'}
-                                  </div>
-                                  <div className="grid grid-cols-4 gap-1">
-                                    {PASTEL_PALETTE.map((color, colorIdx) => {
-                                      return (
-                                        <button
-                                          key={color.name || colorIdx}
-                                          type="button"
-                                          onClick={() => {
-                                            const targetMode: 'cell' | 'column' = activeColorPicker?.mode === 'column' ? 'column' : 'cell';
-                                            handleApplyColor(i, targetMode, color.bg);
-                                            setActiveColorPicker(null);
-                                            setActiveMenuCol(null);
-                                          }}
-                                          style={{ backgroundColor: color.bg || '#ffffff' }}
-                                          className="h-6 rounded border border-slate-300 hover:scale-105 transition flex items-center justify-center text-[9px] font-bold text-slate-700 shadow-2xs"
-                                          title={color.name}
-                                        >
-                                          {!color.bg ? '✕' : ''}
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
+                              {/* 7. Colorer toute la ligne */}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const targetStudentId = activeCellInfo.rowIndex >= 0 ? students[activeCellInfo.rowIndex]?.id : students[0]?.id;
+                                  if (targetStudentId) {
+                                    setActiveColorPicker(activeColorPicker?.mode === 'row' && activeColorPicker?.targetId === `header-${i}` ? null : { mode: 'row', studentId: targetStudentId, targetId: `header-${i}` });
+                                  }
+                                }}
+                                className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-slate-50 text-slate-700 transition"
+                              >
+                                <div className="flex items-center gap-2">
+                                  <Palette className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>Colorer toute la ligne {activeCellInfo.rowIndex >= 0 ? `(${activeCellInfo.rowIndex + 1})` : ''}</span>
                                 </div>
+                                <span className="text-[10px] text-slate-400">▸</span>
+                              </button>
+
+                              {/* Palette popup */}
+                              {activeColorPicker && (
+                                (activeColorPicker.colIndex === i && (activeColorPicker.mode === 'cell' || activeColorPicker.mode === 'column')) ||
+                                (activeColorPicker.mode === 'row' && activeColorPicker.targetId === `header-${i}`)
+                              ) && (
+                                renderPaletteGrid(
+                                  activeColorPicker.mode === 'cell'
+                                    ? 'Couleur de la case (En-tête) :'
+                                    : activeColorPicker.mode === 'column'
+                                    ? 'Couleur de toute la colonne :'
+                                    : `Couleur de toute la ligne ${activeCellInfo.rowIndex >= 0 ? `${activeCellInfo.rowIndex + 1}` : ''} :`
+                                )
                               )}
                             </div>
                           )}
@@ -1923,11 +1982,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   {/* ================================================================= */}
                   {/* CORPS DU TABLEAU : LIGNES D'ÉLÈVES BIEN TRACÉES                   */}
                   {/* ================================================================= */}
-                  <div className="divide-y divide-slate-400 bg-white">
+                  <div className="bg-white">
                     {studentsWithStats.map((std, rIdx) => {
                       const isRowSelected = activeCellInfo.rowIndex === rIdx;
                       const rowHeight = customRowHeights[rIdx] || 44;
                       const isRowLineActive = isRowActive(rIdx);
+                      const rowBg = rowColors[std.id];
+                      const nameCellBg = cellColors[`${std.id}_name`] || rowBg || undefined;
 
                       return (
                         <div 
@@ -1935,13 +1996,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           style={{ height: `${rowHeight}px` }}
                           className={`flex items-stretch transition-colors relative ${
                             isRowSelected ? 'bg-blue-50/40' : 'hover:bg-slate-50/70'
-                          } ${
-                            isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : ''
                           }`}
                         >
                           {/* RANG */}
                           <div 
-                            style={{ width: `${colWidthRank}px`, height: `${rowHeight}px` }}
+                            style={{ 
+                              width: `${colWidthRank}px`, 
+                              height: `${rowHeight}px`,
+                              backgroundColor: rowBg || undefined
+                            }}
                             onDoubleClick={(e) => {
                               e.stopPropagation();
                               const rowKey = `row-${rIdx}`;
@@ -1956,7 +2019,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.rank ? `=RANG(M${rIdx + 1})` : ''
                               });
                             }}
-                            className={`border-r ${isColActive('col-rank') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 cursor-pointer relative shrink-0 ${
+                            className={`border-r ${isColActive('col-rank') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center p-1 cursor-pointer relative shrink-0 ${
                               activeCellInfo.id === `cell-rank-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-emerald-50/40' : ''
                             }`}
                             title="Cliquer pour sélectionner, double-cliquer pour sélectionner la ligne"
@@ -1980,7 +2043,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                           {/* PROFIL / PHOTO */}
                           <div 
-                            style={{ width: `${colWidthPhoto}px`, height: `${rowHeight}px` }}
+                            style={{ 
+                              width: `${colWidthPhoto}px`, 
+                              height: `${rowHeight}px`,
+                              backgroundColor: rowBg || undefined
+                            }}
                             onClick={() => {
                               setActiveCellInfo({
                                 id: `cell-photo-${rIdx}`,
@@ -1990,7 +2057,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.photoUrl ? 'Photo chargée' : 'Aucune photo'
                               });
                             }}
-                            className={`border-r ${isColActive('col-photo') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 cursor-pointer relative group shrink-0 ${
+                            className={`border-r ${isColActive('col-photo') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center p-1 cursor-pointer relative group shrink-0 ${
                               activeCellInfo.id === `cell-photo-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
                             }`}
                             title="Cliquer pour changer la photo de l'élève"
@@ -2011,7 +2078,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                           {/* NOM & PRÉNOM */}
                           <div 
-                            style={{ width: `${colWidthName}px`, height: `${rowHeight}px` }}
+                            style={{ 
+                              width: `${colWidthName}px`, 
+                              height: `${rowHeight}px`,
+                              backgroundColor: nameCellBg
+                            }}
                             onClick={() => {
                               setActiveCellInfo({
                                 id: `cell-name-${rIdx}`,
@@ -2021,7 +2092,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.name
                               });
                             }}
-                            className={`border-r ${isColActive('col-name') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center p-1.5 relative group shrink-0 ${
+                            className={`border-r ${isColActive('col-name') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center p-1.5 relative group shrink-0 ${
                               activeCellInfo.id === `cell-name-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
                             }`}
                           >
@@ -2039,7 +2110,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 });
                               }}
                               placeholder={`Nom et prénom élève ${rIdx + 1}...`}
-                              className="w-full h-full text-center px-2 text-xs font-semibold text-slate-800 placeholder:text-slate-300 bg-transparent outline-none border border-transparent focus:border-blue-400 focus:bg-white rounded transition pr-5"
+                              className="w-full h-full text-center px-2 text-xs font-semibold text-slate-900 placeholder:text-slate-400 bg-transparent outline-none border border-transparent focus:border-blue-400 focus:bg-white rounded transition pr-5"
                               style={{
                                 textAlign,
                                 fontWeight: isBold ? 'bold' : '600',
@@ -2048,7 +2119,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               }}
                             />
 
-                            {/* BOUTON 3 POINTS ⋮ POUR CETTE LIGNE ÉLÈVE */}
+                            {/* BOUTON 3 POINTS ⋮ POUR CETTE CASE NOM & PRÉNOM */}
                             <button
                               type="button"
                               onClick={(e) => {
@@ -2069,59 +2140,76 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               <MoreVertical className="w-3 h-3 stroke-[2.5]" />
                             </button>
 
-                            {/* MENU CONTEXTUEL POUR LA LIGNE ÉLÈVE */}
+                            {/* MENU CONTEXTUEL POUR LA CASE NOM IDENTIQUE AU STYLE COLONNE */}
                             {activeMenuRow === std.id && (
                               <div
                                 onClick={(e) => e.stopPropagation()}
-                                className="absolute top-full right-0 mt-1 w-52 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95"
+                                className="absolute top-full right-0 mt-1 w-56 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95"
                               >
-                                <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
+                                <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate border-b border-slate-100 pb-1 mb-1">
                                   {std.name || `Élève ${rIdx + 1}`}
+                                </div>
+
+                                {/* Section COULEURS */}
+                                <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                  Couleurs
+                                </div>
+
+                                {/* 1. Colorer la case */}
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveColorPicker(activeColorPicker?.mode === 'singleCell' && activeColorPicker?.studentId === std.id && activeColorPicker?.colIndex === -1 ? null : { mode: 'singleCell', studentId: std.id, colIndex: -1 })}
+                                  className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-slate-50 text-slate-700 transition"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Palette className="w-3.5 h-3.5 text-teal-600" />
+                                    <span>Colorer la case</span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400">▸</span>
+                                </button>
+
+                                {/* 2. Colorer toute la ligne */}
+                                <button
+                                  type="button"
+                                  onClick={() => setActiveColorPicker(activeColorPicker?.mode === 'row' && activeColorPicker?.studentId === std.id ? null : { mode: 'row', studentId: std.id })}
+                                  className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-slate-50 text-slate-700 transition"
+                                >
+                                  <div className="flex items-center gap-2">
+                                    <Palette className="w-3.5 h-3.5 text-amber-600" />
+                                    <span>Colorer toute la ligne</span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400">▸</span>
+                                </button>
+
+                                {/* Palette popup */}
+                                {activeColorPicker && (
+                                  (activeColorPicker.mode === 'singleCell' && activeColorPicker.studentId === std.id && activeColorPicker.colIndex === -1) ||
+                                  (activeColorPicker.mode === 'row' && activeColorPicker.studentId === std.id)
+                                ) && (
+                                  renderPaletteGrid(
+                                    activeColorPicker.mode === 'singleCell'
+                                      ? 'Couleur de cette case (Nom) :'
+                                      : 'Couleur de toute la ligne :'
+                                  )
+                                )}
+
+                                <div className="my-1 border-t border-slate-100" />
+
+                                <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                  Actions
                                 </div>
 
                                 <button
                                   type="button"
                                   onClick={() => {
                                     setActiveMenuRow(null);
-                                    handleTriggerPhotoUpload(std.id);
+                                    handleNameChange(std.id, '');
                                   }}
-                                  className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition"
+                                  className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-amber-50 text-amber-700 transition"
                                 >
-                                  <Camera className="w-3.5 h-3.5 text-blue-600" />
-                                  <span>Changer la photo</span>
+                                  <Eraser className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>Effacer ce nom</span>
                                 </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveMenuRow(null);
-                                    handleMoveStudentRow(rIdx, rIdx - 1);
-                                  }}
-                                  disabled={rIdx === 0}
-                                  className={`w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 transition ${
-                                    rIdx === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-blue-50 hover:text-blue-700'
-                                  }`}
-                                >
-                                  <ArrowUp className="w-3.5 h-3.5 text-indigo-600" />
-                                  <span>Monter la ligne (↑)</span>
-                                </button>
-
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveMenuRow(null);
-                                    handleMoveStudentRow(rIdx, rIdx + 1);
-                                  }}
-                                  disabled={rIdx >= students.length - 1}
-                                  className={`w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 transition ${
-                                    rIdx >= students.length - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-blue-50 hover:text-blue-700'
-                                  }`}
-                                >
-                                  <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
-                                  <span>Descendre la ligne (↓)</span>
-                                </button>
-
-                                <div className="my-1 border-t border-slate-100" />
 
                                 <button
                                   type="button"
@@ -2131,7 +2219,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   }}
                                   className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-amber-50 text-amber-700 transition"
                                 >
-                                  <Eraser className="w-3.5 h-3.5 text-amber-600" />
+                                  <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
                                   <span>Vider les notes de cet élève</span>
                                 </button>
 
@@ -2158,8 +2246,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             const isSelectedNote = activeCellInfo.id === `cell-note-${rIdx}-${cIdx}`;
                             const isInvalid = parsed.isInvalid;
                             const colBg = colMeta.columnBgColor;
+                            const singleCellBg = cellColors[`${std.id}_${cIdx}`];
+                            const noteCellBg = isInvalid ? '#fef2f2' : (singleCellBg || rowBg || colBg || undefined);
                             const thisNoteWidth = getColWidth(`col-note-${cIdx}`);
                             const isThisColActive = isColActive(`col-note-${cIdx}`);
+                            const isNoteCellMenuOpen = activeMenuCell?.studentId === std.id && activeMenuCell?.colIndex === cIdx;
 
                             return (
                               <div 
@@ -2167,7 +2258,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 style={{ 
                                   width: `${thisNoteWidth}px`,
                                   height: `${rowHeight}px`,
-                                  backgroundColor: isInvalid ? '#fef2f2' : (colBg || undefined)
+                                  backgroundColor: noteCellBg
                                 }}
                                 onClick={() => {
                                   setActiveCellInfo({
@@ -2179,7 +2270,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     value: noteVal || `.../${parsed.maxScore}`
                                   });
                                 }}
-                                className={`border-r ${isThisColActive ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center px-1 relative shrink-0 transition-colors ${
+                                className={`border-r ${isThisColActive ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center px-1 relative shrink-0 transition-colors group ${
                                   isInvalid 
                                     ? 'bg-red-50 ring-2 ring-red-500 z-10' 
                                     : isSelectedNote 
@@ -2187,15 +2278,133 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     : ''
                                 }`}
                               >
+                                {/* BOUTON 3 POINTS ⋮ POUR CETTE CASE DE NOTE */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveMenuCell(prev => (prev?.studentId === std.id && prev?.colIndex === cIdx) ? null : { studentId: std.id, colIndex: cIdx });
+                                    setActiveMenuCol(null);
+                                    setActiveMenuRow(null);
+                                    setActiveMenuNameCol(false);
+                                    setActiveColorPicker(null);
+                                  }}
+                                  className={`absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-20 ${
+                                    isNoteCellMenuOpen
+                                      ? 'bg-blue-600 text-white shadow-xs opacity-100'
+                                      : isSelectedNote
+                                      ? 'text-slate-700 bg-white/90 opacity-90 shadow-2xs'
+                                      : 'text-slate-400 hover:text-slate-900 hover:bg-slate-200/80 opacity-0 group-hover:opacity-100'
+                                  }`}
+                                  title={`Options de la note ${cIdx + 1}`}
+                                >
+                                  <MoreVertical className="w-2.5 h-2.5 stroke-[2.5]" />
+                                </button>
+
+                                {/* MENU CONTEXTUEL POUR LA CASE DE NOTE */}
+                                {isNoteCellMenuOpen && (
+                                  <div
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="absolute top-full right-0 mt-1 w-56 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95"
+                                  >
+                                    <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 pb-1 mb-1">
+                                      <span className="truncate">{std.name || `Élève ${rIdx + 1}`}</span>
+                                      <span className="text-blue-600 font-extrabold shrink-0">Note {cIdx + 1}</span>
+                                    </div>
+
+                                    <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                      Couleurs
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveColorPicker(activeColorPicker?.mode === 'singleCell' && activeColorPicker?.studentId === std.id && activeColorPicker?.colIndex === cIdx ? null : { mode: 'singleCell', studentId: std.id, colIndex: cIdx })}
+                                      className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-slate-50 text-slate-700 transition"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <Palette className="w-3.5 h-3.5 text-teal-600" />
+                                        <span>Colorer la case</span>
+                                      </div>
+                                      <span className="text-[10px] text-slate-400">▸</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveColorPicker(activeColorPicker?.mode === 'row' && activeColorPicker?.studentId === std.id ? null : { mode: 'row', studentId: std.id })}
+                                      className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-slate-50 text-slate-700 transition"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <Palette className="w-3.5 h-3.5 text-amber-600" />
+                                        <span>Colorer toute la ligne</span>
+                                      </div>
+                                      <span className="text-[10px] text-slate-400">▸</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => setActiveColorPicker(activeColorPicker?.mode === 'column' && activeColorPicker?.colIndex === cIdx ? null : { mode: 'column', colIndex: cIdx })}
+                                      className="w-full px-3 py-1.5 flex items-center justify-between hover:bg-slate-50 text-slate-700 transition"
+                                    >
+                                      <div className="flex items-center gap-2">
+                                        <Palette className="w-3.5 h-3.5 text-violet-600" />
+                                        <span>Colorer toute la colonne</span>
+                                      </div>
+                                      <span className="text-[10px] text-slate-400">▸</span>
+                                    </button>
+
+                                    {activeColorPicker && (
+                                      (activeColorPicker.mode === 'singleCell' && activeColorPicker.studentId === std.id && activeColorPicker.colIndex === cIdx) ||
+                                      (activeColorPicker.mode === 'row' && activeColorPicker.studentId === std.id) ||
+                                      (activeColorPicker.mode === 'column' && activeColorPicker.colIndex === cIdx)
+                                    ) && renderPaletteGrid(
+                                      activeColorPicker.mode === 'singleCell'
+                                        ? 'Couleur de cette case :'
+                                        : activeColorPicker.mode === 'row'
+                                        ? 'Couleur de toute la ligne :'
+                                        : 'Couleur de toute la colonne :'
+                                    )}
+
+                                    <div className="my-1 border-t border-slate-100" />
+
+                                    <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                      Actions
+                                    </div>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleFillDown(cIdx, rIdx);
+                                        setActiveMenuCell(null);
+                                      }}
+                                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition"
+                                    >
+                                      <ArrowDown className="w-3.5 h-3.5 text-blue-600" />
+                                      <span>Recopier vers le bas</span>
+                                    </button>
+
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        handleRawNoteChange(std.id, cIdx, formatStudentNote('', parsed.maxScore));
+                                        setActiveMenuCell(null);
+                                      }}
+                                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-amber-50 text-amber-700 transition"
+                                    >
+                                      <Eraser className="w-3.5 h-3.5 text-amber-600" />
+                                      <span>Vider cette note</span>
+                                    </button>
+                                  </div>
+                                )}
+
                                 {/* INFOBULLE FLOTTANTE SANS BLOQUER LA VUE SI NOTE > MAX */}
                                 {isInvalid && (
                                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1 bg-red-600 text-white text-[10px] font-bold rounded-lg shadow-xl whitespace-nowrap z-50 pointer-events-none flex items-center gap-1.5 animate-in fade-in zoom-in-95">
                                     <AlertCircle className="w-3.5 h-3.5 text-white shrink-0" />
-                                    <span>⚠️ La note ne peut pas être supérieure à la note maximale (${parsed.maxScore})</span>
+                                    <span>⚠️ La note ne peut pas être supérieure à la note maximale ({parsed.maxScore})</span>
                                   </div>
                                 )}
 
-                                {/* SAISIE MODERNE AVEC SÉPARATEUR FIXE NON MODIFIABLE ET BARÈME DÉFAUT 20 */}
+                                {/* SAISIE HAUTE VISIBILITÉ AVEC SÉPARATEUR ET BARÈME ULTRA LISIBLES ET NETS */}
                                 <div className="flex items-center justify-center w-full h-full">
                                   {/* Note de l'élève (modifiable, rouge et soulignée si > max) */}
                                   <input
@@ -2216,23 +2425,23 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         value: noteVal || `.../${parsed.maxScore}`
                                       });
                                     }}
-                                    placeholder="..."
+                                    placeholder="-"
                                     maxLength={6}
-                                    className={`w-[50%] text-right text-xs transition outline-none bg-transparent ${
+                                    className={`w-[48%] text-right text-xs sm:text-sm transition outline-none bg-transparent ${
                                       isInvalid
                                         ? 'text-red-600 underline font-black decoration-red-600 decoration-2'
-                                        : 'font-bold text-slate-800 placeholder:text-slate-300'
+                                        : 'font-black text-slate-900 placeholder:text-slate-400 focus:text-blue-700'
                                     }`}
                                   />
 
-                                  {/* SÉPARATEUR FIXE NON MODIFIABLE */}
-                                  <span className={`px-0.5 text-xs font-bold select-none pointer-events-none ${
-                                    isInvalid ? 'text-red-500' : 'text-slate-400'
+                                  {/* SÉPARATEUR FIXE NON MODIFIABLE ULTRA VISIBLE */}
+                                  <span className={`px-0.5 text-xs sm:text-sm font-black select-none pointer-events-none ${
+                                    isInvalid ? 'text-red-600' : 'text-slate-900'
                                   }`}>
                                     /
                                   </span>
 
-                                  {/* Barème maximal (défaut 20, modifiable) */}
+                                  {/* Barème maximal (défaut 20, modifiable) ULTRA VISIBLE */}
                                   <input
                                     type="text"
                                     value={parsed.maxScore}
@@ -2243,7 +2452,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       handleRawNoteChange(std.id, cIdx, newRaw);
                                     }}
                                     maxLength={4}
-                                    className="w-[45%] text-left text-[11px] font-semibold text-slate-500 hover:text-slate-800 focus:text-blue-600 transition outline-none bg-transparent"
+                                    className="w-[44%] text-left text-xs sm:text-[12px] font-black text-slate-900 hover:text-blue-700 focus:text-blue-700 transition outline-none bg-transparent"
                                     title="Barème maximal pour cette case"
                                   />
                                 </div>
@@ -2264,15 +2473,23 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                           {/* Case vide sous le bouton [+] */}
                           <div 
-                            style={{ width: '48px', height: `${rowHeight}px` }}
-                            className={`border-r ${isColActive('col-moyenne') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} bg-slate-50/60 flex items-center justify-center shrink-0 relative`}
+                            style={{ 
+                              width: '48px', 
+                              height: `${rowHeight}px`,
+                              backgroundColor: rowBg || undefined
+                            }}
+                            className={`border-r ${isColActive('col-moyenne') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} bg-slate-50/60 flex items-center justify-center shrink-0 relative`}
                           >
                             <span className="text-slate-200 text-xs">•</span>
                           </div>
 
                           {/* MOYENNE */}
                           <div 
-                            style={{ width: `${colWidthAverage}px`, height: `${rowHeight}px` }}
+                            style={{ 
+                              width: `${colWidthAverage}px`, 
+                              height: `${rowHeight}px`,
+                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : (rowBg || undefined)
+                            }}
                             onClick={() => {
                               setActiveCellInfo({
                                 id: `cell-avg-${rIdx}`,
@@ -2287,6 +2504,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               });
                             }}
                             className={`flex items-center justify-between px-2 cursor-pointer relative shrink-0 transition-colors ${
+                              isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'
+                            } ${
                               std.hasInvalidNote
                                 ? 'bg-slate-200 text-slate-400 border border-slate-300'
                                 : 'bg-blue-50/40'
