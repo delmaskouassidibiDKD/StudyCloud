@@ -71,51 +71,40 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Clé de persistance pour les notes de cette matière et ce trimestre
   const storageKey = `studycloud_gradebook_${subject.id}_${term?.id || 't1'}`;
 
-  // Initialisation des données du tableur
+  // Initialisation des données du tableur (Entièrement vierge, aucune valeur pré-enregistrée)
   const [gridData, setGridData] = useState<string[][]>(() => {
     try {
       const saved = localStorage.getItem(storageKey);
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        // Si les données sauvegardées contiennent encore les anciens CP-1 ou N°, on les purge
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const hasOldDefaults = parsed.some((r: any) =>
+            Array.isArray(r) && r.some((v: any) => typeof v === 'string' && (v.includes('CP-') || v === 'N°' || v === 'MATRICULE'))
+          );
+          if (!hasOldDefaults) return parsed;
+        }
       }
     } catch { }
 
-    // Grille vierge préconfigurée identique à la capture d'écran
-    const initialGrid: string[][] = Array.from({ length: TOTAL_ROWS }, () =>
+    // Grille 100% vierge sans aucune valeur pré-enregistrée (sans CP-1, sans N°, sans 1, 2, 3)
+    return Array.from({ length: TOTAL_ROWS }, () =>
       Array.from({ length: TOTAL_COLUMNS }, () => '')
     );
-
-    // Ligne 4 (index 3) : Colonnes de notes CP-1 à CP-22 comme sur la photo
-    // Col 0 (A) : N° | Col 1 (B) : Noms & Prénoms | Col 2 (C) : Matricule
-    // Col 3 (D) à Col 24 (Y) : CP-1 à CP-22
-    // Col 25 (Z) : Moy. CP | Col 26 (AA) : Devoir | Col 27 (AB) : Moyenne | Col 28 (AC) : Rang
-    initialGrid[3][0] = 'N°';
-    initialGrid[3][1] = 'NOMS & PRÉNOMS';
-    initialGrid[3][2] = 'MATRICULE';
-
-    for (let i = 1; i <= 22; i++) {
-      const colIdx = 2 + i; // 3 = D = CP-1 ... 24 = Y = CP-22
-      if (colIdx < TOTAL_COLUMNS) {
-        initialGrid[3][colIdx] = `CP-${i}`;
-      }
-    }
-
-    initialGrid[3][25] = 'MOY. CP';
-    initialGrid[3][26] = 'DEVOIR';
-    initialGrid[3][27] = 'MOYENNE';
-    initialGrid[3][28] = 'RANG';
-
-    // Numéros d'élèves par défaut de 1 à 30 à partir de la ligne 5 (index 4)
-    for (let r = 4; r < 34; r++) {
-      initialGrid[r][0] = String(r - 3);
-    }
-
-    return initialGrid;
   });
 
-  // Cellule active : initialisée sur E21 (Row index 20, Col index 4) comme sur la photo du professeur !
-  const [selectedCell, setSelectedCell] = useState<{ r: number; c: number }>({ r: 20, c: 4 });
+  // Nettoyage immédiat au montage si l'ancienne clé contenait les valeurs pré-enregistrées
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved && (saved.includes('CP-') || saved.includes('MATRICULE') || saved.includes('N°'))) {
+        localStorage.removeItem(storageKey);
+      }
+    } catch { }
+  }, [storageKey]);
+
+  // Cellule active : initialisée sur la première cellule
+  const [selectedCell, setSelectedCell] = useState<{ r: number; c: number }>({ r: 0, c: 0 });
   const [editingCell, setEditingCell] = useState<{ r: number; c: number } | null>(null);
   const [formulaValue, setFormulaValue] = useState<string>('');
   const [editInputVal, setEditInputVal] = useState<string>('');
@@ -675,51 +664,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         }}
       >
         <table className="border-collapse table-fixed w-max min-w-full text-xs">
-          <thead>
-            {/* Ligne des en-têtes de colonnes (Coin gauche + A, B, C, D, E...) */}
-            <tr className="bg-[#f1f3f5] sticky top-0 z-10 border-b border-slate-300 text-slate-600 select-none">
-              {/* Coin supérieur gauche (Sélection tout) */}
-              <th className="w-12 min-w-[48px] h-6 bg-[#e9ecef] border-r border-b border-slate-300 sticky left-0 z-20"></th>
-              
-              {/* Colonnes A, B, C ... AD */}
-              {Array.from({ length: TOTAL_COLUMNS }).map((_, cIdx) => {
-                const colLetter = getColumnLabel(cIdx);
-                const isColActive = selectedCell.c === cIdx;
-                // Largeurs adaptées : Col A (N°) petite, Col B (Nom) large, CP colonnes compactes
-                const colWidth = cIdx === 0 ? 'w-12 min-w-[48px]' : cIdx === 1 ? 'w-56 min-w-[220px]' : cIdx === 2 ? 'w-28 min-w-[110px]' : 'w-20 min-w-[76px]';
-
-                return (
-                  <th
-                    key={colLetter}
-                    className={`${colWidth} h-6 px-1 text-center font-semibold text-[11px] border-r border-slate-300 ${
-                      isColActive ? 'bg-[#d0d7de] text-slate-900 font-bold' : ''
-                    }`}
-                  >
-                    {colLetter}
-                  </th>
-                );
-              })}
-            </tr>
-          </thead>
-
           <tbody>
-            {/* Lignes 1 à 45 */}
+            {/* Grille 100% vierge sans les A,B.., sans les 123.., sans les cp-1.. et sans le N°.. */}
             {gridData.map((row, rIdx) => {
               const rowNum = rIdx + 1;
-              const isRowActive = selectedCell.r === rIdx;
-              const isHeaderRow = rIdx === 3; // Ligne 4 : CP-1 à CP-22
 
               return (
                 <tr key={rowNum} className="border-b border-slate-200 hover:bg-slate-50/40">
-                  {/* Numéro de ligne sticky à gauche (1, 2, 3...) */}
-                  <td 
-                    className={`h-6 text-center text-[10.5px] font-medium border-r border-slate-300 bg-[#f1f3f5] text-slate-600 sticky left-0 z-10 select-none ${
-                      isRowActive ? 'bg-[#d0d7de] text-slate-900 font-bold' : ''
-                    }`}
-                  >
-                    {rowNum}
-                  </td>
-
                   {/* Cellules de la ligne */}
                   {Array.from({ length: TOTAL_COLUMNS }).map((_, cIdx) => {
                     const isSelected = selectedCell.r === rIdx && selectedCell.c === cIdx;
@@ -734,18 +685,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           setEditingCell(null);
                         }}
                         onDoubleClick={() => startCellEdit(rIdx, cIdx)}
-                        className={`h-6 px-2 text-xs border-r border-slate-200 relative transition-colors ${
-                          isHeaderRow 
-                            ? 'bg-[#fafbfc] font-bold text-slate-800 text-center text-[11px]' 
-                            : ''
-                        } ${
+                        className={`w-24 min-w-[85px] h-6 px-2 text-xs border-r border-slate-200 relative transition-colors ${
                           isSelected
                             ? 'outline-2 outline-[#107c41] -outline-offset-2 z-1 bg-blue-50/20'
                             : ''
                         }`}
                         style={{
-                          textAlign: isHeaderRow ? 'center' : (cIdx === 0 || cIdx >= 3 ? 'center' : textAlign),
-                          fontWeight: isBold || isHeaderRow ? 'bold' : 'normal',
+                          textAlign,
+                          fontWeight: isBold ? 'bold' : 'normal',
                           fontStyle: isItalic ? 'italic' : 'normal',
                           textDecoration: isUnderline ? 'underline' : isStrikethrough ? 'line-through' : 'none',
                         }}
