@@ -29,7 +29,11 @@ import {
   Palette,
   Check,
   X,
-  AlertCircle
+  AlertCircle,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  RotateCcw
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SubjectItem, ClassItem, SchoolItem, SchoolYearItem, TermItem } from './TeacherClassesView';
@@ -201,13 +205,40 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     return {};
   });
 
+  // Clés de stockage pour les couleurs personnalisées
+  const cellColorsKey = `studycloud_cell_colors_${subject.id}_${term?.id || 't1'}`;
+  const rowColorsKey = `studycloud_row_colors_${subject.id}_${term?.id || 't1'}`;
+
+  const [cellColors, setCellColors] = useState<{ [key: string]: string }>(() => {
+    try {
+      const s = localStorage.getItem(cellColorsKey);
+      if (s) return JSON.parse(s);
+    } catch {}
+    return {};
+  });
+
+  const [rowColors, setRowColors] = useState<{ [rowId: string]: string }>(() => {
+    try {
+      const s = localStorage.getItem(rowColorsKey);
+      if (s) return JSON.parse(s);
+    } catch {}
+    return {};
+  });
+
   // Menu contextuel 3 points de colonne
   const [activeMenuCol, setActiveMenuCol] = useState<number | null>(null);
 
+  // Menus contextuels 3 points additionnels
+  const [activeMenuCell, setActiveMenuCell] = useState<{ studentId: string; colIndex: number } | null>(null);
+  const [activeMenuRow, setActiveMenuRow] = useState<string | null>(null);
+  const [activeMenuNameCol, setActiveMenuNameCol] = useState<boolean>(false);
+
   // Palette de couleur active
   const [activeColorPicker, setActiveColorPicker] = useState<{
-    target: 'header' | 'column';
-    colIndex: number;
+    mode: 'cell' | 'column' | 'singleCell' | 'row';
+    colIndex?: number;
+    studentId?: string;
+    targetId?: string | number;
   } | null>(null);
 
   // Modale de modification d'intitulé et barème de la colonne
@@ -373,6 +404,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       localStorage.setItem(customNoteWidthsKey, JSON.stringify(customNoteWidths));
       localStorage.setItem(rowHeightsKey, JSON.stringify(customRowHeights));
       localStorage.setItem(colMetasKey, JSON.stringify(columnMetas));
+      localStorage.setItem(cellColorsKey, JSON.stringify(cellColors));
+      localStorage.setItem(rowColorsKey, JSON.stringify(rowColors));
       setIsSaved(true);
     } catch { }
   }, [students, noteColumnCount, noteColWidth, colWidthRank, colWidthPhoto, colWidthName, colWidthAverage, customNoteWidths, customRowHeights, columnMetas, storageKey, colCountKey, colWidthKey, colWidthRankKey, colWidthPhotoKey, colWidthNameKey, colWidthAvgKey, customNoteWidthsKey, rowHeightsKey, colMetasKey]);
@@ -400,6 +433,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       if (e.key === 'Escape') {
         setSelectedLine(null);
         setActiveMenuCol(null);
+        setActiveMenuCell(null);
+        setActiveMenuRow(null);
+        setActiveMenuNameCol(false);
         setActiveColorPicker(null);
       }
     };
@@ -733,6 +769,92 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     e.target.value = '';
   };
 
+  // Application d'une couleur pour l'en-tête ou toute la colonne
+  const handleApplyColor = (colIndex: number, mode: 'cell' | 'column', color?: string) => {
+    setColumnMetas(prev => {
+      const existing = prev[colIndex] || { maxScore: 20 };
+      return {
+        ...prev,
+        [colIndex]: {
+          ...existing,
+          headerBgColor: mode === 'cell' ? color : existing.headerBgColor,
+          columnBgColor: mode === 'column' ? color : existing.columnBgColor
+        }
+      };
+    });
+    setIsSaved(false);
+  };
+
+  // Application d'une couleur pour une case individuelle unique
+  const handleApplySingleCellColor = (studentId: string, colIndex: number, color?: string) => {
+    const key = `${studentId}_${colIndex}`;
+    setCellColors(prev => {
+      const next = { ...prev };
+      if (!color) delete next[key];
+      else next[key] = color;
+      return next;
+    });
+    setIsSaved(false);
+  };
+
+  // Application d'une couleur pour une ligne d'élève complète
+  const handleApplyRowColor = (studentId: string, color?: string) => {
+    setRowColors(prev => {
+      const next = { ...prev };
+      if (!color) delete next[studentId];
+      else next[studentId] = color;
+      return next;
+    });
+    setIsSaved(false);
+  };
+
+  // Vider toutes les notes d'un élève
+  const handleClearStudentNotes = (studentId: string) => {
+    setStudents(prev => prev.map(s => s.id === studentId ? { ...s, notes: Array(noteColumnCount).fill('') } : s));
+    setIsSaved(false);
+  };
+
+  // Trier les élèves par ordre alphabétique
+  const handleSortStudents = (direction: 'asc' | 'desc') => {
+    setStudents(prev => {
+      return [...prev].sort((a, b) => {
+        const nameA = (a.name || '').trim().toLowerCase();
+        const nameB = (b.name || '').trim().toLowerCase();
+        if (!nameA) return 1;
+        if (!nameB) return -1;
+        return direction === 'asc' ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+      });
+    });
+    setIsSaved(false);
+  };
+
+  // Déplacer une ligne d'élève vers le haut ou vers le bas
+  const handleMoveStudentRow = (fromIndex: number, toIndex: number) => {
+    if (fromIndex < 0 || fromIndex >= students.length || toIndex < 0 || toIndex >= students.length) return;
+    setStudents(prev => {
+      const copy = [...prev];
+      const [moved] = copy.splice(fromIndex, 1);
+      copy.splice(toIndex, 0, moved);
+      return copy;
+    });
+    setIsSaved(false);
+  };
+
+  // Recopier une note vers le bas pour tous les élèves suivants
+  const handleFillDown = (colIndex: number, fromRowIndex: number) => {
+    const sourceStudent = students[fromRowIndex];
+    if (!sourceStudent) return;
+    const sourceNote = sourceStudent.notes[colIndex] || '';
+
+    setStudents(prev => prev.map((s, idx) => {
+      if (idx <= fromRowIndex) return s;
+      const copyNotes = [...s.notes];
+      copyNotes[colIndex] = sourceNote;
+      return { ...s, notes: copyNotes };
+    }));
+    setIsSaved(false);
+  };
+
   // =========================================================================
   // GESTION INDIVIDUELLE DES COLONNES : Chaque séparateur a son ID unique !
   // Aucune ligne ne se mélange. Double-clic obligatoire pour sélectionner.
@@ -1048,6 +1170,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         // Clic sur l'espace extérieur désélectionne toute ligne et ferme les menus
         if (selectedLine) setSelectedLine(null);
         if (activeMenuCol !== null) setActiveMenuCol(null);
+        if (activeMenuCell !== null) setActiveMenuCell(null);
+        if (activeMenuRow !== null) setActiveMenuRow(null);
+        if (activeMenuNameCol) setActiveMenuNameCol(false);
         if (activeColorPicker !== null) setActiveColorPicker(null);
       }}
       className={`w-full flex flex-col bg-[#eef2f6] text-slate-800 font-sans select-none overflow-hidden transition-all duration-300 ${
@@ -1397,12 +1522,135 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {/* 3. NOM & PRÉNOM */}
                     <div 
                       style={{ width: `${colWidthName}px` }}
-                      className="h-12 border-r border-slate-700 flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative"
+                      className="h-12 border-r border-slate-700 flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative group"
                       title="Nom et Prénom de l'élève"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         NOM & PRÉNOM
                       </span>
+
+                      {/* BOUTON 3 POINTS ⋮ POUR LA COLONNE NOM & PRÉNOM */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setActiveMenuNameCol(prev => !prev);
+                          setActiveMenuCol(null);
+                          setActiveMenuRow(null);
+                          setActiveMenuCell(null);
+                          setActiveColorPicker(null);
+                        }}
+                        className={`absolute top-1 right-1 p-0.5 rounded transition cursor-pointer z-10 ${
+                          activeMenuNameCol
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'text-slate-400 hover:text-slate-800 hover:bg-slate-200/80 opacity-70 hover:opacity-100 group-hover:opacity-100'
+                        }`}
+                        title="Options de la colonne NOM & PRÉNOM (Tri alphabétique, ajout d'élèves, etc.)"
+                      >
+                        <MoreVertical className="w-3.5 h-3.5 stroke-[2.5]" />
+                      </button>
+
+                      {/* MENU CONTEXTUEL POUR NOM & PRÉNOM */}
+                      {activeMenuNameCol && (
+                        <div 
+                          onClick={(e) => e.stopPropagation()}
+                          className="absolute top-full right-0 mt-1 w-56 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95"
+                        >
+                          <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            Tri alphabétique
+                          </div>
+
+                          {/* 1. Trier A à Z */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuNameCol(false);
+                              handleSortStudents('asc');
+                            }}
+                            className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition"
+                          >
+                            <ArrowUpDown className="w-3.5 h-3.5 text-blue-600" />
+                            <span>Trier de A à Z</span>
+                          </button>
+
+                          {/* 2. Trier Z à A */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuNameCol(false);
+                              handleSortStudents('desc');
+                            }}
+                            className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition"
+                          >
+                            <ArrowUpDown className="w-3.5 h-3.5 text-indigo-600 rotate-180" />
+                            <span>Trier de Z à A (Inversé)</span>
+                          </button>
+
+                          <div className="my-1 border-t border-slate-100" />
+
+                          <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                            Gestion des élèves
+                          </div>
+
+                          {/* 3. Ajouter un élève */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuNameCol(false);
+                              handleAddStudentRow();
+                            }}
+                            className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 transition"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Ajouter un élève (+1)</span>
+                          </button>
+
+                          {/* 4. Ajouter 5 élèves */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuNameCol(false);
+                              handleAddMultipleStudentRows(5);
+                            }}
+                            className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-emerald-50 text-slate-700 hover:text-emerald-700 transition"
+                          >
+                            <Plus className="w-3.5 h-3.5 text-teal-600" />
+                            <span>Ajouter 5 élèves (+5)</span>
+                          </button>
+
+                          <div className="my-1 border-t border-slate-100" />
+
+                          {/* 5. Vider tous les noms */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuNameCol(false);
+                              if (window.confirm("Voulez-vous vraiment effacer tous les noms d'élèves de cette classe ?")) {
+                                setStudents(prev => prev.map(s => ({ ...s, name: '' })));
+                                setIsSaved(false);
+                              }
+                            }}
+                            className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-amber-50 text-amber-700 transition"
+                          >
+                            <Eraser className="w-3.5 h-3.5 text-amber-600" />
+                            <span>Effacer tous les noms</span>
+                          </button>
+
+                          {/* 6. Réinitialiser la largeur */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setActiveMenuNameCol(false);
+                              setColWidthName(190);
+                            }}
+                            className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-slate-50 text-slate-600 transition"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Largeur par défaut (190px)</span>
+                          </button>
+                        </div>
+                      )}
+
                       {renderColHandle('col-name')}
                     </div>
 
@@ -1490,11 +1738,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               e.stopPropagation();
                               setActiveMenuCol(prev => prev === i ? null : i);
                               setActiveColorPicker(null);
+                              setActiveMenuNameCol(false);
+                              setActiveMenuRow(null);
+                              setActiveMenuCell(null);
                             }}
-                            className={`absolute top-1 right-1 p-0.5 rounded transition cursor-pointer ${
+                            className={`absolute top-1 right-1 p-0.5 rounded transition cursor-pointer z-10 ${
                               isMenuOpen
                                 ? 'bg-blue-600 text-white shadow-xs'
-                                : 'text-slate-400 hover:text-slate-800 hover:bg-slate-200/80 opacity-0 group-hover:opacity-100'
+                                : 'text-slate-400 hover:text-slate-800 hover:bg-slate-200/80 opacity-70 hover:opacity-100 group-hover:opacity-100'
                             }`}
                             title={`Options de la colonne ${colTitle} ${i + 1}`}
                           >
@@ -1514,8 +1765,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   setActiveMenuCol(null);
                                   setEditingColModal({
                                     colIndex: i,
-                                    currentTitle: colMeta.title || 'NOTE',
-                                    currentMaxScore: colMeta.maxScore || 20
+                                    title: colMeta.title || 'NOTE',
+                                    maxScore: colMeta.maxScore || 20
                                   });
                                 }}
                                 className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition"
@@ -1533,7 +1784,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 }}
                                 className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition"
                               >
-                                <Move className="w-3.5 h-3.5 text-indigo-600" />
+                                <svg className="w-3.5 h-3.5 text-indigo-600 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="5 9 2 12 5 15" />
+                                  <polyline points="9 5 12 2 15 5" />
+                                  <polyline points="15 19 12 22 9 19" />
+                                  <polyline points="19 9 22 12 19 15" />
+                                  <line x1="2" y1="12" x2="22" y2="12" />
+                                  <line x1="12" y1="2" x2="12" y2="22" />
+                                </svg>
                                 <span>Déplacer la colonne</span>
                               </button>
 
@@ -1604,13 +1862,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     {activeColorPicker.mode === 'cell' ? 'Couleur de la case :' : 'Couleur de toute la colonne :'}
                                   </div>
                                   <div className="grid grid-cols-4 gap-1">
-                                    {PASTEL_PALETTE.map((color) => {
+                                    {PASTEL_PALETTE.map((color, colorIdx) => {
                                       return (
                                         <button
-                                          key={color.id}
+                                          key={color.name || colorIdx}
                                           type="button"
                                           onClick={() => {
-                                            handleApplyColor(i, activeColorPicker.mode, color.bg);
+                                            const targetMode: 'cell' | 'column' = activeColorPicker?.mode === 'column' ? 'column' : 'cell';
+                                            handleApplyColor(i, targetMode, color.bg);
                                             setActiveColorPicker(null);
                                             setActiveMenuCol(null);
                                           }}
@@ -1758,7 +2017,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.name
                               });
                             }}
-                            className={`h-full border-r border-slate-700 flex items-center justify-center p-1.5 relative shrink-0 ${
+                            className={`h-full border-r border-slate-700 flex items-center justify-center p-1.5 relative group shrink-0 ${
                               activeCellInfo.id === `cell-name-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
                             }`}
                           >
@@ -1776,7 +2035,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               }}
                               rows={1}
                               placeholder={`Nom et prénom élève ${rIdx + 1}...`}
-                              className="w-full text-center text-xs font-semibold text-slate-800 placeholder:text-slate-300 bg-transparent outline-none border border-transparent focus:border-blue-400 focus:bg-white rounded transition resize-none overflow-hidden py-1 px-2 leading-snug my-auto whitespace-pre-wrap break-words"
+                              className="w-full text-center text-xs font-semibold text-slate-800 placeholder:text-slate-300 bg-transparent outline-none border border-transparent focus:border-blue-400 focus:bg-white rounded transition resize-none overflow-hidden py-1 px-2 leading-snug my-auto whitespace-pre-wrap break-words pr-4"
                               style={{
                                 textAlign,
                                 fontWeight: isBold ? 'bold' : '600',
@@ -1784,6 +2043,108 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 textDecoration: isUnderline ? 'underline' : isStrikethrough ? 'line-through' : 'none',
                               }}
                             />
+
+                            {/* BOUTON 3 POINTS ⋮ POUR CETTE LIGNE ÉLÈVE */}
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveMenuRow(prev => prev === std.id ? null : std.id);
+                                setActiveMenuCol(null);
+                                setActiveMenuNameCol(false);
+                                setActiveMenuCell(null);
+                                setActiveColorPicker(null);
+                              }}
+                              className={`absolute top-1 right-1 p-0.5 rounded transition cursor-pointer z-10 ${
+                                activeMenuRow === std.id
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'text-slate-400 hover:text-slate-800 hover:bg-slate-200/80 opacity-40 hover:opacity-100 group-hover:opacity-100'
+                              }`}
+                              title={`Options pour l'élève ${std.name || `n°${rIdx + 1}`}`}
+                            >
+                              <MoreVertical className="w-3 h-3 stroke-[2.5]" />
+                            </button>
+
+                            {/* MENU CONTEXTUEL POUR LA LIGNE ÉLÈVE */}
+                            {activeMenuRow === std.id && (
+                              <div
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute top-full right-0 mt-1 w-52 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95"
+                              >
+                                <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider truncate">
+                                  {std.name || `Élève ${rIdx + 1}`}
+                                </div>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuRow(null);
+                                    handleTriggerPhotoUpload(std.id);
+                                  }}
+                                  className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition"
+                                >
+                                  <Camera className="w-3.5 h-3.5 text-blue-600" />
+                                  <span>Changer la photo</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuRow(null);
+                                    handleMoveStudentRow(rIdx, rIdx - 1);
+                                  }}
+                                  disabled={rIdx === 0}
+                                  className={`w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 transition ${
+                                    rIdx === 0 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-blue-50 hover:text-blue-700'
+                                  }`}
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5 text-indigo-600" />
+                                  <span>Monter la ligne (↑)</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuRow(null);
+                                    handleMoveStudentRow(rIdx, rIdx + 1);
+                                  }}
+                                  disabled={rIdx >= students.length - 1}
+                                  className={`w-full px-3 py-1.5 flex items-center gap-2 text-slate-700 transition ${
+                                    rIdx >= students.length - 1 ? 'opacity-30 cursor-not-allowed' : 'hover:bg-blue-50 hover:text-blue-700'
+                                  }`}
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5 text-indigo-600" />
+                                  <span>Descendre la ligne (↓)</span>
+                                </button>
+
+                                <div className="my-1 border-t border-slate-100" />
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuRow(null);
+                                    handleClearStudentNotes(std.id);
+                                  }}
+                                  className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-amber-50 text-amber-700 transition"
+                                >
+                                  <Eraser className="w-3.5 h-3.5 text-amber-600" />
+                                  <span>Vider les notes de cet élève</span>
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuRow(null);
+                                    handleDeleteStudentRow(std.id);
+                                  }}
+                                  className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-red-50 text-red-600 transition"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                  <span>Supprimer cet élève</span>
+                                </button>
+                              </div>
+                            )}
+
                             {renderColHandle('col-name')}
                           </div>
 
@@ -1884,7 +2245,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 </div>
 
                                 {isSelectedNote && !isInvalid && (
-                                  <div className="absolute -bottom-[3px] -right-[3px] w-2 h-2 bg-[#107c41] border border-white cursor-crosshair z-20 pointer-events-none" />
+                                  <div 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleFillDown(cIdx, rIdx);
+                                    }}
+                                    className="absolute -bottom-[3px] -right-[3px] w-2.5 h-2.5 bg-[#107c41] hover:scale-150 border border-white cursor-pointer z-20 transition-transform shadow-xs"
+                                    title="Cliquer pour recopier cette note vers le bas (remplir toutes les lignes suivantes)"
+                                  />
                                 )}
                                 {renderColHandle(`col-note-${cIdx}`)}
                               </div>
