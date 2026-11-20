@@ -498,7 +498,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     }));
   });
 
-  // Cellule active pour la barre de formule
+  // Cellule active pour la barre de formule (sélectionne la première case par défaut comme dans Excel)
   const [activeCellInfo, setActiveCellInfo] = useState<{
     id: string;
     type: 'rank' | 'photo' | 'name' | 'note' | 'average' | 'column' | 'mention' | 'none';
@@ -507,10 +507,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     coordDisplay: string;
     value: string;
   }>({
-    id: '',
-    type: 'none',
-    rowIndex: undefined,
-    coordDisplay: '',
+    id: 'cell-name-0',
+    type: 'name',
+    rowIndex: 0,
+    coordDisplay: 'NOM1',
     value: ''
   });
 
@@ -1145,7 +1145,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       if (activeCellInfo.type === 'average') return [`${std.id}_avg`];
       if (activeCellInfo.type === 'mention') return [`${std.id}_mention`];
     }
-    // Si rien n'est sélectionné/souligné, aucune cellule n'est ciblée
+    // Si rien n'est sélectionné/souligné, cibler la première case par défaut
+    if (students.length > 0) {
+      return [`${students[0].id}_name`];
+    }
     return [];
   };
 
@@ -1666,12 +1669,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   return (
     <div 
-      onClick={() => {
-        // Clic sur l'espace extérieur désélectionne toute ligne et ferme proprement les menus
-        closeAllMenus();
-        setSelectedLine(null);
-        if (blockedNoteTarget) setBlockedNoteTarget(null);
-      }}
       className={`w-full flex flex-col bg-[#eef2f6] text-slate-800 font-sans select-none overflow-hidden transition-all duration-300 ${
         viewerExpandLevel >= 2
           ? 'fixed inset-0 z-50 w-screen h-screen min-h-screen'
@@ -1807,7 +1804,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       {/* ========================================================================= */}
       {/* 2. RUBAN D'OUTILS STYLE WPS OFFICE / EXCEL (INTERACTIF & COMPLET) */}
       {/* ========================================================================= */}
-      <section className="bg-[#f3f4f6] border-b border-slate-300 px-2 py-1 flex items-stretch gap-1 sm:gap-2 text-slate-700 shrink-0 select-none relative z-50 overflow-visible">
+      <section 
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[#f3f4f6] border-b border-slate-300 px-2 py-1 flex items-stretch gap-1 sm:gap-2 text-slate-700 shrink-0 select-none relative z-50 overflow-visible"
+      >
         {/* GROUPE 1 : PRESSE-PAPIERS (COPIER TOUT LE TABLEAU & COLLER) */}
         <div className="flex flex-col items-center justify-between px-1.5 border-r border-slate-300/80 min-w-[76px]">
           <div className="flex items-center gap-1 mt-0.5">
@@ -1815,7 +1815,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <div className="relative">
               <button 
                 type="button" 
-                onClick={handleCopyEntireTable}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleCopyEntireTable();
+                }}
                 className={`p-1.5 rounded transition flex items-center justify-center cursor-pointer active:scale-95 ${
                   copiedTableSuccess ? 'bg-emerald-100 text-emerald-800' : 'hover:bg-slate-200 text-slate-800'
                 }`}
@@ -1837,7 +1840,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* Bouton COLLER */}
             <button 
               type="button" 
-              onClick={handlePasteGradebook}
+              onClick={(e) => {
+                e.stopPropagation();
+                handlePasteGradebook();
+              }}
               className="p-1.5 rounded hover:bg-slate-200 text-slate-800 transition flex items-center justify-center cursor-pointer active:scale-95" 
               title="Coller des données dans le tableau"
             >
@@ -1854,7 +1860,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <div className="relative">
               <button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setIsFontFamilyMenuOpen(prev => !prev);
                   setIsFontSizeMenuOpen(false);
                   setIsTextColorMenuOpen(false);
@@ -1884,7 +1891,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       autoFocus
                     />
                     {fontSearchQuery && (
-                      <button type="button" onClick={() => setFontSearchQuery('')} className="p-0.5 text-slate-400 hover:text-slate-600">
+                      <button 
+                        type="button" 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFontSearchQuery('');
+                        }} 
+                        className="p-0.5 text-slate-400 hover:text-slate-600"
+                      >
                         <X className="w-3 h-3" />
                       </button>
                     )}
@@ -1901,7 +1915,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         <button
                           key={font}
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             applyFontFamily(font);
                             setIsFontFamilyMenuOpen(false);
                           }}
@@ -1923,7 +1938,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <div className="relative">
               <button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setIsFontSizeMenuOpen(prev => !prev);
                   setIsFontFamilyMenuOpen(false);
                   setIsTextColorMenuOpen(false);
@@ -1945,7 +1961,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     <button
                       key={sz}
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         applyFontSize(sz);
                         setIsFontSizeMenuOpen(false);
                       }}
@@ -1964,7 +1981,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* BOUTONS A⁺ ET A⁻ (AGRANDIR / DIMINUER LA TAILLE) */}
             <button 
               type="button" 
-              onClick={increaseFontSize} 
+              onClick={(e) => {
+                e.stopPropagation();
+                increaseFontSize();
+              }} 
               className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-800 font-bold text-xs transition active:scale-95 cursor-pointer" 
               title="Agrandir la taille de police"
             >
@@ -1972,7 +1992,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             </button>
             <button 
               type="button" 
-              onClick={decreaseFontSize} 
+              onClick={(e) => {
+                e.stopPropagation();
+                decreaseFontSize();
+              }} 
               className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-800 font-bold text-xs transition active:scale-95 cursor-pointer" 
               title="Diminuer la taille de police"
             >
@@ -1985,7 +2008,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* BOUTON B (GRAS EXCEL : REND LE TEXTE PUR / NOIR ÉPAIS OU NORMAL) */}
             <button 
               type="button" 
-              onClick={toggleBold} 
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleBold();
+              }} 
               className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
                 activeIsBold 
                   ? 'bg-slate-900 text-white font-black shadow-xs ring-1 ring-slate-900' 
@@ -1999,7 +2025,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* BOUTON I (ITALIQUE) */}
             <button 
               type="button" 
-              onClick={toggleItalic} 
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleItalic();
+              }} 
               className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
                 activeIsItalic 
                   ? 'bg-slate-900 text-white shadow-xs' 
@@ -2013,7 +2042,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* BOUTON U (SOULIGNÉ) */}
             <button 
               type="button" 
-              onClick={toggleUnderline} 
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleUnderline();
+              }} 
               className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
                 activeIsUnderline 
                   ? 'bg-slate-900 text-white shadow-xs' 
@@ -2027,7 +2059,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* BOUTON S (BARRÉ) */}
             <button 
               type="button" 
-              onClick={toggleStrikethrough} 
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleStrikethrough();
+              }} 
               className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
                 activeIsStrikethrough 
                   ? 'bg-slate-900 text-white shadow-xs' 
@@ -2042,7 +2077,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <div className="relative">
               <button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setIsTextColorMenuOpen(prev => !prev);
                   setIsBgColorMenuOpen(false);
                   setIsFontFamilyMenuOpen(false);
@@ -2076,7 +2112,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       <button
                         key={item.name}
                         type="button"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           applyTextColor(item.color);
                           setIsTextColorMenuOpen(false);
                         }}
@@ -2098,7 +2135,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <div className="relative">
               <button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   setIsBgColorMenuOpen(prev => !prev);
                   setIsTextColorMenuOpen(false);
                   setIsFontFamilyMenuOpen(false);
@@ -2129,11 +2167,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   </div>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       applyBgColor('');
                       setIsBgColorMenuOpen(false);
                     }}
-                    className="w-full mb-1.5 py-1 px-2 text-[10.5px] font-bold rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-between"
+                    className="w-full mb-1.5 py-1 px-2 text-[10.5px] font-bold rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-between cursor-pointer"
                   >
                     <span>Aucun remplissage</span>
                     {!activeBgColor && <Check className="w-3 h-3 text-blue-600" />}
@@ -2143,7 +2182,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       <button
                         key={item.name}
                         type="button"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           applyBgColor(item.color);
                           setIsBgColorMenuOpen(false);
                         }}
@@ -2168,38 +2208,46 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           <div className="flex items-center gap-1 mt-0.5">
             <button 
               type="button" 
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setTextAlign('left');
                 updateActiveCellFormatting({ textAlign: 'left' });
               }} 
-              className={`p-1 rounded transition ${textAlign === 'left' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
+              className={`p-1 rounded transition cursor-pointer ${textAlign === 'left' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
               title="Aligner à gauche"
             >
               <AlignLeft className="w-3.5 h-3.5" />
             </button>
             <button 
               type="button" 
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setTextAlign('center');
                 updateActiveCellFormatting({ textAlign: 'center' });
               }} 
-              className={`p-1 rounded transition ${textAlign === 'center' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
+              className={`p-1 rounded transition cursor-pointer ${textAlign === 'center' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
               title="Centrer"
             >
               <AlignCenter className="w-3.5 h-3.5" />
             </button>
             <button 
               type="button" 
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 setTextAlign('right');
                 updateActiveCellFormatting({ textAlign: 'right' });
               }} 
-              className={`p-1 rounded transition ${textAlign === 'right' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
+              className={`p-1 rounded transition cursor-pointer ${textAlign === 'right' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
               title="Aligner à droite"
             >
               <AlignRight className="w-3.5 h-3.5" />
             </button>
-            <button type="button" className="p-1 rounded hover:bg-slate-200 text-slate-700" title="Renvoyer à la ligne">
+            <button 
+              type="button" 
+              onClick={(e) => e.stopPropagation()}
+              className="p-1 rounded hover:bg-slate-200 text-slate-700 cursor-pointer" 
+              title="Renvoyer à la ligne"
+            >
               <WrapText className="w-3.5 h-3.5" />
             </button>
           </div>
@@ -2208,7 +2256,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
         {/* GROUPE 4 : DONNÉES (MOYENNES) */}
         <div className="flex flex-col items-center justify-between px-1.5">
-          <button type="button" className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-slate-200 transition text-slate-800 mt-0.5 active:scale-95 cursor-pointer" title="Moyennes calculées">
+          <button 
+            type="button" 
+            onClick={(e) => e.stopPropagation()}
+            className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-slate-200 transition text-slate-800 mt-0.5 active:scale-95 cursor-pointer" 
+            title="Moyennes calculées"
+          >
             <Sigma className="w-4 h-4 text-emerald-700 stroke-[2.5]" />
             <span className="text-[10px] font-bold">Moyenne</span>
           </button>
@@ -2255,6 +2308,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       {/* ========================================================================= */}
       <div 
         ref={gridContainerRef}
+        onClick={(e) => {
+          if ((e.target as HTMLElement)?.closest('button, input, select, textarea, [data-interactive="true"]')) {
+            return;
+          }
+          closeAllMenus();
+          setSelectedLine(null);
+          if (blockedNoteTarget) setBlockedNoteTarget(null);
+        }}
         className="flex-1 overflow-auto bg-[#fafbfc] relative p-0 touch-pan-x touch-pan-y"
         style={{
           zoom: `${zoomPercent}%`
@@ -2319,17 +2380,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 {/* RANG | PROFIL | NOM & PRÉNOM | NOTE 1... NOTE N | [+] | MOYENNE     */}
                 {/* =================================================================== */}
                 <div className="relative shrink-0 border-2 border-slate-900 bg-white shadow-xl w-fit">
-                  {/* TOILE DE FOND FERMANT LES MENUS DU TABLEAU AU CLIC EXTÉRIEUR */}
-                  {isAnyMenuOpen && (
-                    <div 
-                      className="fixed inset-0 z-40 bg-transparent cursor-default" 
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        closeAllMenus();
-                      }}
-                    />
-                  )}
-
                   {/* EN-TÊTE DU TABLEAU : MOTS EN GRAND CARACTÈRE, BIEN CENTRÉS */}
                   <div className="flex bg-[#f1f5f9] border-b-2 border-slate-900 select-none items-stretch text-slate-900 w-fit">
                     {/* 1. RANG */}
