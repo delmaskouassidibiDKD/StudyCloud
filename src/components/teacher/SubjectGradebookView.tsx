@@ -1063,12 +1063,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
     const handleMouseUp = (upEvent: MouseEvent | TouchEvent) => {
       upEvent.stopPropagation();
-      if (!hasMoved) {
-        // Clic direct sur le trait vertical : on bascule sa sélection (comme pour les lignes horizontales)
-        setSelectedLine(prev => (prev?.type === 'col' && prev.id === colId) ? null : { type: 'col', id: colId });
-      } else {
-        setResizingLine(null);
-      }
+      setResizingLine(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('touchmove', handleMouseMove);
@@ -1113,12 +1108,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
     const handleMouseUp = (upEvent: MouseEvent | TouchEvent) => {
       upEvent.stopPropagation();
-      if (!hasMoved) {
-        // Clic direct sur la ligne horizontale : on bascule sa sélection
-        setSelectedLine(prev => (prev?.type === 'row' && prev.id === rowKey) ? null : { type: 'row', id: rowKey });
-      } else {
-        setResizingLine(null);
-      }
+      setResizingLine(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('touchmove', handleMouseMove);
@@ -1134,45 +1124,33 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Poignée interactive discrète superposée sur la bordure droite de chaque colonne
   // Ne casse PAS le flex ni les bordures CSS normales : position absolue z-30
   // AUCUNE COULEUR N'APPARAÎT AU SIMPLE SURVOL OU TOUCHER TANT QUE CE N'EST PAS SÉLECTIONNÉ !
-  // Quand sélectionné : affiche un trait net bleu ciel 1.5px continu
+  // Quand sélectionné : la bordure elle-même change en bleu ciel fin (border-sky-500)
   const renderColHandle = (colId: string) => {
-    const active = isColActive(colId);
     return (
       <div
-        onClick={(e) => {
-          e.stopPropagation();
-          setSelectedLine(prev => (prev?.type === 'col' && prev.id === colId) ? null : { type: 'col', id: colId });
-        }}
         onDoubleClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
-          setSelectedLine({ type: 'col', id: colId });
+          setSelectedLine(prev => (prev?.type === 'col' && prev.id === colId) ? null : { type: 'col', id: colId });
         }}
         onMouseDown={(e) => handleStartColResize(e, colId)}
         onTouchStart={(e) => handleStartColResize(e, colId)}
-        className="absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-30 select-none flex items-center justify-center pointer-events-auto bg-transparent"
-        title="Cliquer pour sélectionner le trait vertical, glisser pour agrandir/réduire la colonne"
-      >
-        {active && (
-          <div className="w-[1.5px] h-full bg-sky-500 pointer-events-none" />
-        )}
-      </div>
+        className={`absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-30 select-none flex items-center justify-center bg-transparent ${
+          isAnyMenuOpen ? 'pointer-events-none' : 'pointer-events-auto'
+        }`}
+        title={isAnyMenuOpen ? undefined : "Double-cliquer pour sélectionner le trait vertical, glisser pour agrandir/réduire"}
+      />
     );
   };
 
   // Poignée interactive discrète superposée sur la bordure inférieure de chaque ligne d'élève
   // Ne casse PAS la hauteur ni les bordures : position absolue z-30
   // AUCUNE COULEUR N'APPARAÎT AU SIMPLE TOUCHER TANT QUE CE N'EST PAS SÉLECTIONNÉ !
-  // Quand sélectionné : affiche un trait net bleu ciel 1.5px continu sur toute la largeur
+  // Quand sélectionné : la bordure elle-même change en bleu ciel fin (border-sky-500)
   const renderRowHandle = (rowIndex: number) => {
-    const active = isRowActive(rowIndex);
     const rowKey = `row-${rowIndex}`;
     return (
       <div
-        onClick={(e) => {
-          e.stopPropagation();
-          setSelectedLine(prev => (prev?.type === 'row' && prev.id === rowKey) ? null : { type: 'row', id: rowKey });
-        }}
         onDoubleClick={(e) => {
           e.stopPropagation();
           e.preventDefault();
@@ -1180,13 +1158,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         }}
         onMouseDown={(e) => handleStartRowResize(e, rowIndex)}
         onTouchStart={(e) => handleStartRowResize(e, rowIndex)}
-        className="absolute -bottom-1.5 left-0 w-full h-3 cursor-row-resize z-30 select-none flex items-center justify-center pointer-events-auto bg-transparent"
-        title="Cliquer ou double-cliquer pour sélectionner la ligne, glisser pour agrandir/réduire"
-      >
-        {active && (
-          <div className="w-full h-[1.5px] bg-sky-500 pointer-events-none" />
-        )}
-      </div>
+        className={`absolute -bottom-1.5 left-0 w-full h-3 cursor-row-resize z-30 select-none flex items-center justify-center bg-transparent ${
+          isAnyMenuOpen ? 'pointer-events-none' : 'pointer-events-auto'
+        }`}
+        title={isAnyMenuOpen ? undefined : "Double-cliquer pour sélectionner la ligne, glisser pour agrandir/réduire"}
+      />
     );
   };
 
@@ -1272,7 +1248,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         const max = meta?.maxScore || 20;
         return `${title} ${i + 1} (/${max})`;
       });
-      const headers = ['Rang', 'Nom & Prénom', ...noteHeaders, 'Moyenne', 'Mention'];
+      const headers = ['Rang', 'Nom & Prénom', ...noteHeaders, 'Moyenne (/20)', 'Mention'];
       const dataRows = studentsWithStats.map(s => {
         const notesFormatted = s.notes.slice(0, noteColumnCount).map((n, i) => {
           const meta = columnMetas[i];
@@ -1640,12 +1616,28 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 {/* LE TABLEAU MODERNE PROFESSIONNEL (Bordures bien visibles et carrées) */}
                 {/* RANG | PROFIL | NOM & PRÉNOM | NOTE 1... NOTE N | [+] | MOYENNE     */}
                 {/* =================================================================== */}
-                <div className="relative shrink-0 border-2 border-slate-900 bg-white shadow-xl">
+                <div className="relative shrink-0 border-2 border-slate-900 bg-white shadow-xl w-fit">
+                  {/* TOILE DE FOND TRANSPARENTE FERMANT TOUT MENU AU CLIC EXTÉRIEUR */}
+                  {isAnyMenuOpen && (
+                    <div 
+                      className="fixed inset-0 z-40 bg-transparent cursor-default" 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveMenuCol(null);
+                        setActiveMenuRow(null);
+                        setActiveMenuCell(null);
+                        setActiveMenuNameCol(false);
+                        setActiveMenuPhoto(null);
+                        setActiveColorPicker(null);
+                      }}
+                    />
+                  )}
+
                   {/* EN-TÊTE DU TABLEAU : MOTS EN GRAND CARACTÈRE, BIEN CENTRÉS */}
-                  <div className="flex bg-[#f1f5f9] border-b-2 border-slate-900 select-none items-stretch text-slate-900">
+                  <div className="flex bg-[#f1f5f9] border-b-2 border-slate-900 select-none items-stretch text-slate-900 w-fit">
                     {/* 1. RANG */}
                     <div 
-                      style={{ width: `${colWidthRank}px` }}
+                      style={{ width: `${colWidthRank}px`, minWidth: `${colWidthRank}px`, maxWidth: `${colWidthRank}px` }}
                       onClick={() => {
                         setActiveCellInfo({
                           id: 'header-rank',
@@ -1669,7 +1661,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                     {/* 2. PROFIL / PHOTO */}
                     <div 
-                      style={{ width: `${colWidthPhoto}px` }}
+                      style={{ width: `${colWidthPhoto}px`, minWidth: `${colWidthPhoto}px`, maxWidth: `${colWidthPhoto}px` }}
                       onClick={() => {
                         setActiveCellInfo({
                           id: 'header-photo',
@@ -1693,7 +1685,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                     {/* 3. NOM & PRÉNOM */}
                     <div 
-                      style={{ width: `${colWidthName}px` }}
+                      style={{ width: `${colWidthName}px`, minWidth: `${colWidthName}px`, maxWidth: `${colWidthName}px` }}
                       onClick={() => {
                         setActiveCellInfo({
                           id: 'header-name',
@@ -1852,6 +1844,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           key={`header-note-${i}`}
                           style={{ 
                             width: `${thisColWidth}px`,
+                            minWidth: `${thisColWidth}px`,
+                            maxWidth: `${thisColWidth}px`,
                             backgroundColor: headerBg 
                           }}
                           onClick={() => {
@@ -2094,7 +2088,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                     {/* 5. BOUTON [+] AJOUTER UNE NOUVELLE NOTE */}
                     <div 
-                      className="w-12 h-12 border-r border-slate-700 flex items-center justify-center bg-slate-200/70 hover:bg-blue-100 transition cursor-pointer shrink-0 relative"
+                      style={{ width: '48px', minWidth: '48px', maxWidth: '48px' }}
+                      className="h-12 border-r border-slate-700 flex items-center justify-center bg-slate-200/70 hover:bg-blue-100 transition cursor-pointer shrink-0 relative"
                       onClick={handleAddNoteColumn}
                       title="Ajouter une colonne de note (Note suivante)"
                     >
@@ -2108,7 +2103,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                     {/* 6. MOYENNE */}
                     <div 
-                      style={{ width: `${colWidthAverage}px` }}
+                      style={{ width: `${colWidthAverage}px`, minWidth: `${colWidthAverage}px`, maxWidth: `${colWidthAverage}px` }}
                       onClick={() => {
                         setActiveCellInfo({
                           id: 'header-average',
@@ -2134,7 +2129,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                     {/* 7. MENTION */}
                     <div 
-                      style={{ width: `${colWidthMention}px` }}
+                      style={{ width: `${colWidthMention}px`, minWidth: `${colWidthMention}px`, maxWidth: `${colWidthMention}px` }}
                       onClick={() => {
                         setActiveCellInfo({
                           id: 'header-mention',
@@ -2174,7 +2169,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         <div 
                           key={std.id}
                           style={{ height: `${rowHeight}px` }}
-                          className={`flex items-stretch transition-colors relative ${
+                          className={`flex items-stretch transition-colors relative w-fit ${
                             isRowSelected ? 'bg-blue-50/40' : 'hover:bg-slate-50/70'
                           }`}
                         >
@@ -2182,6 +2177,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           <div 
                             style={{ 
                               width: `${colWidthRank}px`, 
+                              minWidth: `${colWidthRank}px`,
+                              maxWidth: `${colWidthRank}px`,
                               height: `${rowHeight}px`,
                               backgroundColor: rowBg || undefined
                             }}
@@ -2226,6 +2223,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           <div 
                             style={{ 
                               width: `${colWidthPhoto}px`, 
+                              minWidth: `${colWidthPhoto}px`,
+                              maxWidth: `${colWidthPhoto}px`,
                               height: `${rowHeight}px`,
                               backgroundColor: rowBg || undefined
                             }}
@@ -2315,8 +2314,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 className="w-full h-full flex flex-col items-center justify-center bg-slate-50 hover:bg-blue-50/70 text-slate-400 hover:text-blue-600 transition cursor-pointer p-0.5"
                                 title="Cliquer pour importer une photo carrée"
                               >
-                                <Camera className="w-4 h-4 stroke-[2]" />
-                                <span className="text-[8.5px] font-bold mt-0.5 text-slate-400 leading-none">+ Photo</span>
+                                <div className="w-7 h-7 rounded-md bg-white border border-slate-300 flex items-center justify-center shadow-xs">
+                                  <Camera className="w-4 h-4 text-slate-500 stroke-[2]" />
+                                </div>
+                                <span className="text-[8.5px] font-bold mt-0.5 text-slate-500 leading-none">+ Photo</span>
                               </button>
                             )}
                             {renderColHandle('col-photo')}
@@ -2326,6 +2327,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           <div 
                             style={{ 
                               width: `${colWidthName}px`, 
+                              minWidth: `${colWidthName}px`,
+                              maxWidth: `${colWidthName}px`,
                               height: `${rowHeight}px`,
                               backgroundColor: nameCellBg
                             }}
@@ -2515,6 +2518,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 key={`note-cell-${std.id}-${cIdx}`}
                                 style={{ 
                                   width: `${thisNoteWidth}px`,
+                                  minWidth: `${thisNoteWidth}px`,
+                                  maxWidth: `${thisNoteWidth}px`,
                                   height: `${rowHeight}px`,
                                   backgroundColor: noteCellBg
                                 }}
@@ -2548,14 +2553,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     setActiveMenuNameCol(false);
                                     setActiveColorPicker(null);
                                   }}
-                                  className={`absolute top-0 right-0 p-0.5 rounded transition cursor-pointer z-20 border-0 shadow-none ${
+                                  className={`absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-20 border-0 shadow-none ${
                                     isNoteCellMenuOpen
                                       ? 'text-sky-600 bg-sky-100/70'
-                                      : 'text-slate-600 hover:text-black hover:bg-slate-200/50'
+                                      : 'text-slate-900 hover:text-black hover:bg-slate-200/50'
                                   }`}
                                   title={`Options de la note ${cIdx + 1}`}
                                 >
-                                  <MoreVertical className="w-2.5 h-2.5 stroke-[2.5]" />
+                                  <MoreVertical className="w-3 h-3 text-slate-900 stroke-[2.5]" />
                                 </button>
 
                                 {/* MENU CONTEXTUEL POUR LA CASE DE NOTE */}
@@ -2777,6 +2782,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           <div 
                             style={{ 
                               width: '48px', 
+                              minWidth: '48px',
+                              maxWidth: '48px',
                               height: `${rowHeight}px`,
                               backgroundColor: rowBg || undefined
                             }}
@@ -2789,6 +2796,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           <div 
                             style={{ 
                               width: `${colWidthAverage}px`, 
+                              minWidth: `${colWidthAverage}px`,
+                              maxWidth: `${colWidthAverage}px`,
                               height: `${rowHeight}px`,
                               backgroundColor: std.hasInvalidNote ? '#f1f5f9' : (rowBg || undefined)
                             }}
@@ -2801,7 +2810,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.hasInvalidNote
                                   ? 'Moyenne bloquée : une ou plusieurs notes dépassent le barème maximal'
                                   : std.average !== null 
-                                  ? `=MOYENNE(Notes) => ${std.averageFormatted}` 
+                                  ? `=MOYENNE(Notes) => ${std.averageFormatted} / 20` 
                                   : ''
                               });
                             }}
@@ -2821,10 +2830,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             title={
                               std.hasInvalidNote
                                 ? 'Moyenne non calculée : une note dépasse le barème maximal'
-                                : 'Moyenne générale de l\'élève'
+                                : 'Moyenne générale de l\'élève (sur 20)'
                             }
                           >
-                            <span className={`w-full text-center text-xs font-black tracking-tight ${
+                            <span className={`w-full text-center text-xs font-black tracking-tight flex items-center justify-center gap-1 ${
                               std.hasInvalidNote
                                 ? 'text-slate-400 font-mono text-sm tracking-widest'
                                 : std.average === null
@@ -2835,7 +2844,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 ? 'text-blue-700 bg-blue-50/90 py-0.5 px-1.5 rounded border border-blue-300'
                                 : 'text-rose-700 bg-rose-50/90 py-0.5 px-1.5 rounded border border-rose-300'
                             }`}>
-                              {std.hasInvalidNote ? '...' : (std.averageFormatted || '-')}
+                              {std.hasInvalidNote ? (
+                                '...'
+                              ) : std.average !== null ? (
+                                <>
+                                  <span>{std.averageFormatted}</span>
+                                  <span className="text-[10px] sm:text-[11px] opacity-75 font-black">/ 20</span>
+                                </>
+                              ) : (
+                                <span className="text-slate-300 font-semibold">-</span>
+                              )}
                             </span>
 
                             <button
@@ -2856,6 +2874,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           <div 
                             style={{ 
                               width: `${colWidthMention}px`, 
+                              minWidth: `${colWidthMention}px`,
+                              maxWidth: `${colWidthMention}px`,
                               height: `${rowHeight}px`,
                               backgroundColor: std.hasInvalidNote ? '#f1f5f9' : (rowBg || undefined)
                             }}
@@ -3253,7 +3273,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       ? 'text-blue-700'
                       : 'text-rose-700'
                   }`}>
-                    {previewStats?.averageFormatted || '-'}
+                    {previewStats?.averageFormatted ? `${previewStats.averageFormatted} / 20` : '-'}
                   </span>
                 </div>
 
