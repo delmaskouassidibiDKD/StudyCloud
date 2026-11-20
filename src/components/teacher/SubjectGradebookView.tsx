@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
+  Copy,
+  Pen,
+  Search,
   ArrowLeft,
   ArrowRight,
   Maximize2,
@@ -107,6 +110,89 @@ export const formatStudentNote = (scoreStr: string, maxScore: number): string =>
 };
 
 // Palette de couleurs pastel pour la coloration (16 teintes riches, nettes et bien contrastées)
+// Polices de caractères disponibles (avec aperçu réel dans le menu déroulant)
+export const AVAILABLE_FONT_FAMILIES = [
+  'Calibri',
+  'Arial',
+  'Arial Black',
+  'Alef',
+  'Amiri',
+  'Bahnschrift',
+  'Cambria',
+  'Candara',
+  'Comic Sans MS',
+  'Consolas',
+  'Constantia',
+  'Corbel',
+  'Courier New',
+  'Franklin Gothic Medium',
+  'Gabriola',
+  'Georgia',
+  'Impact',
+  'Lucida Console',
+  'Lucida Sans Unicode',
+  'Microsoft Sans Serif',
+  'Palatino Linotype',
+  'Segoe UI',
+  'Tahoma',
+  'Times New Roman',
+  'Trebuchet MS',
+  'Verdana'
+];
+
+// Tailles de police prédéfinies style Excel
+export const FONT_SIZES = [8, 9, 10, 11, 12, 14, 16, 18, 20, 22, 24, 26, 28, 32, 36, 48];
+
+// Nuancier de couleurs pour le texte (Bouton Stylo)
+export const TEXT_PALETTE_COLORS = [
+  { name: 'Automatique (Noir)', color: '#0f172a' },
+  { name: 'Bleu nuit', color: '#1e3a8a' },
+  { name: 'Bleu roi', color: '#2563eb' },
+  { name: 'Cyan océan', color: '#0891b2' },
+  { name: 'Vert émeraude', color: '#059669' },
+  { name: 'Vert forêt', color: '#15803d' },
+  { name: 'Ambre foncé', color: '#b45309' },
+  { name: 'Orange vif', color: '#ea580c' },
+  { name: 'Rouge brique', color: '#dc2626' },
+  { name: 'Rose fuchsia', color: '#db2777' },
+  { name: 'Violet impérial', color: '#7c3aed' },
+  { name: 'Pourpre', color: '#9333ea' },
+  { name: 'Gris ardoise', color: '#475569' },
+  { name: 'Gris moyen', color: '#64748b' }
+];
+
+// Nuancier de couleurs pour le fond de cellule (Bouton Remplissage)
+export const FILL_PALETTE_COLORS = [
+  { name: 'Aucun remplissage', color: '' },
+  { name: 'Jaune canari', color: '#fef08a' },
+  { name: 'Ambre doux', color: '#fed7aa' },
+  { name: 'Pêche corail', color: '#ffedd5' },
+  { name: 'Rose poudré', color: '#fbcfe8' },
+  { name: 'Rouge clair doux', color: '#fee2e2' },
+  { name: 'Violet lilas', color: '#e9d5ff' },
+  { name: 'Lavande indigo', color: '#c7d2fe' },
+  { name: 'Bleu ciel', color: '#bae6fd' },
+  { name: 'Bleu azur', color: '#bfdbfe' },
+  { name: 'Cyan lagon', color: '#a5f3fc' },
+  { name: 'Vert menthe', color: '#a7f3d0' },
+  { name: 'Vert prairie', color: '#bbf7d0' },
+  { name: 'Vert lime', color: '#d9f99d' },
+  { name: 'Sable doré', color: '#fef3c7' },
+  { name: 'Gris perle', color: '#f1f5f9' }
+];
+
+export interface CellCustomStyle {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  color?: string;
+  bgColor?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  textAlign?: 'left' | 'center' | 'right';
+}
+
 export const PASTEL_PALETTE = [
   { name: 'Aucune couleur (Défaut)', bg: '', headerBg: '', label: 'Défaut' },
   { name: 'Jaune canari', bg: '#fef08a', headerBg: '#fde047', label: 'Jaune' },
@@ -249,8 +335,26 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Message rouge d'alerte ciblé sur la case où l'utilisateur tente d'écrire une note sans nom d'élève
   const [blockedNoteTarget, setBlockedNoteTarget] = useState<{ studentId: string; colIndex: number } | null>(null);
 
+  // Clé et état pour les styles personnalisés des cellules (gras, couleur texte, fond, police, taille)
+  const cellCustomStylesKey = `studycloud_cell_styles_${subject.id}_${term?.id || 't1'}`;
+  const [cellCustomStyles, setCellCustomStyles] = useState<{ [cellKey: string]: CellCustomStyle }>(() => {
+    try {
+      const s = localStorage.getItem(cellCustomStylesKey);
+      if (s) return JSON.parse(s);
+    } catch {}
+    return {};
+  });
+
+  // États pour les menus déroulants interactifs du Ruban Excel
+  const [isFontFamilyMenuOpen, setIsFontFamilyMenuOpen] = useState<boolean>(false);
+  const [isFontSizeMenuOpen, setIsFontSizeMenuOpen] = useState<boolean>(false);
+  const [isTextColorMenuOpen, setIsTextColorMenuOpen] = useState<boolean>(false);
+  const [isBgColorMenuOpen, setIsBgColorMenuOpen] = useState<boolean>(false);
+  const [fontSearchQuery, setFontSearchQuery] = useState<string>('');
+  const [copiedTableSuccess, setCopiedTableSuccess] = useState<boolean>(false);
+
   // Un seul petit menu peut être ouvert à la fois
-  const isAnyMenuOpen = activeMenuCol !== null || activeMenuRow !== null || activeMenuCell !== null || activeMenuNameCol || activeMenuPhoto !== null;
+  const isAnyMenuOpen = activeMenuCol !== null || activeMenuRow !== null || activeMenuCell !== null || activeMenuNameCol || activeMenuPhoto !== null || isFontFamilyMenuOpen || isFontSizeMenuOpen || isTextColorMenuOpen || isBgColorMenuOpen;
 
   // Palette de couleur active
   const [activeColorPicker, setActiveColorPicker] = useState<{
@@ -440,9 +544,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       localStorage.setItem(colMetasKey, JSON.stringify(columnMetas));
       localStorage.setItem(cellColorsKey, JSON.stringify(cellColors));
       localStorage.setItem(rowColorsKey, JSON.stringify(rowColors));
+      localStorage.setItem(cellCustomStylesKey, JSON.stringify(cellCustomStyles));
       setIsSaved(true);
     } catch { }
-  }, [students, noteColumnCount, noteColWidth, colWidthRank, colWidthPhoto, colWidthName, colWidthAverage, colWidthMention, customNoteWidths, customRowHeights, columnMetas, storageKey, colCountKey, colWidthKey, colWidthRankKey, colWidthPhotoKey, colWidthNameKey, colWidthAvgKey, colWidthMentionKey, customNoteWidthsKey, rowHeightsKey, colMetasKey]);
+  }, [students, noteColumnCount, noteColWidth, colWidthRank, colWidthPhoto, colWidthName, colWidthAverage, colWidthMention, customNoteWidths, customRowHeights, columnMetas, storageKey, colCountKey, colWidthKey, colWidthRankKey, colWidthPhotoKey, colWidthNameKey, colWidthAvgKey, colWidthMentionKey, customNoteWidthsKey, rowHeightsKey, colMetasKey, cellCustomStyles, cellCustomStylesKey]);
 
   // Synchroniser la taille du tableau de notes de chaque élève avec noteColumnCount
   useEffect(() => {
@@ -474,6 +579,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         setActiveColorPicker(null);
         setPreviewPhotoStudent(null);
         setBlockedNoteTarget(null);
+        setIsFontFamilyMenuOpen(false);
+        setIsFontSizeMenuOpen(false);
+        setIsTextColorMenuOpen(false);
+        setIsBgColorMenuOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -981,6 +1090,258 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   };
 
   // =========================================================================
+  // GESTION DU RUBAN EXCEL : MISE EN FORME DES CELLULES & COPIE TABLEAU
+  // =========================================================================
+  const getTargetKeysForFormatting = (): string[] => {
+    if (selectedLine?.type === 'row') {
+      const rIdx = parseInt(selectedLine.id.replace('row-', ''), 10);
+      const std = students[rIdx];
+      if (std) {
+        const keys = [`${std.id}_name`, `${std.id}_rank`, `${std.id}_avg`, `${std.id}_mention`];
+        for (let c = 0; c < noteColumnCount; c++) {
+          keys.push(`${std.id}_${c}`);
+        }
+        return keys;
+      }
+    }
+    if (selectedLine?.type === 'col') {
+      const colId = selectedLine.id;
+      if (colId === 'col-name') {
+        return students.map(s => `${s.id}_name`);
+      }
+      if (colId === 'col-rank') {
+        return students.map(s => `${s.id}_rank`);
+      }
+      if (colId === 'col-moyenne') {
+        return students.map(s => `${s.id}_avg`);
+      }
+      if (colId === 'col-mention') {
+        return students.map(s => `${s.id}_mention`);
+      }
+      if (colId.startsWith('col-note-')) {
+        const cIdx = parseInt(colId.replace('col-note-', ''), 10);
+        return students.map(s => `${s.id}_${cIdx}`);
+      }
+    }
+    if (activeCellInfo.rowIndex !== undefined && students[activeCellInfo.rowIndex]) {
+      const std = students[activeCellInfo.rowIndex];
+      if (activeCellInfo.type === 'name') return [`${std.id}_name`];
+      if (activeCellInfo.type === 'note' && activeCellInfo.noteColIndex !== undefined) return [`${std.id}_${activeCellInfo.noteColIndex}`];
+      if (activeCellInfo.type === 'rank') return [`${std.id}_rank`];
+      if (activeCellInfo.type === 'average') return [`${std.id}_avg`];
+      if (activeCellInfo.type === 'mention') return [`${std.id}_mention`];
+    }
+    const firstStd = students[0];
+    if (firstStd) return [`${firstStd.id}_name`];
+    return [];
+  };
+
+  const updateActiveCellFormatting = (updates: Partial<CellCustomStyle>) => {
+    const targetKeys = getTargetKeysForFormatting();
+    if (targetKeys.length === 0) return;
+    setCellCustomStyles(prev => {
+      const next = { ...prev };
+      targetKeys.forEach(k => {
+        next[k] = { ...next[k], ...updates };
+      });
+      return next;
+    });
+    setIsSaved(false);
+  };
+
+  const getResolvedCellStyle = (key: string, fallbackAlign: 'left' | 'center' | 'right' = textAlign): React.CSSProperties => {
+    const custom = cellCustomStyles[key] || {};
+    const currentBold = custom.bold !== undefined ? custom.bold : isBold;
+    const currentItalic = custom.italic !== undefined ? custom.italic : isItalic;
+    const currentUnderline = custom.underline !== undefined ? custom.underline : isUnderline;
+    const currentStrikethrough = custom.strikethrough !== undefined ? custom.strikethrough : isStrikethrough;
+    const currentFamily = custom.fontFamily || fontFamily;
+    const currentSize = custom.fontSize || fontSize;
+    const currentColor = custom.color || undefined;
+    const currentBg = custom.bgColor || undefined;
+    const currentAlign = custom.textAlign || fallbackAlign;
+
+    let textDecoration = 'none';
+    if (currentUnderline && currentStrikethrough) textDecoration = 'underline line-through';
+    else if (currentUnderline) textDecoration = 'underline';
+    else if (currentStrikethrough) textDecoration = 'line-through';
+
+    return {
+      fontWeight: currentBold ? '900' : '400',
+      fontStyle: currentItalic ? 'italic' : 'normal',
+      textDecoration,
+      fontFamily: currentFamily,
+      fontSize: `${currentSize}px`,
+      color: currentColor,
+      backgroundColor: currentBg,
+      textAlign: currentAlign
+    };
+  };
+
+  const activeFormatKeys = getTargetKeysForFormatting();
+  const activeFormatKey = activeFormatKeys[0] || '';
+  const activeCustomFormat = activeFormatKey ? cellCustomStyles[activeFormatKey] : undefined;
+  const activeIsBold = activeCustomFormat?.bold !== undefined ? activeCustomFormat.bold : isBold;
+  const activeIsItalic = activeCustomFormat?.italic !== undefined ? activeCustomFormat.italic : isItalic;
+  const activeIsUnderline = activeCustomFormat?.underline !== undefined ? activeCustomFormat.underline : isUnderline;
+  const activeIsStrikethrough = activeCustomFormat?.strikethrough !== undefined ? activeCustomFormat.strikethrough : isStrikethrough;
+  const activeFontFamily = activeCustomFormat?.fontFamily || fontFamily;
+  const activeFontSize = activeCustomFormat?.fontSize || fontSize;
+  const activeTextColor = activeCustomFormat?.color || '#0f172a';
+  const activeBgColor = activeCustomFormat?.bgColor || '';
+
+  const filteredFonts = useMemo(() => {
+    if (!fontSearchQuery.trim()) return AVAILABLE_FONT_FAMILIES;
+    const q = fontSearchQuery.toLowerCase().trim();
+    return AVAILABLE_FONT_FAMILIES.filter(f => f.toLowerCase().includes(q));
+  }, [fontSearchQuery]);
+
+  const toggleBold = () => {
+    const nextVal = !activeIsBold;
+    setIsBold(nextVal);
+    updateActiveCellFormatting({ bold: nextVal });
+  };
+
+  const toggleItalic = () => {
+    const nextVal = !activeIsItalic;
+    setIsItalic(nextVal);
+    updateActiveCellFormatting({ italic: nextVal });
+  };
+
+  const toggleUnderline = () => {
+    const nextVal = !activeIsUnderline;
+    setIsUnderline(nextVal);
+    updateActiveCellFormatting({ underline: nextVal });
+  };
+
+  const toggleStrikethrough = () => {
+    const nextVal = !activeIsStrikethrough;
+    setIsStrikethrough(nextVal);
+    updateActiveCellFormatting({ strikethrough: nextVal });
+  };
+
+  const applyFontSize = (size: number) => {
+    setFontSize(size);
+    updateActiveCellFormatting({ fontSize: size });
+  };
+
+  const increaseFontSize = () => {
+    const nextSize = Math.min(48, activeFontSize + 1);
+    setFontSize(nextSize);
+    updateActiveCellFormatting({ fontSize: nextSize });
+  };
+
+  const decreaseFontSize = () => {
+    const prevSize = Math.max(8, activeFontSize - 1);
+    setFontSize(prevSize);
+    updateActiveCellFormatting({ fontSize: prevSize });
+  };
+
+  const applyFontFamily = (family: string) => {
+    setFontFamily(family);
+    updateActiveCellFormatting({ fontFamily: family });
+  };
+
+  const applyTextColor = (color: string) => {
+    updateActiveCellFormatting({ color });
+  };
+
+  const applyBgColor = (color: string) => {
+    updateActiveCellFormatting({ bgColor: color });
+  };
+
+  const handleCopyEntireTable = async () => {
+    try {
+      const headers = [
+        'RANG',
+        'NOM & PRÉNOM',
+        ...Array.from({ length: noteColumnCount }, (_, i) => {
+          const meta = columnMetas[i] || { title: 'NOTE', maxScore: 20 };
+          return `${meta.title || 'NOTE'} ${i + 1} (/${meta.maxScore})`;
+        }),
+        'MOYENNE (/20)',
+        'MENTION'
+      ];
+
+      const rows = studentsWithStats.map(s => {
+        const studentNotes = Array.from({ length: noteColumnCount }, (_, i) => {
+          const noteVal = s.notes[i] || '';
+          const meta = columnMetas[i] || { maxScore: 20 };
+          const parsed = parseStudentNote(noteVal, meta.maxScore);
+          return parsed.scoreStr ? `${parsed.scoreStr}/${parsed.maxScore}` : '-';
+        });
+        return [
+          s.rank || '-',
+          s.name || 'Élève sans nom',
+          ...studentNotes,
+          s.averageFormatted ? `${s.averageFormatted}/20` : '-',
+          s.mention || '-'
+        ];
+      });
+
+      const tsvContent = [
+        headers.join('\t'),
+        ...rows.map(r => r.join('\t'))
+      ].join('\n');
+
+      await navigator.clipboard.writeText(tsvContent);
+      setCopiedTableSuccess(true);
+      setTimeout(() => setCopiedTableSuccess(false), 2500);
+    } catch (err) {
+      console.error('Erreur lors de la copie du tableau :', err);
+    }
+  };
+
+  const handlePasteGradebook = async () => {
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) return;
+
+      const lines = text.trim().split(/\r?\n/).map(line => line.split('\t'));
+      if (lines.length === 0) return;
+
+      setStudents(prevStudents => {
+        const next = [...prevStudents];
+        lines.forEach((lineCells, rowOffset) => {
+          const targetRowIdx = (activeCellInfo.rowIndex ?? 0) + rowOffset;
+          if (targetRowIdx >= next.length) {
+            next.push({
+              id: `student-${Date.now()}-${targetRowIdx}`,
+              name: '',
+              photoUrl: undefined,
+              notes: Array(noteColumnCount).fill('')
+            });
+          }
+          const row = { ...next[targetRowIdx], notes: [...next[targetRowIdx].notes] };
+
+          if (activeCellInfo.type === 'name') {
+            if (lineCells[0] !== undefined) row.name = lineCells[0].trim();
+            lineCells.slice(1).forEach((val, cIdx) => {
+              if (cIdx < noteColumnCount) row.notes[cIdx] = val.trim();
+            });
+          } else if (activeCellInfo.type === 'note' && activeCellInfo.noteColIndex !== undefined) {
+            lineCells.forEach((val, cOffset) => {
+              const tCol = (activeCellInfo.noteColIndex ?? 0) + cOffset;
+              if (tCol < noteColumnCount) row.notes[tCol] = val.trim();
+            });
+          } else {
+            if (lineCells[0] !== undefined && /[a-zA-ZÀ-ÿ]/.test(lineCells[0])) {
+              row.name = lineCells[0].trim();
+            }
+          }
+
+          next[targetRowIdx] = row;
+        });
+        return next;
+      });
+      setIsSaved(false);
+    } catch (err) {
+      console.warn('Impossible de coller depuis le presse-papiers :', err);
+    }
+  };
+
+
+  // =========================================================================
   // GESTION INDIVIDUELLE DES COLONNES : Chaque séparateur a son ID unique !
   // Aucune ligne ne se mélange. Double-clic obligatoire pour sélectionner.
   // =========================================================================
@@ -1130,13 +1491,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Poignée interactive discrète superposée sur la bordure droite de chaque colonne
   // Ne casse PAS le flex ni les bordures CSS normales : position absolue z-30
   // AUCUNE COULEUR N'APPARAÎT AU SIMPLE SURVOL OU TOUCHER TANT QUE CE N'EST PAS SÉLECTIONNÉ !
-  // Quand sélectionné : la bordure elle-même change en bleu ciel fin (border-sky-500)
+  // Quand sélectionné : la bordure elle-même change en bleu ciel fin (border-sky-400)
   const renderColHandle = (colId: string) => {
     return (
       <div
-        onDoubleClick={(e) => {
+        onClick={(e) => {
           e.stopPropagation();
-          e.preventDefault();
           setSelectedLine(prev => (prev?.type === 'col' && prev.id === colId) ? null : { type: 'col', id: colId });
         }}
         onMouseDown={(e) => handleStartColResize(e, colId)}
@@ -1144,7 +1504,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         className={`absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-30 select-none flex items-center justify-center bg-transparent ${
           isAnyMenuOpen ? 'pointer-events-none' : 'pointer-events-auto'
         }`}
-        title={isAnyMenuOpen ? undefined : "Double-cliquer pour sélectionner le trait vertical, glisser pour agrandir/réduire"}
+        title={isAnyMenuOpen ? undefined : "Cliquer pour sélectionner le trait vertical, glisser pour agrandir/réduire"}
       />
     );
   };
@@ -1152,14 +1512,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Poignée interactive discrète superposée sur la bordure inférieure de chaque ligne d'élève
   // Ne casse PAS la hauteur ni les bordures : position absolue z-30
   // AUCUNE COULEUR N'APPARAÎT AU SIMPLE TOUCHER TANT QUE CE N'EST PAS SÉLECTIONNÉ !
-  // Quand sélectionné : la bordure elle-même change en bleu ciel fin (border-sky-500)
+  // Quand sélectionné : la bordure elle-même change en bleu ciel fin (border-sky-400)
   const renderRowHandle = (rowIndex: number) => {
     const rowKey = `row-${rowIndex}`;
     return (
       <div
-        onDoubleClick={(e) => {
+        onClick={(e) => {
           e.stopPropagation();
-          e.preventDefault();
           setSelectedLine(prev => (prev?.type === 'row' && prev.id === rowKey) ? null : { type: 'row', id: rowKey });
         }}
         onMouseDown={(e) => handleStartRowResize(e, rowIndex)}
@@ -1167,7 +1526,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         className={`absolute -bottom-1.5 left-0 w-full h-3 cursor-row-resize z-30 select-none flex items-center justify-center bg-transparent ${
           isAnyMenuOpen ? 'pointer-events-none' : 'pointer-events-auto'
         }`}
-        title={isAnyMenuOpen ? undefined : "Double-cliquer pour sélectionner la ligne, glisser pour agrandir/réduire"}
+        title={isAnyMenuOpen ? undefined : "Cliquer pour sélectionner la ligne, glisser pour agrandir/réduire"}
       />
     );
   };
@@ -1438,70 +1797,398 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       </header>
 
       {/* ========================================================================= */}
-      {/* 2. RUBAN D'OUTILS STYLE WPS OFFICE / EXCEL */}
+      {/* 2. RUBAN D'OUTILS STYLE WPS OFFICE / EXCEL (INTERACTIF & COMPLET) */}
       {/* ========================================================================= */}
-      <section className="bg-[#f3f4f6] border-b border-slate-300 px-2 py-1 flex items-stretch gap-1 sm:gap-2 overflow-x-auto text-slate-700 shrink-0 select-none">
-        <div className="flex flex-col items-center justify-between px-1.5 border-r border-slate-300/80 min-w-[52px]">
+      <section className="bg-[#f3f4f6] border-b border-slate-300 px-2 py-1 flex items-stretch gap-1 sm:gap-2 overflow-x-auto text-slate-700 shrink-0 select-none relative z-30">
+        {/* GROUPE 1 : PRESSE-PAPIERS (COPIER TOUT LE TABLEAU & COLLER) */}
+        <div className="flex flex-col items-center justify-between px-1.5 border-r border-slate-300/80 min-w-[76px]">
           <div className="flex items-center gap-1 mt-0.5">
-            <button type="button" className="p-1 rounded hover:bg-slate-200 text-slate-700 transition" title="Coller">
-              <Clipboard className="w-4 h-4 text-amber-600" />
-            </button>
-            <button type="button" className="p-1 rounded hover:bg-slate-200 text-slate-700 transition" title="Format Painter">
-              <Paintbrush className="w-3.5 h-3.5 text-blue-600" />
+            {/* Bouton COPIER (Copie tout le tableau en format TSV pour Excel / Word) */}
+            <div className="relative">
+              <button 
+                type="button" 
+                onClick={handleCopyEntireTable}
+                className={`p-1.5 rounded transition flex items-center justify-center cursor-pointer active:scale-95 ${
+                  copiedTableSuccess ? 'bg-emerald-100 text-emerald-800' : 'hover:bg-slate-200 text-slate-800'
+                }`}
+                title="Copier tout le tableau (format Excel / TSV)"
+              >
+                {copiedTableSuccess ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-600 stroke-[3]" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5 text-blue-600 stroke-[2.2]" />
+                )}
+              </button>
+              {copiedTableSuccess && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-2 py-0.5 bg-emerald-600 text-white text-[9.5px] font-bold rounded shadow-lg whitespace-nowrap z-50 animate-in fade-in zoom-in-95">
+                  Tableau copié !
+                </div>
+              )}
+            </div>
+
+            {/* Bouton COLLER */}
+            <button 
+              type="button" 
+              onClick={handlePasteGradebook}
+              className="p-1.5 rounded hover:bg-slate-200 text-slate-800 transition flex items-center justify-center cursor-pointer active:scale-95" 
+              title="Coller des données dans le tableau"
+            >
+              <Clipboard className="w-3.5 h-3.5 text-amber-600 stroke-[2.2]" />
             </button>
           </div>
-          <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Coller</span>
+          <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Presse-papiers</span>
         </div>
 
-        <div className="flex flex-col items-center justify-between px-1.5 border-r border-slate-300/80">
+        {/* GROUPE 2 : POLICE, TAILLE, GRAS, STYLO COULEUR & REMPLISSAGE */}
+        <div className="flex flex-col items-center justify-between px-1.5 border-r border-slate-300/80 relative">
           <div className="flex items-center gap-1">
-            <div className="flex items-center h-6 px-1.5 bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800">
-              <span>{fontFamily}</span>
-              <ChevronDown className="w-3 h-3 ml-1 text-slate-500" />
+            {/* SÉLECTEUR DE POLICE AVEC RECHERCHE STYLE EXCEL */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFontFamilyMenuOpen(prev => !prev);
+                  setIsFontSizeMenuOpen(false);
+                  setIsTextColorMenuOpen(false);
+                  setIsBgColorMenuOpen(false);
+                }}
+                className="flex items-center justify-between h-6 px-1.5 min-w-[90px] max-w-[120px] bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs"
+                title="Changer la police"
+              >
+                <span className="truncate" style={{ fontFamily: activeFontFamily }}>{activeFontFamily}</span>
+                <ChevronDown className="w-3 h-3 ml-1 text-slate-500 shrink-0" />
+              </button>
+
+              {isFontFamilyMenuOpen && (
+                <div 
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute top-full left-0 mt-1 w-64 max-h-72 bg-white border border-slate-300 rounded-lg shadow-2xl z-50 flex flex-col overflow-hidden text-xs select-none animate-in fade-in zoom-in-95"
+                >
+                  {/* Champ de recherche de police */}
+                  <div className="p-2 border-b border-slate-200 bg-slate-50 flex items-center gap-1.5 sticky top-0 z-10">
+                    <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <input
+                      type="text"
+                      value={fontSearchQuery}
+                      onChange={(e) => setFontSearchQuery(e.target.value)}
+                      placeholder="Entrez pour rechercher..."
+                      className="w-full text-xs bg-transparent outline-none text-slate-800 placeholder:text-slate-400 font-normal"
+                      autoFocus
+                    />
+                    {fontSearchQuery && (
+                      <button type="button" onClick={() => setFontSearchQuery('')} className="p-0.5 text-slate-400 hover:text-slate-600">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Liste scrollable des polices rendues dans leur propre style */}
+                  <div className="overflow-y-auto max-h-56 divide-y divide-slate-100 py-1">
+                    {filteredFonts.length === 0 ? (
+                      <div className="p-3 text-center text-slate-400 text-xs italic">
+                        Aucune police trouvée
+                      </div>
+                    ) : (
+                      filteredFonts.map((font) => (
+                        <button
+                          key={font}
+                          type="button"
+                          onClick={() => {
+                            applyFontFamily(font);
+                            setIsFontFamilyMenuOpen(false);
+                          }}
+                          className={`w-full px-3 py-1.5 flex items-center justify-between text-left hover:bg-blue-50 transition cursor-pointer ${
+                            activeFontFamily === font ? 'bg-blue-50/70 text-blue-700 font-bold' : 'text-slate-800'
+                          }`}
+                        >
+                          <span className="text-xs truncate" style={{ fontFamily: font }}>{font}</span>
+                          {activeFontFamily === font && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0 ml-1" />}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex items-center h-6 px-1.5 bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800">
-              <span>{fontSize}</span>
-              <ChevronDown className="w-3 h-3 ml-1 text-slate-500" />
+
+            {/* SÉLECTEUR DE TAILLE DE POLICE (MENU DÉROULANT VERTICAL) */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsFontSizeMenuOpen(prev => !prev);
+                  setIsFontFamilyMenuOpen(false);
+                  setIsTextColorMenuOpen(false);
+                  setIsBgColorMenuOpen(false);
+                }}
+                className="flex items-center justify-between h-6 px-1.5 w-12 bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs"
+                title="Taille de police"
+              >
+                <span>{activeFontSize}</span>
+                <ChevronDown className="w-3 h-3 text-slate-500 shrink-0" />
+              </button>
+
+              {isFontSizeMenuOpen && (
+                <div 
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute top-full left-0 mt-1 w-20 max-h-60 bg-white border border-slate-300 rounded-lg shadow-2xl z-50 overflow-y-auto py-1 text-xs select-none animate-in fade-in zoom-in-95"
+                >
+                  {FONT_SIZES.map((sz) => (
+                    <button
+                      key={sz}
+                      type="button"
+                      onClick={() => {
+                        applyFontSize(sz);
+                        setIsFontSizeMenuOpen(false);
+                      }}
+                      className={`w-full px-3 py-1 flex items-center justify-between text-left hover:bg-blue-50 transition cursor-pointer ${
+                        activeFontSize === sz ? 'bg-blue-50/70 text-blue-700 font-bold' : 'text-slate-800'
+                      }`}
+                    >
+                      <span>{sz}</span>
+                      {activeFontSize === sz && <Check className="w-3 h-3 text-blue-600" />}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
-            <button type="button" onClick={() => setFontSize(prev => Math.min(24, prev + 1))} className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-700 font-bold text-xs">
+
+            {/* BOUTONS A⁺ ET A⁻ (AGRANDIR / DIMINUER LA TAILLE) */}
+            <button 
+              type="button" 
+              onClick={increaseFontSize} 
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-800 font-bold text-xs transition active:scale-95 cursor-pointer" 
+              title="Agrandir la taille de police"
+            >
               A<sup>+</sup>
             </button>
-            <button type="button" onClick={() => setFontSize(prev => Math.max(8, prev - 1))} className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-700 font-bold text-xs">
+            <button 
+              type="button" 
+              onClick={decreaseFontSize} 
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-800 font-bold text-xs transition active:scale-95 cursor-pointer" 
+              title="Diminuer la taille de police"
+            >
               A<sup>-</sup>
             </button>
           </div>
 
-          <div className="flex items-center gap-0.5 mt-1">
-            <button type="button" onClick={() => setIsBold(!isBold)} className={`w-5 h-5 flex items-center justify-center rounded transition ${isBold ? 'bg-slate-300 text-slate-900 font-black' : 'hover:bg-slate-200 text-slate-700'}`}>
-              <Bold className="w-3 h-3 stroke-[2.8]" />
+          {/* LIGNE DE STYLE : B (GRAS), I (ITALIQUE), U (SOULIGNÉ), S (BARRÉ), STYLO (COULEUR TEXTE), POT DE PEINTURE (FOND) */}
+          <div className="flex items-center gap-0.5 mt-1 relative">
+            {/* BOUTON B (GRAS EXCEL : REND LE TEXTE PUR / NOIR ÉPAIS OU NORMAL) */}
+            <button 
+              type="button" 
+              onClick={toggleBold} 
+              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
+                activeIsBold 
+                  ? 'bg-slate-900 text-white font-black shadow-xs ring-1 ring-slate-900' 
+                  : 'hover:bg-slate-200 text-slate-700 font-normal'
+              }`}
+              title="Gras (B)"
+            >
+              <Bold className="w-3 h-3 stroke-[3]" />
             </button>
-            <button type="button" onClick={() => setIsItalic(!isItalic)} className={`w-5 h-5 flex items-center justify-center rounded transition ${isItalic ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}>
+
+            {/* BOUTON I (ITALIQUE) */}
+            <button 
+              type="button" 
+              onClick={toggleItalic} 
+              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
+                activeIsItalic 
+                  ? 'bg-slate-900 text-white shadow-xs' 
+                  : 'hover:bg-slate-200 text-slate-700'
+              }`}
+              title="Italique (I)"
+            >
               <Italic className="w-3 h-3 stroke-[2.5]" />
             </button>
-            <button type="button" onClick={() => setIsUnderline(!isUnderline)} className={`w-5 h-5 flex items-center justify-center rounded transition ${isUnderline ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}>
+
+            {/* BOUTON U (SOULIGNÉ) */}
+            <button 
+              type="button" 
+              onClick={toggleUnderline} 
+              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
+                activeIsUnderline 
+                  ? 'bg-slate-900 text-white shadow-xs' 
+                  : 'hover:bg-slate-200 text-slate-700'
+              }`}
+              title="Souligné (U)"
+            >
               <Underline className="w-3 h-3 stroke-[2.5]" />
             </button>
-            <button type="button" onClick={() => setIsStrikethrough(!isStrikethrough)} className={`w-5 h-5 flex items-center justify-center rounded transition ${isStrikethrough ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}>
+
+            {/* BOUTON S (BARRÉ) */}
+            <button 
+              type="button" 
+              onClick={toggleStrikethrough} 
+              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
+                activeIsStrikethrough 
+                  ? 'bg-slate-900 text-white shadow-xs' 
+                  : 'hover:bg-slate-200 text-slate-700'
+              }`}
+              title="Barré (S)"
+            >
               <Strikethrough className="w-3 h-3 stroke-[2.5]" />
             </button>
-            <div className="flex items-center p-0.5 rounded hover:bg-slate-200 cursor-pointer">
-              <Grid3X3 className="w-3 h-3 text-slate-700" />
+
+            {/* BOUTON STYLO : COULEUR DU TEXTE / CHIFFRES AVEC PALETTE DÉROULANTE */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTextColorMenuOpen(prev => !prev);
+                  setIsBgColorMenuOpen(false);
+                  setIsFontFamilyMenuOpen(false);
+                  setIsFontSizeMenuOpen(false);
+                }}
+                className={`p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 ${
+                  isTextColorMenuOpen ? 'bg-slate-300' : 'hover:bg-slate-200'
+                }`}
+                title="Couleur de police (Stylo)"
+              >
+                <div className="flex flex-col items-center">
+                  <Pen className="w-3 h-3 text-slate-800 stroke-[2.5]" />
+                  <div 
+                    className="w-3.5 h-0.5 mt-0.5 rounded-full" 
+                    style={{ backgroundColor: activeTextColor || '#0f172a' }} 
+                  />
+                </div>
+                <ChevronDown className="w-2.5 h-2.5 text-slate-500" />
+              </button>
+
+              {isTextColorMenuOpen && (
+                <div 
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute top-full left-0 mt-1 w-52 bg-white border border-slate-300 rounded-lg shadow-2xl p-2 z-50 text-xs select-none animate-in fade-in zoom-in-95"
+                >
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 px-0.5">
+                    Couleur de police
+                  </div>
+                  <div className="grid grid-cols-7 gap-1.5">
+                    {TEXT_PALETTE_COLORS.map((item) => (
+                      <button
+                        key={item.name}
+                        type="button"
+                        onClick={() => {
+                          applyTextColor(item.color);
+                          setIsTextColorMenuOpen(false);
+                        }}
+                        style={{ backgroundColor: item.color }}
+                        className="w-5 h-5 rounded border border-slate-300 hover:scale-115 transition shadow-2xs cursor-pointer flex items-center justify-center"
+                        title={item.name}
+                      >
+                        {activeTextColor === item.color && (
+                          <Check className={`w-3 h-3 ${item.color === '#0f172a' || item.color === '#1e3a8a' ? 'text-white' : 'text-slate-900'} stroke-[3]`} />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex items-center p-0.5 rounded hover:bg-slate-200 cursor-pointer">
-              <PaintBucket className="w-3 h-3 text-amber-500" />
+
+            {/* BOUTON REMPLISSAGE (POT DE PEINTURE : ENTOURE / REMPLIT LA CASE DE COULEUR) */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsBgColorMenuOpen(prev => !prev);
+                  setIsTextColorMenuOpen(false);
+                  setIsFontFamilyMenuOpen(false);
+                  setIsFontSizeMenuOpen(false);
+                }}
+                className={`p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 ${
+                  isBgColorMenuOpen ? 'bg-slate-300' : 'hover:bg-slate-200'
+                }`}
+                title="Couleur de remplissage (Fond de case)"
+              >
+                <div className="flex flex-col items-center">
+                  <PaintBucket className="w-3 h-3 text-amber-600 stroke-[2.2]" />
+                  <div 
+                    className="w-3.5 h-0.5 mt-0.5 rounded-full" 
+                    style={{ backgroundColor: activeBgColor || '#f59e0b' }} 
+                  />
+                </div>
+                <ChevronDown className="w-2.5 h-2.5 text-slate-500" />
+              </button>
+
+              {isBgColorMenuOpen && (
+                <div 
+                  onClick={(e) => e.stopPropagation()}
+                  className="absolute top-full left-0 mt-1 w-52 bg-white border border-slate-300 rounded-lg shadow-2xl p-2 z-50 text-xs select-none animate-in fade-in zoom-in-95"
+                >
+                  <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 px-0.5">
+                    Couleur de fond
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      applyBgColor('');
+                      setIsBgColorMenuOpen(false);
+                    }}
+                    className="w-full mb-1.5 py-1 px-2 text-[10.5px] font-bold rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-between"
+                  >
+                    <span>Aucun remplissage</span>
+                    {!activeBgColor && <Check className="w-3 h-3 text-blue-600" />}
+                  </button>
+                  <div className="grid grid-cols-8 gap-1">
+                    {FILL_PALETTE_COLORS.filter(c => Boolean(c.color)).map((item) => (
+                      <button
+                        key={item.name}
+                        type="button"
+                        onClick={() => {
+                          applyBgColor(item.color);
+                          setIsBgColorMenuOpen(false);
+                        }}
+                        style={{ backgroundColor: item.color }}
+                        className="w-5 h-5 rounded border border-slate-300 hover:scale-115 transition shadow-2xs cursor-pointer flex items-center justify-center"
+                        title={item.name}
+                      >
+                        {activeBgColor === item.color && (
+                          <Check className="w-3 h-3 text-slate-900 stroke-[3]" />
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
+        {/* GROUPE 3 : ALIGNEMENT */}
         <div className="flex flex-col items-center justify-between px-1.5 border-r border-slate-300/80">
           <div className="flex items-center gap-1 mt-0.5">
-            <button type="button" onClick={() => setTextAlign('left')} className={`p-1 rounded transition ${textAlign === 'left' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}>
+            <button 
+              type="button" 
+              onClick={() => {
+                setTextAlign('left');
+                updateActiveCellFormatting({ textAlign: 'left' });
+              }} 
+              className={`p-1 rounded transition ${textAlign === 'left' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
+              title="Aligner à gauche"
+            >
               <AlignLeft className="w-3.5 h-3.5" />
             </button>
-            <button type="button" onClick={() => setTextAlign('center')} className={`p-1 rounded transition ${textAlign === 'center' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}>
+            <button 
+              type="button" 
+              onClick={() => {
+                setTextAlign('center');
+                updateActiveCellFormatting({ textAlign: 'center' });
+              }} 
+              className={`p-1 rounded transition ${textAlign === 'center' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
+              title="Centrer"
+            >
               <AlignCenter className="w-3.5 h-3.5" />
             </button>
-            <button type="button" onClick={() => setTextAlign('right')} className={`p-1 rounded transition ${textAlign === 'right' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}>
+            <button 
+              type="button" 
+              onClick={() => {
+                setTextAlign('right');
+                updateActiveCellFormatting({ textAlign: 'right' });
+              }} 
+              className={`p-1 rounded transition ${textAlign === 'right' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
+              title="Aligner à droite"
+            >
               <AlignRight className="w-3.5 h-3.5" />
             </button>
             <button type="button" className="p-1 rounded hover:bg-slate-200 text-slate-700" title="Renvoyer à la ligne">
@@ -1511,8 +2198,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Alignement</span>
         </div>
 
+        {/* GROUPE 4 : DONNÉES (MOYENNES) */}
         <div className="flex flex-col items-center justify-between px-1.5">
-          <button type="button" className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-slate-200 transition text-slate-800 mt-0.5 active:scale-95" title="Moyennes calculées">
+          <button type="button" className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-slate-200 transition text-slate-800 mt-0.5 active:scale-95 cursor-pointer" title="Moyennes calculées">
             <Sigma className="w-4 h-4 text-emerald-700 stroke-[2.5]" />
             <span className="text-[10px] font-bold">Moyenne</span>
           </button>
@@ -1635,6 +2323,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         setActiveMenuNameCol(false);
                         setActiveMenuPhoto(null);
                         setActiveColorPicker(null);
+                        setIsFontFamilyMenuOpen(false);
+                        setIsFontSizeMenuOpen(false);
+                        setIsTextColorMenuOpen(false);
+                        setIsBgColorMenuOpen(false);
                       }}
                     />
                   )}
@@ -1656,7 +2348,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-rank') ? null : { type: 'col', id: 'col-rank' });
                       }}
-                      className={`h-12 border-r ${isColActive('col-rank') ? 'border-sky-500 z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
+                      className={`h-12 border-r ${isColActive('col-rank') ? 'border-sky-400 z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
                       title="Rang de l'élève (Double-cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
@@ -1680,7 +2372,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-photo') ? null : { type: 'col', id: 'col-photo' });
                       }}
-                      className={`h-12 border-r ${isColActive('col-photo') ? 'border-sky-500 z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
+                      className={`h-12 border-r ${isColActive('col-photo') ? 'border-sky-400 z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
                       title="Profil / Photo (Double-cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
@@ -1704,7 +2396,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-name') ? null : { type: 'col', id: 'col-name' });
                       }}
-                      className={`h-12 border-r ${isColActive('col-name') ? 'border-sky-500 z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative group cursor-pointer`}
+                      className={`h-12 border-r ${isColActive('col-name') ? 'border-sky-400 z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative group cursor-pointer`}
                       title="Nom et Prénom (Double-cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
@@ -1867,7 +2559,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             e.stopPropagation();
                             setSelectedLine(prev => (prev?.type === 'col' && prev.id === `col-note-${i}`) ? null : { type: 'col', id: `col-note-${i}` });
                           }}
-                          className={`h-12 border-r ${isColActive(`col-note-${i}`) ? 'border-sky-500 z-10' : 'border-slate-700'} flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors cursor-pointer ${
+                          className={`h-12 border-r ${isColActive(`col-note-${i}`) ? 'border-sky-400 z-10' : 'border-slate-700'} flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors cursor-pointer ${
                             isMovingThis ? 'ring-2 ring-blue-500 bg-blue-50' : ''
                           }`}
                           title={`${colTitle} ${i + 1} (Double-cliquer pour sélectionner le trait vertical)`}
@@ -2125,7 +2817,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' });
                       }}
                       className={`h-12 border-r ${
-                        isColActive('col-moyenne') ? 'border-sky-500 z-10' : 'border-slate-700'
+                        isColActive('col-moyenne') ? 'border-sky-400 z-10' : 'border-slate-700'
                       } flex items-center justify-center p-1 text-center bg-blue-100/70 shrink-0 relative cursor-pointer`}
                       title="Moyenne générale (Double-cliquer pour sélectionner le trait vertical)"
                     >
@@ -2151,7 +2843,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-mention') ? null : { type: 'col', id: 'col-mention' });
                       }}
                       className={`h-12 border-r ${
-                        isColActive('col-mention') ? 'border-sky-500 z-10' : 'border-slate-700'
+                        isColActive('col-mention') ? 'border-sky-400 z-10' : 'border-slate-700'
                       } flex items-center justify-center p-1 text-center bg-emerald-100/70 shrink-0 relative cursor-pointer`}
                       title="Mention pédagogique (Double-cliquer pour sélectionner le trait vertical)"
                     >
@@ -2171,13 +2863,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       const rowHeight = customRowHeights[rIdx] || 44;
                       const isRowLineActive = isRowActive(rIdx);
                       const rowBg = rowColors[std.id];
-                      const nameCellBg = cellColors[`${std.id}_name`] || rowBg || undefined;
+                      const nameCellStyle = getResolvedCellStyle(`${std.id}_name`, textAlign);
+                      const nameCellBg = nameCellStyle.backgroundColor || cellColors[`${std.id}_name`] || rowBg || undefined;
+                      const isRowMenuOpen = activeMenuRow === std.id || activeMenuPhoto === std.id || activeMenuCell?.studentId === std.id;
 
                       return (
                         <div 
                           key={std.id}
                           style={{ height: `${rowHeight}px` }}
-                          className={`flex items-stretch transition-colors relative w-fit ${
+                          className={`flex items-stretch transition-colors relative w-fit ${isRowMenuOpen ? 'z-50' : 'z-0'} ${
                             isRowSelected ? 'bg-blue-50/40' : 'hover:bg-slate-50/70'
                           }`}
                         >
@@ -2204,7 +2898,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.rank ? `=RANG(M${rIdx + 1})` : ''
                               });
                             }}
-                            className={`border-r ${isColActive('col-rank') ? 'border-sky-500 z-10' : 'border-slate-700'} border-b ${isRowLineActive ? 'border-sky-500 z-10' : 'border-slate-400'} flex items-center justify-center p-1 cursor-pointer relative shrink-0 ${
+                            className={`border-r ${isColActive('col-rank') ? 'border-sky-400 z-10' : 'border-slate-700'} border-b ${isRowLineActive ? 'border-sky-400 z-10' : 'border-slate-600'} flex items-center justify-center p-1 cursor-pointer relative shrink-0 ${
                               activeCellInfo.id === `cell-rank-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-emerald-50/40' : ''
                             }`}
                             title="Cliquer pour sélectionner, double-cliquer pour sélectionner la ligne"
@@ -2236,7 +2930,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               height: `${rowHeight}px`,
                               backgroundColor: rowBg || undefined
                             }}
-                            className={`border-r ${isColActive('col-photo') ? 'border-sky-500 z-10' : 'border-slate-700'} border-b ${isRowLineActive ? 'border-sky-500 z-10' : 'border-slate-400'} flex items-center justify-center p-0 relative group shrink-0 ${
+                            className={`border-r ${isColActive('col-photo') ? 'border-sky-400 z-10' : 'border-slate-700'} border-b ${isRowLineActive ? 'border-sky-400 z-10' : 'border-slate-600'} flex items-center justify-center p-0 relative group shrink-0 ${
                               activeCellInfo.id === `cell-photo-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
                             }`}
                             title={std.photoUrl ? "Cliquer pour voir la photo de l'élève" : "Cliquer pour ajouter une photo"}
@@ -2349,7 +3043,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.name
                               });
                             }}
-                            className={`border-r ${isColActive('col-name') ? 'border-sky-500 z-10' : 'border-slate-700'} border-b ${isRowLineActive ? 'border-sky-500 z-10' : 'border-slate-400'} flex items-center p-1.5 relative group shrink-0 ${
+                            className={`border-r ${isColActive('col-name') ? 'border-sky-400 z-10' : 'border-slate-700'} border-b ${isRowLineActive ? 'border-sky-400 z-10' : 'border-slate-600'} flex items-center p-1.5 relative group shrink-0 ${
                               blockedNoteTarget?.studentId === std.id && !(std.name || '').trim() ? 'ring-2 ring-red-500 bg-red-50/60' : ''
                             } ${
                               activeCellInfo.id === `cell-name-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
@@ -2375,12 +3069,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 });
                               }}
                               placeholder={`Nom et prénom élève ${rIdx + 1}...`}
-                              className="w-full h-full text-center px-2 text-xs sm:text-sm font-black text-slate-950 placeholder:text-slate-400 placeholder:font-semibold bg-transparent outline-none border border-transparent focus:border-blue-500 focus:bg-white rounded transition pr-5"
+                              className="w-full h-full text-center px-2 text-xs sm:text-sm text-slate-950 placeholder:text-slate-400 placeholder:font-semibold bg-transparent outline-none border border-transparent focus:border-blue-500 focus:bg-white rounded transition pr-5"
                               style={{
-                                textAlign,
-                                fontWeight: isBold ? '900' : '800',
-                                fontStyle: isItalic ? 'italic' : 'normal',
-                                textDecoration: isUnderline ? 'underline' : isStrikethrough ? 'line-through' : 'none',
+                                ...nameCellStyle,
+                                backgroundColor: 'transparent'
                               }}
                             />
 
@@ -2514,7 +3206,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             const isInvalid = parsed.isInvalid;
                             const colBg = colMeta.columnBgColor;
                             const singleCellBg = cellColors[`${std.id}_${cIdx}`];
-                            const noteCellBg = isInvalid ? '#fef2f2' : (singleCellBg || rowBg || colBg || undefined);
+                            const noteCellStyle = getResolvedCellStyle(`${std.id}_${cIdx}`, 'center');
+                            const noteCellBg = isInvalid ? '#fef2f2' : (noteCellStyle.backgroundColor || singleCellBg || rowBg || colBg || undefined);
                             const thisNoteWidth = getColWidth(`col-note-${cIdx}`);
                             const isThisColActive = isColActive(`col-note-${cIdx}`);
                             const isNoteCellMenuOpen = activeMenuCell?.studentId === std.id && activeMenuCell?.colIndex === cIdx;
@@ -2541,7 +3234,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     value: noteVal || `.../${parsed.maxScore}`
                                   });
                                 }}
-                                className={`border-r ${isThisColActive ? 'border-sky-500 z-10' : 'border-slate-700'} border-b ${isRowLineActive ? 'border-sky-500 z-10' : 'border-slate-400'} flex items-center justify-center px-1 relative shrink-0 transition-colors group cursor-text ${
+                                className={`border-r ${isThisColActive ? 'border-sky-400 z-10' : 'border-slate-700'} border-b ${isRowLineActive ? 'border-sky-400 z-10' : 'border-slate-600'} flex items-center justify-center px-1 relative shrink-0 transition-colors group cursor-text ${
                                   isInvalid 
                                     ? 'bg-red-50 ring-2 ring-red-500 z-10' 
                                     : isSelectedNote 
@@ -2723,10 +3416,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     }}
                                     placeholder="-"
                                     maxLength={6}
+                                    style={{
+                                      ...noteCellStyle,
+                                      backgroundColor: 'transparent',
+                                      color: isInvalid ? '#dc2626' : (noteCellStyle.color || undefined)
+                                    }}
                                     className={`w-[48%] text-right text-xs sm:text-sm transition outline-none bg-transparent cursor-text ${
                                       isInvalid
-                                        ? 'text-red-600 underline font-black decoration-red-600 decoration-2'
-                                        : 'font-black text-slate-900 placeholder:text-slate-400 focus:text-blue-700'
+                                        ? 'underline font-black decoration-red-600 decoration-2'
+                                        : 'placeholder:text-slate-400 focus:text-blue-700'
                                     }`}
                                   />
 
@@ -2795,7 +3493,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               height: `${rowHeight}px`,
                               backgroundColor: rowBg || undefined
                             }}
-                            className={`border-r border-slate-700 border-b ${isRowLineActive ? 'border-sky-500 z-10' : 'border-slate-400'} bg-slate-50/60 flex items-center justify-center shrink-0 relative`}
+                            className={`border-r border-slate-700 border-b ${isRowLineActive ? 'border-sky-400 z-10' : 'border-slate-600'} bg-slate-50/60 flex items-center justify-center shrink-0 relative`}
                           >
                             <span className="text-slate-200 text-xs">•</span>
                           </div>
@@ -2826,8 +3524,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               e.stopPropagation();
                               setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' });
                             }}
-                            className={`border-r ${isColActive('col-moyenne') ? 'border-sky-500 z-10' : 'border-slate-700'} border-b ${
-                              isRowLineActive ? 'border-sky-500 z-10' : 'border-slate-400'
+                            className={`border-r ${isColActive('col-moyenne') ? 'border-sky-400 z-10' : 'border-slate-700'} border-b ${
+                              isRowLineActive ? 'border-sky-400 z-10' : 'border-slate-600'
                             } flex items-center justify-between px-2 cursor-pointer relative shrink-0 transition-colors ${
                               std.hasInvalidNote
                                 ? 'bg-slate-200 text-slate-400 border border-slate-300'
@@ -2904,8 +3602,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               e.stopPropagation();
                               setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-mention') ? null : { type: 'col', id: 'col-mention' });
                             }}
-                            className={`border-r ${isColActive('col-mention') ? 'border-sky-500 z-10' : 'border-slate-700'} border-b ${
-                              isRowLineActive ? 'border-sky-500 z-10' : 'border-slate-400'
+                            className={`border-r ${isColActive('col-mention') ? 'border-sky-400 z-10' : 'border-slate-700'} border-b ${
+                              isRowLineActive ? 'border-sky-400 z-10' : 'border-slate-600'
                             } flex items-center justify-center px-2 cursor-pointer relative shrink-0 transition-colors ${
                               std.hasInvalidNote
                                 ? 'bg-slate-200 text-slate-400 border border-slate-300'
