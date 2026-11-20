@@ -380,6 +380,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const [isFontSizeMenuOpen, setIsFontSizeMenuOpen] = useState<boolean>(false);
   const [isTextColorMenuOpen, setIsTextColorMenuOpen] = useState<boolean>(false);
   const [isBgColorMenuOpen, setIsBgColorMenuOpen] = useState<boolean>(false);
+  const [isGradeAdjustMenuOpen, setIsGradeAdjustMenuOpen] = useState<boolean>(false);
+  const [gradeAdjustMode, setGradeAdjustMode] = useState<'all' | 'specific'>('all');
+  const [gradeAdjustSign, setGradeAdjustSign] = useState<'add' | 'sub'>('add');
+  const [gradeAdjustAmountStr, setGradeAdjustAmountStr] = useState<string>('1');
+  const [gradeAdjustColIndex, setGradeAdjustColIndex] = useState<number>(0);
+  const [gradeAdjustFeedback, setGradeAdjustFeedback] = useState<string | null>(null);
   const [fontSearchQuery, setFontSearchQuery] = useState<string>('');
   const [copiedTableSuccess, setCopiedTableSuccess] = useState<boolean>(false);
 
@@ -395,10 +401,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     setIsFontSizeMenuOpen(false);
     setIsTextColorMenuOpen(false);
     setIsBgColorMenuOpen(false);
+    setIsGradeAdjustMenuOpen(false);
   };
 
   // Un seul petit menu peut être ouvert à la fois
-  const isAnyMenuOpen = activeMenuCol !== null || activeMenuRow !== null || activeMenuCell !== null || activeMenuNameCol || activeMenuPhoto !== null || isFontFamilyMenuOpen || isFontSizeMenuOpen || isTextColorMenuOpen || isBgColorMenuOpen;
+  const isAnyMenuOpen = activeMenuCol !== null || activeMenuRow !== null || activeMenuCell !== null || activeMenuNameCol || activeMenuPhoto !== null || isFontFamilyMenuOpen || isFontSizeMenuOpen || isTextColorMenuOpen || isBgColorMenuOpen || isGradeAdjustMenuOpen;
 
   // Palette de couleur active
   const [activeColorPicker, setActiveColorPicker] = useState<{
@@ -809,12 +816,66 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         setIsFontSizeMenuOpen(false);
         setIsTextColorMenuOpen(false);
         setIsBgColorMenuOpen(false);
+        setIsGradeAdjustMenuOpen(false);
         setHighlightedTarget(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
+
+  // Ajuster le montant de bonus/malus via les petits boutons + et -
+  const handleStepGradeAdjustAmount = (stepDelta: number) => {
+    const parsed = parseFloat((gradeAdjustAmountStr || '0').replace(',', '.'));
+    const currentVal = Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+    const nextVal = Math.max(0, Math.round((currentVal + stepDelta + Number.EPSILON) * 100) / 100);
+    setGradeAdjustAmountStr(String(nextVal));
+  };
+
+  // Appliquer un + ou - sur toutes les notes saisies OU sur une colonne de note spécifique
+  const handleApplyGradeAdjustment = () => {
+    const rawNum = parseFloat((gradeAdjustAmountStr || '').replace(',', '.'));
+    if (!Number.isFinite(rawNum) || rawNum === 0) return;
+
+    const delta = gradeAdjustSign === 'sub' ? -Math.abs(rawNum) : Math.abs(rawNum);
+    const targetCol = Math.min(Math.max(0, gradeAdjustColIndex), Math.max(0, noteColumnCount - 1));
+    let modifiedCount = 0;
+
+    setStudents(prev => prev.map(std => {
+      if (!(std.name || '').trim()) return std;
+      let changed = false;
+      const updatedNotes = std.notes.map((rawNote, cIdx) => {
+        if (gradeAdjustMode === 'specific' && cIdx !== targetCol) {
+          return rawNote;
+        }
+        const colDefaultMax = columnMetas[cIdx]?.maxScore || 20;
+        const parsed = parseStudentNote(rawNote, colDefaultMax);
+        // Ne jamais modifier les cases vides
+        if (parsed.scoreNum === null || parsed.hasInvalidMax || parsed.maxScore <= 0) {
+          return rawNote;
+        }
+        const rawUpdated = parsed.scoreNum + delta;
+        const clamped = Math.min(parsed.maxScore, Math.max(0, rawUpdated));
+        const rounded = Math.round((clamped + Number.EPSILON) * 100) / 100;
+        changed = true;
+        modifiedCount += 1;
+        return formatStudentNote(String(rounded), parsed.maxScoreStr || parsed.maxScore);
+      });
+      return changed ? { ...std, notes: updatedNotes } : std;
+    }));
+
+    setIsSaved(false);
+    const signLabel = delta > 0 ? `+${Math.abs(delta)}` : `-${Math.abs(delta)}`;
+    const scopeLabel = gradeAdjustMode === 'all'
+      ? 'toutes les notes'
+      : `${columnMetas[targetCol]?.title || 'NOTE'} ${targetCol + 1}`;
+    setGradeAdjustFeedback(
+      modifiedCount > 0
+        ? `${signLabel} appliqué sur ${scopeLabel} (${modifiedCount} note${modifiedCount > 1 ? 's' : ''})`
+        : `Aucune note saisie à ajuster (${scopeLabel})`
+    );
+    setTimeout(() => setGradeAdjustFeedback(null), 3000);
+  };
 
   // Lecture directe et fiable à 100% du surlignement réel dans le DOM (aucune désynchronisation possible)
   const readLiveHighlightedTarget = (): {
@@ -2354,6 +2415,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   setIsFontSizeMenuOpen(false);
                   setIsTextColorMenuOpen(false);
                   setIsBgColorMenuOpen(false);
+                  setIsGradeAdjustMenuOpen(false);
                 }}
                 className="flex items-center justify-between h-6 px-1.5 min-w-[90px] max-w-[120px] bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs outline-none focus:outline-none"
                 title="Changer la police"
@@ -2435,6 +2497,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   setIsFontFamilyMenuOpen(false);
                   setIsTextColorMenuOpen(false);
                   setIsBgColorMenuOpen(false);
+                  setIsGradeAdjustMenuOpen(false);
                 }}
                 className="flex items-center justify-between h-6 px-1.5 w-12 bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs outline-none focus:outline-none"
                 title="Taille de police"
@@ -2582,6 +2645,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   setIsBgColorMenuOpen(false);
                   setIsFontFamilyMenuOpen(false);
                   setIsFontSizeMenuOpen(false);
+                  setIsGradeAdjustMenuOpen(false);
                 }}
                 className={`p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 outline-none focus:outline-none ${
                   isTextColorMenuOpen ? 'bg-slate-300' : 'hover:bg-slate-200'
@@ -2642,6 +2706,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   setIsTextColorMenuOpen(false);
                   setIsFontFamilyMenuOpen(false);
                   setIsFontSizeMenuOpen(false);
+                  setIsGradeAdjustMenuOpen(false);
                 }}
                 className={`p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 outline-none focus:outline-none ${
                   isBgColorMenuOpen ? 'bg-slate-300' : 'hover:bg-slate-200'
@@ -2750,7 +2815,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         </div>
 
         {/* GROUPE 4 : HISTORIQUE (RETOUR ARRIÈRE / AVANT - UNDO / REDO) */}
-        <div className="flex flex-col items-center justify-between px-1.5">
+        <div className="flex flex-col items-center justify-between px-1.5 border-r border-slate-300/80">
           <div className="flex items-center gap-1 mt-0.5">
             <button
               type="button"
@@ -2789,6 +2854,234 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             </button>
           </div>
           <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Historique</span>
+        </div>
+
+        {/* GROUPE 5 : AJUSTEMENT DES NOTES (± SUR TOUTES LES NOTES OU UNE NOTE SPÉCIFIQUE) */}
+        <div className="flex flex-col items-center justify-between px-1.5 relative">
+          <div className="relative mt-0.5">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsGradeAdjustMenuOpen(prev => !prev);
+                setIsFontFamilyMenuOpen(false);
+                setIsFontSizeMenuOpen(false);
+                setIsTextColorMenuOpen(false);
+                setIsBgColorMenuOpen(false);
+                if (gradeAdjustColIndex >= noteColumnCount) {
+                  setGradeAdjustColIndex(0);
+                }
+              }}
+              className={`w-9 h-7 rounded-md border flex items-center justify-center gap-0.5 transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none ${
+                isGradeAdjustMenuOpen
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white text-slate-800 border-slate-300 hover:border-blue-500 hover:bg-slate-50'
+              }`}
+              title="Ajouter ou retirer des points (+ / -) sur toutes les notes ou sur une note spécifique"
+            >
+              <span className="text-sm font-black leading-none">±</span>
+              <ChevronDown className={`w-2.5 h-2.5 ${isGradeAdjustMenuOpen ? 'text-white' : 'text-slate-500'}`} />
+            </button>
+
+            {gradeAdjustFeedback && !isGradeAdjustMenuOpen && (
+              <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1 px-2.5 py-1 bg-emerald-600 text-white text-[10px] font-bold rounded-md shadow-lg whitespace-nowrap z-[100] animate-in fade-in zoom-in-95">
+                {gradeAdjustFeedback}
+              </div>
+            )}
+
+            {isGradeAdjustMenuOpen && (
+              <div
+                onClick={(e) => e.stopPropagation()}
+                className="absolute top-full left-0 mt-1.5 w-72 bg-white border border-slate-300 rounded-xl shadow-2xl p-3 z-[100] text-xs select-none animate-in fade-in zoom-in-95 space-y-3"
+              >
+                {/* Titre du menu */}
+                <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                  <span className="text-[11px] font-black text-slate-800 uppercase tracking-wide">
+                    Ajuster les notes (±)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setIsGradeAdjustMenuOpen(false)}
+                    className="p-0.5 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {/* 2 BOUTONS DE MODE : TOUTES LES NOTES vs UNE NOTE SPÉCIFIQUE */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setGradeAdjustMode('all')}
+                    className={`px-2 py-2 rounded-lg text-[11px] font-bold border transition cursor-pointer text-center leading-tight ${
+                      gradeAdjustMode === 'all'
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    Toutes les notes
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGradeAdjustMode('specific')}
+                    className={`px-2 py-2 rounded-lg text-[11px] font-bold border transition cursor-pointer text-center leading-tight ${
+                      gradeAdjustMode === 'specific'
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    Note spécifique
+                  </button>
+                </div>
+
+                {/* LISTE DES NOTES CRÉÉES SI MODE "NOTE SPÉCIFIQUE" */}
+                {gradeAdjustMode === 'specific' && (
+                  <div className="space-y-1">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                      Choisir la note concernée :
+                    </div>
+                    <div className="max-h-32 overflow-y-auto grid grid-cols-2 gap-1.5 p-1 bg-slate-50 rounded-lg border border-slate-200">
+                      {Array.from({ length: noteColumnCount }).map((_, idx) => {
+                        const meta = columnMetas[idx] || { title: 'NOTE', maxScore: 20 };
+                        const label = `${meta.title || 'NOTE'} ${idx + 1}`;
+                        const isSelected = gradeAdjustColIndex === idx;
+                        return (
+                          <button
+                            key={`adjust-col-${idx}`}
+                            type="button"
+                            onClick={() => setGradeAdjustColIndex(idx)}
+                            className={`px-2 py-1.5 rounded-md text-[11px] font-bold border transition cursor-pointer flex items-center justify-between gap-1 ${
+                              isSelected
+                                ? 'bg-blue-600 text-white border-blue-600 shadow-2xs'
+                                : 'bg-white text-slate-700 border-slate-200 hover:border-blue-400 hover:bg-blue-50/50'
+                            }`}
+                          >
+                            <span className="truncate">{label}</span>
+                            <span className={`text-[9.5px] shrink-0 ${isSelected ? 'text-blue-100' : 'text-slate-400'}`}>
+                              /{meta.maxScore}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* CHOIX + (AJOUTER) OU - (RETIRER) */}
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setGradeAdjustSign('add')}
+                    className={`py-1.5 px-2 rounded-lg text-[11px] font-extrabold border transition cursor-pointer flex items-center justify-center gap-1 ${
+                      gradeAdjustSign === 'add'
+                        ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                        : 'bg-emerald-50/60 text-emerald-800 border-emerald-200 hover:bg-emerald-100'
+                    }`}
+                  >
+                    <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                    <span>Ajouter (+)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setGradeAdjustSign('sub')}
+                    className={`py-1.5 px-2 rounded-lg text-[11px] font-extrabold border transition cursor-pointer flex items-center justify-center gap-1 ${
+                      gradeAdjustSign === 'sub'
+                        ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                        : 'bg-rose-50/60 text-rose-800 border-rose-200 hover:bg-rose-100'
+                    }`}
+                  >
+                    <Minus className="w-3.5 h-3.5 stroke-[3]" />
+                    <span>Retirer (−)</span>
+                  </button>
+                </div>
+
+                {/* CHAMP POUR ÉCRIRE LE NOMBRE + PETITS BOUTONS - ET + POUR RÉDUIRE / AUGMENTER */}
+                <div className="space-y-1">
+                  <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                    Points à {gradeAdjustSign === 'add' ? 'ajouter' : 'retirer'} :
+                  </label>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => handleStepGradeAdjustAmount(-0.5)}
+                      className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0"
+                      title="Réduire de 0,5"
+                    >
+                      <Minus className="w-3.5 h-3.5 stroke-[2.8]" />
+                    </button>
+
+                    <input
+                      type="text"
+                      data-grade-adjust-input="true"
+                      value={gradeAdjustAmountStr}
+                      onChange={(e) => {
+                        const cleaned = sanitizeDecimalInput(e.target.value);
+                        setGradeAdjustAmountStr(cleaned);
+                      }}
+                      placeholder="Ex: 1 ou 0.5"
+                      className="flex-1 h-8 px-2.5 text-center font-black text-sm text-slate-900 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() => handleStepGradeAdjustAmount(0.5)}
+                      className="w-8 h-8 rounded-lg bg-slate-100 hover:bg-slate-200 border border-slate-300 text-slate-800 flex items-center justify-center transition active:scale-95 cursor-pointer shrink-0"
+                      title="Augmenter de 0,5"
+                    >
+                      <Plus className="w-3.5 h-3.5 stroke-[2.8]" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* RÉSUMÉ + BOUTON APPLIQUER */}
+                <div className="pt-1 space-y-2 border-t border-slate-100">
+                  <p className="text-[10px] text-slate-500 leading-snug">
+                    {gradeAdjustMode === 'all' ? (
+                      <>
+                        Applique{' '}
+                        <strong className={gradeAdjustSign === 'add' ? 'text-emerald-700' : 'text-rose-700'}>
+                          {gradeAdjustSign === 'add' ? '+' : '−'}{gradeAdjustAmountStr || '0'}
+                        </strong>{' '}
+                        sur <strong>toutes les notes saisies</strong> (les cases vides restent vides).
+                      </>
+                    ) : (
+                      <>
+                        Applique{' '}
+                        <strong className={gradeAdjustSign === 'add' ? 'text-emerald-700' : 'text-rose-700'}>
+                          {gradeAdjustSign === 'add' ? '+' : '−'}{gradeAdjustAmountStr || '0'}
+                        </strong>{' '}
+                        uniquement sur{' '}
+                        <strong>
+                          {columnMetas[gradeAdjustColIndex]?.title || 'NOTE'} {gradeAdjustColIndex + 1}
+                        </strong>.
+                      </>
+                    )}
+                  </p>
+
+                  {gradeAdjustFeedback && (
+                    <div className="px-2.5 py-1.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10.5px] font-bold flex items-center gap-1.5">
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0 stroke-[3]" />
+                      <span>{gradeAdjustFeedback}</span>
+                    </div>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={handleApplyGradeAdjustment}
+                    className={`w-full py-2 rounded-lg text-xs font-extrabold text-white shadow-sm transition active:scale-[0.98] cursor-pointer ${
+                      gradeAdjustSign === 'add'
+                        ? 'bg-emerald-600 hover:bg-emerald-700'
+                        : 'bg-rose-600 hover:bg-rose-700'
+                    }`}
+                  >
+                    Appliquer
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+          <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Ajuster</span>
         </div>
       </section>
 
