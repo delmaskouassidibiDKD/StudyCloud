@@ -32,6 +32,7 @@ import {
   Minimize2
 } from 'lucide-react';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
+import { DnaLogo } from '../DnaLogo';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
 import { SubjectGradebookView } from './SubjectGradebookView';
 
@@ -1269,19 +1270,32 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       {/* 1. BARRE LATÉRALE BUREAU (Desktop >= md : Deep Teal / Pétrole Foncé) */}
       {/* ========================================================================= */}
       <aside 
-        className="hidden md:flex w-20 lg:w-24 shrink-0 flex-col items-center py-5 justify-between z-30 transition-all border-r border-[#002830]/30 shadow-2xl h-full"
+        className="hidden md:flex w-24 lg:w-28 shrink-0 flex-col items-center py-4 justify-between z-30 transition-all border-r border-[#002830]/30 shadow-2xl h-full"
         style={{ backgroundColor: '#002f3a' }}
       >
-        {/* Logo supérieur (Vague circulaire cyan / StudyCloud Pro) */}
-        <div className="flex flex-col items-center gap-1.5 cursor-pointer" onClick={() => { setIsViewerMaximized(false); resetViewerExpand(); onBack(); }} title="Retour à l'accueil StudyCloud">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-tr from-cyan-400 via-sky-300 to-teal-200 flex items-center justify-center shadow-lg shadow-cyan-900/40 border border-white/40 group hover:scale-105 transition">
-            <svg className="w-6 h-6 text-[#002f3a]" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z"/>
-            </svg>
+        {/* Logo supérieur identique à StudyCloud (Logo ADN devant StudyCloud) */}
+        <div
+          className="notranslate flex items-center justify-center gap-1 px-1.5 cursor-pointer group hover:scale-105 transition-transform"
+          translate="no"
+          onClick={() => { setIsViewerMaximized(false); resetViewerExpand(); onBack(); }}
+          title="Retour à l'accueil StudyCloud"
+        >
+          <DnaLogo
+            className="w-5 h-5 lg:w-6 lg:h-6 shrink-0 drop-shadow-[0_0_2px_rgba(0,0,0,0.9)]"
+            glow={true}
+          />
+          <div className="flex flex-col justify-center min-w-0">
+            <span className="font-black tracking-tight text-[10.5px] lg:text-[12px] leading-none flex items-center select-none">
+              <span className="font-black text-orange-500">Study</span>
+              <span className="font-black text-sky-400">Cloud</span>
+            </span>
+            <span
+              className="text-[5.5px] lg:text-[6.2px] font-black uppercase mt-0.5 leading-none truncate"
+              style={{ letterSpacing: '0.09em', color: '#f59e0b' }}
+            >
+              DKD TECHNOLOGIES
+            </span>
           </div>
-          <span className="text-[9px] font-bold tracking-tight text-cyan-200/90 text-center leading-none">
-            StudyCloud
-          </span>
         </div>
 
         {/* Éléments de navigation verticaux Desktop (Accueil actif sur Dashboard - Image 1) */}
@@ -1327,197 +1341,212 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       {/* ========================================================================= */}
       {/* 2. ESPACE PRINCIPAL DE TRAVAIL (Plein écran Edge-to-Edge & Défilement fluide) */}
       {/* ========================================================================= */}
-      <main className="flex-1 flex flex-col h-full min-h-dvh overflow-y-auto overflow-x-hidden p-3.5 sm:p-6 lg:p-8 pb-24 md:pb-8 space-y-5 md:space-y-6">
+      <main className="flex-1 flex flex-col h-full min-h-dvh overflow-y-auto overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-2 sm:pt-2.5 pb-24 md:pb-8 space-y-3 md:space-y-4">
         
         {/* ----------------------------------------------------------------------- */}
-        {/* EN-TÊTE : BOUTON RETOUR, TITRE DYNAMIQUE, ACTIONS & PROFIL */}
+        {/* EN-TÊTE STRUCTURÉ EN 2 NIVEAUX PRO :                                    */}
+        {/* Ligne 1 (Tout en haut) : Retour (coin gauche) + Utilitaires/Profil +    */}
+        {/*                          Contrôles d'agrandissement (creux droit)       */}
+        {/* Ligne 2 (Dessous)      : Fil d'Ariane & Titre (gauche) + CTA (droite)   */}
         {/* ----------------------------------------------------------------------- */}
-        <header className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-          {/* Bouton Retour (nommé "Retour" comme demandé) et Titre dynamique */}
-          <div>
-            <div className="text-[11px] font-semibold text-slate-400 tracking-wider flex items-center gap-1.5 mb-1">
-              <span>Tableau de bord</span>
-              {selectedSchoolInside ? (
-                <>
-                  <span>/</span>
-                  <span className="text-slate-500">{currentSelectedYear?.label}</span>
-                  <span>/</span>
-                  <span className="text-cyan-700 font-extrabold">{selectedSchoolInside.name}</span>
-                </>
-              ) : null}
-            </div>
+        <header className="flex flex-col gap-2">
+          {/* LIGNE 1 : BARRE SUPÉRIEURE (Retour en haut à gauche | Recherche, Notifs, Paramètres, Profil + Agrandissement dans le creux à droite) */}
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            {/* Bouton Retour placé tout en haut à gauche (au-dessus de Tableau de bord) */}
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedSchoolInside) {
+                  setSelectedSchoolInside(null);
+                } else {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                  onBack();
+                }
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/85 hover:bg-white text-slate-700 hover:text-[#00313d] border border-white/95 shadow-xs transition active:scale-95 font-bold text-xs cursor-pointer shrink-0"
+              title={selectedSchoolInside ? "Retour à la liste des écoles" : "Retour à l'accueil"}
+            >
+              <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Retour</span>
+            </button>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (selectedSchoolInside) {
-                    setSelectedSchoolInside(null);
-                  } else {
-                    setIsViewerMaximized(false);
-                    resetViewerExpand();
-                    onBack();
-                  }
-                }}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/80 hover:bg-white text-slate-700 hover:text-slate-900 border border-white/90 shadow-xs transition active:scale-95 font-bold text-xs sm:text-sm"
-                title={selectedSchoolInside ? "Retour à la liste des écoles" : "Retour à l'accueil"}
-              >
-                <ArrowLeft className="w-4 h-4 stroke-[2.5]" />
-                <span>Retour</span>
-              </button>
+            {/* Zone haute droite : Utilitaires + Profil (au-dessus du bouton Créer un niveau) puis Agrandissement dans le creux tout à droite */}
+            <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
+              {/* Groupe utilitaires + profil enseignant (ex-zone verte, positionné proprement en haut) */}
+              <div className="flex items-center gap-1.5 bg-white/55 backdrop-blur-md px-1.5 py-1 rounded-2xl border border-white/80 shadow-2xs">
+                {/* Barre de recherche dynamique */}
+                <div className="relative flex items-center">
+                  {isSearchOpen ? (
+                    <div className="flex items-center bg-white rounded-xl px-2.5 py-1 shadow-2xs border border-slate-200/80 transition-all w-40 sm:w-52">
+                      <Search className="w-3.5 h-3.5 text-slate-400 shrink-0 mr-1.5" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        placeholder="Recherche..."
+                        className="w-full bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none"
+                        autoFocus
+                      />
+                      {searchQuery && (
+                        <button type="button" onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                      <button type="button" onClick={() => setIsSearchOpen(false)} className="ml-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+                        <X className="w-3 h-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setIsSearchOpen(true)}
+                      className="w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
+                      title="Rechercher"
+                    >
+                      <Search className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
-              {selectedSchoolInside ? (
-                <div className="flex items-center gap-2.5 ml-1">
-                  <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-white shadow-xs shrink-0 flex items-center justify-center bg-white/60">
-                    {selectedSchoolInside.logoUrl ? (
-                      <img src={selectedSchoolInside.logoUrl} alt={selectedSchoolInside.name} className="w-full h-full object-cover" />
+                {/* Notification Bell */}
+                <button
+                  type="button"
+                  className="relative w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
+                  title="Notifications"
+                >
+                  <Bell className="w-3.5 h-3.5" />
+                  <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500 ring-2 ring-white"></span>
+                </button>
+
+                {/* Settings Gear */}
+                <button
+                  type="button"
+                  className="w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
+                  title="Paramètres"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                </button>
+
+                {/* Séparateur discret */}
+                <div className="w-px h-5 bg-slate-300/60 mx-0.5 hidden sm:block" />
+
+                {/* Profil Enseignant */}
+                <div className="flex items-center gap-1.5 pl-0.5 pr-2.5 py-0.5 bg-white/90 rounded-xl shadow-2xs border border-white">
+                  <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-cyan-600 to-teal-400 text-white font-bold text-[10px] flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                    {user?.avatar_url ? (
+                      <img src={user.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                     ) : (
-                      <span className="font-black text-xs text-[#00313d]">
-                        {selectedSchoolInside.name.slice(0, 2).toUpperCase()}
-                      </span>
+                      (user?.name ? user.name.charAt(0).toUpperCase() : 'DKD')
                     )}
                   </div>
-                  <h1 className="text-xl sm:text-2xl font-black text-[#0f2430] tracking-tight">
-                    {selectedSchoolInside.name}
-                  </h1>
-                  <span className="text-[10px] font-extrabold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200/60 hidden sm:inline-block">
-                    {currentSelectedYear?.label}
-                  </span>
+                  <div className="flex flex-col text-left">
+                    <span className="text-[11px] font-bold text-slate-800 leading-none">
+                      {user?.name || 'Professeur'}
+                    </span>
+                    <span className="text-[8.5px] text-slate-400 font-medium leading-tight">
+                      Enseignant Pro
+                    </span>
+                  </div>
                 </div>
-              ) : (
-                <h1 className="text-xl sm:text-2xl font-black text-[#0f2430] tracking-tight ml-1">
-                  Tableau de bord
-                </h1>
-              )}
+              </div>
+
+              {/* Boutons Super Agrandissement & Plein écran déplacés dans le creux tout en haut à droite (Desktop) */}
+              <div className="hidden md:flex items-center gap-1.5 shrink-0 pl-1 border-l border-cyan-900/15">
+                <ViewerSuperExpandButton
+                  expandLevel={viewerExpandLevel}
+                  onExpandChange={(lvl) => {
+                    if (lvl >= 1) {
+                      setIsViewerMaximized(true);
+                    } else {
+                      setIsViewerMaximized(false);
+                    }
+                    setViewerExpandLevel(lvl);
+                  }}
+                />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (viewerExpandLevel >= 1 || isViewerMaximized) {
+                      setIsViewerMaximized(false);
+                      resetViewerExpand();
+                    } else {
+                      setIsViewerMaximized(true);
+                      setViewerExpandLevel(1);
+                    }
+                  }}
+                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 ${
+                    viewerExpandLevel >= 1 || isViewerMaximized
+                      ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
+                      : 'bg-[#101827] hover:bg-[#1a2538] text-white border-white/20'
+                  }`}
+                  title={viewerExpandLevel >= 1 || isViewerMaximized ? 'Réduire la vue' : "Agrandir l'espace"}
+                >
+                  {viewerExpandLevel >= 1 || isViewerMaximized ? (
+                    <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                  ) : (
+                    <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                  )}
+                </button>
+              </div>
             </div>
           </div>
 
-          {/* Contrôles du haut : Recherche, Notifs, Paramètres, Profil & Bouton d'action contextuel */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-between sm:justify-end">
-            {/* Barre de recherche dynamique */}
-            <div className="relative flex items-center">
-              {isSearchOpen ? (
-                <div className="flex items-center bg-white/95 backdrop-blur-md rounded-2xl px-3 py-1.5 shadow-sm border border-white/90 transition-all w-44 sm:w-56">
-                  <Search className="w-4 h-4 text-slate-400 shrink-0 mr-2" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="Recherche..."
-                    className="w-full bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none"
-                    autoFocus
-                  />
-                  {searchQuery && (
-                    <button type="button" onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600">
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                  <button type="button" onClick={() => setIsSearchOpen(false)} className="ml-1 text-slate-400 hover:text-slate-600">
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setIsSearchOpen(true)}
-                  className="w-9 h-9 rounded-2xl bg-white/80 backdrop-blur-md hover:bg-white text-slate-600 flex items-center justify-center shadow-sm border border-white/90 transition"
-                  title="Rechercher"
-                >
-                  <Search className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-
-            {/* Notification Bell */}
-            <button
-              type="button"
-              className="relative w-9 h-9 rounded-2xl bg-white/80 backdrop-blur-md hover:bg-white text-slate-600 flex items-center justify-center shadow-sm border border-white/90 transition"
-              title="Notifications"
-            >
-              <Bell className="w-4 h-4" />
-              <span className="absolute top-2 right-2 w-2 h-2 rounded-full bg-red-500 ring-2 ring-white"></span>
-            </button>
-
-            {/* Settings Gear */}
-            <button
-              type="button"
-              className="w-9 h-9 rounded-2xl bg-white/80 backdrop-blur-md hover:bg-white text-slate-600 flex items-center justify-center shadow-sm border border-white/90 transition"
-              title="Paramètres"
-            >
-              <Settings className="w-4 h-4" />
-            </button>
-
-            {/* Boutons Super Agrandissement & Plein écran (Desktop uniquement - Image 2 & 3) */}
-            <div className="hidden md:flex items-center gap-1.5 shrink-0">
-              <ViewerSuperExpandButton
-                expandLevel={viewerExpandLevel}
-                onExpandChange={(lvl) => {
-                  if (lvl >= 1) {
-                    setIsViewerMaximized(true);
-                  } else {
-                    setIsViewerMaximized(false);
-                  }
-                  setViewerExpandLevel(lvl);
-                }}
-              />
-
-              <button
-                type="button"
-                onClick={() => {
-                  if (viewerExpandLevel >= 1 || isViewerMaximized) {
-                    setIsViewerMaximized(false);
-                    resetViewerExpand();
-                  } else {
-                    setIsViewerMaximized(true);
-                    setViewerExpandLevel(1);
-                  }
-                }}
-                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 ${
-                  viewerExpandLevel >= 1 || isViewerMaximized
-                    ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
-                    : 'bg-[#101827] hover:bg-[#1a2538] text-white border-white/20'
-                }`}
-                title={viewerExpandLevel >= 1 || isViewerMaximized ? 'Réduire la vue' : "Agrandir l'espace"}
-              >
-                {viewerExpandLevel >= 1 || isViewerMaximized ? (
-                  <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                ) : (
-                  <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                )}
-              </button>
-            </div>
-
-            {/* Profil Enseignant */}
-            <div className="flex items-center gap-2 pl-1 pr-3 py-1 bg-white/80 backdrop-blur-md rounded-2xl shadow-sm border border-white/90">
-              <div className="w-7 h-7 rounded-full bg-gradient-to-tr from-cyan-600 to-teal-400 text-white font-bold text-xs flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
-                {user?.avatar_url ? (
-                  <img src={user.avatar_url} alt="Profile" className="w-full h-full object-cover" />
-                ) : (
-                  (user?.name ? user.name.charAt(0).toUpperCase() : 'DKD')
-                )}
+          {/* LIGNE 2 : FIL D'ARIANE & TITRE À GAUCHE | BOUTON PRINCIPAL (+ Créer un niveau / + Créer une rentrée) À DROITE */}
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 pt-0.5">
+            <div>
+              <div className="text-[11px] font-semibold text-slate-400 tracking-wider flex items-center gap-1.5 mb-0.5">
+                <span>Tableau de bord</span>
+                {selectedSchoolInside ? (
+                  <>
+                    <span>/</span>
+                    <span className="text-slate-500">{currentSelectedYear?.label}</span>
+                    <span>/</span>
+                    <span className="text-cyan-700 font-extrabold">{selectedSchoolInside.name}</span>
+                  </>
+                ) : null}
               </div>
-              <div className="flex flex-col text-left">
-                <span className="text-xs font-bold text-slate-800 leading-none">
-                  {user?.name || 'Professeur'}
-                </span>
-                <span className="text-[9px] text-slate-400 font-medium">
-                  Enseignant Pro
-                </span>
+
+              <div className="flex items-center gap-2">
+                {selectedSchoolInside ? (
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-white shadow-xs shrink-0 flex items-center justify-center bg-white/60">
+                      {selectedSchoolInside.logoUrl ? (
+                        <img src={selectedSchoolInside.logoUrl} alt={selectedSchoolInside.name} className="w-full h-full object-cover" />
+                      ) : (
+                        <span className="font-black text-xs text-[#00313d]">
+                          {selectedSchoolInside.name.slice(0, 2).toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <h1 className="text-xl sm:text-2xl font-black text-[#0f2430] tracking-tight leading-none">
+                      {selectedSchoolInside.name}
+                    </h1>
+                    <span className="text-[10px] font-extrabold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200/60 hidden sm:inline-block">
+                      {currentSelectedYear?.label}
+                    </span>
+                  </div>
+                ) : (
+                  <h1 className="text-xl sm:text-2xl font-black text-[#0f2430] tracking-tight leading-none">
+                    Tableau de bord
+                  </h1>
+                )}
               </div>
             </div>
 
             {/* ------------------------------------------------------------------- */}
-            {/* BOUTON D'ACTION : Créer un niveau / Créer une classe (si dans l'école) OU Créer une rentrée */}
+            {/* BOUTON D'ACTION PRINCIPAL : Créer un niveau (si dans l'école) OU Créer une rentrée */}
             {/* ------------------------------------------------------------------- */}
-            {selectedSchoolInside ? (
-              currentSchoolLevels.length === 0 ? (
+            <div className="flex items-center justify-end shrink-0">
+              {selectedSchoolInside ? (
                 <button
                   type="button"
                   onClick={() => {
                     resetLevelForm();
                     setIsAddLevelModalOpen(true);
                   }}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 hover:bg-[#00252e]"
+                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 hover:bg-[#00252e] cursor-pointer"
                   style={{ backgroundColor: '#00313d' }}
                   title="Créer un niveau d'étude"
                 >
@@ -1527,36 +1556,19 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   </span>
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetClassForm();
-                    setIsAddClassModalOpen(true);
-                  }}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 hover:bg-[#00252e]"
-                  style={{ backgroundColor: '#00313d' }}
-                  title={activeLevel ? `Créer une classe dans ${activeLevel.name}` : 'Créer une classe'}
-                >
-                  <Plus className="w-4 h-4 stroke-[3]" />
-                  <span className="tracking-wide text-[11px] sm:text-xs">
-                    Créer une classe
-                  </span>
-                </button>
-              )
-            ) : (
-              <div className="relative" ref={dropdownRef}>
-                <button
-                  type="button"
-                  onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0"
-                  style={{ backgroundColor: '#00313d' }}
-                  title="Créer une rentrée scolaire"
-                >
-                  <Plus className="w-4 h-4 stroke-[3]" />
-                  <span className="tracking-wide text-[11px] sm:text-xs">
-                    Créer une rentrée scolaire
-                  </span>
-                </button>
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
+                    className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
+                    style={{ backgroundColor: '#00313d' }}
+                    title="Créer une rentrée scolaire"
+                  >
+                    <Plus className="w-4 h-4 stroke-[3]" />
+                    <span className="tracking-wide text-[11px] sm:text-xs">
+                      Créer une rentrée scolaire
+                    </span>
+                  </button>
 
                 {/* Petit menu déroulant bien rectangle qui descend vers le bas */}
                 {isCreateMenuOpen && (
@@ -1673,8 +1685,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     </div>
                   </div>
                 )}
-              </div>
-            )}
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
