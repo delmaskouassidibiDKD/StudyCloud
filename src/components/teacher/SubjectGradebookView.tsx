@@ -300,10 +300,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       const saved = localStorage.getItem(colWidthKey);
       if (saved) {
         const w = parseInt(saved, 10);
-        if (!isNaN(w) && w >= 80 && w <= 240) return w;
+        if (!isNaN(w) && w >= 96 && w <= 240) return w;
       }
     } catch { }
-    return 84;
+    return 96;
   });
 
   // Largeurs individuelles pour chaque colonne de note
@@ -312,7 +312,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       const s = localStorage.getItem(customNoteWidthsKey);
       if (s) {
         const parsed = JSON.parse(s);
-        if (typeof parsed === 'object') return parsed;
+        if (typeof parsed === 'object' && parsed !== null) {
+          const clamped: { [index: number]: number } = {};
+          for (const [k, v] of Object.entries(parsed)) {
+            if (typeof v === 'number') clamped[Number(k)] = Math.max(96, v);
+          }
+          return clamped;
+        }
       }
     } catch { }
     return {};
@@ -984,7 +990,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     if (colId === 'col-name') return colWidthName;
     if (colId.startsWith('col-note-')) {
       const idx = parseInt(colId.replace('col-note-', ''), 10);
-      return customNoteWidths[idx] || noteColWidth;
+      return Math.max(96, customNoteWidths[idx] || noteColWidth);
     }
     if (colId === 'col-moyenne') return colWidthAverage;
     if (colId === 'col-mention') return colWidthMention;
@@ -998,7 +1004,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       return hasAnyPhoto ? 76 : 60;
     }
     if (colId === 'col-name') return getMinNameColWidth(students);
-    if (colId.startsWith('col-note-')) return 80;
+    if (colId.startsWith('col-note-')) return 96;
     if (colId === 'col-moyenne') return 88;
     if (colId === 'col-mention') return 88;
     return 60;
@@ -1014,7 +1020,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     else if (colId === 'col-name') setColWidthName(w);
     else if (colId.startsWith('col-note-')) {
       const idx = parseInt(colId.replace('col-note-', ''), 10);
-      setCustomNoteWidths(prev => ({ ...prev, [idx]: Math.max(80, w) }));
+      setCustomNoteWidths(prev => ({ ...prev, [idx]: Math.max(96, w) }));
     }
     else if (colId === 'col-moyenne') setColWidthAverage(Math.max(88, w));
     else if (colId === 'col-mention') setColWidthMention(Math.max(88, w));
@@ -1175,7 +1181,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     const handleMouseMove = (moveEvent: MouseEvent | TouchEvent) => {
       const curX = 'touches' in moveEvent ? moveEvent.touches[0].clientX : moveEvent.clientX;
       const deltaX = (curX - clientX) * 0.42;
-      const newWidth = Math.max(80, Math.min(240, Math.round(startWidth + deltaX)));
+      const newWidth = Math.max(96, Math.min(240, Math.round(startWidth + deltaX)));
       setNoteColWidth(newWidth);
     };
 
@@ -1914,15 +1920,17 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             </div>
                           )}
 
-                          {/* TITRE ET NUMÉRO AUTOMATIQUE */}
-                          <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase truncate px-1">
-                            {colTitle} {i + 1}
-                          </span>
-                          <span className="text-[9.5px] font-bold text-slate-500">
-                            /{colMeta.maxScore}
-                          </span>
+                          {/* TITRE ET NUMÉRO AUTOMATIQUE CENTRÉS SANS CHEVAUCHEMENT */}
+                          <div className="w-full flex flex-col items-center justify-center px-4 select-none">
+                            <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase truncate text-center w-full leading-tight">
+                              {colTitle} {i + 1}
+                            </span>
+                            <span className="text-[9.5px] font-bold text-slate-500 text-center w-full leading-tight mt-0.5">
+                              /{colMeta.maxScore}
+                            </span>
+                          </div>
 
-                          {/* BOUTON 3 POINTS ⋮ SUR L'EN-TÊTE DE LA COLONNE DE NOTE */}
+                          {/* BOUTON 3 POINTS ⋮ SUR L'EN-TÊTE EN HAUT DANS L'ANGLE SANS GÊNER L'ÉCRITURE */}
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1933,14 +1941,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               setActiveMenuRow(null);
                               setActiveMenuCell(null);
                             }}
-                            className={`absolute top-1 right-1 p-0.5 rounded transition cursor-pointer z-10 border-0 shadow-none ${
+                            className={`absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-20 border-0 shadow-none ${
                               isMenuOpen
                                 ? 'text-sky-600 bg-sky-100/70'
-                                : 'text-slate-800 hover:text-black hover:bg-slate-200/60'
+                                : 'text-slate-900 hover:text-black hover:bg-slate-200/60'
                             }`}
                             title={`Options de la colonne ${colTitle} ${i + 1}`}
                           >
-                            <MoreVertical className="w-3.5 h-3.5 stroke-[2.5]" />
+                            <MoreVertical className="w-3 h-3 text-slate-900 stroke-[2.5]" />
                           </button>
 
                           {/* MENU CONTEXTUEL RECTANGULAIRE SOIGNÉ */}
