@@ -610,69 +610,114 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Suivi en temps réel du texte réellement surligné ("souligné") dans le tableau (inputs & cellules texte)
-  useEffect(() => {
-    const handleDocumentSelectionChange = () => {
-      const activeEl = document.activeElement as HTMLElement | null;
+  // Lecture directe et fiable à 100% du surlignement réel dans le DOM (aucune désynchronisation possible)
+  const readLiveHighlightedTarget = (): {
+    cellKey: string;
+    cellType: 'name' | 'note' | 'rank' | 'average' | 'mention';
+    elementId?: string;
+    start?: number;
+    end?: number;
+    isDomSelection?: boolean;
+  } | null => {
+    const activeEl = document.activeElement as HTMLElement | null;
 
-      // Ne pas effacer le surlignement de la cellule si l'utilisateur tape dans la barre de recherche des polices
+    // Cas 1 : Sélection à l'intérieur d'un champ <input> éditable (Nom, Note, Barème, Barre fx)
+    if (activeEl && activeEl.tagName === 'INPUT') {
+      const inputEl = activeEl as HTMLInputElement;
+      const cellKey = inputEl.getAttribute('data-cell-key');
+      const cellType = inputEl.getAttribute('data-cell-type') as 'name' | 'note' | 'rank' | 'average' | 'mention' | null;
+      if (cellKey && (cellType === 'name' || cellType === 'note')) {
+        const start = inputEl.selectionStart ?? 0;
+        const end = inputEl.selectionEnd ?? 0;
+        if (end > start && inputEl.value.slice(start, end).length > 0) {
+          return {
+            cellKey,
+            cellType,
+            elementId: inputEl.id || undefined,
+            start,
+            end
+          };
+        }
+      }
+      return null;
+    }
+
+    // Cas 2 : Sélection sur une cellule texte autorisée (RANG uniquement ; MOYENNE et MENTION sont bloquées)
+    const sel = window.getSelection();
+    if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) {
+      const anchorNode = sel.anchorNode;
+      const anchorEl = anchorNode?.nodeType === Node.TEXT_NODE
+        ? anchorNode.parentElement
+        : (anchorNode as HTMLElement | null);
+      const cellEl = anchorEl?.closest?.('[data-cell-key]') as HTMLElement | null;
+      if (cellEl) {
+        const cellKey = cellEl.getAttribute('data-cell-key');
+        const cellType = cellEl.getAttribute('data-cell-type') as 'name' | 'note' | 'rank' | 'average' | 'mention' | null;
+        if (cellKey && cellType && cellType !== 'average' && cellType !== 'mention') {
+          return {
+            cellKey,
+            cellType,
+            isDomSelection: true
+          };
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // Suivi ultra-fiable en temps réel du texte réellement surligné (selectionchange + mouseup/pointerup/keyup globaux)
+  useEffect(() => {
+    let rafId: number | null = null;
+
+    const syncFromDom = () => {
+      const activeEl = document.activeElement as HTMLElement | null;
+      // Ne pas effacer le surlignement mémorisé si l'utilisateur tape dans la barre de recherche des polices
       if (activeEl?.getAttribute('data-font-search') === 'true') {
         return;
       }
 
-      // Cas 1 : Sélection à l'intérieur d'un champ <input> (Nom, Note, Barème, Barre fx)
-      if (activeEl && activeEl.tagName === 'INPUT') {
-        const inputEl = activeEl as HTMLInputElement;
-        const cellKey = inputEl.getAttribute('data-cell-key');
-        const cellType = inputEl.getAttribute('data-cell-type') as 'name' | 'note' | 'rank' | 'average' | 'mention' | null;
-        if (cellKey && cellType) {
-          const start = inputEl.selectionStart ?? 0;
-          const end = inputEl.selectionEnd ?? 0;
-          const selectedText = inputEl.value.slice(start, end);
-          if (end > start && selectedText.length > 0) {
-            setHighlightedTarget({
-              cellKey,
-              cellType,
-              elementId: inputEl.id || undefined,
-              start,
-              end
-            });
-          } else {
-            setHighlightedTarget(null);
+      const live = readLiveHighlightedTarget();
+      if (live) {
+        setHighlightedTarget(prev => {
+          if (
+            prev &&
+            prev.cellKey === live.cellKey &&
+            prev.elementId === live.elementId &&
+            prev.start === live.start &&
+            prev.end === live.end &&
+            prev.isDomSelection === live.isDomSelection
+          ) {
+            return prev;
           }
-          return;
-        }
-      }
-
-      // Cas 2 : Sélection de texte sur une cellule en lecture seule (RANG, MOYENNE, MENTION)
-      const sel = window.getSelection();
-      if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) {
-        const anchorNode = sel.anchorNode;
-        const anchorEl = anchorNode?.nodeType === Node.TEXT_NODE
-          ? anchorNode.parentElement
-          : (anchorNode as HTMLElement | null);
-        const cellEl = anchorEl?.closest?.('[data-cell-key]') as HTMLElement | null;
-        if (cellEl) {
-          const cellKey = cellEl.getAttribute('data-cell-key');
-          const cellType = cellEl.getAttribute('data-cell-type') as 'name' | 'note' | 'rank' | 'average' | 'mention' | null;
-          if (cellKey && cellType) {
-            setHighlightedTarget({
-              cellKey,
-              cellType,
-              isDomSelection: true
-            });
-            return;
-          }
-        }
-      }
-
-      if (!isFontFamilyMenuOpenRef.current) {
-        setHighlightedTarget(null);
+          return live;
+        });
+      } else if (!isFontFamilyMenuOpenRef.current) {
+        setHighlightedTarget(prev => (prev === null ? prev : null));
       }
     };
 
-    document.addEventListener('selectionchange', handleDocumentSelectionChange);
-    return () => document.removeEventListener('selectionchange', handleDocumentSelectionChange);
+    const scheduleSync = () => {
+      syncFromDom();
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        syncFromDom();
+      });
+    };
+
+    document.addEventListener('selectionchange', syncFromDom);
+    window.addEventListener('mouseup', scheduleSync, true);
+    window.addEventListener('pointerup', scheduleSync, true);
+    window.addEventListener('keyup', scheduleSync, true);
+
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      document.removeEventListener('selectionchange', syncFromDom);
+      window.removeEventListener('mouseup', scheduleSync, true);
+      window.removeEventListener('pointerup', scheduleSync, true);
+      window.removeEventListener('keyup', scheduleSync, true);
+    };
   }, []);
 
   // Gestion du zoom avec touchpad (Ctrl + wheel) et tactile 2 doigts
@@ -1200,12 +1245,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     }
   };
 
-  const restoreInputHighlightIfNeeded = () => {
-    if (highlightedTarget?.elementId && highlightedTarget.start !== undefined && highlightedTarget.end !== undefined) {
-      const targetEl = document.getElementById(highlightedTarget.elementId) as HTMLInputElement | null;
+  const restoreInputHighlightIfNeeded = (targetOverride?: typeof highlightedTarget) => {
+    const tgt = targetOverride || highlightedTarget;
+    if (tgt?.elementId && tgt.start !== undefined && tgt.end !== undefined) {
+      const targetEl = document.getElementById(tgt.elementId) as HTMLInputElement | null;
       if (targetEl) {
-        const start = highlightedTarget.start;
-        const end = highlightedTarget.end;
+        const start = tgt.start;
+        const end = tgt.end;
         requestAnimationFrame(() => {
           targetEl.focus({ preventScroll: true });
           try {
@@ -1218,56 +1264,34 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     }
   };
 
+  // Ne cible UNIQUEMENT que l'élément réellement surligné par l'utilisateur (jamais un trait redimensionné)
   const getTargetKeysForFormatting = (): string[] => {
-    // 1. Priorité absolue : texte ou élément réellement surligné ("souligné") par l'utilisateur
     if (highlightedTarget?.cellKey) {
       return [highlightedTarget.cellKey];
     }
-    // 2. Sélection explicite d'une ligne entière ou d'une colonne entière (double-clic sur un trait)
-    if (selectedLine?.type === 'row') {
-      const rIdx = parseInt(selectedLine.id.replace('row-', ''), 10);
-      const std = students[rIdx];
-      if (std) {
-        const keys = [`${std.id}_name`, `${std.id}_rank`, `${std.id}_avg`, `${std.id}_mention`];
-        for (let c = 0; c < noteColumnCount; c++) {
-          keys.push(`${std.id}_${c}`);
-        }
-        return keys;
-      }
-    }
-    if (selectedLine?.type === 'col') {
-      const colId = selectedLine.id;
-      if (colId === 'col-name') {
-        return students.map(s => `${s.id}_name`);
-      }
-      if (colId === 'col-rank') {
-        return students.map(s => `${s.id}_rank`);
-      }
-      if (colId === 'col-moyenne') {
-        return students.map(s => `${s.id}_avg`);
-      }
-      if (colId === 'col-mention') {
-        return students.map(s => `${s.id}_mention`);
-      }
-      if (colId.startsWith('col-note-')) {
-        const cIdx = parseInt(colId.replace('col-note-', ''), 10);
-        return students.map(s => `${s.id}_${cIdx}`);
-      }
-    }
-    // 3. Si rien n'est surligné (même si le curseur vient d'entrer dans une case), aucune cellule n'est ciblée !
     return [];
   };
 
-  const updateActiveCellFormatting = (updates: Partial<CellCustomStyle>) => {
-    const targetKeys = getTargetKeysForFormatting();
-    if (targetKeys.length === 0) return;
-    setCellCustomStyles(prev => {
-      const next = { ...prev };
-      targetKeys.forEach(k => {
-        next[k] = { ...next[k], ...updates };
-      });
-      return next;
-    });
+  // Vérification en direct dans le DOM au moment exact du clic sur un bouton du ruban
+  const getLiveTargetForAction = () => {
+    const live = readLiveHighlightedTarget();
+    if (live) {
+      setHighlightedTarget(live);
+      return live;
+    }
+    // Exception unique : pendant que le menu déroulant des polices est ouvert avec recherche active
+    if (isFontFamilyMenuOpenRef.current && highlightedTarget) {
+      return highlightedTarget;
+    }
+    setHighlightedTarget(null);
+    return null;
+  };
+
+  const updateCellStyleByKey = (cellKey: string, updates: Partial<CellCustomStyle>) => {
+    setCellCustomStyles(prev => ({
+      ...prev,
+      [cellKey]: { ...prev[cellKey], ...updates }
+    }));
     setIsSaved(false);
   };
 
@@ -1314,7 +1338,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const activeFontSize = hasActiveFormatTarget ? (activeCustomFormat?.fontSize || 12) : 12;
   const activeTextColor = hasActiveFormatTarget ? (activeCustomFormat?.color || '#0f172a') : '#0f172a';
   const activeBgColor = hasActiveFormatTarget ? (activeCustomFormat?.bgColor || '') : '';
-  const activeTextAlign = hasActiveFormatTarget ? (activeCustomFormat?.textAlign || 'center') : 'center';
+  // Aucun bouton d'alignement ne s'allume tout seul tant que l'utilisateur ne l'a pas choisi sur cet élément
+  const activeTextAlign = hasActiveFormatTarget ? activeCustomFormat?.textAlign : undefined;
 
   const filteredFonts = useMemo(() => {
     if (!fontSearchQuery.trim()) return AVAILABLE_FONT_FAMILIES;
@@ -1323,61 +1348,78 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   }, [fontSearchQuery]);
 
   const toggleBold = () => {
-    if (!hasActiveFormatTarget) return;
-    updateActiveCellFormatting({ bold: !activeIsBold });
+    const target = getLiveTargetForAction();
+    if (!target) return;
+    const current = Boolean(cellCustomStyles[target.cellKey]?.bold);
+    updateCellStyleByKey(target.cellKey, { bold: !current });
   };
 
   const toggleItalic = () => {
-    if (!hasActiveFormatTarget) return;
-    updateActiveCellFormatting({ italic: !activeIsItalic });
+    const target = getLiveTargetForAction();
+    if (!target) return;
+    const current = Boolean(cellCustomStyles[target.cellKey]?.italic);
+    updateCellStyleByKey(target.cellKey, { italic: !current });
   };
 
   const toggleUnderline = () => {
-    if (!hasActiveFormatTarget) return;
-    updateActiveCellFormatting({ underline: !activeIsUnderline });
+    const target = getLiveTargetForAction();
+    if (!target) return;
+    const current = Boolean(cellCustomStyles[target.cellKey]?.underline);
+    updateCellStyleByKey(target.cellKey, { underline: !current });
   };
 
   const toggleStrikethrough = () => {
-    if (!hasActiveFormatTarget) return;
-    updateActiveCellFormatting({ strikethrough: !activeIsStrikethrough });
+    const target = getLiveTargetForAction();
+    if (!target) return;
+    const current = Boolean(cellCustomStyles[target.cellKey]?.strikethrough);
+    updateCellStyleByKey(target.cellKey, { strikethrough: !current });
   };
 
   const applyFontSize = (size: number) => {
-    if (!hasActiveFormatTarget) return;
-    updateActiveCellFormatting({ fontSize: size });
+    const target = getLiveTargetForAction();
+    if (!target) return;
+    updateCellStyleByKey(target.cellKey, { fontSize: size });
   };
 
   const increaseFontSize = () => {
-    if (!hasActiveFormatTarget) return;
-    const nextSize = Math.min(48, activeFontSize + 1);
-    updateActiveCellFormatting({ fontSize: nextSize });
+    const target = getLiveTargetForAction();
+    if (!target) return;
+    const currentSize = cellCustomStyles[target.cellKey]?.fontSize || 12;
+    const nextSize = Math.min(48, currentSize + 1);
+    updateCellStyleByKey(target.cellKey, { fontSize: nextSize });
   };
 
   const decreaseFontSize = () => {
-    if (!hasActiveFormatTarget) return;
-    const prevSize = Math.max(8, activeFontSize - 1);
-    updateActiveCellFormatting({ fontSize: prevSize });
+    const target = getLiveTargetForAction();
+    if (!target) return;
+    const currentSize = cellCustomStyles[target.cellKey]?.fontSize || 12;
+    const prevSize = Math.max(8, currentSize - 1);
+    updateCellStyleByKey(target.cellKey, { fontSize: prevSize });
   };
 
   const applyFontFamily = (family: string) => {
-    if (!hasActiveFormatTarget) return;
-    updateActiveCellFormatting({ fontFamily: family });
-    restoreInputHighlightIfNeeded();
+    const target = getLiveTargetForAction();
+    if (!target) return;
+    updateCellStyleByKey(target.cellKey, { fontFamily: family });
+    restoreInputHighlightIfNeeded(target);
   };
 
   const applyTextColor = (color: string) => {
-    if (!hasActiveFormatTarget) return;
-    updateActiveCellFormatting({ color });
+    const target = getLiveTargetForAction();
+    if (!target) return;
+    updateCellStyleByKey(target.cellKey, { color });
   };
 
   const applyBgColor = (color: string) => {
-    if (!hasActiveFormatTarget) return;
-    updateActiveCellFormatting({ bgColor: color });
+    const target = getLiveTargetForAction();
+    if (!target) return;
+    updateCellStyleByKey(target.cellKey, { bgColor: color });
   };
 
   const applyTextAlign = (align: 'left' | 'center' | 'right') => {
-    if (!hasActiveFormatTarget) return;
-    updateActiveCellFormatting({ textAlign: align });
+    const target = getLiveTargetForAction();
+    if (!target) return;
+    updateCellStyleByKey(target.cellKey, { textAlign: align });
   };
 
   const handleCopyEntireTable = async () => {
@@ -3215,12 +3257,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       const rankCustom = cellCustomStyles[`${std.id}_rank`];
                       const rankCellStyle = getResolvedCellStyle(`${std.id}_rank`, 'center');
                       const rankCellBg = rankCellStyle.backgroundColor || rowBg || undefined;
-                      const avgCustom = cellCustomStyles[`${std.id}_avg`];
-                      const avgCellStyle = getResolvedCellStyle(`${std.id}_avg`, 'center');
-                      const avgCellBg = avgCellStyle.backgroundColor || rowBg || undefined;
-                      const mentionCustom = cellCustomStyles[`${std.id}_mention`];
-                      const mentionCellStyle = getResolvedCellStyle(`${std.id}_mention`, 'center');
-                      const mentionCellBg = mentionCellStyle.backgroundColor || rowBg || undefined;
                       const isRowMenuOpen = activeMenuRow === std.id || activeMenuPhoto === std.id || activeMenuCell?.studentId === std.id;
 
                       return (
@@ -3956,68 +3992,45 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             <span className="text-slate-200 text-xs">•</span>
                           </div>
 
-                          {/* MOYENNE */}
+                          {/* MOYENNE (CASE BLOQUÉE EN LECTURE SEULE, NON SÉLECTIONNABLE) */}
                           <div 
                             style={{ 
                               width: `${effectiveColWidthAverage}px`, 
                               minWidth: `${effectiveColWidthAverage}px`,
                               maxWidth: `${effectiveColWidthAverage}px`,
                               height: `${rowHeight}px`,
-                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : avgCellBg
+                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : (rowBg || undefined)
                             }}
-                            onClick={() => {
-                              setActiveCellInfo({
-                                id: `cell-avg-${rIdx}`,
-                                type: 'average',
-                                rowIndex: rIdx,
-                                coordDisplay: `MOY${rIdx + 1}`,
-                                value: std.hasInvalidNote
-                                  ? 'Moyenne bloquée : une ou plusieurs notes dépassent le barème maximal'
-                                  : std.average !== null 
-                                  ? `=MOYENNE(Notes) => ${std.averageFormatted} / 20` 
-                                  : ''
-                              });
-                            }}
-                            onDoubleClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' });
+                            onMouseDown={(e) => {
+                              // Empêcher toute sélection de texte ou de case dans la colonne Moyenne
+                              if (!(e.target as HTMLElement)?.closest('button, [data-interactive="true"]')) {
+                                e.preventDefault();
+                              }
                             }}
                             className={`border-r ${isColActive('col-moyenne') ? 'border-r-white z-10' : 'border-r-slate-700'} border-b ${
                               isRowLineActive ? 'border-b-white z-10' : 'border-b-slate-600'
-                            } flex items-center justify-between px-2 cursor-pointer relative shrink-0 transition-colors ${
+                            } flex items-center justify-between px-2 select-none cursor-default relative shrink-0 transition-colors ${
                               std.hasInvalidNote
                                 ? 'bg-slate-200 text-slate-400 border border-slate-300'
-                                : avgCellBg ? '' : 'bg-blue-50/40'
-                            } ${
-                              activeCellInfo.id === `cell-avg-${rIdx}` ? `outline-2 outline-[#107c41] -outline-offset-2 z-10 ${avgCellBg ? '' : 'bg-blue-100/50'}` : ''
+                                : rowBg ? '' : 'bg-blue-50/40'
                             }`}
                             title={
                               std.hasInvalidNote
                                 ? 'Moyenne non calculée : une note dépasse le barème maximal'
-                                : 'Moyenne générale de l\'élève (sur 20)'
+                                : 'Moyenne générale calculée automatiquement (case bloquée)'
                             }
                           >
                             <span
-                              data-cell-key={!std.hasInvalidNote && std.average !== null ? `${std.id}_avg` : undefined}
-                              data-cell-type={!std.hasInvalidNote && std.average !== null ? 'average' : undefined}
-                              style={!std.hasInvalidNote && std.average !== null && avgCustom ? {
-                                fontWeight: avgCustom.bold !== undefined ? (avgCustom.bold ? '900' : '400') : undefined,
-                                fontStyle: avgCustom.italic ? 'italic' : undefined,
-                                textDecoration: avgCellStyle.textDecoration !== 'none' ? avgCellStyle.textDecoration : undefined,
-                                fontFamily: avgCustom.fontFamily || undefined,
-                                fontSize: avgCustom.fontSize ? `${avgCustom.fontSize}px` : undefined,
-                                color: avgCustom.color || undefined
-                              } : undefined}
-                              className={`w-full text-center text-xs font-black tracking-tight flex items-center justify-center gap-1 ${
+                              className={`w-full text-center text-xs font-black tracking-tight flex items-center justify-center gap-1 select-none pointer-events-none ${
                                 std.hasInvalidNote
                                   ? 'text-slate-400 font-mono text-sm tracking-widest'
                                   : std.average === null
                                   ? 'text-slate-300'
                                   : std.average >= 12
-                                  ? 'select-text cursor-text text-emerald-700 bg-emerald-50/90 py-0.5 px-1.5 rounded border border-emerald-300'
+                                  ? 'text-emerald-700 bg-emerald-50/90 py-0.5 px-1.5 rounded border border-emerald-300'
                                   : std.average >= 10
-                                  ? 'select-text cursor-text text-blue-700 bg-blue-50/90 py-0.5 px-1.5 rounded border border-blue-300'
-                                  : 'select-text cursor-text text-rose-700 bg-rose-50/90 py-0.5 px-1.5 rounded border border-rose-300'
+                                  ? 'text-blue-700 bg-blue-50/90 py-0.5 px-1.5 rounded border border-blue-300'
+                                  : 'text-rose-700 bg-rose-50/90 py-0.5 px-1.5 rounded border border-rose-300'
                               }`}
                             >
                               {std.hasInvalidNote ? (
@@ -4046,61 +4059,38 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             {renderColHandle('col-moyenne')}
                           </div>
 
-                          {/* MENTION */}
+                          {/* MENTION (CASE BLOQUÉE EN LECTURE SEULE, NON SÉLECTIONNABLE) */}
                           <div 
                             style={{ 
                               width: `${effectiveColWidthMention}px`, 
                               minWidth: `${effectiveColWidthMention}px`,
                               maxWidth: `${effectiveColWidthMention}px`,
                               height: `${rowHeight}px`,
-                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : mentionCellBg
+                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : (rowBg || undefined)
                             }}
-                            onClick={() => {
-                              setActiveCellInfo({
-                                id: `cell-mention-${rIdx}`,
-                                type: 'mention',
-                                rowIndex: rIdx,
-                                coordDisplay: `MEN${rIdx + 1}`,
-                                value: std.hasInvalidNote
-                                  ? 'Mention bloquée : note non valide'
-                                  : std.mention && std.mention !== '-'
-                                  ? `=MENTION(M${rIdx + 1}) => ${std.mention}`
-                                  : '-'
-                              });
-                            }}
-                            onDoubleClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-mention') ? null : { type: 'col', id: 'col-mention' });
+                            onMouseDown={(e) => {
+                              // Empêcher toute sélection de texte ou de case dans la colonne Mention
+                              if (!(e.target as HTMLElement)?.closest('button, [data-interactive="true"]')) {
+                                e.preventDefault();
+                              }
                             }}
                             className={`border-r ${isColActive('col-mention') ? 'border-r-white z-10' : 'border-r-slate-700'} border-b ${
                               isRowLineActive ? 'border-b-white z-10' : 'border-b-slate-600'
-                            } flex items-center justify-center px-2 cursor-pointer relative shrink-0 transition-colors ${
+                            } flex items-center justify-center px-2 select-none cursor-default relative shrink-0 transition-colors ${
                               std.hasInvalidNote
                                 ? 'bg-slate-200 text-slate-400 border border-slate-300'
-                                : mentionCellBg ? '' : 'bg-emerald-50/20'
-                            } ${
-                              activeCellInfo.id === `cell-mention-${rIdx}` ? `outline-2 outline-[#107c41] -outline-offset-2 z-10 ${mentionCellBg ? '' : 'bg-emerald-100/50'}` : ''
+                                : rowBg ? '' : 'bg-emerald-50/20'
                             }`}
-                            title="Mention pédagogique de l'élève"
+                            title="Mention pédagogique calculée automatiquement (case bloquée)"
                           >
                             {std.mention && std.mention !== '-' ? (
                               <span
-                                data-cell-key={`${std.id}_mention`}
-                                data-cell-type="mention"
-                                style={mentionCustom ? {
-                                  fontWeight: mentionCustom.bold !== undefined ? (mentionCustom.bold ? '900' : '400') : undefined,
-                                  fontStyle: mentionCustom.italic ? 'italic' : undefined,
-                                  textDecoration: mentionCellStyle.textDecoration !== 'none' ? mentionCellStyle.textDecoration : undefined,
-                                  fontFamily: mentionCustom.fontFamily || undefined,
-                                  fontSize: mentionCustom.fontSize ? `${mentionCustom.fontSize}px` : undefined,
-                                  color: mentionCustom.color || undefined
-                                } : undefined}
-                                className={`select-text cursor-text px-2 py-0.5 rounded-md text-[11px] sm:text-xs border shadow-2xs whitespace-nowrap tracking-tight ${std.mentionClass}`}
+                                className={`select-none pointer-events-none px-2 py-0.5 rounded-md text-[11px] sm:text-xs border shadow-2xs whitespace-nowrap tracking-tight ${std.mentionClass}`}
                               >
                                 {std.mention}
                               </span>
                             ) : (
-                              <span className="text-slate-300 text-xs font-semibold">-</span>
+                              <span className="text-slate-300 text-xs font-semibold select-none pointer-events-none">-</span>
                             )}
                             {renderColHandle('col-mention')}
                           </div>
