@@ -191,3 +191,25 @@ test('rangs de classe avec tri décroissant, ex æquo (tolérance flottante 1e-6
   // e4 sans moyenne => "—"
   assert.deepEqual(ranks.get('e4'), { id: 'e4', rankNumber: null, rankLabel: '—', isExAequo: false });
 });
+
+test('barèmes personnalisés variés (/5, /10, /12.5, /30, /40, /100) et détection note > max', () => {
+  // 4/5 -> 16/20, 8/10 -> 16/20, 10/12.5 -> 16/20, 80/100 -> 16/20 => moyenne exacte 16.00
+  const adapted = calculateSubjectAverage([
+    { valeur: 4, max: 5 },
+    { valeur: 8, max: 10 },
+    { valeur: 10, max: 12.5 },
+    { valeur: 80, max: 100 }
+  ]);
+  assert.equal(adapted.evaluationsValides, 4);
+  assert.equal(adapted.hasExceedingScore, false);
+  assert.ok(adapted.moyenneMatiere !== null && Math.abs(adapted.moyenneMatiere - 16) < 1e-12);
+  assert.equal(getMention(adapted.moyenneMatiere), 'Très bien');
+
+  // Note > max (ex: 12/10) détectée par hasExceedingScore
+  const exceeding = calculateSubjectAverage(
+    [{ valeur: 12, max: 10 }],
+    { rejectExceedingMax: true }
+  );
+  assert.equal(exceeding.hasExceedingScore, true);
+  assert.equal(exceeding.moyenneMatiere, null);
+});

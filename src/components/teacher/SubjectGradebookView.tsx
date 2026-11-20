@@ -78,41 +78,63 @@ export interface StudentGradeRow {
 // Analyse d'une note d'élève stockée ("score/max" ou "score")
 export interface ParsedNote {
   scoreStr: string;
+  maxScoreStr: string;
   maxScore: number;
   scoreNum: number | null;
-  isInvalid: boolean; // true si scoreNum > maxScore
+  isInvalid: boolean;     // true si scoreNum > maxScore ou si maxScore <= 0 avec une note saisie
+  hasInvalidMax: boolean; // true si le barème saisi derrière / est vide ou <= 0
 }
+
+const sanitizeDecimalInput = (raw: string): string => {
+  const normalized = (raw || '').replace(/,/g, '.').replace(/[^0-9.]/g, '');
+  const parts = normalized.split('.');
+  if (parts.length <= 1) return normalized;
+  return `${parts[0]}.${parts.slice(1).join('')}`;
+};
 
 export const parseStudentNote = (rawVal: string, defaultMax = 20): ParsedNote => {
   const safe = (rawVal || '').trim();
+  const fallbackMax = defaultMax > 0 ? defaultMax : 20;
   let scoreStr = '';
-  let maxScore = defaultMax > 0 ? defaultMax : 20;
+  let maxScoreStr = String(fallbackMax);
+  let maxScore = fallbackMax;
+  let hasInvalidMax = false;
 
   if (safe.includes('/')) {
     const parts = safe.split('/');
-    scoreStr = (parts[0] || '').trim();
-    const parsedMax = parseFloat((parts[1] || '').trim().replace(',', '.'));
+    scoreStr = sanitizeDecimalInput(parts[0] || '');
+    maxScoreStr = sanitizeDecimalInput(parts[1] || '');
+    const parsedMax = maxScoreStr !== '' ? parseFloat(maxScoreStr) : NaN;
     if (!isNaN(parsedMax) && parsedMax > 0) {
       maxScore = parsedMax;
+    } else {
+      maxScore = 0;
+      hasInvalidMax = true;
     }
   } else {
-    scoreStr = safe;
+    scoreStr = sanitizeDecimalInput(safe);
   }
 
-  scoreStr = scoreStr.replace(/[^0-9.,]/g, '');
-  const scoreNum = scoreStr !== '' ? parseFloat(scoreStr.replace(',', '.')) : null;
-  const isInvalid = scoreNum !== null && !isNaN(scoreNum) && scoreNum > maxScore;
+  const parsedScore = scoreStr !== '' ? parseFloat(scoreStr) : null;
+  const scoreNum = parsedScore !== null && !isNaN(parsedScore) ? parsedScore : null;
+  const isInvalid = scoreNum !== null && (hasInvalidMax || scoreNum > maxScore);
 
   return {
     scoreStr,
+    maxScoreStr,
     maxScore,
-    scoreNum: scoreNum !== null && !isNaN(scoreNum) ? scoreNum : null,
-    isInvalid
+    scoreNum,
+    isInvalid,
+    hasInvalidMax
   };
 };
 
-export const formatStudentNote = (scoreStr: string, maxScore: number): string => {
-  const cleanScore = (scoreStr || '').trim().replace(/[^0-9.,]/g, '');
+export const formatStudentNote = (scoreStr: string, maxScore: number | string): string => {
+  const cleanScore = sanitizeDecimalInput(scoreStr);
+  if (typeof maxScore === 'string') {
+    const cleanMax = sanitizeDecimalInput(maxScore);
+    return `${cleanScore}/${cleanMax}`;
+  }
   return `${cleanScore}/${maxScore > 0 ? maxScore : 20}`;
 };
 
@@ -3800,11 +3822,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   </div>
                                 )}
 
-                                {/* INFOBULLE FLOTTANTE SANS BLOQUER LA VUE SI NOTE > MAX */}
+                                {/* INFOBULLE FLOTTANTE SANS BLOQUER LA VUE SI NOTE > MAX OU BARÈME INVALIDE */}
                                 {isInvalid && (
                                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1 bg-red-600 text-white text-[10px] font-bold rounded-lg shadow-xl whitespace-nowrap z-50 pointer-events-none flex items-center gap-1.5 animate-in fade-in zoom-in-95">
                                     <AlertCircle className="w-3.5 h-3.5 text-white shrink-0" />
-                                    <span>⚠️ La note ne peut pas être supérieure à la note maximale ({parsed.maxScore})</span>
+                                    <span>
+                                      {parsed.hasInvalidMax
+                                        ? '⚠️ Le barème maximal doit être supérieur à 0'
+                                        : `⚠️ La note ne peut pas être supérieure à la note maximale (${parsed.maxScore})`}
+                                    </span>
                                   </div>
                                 )}
 
@@ -3844,8 +3870,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         }, 3500);
                                         return;
                                       }
-                                      const sanitized = e.target.value.replace(/[^0-9.]/g, '');
-                                      const newRaw = formatStudentNote(sanitized, parsed.maxScore);
+                                      const sanitized = sanitizeDecimalInput(e.target.value);
+                                      const newRaw = formatStudentNote(sanitized, parsed.maxScoreStr !== '' ? parsed.maxScoreStr : (colMeta.maxScore || 20));
                                       handleRawNoteChange(std.id, cIdx, newRaw);
                                     }}
                                     onFocus={(e) => {
@@ -3855,7 +3881,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         rowIndex: rIdx,
                                         noteColIndex: cIdx,
                                         coordDisplay: `N${cIdx + 1}_${rIdx + 1}`,
-                                        value: noteVal || `.../${parsed.maxScore}`
+                                        value: noteVal || `.../${parsed.maxScoreStr || colMeta.maxScore || 20}`
                                       });
                                       syncInputHighlight(e.currentTarget, noteCellKey, 'note');
                                     }}
@@ -3909,35 +3935,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     /
                                   </span>
 
-                                  {/* Barème maximal (défaut 20, modifiable) ULTRA VISIBLE */}
+                                  {/* Barème maximal (défaut 20, entièrement modifiable librement) ULTRA VISIBLE */}
                                   <input
                                     id={`input-note-max-${std.id}-${cIdx}`}
                                     type="text"
                                     data-cell-key={noteCellKey}
                                     data-cell-type="note"
-                                    value={parsed.maxScore}
-                                    onKeyDown={(e) => {
-                                      if (!hasStudentName && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                                        e.preventDefault();
-                                        setBlockedNoteTarget({ studentId: std.id, colIndex: cIdx });
-                                        document.getElementById(`input-name-${std.id}`)?.focus();
-                                        setTimeout(() => {
-                                          setBlockedNoteTarget(prev => (prev?.studentId === std.id && prev?.colIndex === cIdx) ? null : prev);
-                                        }, 3500);
-                                      }
-                                    }}
+                                    value={parsed.maxScoreStr}
                                     onChange={(e) => {
-                                      if (!hasStudentName) {
-                                        setBlockedNoteTarget({ studentId: std.id, colIndex: cIdx });
-                                        document.getElementById(`input-name-${std.id}`)?.focus();
-                                        setTimeout(() => {
-                                          setBlockedNoteTarget(prev => (prev?.studentId === std.id && prev?.colIndex === cIdx) ? null : prev);
-                                        }, 3500);
-                                        return;
-                                      }
-                                      const sanitizedMax = e.target.value.replace(/[^0-9.]/g, '');
-                                      const newMax = parseFloat(sanitizedMax) || 20;
-                                      const newRaw = formatStudentNote(parsed.scoreStr, newMax);
+                                      const sanitizedMax = sanitizeDecimalInput(e.target.value);
+                                      const newRaw = formatStudentNote(parsed.scoreStr, sanitizedMax);
                                       handleRawNoteChange(std.id, cIdx, newRaw);
                                     }}
                                     onFocus={(e) => {
@@ -3947,7 +3954,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         rowIndex: rIdx,
                                         noteColIndex: cIdx,
                                         coordDisplay: `N${cIdx + 1}_${rIdx + 1}`,
-                                        value: noteVal || `.../${parsed.maxScore}`
+                                        value: noteVal || `.../${parsed.maxScoreStr || colMeta.maxScore || 20}`
                                       });
                                       syncInputHighlight(e.currentTarget, noteCellKey, 'note');
                                     }}
@@ -3959,8 +3966,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       if (!isFontFamilyMenuOpenRef.current) {
                                         setHighlightedTarget(prev => prev?.elementId === `input-note-max-${std.id}-${cIdx}` ? null : prev);
                                       }
+                                      // Si laissé vide ou <= 0 en quittant la case, rétablir le barème par défaut de la colonne
+                                      if (parsed.hasInvalidMax || parsed.maxScore <= 0) {
+                                        const fallbackMax = colMeta.maxScore > 0 ? colMeta.maxScore : 20;
+                                        handleRawNoteChange(std.id, cIdx, formatStudentNote(parsed.scoreStr, fallbackMax));
+                                      }
                                     }}
-                                    maxLength={4}
+                                    placeholder={String(colMeta.maxScore || 20)}
+                                    maxLength={6}
                                     style={{
                                       fontWeight: noteCellStyle.fontWeight,
                                       fontStyle: noteCellStyle.fontStyle,
@@ -3971,10 +3984,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       backgroundColor: 'transparent',
                                       textAlign: 'left'
                                     }}
-                                    className={`w-[44%] min-w-0 text-left text-xs sm:text-sm transition outline-none bg-transparent cursor-text ${
+                                    className={`w-[44%] min-w-0 text-left text-xs sm:text-sm transition outline-none bg-transparent cursor-text placeholder:text-slate-300 ${
                                       noteCellStyle.color ? '' : 'text-slate-900 hover:text-blue-700 focus:text-blue-700'
                                     }`}
-                                    title="Barème maximal pour cette case"
+                                    title="Barème maximal modifiable librement (ex: 10, 20, 30, 40, 100...)"
                                   />
                                 </div>
 
