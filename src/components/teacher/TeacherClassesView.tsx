@@ -55,12 +55,24 @@ export interface SchoolItem {
   createdAt: number;
 }
 
+export interface StudyLevelItem {
+  id: string;
+  schoolId: string; // Attache le niveau d'étude à l'école sélectionnée
+  yearId: string; // Attache à l'année scolaire sélectionnée
+  name: string; // ex: "CP1", "6ème", "2nde", "Terminale", "Licence 1" (requis)
+  color?: string; // Couleur d'accent du bouton mince rectangulaire
+  textColor?: string;
+  borderColor?: string;
+  createdAt: number;
+}
+
 export interface ClassItem {
   id: string;
+  levelId?: string; // Attache la classe au niveau d'étude sélectionné
   schoolId: string; // Attache la classe à l'école sélectionnée
   yearId: string; // Attache à l'année scolaire sélectionnée
-  level: string; // ex: "CP1", "6ème", "Terminale" (requis)
-  name?: string; // ex: "A", "1", "Élite" (facultatif)
+  level: string; // Nom du niveau d'étude parent (ex: "CP1", "2nde", "Terminale")
+  name?: string; // Nom de la classe donné par l'utilisateur (ex: "2nde C1", "Classe A", "Groupe 1")
   slogan?: string; // ex: "Rigueur et Succès" (facultatif)
   teacherName: string; // ex: "M. Delmas Kouassi" (requis)
   subject?: string; // facultatif
@@ -71,6 +83,17 @@ export interface ClassItem {
   iconGradient: string;
   createdAt: number;
 }
+
+const getClassDisplayName = (cls: ClassItem): string => {
+  return cls.name?.trim() ? cls.name.trim() : cls.level;
+};
+
+const getClassFullLabel = (cls: ClassItem): string => {
+  const cname = cls.name?.trim();
+  if (!cname) return cls.level;
+  if (cname.toLowerCase().includes(cls.level.trim().toLowerCase())) return cname;
+  return `${cls.level} • ${cname}`;
+};
 
 export interface TermItem {
   id: string;
@@ -262,7 +285,42 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // École sélectionnée dans laquelle on est "rentré" à l'intérieur
   const [selectedSchoolInside, setSelectedSchoolInside] = useState<SchoolItem | null>(null);
 
-  // Classes créées attachées à chaque école (Persistance locale)
+  // Niveaux d'étude créés attachés à chaque école (CP1, 6ème, 2nde, Terminale, Licence 1...)
+  const [studyLevels, setStudyLevels] = useState<StudyLevelItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_teacher_study_levels');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      }
+    } catch { }
+    return [];
+  });
+
+  // Sauvegarde persistante des niveaux d'étude
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_teacher_study_levels', JSON.stringify(studyLevels));
+    } catch { }
+  }, [studyLevels]);
+
+  // Niveau d'étude activement sélectionné dans l'école
+  const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
+
+  // Référence pour le défilement horizontal fluide des niveaux d'étude
+  const levelsScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollLevels = (direction: 'left' | 'right') => {
+    if (levelsScrollRef.current) {
+      const scrollAmount = 240;
+      levelsScrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  // Classes créées attachées à chaque niveau d'étude & école (Persistance locale)
   const [classes, setClasses] = useState<ClassItem[]>(() => {
     try {
       const saved = localStorage.getItem('studycloud_teacher_classes');
@@ -281,7 +339,54 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     } catch { }
   }, [classes]);
 
-  // Classe activement sélectionnée parmi les classes de l'école (comme des boutons sélectionnables)
+  // Migration automatique : attacher toute ancienne classe sans levelId à un niveau d'étude créé automatiquement
+  useEffect(() => {
+    const unlinked = classes.filter(c => !c.levelId);
+    if (unlinked.length === 0) return;
+
+    const createdLevels: StudyLevelItem[] = [];
+    const levelIdByClassId = new Map<string, string>();
+
+    unlinked.forEach((cls, idx) => {
+      const cleanLevelName = (cls.level || 'Général').trim();
+      const slug = cleanLevelName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `lvl-${idx}`;
+      const existing = [...studyLevels, ...createdLevels].find(
+        l => l.schoolId === cls.schoolId && l.name.trim().toLowerCase() === cleanLevelName.toLowerCase()
+      );
+      if (existing) {
+        levelIdByClassId.set(cls.id, existing.id);
+      } else {
+        const deterministicId = `level-mig-${cls.schoolId}-${slug}`;
+        const newLevel: StudyLevelItem = {
+          id: deterministicId,
+          schoolId: cls.schoolId,
+          yearId: cls.yearId,
+          name: cleanLevelName,
+          color: '#ffffff',
+          textColor: '#0f172a',
+          borderColor: '#cbd5e1',
+          createdAt: cls.createdAt || Date.now() + idx,
+        };
+        createdLevels.push(newLevel);
+        levelIdByClassId.set(cls.id, deterministicId);
+      }
+    });
+
+    if (createdLevels.length > 0) {
+      setStudyLevels(prev => {
+        const toAdd = createdLevels.filter(
+          nl => !prev.some(p => p.id === nl.id || (p.schoolId === nl.schoolId && p.name.trim().toLowerCase() === nl.name.trim().toLowerCase()))
+        );
+        return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+      });
+    }
+
+    setClasses(prev =>
+      prev.map(c => (c.levelId ? c : { ...c, levelId: levelIdByClassId.get(c.id) || c.levelId }))
+    );
+  }, [classes, studyLevels]);
+
+  // Classe activement sélectionnée parmi les classes du niveau d'étude actif
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
 
   // Référence pour le défilement horizontal fluide des classes
@@ -289,7 +394,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   const scrollClasses = (direction: 'left' | 'right') => {
     if (classesScrollRef.current) {
-      const scrollAmount = 300;
+      const scrollAmount = 260;
       classesScrollRef.current.scrollBy({
         left: direction === 'left' ? -scrollAmount : scrollAmount,
         behavior: 'smooth'
@@ -341,10 +446,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // Matière sélectionnée dans laquelle on est "rentré" à l'intérieur pour afficher le tableur de notes & moyennes
   const [selectedSubjectInside, setSelectedSubjectInside] = useState<SubjectItem | null>(null);
 
-  // Réinitialiser la matière affichée si l'on change de classe, d'école ou de trimestre
+  // Réinitialiser la matière affichée si l'on change de niveau, de classe, d'école ou de trimestre
   useEffect(() => {
     setSelectedSubjectInside(null);
-  }, [selectedClassId, selectedSchoolInside, selectedTermId]);
+  }, [selectedLevelId, selectedClassId, selectedSchoolInside, selectedTermId]);
 
   // Référence pour le défilement horizontal fluide des trimestres
   const termsScrollRef = useRef<HTMLDivElement>(null);
@@ -396,7 +501,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   // --- ÉTATS POUR LES MENUS CONTEXTUELS "3 TRAITS", ÉDITION ET SUPPRESSION SÉCURISÉE ---
   interface ActiveMenuState {
-    type: 'school' | 'class' | 'subject';
+    type: 'school' | 'level' | 'class' | 'subject';
     id: string;
     item: any;
     position: { top: number; left: number };
@@ -405,7 +510,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   // Cible de suppression sécurisée (nécessite la saisie exacte du nom)
   interface DeleteTargetState {
-    type: 'school' | 'class' | 'subject';
+    type: 'school' | 'level' | 'class' | 'subject';
     id: string;
     name: string;
     displayName: string;
@@ -416,6 +521,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   // États des éléments en cours de modification
   const [editingSchool, setEditingSchool] = useState<SchoolItem | null>(null);
+  const [editingLevel, setEditingLevel] = useState<StudyLevelItem | null>(null);
   const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
   const [editingSubject, setEditingSubject] = useState<SubjectItem | null>(null);
 
@@ -443,7 +549,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // Positionnement intelligent du menu 3 traits (ne se coupe jamais dans le creux, ne déborde pas)
   const handleOpenMenu = (
     e: React.MouseEvent<HTMLButtonElement>,
-    type: 'school' | 'class' | 'subject',
+    type: 'school' | 'level' | 'class' | 'subject',
     item: any
   ) => {
     e.stopPropagation();
@@ -477,7 +583,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     });
   };
 
-  const handleTriggerEdit = (type: 'school' | 'class' | 'subject', item: any) => {
+  const handleTriggerEdit = (type: 'school' | 'level' | 'class' | 'subject', item: any) => {
     setActiveMenu(null);
     if (type === 'school') {
       const school = item as SchoolItem;
@@ -489,11 +595,19 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         SCHOOL_COLOR_OPTIONS[0]
       );
       setIsAddSchoolModalOpen(true);
+    } else if (type === 'level') {
+      const lvl = item as StudyLevelItem;
+      setEditingLevel(lvl);
+      setStudyLevelName(lvl.name);
+      setSelectedStudyLevelColor(
+        YEAR_COLOR_OPTIONS.find(c => c.bg === lvl.color) ||
+        YEAR_COLOR_OPTIONS[0]
+      );
+      setIsAddLevelModalOpen(true);
     } else if (type === 'class') {
       const cls = item as ClassItem;
       setEditingClass(cls);
-      setClassLevel(cls.level);
-      setClassName(cls.name || '');
+      setClassName(cls.name?.trim() || cls.level);
       setClassSlogan(cls.slogan || '');
       setClassTeacherName(cls.teacherName);
       setSelectedClassColor(
@@ -514,7 +628,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     }
   };
 
-  const handleTriggerDelete = (type: 'school' | 'class' | 'subject', item: any) => {
+  const handleTriggerDelete = (type: 'school' | 'level' | 'class' | 'subject', item: any) => {
     setActiveMenu(null);
     if (type === 'school') {
       const school = item as SchoolItem;
@@ -523,11 +637,20 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         id: school.id,
         name: school.name,
         displayName: `l'établissement "${school.name}"`,
-        warningMessage: "Toutes les classes, matières, évaluations et données associées à cet établissement seront définitivement supprimées."
+        warningMessage: "Tous les niveaux d'étude, classes, matières, évaluations et données associées à cet établissement seront définitivement supprimés."
+      });
+    } else if (type === 'level') {
+      const lvl = item as StudyLevelItem;
+      setDeleteTarget({
+        type: 'level',
+        id: lvl.id,
+        name: lvl.name,
+        displayName: `le niveau d'étude "${lvl.name}"`,
+        warningMessage: "Toutes les classes, trimestres, matières, élèves enregistrés, notes et moyennes associés à ce niveau d'étude seront définitivement supprimés."
       });
     } else if (type === 'class') {
       const cls = item as ClassItem;
-      const fullName = `${cls.level}${cls.name ? ' ' + cls.name : ''}`.trim();
+      const fullName = getClassDisplayName(cls);
       setDeleteTarget({
         type: 'class',
         id: cls.id,
@@ -556,11 +679,23 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     if (deleteTarget.type === 'school') {
       const id = deleteTarget.id;
       setSchools(prev => prev.filter(s => s.id !== id));
+      setStudyLevels(prev => prev.filter(l => l.schoolId !== id));
       setClasses(prev => prev.filter(c => c.schoolId !== id));
       setSubjects(prev => prev.filter(s => s.schoolId !== id));
       setTerms(prev => prev.filter(t => t.schoolId !== id));
       if (selectedSchoolId === id) setSelectedSchoolId(null);
       if (selectedSchoolInside?.id === id) setSelectedSchoolInside(null);
+      setSelectedLevelId(null);
+      setSelectedClassId(null);
+    } else if (deleteTarget.type === 'level') {
+      const id = deleteTarget.id;
+      const deletedClassIds = new Set(classes.filter(c => c.levelId === id).map(c => c.id));
+      setStudyLevels(prev => prev.filter(l => l.id !== id));
+      setClasses(prev => prev.filter(c => c.levelId !== id));
+      setSubjects(prev => prev.filter(s => !deletedClassIds.has(s.classId)));
+      setTerms(prev => prev.filter(t => !deletedClassIds.has(t.classId)));
+      if (selectedLevelId === id) setSelectedLevelId(null);
+      if (selectedClassId && deletedClassIds.has(selectedClassId)) setSelectedClassId(null);
     } else if (deleteTarget.type === 'class') {
       const id = deleteTarget.id;
       setClasses(prev => prev.filter(c => c.id !== id));
@@ -577,16 +712,70 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setDeleteConfirmInput('');
   };
 
-  // État du modal "Ajouter / Modifier une classe"
+  // État du modal "Créer / Modifier un niveau d'étude" (ex-menu de niveau CP1, Terminale, Licence...)
+  const [isAddLevelModalOpen, setIsAddLevelModalOpen] = useState(false);
+  const [studyLevelName, setStudyLevelName] = useState('');
+  const [selectedStudyLevelColor, setSelectedStudyLevelColor] = useState(YEAR_COLOR_OPTIONS[0]);
+
+  const resetLevelForm = () => {
+    setStudyLevelName('');
+    setSelectedStudyLevelColor(YEAR_COLOR_OPTIONS[0]);
+    setEditingLevel(null);
+  };
+
+  const isLevelDirty = editingLevel
+    ? (
+        studyLevelName.trim() !== editingLevel.name ||
+        selectedStudyLevelColor.bg !== (editingLevel.color || '#ffffff')
+      )
+    : studyLevelName.trim().length > 0;
+
+  const handleCreateStudyLevel = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const cleanName = studyLevelName.trim();
+    if (!cleanName) return;
+
+    if (editingLevel) {
+      if (!isLevelDirty) return;
+      const updatedLevel: StudyLevelItem = {
+        ...editingLevel,
+        name: cleanName,
+        color: selectedStudyLevelColor.bg,
+        textColor: selectedStudyLevelColor.text,
+        borderColor: selectedStudyLevelColor.border,
+      };
+      setStudyLevels(prev => prev.map(l => l.id === editingLevel.id ? updatedLevel : l));
+      // Synchroniser le nom du niveau sur toutes les classes rattachées
+      setClasses(prev => prev.map(c => c.levelId === editingLevel.id ? { ...c, level: cleanName } : c));
+      setIsAddLevelModalOpen(false);
+      resetLevelForm();
+    } else {
+      if (!selectedSchoolInside) return;
+      const newLevel: StudyLevelItem = {
+        id: `level-${Date.now()}`,
+        schoolId: selectedSchoolInside.id,
+        yearId: selectedSchoolInside.yearId,
+        name: cleanName,
+        color: selectedStudyLevelColor.bg,
+        textColor: selectedStudyLevelColor.text,
+        borderColor: selectedStudyLevelColor.border,
+        createdAt: Date.now(),
+      };
+      setStudyLevels(prev => [...prev, newLevel]);
+      setSelectedLevelId(newLevel.id);
+      setIsAddLevelModalOpen(false);
+      resetLevelForm();
+    }
+  };
+
+  // État du modal "Ajouter / Modifier une classe" (à l'intérieur du niveau d'étude actif)
   const [isAddClassModalOpen, setIsAddClassModalOpen] = useState(false);
-  const [classLevel, setClassLevel] = useState('');
   const [className, setClassName] = useState('');
   const [classSlogan, setClassSlogan] = useState('');
   const [classTeacherName, setClassTeacherName] = useState(user?.name || '');
   const [selectedClassColor, setSelectedClassColor] = useState(CLASS_COLOR_OPTIONS[0]); // Orange ambré style image
 
   const resetClassForm = () => {
-    setClassLevel('');
     setClassName('');
     setClassSlogan('');
     setClassTeacherName(user?.name || 'Professeur');
@@ -597,24 +786,22 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // Vérification de modification (Dirty) pour la classe
   const isClassDirty = editingClass
     ? (
-        classLevel.trim() !== editingClass.level ||
+        className.trim() !== (editingClass.name?.trim() || editingClass.level) ||
         classTeacherName.trim() !== editingClass.teacherName ||
-        (className.trim() || '') !== (editingClass.name || '') ||
         (classSlogan.trim() || '') !== (editingClass.slogan || '') ||
         selectedClassColor.bg !== editingClass.color
       )
-    : (classLevel.trim().length > 0 && classTeacherName.trim().length > 0);
+    : (className.trim().length > 0 && classTeacherName.trim().length > 0);
 
   const handleCreateClass = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!classLevel.trim() || !classTeacherName.trim()) return;
+    if (!className.trim() || !classTeacherName.trim()) return;
 
     if (editingClass) {
       if (!isClassDirty) return;
       const updated: ClassItem = {
         ...editingClass,
-        level: classLevel.trim(),
-        name: className.trim() || undefined,
+        name: className.trim(),
         slogan: classSlogan.trim() || undefined,
         teacherName: classTeacherName.trim(),
         color: selectedClassColor.bg,
@@ -627,14 +814,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setIsAddClassModalOpen(false);
       resetClassForm();
     } else {
-      if (!selectedSchoolInside) return;
+      if (!selectedSchoolInside || !activeLevel) return;
       const newClassId = `class-${Date.now()}`;
       const newClass: ClassItem = {
         id: newClassId,
+        levelId: activeLevel.id,
         schoolId: selectedSchoolInside.id,
         yearId: selectedSchoolInside.yearId,
-        level: classLevel.trim(),
-        name: className.trim() || undefined,
+        level: activeLevel.name,
+        name: className.trim(),
         slogan: classSlogan.trim() || undefined,
         teacherName: classTeacherName.trim(),
         color: selectedClassColor.bg,
@@ -723,9 +911,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         createdAt: Date.now()
       };
       setSubjects(prev => [...prev, newSubject]);
-      // Si l'espace de 3 lignes (15 matières) vient d'être totalement rempli, on bascule vers le nouvel espace vide
-      if ((currentClassSubjects.length + 1) % 15 === 0) {
-        setSubjectPageIndex(Math.floor((currentClassSubjects.length + 1) / 15));
+      // Si l'espace de 3 lignes (18 matières) vient d'être totalement rempli, on bascule vers le nouvel espace vide
+      if ((currentClassSubjects.length + 1) % 18 === 0) {
+        setSubjectPageIndex(Math.floor((currentClassSubjects.length + 1) / 18));
       }
       setIsAddSubjectModalOpen(false);
       resetSubjectForm();
@@ -921,25 +1109,50 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   const currentSelectedYear = schoolYears.find(y => y.id === selectedYearId) || schoolYears[0];
   const currentYearSchools = schools.filter(s => s.yearId === currentSelectedYear?.id);
-  const currentSchoolClasses = selectedSchoolInside
-    ? classes.filter(c => c.schoolId === selectedSchoolInside.id)
-    : [];
 
-  // Classe active (sélectionnée via les cartes boutons horizontales)
-  const activeClass = (selectedClassId && currentSchoolClasses.find(c => c.id === selectedClassId))
-    || currentSchoolClasses[0]
+  // Niveaux d'étude de l'école sélectionnée
+  const currentSchoolLevels = useMemo(() => {
+    if (!selectedSchoolInside) return [];
+    return studyLevels.filter(l => l.schoolId === selectedSchoolInside.id);
+  }, [studyLevels, selectedSchoolInside]);
+
+  // Niveau d'étude actif (sélectionné via la barre horizontale mince)
+  const activeLevel = (selectedLevelId && currentSchoolLevels.find(l => l.id === selectedLevelId))
+    || currentSchoolLevels[0]
     || null;
 
-  // Assurer que selectedClassId pointe toujours vers une classe valide si disponible
+  // Assurer que selectedLevelId pointe toujours vers un niveau valide si disponible
   useEffect(() => {
-    if (currentSchoolClasses.length > 0) {
-      if (!selectedClassId || !currentSchoolClasses.some(c => c.id === selectedClassId)) {
-        setSelectedClassId(currentSchoolClasses[0].id);
+    if (currentSchoolLevels.length > 0) {
+      if (!selectedLevelId || !currentSchoolLevels.some(l => l.id === selectedLevelId)) {
+        setSelectedLevelId(currentSchoolLevels[0].id);
+      }
+    } else {
+      setSelectedLevelId(null);
+    }
+  }, [currentSchoolLevels, selectedLevelId]);
+
+  // Classes rattachées au niveau d'étude actif dans l'école sélectionnée
+  const currentLevelClasses = useMemo(() => {
+    if (!selectedSchoolInside || !activeLevel) return [];
+    return classes.filter(c => c.schoolId === selectedSchoolInside.id && c.levelId === activeLevel.id);
+  }, [classes, selectedSchoolInside, activeLevel]);
+
+  // Classe active (sélectionnée via les cartes boutons horizontales 3D compactes)
+  const activeClass = (selectedClassId && currentLevelClasses.find(c => c.id === selectedClassId))
+    || currentLevelClasses[0]
+    || null;
+
+  // Assurer que selectedClassId pointe toujours vers une classe valide dans le niveau actif
+  useEffect(() => {
+    if (currentLevelClasses.length > 0) {
+      if (!selectedClassId || !currentLevelClasses.some(c => c.id === selectedClassId)) {
+        setSelectedClassId(currentLevelClasses[0].id);
       }
     } else {
       setSelectedClassId(null);
     }
-  }, [currentSchoolClasses, selectedClassId]);
+  }, [currentLevelClasses, selectedClassId]);
 
   // Trimestres de la classe active (Trimestre 1, Trimestre 2, Trimestre 3...)
   const currentClassTerms = useMemo(() => {
@@ -998,18 +1211,18 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     });
   }, [subjects, activeClass, activeTerm, currentClassTerms]);
 
-  // --- GESTION PAR ESPACE / PAGE DE 3 LIGNES (15 EMPLACEMENTS PAR ESPACE) SANS DÉFILEMENT VERTICAL ---
-  const SUBJECTS_PER_PAGE = 15; // 3 lignes de 5 colonnes
+  // --- GESTION PAR ESPACE / PAGE DE 3 LIGNES (18 EMPLACEMENTS PAR ESPACE) SANS DÉFILEMENT VERTICAL ---
+  const SUBJECTS_PER_PAGE = 18; // 3 lignes de 6 colonnes (cartes compactes)
   const [subjectPageIndex, setSubjectPageIndex] = useState<number>(0);
 
   const totalSubjectPages = useMemo(() => {
     return Math.floor(currentClassSubjects.length / SUBJECTS_PER_PAGE) + 1;
   }, [currentClassSubjects.length]);
 
-  // Réinitialiser la page quand on change de classe ou de trimestre
+  // Réinitialiser la page quand on change de niveau, de classe ou de trimestre
   useEffect(() => {
     setSubjectPageIndex(0);
-  }, [selectedClassId, selectedTermId]);
+  }, [selectedLevelId, selectedClassId, selectedTermId]);
 
   // S'assurer que subjectPageIndex ne dépasse pas totalSubjectPages
   useEffect(() => {
@@ -1294,24 +1507,42 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             </div>
 
             {/* ------------------------------------------------------------------- */}
-            {/* BOUTON D'ACTION : Créer une classe (si dans l'école) OU Créer une rentrée */}
+            {/* BOUTON D'ACTION : Créer un niveau / Créer une classe (si dans l'école) OU Créer une rentrée */}
             {/* ------------------------------------------------------------------- */}
             {selectedSchoolInside ? (
-              <button
-                type="button"
-                onClick={() => {
-                  resetClassForm();
-                  setIsAddClassModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 hover:bg-[#00252e]"
-                style={{ backgroundColor: '#00313d' }}
-                title="Créer une classe"
-              >
-                <Plus className="w-4 h-4 stroke-[3]" />
-                <span className="tracking-wide text-[11px] sm:text-xs">
-                  Créer une classe
-                </span>
-              </button>
+              currentSchoolLevels.length === 0 ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetLevelForm();
+                    setIsAddLevelModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 hover:bg-[#00252e]"
+                  style={{ backgroundColor: '#00313d' }}
+                  title="Créer un niveau d'étude"
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <span className="tracking-wide text-[11px] sm:text-xs">
+                    Créer un niveau
+                  </span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    resetClassForm();
+                    setIsAddClassModalOpen(true);
+                  }}
+                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 hover:bg-[#00252e]"
+                  style={{ backgroundColor: '#00313d' }}
+                  title={activeLevel ? `Créer une classe dans ${activeLevel.name}` : 'Créer une classe'}
+                >
+                  <Plus className="w-4 h-4 stroke-[3]" />
+                  <span className="tracking-wide text-[11px] sm:text-xs">
+                    Créer une classe
+                  </span>
+                </button>
+              )
             ) : (
               <div className="relative" ref={dropdownRef}>
                 <button
@@ -1514,225 +1745,380 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         <section className="flex-1 flex flex-col justify-start pt-2">
           {selectedSchoolInside ? (
             // =====================================================================
-            // CAS 1 : ON EST "À L'INTÉRIEUR" D'UNE ÉCOLE -> GESTION DES CLASSES
+            // CAS 1 : ON EST "À L'INTÉRIEUR" D'UNE ÉCOLE -> NIVEAUX D'ÉTUDE -> CLASSES -> MATIÈRES
             // =====================================================================
-            currentSchoolClasses.length === 0 ? (
-              // AUCUNE CLASSE : Bouton Plus au milieu avec pointillé autour formant un carré
+            currentSchoolLevels.length === 0 ? (
+              // AUCUN NIVEAU D'ÉTUDE : L'utilisateur commence d'abord par créer un niveau d'étude (CP1, Terminale, Licence...)
               <div className="flex-1 flex flex-col items-center justify-center py-12 px-4 animate-fade-in">
                 <button
                   type="button"
                   onClick={() => {
-                    resetClassForm();
-                    setIsAddClassModalOpen(true);
+                    resetLevelForm();
+                    setIsAddLevelModalOpen(true);
                   }}
                   className="group relative w-64 h-64 sm:w-72 sm:h-72 border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/50 hover:bg-white/85 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
-                  title="Ajouter une classe"
+                  title="Créer un niveau d'étude"
                 >
                   <div className="w-16 h-16 rounded-2xl bg-[#00313d] text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-[#00242e] transition-all duration-300 mb-4 border border-cyan-300/30">
                     <Plus className="w-8 h-8 stroke-[3]" />
                   </div>
                   <span className="text-base font-black text-slate-800 group-hover:text-[#00313d] transition-colors">
-                    Ajouter une classe
+                    Créer un niveau d'étude
                   </span>
-                  <p className="text-xs text-slate-500 max-w-[210px] mt-2 leading-relaxed">
-                    Cliquez ici pour créer votre première classe dans <span className="font-bold text-[#00313d]">{selectedSchoolInside.name}</span>
+                  <p className="text-xs text-slate-500 max-w-[225px] mt-2 leading-relaxed">
+                    Commencez par créer un niveau (CP1, 6ème, 2nde, Terminale, Licence...) dans <span className="font-bold text-[#00313d]">{selectedSchoolInside.name}</span>
                   </p>
                   <div className="mt-4 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200/60 text-[10px] font-extrabold text-cyan-800">
-                    Nouvelle classe +
+                    Nouveau niveau +
                   </div>
                 </button>
               </div>
             ) : (
-              // CLASSES CRÉÉES : Rangée horizontale avec flèches + Zone des matières sous la classe active
-              <div className="space-y-6 pt-1 animate-fade-in">
+              // NIVEAUX D'ÉTUDE CRÉÉS : Barre mince rectangulaire des niveaux + Classes 3D compactes + Trimestres + Matières compactes
+              <div className="space-y-4 pt-0.5 animate-fade-in">
                 
                 {/* ------------------------------------------------------------- */}
-                {/* ZONE DES CLASSES : STICKY TOP AU DÉFILEMENT VERTICAL          */}
+                {/* ZONE NIVEAUX D'ÉTUDE + CLASSES : STICKY TOP AU DÉFILEMENT     */}
                 {/* ------------------------------------------------------------- */}
-                <div className="sticky top-0 z-20 -mx-3.5 sm:-mx-6 lg:-mx-8 px-3.5 sm:px-6 lg:px-8 pt-1.5 pb-2.5 backdrop-blur-md bg-[#dcf0fa]/95 border-b border-cyan-900/10">
-                  <div className="flex items-center justify-between mb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs font-black uppercase tracking-wider text-slate-700">
-                        Classes ({currentSchoolClasses.length})
-                      </span>
-                      <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                      <span className="text-xs font-bold text-cyan-800 bg-white/90 px-2 py-0.5 rounded-lg border border-cyan-200/60 shadow-2xs">
-                        {selectedSchoolInside.name}
-                      </span>
-                      <span className="text-[10px] text-slate-400 hidden sm:inline-block font-medium">
-                        (Sélectionnez une classe pour afficher et créer ses matières)
-                      </span>
-                    </div>
+                <div className="sticky top-0 z-20 -mx-3.5 sm:-mx-6 lg:-mx-8 px-3.5 sm:px-6 lg:px-8 pt-1 pb-2.5 backdrop-blur-md bg-[#dcf0fa]/95 border-b border-cyan-900/10 space-y-2.5">
+                  
+                  {/* 1. BANDEAU DES NIVEAUX D'ÉTUDE (Boutons minces rectangulaires plats NON 3D, bouton + devant, flèches < > au bord) */}
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 shrink-0">
+                          Niveaux d'étude ({currentSchoolLevels.length})
+                        </span>
+                        <span className="text-xs text-slate-400 font-bold">&bull;</span>
+                        <span className="text-[11px] font-bold text-cyan-800 bg-white/90 px-2 py-0.5 rounded-md border border-cyan-200/60 shadow-2xs truncate">
+                          {selectedSchoolInside.name}
+                        </span>
+                        <span className="text-[10px] text-slate-400 hidden md:inline-block font-medium truncate">
+                          (Sélectionnez un niveau pour afficher et créer ses classes)
+                        </span>
+                      </div>
 
-                    {/* Flèches de défilement horizontal gauche et droite */}
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        type="button"
-                        onClick={() => scrollClasses('left')}
-                        className="w-7 h-7 rounded-lg bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 border border-slate-200 shadow-xs flex items-center justify-center transition active:scale-95"
-                        title="Défiler les classes vers la gauche"
-                      >
-                        <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => scrollClasses('right')}
-                        className="w-7 h-7 rounded-lg bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 border border-slate-200 shadow-xs flex items-center justify-center transition active:scale-95"
-                        title="Défiler les classes vers la droite"
-                      >
-                        <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Rangée horizontale unique de classes avec pt-3.5 pour laisser respirer le badge sans coupure */}
-                  <div 
-                    ref={classesScrollRef}
-                    className="flex items-stretch gap-3.5 overflow-x-auto pt-3.5 pb-2 scrollbar-none scroll-smooth flex-nowrap"
-                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                  >
-                    {currentSchoolClasses.map((cls) => {
-                      const isSelected = activeClass?.id === cls.id;
-                      const classSubjCount = subjects.filter(s => s.classId === cls.id).length;
-
-                      return (
-                        <div
-                          key={cls.id}
-                          onClick={() => setSelectedClassId(cls.id)}
-                          style={{
-                            borderColor: isSelected ? '#0891b2' : (cls.borderColor || '#ea580c'),
-                            borderBottomColor: isSelected ? '#00313d' : (cls.borderDarkColor || '#9a3412'),
-                          }}
-                          className={`group relative w-60 sm:w-64 shrink-0 rounded-2xl border-2 border-b-[5px] bg-white p-2.5 sm:p-3 px-3.5 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
-                            isSelected
-                              ? 'ring-4 ring-offset-2 ring-cyan-500 border-cyan-500 shadow-xl scale-[1.02]'
-                              : 'shadow-[0_6px_14px_-3px_rgba(0,0,0,0.08)] hover:shadow-md hover:-translate-y-0.5'
-                          } active:translate-y-0.5 active:border-b-2`}
+                      {/* Flèches de défilement horizontal gauche et droite au bord */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => scrollLevels('left')}
+                          className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200 shadow-2xs flex items-center justify-center transition active:scale-95 cursor-pointer"
+                          title="Défiler les niveaux vers la gauche"
                         >
-                          {/* Badge "Classe active" très net, surélevé avec fond sombre et bordure lumineuse, jamais coupé */}
-                          {isSelected && (
-                            <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-[#00313d] text-cyan-300 text-[9px] font-black shadow-md tracking-wider uppercase border-2 border-cyan-400 whitespace-nowrap z-20">
-                              ★ Classe active
-                            </div>
-                          )}
+                          <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => scrollLevels('right')}
+                          className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200 shadow-2xs flex items-center justify-center transition active:scale-95 cursor-pointer"
+                          title="Défiler les niveaux vers la droite"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                        </button>
+                      </div>
+                    </div>
 
-                          {/* Ligne Supérieure : Icône Livre + Niveau & Slogan + Statut & Suppression */}
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-start gap-2 min-w-0 flex-1">
-                              <div 
-                                className="w-8 h-8 rounded-lg flex items-center justify-center shadow-xs shrink-0"
-                                style={{ background: cls.iconGradient || 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' }}
-                              >
-                                <BookOpen className="w-4 h-4 text-white stroke-[2.2]" />
-                              </div>
+                    {/* Ligne des boutons minces rectangulaires : bouton (+) devant + niveaux successifs défilables */}
+                    <div className="flex items-center gap-1.5">
+                      {/* Bouton Plus (+) devant pour ajouter d'autres niveaux d'étude */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetLevelForm();
+                          setIsAddLevelModalOpen(true);
+                        }}
+                        className="h-8 px-2.5 rounded-lg border border-dashed border-cyan-800/50 hover:border-[#00313d] bg-white/85 hover:bg-[#00313d] text-[#00313d] hover:text-white flex items-center gap-1 text-[11px] font-black transition-colors shrink-0 cursor-pointer"
+                        title="Ajouter un nouveau niveau d'étude (CP1, 6ème, 2nde, Terminale, Licence...)"
+                      >
+                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                        <span className="hidden sm:inline">Niveau</span>
+                      </button>
 
-                              <div className="min-w-0 flex-1">
-                                <span className="text-[9px] font-extrabold uppercase tracking-wide text-slate-400 block truncate leading-tight">
-                                  {cls.slogan || `${classSubjCount} matière${classSubjCount > 1 ? 's' : ''}`}
-                                </span>
-                                <h4 className="text-sm font-black text-slate-900 tracking-tight leading-snug truncate mt-0.5">
-                                  {cls.level} {cls.name ? `• ${cls.name}` : ''}
-                                </h4>
-                              </div>
-                            </div>
+                      {/* Liste horizontale des niveaux en boutons minces rectangulaires plats (pas de 3D) */}
+                      <div
+                        ref={levelsScrollRef}
+                        className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none scroll-smooth py-0.5 flex-1 min-w-0"
+                        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                      >
+                        {currentSchoolLevels.map((lvl) => {
+                          const isSelected = activeLevel?.id === lvl.id;
+                          const levelClassesCount = classes.filter(
+                            c => c.schoolId === selectedSchoolInside.id && c.levelId === lvl.id
+                          ).length;
+                          const hasCustomColor = Boolean(lvl.color && lvl.color !== '#ffffff' && lvl.color !== 'white');
 
-                            <div className="flex items-center gap-1 shrink-0">
-                              <span 
-                                className="w-2.5 h-2.5 rounded-full ring-2 ring-white shadow-2xs"
-                                style={{ backgroundColor: cls.color || '#ea580c' }}
+                          return (
+                            <div
+                              key={lvl.id}
+                              onClick={() => setSelectedLevelId(lvl.id)}
+                              style={
+                                isSelected
+                                  ? {
+                                      backgroundColor: hasCustomColor ? lvl.color : '#00313d',
+                                      color: '#ffffff',
+                                      borderColor: hasCustomColor ? (lvl.borderColor || lvl.color) : '#00242e',
+                                    }
+                                  : {
+                                      backgroundColor: '#ffffff',
+                                      color: '#1e293b',
+                                      borderColor: '#cbd5e1',
+                                    }
+                              }
+                              className={`group h-8 px-2.5 rounded-lg border text-xs font-extrabold flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors select-none ${
+                                isSelected
+                                  ? 'shadow-xs'
+                                  : 'hover:border-cyan-500 hover:bg-cyan-50/40'
+                              }`}
+                              title={`Niveau ${lvl.name} (${levelClassesCount} classe${levelClassesCount > 1 ? 's' : ''})`}
+                            >
+                              <span
+                                className="w-2 h-2 rounded-full shrink-0"
+                                style={{
+                                  backgroundColor: isSelected
+                                    ? '#67e8f9'
+                                    : (hasCustomColor ? lvl.color : '#0891b2'),
+                                }}
                               />
+                              <span className="tracking-tight whitespace-nowrap text-[11.5px] font-black">
+                                {lvl.name}
+                              </span>
+                              <span
+                                className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded ${
+                                  isSelected
+                                    ? 'bg-white/20 text-cyan-100'
+                                    : 'bg-slate-100 text-slate-500'
+                                }`}
+                              >
+                                {levelClassesCount} cl.
+                              </span>
                               <button
                                 type="button"
-                                onClick={(e) => handleOpenMenu(e, 'class', cls)}
-                                className="card-menu-trigger w-6 h-6 rounded-md flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition z-10"
-                                title="Options de la classe"
+                                onClick={(e) => handleOpenMenu(e, 'level', lvl)}
+                                className={`card-menu-trigger w-4 h-4 rounded flex items-center justify-center transition shrink-0 ${
+                                  isSelected
+                                    ? 'text-white/75 hover:text-white hover:bg-white/15'
+                                    : 'text-slate-400 hover:text-slate-800 hover:bg-slate-100'
+                                }`}
+                                title={`Options du niveau ${lvl.name}`}
                               >
-                                <div className="w-3.5 h-2.5 flex flex-col justify-between items-center pointer-events-none">
-                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
-                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
-                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
+                                <div className="w-2.5 h-2 flex flex-col justify-between items-center pointer-events-none">
+                                  <span className="w-full h-[1.4px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.4px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.4px] bg-current rounded-full"></span>
                                 </div>
                               </button>
                             </div>
-                          </div>
-
-                          {/* Ligne Inférieure : Professeur & Effectif Matières (Hauteur verticale réduite) */}
-                          <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-xs">
-                            <div className="flex flex-col min-w-0">
-                              <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">
-                                PROFESSEUR
-                              </span>
-                              <span className="text-[10px] font-extrabold text-slate-700 truncate max-w-[110px]">
-                                {cls.teacherName}
-                              </span>
-                            </div>
-
-                            <div className="flex flex-col items-end shrink-0">
-                              <span className="text-[8px] font-black uppercase tracking-wider text-slate-400">
-                                MATIÈRES
-                              </span>
-                              <span className="text-[9.5px] font-black text-cyan-800 bg-cyan-50 px-1.5 py-0.2 rounded border border-cyan-200/50 mt-0.5">
-                                {classSubjCount} mat.
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-
-                    {/* Bouton pour ajouter une autre classe dans la rangée horizontale */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetClassForm();
-                        setIsAddClassModalOpen(true);
-                      }}
-                      className="w-44 sm:w-52 shrink-0 border-2 border-dashed border-cyan-800/30 hover:border-cyan-600 bg-white/40 hover:bg-white/80 backdrop-blur-md rounded-2xl p-2.5 sm:p-3 flex items-center justify-center gap-2 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs"
-                      title="Ajouter une autre classe"
-                    >
-                      <div className="w-7 h-7 rounded-lg bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-xs transition shrink-0">
-                        <Plus className="w-4 h-4 stroke-[2.5]" />
+                          );
+                        })}
                       </div>
-                      <span className="text-xs font-black text-slate-700 group-hover:text-[#00313d] transition-colors">
-                        + Nouvelle classe
-                      </span>
-                    </button>
+                    </div>
                   </div>
+
+                  {/* 2. BANDEAU DES CLASSES DU NIVEAU ACTIF (Cartes 3D de taille réduite + flèches < >) */}
+                  {activeLevel && (
+                    <div className="pt-1 border-t border-cyan-900/10">
+                      <div className="flex items-center justify-between mb-1">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 shrink-0">
+                            Classes ({currentLevelClasses.length})
+                          </span>
+                          <span className="text-xs text-slate-400 font-bold">&bull;</span>
+                          <span className="text-[11px] font-black text-white bg-[#00313d] px-2 py-0.5 rounded-md shadow-2xs shrink-0">
+                            {activeLevel.name}
+                          </span>
+                          <span className="text-[10px] text-slate-400 hidden sm:inline-block font-medium truncate">
+                            (Sélectionnez une classe pour afficher et créer ses matières)
+                          </span>
+                        </div>
+
+                        {/* Flèches de défilement horizontal gauche et droite */}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => scrollClasses('left')}
+                            className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 border border-slate-200 shadow-2xs flex items-center justify-center transition active:scale-95 cursor-pointer"
+                            title="Défiler les classes vers la gauche"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => scrollClasses('right')}
+                            className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-slate-900 border border-slate-200 shadow-2xs flex items-center justify-center transition active:scale-95 cursor-pointer"
+                            title="Défiler les classes vers la droite"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {currentLevelClasses.length === 0 ? (
+                        <div className="py-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetClassForm();
+                              setIsAddClassModalOpen(true);
+                            }}
+                            className="w-full sm:w-auto px-5 py-3 border-2 border-dashed border-cyan-800/35 hover:border-cyan-600 bg-white/60 hover:bg-white rounded-xl flex items-center justify-center sm:justify-start gap-3 transition-all cursor-pointer group"
+                            title={`Créer la première classe dans ${activeLevel.name}`}
+                          >
+                            <div className="w-8 h-8 rounded-lg bg-[#00313d] text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition shrink-0">
+                              <Plus className="w-4 h-4 stroke-[3]" />
+                            </div>
+                            <div className="text-left">
+                              <span className="text-xs font-black text-slate-800 group-hover:text-[#00313d] block leading-tight">
+                                + Créer une classe dans {activeLevel.name}
+                              </span>
+                              <span className="text-[10px] text-slate-500 block mt-0.5">
+                                Donnez le nom de votre classe (ex : {activeLevel.name} A, {activeLevel.name} C1, Groupe 1...)
+                              </span>
+                            </div>
+                          </button>
+                        </div>
+                      ) : (
+                        /* Rangée horizontale unique de cartes 3D compactes */
+                        <div 
+                          ref={classesScrollRef}
+                          className="flex items-stretch gap-2.5 overflow-x-auto pt-2.5 pb-1.5 scrollbar-none scroll-smooth flex-nowrap"
+                          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                        >
+                          {currentLevelClasses.map((cls) => {
+                            const isSelected = activeClass?.id === cls.id;
+                            const classSubjCount = subjects.filter(s => s.classId === cls.id).length;
+                            const displayClassName = getClassDisplayName(cls);
+
+                            return (
+                              <div
+                                key={cls.id}
+                                onClick={() => setSelectedClassId(cls.id)}
+                                style={{
+                                  borderColor: isSelected ? '#0891b2' : (cls.borderColor || '#ea580c'),
+                                  borderBottomColor: isSelected ? '#00313d' : (cls.borderDarkColor || '#9a3412'),
+                                }}
+                                className={`group relative w-44 sm:w-48 shrink-0 rounded-xl border-2 border-b-[4px] bg-white px-2.5 py-2 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
+                                  isSelected
+                                    ? 'ring-2 ring-offset-1 ring-cyan-500 border-cyan-500 shadow-md scale-[1.01]'
+                                    : 'shadow-xs hover:shadow-md hover:-translate-y-0.5'
+                                } active:translate-y-0.5 active:border-b-2`}
+                              >
+                                {/* Badge compact "Active" surélevé sans coupure */}
+                                {isSelected && (
+                                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.2 rounded-full bg-[#00313d] text-cyan-300 text-[8px] font-black shadow-sm tracking-wider uppercase border border-cyan-400 whitespace-nowrap z-20">
+                                    ★ Classe active
+                                  </div>
+                                )}
+
+                                {/* Ligne Supérieure : Petite icône + Nom de la classe + Menu */}
+                                <div className="flex items-start justify-between gap-1.5">
+                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                    <div 
+                                      className="w-6 h-6 rounded-md flex items-center justify-center shadow-2xs shrink-0"
+                                      style={{ background: cls.iconGradient || 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' }}
+                                    >
+                                      <BookOpen className="w-3.5 h-3.5 text-white stroke-[2.2]" />
+                                    </div>
+
+                                    <div className="min-w-0 flex-1">
+                                      <span className="text-[8.5px] font-bold uppercase tracking-wide text-slate-400 block truncate leading-none">
+                                        {cls.slogan || activeLevel.name}
+                                      </span>
+                                      <h4 className="text-xs font-black text-slate-900 tracking-tight leading-snug truncate mt-0.5" title={displayClassName}>
+                                        {displayClassName}
+                                      </h4>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-0.5 shrink-0">
+                                    <span 
+                                      className="w-2 h-2 rounded-full ring-1 ring-white shadow-2xs"
+                                      style={{ backgroundColor: cls.color || '#ea580c' }}
+                                    />
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleOpenMenu(e, 'class', cls)}
+                                      className="card-menu-trigger w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition z-10"
+                                      title="Options de la classe"
+                                    >
+                                      <div className="w-3 h-2 flex flex-col justify-between items-center pointer-events-none">
+                                        <span className="w-full h-[1.5px] bg-current rounded-full"></span>
+                                        <span className="w-full h-[1.5px] bg-current rounded-full"></span>
+                                        <span className="w-full h-[1.5px] bg-current rounded-full"></span>
+                                      </div>
+                                    </button>
+                                  </div>
+                                </div>
+
+                                {/* Ligne Inférieure compacte : Professeur & Matières */}
+                                <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                                  <span className="text-[9.5px] font-bold text-slate-600 truncate" title={`Professeur : ${cls.teacherName}`}>
+                                    {cls.teacherName}
+                                  </span>
+                                  <span className="text-[8.5px] font-black text-cyan-800 bg-cyan-50 px-1.5 py-0.2 rounded border border-cyan-200/50 shrink-0">
+                                    {classSubjCount} mat.
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })}
+
+                          {/* Bouton compact pour ajouter une autre classe dans le niveau actif */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetClassForm();
+                              setIsAddClassModalOpen(true);
+                            }}
+                            className="w-36 sm:w-40 shrink-0 border-2 border-dashed border-cyan-800/30 hover:border-cyan-600 bg-white/40 hover:bg-white/80 backdrop-blur-md rounded-xl px-2.5 py-2 flex items-center justify-center gap-1.5 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs"
+                            title={`Ajouter une classe dans ${activeLevel.name}`}
+                          >
+                            <div className="w-6 h-6 rounded-md bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-2xs transition shrink-0">
+                              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </div>
+                            <span className="text-[11px] font-black text-slate-700 group-hover:text-[#00313d] transition-colors">
+                              + Classe
+                            </span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
 
                 {/* ------------------------------------------------------------- */}
                 {/* ZONE DES TRIMESTRES : HORIZONTALE AVEC FLÈCHES & AJOUT (+)   */}
                 {/* ------------------------------------------------------------- */}
                 {activeClass && (
-                  <div className="space-y-2 pt-2 animate-fade-in">
+                  <div className="space-y-1.5 pt-1 animate-fade-in">
                     {/* En-tête de la section trimestres avec flèches */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-black uppercase tracking-wider text-slate-700">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
                           Trimestres ({currentClassTerms.length})
                         </span>
                         <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                        <span className="text-xs font-bold text-[#00313d] bg-white/80 px-2.5 py-0.5 rounded-lg border border-cyan-200/60 shadow-2xs">
-                          {activeClass.level} {activeClass.name ? `• ${activeClass.name}` : ''}
+                        <span className="text-[11px] font-bold text-[#00313d] bg-white/80 px-2 py-0.5 rounded-md border border-cyan-200/60 shadow-2xs">
+                          {getClassFullLabel(activeClass)}
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1">
                         <button
                           type="button"
                           onClick={() => scrollTerms('left')}
-                          className="w-7 h-7 rounded-lg bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200/80 shadow-2xs flex items-center justify-center transition active:scale-90 cursor-pointer"
+                          className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200/80 shadow-2xs flex items-center justify-center transition active:scale-90 cursor-pointer"
                           title="Défiler les trimestres à gauche"
                         >
-                          <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                          <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                         </button>
                         <button
                           type="button"
                           onClick={() => scrollTerms('right')}
-                          className="w-7 h-7 rounded-lg bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200/80 shadow-2xs flex items-center justify-center transition active:scale-90 cursor-pointer"
+                          className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200/80 shadow-2xs flex items-center justify-center transition active:scale-90 cursor-pointer"
                           title="Défiler les trimestres à droite"
                         >
-                          <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                          <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                         </button>
                       </div>
                     </div>
@@ -1740,7 +2126,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     {/* Rangée horizontale des trimestres avec overflow-x-auto */}
                     <div 
                       ref={termsScrollRef}
-                      className="flex items-center gap-2.5 overflow-x-auto pb-2 scrollbar-none scroll-smooth select-none pt-0.5"
+                      className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none scroll-smooth select-none pt-0.5"
                     >
                       {currentClassTerms.map((term) => {
                         const isSelected = activeTerm?.id === term.id;
@@ -1755,17 +2141,17 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             key={term.id}
                             type="button"
                             onClick={() => setSelectedTermId(term.id)}
-                            className={`group shrink-0 px-4 py-2 sm:px-4.5 sm:py-2 rounded-xl border-2 transition-all duration-200 flex items-center gap-2.5 cursor-pointer ${
+                            className={`group shrink-0 px-3 py-1.5 rounded-lg border-2 transition-all duration-200 flex items-center gap-2 cursor-pointer ${
                               isSelected
-                                ? 'bg-[#00313d] text-white border-[#002028] border-b-[4px] shadow-md scale-[1.02]'
-                                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 border-b-[3px] shadow-xs hover:-translate-y-0.5'
+                                ? 'bg-[#00313d] text-white border-[#002028] border-b-[3px] shadow-sm'
+                                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 border-b-[2px] shadow-2xs hover:-translate-y-0.5'
                             } active:translate-y-0.5`}
                           >
-                            <div className={`w-2 h-2 rounded-full ${isSelected ? 'bg-cyan-400 ring-2 ring-cyan-200/50' : 'bg-slate-300 group-hover:bg-cyan-500'}`} />
-                            <span className="text-xs sm:text-sm font-black tracking-tight">
+                            <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-cyan-400 ring-2 ring-cyan-200/50' : 'bg-slate-300 group-hover:bg-cyan-500'}`} />
+                            <span className="text-xs font-black tracking-tight">
                               {term.name}
                             </span>
-                            <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-md border ${
+                            <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded border ${
                               isSelected 
                                 ? 'bg-white/20 text-cyan-200 border-white/20' 
                                 : 'bg-slate-100 text-slate-500 border-slate-200'
@@ -1780,13 +2166,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       <button
                         type="button"
                         onClick={() => setIsAddTermModalOpen(true)}
-                        className="shrink-0 px-3.5 py-2 rounded-xl border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/60 hover:bg-white text-slate-700 hover:text-[#00313d] flex items-center gap-1.5 transition-all duration-200 shadow-2xs hover:shadow-xs group hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                        className="shrink-0 px-3 py-1.5 rounded-lg border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/60 hover:bg-white text-slate-700 hover:text-[#00313d] flex items-center gap-1.5 transition-all duration-200 shadow-2xs hover:shadow-xs group hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
                         title={`Ajouter le Trimestre ${nextTermNumber}`}
                       >
-                        <div className="w-5 h-5 rounded-md bg-[#00313d] text-white flex items-center justify-center group-hover:scale-110 transition-transform">
-                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                        <div className="w-4 h-4 rounded bg-[#00313d] text-white flex items-center justify-center group-hover:scale-110 transition-transform">
+                          <Plus className="w-3 h-3 stroke-[3]" />
                         </div>
-                        <span className="text-xs font-black">
+                        <span className="text-[11px] font-black">
                           + Trimestre {nextTermNumber}
                         </span>
                       </button>
@@ -1795,82 +2181,82 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 )}
 
                 {/* ------------------------------------------------------------------------- */}
-                {/* ZONE DES MATIÈRES : PAGINATION HORIZONTALE PAR ESPACES DE 3 LIGNES (15)  */}
+                {/* ZONE DES MATIÈRES : CARTES COMPACTES (3 LIGNES x 6 COLONNES = 18/ESPACE) */}
                 {/* ------------------------------------------------------------------------- */}
                 {activeClass && (
-                  <div className="space-y-3 pt-2 animate-fade-in">
+                  <div className="space-y-2 pt-1 animate-fade-in">
                     {/* En-tête de la section matières avec navigation par espace */}
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-black uppercase tracking-wider text-slate-700">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
                           Matières ({currentClassSubjects.length})
                         </span>
                         <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                        <span className="text-xs font-bold text-cyan-900 bg-white/80 px-2.5 py-0.5 rounded-lg border border-cyan-200/60 shadow-2xs">
-                          {activeClass.level} {activeClass.name ? `• ${activeClass.name}` : ''}
+                        <span className="text-[11px] font-bold text-cyan-900 bg-white/80 px-2 py-0.5 rounded-md border border-cyan-200/60 shadow-2xs">
+                          {getClassFullLabel(activeClass)}
                         </span>
                         {activeTerm && (
                           <>
                             <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                            <span className="text-xs font-black text-white bg-[#00313d] px-2.5 py-0.5 rounded-lg shadow-2xs">
+                            <span className="text-[11px] font-black text-white bg-[#00313d] px-2 py-0.5 rounded-md shadow-2xs">
                               {activeTerm.name}
                             </span>
                           </>
                         )}
-                        <span className="text-[11px] font-black text-slate-700 bg-white/80 px-2.5 py-0.5 rounded-lg border border-slate-200 shadow-2xs">
+                        <span className="text-[10px] font-black text-slate-700 bg-white/80 px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
                           Espace {subjectPageIndex + 1} / {totalSubjectPages}
                         </span>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline-block">
-                          {pagedSubjects.length}/15 dans cet espace &bull; 3 lignes max
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="text-[10px] font-semibold text-slate-500 hidden sm:inline-block">
+                          {pagedSubjects.length}/{SUBJECTS_PER_PAGE} dans cet espace &bull; 3 lignes max
                         </span>
 
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
                           {/* Flèche gauche : Espace précédent */}
                           <button
                             type="button"
                             onClick={() => setSubjectPageIndex(prev => Math.max(0, prev - 1))}
                             disabled={subjectPageIndex === 0}
-                            className={`w-7 h-7 rounded-lg border shadow-2xs flex items-center justify-center transition-all ${
+                            className={`w-6 h-6 rounded-md border shadow-2xs flex items-center justify-center transition-all ${
                               subjectPageIndex === 0
                                 ? 'bg-slate-100/60 text-slate-300 border-slate-200/50 cursor-not-allowed'
                                 : 'bg-white hover:bg-slate-50 text-slate-700 hover:text-[#00313d] border-slate-200 active:scale-90 cursor-pointer'
                             }`}
                             title={subjectPageIndex === 0 ? "Premier espace atteint" : "Espace précédent"}
                           >
-                            <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+                            <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
                           </button>
 
-                          {/* Flèche droite : Espace suivant (disponible seulement si les 3 lignes de l'espace actuel sont remplies) */}
+                          {/* Flèche droite : Espace suivant */}
                           <button
                             type="button"
                             onClick={() => setSubjectPageIndex(prev => Math.min(totalSubjectPages - 1, prev + 1))}
                             disabled={subjectPageIndex >= totalSubjectPages - 1}
-                            className={`w-7 h-7 rounded-lg border shadow-2xs flex items-center justify-center transition-all ${
+                            className={`w-6 h-6 rounded-md border shadow-2xs flex items-center justify-center transition-all ${
                               subjectPageIndex >= totalSubjectPages - 1
                                 ? 'bg-slate-100/60 text-slate-300 border-slate-200/50 cursor-not-allowed'
                                 : 'bg-[#00313d] hover:bg-[#00242e] text-white border-[#00242e] shadow-xs active:scale-90 cursor-pointer'
                             }`}
                             title={
                               subjectPageIndex >= totalSubjectPages - 1
-                                ? "Remplissez les 3 lignes (15 matières) pour ouvrir le prochain espace"
+                                ? `Remplissez les 3 lignes (${SUBJECTS_PER_PAGE} matières) pour ouvrir le prochain espace`
                                 : "Espace suivant"
                             }
                           >
-                            <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                            <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
                           </button>
                         </div>
                       </div>
                     </div>
 
-                    {/* Grille : 3 lignes fixes de 5 colonnes par espace (ne défile plus verticalement) */}
+                    {/* Grille compacte : 3 lignes fixes de 6 colonnes par espace (cartes réduites) */}
                     <div 
                       key={subjectPageIndex}
-                      className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-3.5 items-stretch animate-in fade-in duration-200"
+                      className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-2.5 items-stretch animate-in fade-in duration-200"
                     >
-                      {/* 1. Matières de cet espace (jusqu'à 15 matières) */}
+                      {/* 1. Matières de cet espace (format réduit) */}
                       {pagedSubjects.map((subj) => {
                         const isWhite = !subj.color || subj.color === '#ffffff' || subj.color === 'white';
 
@@ -1884,21 +2270,21 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               borderColor: isWhite ? '#e2e8f0' : (subj.borderColor || subj.color),
                               borderBottomColor: isWhite ? '#cbd5e1' : (subj.borderDarkColor || '#94a3b8'),
                             }}
-                            className="group relative rounded-xl border-2 border-b-[4px] p-2.5 sm:p-3 min-h-[68px] sm:min-h-[76px] flex flex-col justify-between cursor-pointer transition-all duration-200 select-none shadow-xs hover:shadow-md hover:-translate-y-0.5 active:translate-y-0.5 active:border-b-2"
+                            className="group relative rounded-lg border-2 border-b-[3px] px-2 py-1.5 min-h-[50px] sm:min-h-[54px] flex flex-col justify-between cursor-pointer transition-all duration-200 select-none shadow-2xs hover:shadow-sm hover:-translate-y-0.5 active:translate-y-0.5 active:border-b-2"
                             title={`Ouvrir le tableur de notes et moyennes pour ${subj.name}`}
                           >
-                            {/* Ligne haute : Badge Coeff & Bouton supprimer */}
+                            {/* Ligne haute : Badge Coeff & Menu 3 traits */}
                             <div className="flex items-center justify-between w-full">
                               {subj.coefficient ? (
-                                <span className={`text-[8.5px] font-black px-1.5 py-0.2 rounded border ${
+                                <span className={`text-[8px] font-black px-1 py-0 rounded border ${
                                   isWhite
                                     ? 'bg-slate-100 text-slate-700 border-slate-200'
                                     : 'bg-black/25 text-white/95 border-white/20'
                                 }`}>
-                                  Coeff: {subj.coefficient}
+                                  Coeff {subj.coefficient}
                                 </span>
                               ) : (
-                                <span className={`text-[8px] font-bold opacity-60 ${isWhite ? 'text-slate-400' : 'text-white/70'}`}>
+                                <span className={`text-[7.5px] font-bold opacity-60 ${isWhite ? 'text-slate-400' : 'text-white/70'}`}>
                                   Matière
                                 </span>
                               )}
@@ -1909,23 +2295,23 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                   e.stopPropagation();
                                   handleOpenMenu(e, 'subject', subj);
                                 }}
-                                className={`card-menu-trigger w-5 h-5 rounded flex items-center justify-center transition ${
+                                className={`card-menu-trigger w-4 h-4 rounded flex items-center justify-center transition ${
                                   isWhite ? 'text-slate-400 hover:text-slate-800 hover:bg-slate-100' : 'text-white/70 hover:text-white hover:bg-black/20'
                                 }`}
                                 title="Options de la matière"
                               >
-                                <div className="w-3 h-2 flex flex-col justify-between items-center pointer-events-none">
-                                  <span className="w-full h-[1.6px] bg-current rounded-full"></span>
-                                  <span className="w-full h-[1.6px] bg-current rounded-full"></span>
-                                  <span className="w-full h-[1.6px] bg-current rounded-full"></span>
+                                <div className="w-2.5 h-2 flex flex-col justify-between items-center pointer-events-none">
+                                  <span className="w-full h-[1.4px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.4px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.4px] bg-current rounded-full"></span>
                                 </div>
                               </button>
                             </div>
 
-                            {/* Centre : Nom de la matière centré, max 3 lignes puis ... */}
-                            <div className="flex-1 flex items-center justify-center my-auto px-1 py-0.5">
+                            {/* Centre : Nom de la matière centré, format compact */}
+                            <div className="flex-1 flex items-center justify-center my-auto px-0.5 pt-0.5">
                               <h5 
-                                className="text-center font-black text-xs sm:text-sm leading-tight line-clamp-3 break-words"
+                                className="text-center font-black text-[11px] sm:text-xs leading-tight line-clamp-2 break-words"
                                 title={subj.name}
                               >
                                 {subj.name}
@@ -1935,7 +2321,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         );
                       })}
 
-                      {/* 2. LE BOUTON « CRÉER UNE MATIÈRE » : présent uniquement sur le dernier espace si non plein */}
+                      {/* 2. LE BOUTON « CRÉER UNE MATIÈRE » : format compact harmonisé */}
                       {isLastSubjectPage && (
                         <button
                           type="button"
@@ -1943,18 +2329,18 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             resetSubjectForm();
                             setIsAddSubjectModalOpen(true);
                           }}
-                          className="rounded-xl border-2 border-dashed border-red-500/80 hover:border-red-600 bg-white/60 hover:bg-white/95 backdrop-blur-md p-2.5 sm:p-3 min-h-[68px] sm:min-h-[76px] flex items-center justify-center gap-2 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs hover:shadow-sm active:translate-y-0"
+                          className="rounded-lg border-2 border-dashed border-red-500/75 hover:border-red-600 bg-white/60 hover:bg-white/95 backdrop-blur-md px-2 py-1.5 min-h-[50px] sm:min-h-[54px] flex items-center justify-center gap-1.5 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs hover:shadow-sm active:translate-y-0"
                           title="Créer une nouvelle matière pour cette classe"
                         >
-                          <div className="w-7 h-7 rounded-lg bg-gradient-to-tr from-red-600 to-orange-500 text-white flex items-center justify-center group-hover:scale-110 shadow-xs transition-transform shrink-0">
-                            <Plus className="w-4 h-4 stroke-[3]" />
+                          <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-red-600 to-orange-500 text-white flex items-center justify-center group-hover:scale-110 shadow-2xs transition-transform shrink-0">
+                            <Plus className="w-3.5 h-3.5 stroke-[3]" />
                           </div>
-                          <div className="flex flex-col text-left">
-                            <span className="text-xs font-black text-slate-800 group-hover:text-red-600 transition-colors leading-tight">
-                              + Créer une matière
+                          <div className="flex flex-col text-left min-w-0">
+                            <span className="text-[11px] font-black text-slate-800 group-hover:text-red-600 transition-colors leading-tight truncate">
+                              + Matière
                             </span>
-                            <span className="text-[9px] text-slate-400 leading-tight">
-                              Pour {activeClass.level} &bull; {activeTerm?.name || 'Trimestre 1'}
+                            <span className="text-[8.5px] text-slate-400 leading-tight truncate">
+                              {getClassDisplayName(activeClass)} &bull; {activeTerm?.name || 'T1'}
                             </span>
                           </div>
                         </button>
@@ -2023,6 +2409,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     {currentYearSchools.map((school) => {
                       const isSelected = selectedSchoolId === school.id;
                       const isWhite = !school.color || school.color === '#ffffff' || school.color === 'white';
+                      const schoolLevelsCount = studyLevels.filter(l => l.schoolId === school.id).length;
                       const schoolClassesCount = classes.filter(c => c.schoolId === school.id).length;
 
                       return (
@@ -2102,11 +2489,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             <h3 className="font-black text-base sm:text-lg tracking-tight leading-snug line-clamp-2">
                               {school.name}
                             </h3>
-                            <div className="flex items-center gap-2">
-                              <span className={`text-[11px] font-semibold ${
-                                isWhite ? 'text-slate-500' : 'text-white/80'
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-[10px] font-bold ${
+                                isWhite ? 'text-slate-600' : 'text-white/85'
                               }`}>
-                                Établissement scolaire
+                                {schoolLevelsCount} niveau{schoolLevelsCount > 1 ? 'x' : ''}
                               </span>
                               <span className="text-[10px] opacity-60">&bull;</span>
                               <span className={`text-[10px] font-bold ${
@@ -2389,26 +2776,26 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         )}
 
         {/* ========================================================================= */}
-        {/* MODAL PROFESSIONNEL POUR AJOUTER UNE CLASSE (2 COLONNES, SANS FILIÈRE,   */}
-        {/* SANS COUPURE EN HAUT AVEC APERÇU 3D INTERACTIF)                           */}
+        {/* MODAL 1 : CRÉER / MODIFIER UN NIVEAU D'ÉTUDE (Ancien menu de niveaux      */}
+        {/* CP1, CE1, 6ème, 2nde, Terminale, Licence...)                              */}
         {/* ========================================================================= */}
-        {isAddClassModalOpen && selectedSchoolInside && (
+        {isAddLevelModalOpen && selectedSchoolInside && (
           <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-start justify-center pt-14 sm:pt-16 pb-8 p-3 sm:p-5 overflow-y-auto">
             <div 
-              className="relative w-full max-w-4xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 animate-fade-in my-auto max-h-[88vh] flex flex-col"
+              className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 animate-fade-in my-auto max-h-[88vh] flex flex-col"
               style={{
                 boxShadow: '0 25px 50px -12px rgba(0, 35, 46, 0.35)'
               }}
             >
-              {/* En-tête bien carré et professionnel */}
+              {/* En-tête professionnel */}
               <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-[#00313d] text-white flex items-center justify-center shadow-md">
-                    {editingClass ? <Pencil className="w-5 h-5" /> : <BookOpen className="w-5 h-5" />}
+                    {editingLevel ? <Pencil className="w-5 h-5" /> : <GraduationCap className="w-5 h-5" />}
                   </div>
                   <div>
                     <h2 className="text-base sm:text-lg font-black text-[#00313d] leading-none">
-                      {editingClass ? "Modifier la classe" : "Créer une classe"}
+                      {editingLevel ? "Modifier le niveau d'étude" : "Créer un niveau d'étude"}
                     </h2>
                     <span className="text-[11px] font-semibold text-slate-400 mt-1 inline-block">
                       {selectedSchoolInside.name} &bull; {currentSelectedYear?.label}
@@ -2419,44 +2806,50 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 <button
                   type="button"
                   onClick={() => {
-                    setIsAddClassModalOpen(false);
-                    resetClassForm();
+                    setIsAddLevelModalOpen(false);
+                    resetLevelForm();
                   }}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
-              {/* Formulaire intérieur structuré en 2 colonnes équilibrées pour utiliser l'espace latéral */}
-              <form onSubmit={handleCreateClass} className="flex flex-col flex-1 overflow-hidden">
+              <form onSubmit={handleCreateStudyLevel} className="flex flex-col flex-1 overflow-hidden">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 p-6 overflow-y-auto flex-1">
-                  
-                  {/* COLONNE GAUCHE : Niveau, Nom/Groupe, Slogan et Professeur */}
-                  <div className="space-y-4">
-                    {/* 1. Niveau scolaire (Requis) + Suggestions rapides */}
+                  {/* COLONNE GAUCHE : Saisie du niveau d'étude + Suggestions rapides */}
+                  <div className="space-y-3">
                     <div className="space-y-1.5">
                       <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
-                        Niveau scolaire <span className="text-red-500">*</span>
+                        Niveau d'étude <span className="text-red-500">*</span>
                       </label>
                       <input
                         type="text"
-                        value={classLevel}
-                        onChange={(e) => setClassLevel(e.target.value)}
-                        placeholder="Ex: CP1, 6ème, 3ème, Terminale C, Licence 1..."
+                        value={studyLevelName}
+                        onChange={(e) => setStudyLevelName(e.target.value)}
+                        placeholder="Ex: CP1, CE1, 6ème, 2nde, Terminale, Licence 1..."
                         className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
                         autoFocus
                       />
-                      {/* Suggestions rapides cliquables */}
-                      <div className="flex flex-wrap gap-1.5 pt-0.5">
+                      <span className="text-[10px] text-slate-400 block">
+                        Choisissez une proposition rapide ou saisissez votre propre niveau d'étude. Vous créerez ensuite vos classes à l'intérieur.
+                      </span>
+                    </div>
+
+                    {/* Suggestions rapides de niveaux */}
+                    <div className="space-y-1.5">
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Niveaux suggérés :
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
                         {CLASS_LEVEL_SUGGESTIONS.map((sug) => (
                           <button
                             key={sug}
                             type="button"
-                            onClick={() => setClassLevel(sug)}
-                            className={`px-2 py-0.5 rounded-lg text-[10.5px] font-bold transition-all ${
-                              classLevel === sug
-                                ? 'bg-cyan-600 text-white shadow-2xs'
+                            onClick={() => setStudyLevelName(sug)}
+                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                              studyLevelName === sug
+                                ? 'bg-[#00313d] text-white shadow-2xs'
                                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
                             }`}
                           >
@@ -2465,34 +2858,186 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         ))}
                       </div>
                     </div>
+                  </div>
 
-                    {/* 2. Nom de la classe (Facultatif) & Slogan (Facultatif) */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                      <div className="space-y-1">
+                  {/* COLONNE DROITE : Couleur d'accent + Aperçu du bouton mince rectangulaire (NON 3D) */}
+                  <div className="space-y-4 flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
                         <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
-                          Nom / Groupe <span className="text-[10px] font-normal text-slate-400 lowercase">(facultatif)</span>
+                          Couleur du niveau
                         </label>
-                        <input
-                          type="text"
-                          value={className}
-                          onChange={(e) => setClassName(e.target.value)}
-                          placeholder="Ex: A, B, 1, Élite, Sciences..."
-                          className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
-                        />
+                        <span className="text-xs font-bold text-slate-500">
+                          {selectedStudyLevelColor.label}
+                        </span>
                       </div>
+                      <div className="grid grid-cols-5 gap-2">
+                        {YEAR_COLOR_OPTIONS.map((col) => {
+                          const isSelected = selectedStudyLevelColor.id === col.id;
+                          return (
+                            <button
+                              key={col.id}
+                              type="button"
+                              onClick={() => setSelectedStudyLevelColor(col)}
+                              style={{ backgroundColor: col.bg, borderColor: col.border }}
+                              className={`h-8 rounded-lg border flex items-center justify-center transition-all cursor-pointer ${
+                                isSelected ? 'scale-110 shadow-md ring-2 ring-offset-1 ring-cyan-500' : 'hover:scale-105'
+                              }`}
+                              title={col.label}
+                            >
+                              {isSelected && (
+                                <Check className={`w-3.5 h-3.5 stroke-[3] ${col.id === 'white' ? 'text-slate-800' : 'text-white'}`} />
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
 
-                      <div className="space-y-1">
-                        <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
-                          Slogan de la classe <span className="text-[10px] font-normal text-slate-400 lowercase">(facultatif)</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={classSlogan}
-                          onChange={(e) => setClassSlogan(e.target.value)}
-                          placeholder="Ex: Discipline et Réussite..."
-                          className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
-                        />
+                    {/* Aperçu du bouton mince rectangulaire plat */}
+                    <div className="space-y-2 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                        Aperçu dans la barre des niveaux :
+                      </span>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <div
+                          style={{
+                            backgroundColor: selectedStudyLevelColor.id === 'white' ? '#00313d' : selectedStudyLevelColor.bg,
+                            color: '#ffffff',
+                            borderColor: selectedStudyLevelColor.id === 'white' ? '#00242e' : selectedStudyLevelColor.border,
+                          }}
+                          className="h-8 px-3 rounded-lg border text-xs font-black flex items-center gap-1.5 select-none"
+                        >
+                          <span className="w-2 h-2 rounded-full bg-cyan-300 shrink-0" />
+                          <span>{studyLevelName.trim() || 'Ex: Terminale'}</span>
+                          <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-white/20 text-cyan-100">
+                            0 cl.
+                          </span>
+                        </div>
+                        <span className="text-[10px] text-slate-400 font-medium">
+                          (Actif)
+                        </span>
                       </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Pied de modale */}
+                <div className="p-4 px-6 border-t border-slate-100 flex items-center gap-3 bg-slate-50/50 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddLevelModalOpen(false);
+                      resetLevelForm();
+                    }}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={editingLevel ? (!studyLevelName.trim() || !isLevelDirty) : !studyLevelName.trim()}
+                    style={{
+                      backgroundColor: (editingLevel ? (studyLevelName.trim() && isLevelDirty) : studyLevelName.trim())
+                        ? '#00313d'
+                        : undefined
+                    }}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
+                      (editingLevel ? (studyLevelName.trim() && isLevelDirty) : studyLevelName.trim())
+                        ? 'text-white hover:bg-[#00242e] cursor-pointer'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>{editingLevel ? 'Enregistrer' : "Créer le niveau"}</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* MODAL 2 (NOUVEAU) : CRÉER / MODIFIER UNE CLASSE DANS LE NIVEAU ACTIF      */}
+        {/* L'utilisateur saisit lui-même le nom de la classe (ex: 2nde C1, Groupe A) */}
+        {/* ========================================================================= */}
+        {isAddClassModalOpen && selectedSchoolInside && (activeLevel || editingClass) && (
+          <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-start justify-center pt-14 sm:pt-16 pb-8 p-3 sm:p-5 overflow-y-auto">
+            <div 
+              className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 animate-fade-in my-auto max-h-[88vh] flex flex-col"
+              style={{
+                boxShadow: '0 25px 50px -12px rgba(0, 35, 46, 0.35)'
+              }}
+            >
+              {/* En-tête inspiré des autres modales */}
+              <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#00313d] text-white flex items-center justify-center shadow-md">
+                    {editingClass ? <Pencil className="w-5 h-5" /> : <BookOpen className="w-5 h-5" />}
+                  </div>
+                  <div>
+                    <h2 className="text-base sm:text-lg font-black text-[#00313d] leading-none">
+                      {editingClass ? "Modifier la classe" : "Créer une classe"}
+                    </h2>
+                    <span className="text-[11px] font-semibold text-slate-400 mt-1 inline-flex items-center gap-1.5">
+                      <span>Niveau :</span>
+                      <span className="font-black text-cyan-800 bg-cyan-50 px-1.5 py-0.2 rounded border border-cyan-200/70">
+                        {editingClass ? editingClass.level : activeLevel?.name}
+                      </span>
+                      <span>&bull;</span>
+                      <span>{selectedSchoolInside.name}</span>
+                    </span>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddClassModalOpen(false);
+                    resetClassForm();
+                  }}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleCreateClass} className="flex flex-col flex-1 overflow-hidden">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5 p-6 overflow-y-auto flex-1">
+                  
+                  {/* COLONNE GAUCHE : Nom libre de la classe, Slogan et Professeur */}
+                  <div className="space-y-4">
+                    {/* 1. Nom de la classe donné librement par l'utilisateur (Requis) */}
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                        Nom de la classe <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={className}
+                        onChange={(e) => setClassName(e.target.value)}
+                        placeholder={`Ex: ${editingClass ? editingClass.level : activeLevel?.name} A, ${editingClass ? editingClass.level : activeLevel?.name} C1, Groupe 1...`}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                        autoFocus
+                      />
+                      <span className="text-[10px] text-slate-400 block">
+                        Saisissez librement le nom de cette classe rattachée au niveau <span className="font-bold text-slate-600">{editingClass ? editingClass.level : activeLevel?.name}</span>.
+                      </span>
+                    </div>
+
+                    {/* 2. Slogan / Sous-titre de la classe (Facultatif) */}
+                    <div className="space-y-1">
+                      <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                        Slogan / Description <span className="text-[10px] font-normal text-slate-400 lowercase">(facultatif)</span>
+                      </label>
+                      <input
+                        type="text"
+                        value={classSlogan}
+                        onChange={(e) => setClassSlogan(e.target.value)}
+                        placeholder="Ex: Discipline et Réussite, Série Scientifique..."
+                        className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                      />
                     </div>
 
                     {/* 3. Nom du professeur ou maître (Requis) */}
@@ -2510,7 +3055,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     </div>
                   </div>
 
-                  {/* COLONNE DROITE : Couleur de la classe & Aperçu 3D direct */}
+                  {/* COLONNE DROITE : Couleur de la classe & Aperçu 3D compact */}
                   <div className="space-y-4 flex flex-col justify-between">
                     {/* Choix de la couleur */}
                     <div className="space-y-2">
@@ -2531,13 +3076,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               type="button"
                               onClick={() => setSelectedClassColor(col)}
                               style={{ backgroundColor: col.bg, borderColor: col.border }}
-                              className={`h-9 rounded-xl border flex items-center justify-center transition-all ${
+                              className={`h-8 rounded-lg border flex items-center justify-center transition-all cursor-pointer ${
                                 isSelected ? 'scale-110 shadow-md ring-2 ring-offset-1 ring-cyan-500' : 'hover:scale-105'
                               }`}
                               title={col.label}
                             >
                               {isSelected && (
-                                <Check className={`w-4 h-4 stroke-[3] ${col.id === 'white' ? 'text-slate-800' : 'text-white'}`} />
+                                <Check className={`w-3.5 h-3.5 stroke-[3] ${col.id === 'white' ? 'text-slate-800' : 'text-white'}`} />
                               )}
                             </button>
                           );
@@ -2545,58 +3090,52 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </div>
                     </div>
 
-                    {/* Aperçu en direct de la carte 3D */}
+                    {/* Aperçu en direct de la carte 3D compacte */}
                     <div className="space-y-1.5 pt-1">
                       <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        Aperçu de la carte 3D :
+                        Aperçu de la carte 3D (format compact) :
                       </span>
                       <div 
                         style={{
                           borderColor: selectedClassColor.border,
                           borderBottomColor: selectedClassColor.borderDark,
                         }}
-                        className="rounded-2xl border-2 border-b-[5px] bg-white p-2.5 sm:p-3 px-3.5 flex flex-col justify-between shadow-md transition-all select-none max-w-xs"
+                        className="w-52 rounded-xl border-2 border-b-[4px] bg-white px-2.5 py-2 flex flex-col justify-between shadow-sm transition-all select-none"
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="flex items-start gap-2 min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-1.5">
+                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
                             <div 
-                              className="w-8 h-8 rounded-lg flex items-center justify-center shadow-xs shrink-0"
+                              className="w-6 h-6 rounded-md flex items-center justify-center shadow-2xs shrink-0"
                               style={{ background: selectedClassColor.iconGradient }}
                             >
-                              <BookOpen className="w-4 h-4 text-white stroke-[2.2]" />
+                              <BookOpen className="w-3.5 h-3.5 text-white stroke-[2.2]" />
                             </div>
                             <div className="min-w-0 flex-1">
-                              <span className="text-[9px] font-extrabold uppercase tracking-wide text-slate-400 block truncate leading-tight">
-                                {classSlogan.trim() ? classSlogan.trim() : 'Classe Pro'}
+                              <span className="text-[8.5px] font-bold uppercase tracking-wide text-slate-400 block truncate leading-none">
+                                {classSlogan.trim() || (editingClass ? editingClass.level : activeLevel?.name) || 'Niveau'}
                               </span>
-                              <h4 className="text-sm font-black text-slate-900 tracking-tight leading-snug truncate mt-0.5">
-                                {classLevel.trim() || 'Niveau'} {className.trim() ? `• ${className.trim()}` : ''}
+                              <h4 className="text-xs font-black text-slate-900 tracking-tight leading-snug truncate mt-0.5">
+                                {className.trim() || 'Nom de la classe'}
                               </h4>
                             </div>
                           </div>
-                          <span className="w-2.5 h-2.5 rounded-full shadow-2xs" style={{ backgroundColor: selectedClassColor.bg }} />
+                          <span className="w-2 h-2 rounded-full shadow-2xs shrink-0 mt-0.5" style={{ backgroundColor: selectedClassColor.bg }} />
                         </div>
 
-                        <div className="mt-2 pt-1.5 border-t border-slate-100 flex items-center justify-between text-xs">
-                          <div className="flex flex-col">
-                            <span className="text-[8px] font-black uppercase text-slate-400">PROFESSEUR</span>
-                            <span className="font-extrabold text-slate-700 truncate max-w-[120px] text-[10px]">
-                              {classTeacherName.trim() || 'Nom du maître'}
-                            </span>
-                          </div>
-                          <div className="flex flex-col items-end">
-                            <span className="text-[8px] font-black uppercase text-slate-400">ÉLÈVES</span>
-                            <span className="text-[9.5px] font-black text-cyan-800 bg-cyan-50 px-1.5 py-0.2 rounded border border-cyan-200/50">
-                              0 élèves
-                            </span>
-                          </div>
+                        <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                          <span className="font-bold text-slate-600 truncate text-[9.5px]">
+                            {classTeacherName.trim() || 'Nom du maître'}
+                          </span>
+                          <span className="text-[8.5px] font-black text-cyan-800 bg-cyan-50 px-1.5 py-0.2 rounded border border-cyan-200/50 shrink-0">
+                            0 mat.
+                          </span>
                         </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Bouton Créer / Enregistrer accessible quand les informations requises sont prêtes */}
+                {/* Boutons Créer / Enregistrer */}
                 <div className="p-4 px-6 border-t border-slate-100 flex items-center gap-3 bg-slate-50/50 shrink-0">
                   <button
                     type="button"
@@ -2604,21 +3143,21 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       setIsAddClassModalOpen(false);
                       resetClassForm();
                     }}
-                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"
+                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition cursor-pointer"
                   >
                     Annuler
                   </button>
 
                   <button
                     type="submit"
-                    disabled={editingClass ? (!classLevel.trim() || !classTeacherName.trim() || !isClassDirty) : (!classLevel.trim() || !classTeacherName.trim())}
+                    disabled={editingClass ? (!className.trim() || !classTeacherName.trim() || !isClassDirty) : (!className.trim() || !classTeacherName.trim())}
                     style={{ 
-                      backgroundColor: (editingClass ? (classLevel.trim() && classTeacherName.trim() && isClassDirty) : (classLevel.trim() && classTeacherName.trim())) 
+                      backgroundColor: (editingClass ? (className.trim() && classTeacherName.trim() && isClassDirty) : (className.trim() && classTeacherName.trim())) 
                         ? '#00313d' 
                         : undefined 
                     }}
                     className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
-                      (editingClass ? (classLevel.trim() && classTeacherName.trim() && isClassDirty) : (classLevel.trim() && classTeacherName.trim()))
+                      (editingClass ? (className.trim() && classTeacherName.trim() && isClassDirty) : (className.trim() && classTeacherName.trim()))
                         ? 'text-white hover:bg-[#00242e] cursor-pointer' 
                         : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                     }`}
@@ -2654,7 +3193,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       {editingSubject ? "Modifier la matière" : "Créer une matière"}
                     </h2>
                     <span className="text-[11px] font-semibold text-slate-400 mt-1 inline-block">
-                      Classe : {activeClass.level} {activeClass.name ? `• ${activeClass.name}` : ''} &bull; {activeTerm?.name || 'Trimestre 1'}
+                      Classe : {getClassFullLabel(activeClass)} &bull; {activeTerm?.name || 'Trimestre 1'}
                     </span>
                   </div>
                 </div>
@@ -2771,23 +3310,23 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       borderColor: selectedSubjectColor.id === 'white' ? '#e2e8f0' : selectedSubjectColor.border,
                       borderBottomColor: selectedSubjectColor.id === 'white' ? '#cbd5e1' : selectedSubjectColor.borderDark,
                     }}
-                    className="w-48 sm:w-56 rounded-xl border-2 border-b-[4px] p-2.5 sm:p-3 min-h-[68px] flex flex-col justify-between shadow-md transition-all select-none"
+                    className="w-40 sm:w-44 rounded-lg border-2 border-b-[3px] px-2 py-1.5 min-h-[52px] flex flex-col justify-between shadow-sm transition-all select-none"
                   >
                     <div className="flex items-center justify-between w-full">
                       {subjectCoefficient.trim() ? (
-                        <span className={`text-[8.5px] font-black px-1.5 py-0.2 rounded border ${
+                        <span className={`text-[8px] font-black px-1 py-0 rounded border ${
                           selectedSubjectColor.id === 'white'
                             ? 'bg-slate-100 text-slate-700 border-slate-200'
                             : 'bg-black/25 text-white/95 border-white/20'
                         }`}>
-                          Coeff: {subjectCoefficient.trim()}
+                          Coeff {subjectCoefficient.trim()}
                         </span>
                       ) : (
-                        <span className="text-[8px] font-bold opacity-60">Matière</span>
+                        <span className="text-[7.5px] font-bold opacity-60">Matière</span>
                       )}
                     </div>
-                    <div className="flex-1 flex items-center justify-center my-auto px-1 py-0.5">
-                      <span className="text-center font-black text-xs sm:text-sm leading-tight line-clamp-3 break-words">
+                    <div className="flex-1 flex items-center justify-center my-auto px-0.5 pt-0.5">
+                      <span className="text-center font-black text-[11px] sm:text-xs leading-tight line-clamp-2 break-words">
                         {subjectName.trim() || 'Nom matière'}
                       </span>
                     </div>
@@ -3019,7 +3558,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       Ajouter un trimestre
                     </h3>
                     <span className="text-[11px] font-semibold text-slate-400 mt-0.5 inline-block">
-                      Classe : {activeClass.level} {activeClass.name ? `• ${activeClass.name}` : ''}
+                      Classe : {getClassFullLabel(activeClass)}
                     </span>
                   </div>
                 </div>
@@ -3035,7 +3574,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
               <div className="p-5 sm:p-6 space-y-4">
                 <div className="p-4 rounded-xl bg-cyan-50/70 border border-cyan-200/80 text-xs sm:text-sm text-cyan-950 leading-relaxed font-semibold">
-                  Voulez-vous ajouter le <span className="font-black text-[#00313d]">Trimestre {nextTermNumber}</span> pour la classe <span className="font-black">{activeClass.level} {activeClass.name || ''}</span> ?
+                  Voulez-vous ajouter le <span className="font-black text-[#00313d]">Trimestre {nextTermNumber}</span> pour la classe <span className="font-black">{getClassFullLabel(activeClass)}</span> ?
                 </div>
                 <p className="text-xs text-slate-500 leading-relaxed">
                   Ce nouveau trimestre vous permettra d'enregistrer et de gérer des matières, notes et évaluations indépendantes des autres trimestres.

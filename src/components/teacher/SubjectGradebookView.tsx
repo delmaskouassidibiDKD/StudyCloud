@@ -2183,7 +2183,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, activeSheetTab);
 
-      const safeName = `Releve_Notes_${subject.name}_${schoolClass.level}_${term?.name || 'T1'}.xlsx`.replace(/[^\w\d-_.]/g, '_');
+      const classLabel = schoolClass.name?.trim()
+        ? (schoolClass.name.toLowerCase().includes(schoolClass.level.toLowerCase()) ? schoolClass.name.trim() : `${schoolClass.level}_${schoolClass.name.trim()}`)
+        : schoolClass.level;
+      const safeName = `Releve_Notes_${subject.name}_${classLabel}_${term?.name || 'T1'}.xlsx`.replace(/[^\w\d-_.]/g, '_');
       XLSX.writeFile(wb, safeName);
     } catch (err) {
       console.error('Erreur export Excel:', err);
@@ -2255,7 +2258,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 truncate">
               <span className="truncate">{subject.name}</span>
               <span className="text-slate-400 font-normal hidden sm:inline">•</span>
-              <span className="text-slate-600 font-semibold truncate hidden sm:inline">{schoolClass.level} {schoolClass.name || ''}</span>
+              <span className="text-slate-600 font-semibold truncate hidden sm:inline">
+                {schoolClass.name?.trim()
+                  ? (schoolClass.name.toLowerCase().includes(schoolClass.level.toLowerCase())
+                      ? schoolClass.name.trim()
+                      : `${schoolClass.level} • ${schoolClass.name.trim()}`)
+                  : schoolClass.level}
+              </span>
               <span className="text-slate-400 font-normal hidden md:inline">•</span>
               <span className="text-cyan-800 font-bold bg-cyan-50 px-2 py-0.5 rounded text-[10px] border border-cyan-200/80 hidden md:inline-block">
                 {term?.name || 'Trimestre 1'}
