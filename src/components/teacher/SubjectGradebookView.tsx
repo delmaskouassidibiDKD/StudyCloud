@@ -18,7 +18,8 @@ import {
   AlignLeft,
   AlignCenter,
   AlignRight,
-  Sigma,
+  Undo2,
+  Redo2,
   Plus,
   Minus,
   Download,
@@ -598,7 +599,168 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       localStorage.setItem(cellCustomStylesKey, JSON.stringify(cellCustomStyles));
       setIsSaved(true);
     } catch { }
-  }, [students, noteColumnCount, noteColWidth, colWidthRank, colWidthPhoto, colWidthName, colWidthAverage, colWidthMention, customNoteWidths, customRowHeights, columnMetas, storageKey, colCountKey, colWidthKey, colWidthRankKey, colWidthPhotoKey, colWidthNameKey, colWidthAvgKey, colWidthMentionKey, customNoteWidthsKey, rowHeightsKey, colMetasKey, cellCustomStyles, cellCustomStylesKey]);
+  }, [students, noteColumnCount, noteColWidth, colWidthRank, colWidthPhoto, colWidthName, colWidthAverage, colWidthMention, customNoteWidths, customRowHeights, columnMetas, cellColors, rowColors, storageKey, colCountKey, colWidthKey, colWidthRankKey, colWidthPhotoKey, colWidthNameKey, colWidthAvgKey, colWidthMentionKey, customNoteWidthsKey, rowHeightsKey, colMetasKey, cellColorsKey, rowColorsKey, cellCustomStyles, cellCustomStylesKey]);
+
+  // =========================================================================
+  // HISTORIQUE COMPLET ANNULER / RÉTABLIR (UNDO / REDO) POUR TOUTE MODIFICATION
+  // =========================================================================
+  interface GradebookHistorySnapshot {
+    students: StudentGradeRow[];
+    noteColumnCount: number;
+    columnMetas: { [idx: number]: GradebookColumnMeta };
+    cellCustomStyles: { [cellKey: string]: CellCustomStyle };
+    rowColors: { [studentId: string]: string };
+    cellColors: { [cellKey: string]: string };
+    colWidthRank: number;
+    colWidthPhoto: number;
+    colWidthName: number;
+    colWidthAverage: number;
+    colWidthMention: number;
+    noteColWidth: number;
+    customNoteWidths: { [idx: number]: number };
+    customRowHeights: { [rowIdx: number]: number };
+  }
+
+  const MAX_HISTORY_STEPS = 100;
+  const historyRef = useRef<{
+    past: GradebookHistorySnapshot[];
+    present: GradebookHistorySnapshot | null;
+    presentKey: string;
+    future: GradebookHistorySnapshot[];
+  }>({
+    past: [],
+    present: null,
+    presentKey: '',
+    future: []
+  });
+  const isApplyingHistoryRef = useRef<boolean>(false);
+  const [historyFlags, setHistoryFlags] = useState<{ canUndo: boolean; canRedo: boolean }>({
+    canUndo: false,
+    canRedo: false
+  });
+
+  const applyHistorySnapshot = (snap: GradebookHistorySnapshot) => {
+    isApplyingHistoryRef.current = true;
+    const cloned: GradebookHistorySnapshot = JSON.parse(JSON.stringify(snap));
+    setStudents(cloned.students);
+    setNoteColumnCount(cloned.noteColumnCount);
+    setColumnMetas(cloned.columnMetas);
+    setCellCustomStyles(cloned.cellCustomStyles);
+    setRowColors(cloned.rowColors);
+    setCellColors(cloned.cellColors);
+    setColWidthRank(cloned.colWidthRank);
+    setColWidthPhoto(cloned.colWidthPhoto);
+    setColWidthName(cloned.colWidthName);
+    setColWidthAverage(cloned.colWidthAverage);
+    setColWidthMention(cloned.colWidthMention);
+    setNoteColWidth(cloned.noteColWidth);
+    setCustomNoteWidths(cloned.customNoteWidths);
+    setCustomRowHeights(cloned.customRowHeights);
+    setIsSaved(false);
+  };
+
+  const handleUndo = () => {
+    const h = historyRef.current;
+    if (h.past.length === 0 || !h.present) return;
+    const previous = h.past.pop()!;
+    h.future.push(h.present);
+    h.present = previous;
+    h.presentKey = JSON.stringify(previous);
+    setHistoryFlags({
+      canUndo: h.past.length > 0,
+      canRedo: h.future.length > 0
+    });
+    applyHistorySnapshot(previous);
+  };
+
+  const handleRedo = () => {
+    const h = historyRef.current;
+    if (h.future.length === 0 || !h.present) return;
+    const next = h.future.pop()!;
+    h.past.push(h.present);
+    h.present = next;
+    h.presentKey = JSON.stringify(next);
+    setHistoryFlags({
+      canUndo: h.past.length > 0,
+      canRedo: h.future.length > 0
+    });
+    applyHistorySnapshot(next);
+  };
+
+  // Enregistrement automatique d'un instantané à chaque modification (notes, noms, styles, couleurs, photos, colonnes, lignes, tailles)
+  useEffect(() => {
+    // Attendre la fin du glissement d'un trait pour n'enregistrer qu'une seule étape propre
+    if (resizingLine !== null || isDraggingRight || isDraggingCorner) {
+      return;
+    }
+
+    const currentSnap: GradebookHistorySnapshot = {
+      students,
+      noteColumnCount,
+      columnMetas,
+      cellCustomStyles,
+      rowColors,
+      cellColors,
+      colWidthRank,
+      colWidthPhoto,
+      colWidthName,
+      colWidthAverage,
+      colWidthMention,
+      noteColWidth,
+      customNoteWidths,
+      customRowHeights
+    };
+    const currentKey = JSON.stringify(currentSnap);
+    const h = historyRef.current;
+
+    if (h.present === null) {
+      h.present = JSON.parse(currentKey);
+      h.presentKey = currentKey;
+      return;
+    }
+
+    if (isApplyingHistoryRef.current) {
+      isApplyingHistoryRef.current = false;
+      h.present = JSON.parse(currentKey);
+      h.presentKey = currentKey;
+      return;
+    }
+
+    if (currentKey === h.presentKey) {
+      return;
+    }
+
+    h.past.push(h.present);
+    if (h.past.length > MAX_HISTORY_STEPS) {
+      h.past.shift();
+    }
+    h.present = JSON.parse(currentKey);
+    h.presentKey = currentKey;
+    h.future = [];
+
+    setHistoryFlags({
+      canUndo: h.past.length > 0,
+      canRedo: false
+    });
+  }, [
+    students,
+    noteColumnCount,
+    columnMetas,
+    cellCustomStyles,
+    rowColors,
+    cellColors,
+    colWidthRank,
+    colWidthPhoto,
+    colWidthName,
+    colWidthAverage,
+    colWidthMention,
+    noteColWidth,
+    customNoteWidths,
+    customRowHeights,
+    resizingLine,
+    isDraggingRight,
+    isDraggingCorner
+  ]);
 
   // Synchroniser la taille du tableau de notes de chaque élève avec noteColumnCount
   useEffect(() => {
@@ -617,9 +779,22 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     }));
   }, [noteColumnCount]);
 
-  // Désélectionner les lignes et fermer les menus avec la touche Échap
+  // Raccourcis clavier (Échap, Ctrl+Z Annuler, Ctrl+Y / Ctrl+Shift+Z Rétablir)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+        const key = e.key.toLowerCase();
+        if (key === 'z' && !e.shiftKey) {
+          e.preventDefault();
+          handleUndo();
+          return;
+        }
+        if (key === 'y' || (key === 'z' && e.shiftKey)) {
+          e.preventDefault();
+          handleRedo();
+          return;
+        }
+      }
       if (e.key === 'Escape') {
         setSelectedLine(null);
         setActiveMenuCol(null);
@@ -2574,19 +2749,46 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Alignement</span>
         </div>
 
-        {/* GROUPE 4 : DONNÉES (MOYENNES) */}
+        {/* GROUPE 4 : HISTORIQUE (RETOUR ARRIÈRE / AVANT - UNDO / REDO) */}
         <div className="flex flex-col items-center justify-between px-1.5">
-          <button 
-            type="button" 
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={(e) => e.stopPropagation()}
-            className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-slate-200 transition text-slate-800 mt-0.5 active:scale-95 cursor-pointer outline-none focus:outline-none" 
-            title="Moyennes calculées"
-          >
-            <Sigma className="w-4 h-4 text-emerald-700 stroke-[2.5]" />
-            <span className="text-[10px] font-bold">Moyenne</span>
-          </button>
-          <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Données</span>
+          <div className="flex items-center gap-1 mt-0.5">
+            <button
+              type="button"
+              disabled={!historyFlags.canUndo}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleUndo();
+              }}
+              className={`p-1.5 rounded transition flex items-center justify-center outline-none focus:outline-none ${
+                historyFlags.canUndo
+                  ? 'hover:bg-slate-200 text-slate-800 cursor-pointer active:scale-95'
+                  : 'text-slate-300 cursor-not-allowed'
+              }`}
+              title="Annuler la dernière modification (Ctrl+Z)"
+            >
+              <Undo2 className="w-4 h-4 stroke-[2.4]" />
+            </button>
+
+            <button
+              type="button"
+              disabled={!historyFlags.canRedo}
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRedo();
+              }}
+              className={`p-1.5 rounded transition flex items-center justify-center outline-none focus:outline-none ${
+                historyFlags.canRedo
+                  ? 'hover:bg-slate-200 text-slate-800 cursor-pointer active:scale-95'
+                  : 'text-slate-300 cursor-not-allowed'
+              }`}
+              title="Rétablir la modification annulée (Ctrl+Y)"
+            >
+              <Redo2 className="w-4 h-4 stroke-[2.4]" />
+            </button>
+          </div>
+          <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Historique</span>
         </div>
       </section>
 
