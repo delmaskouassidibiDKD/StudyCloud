@@ -353,6 +353,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const [fontSearchQuery, setFontSearchQuery] = useState<string>('');
   const [copiedTableSuccess, setCopiedTableSuccess] = useState<boolean>(false);
 
+  // Fermeture universelle et propre de tous les menus et palettes sans figer l'application
+  const closeAllMenus = () => {
+    setActiveMenuCol(null);
+    setActiveMenuRow(null);
+    setActiveMenuCell(null);
+    setActiveMenuPhoto(null);
+    setActiveMenuNameCol(false);
+    setActiveColorPicker(null);
+    setIsFontFamilyMenuOpen(false);
+    setIsFontSizeMenuOpen(false);
+    setIsTextColorMenuOpen(false);
+    setIsBgColorMenuOpen(false);
+  };
+
   // Un seul petit menu peut être ouvert à la fois
   const isAnyMenuOpen = activeMenuCol !== null || activeMenuRow !== null || activeMenuCell !== null || activeMenuNameCol || activeMenuPhoto !== null || isFontFamilyMenuOpen || isFontSizeMenuOpen || isTextColorMenuOpen || isBgColorMenuOpen;
 
@@ -487,16 +501,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Cellule active pour la barre de formule
   const [activeCellInfo, setActiveCellInfo] = useState<{
     id: string;
-    type: 'rank' | 'photo' | 'name' | 'note' | 'average' | 'column' | 'mention';
+    type: 'rank' | 'photo' | 'name' | 'note' | 'average' | 'column' | 'mention' | 'none';
     rowIndex?: number;
     noteColIndex?: number;
     coordDisplay: string;
     value: string;
   }>({
-    id: 'cell-name-0',
-    type: 'name',
-    rowIndex: 0,
-    coordDisplay: 'NOM1',
+    id: '',
+    type: 'none',
+    rowIndex: undefined,
+    coordDisplay: '',
     value: ''
   });
 
@@ -1123,7 +1137,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         return students.map(s => `${s.id}_${cIdx}`);
       }
     }
-    if (activeCellInfo.rowIndex !== undefined && students[activeCellInfo.rowIndex]) {
+    if (activeCellInfo.rowIndex !== undefined && activeCellInfo.type !== 'none' && students[activeCellInfo.rowIndex]) {
       const std = students[activeCellInfo.rowIndex];
       if (activeCellInfo.type === 'name') return [`${std.id}_name`];
       if (activeCellInfo.type === 'note' && activeCellInfo.noteColIndex !== undefined) return [`${std.id}_${activeCellInfo.noteColIndex}`];
@@ -1131,8 +1145,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       if (activeCellInfo.type === 'average') return [`${std.id}_avg`];
       if (activeCellInfo.type === 'mention') return [`${std.id}_mention`];
     }
-    const firstStd = students[0];
-    if (firstStd) return [`${firstStd.id}_name`];
+    // Si rien n'est sélectionné/souligné, aucune cellule n'est ciblée
     return [];
   };
 
@@ -1654,14 +1667,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   return (
     <div 
       onClick={() => {
-        // Clic sur l'espace extérieur désélectionne toute ligne et ferme les menus
-        if (selectedLine) setSelectedLine(null);
-        if (activeMenuCol !== null) setActiveMenuCol(null);
-        if (activeMenuCell !== null) setActiveMenuCell(null);
-        if (activeMenuRow !== null) setActiveMenuRow(null);
-        if (activeMenuNameCol) setActiveMenuNameCol(false);
-        if (activeMenuPhoto !== null) setActiveMenuPhoto(null);
-        if (activeColorPicker !== null) setActiveColorPicker(null);
+        // Clic sur l'espace extérieur désélectionne toute ligne et ferme proprement les menus
+        closeAllMenus();
+        setSelectedLine(null);
         if (blockedNoteTarget) setBlockedNoteTarget(null);
       }}
       className={`w-full flex flex-col bg-[#eef2f6] text-slate-800 font-sans select-none overflow-hidden transition-all duration-300 ${
@@ -1799,7 +1807,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       {/* ========================================================================= */}
       {/* 2. RUBAN D'OUTILS STYLE WPS OFFICE / EXCEL (INTERACTIF & COMPLET) */}
       {/* ========================================================================= */}
-      <section className="bg-[#f3f4f6] border-b border-slate-300 px-2 py-1 flex items-stretch gap-1 sm:gap-2 overflow-x-auto text-slate-700 shrink-0 select-none relative z-30">
+      <section className="bg-[#f3f4f6] border-b border-slate-300 px-2 py-1 flex items-stretch gap-1 sm:gap-2 text-slate-700 shrink-0 select-none relative z-50 overflow-visible">
         {/* GROUPE 1 : PRESSE-PAPIERS (COPIER TOUT LE TABLEAU & COLLER) */}
         <div className="flex flex-col items-center justify-between px-1.5 border-r border-slate-300/80 min-w-[76px]">
           <div className="flex items-center gap-1 mt-0.5">
@@ -1862,7 +1870,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               {isFontFamilyMenuOpen && (
                 <div 
                   onClick={(e) => e.stopPropagation()}
-                  className="absolute top-full left-0 mt-1 w-64 max-h-72 bg-white border border-slate-300 rounded-lg shadow-2xl z-50 flex flex-col overflow-hidden text-xs select-none animate-in fade-in zoom-in-95"
+                  className="absolute top-full left-0 mt-1 w-64 max-h-72 bg-white border border-slate-300 rounded-lg shadow-2xl z-[100] flex flex-col overflow-hidden text-xs select-none animate-in fade-in zoom-in-95"
                 >
                   {/* Champ de recherche de police */}
                   <div className="p-2 border-b border-slate-200 bg-slate-50 flex items-center gap-1.5 sticky top-0 z-10">
@@ -1931,7 +1939,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               {isFontSizeMenuOpen && (
                 <div 
                   onClick={(e) => e.stopPropagation()}
-                  className="absolute top-full left-0 mt-1 w-20 max-h-60 bg-white border border-slate-300 rounded-lg shadow-2xl z-50 overflow-y-auto py-1 text-xs select-none animate-in fade-in zoom-in-95"
+                  className="absolute top-full left-0 mt-1 w-20 max-h-60 bg-white border border-slate-300 rounded-lg shadow-2xl z-[100] overflow-y-auto py-1 text-xs select-none animate-in fade-in zoom-in-95"
                 >
                   {FONT_SIZES.map((sz) => (
                     <button
@@ -2058,7 +2066,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               {isTextColorMenuOpen && (
                 <div 
                   onClick={(e) => e.stopPropagation()}
-                  className="absolute top-full left-0 mt-1 w-52 bg-white border border-slate-300 rounded-lg shadow-2xl p-2 z-50 text-xs select-none animate-in fade-in zoom-in-95"
+                  className="absolute top-full left-0 mt-1 w-52 bg-white border border-slate-300 rounded-lg shadow-2xl p-2 z-[100] text-xs select-none animate-in fade-in zoom-in-95"
                 >
                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 px-0.5">
                     Couleur de police
@@ -2114,7 +2122,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               {isBgColorMenuOpen && (
                 <div 
                   onClick={(e) => e.stopPropagation()}
-                  className="absolute top-full left-0 mt-1 w-52 bg-white border border-slate-300 rounded-lg shadow-2xl p-2 z-50 text-xs select-none animate-in fade-in zoom-in-95"
+                  className="absolute top-full left-0 mt-1 w-52 bg-white border border-slate-300 rounded-lg shadow-2xl p-2 z-[100] text-xs select-none animate-in fade-in zoom-in-95"
                 >
                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 px-0.5">
                     Couleur de fond
@@ -2211,7 +2219,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       {/* ========================================================================= */}
       {/* 3. BARRE DE FORMULE EXCEL (Coordonnée active | fx | Champ de saisie) */}
       {/* ========================================================================= */}
-      <section className="h-7 sm:h-8 bg-white border-b border-slate-300 px-2 flex items-center gap-2 text-xs shrink-0 select-none">
+      <section className="h-7 sm:h-8 bg-white border-b border-slate-300 px-2 flex items-center gap-2 text-xs shrink-0 select-none relative z-20">
         <div className="flex items-center justify-between w-18 sm:w-22 h-6 px-1.5 bg-[#f9fafb] border border-slate-300 rounded text-slate-700 font-mono font-bold text-[11px]">
           <span>{activeCellInfo.coordDisplay}</span>
           <ChevronDown className="w-3 h-3 text-slate-400" />
@@ -2247,15 +2255,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       {/* ========================================================================= */}
       <div 
         ref={gridContainerRef}
-        className="flex-1 overflow-auto bg-[#fafbfc] relative p-2 sm:p-3 touch-pan-x touch-pan-y"
+        className="flex-1 overflow-auto bg-[#fafbfc] relative p-0 touch-pan-x touch-pan-y"
         style={{
           zoom: `${zoomPercent}%`
         }}
       >
-        <div className="inline-block min-w-full">
-          {/* Ligne d'en-tête de colonnes Excel (A, B, C, ... AV puis reprend à zéro A, B...) */}
-          <div className="flex items-center mb-0 sticky top-0 z-10 select-none">
-            <div className="w-9 h-6 bg-[#f1f5f9] border-r border-b border-slate-300 text-[10px] flex items-center justify-center font-mono text-slate-400 shrink-0">
+        <div className="inline-block min-w-full pb-20 pr-20">
+          {/* Ligne d'en-tête de colonnes Excel (A, B, C, ... AV) : COLLÉE EN HAUT DIRECTEMENT SOUS LA BARRE FX SANS ESPACE */}
+          <div className="flex items-center mb-0 sticky top-0 z-20 select-none bg-[#f8fafc] border-b border-slate-300 shadow-2xs">
+            <div className="w-9 h-6 bg-[#f1f5f9] border-r border-b border-slate-300 text-[10px] flex items-center justify-center font-mono text-slate-500 shrink-0 sticky left-0 z-30">
               ◢
             </div>
             {Array.from({ length: backgroundColCount }).map((_, c) => (
@@ -2311,22 +2319,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 {/* RANG | PROFIL | NOM & PRÉNOM | NOTE 1... NOTE N | [+] | MOYENNE     */}
                 {/* =================================================================== */}
                 <div className="relative shrink-0 border-2 border-slate-900 bg-white shadow-xl w-fit">
-                  {/* TOILE DE FOND TRANSPARENTE FERMANT TOUT MENU AU CLIC EXTÉRIEUR */}
+                  {/* TOILE DE FOND FERMANT LES MENUS DU TABLEAU AU CLIC EXTÉRIEUR */}
                   {isAnyMenuOpen && (
                     <div 
                       className="fixed inset-0 z-40 bg-transparent cursor-default" 
                       onClick={(e) => {
                         e.stopPropagation();
-                        setActiveMenuCol(null);
-                        setActiveMenuRow(null);
-                        setActiveMenuCell(null);
-                        setActiveMenuNameCol(false);
-                        setActiveMenuPhoto(null);
-                        setActiveColorPicker(null);
-                        setIsFontFamilyMenuOpen(false);
-                        setIsFontSizeMenuOpen(false);
-                        setIsTextColorMenuOpen(false);
-                        setIsBgColorMenuOpen(false);
+                        closeAllMenus();
                       }}
                     />
                   )}
@@ -3908,18 +3907,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         </div>
       )}
 
-      {/* BACKDROP DÉSACTIVATION ARRIÈRE-PLAN QUAND UN MENU EST OUVERT */}
+      {/* BACKDROP FERMETURE MENUS UNIVERSELLE */}
       {isAnyMenuOpen && (
         <div 
-          className="fixed inset-0 z-40 bg-black/5 cursor-default"
+          className="fixed inset-0 z-40 bg-transparent cursor-default"
           onClick={(e) => {
             e.stopPropagation();
-            setActiveMenuCol(null);
-            setActiveMenuRow(null);
-            setActiveMenuCell(null);
-            setActiveMenuPhoto(null);
-            setActiveMenuNameCol(false);
-            setActiveColorPicker(null);
+            closeAllMenus();
           }}
         />
       )}
