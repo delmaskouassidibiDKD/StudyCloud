@@ -498,7 +498,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     }));
   });
 
-  // Cellule active pour la barre de formule (sélectionne la première case par défaut comme dans Excel)
+  // Cellule active pour la barre de formule (aucune sélection tant que l'utilisateur n'a pas cliqué)
   const [activeCellInfo, setActiveCellInfo] = useState<{
     id: string;
     type: 'rank' | 'photo' | 'name' | 'note' | 'average' | 'column' | 'mention' | 'none';
@@ -507,21 +507,28 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     coordDisplay: string;
     value: string;
   }>({
-    id: 'cell-name-0',
-    type: 'name',
-    rowIndex: 0,
-    coordDisplay: 'NOM1',
+    id: '',
+    type: 'none',
+    rowIndex: undefined,
+    coordDisplay: '',
     value: ''
   });
 
-  // Styles de formatage du ruban
-  const [isBold, setIsBold] = useState<boolean>(false);
-  const [isItalic, setIsItalic] = useState<boolean>(false);
-  const [isUnderline, setIsUnderline] = useState<boolean>(false);
-  const [isStrikethrough, setIsStrikethrough] = useState<boolean>(false);
-  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>('center');
-  const [fontSize, setFontSize] = useState<number>(12);
-  const [fontFamily, setFontFamily] = useState<string>('Calibri');
+  // Élément réellement surligné ("souligné") par l'utilisateur (texte sélectionné dans une case ou cellule lue)
+  // Tant que rien n'est surligné, les boutons B / I / U / S / Taille / Couleurs restent normaux et n'agissent pas.
+  const [highlightedTarget, setHighlightedTarget] = useState<{
+    cellKey: string;
+    cellType: 'name' | 'note' | 'rank' | 'average' | 'mention';
+    elementId?: string;
+    start?: number;
+    end?: number;
+    isDomSelection?: boolean;
+  } | null>(null);
+
+  const isFontFamilyMenuOpenRef = useRef<boolean>(false);
+  useEffect(() => {
+    isFontFamilyMenuOpenRef.current = isFontFamilyMenuOpen;
+  }, [isFontFamilyMenuOpen]);
 
   // Zoom : 70% par défaut
   const [zoomPercent, setZoomPercent] = useState<number>(70);
@@ -597,10 +604,76 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         setIsFontSizeMenuOpen(false);
         setIsTextColorMenuOpen(false);
         setIsBgColorMenuOpen(false);
+        setHighlightedTarget(null);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Suivi en temps réel du texte réellement surligné ("souligné") dans le tableau (inputs & cellules texte)
+  useEffect(() => {
+    const handleDocumentSelectionChange = () => {
+      const activeEl = document.activeElement as HTMLElement | null;
+
+      // Ne pas effacer le surlignement de la cellule si l'utilisateur tape dans la barre de recherche des polices
+      if (activeEl?.getAttribute('data-font-search') === 'true') {
+        return;
+      }
+
+      // Cas 1 : Sélection à l'intérieur d'un champ <input> (Nom, Note, Barème, Barre fx)
+      if (activeEl && activeEl.tagName === 'INPUT') {
+        const inputEl = activeEl as HTMLInputElement;
+        const cellKey = inputEl.getAttribute('data-cell-key');
+        const cellType = inputEl.getAttribute('data-cell-type') as 'name' | 'note' | 'rank' | 'average' | 'mention' | null;
+        if (cellKey && cellType) {
+          const start = inputEl.selectionStart ?? 0;
+          const end = inputEl.selectionEnd ?? 0;
+          const selectedText = inputEl.value.slice(start, end);
+          if (end > start && selectedText.length > 0) {
+            setHighlightedTarget({
+              cellKey,
+              cellType,
+              elementId: inputEl.id || undefined,
+              start,
+              end
+            });
+          } else {
+            setHighlightedTarget(null);
+          }
+          return;
+        }
+      }
+
+      // Cas 2 : Sélection de texte sur une cellule en lecture seule (RANG, MOYENNE, MENTION)
+      const sel = window.getSelection();
+      if (sel && !sel.isCollapsed && sel.toString().trim().length > 0) {
+        const anchorNode = sel.anchorNode;
+        const anchorEl = anchorNode?.nodeType === Node.TEXT_NODE
+          ? anchorNode.parentElement
+          : (anchorNode as HTMLElement | null);
+        const cellEl = anchorEl?.closest?.('[data-cell-key]') as HTMLElement | null;
+        if (cellEl) {
+          const cellKey = cellEl.getAttribute('data-cell-key');
+          const cellType = cellEl.getAttribute('data-cell-type') as 'name' | 'note' | 'rank' | 'average' | 'mention' | null;
+          if (cellKey && cellType) {
+            setHighlightedTarget({
+              cellKey,
+              cellType,
+              isDomSelection: true
+            });
+            return;
+          }
+        }
+      }
+
+      if (!isFontFamilyMenuOpenRef.current) {
+        setHighlightedTarget(null);
+      }
+    };
+
+    document.addEventListener('selectionchange', handleDocumentSelectionChange);
+    return () => document.removeEventListener('selectionchange', handleDocumentSelectionChange);
   }, []);
 
   // Gestion du zoom avec touchpad (Ctrl + wheel) et tactile 2 doigts
@@ -1104,9 +1177,54 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   };
 
   // =========================================================================
-  // GESTION DU RUBAN EXCEL : MISE EN FORME DES CELLULES & COPIE TABLEAU
+  // GESTION DU RUBAN EXCEL : MISE EN FORME STRICTEMENT SUR ÉLÉMENT SURLIGNÉ
   // =========================================================================
+  const syncInputHighlight = (
+    el: HTMLInputElement | null,
+    cellKey: string,
+    cellType: 'name' | 'note' | 'rank' | 'average' | 'mention'
+  ) => {
+    if (!el) return;
+    const start = el.selectionStart ?? 0;
+    const end = el.selectionEnd ?? 0;
+    const selectedText = el.value.slice(start, end);
+    if (end > start && selectedText.length > 0) {
+      setHighlightedTarget({
+        cellKey,
+        cellType,
+        elementId: el.id || undefined,
+        start,
+        end
+      });
+    } else {
+      setHighlightedTarget(prev => (prev?.elementId === el.id ? null : prev));
+    }
+  };
+
+  const restoreInputHighlightIfNeeded = () => {
+    if (highlightedTarget?.elementId && highlightedTarget.start !== undefined && highlightedTarget.end !== undefined) {
+      const targetEl = document.getElementById(highlightedTarget.elementId) as HTMLInputElement | null;
+      if (targetEl) {
+        const start = highlightedTarget.start;
+        const end = highlightedTarget.end;
+        requestAnimationFrame(() => {
+          targetEl.focus({ preventScroll: true });
+          try {
+            targetEl.setSelectionRange(start, end);
+          } catch {
+            // Certains types d'inputs peuvent refuser setSelectionRange
+          }
+        });
+      }
+    }
+  };
+
   const getTargetKeysForFormatting = (): string[] => {
+    // 1. Priorité absolue : texte ou élément réellement surligné ("souligné") par l'utilisateur
+    if (highlightedTarget?.cellKey) {
+      return [highlightedTarget.cellKey];
+    }
+    // 2. Sélection explicite d'une ligne entière ou d'une colonne entière (double-clic sur un trait)
     if (selectedLine?.type === 'row') {
       const rIdx = parseInt(selectedLine.id.replace('row-', ''), 10);
       const std = students[rIdx];
@@ -1137,18 +1255,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         return students.map(s => `${s.id}_${cIdx}`);
       }
     }
-    if (activeCellInfo.rowIndex !== undefined && activeCellInfo.type !== 'none' && students[activeCellInfo.rowIndex]) {
-      const std = students[activeCellInfo.rowIndex];
-      if (activeCellInfo.type === 'name') return [`${std.id}_name`];
-      if (activeCellInfo.type === 'note' && activeCellInfo.noteColIndex !== undefined) return [`${std.id}_${activeCellInfo.noteColIndex}`];
-      if (activeCellInfo.type === 'rank') return [`${std.id}_rank`];
-      if (activeCellInfo.type === 'average') return [`${std.id}_avg`];
-      if (activeCellInfo.type === 'mention') return [`${std.id}_mention`];
-    }
-    // Si rien n'est sélectionné/souligné, cibler la première case par défaut
-    if (students.length > 0) {
-      return [`${students[0].id}_name`];
-    }
+    // 3. Si rien n'est surligné (même si le curseur vient d'entrer dans une case), aucune cellule n'est ciblée !
     return [];
   };
 
@@ -1165,14 +1272,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     setIsSaved(false);
   };
 
-  const getResolvedCellStyle = (key: string, fallbackAlign: 'left' | 'center' | 'right' = textAlign): React.CSSProperties => {
+  const getResolvedCellStyle = (key: string, fallbackAlign: 'left' | 'center' | 'right' = 'center'): React.CSSProperties => {
     const custom = cellCustomStyles[key] || {};
-    const currentBold = custom.bold !== undefined ? custom.bold : isBold;
-    const currentItalic = custom.italic !== undefined ? custom.italic : isItalic;
-    const currentUnderline = custom.underline !== undefined ? custom.underline : isUnderline;
-    const currentStrikethrough = custom.strikethrough !== undefined ? custom.strikethrough : isStrikethrough;
-    const currentFamily = custom.fontFamily || fontFamily;
-    const currentSize = custom.fontSize || fontSize;
+    const currentBold = Boolean(custom.bold);
+    const currentItalic = Boolean(custom.italic);
+    const currentUnderline = Boolean(custom.underline);
+    const currentStrikethrough = Boolean(custom.strikethrough);
+    const currentFamily = custom.fontFamily || 'Calibri';
+    const currentSize = custom.fontSize || 12;
     const currentColor = custom.color || undefined;
     const currentBg = custom.bgColor || undefined;
     const currentAlign = custom.textAlign || fallbackAlign;
@@ -1195,16 +1302,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   };
 
   const activeFormatKeys = getTargetKeysForFormatting();
+  const hasActiveFormatTarget = activeFormatKeys.length > 0;
   const activeFormatKey = activeFormatKeys[0] || '';
   const activeCustomFormat = activeFormatKey ? cellCustomStyles[activeFormatKey] : undefined;
-  const activeIsBold = activeCustomFormat?.bold !== undefined ? activeCustomFormat.bold : isBold;
-  const activeIsItalic = activeCustomFormat?.italic !== undefined ? activeCustomFormat.italic : isItalic;
-  const activeIsUnderline = activeCustomFormat?.underline !== undefined ? activeCustomFormat.underline : isUnderline;
-  const activeIsStrikethrough = activeCustomFormat?.strikethrough !== undefined ? activeCustomFormat.strikethrough : isStrikethrough;
-  const activeFontFamily = activeCustomFormat?.fontFamily || fontFamily;
-  const activeFontSize = activeCustomFormat?.fontSize || fontSize;
-  const activeTextColor = activeCustomFormat?.color || '#0f172a';
-  const activeBgColor = activeCustomFormat?.bgColor || '';
+
+  // Les boutons ne s'allument en noir QUE si un élément est surligné ET que cet effet est actif sur cet élément !
+  const activeIsBold = hasActiveFormatTarget ? Boolean(activeCustomFormat?.bold) : false;
+  const activeIsItalic = hasActiveFormatTarget ? Boolean(activeCustomFormat?.italic) : false;
+  const activeIsUnderline = hasActiveFormatTarget ? Boolean(activeCustomFormat?.underline) : false;
+  const activeIsStrikethrough = hasActiveFormatTarget ? Boolean(activeCustomFormat?.strikethrough) : false;
+  const activeFontFamily = hasActiveFormatTarget ? (activeCustomFormat?.fontFamily || 'Calibri') : 'Calibri';
+  const activeFontSize = hasActiveFormatTarget ? (activeCustomFormat?.fontSize || 12) : 12;
+  const activeTextColor = hasActiveFormatTarget ? (activeCustomFormat?.color || '#0f172a') : '#0f172a';
+  const activeBgColor = hasActiveFormatTarget ? (activeCustomFormat?.bgColor || '') : '';
+  const activeTextAlign = hasActiveFormatTarget ? (activeCustomFormat?.textAlign || 'center') : 'center';
 
   const filteredFonts = useMemo(() => {
     if (!fontSearchQuery.trim()) return AVAILABLE_FONT_FAMILIES;
@@ -1213,57 +1324,61 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   }, [fontSearchQuery]);
 
   const toggleBold = () => {
-    const nextVal = !activeIsBold;
-    setIsBold(nextVal);
-    updateActiveCellFormatting({ bold: nextVal });
+    if (!hasActiveFormatTarget) return;
+    updateActiveCellFormatting({ bold: !activeIsBold });
   };
 
   const toggleItalic = () => {
-    const nextVal = !activeIsItalic;
-    setIsItalic(nextVal);
-    updateActiveCellFormatting({ italic: nextVal });
+    if (!hasActiveFormatTarget) return;
+    updateActiveCellFormatting({ italic: !activeIsItalic });
   };
 
   const toggleUnderline = () => {
-    const nextVal = !activeIsUnderline;
-    setIsUnderline(nextVal);
-    updateActiveCellFormatting({ underline: nextVal });
+    if (!hasActiveFormatTarget) return;
+    updateActiveCellFormatting({ underline: !activeIsUnderline });
   };
 
   const toggleStrikethrough = () => {
-    const nextVal = !activeIsStrikethrough;
-    setIsStrikethrough(nextVal);
-    updateActiveCellFormatting({ strikethrough: nextVal });
+    if (!hasActiveFormatTarget) return;
+    updateActiveCellFormatting({ strikethrough: !activeIsStrikethrough });
   };
 
   const applyFontSize = (size: number) => {
-    setFontSize(size);
+    if (!hasActiveFormatTarget) return;
     updateActiveCellFormatting({ fontSize: size });
   };
 
   const increaseFontSize = () => {
+    if (!hasActiveFormatTarget) return;
     const nextSize = Math.min(48, activeFontSize + 1);
-    setFontSize(nextSize);
     updateActiveCellFormatting({ fontSize: nextSize });
   };
 
   const decreaseFontSize = () => {
+    if (!hasActiveFormatTarget) return;
     const prevSize = Math.max(8, activeFontSize - 1);
-    setFontSize(prevSize);
     updateActiveCellFormatting({ fontSize: prevSize });
   };
 
   const applyFontFamily = (family: string) => {
-    setFontFamily(family);
+    if (!hasActiveFormatTarget) return;
     updateActiveCellFormatting({ fontFamily: family });
+    restoreInputHighlightIfNeeded();
   };
 
   const applyTextColor = (color: string) => {
+    if (!hasActiveFormatTarget) return;
     updateActiveCellFormatting({ color });
   };
 
   const applyBgColor = (color: string) => {
+    if (!hasActiveFormatTarget) return;
     updateActiveCellFormatting({ bgColor: color });
+  };
+
+  const applyTextAlign = (align: 'left' | 'center' | 'right') => {
+    if (!hasActiveFormatTarget) return;
+    updateActiveCellFormatting({ textAlign: align });
   };
 
   const handleCopyEntireTable = async () => {
@@ -1815,11 +1930,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <div className="relative">
               <button 
                 type="button" 
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation();
                   handleCopyEntireTable();
                 }}
-                className={`p-1.5 rounded transition flex items-center justify-center cursor-pointer active:scale-95 ${
+                className={`p-1.5 rounded transition flex items-center justify-center cursor-pointer active:scale-95 outline-none focus:outline-none ${
                   copiedTableSuccess ? 'bg-emerald-100 text-emerald-800' : 'hover:bg-slate-200 text-slate-800'
                 }`}
                 title="Copier tout le tableau (format Excel / TSV)"
@@ -1840,11 +1956,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* Bouton COLLER */}
             <button 
               type="button" 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
                 handlePasteGradebook();
               }}
-              className="p-1.5 rounded hover:bg-slate-200 text-slate-800 transition flex items-center justify-center cursor-pointer active:scale-95" 
+              className="p-1.5 rounded hover:bg-slate-200 text-slate-800 transition flex items-center justify-center cursor-pointer active:scale-95 outline-none focus:outline-none" 
               title="Coller des données dans le tableau"
             >
               <Clipboard className="w-3.5 h-3.5 text-amber-600 stroke-[2.2]" />
@@ -1860,6 +1977,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <div className="relative">
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsFontFamilyMenuOpen(prev => !prev);
@@ -1867,7 +1985,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   setIsTextColorMenuOpen(false);
                   setIsBgColorMenuOpen(false);
                 }}
-                className="flex items-center justify-between h-6 px-1.5 min-w-[90px] max-w-[120px] bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs"
+                className="flex items-center justify-between h-6 px-1.5 min-w-[90px] max-w-[120px] bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs outline-none focus:outline-none"
                 title="Changer la police"
               >
                 <span className="truncate" style={{ fontFamily: activeFontFamily }}>{activeFontFamily}</span>
@@ -1879,25 +1997,26 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   onClick={(e) => e.stopPropagation()}
                   className="absolute top-full left-0 mt-1 w-64 max-h-72 bg-white border border-slate-300 rounded-lg shadow-2xl z-[100] flex flex-col overflow-hidden text-xs select-none animate-in fade-in zoom-in-95"
                 >
-                  {/* Champ de recherche de police */}
+                  {/* Champ de recherche de police (sans autoFocus pour ne pas effacer le surlignement dans le tableau) */}
                   <div className="p-2 border-b border-slate-200 bg-slate-50 flex items-center gap-1.5 sticky top-0 z-10">
                     <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                     <input
                       type="text"
+                      data-font-search="true"
                       value={fontSearchQuery}
                       onChange={(e) => setFontSearchQuery(e.target.value)}
                       placeholder="Entrez pour rechercher..."
                       className="w-full text-xs bg-transparent outline-none text-slate-800 placeholder:text-slate-400 font-normal"
-                      autoFocus
                     />
                     {fontSearchQuery && (
                       <button 
                         type="button" 
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={(e) => {
                           e.stopPropagation();
                           setFontSearchQuery('');
                         }} 
-                        className="p-0.5 text-slate-400 hover:text-slate-600"
+                        className="p-0.5 text-slate-400 hover:text-slate-600 outline-none focus:outline-none"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -1915,17 +2034,18 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         <button
                           key={font}
                           type="button"
+                          onMouseDown={(e) => e.preventDefault()}
                           onClick={(e) => {
                             e.stopPropagation();
                             applyFontFamily(font);
                             setIsFontFamilyMenuOpen(false);
                           }}
-                          className={`w-full px-3 py-1.5 flex items-center justify-between text-left hover:bg-blue-50 transition cursor-pointer ${
-                            activeFontFamily === font ? 'bg-blue-50/70 text-blue-700 font-bold' : 'text-slate-800'
+                          className={`w-full px-3 py-1.5 flex items-center justify-between text-left hover:bg-blue-50 transition cursor-pointer outline-none focus:outline-none ${
+                            hasActiveFormatTarget && activeFontFamily === font ? 'bg-blue-50/70 text-blue-700 font-bold' : 'text-slate-800'
                           }`}
                         >
                           <span className="text-xs truncate" style={{ fontFamily: font }}>{font}</span>
-                          {activeFontFamily === font && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0 ml-1" />}
+                          {hasActiveFormatTarget && activeFontFamily === font && <Check className="w-3.5 h-3.5 text-blue-600 shrink-0 ml-1" />}
                         </button>
                       ))
                     )}
@@ -1938,6 +2058,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <div className="relative">
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsFontSizeMenuOpen(prev => !prev);
@@ -1945,7 +2066,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   setIsTextColorMenuOpen(false);
                   setIsBgColorMenuOpen(false);
                 }}
-                className="flex items-center justify-between h-6 px-1.5 w-12 bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs"
+                className="flex items-center justify-between h-6 px-1.5 w-12 bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs outline-none focus:outline-none"
                 title="Taille de police"
               >
                 <span>{activeFontSize}</span>
@@ -1961,17 +2082,18 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     <button
                       key={sz}
                       type="button"
+                      onMouseDown={(e) => e.preventDefault()}
                       onClick={(e) => {
                         e.stopPropagation();
                         applyFontSize(sz);
                         setIsFontSizeMenuOpen(false);
                       }}
-                      className={`w-full px-3 py-1 flex items-center justify-between text-left hover:bg-blue-50 transition cursor-pointer ${
-                        activeFontSize === sz ? 'bg-blue-50/70 text-blue-700 font-bold' : 'text-slate-800'
+                      className={`w-full px-3 py-1 flex items-center justify-between text-left hover:bg-blue-50 transition cursor-pointer outline-none focus:outline-none ${
+                        hasActiveFormatTarget && activeFontSize === sz ? 'bg-blue-50/70 text-blue-700 font-bold' : 'text-slate-800'
                       }`}
                     >
                       <span>{sz}</span>
-                      {activeFontSize === sz && <Check className="w-3 h-3 text-blue-600" />}
+                      {hasActiveFormatTarget && activeFontSize === sz && <Check className="w-3 h-3 text-blue-600" />}
                     </button>
                   ))}
                 </div>
@@ -1981,22 +2103,24 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* BOUTONS A⁺ ET A⁻ (AGRANDIR / DIMINUER LA TAILLE) */}
             <button 
               type="button" 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
                 increaseFontSize();
               }} 
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-800 font-bold text-xs transition active:scale-95 cursor-pointer" 
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-800 font-bold text-xs transition active:scale-95 cursor-pointer outline-none focus:outline-none" 
               title="Agrandir la taille de police"
             >
               A<sup>+</sup>
             </button>
             <button 
               type="button" 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
                 decreaseFontSize();
               }} 
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-800 font-bold text-xs transition active:scale-95 cursor-pointer" 
+              className="w-6 h-6 flex items-center justify-center rounded hover:bg-slate-200 text-slate-800 font-bold text-xs transition active:scale-95 cursor-pointer outline-none focus:outline-none" 
               title="Diminuer la taille de police"
             >
               A<sup>-</sup>
@@ -2008,13 +2132,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* BOUTON B (GRAS EXCEL : REND LE TEXTE PUR / NOIR ÉPAIS OU NORMAL) */}
             <button 
               type="button" 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
                 toggleBold();
               }} 
-              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
+              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer outline-none focus:outline-none ${
                 activeIsBold 
-                  ? 'bg-slate-900 text-white font-black shadow-xs ring-1 ring-slate-900' 
+                  ? 'bg-slate-900 text-white font-black shadow-xs' 
                   : 'hover:bg-slate-200 text-slate-700 font-normal'
               }`}
               title="Gras (B)"
@@ -2025,11 +2150,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* BOUTON I (ITALIQUE) */}
             <button 
               type="button" 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
                 toggleItalic();
               }} 
-              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
+              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer outline-none focus:outline-none ${
                 activeIsItalic 
                   ? 'bg-slate-900 text-white shadow-xs' 
                   : 'hover:bg-slate-200 text-slate-700'
@@ -2042,11 +2168,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* BOUTON U (SOULIGNÉ) */}
             <button 
               type="button" 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
                 toggleUnderline();
               }} 
-              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
+              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer outline-none focus:outline-none ${
                 activeIsUnderline 
                   ? 'bg-slate-900 text-white shadow-xs' 
                   : 'hover:bg-slate-200 text-slate-700'
@@ -2059,11 +2186,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             {/* BOUTON S (BARRÉ) */}
             <button 
               type="button" 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
                 toggleStrikethrough();
               }} 
-              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer ${
+              className={`w-5 h-5 flex items-center justify-center rounded transition active:scale-90 cursor-pointer outline-none focus:outline-none ${
                 activeIsStrikethrough 
                   ? 'bg-slate-900 text-white shadow-xs' 
                   : 'hover:bg-slate-200 text-slate-700'
@@ -2077,6 +2205,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <div className="relative">
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsTextColorMenuOpen(prev => !prev);
@@ -2084,7 +2213,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   setIsFontFamilyMenuOpen(false);
                   setIsFontSizeMenuOpen(false);
                 }}
-                className={`p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 ${
+                className={`p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 outline-none focus:outline-none ${
                   isTextColorMenuOpen ? 'bg-slate-300' : 'hover:bg-slate-200'
                 }`}
                 title="Couleur de police (Stylo)"
@@ -2112,16 +2241,17 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       <button
                         key={item.name}
                         type="button"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={(e) => {
                           e.stopPropagation();
                           applyTextColor(item.color);
                           setIsTextColorMenuOpen(false);
                         }}
                         style={{ backgroundColor: item.color }}
-                        className="w-5 h-5 rounded border border-slate-300 hover:scale-115 transition shadow-2xs cursor-pointer flex items-center justify-center"
+                        className="w-5 h-5 rounded border border-slate-300 hover:scale-115 transition shadow-2xs cursor-pointer flex items-center justify-center outline-none focus:outline-none"
                         title={item.name}
                       >
-                        {activeTextColor === item.color && (
+                        {hasActiveFormatTarget && activeTextColor === item.color && (
                           <Check className={`w-3 h-3 ${item.color === '#0f172a' || item.color === '#1e3a8a' ? 'text-white' : 'text-slate-900'} stroke-[3]`} />
                         )}
                       </button>
@@ -2135,6 +2265,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <div className="relative">
               <button
                 type="button"
+                onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation();
                   setIsBgColorMenuOpen(prev => !prev);
@@ -2142,7 +2273,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   setIsFontFamilyMenuOpen(false);
                   setIsFontSizeMenuOpen(false);
                 }}
-                className={`p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 ${
+                className={`p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 outline-none focus:outline-none ${
                   isBgColorMenuOpen ? 'bg-slate-300' : 'hover:bg-slate-200'
                 }`}
                 title="Couleur de remplissage (Fond de case)"
@@ -2167,31 +2298,33 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   </div>
                   <button
                     type="button"
+                    onMouseDown={(e) => e.preventDefault()}
                     onClick={(e) => {
                       e.stopPropagation();
                       applyBgColor('');
                       setIsBgColorMenuOpen(false);
                     }}
-                    className="w-full mb-1.5 py-1 px-2 text-[10.5px] font-bold rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-between cursor-pointer"
+                    className="w-full mb-1.5 py-1 px-2 text-[10.5px] font-bold rounded bg-slate-100 hover:bg-slate-200 text-slate-700 flex items-center justify-between cursor-pointer outline-none focus:outline-none"
                   >
                     <span>Aucun remplissage</span>
-                    {!activeBgColor && <Check className="w-3 h-3 text-blue-600" />}
+                    {hasActiveFormatTarget && !activeBgColor && <Check className="w-3 h-3 text-blue-600" />}
                   </button>
                   <div className="grid grid-cols-8 gap-1">
                     {FILL_PALETTE_COLORS.filter(c => Boolean(c.color)).map((item) => (
                       <button
                         key={item.name}
                         type="button"
+                        onMouseDown={(e) => e.preventDefault()}
                         onClick={(e) => {
                           e.stopPropagation();
                           applyBgColor(item.color);
                           setIsBgColorMenuOpen(false);
                         }}
                         style={{ backgroundColor: item.color }}
-                        className="w-5 h-5 rounded border border-slate-300 hover:scale-115 transition shadow-2xs cursor-pointer flex items-center justify-center"
+                        className="w-5 h-5 rounded border border-slate-300 hover:scale-115 transition shadow-2xs cursor-pointer flex items-center justify-center outline-none focus:outline-none"
                         title={item.name}
                       >
-                        {activeBgColor === item.color && (
+                        {hasActiveFormatTarget && activeBgColor === item.color && (
                           <Check className="w-3 h-3 text-slate-900 stroke-[3]" />
                         )}
                       </button>
@@ -2208,44 +2341,45 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           <div className="flex items-center gap-1 mt-0.5">
             <button 
               type="button" 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
-                setTextAlign('left');
-                updateActiveCellFormatting({ textAlign: 'left' });
+                applyTextAlign('left');
               }} 
-              className={`p-1 rounded transition cursor-pointer ${textAlign === 'left' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
+              className={`p-1 rounded transition cursor-pointer outline-none focus:outline-none ${hasActiveFormatTarget && activeTextAlign === 'left' ? 'bg-slate-900 text-white shadow-xs' : 'hover:bg-slate-200 text-slate-700'}`}
               title="Aligner à gauche"
             >
               <AlignLeft className="w-3.5 h-3.5" />
             </button>
             <button 
               type="button" 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
-                setTextAlign('center');
-                updateActiveCellFormatting({ textAlign: 'center' });
+                applyTextAlign('center');
               }} 
-              className={`p-1 rounded transition cursor-pointer ${textAlign === 'center' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
+              className={`p-1 rounded transition cursor-pointer outline-none focus:outline-none ${hasActiveFormatTarget && activeTextAlign === 'center' ? 'bg-slate-900 text-white shadow-xs' : 'hover:bg-slate-200 text-slate-700'}`}
               title="Centrer"
             >
               <AlignCenter className="w-3.5 h-3.5" />
             </button>
             <button 
               type="button" 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
-                setTextAlign('right');
-                updateActiveCellFormatting({ textAlign: 'right' });
+                applyTextAlign('right');
               }} 
-              className={`p-1 rounded transition cursor-pointer ${textAlign === 'right' ? 'bg-slate-300 text-slate-900' : 'hover:bg-slate-200 text-slate-700'}`}
+              className={`p-1 rounded transition cursor-pointer outline-none focus:outline-none ${hasActiveFormatTarget && activeTextAlign === 'right' ? 'bg-slate-900 text-white shadow-xs' : 'hover:bg-slate-200 text-slate-700'}`}
               title="Aligner à droite"
             >
               <AlignRight className="w-3.5 h-3.5" />
             </button>
             <button 
               type="button" 
+              onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => e.stopPropagation()}
-              className="p-1 rounded hover:bg-slate-200 text-slate-700 cursor-pointer" 
+              className="p-1 rounded hover:bg-slate-200 text-slate-700 cursor-pointer outline-none focus:outline-none" 
               title="Renvoyer à la ligne"
             >
               <WrapText className="w-3.5 h-3.5" />
@@ -2258,8 +2392,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         <div className="flex flex-col items-center justify-between px-1.5">
           <button 
             type="button" 
+            onMouseDown={(e) => e.preventDefault()}
             onClick={(e) => e.stopPropagation()}
-            className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-slate-200 transition text-slate-800 mt-0.5 active:scale-95 cursor-pointer" 
+            className="flex items-center gap-1 px-2 py-0.5 rounded hover:bg-slate-200 transition text-slate-800 mt-0.5 active:scale-95 cursor-pointer outline-none focus:outline-none" 
             title="Moyennes calculées"
           >
             <Sigma className="w-4 h-4 text-emerald-700 stroke-[2.5]" />
@@ -2281,24 +2416,78 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         <div className="flex items-center justify-center w-5 h-5 text-slate-500 font-serif italic font-bold text-xs select-none">
           fx
         </div>
-        <input
-          type="text"
-          value={activeCellInfo.value}
-          readOnly={activeCellInfo.type === 'rank' || activeCellInfo.type === 'average' || activeCellInfo.type === 'photo' || activeCellInfo.type === 'column' || activeCellInfo.type === 'mention'}
-          onChange={(e) => {
-            const val = e.target.value;
-            setActiveCellInfo(prev => ({ ...prev, value: val }));
-            if (activeCellInfo.type === 'name') {
-              const std = students[activeCellInfo.rowIndex];
-              if (std) handleNameChange(std.id, val);
-            } else if (activeCellInfo.type === 'note' && activeCellInfo.noteColIndex !== undefined) {
-              const std = students[activeCellInfo.rowIndex];
-              if (std) handleRawNoteChange(std.id, activeCellInfo.noteColIndex, val);
-            }
-          }}
-          placeholder="Sélectionnez une case du tableau pour voir ou modifier sa valeur..."
-          className="flex-1 h-6 px-2 bg-transparent text-slate-800 font-medium text-xs outline-none focus:bg-blue-50/40 rounded transition"
-        />
+        {(() => {
+          const activeFormulaStd = activeCellInfo.rowIndex !== undefined ? students[activeCellInfo.rowIndex] : undefined;
+          const activeFormulaKey = activeFormulaStd
+            ? activeCellInfo.type === 'name'
+              ? `${activeFormulaStd.id}_name`
+              : activeCellInfo.type === 'note' && activeCellInfo.noteColIndex !== undefined
+              ? `${activeFormulaStd.id}_${activeCellInfo.noteColIndex}`
+              : activeCellInfo.type === 'rank'
+              ? `${activeFormulaStd.id}_rank`
+              : activeCellInfo.type === 'average'
+              ? `${activeFormulaStd.id}_avg`
+              : activeCellInfo.type === 'mention'
+              ? `${activeFormulaStd.id}_mention`
+              : ''
+            : '';
+          const activeFormulaCellType =
+            activeCellInfo.type === 'name' ||
+            activeCellInfo.type === 'note' ||
+            activeCellInfo.type === 'rank' ||
+            activeCellInfo.type === 'average' ||
+            activeCellInfo.type === 'mention'
+              ? activeCellInfo.type
+              : undefined;
+          return (
+            <input
+              id="input-formula-bar"
+              type="text"
+              data-cell-key={activeFormulaKey || undefined}
+              data-cell-type={activeFormulaCellType}
+              value={activeCellInfo.value}
+              readOnly={activeCellInfo.type === 'rank' || activeCellInfo.type === 'average' || activeCellInfo.type === 'photo' || activeCellInfo.type === 'column' || activeCellInfo.type === 'mention'}
+              onChange={(e) => {
+                const val = e.target.value;
+                setActiveCellInfo(prev => ({ ...prev, value: val }));
+                if (activeCellInfo.type === 'name' && activeCellInfo.rowIndex !== undefined) {
+                  const std = students[activeCellInfo.rowIndex];
+                  if (std) handleNameChange(std.id, val);
+                } else if (activeCellInfo.type === 'note' && activeCellInfo.rowIndex !== undefined && activeCellInfo.noteColIndex !== undefined) {
+                  const std = students[activeCellInfo.rowIndex];
+                  if (std) handleRawNoteChange(std.id, activeCellInfo.noteColIndex, val);
+                }
+              }}
+              onSelect={(e) => {
+                if (activeFormulaKey && activeFormulaCellType) {
+                  syncInputHighlight(e.currentTarget, activeFormulaKey, activeFormulaCellType);
+                }
+              }}
+              onMouseUp={(e) => {
+                if (activeFormulaKey && activeFormulaCellType) {
+                  syncInputHighlight(e.currentTarget, activeFormulaKey, activeFormulaCellType);
+                }
+              }}
+              onKeyUp={(e) => {
+                if (activeFormulaKey && activeFormulaCellType) {
+                  syncInputHighlight(e.currentTarget, activeFormulaKey, activeFormulaCellType);
+                }
+              }}
+              onClick={(e) => {
+                if (activeFormulaKey && activeFormulaCellType) {
+                  syncInputHighlight(e.currentTarget, activeFormulaKey, activeFormulaCellType);
+                }
+              }}
+              onBlur={() => {
+                if (!isFontFamilyMenuOpenRef.current) {
+                  setHighlightedTarget(prev => prev?.elementId === 'input-formula-bar' ? null : prev);
+                }
+              }}
+              placeholder="Sélectionnez une case du tableau pour voir ou modifier sa valeur..."
+              className="flex-1 h-6 px-2 bg-transparent text-slate-800 font-medium text-xs outline-none focus:bg-blue-50/40 rounded transition"
+            />
+          );
+        })()}
       </section>
 
       {/* ========================================================================= */}
@@ -2309,11 +2498,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       <div 
         ref={gridContainerRef}
         onClick={(e) => {
-          if ((e.target as HTMLElement)?.closest('button, input, select, textarea, [data-interactive="true"]')) {
+          if ((e.target as HTMLElement)?.closest('button, input, select, textarea, [data-interactive="true"], [data-cell-key]')) {
             return;
           }
           closeAllMenus();
           setSelectedLine(null);
+          setHighlightedTarget(null);
           if (blockedNoteTarget) setBlockedNoteTarget(null);
         }}
         className="flex-1 overflow-auto bg-[#fafbfc] relative p-0 touch-pan-x touch-pan-y"
@@ -2912,8 +3102,17 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       const rowHeight = customRowHeights[rIdx] || 44;
                       const isRowLineActive = isRowActive(rIdx);
                       const rowBg = rowColors[std.id];
-                      const nameCellStyle = getResolvedCellStyle(`${std.id}_name`, textAlign);
+                      const nameCellStyle = getResolvedCellStyle(`${std.id}_name`, 'center');
                       const nameCellBg = nameCellStyle.backgroundColor || cellColors[`${std.id}_name`] || rowBg || undefined;
+                      const rankCustom = cellCustomStyles[`${std.id}_rank`];
+                      const rankCellStyle = getResolvedCellStyle(`${std.id}_rank`, 'center');
+                      const rankCellBg = rankCellStyle.backgroundColor || rowBg || undefined;
+                      const avgCustom = cellCustomStyles[`${std.id}_avg`];
+                      const avgCellStyle = getResolvedCellStyle(`${std.id}_avg`, 'center');
+                      const avgCellBg = avgCellStyle.backgroundColor || rowBg || undefined;
+                      const mentionCustom = cellCustomStyles[`${std.id}_mention`];
+                      const mentionCellStyle = getResolvedCellStyle(`${std.id}_mention`, 'center');
+                      const mentionCellBg = mentionCellStyle.backgroundColor || rowBg || undefined;
                       const isRowMenuOpen = activeMenuRow === std.id || activeMenuPhoto === std.id || activeMenuCell?.studentId === std.id;
 
                       return (
@@ -2931,7 +3130,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               minWidth: `${colWidthRank}px`,
                               maxWidth: `${colWidthRank}px`,
                               height: `${rowHeight}px`,
-                              backgroundColor: rowBg || undefined
+                              backgroundColor: rankCellBg
                             }}
                             onDoubleClick={(e) => {
                               e.stopPropagation();
@@ -2948,20 +3147,32 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               });
                             }}
                             className={`border-r ${isColActive('col-rank') ? 'border-sky-400 z-10' : 'border-slate-700'} border-b ${isRowLineActive ? 'border-sky-400 z-10' : 'border-slate-600'} flex items-center justify-center p-1 cursor-pointer relative shrink-0 ${
-                              activeCellInfo.id === `cell-rank-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-emerald-50/40' : ''
+                              activeCellInfo.id === `cell-rank-${rIdx}` ? `outline-2 outline-[#107c41] -outline-offset-2 z-10 ${rankCellBg ? '' : 'bg-emerald-50/40'}` : ''
                             }`}
                             title="Cliquer pour sélectionner, double-cliquer pour sélectionner la ligne"
                           >
-                            {std.rank ? (
-                              <span className={`px-2.5 py-1 rounded-md text-sm sm:text-base font-black shadow-xs tracking-tight ${
-                                std.rank === '1er'
-                                  ? 'bg-gradient-to-r from-amber-400 to-yellow-300 text-amber-950 border border-amber-400 ring-2 ring-amber-300/60'
-                                  : std.rank.startsWith('2e')
-                                  ? 'bg-slate-200 text-slate-900 border border-slate-300'
-                                  : std.rank.startsWith('3e')
-                                  ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                                  : 'bg-slate-100 text-slate-800 border border-slate-200'
-                              }`}>
+                            {std.rank && std.rank !== '-' ? (
+                              <span
+                                data-cell-key={`${std.id}_rank`}
+                                data-cell-type="rank"
+                                style={rankCustom ? {
+                                  fontWeight: rankCustom.bold !== undefined ? (rankCustom.bold ? '900' : '400') : undefined,
+                                  fontStyle: rankCustom.italic ? 'italic' : undefined,
+                                  textDecoration: rankCellStyle.textDecoration !== 'none' ? rankCellStyle.textDecoration : undefined,
+                                  fontFamily: rankCustom.fontFamily || undefined,
+                                  fontSize: rankCustom.fontSize ? `${rankCustom.fontSize}px` : undefined,
+                                  color: rankCustom.color || undefined
+                                } : undefined}
+                                className={`select-text cursor-text px-2.5 py-1 rounded-md text-sm sm:text-base font-black shadow-xs tracking-tight ${
+                                  std.rank === '1er'
+                                    ? 'bg-gradient-to-r from-amber-400 to-yellow-300 text-amber-950 border border-amber-400 ring-2 ring-amber-300/60'
+                                    : std.rank.startsWith('2e')
+                                    ? 'bg-slate-200 text-slate-900 border border-slate-300'
+                                    : std.rank.startsWith('3e')
+                                    ? 'bg-amber-100 text-amber-900 border border-amber-300'
+                                    : 'bg-slate-100 text-slate-800 border border-slate-200'
+                                }`}
+                              >
                                 {std.rank}
                               </span>
                             ) : (
@@ -3095,12 +3306,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             className={`border-r ${isColActive('col-name') ? 'border-sky-400 z-10' : 'border-slate-700'} border-b ${isRowLineActive ? 'border-sky-400 z-10' : 'border-slate-600'} flex items-center p-1.5 relative group shrink-0 ${
                               blockedNoteTarget?.studentId === std.id && !(std.name || '').trim() ? 'ring-2 ring-red-500 bg-red-50/60' : ''
                             } ${
-                              activeCellInfo.id === `cell-name-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
+                              activeCellInfo.id === `cell-name-${rIdx}` ? `outline-2 outline-[#107c41] -outline-offset-2 z-10 ${nameCellBg ? '' : 'bg-blue-50/30'}` : ''
                             }`}
                           >
                             <input
                               id={`input-name-${std.id}`}
                               type="text"
+                              data-cell-key={`${std.id}_name`}
+                              data-cell-type="name"
                               value={std.name}
                               onChange={(e) => {
                                 handleNameChange(std.id, e.target.value);
@@ -3108,7 +3321,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   setBlockedNoteTarget(null);
                                 }
                               }}
-                              onFocus={() => {
+                              onFocus={(e) => {
                                 setActiveCellInfo({
                                   id: `cell-name-${rIdx}`,
                                   type: 'name',
@@ -3116,12 +3329,25 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   coordDisplay: `NOM${rIdx + 1}`,
                                   value: std.name
                                 });
+                                syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name');
+                              }}
+                              onSelect={(e) => syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name')}
+                              onMouseUp={(e) => syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name')}
+                              onKeyUp={(e) => syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name')}
+                              onClick={(e) => syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name')}
+                              onBlur={() => {
+                                if (!isFontFamilyMenuOpenRef.current) {
+                                  setHighlightedTarget(prev => prev?.elementId === `input-name-${std.id}` ? null : prev);
+                                }
                               }}
                               placeholder={`Nom et prénom élève ${rIdx + 1}...`}
-                              className="w-full h-full text-center px-2 text-xs sm:text-sm text-slate-950 placeholder:text-slate-400 placeholder:font-semibold bg-transparent outline-none border border-transparent focus:border-blue-500 focus:bg-white rounded transition pr-5"
-                              style={{
+                              className={`w-full h-full text-center px-2 text-xs sm:text-sm text-slate-950 placeholder:text-slate-400 placeholder:font-medium placeholder:not-italic placeholder:no-underline bg-transparent outline-none border border-transparent focus:border-blue-500 ${nameCellBg ? 'focus:bg-transparent' : 'focus:bg-white/70'} rounded transition pr-5`}
+                              style={Boolean(std.name) ? {
                                 ...nameCellStyle,
                                 backgroundColor: 'transparent'
+                              } : {
+                                backgroundColor: 'transparent',
+                                textAlign: nameCellStyle.textAlign
                               }}
                             />
 
@@ -3255,13 +3481,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             const isInvalid = parsed.isInvalid;
                             const colBg = colMeta.columnBgColor;
                             const singleCellBg = cellColors[`${std.id}_${cIdx}`];
-                            const noteCellStyle = getResolvedCellStyle(`${std.id}_${cIdx}`, 'center');
+                            const noteCellKey = `${std.id}_${cIdx}`;
+                            const noteCellStyle = getResolvedCellStyle(noteCellKey, 'center');
                             const noteCellBg = isInvalid ? '#fef2f2' : (noteCellStyle.backgroundColor || singleCellBg || rowBg || colBg || undefined);
                             const thisNoteWidth = getColWidth(`col-note-${cIdx}`);
                             const isThisColActive = isColActive(`col-note-${cIdx}`);
                             const isNoteCellMenuOpen = activeMenuCell?.studentId === std.id && activeMenuCell?.colIndex === cIdx;
                             const hasStudentName = Boolean((std.name || '').trim());
+                            const hasNoteScoreText = hasStudentName && Boolean(parsed.scoreStr);
                             const isBlockedForName = blockedNoteTarget?.studentId === std.id && blockedNoteTarget?.colIndex === cIdx && !hasStudentName;
+                            const noteAlignClass = noteCellStyle.textAlign === 'left'
+                              ? 'justify-start'
+                              : noteCellStyle.textAlign === 'right'
+                              ? 'justify-end'
+                              : 'justify-center';
 
                             return (
                               <div 
@@ -3287,7 +3520,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   isInvalid 
                                     ? 'bg-red-50 ring-2 ring-red-500 z-10' 
                                     : isSelectedNote 
-                                    ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' 
+                                    ? `outline-2 outline-[#107c41] -outline-offset-2 z-10 ${noteCellBg ? '' : 'bg-blue-50/30'}` 
                                     : ''
                                 }`}
                               >
@@ -3425,10 +3658,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 )}
 
                                 {/* SAISIE HAUTE VISIBILITÉ AVEC SÉPARATEUR ET BARÈME ULTRA LISIBLES ET NETS */}
-                                <div className="flex items-center justify-center w-full h-full pt-1.5 pr-2.5">
+                                <div className={`flex items-center ${noteAlignClass} w-full h-full pt-1.5 pr-2.5`}>
                                   {/* Note de l'élève (modifiable, rouge et soulignée si > max) */}
                                   <input
+                                    id={`input-note-score-${std.id}-${cIdx}`}
                                     type="text"
+                                    data-cell-key={noteCellKey}
+                                    data-cell-type="note"
                                     value={hasStudentName ? parsed.scoreStr : ''}
                                     onKeyDown={(e) => {
                                       if (!hasStudentName && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -3453,7 +3689,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       const newRaw = formatStudentNote(sanitized, parsed.maxScore);
                                       handleRawNoteChange(std.id, cIdx, newRaw);
                                     }}
-                                    onFocus={() => {
+                                    onFocus={(e) => {
                                       setActiveCellInfo({
                                         id: `cell-note-${rIdx}-${cIdx}`,
                                         type: 'note',
@@ -3462,31 +3698,64 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         coordDisplay: `N${cIdx + 1}_${rIdx + 1}`,
                                         value: noteVal || `.../${parsed.maxScore}`
                                       });
+                                      syncInputHighlight(e.currentTarget, noteCellKey, 'note');
+                                    }}
+                                    onSelect={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
+                                    onMouseUp={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
+                                    onKeyUp={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
+                                    onClick={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
+                                    onBlur={() => {
+                                      if (!isFontFamilyMenuOpenRef.current) {
+                                        setHighlightedTarget(prev => prev?.elementId === `input-note-score-${std.id}-${cIdx}` ? null : prev);
+                                      }
                                     }}
                                     placeholder="-"
                                     maxLength={6}
-                                    style={{
-                                      ...noteCellStyle,
+                                    style={hasNoteScoreText ? {
+                                      fontWeight: noteCellStyle.fontWeight,
+                                      fontStyle: noteCellStyle.fontStyle,
+                                      textDecoration: isInvalid ? 'underline' : noteCellStyle.textDecoration,
+                                      fontFamily: noteCellStyle.fontFamily,
+                                      fontSize: noteCellStyle.fontSize,
+                                      color: isInvalid ? '#dc2626' : (noteCellStyle.color || '#020617'),
                                       backgroundColor: 'transparent',
-                                      color: isInvalid ? '#dc2626' : (noteCellStyle.color || undefined)
+                                      textAlign: 'right'
+                                    } : {
+                                      backgroundColor: 'transparent',
+                                      textAlign: 'right'
                                     }}
-                                    className={`w-[48%] text-right text-xs sm:text-sm transition outline-none bg-transparent cursor-text ${
+                                    className={`w-[48%] min-w-0 text-right text-xs sm:text-sm transition outline-none bg-transparent cursor-text placeholder:not-italic placeholder:no-underline placeholder:font-normal placeholder:text-slate-400 ${
                                       isInvalid
                                         ? 'underline font-black decoration-red-600 decoration-2'
-                                        : 'placeholder:text-slate-400 focus:text-blue-700'
+                                        : noteCellStyle.color
+                                        ? ''
+                                        : 'focus:text-blue-700'
                                     }`}
                                   />
 
                                   {/* SÉPARATEUR FIXE NON MODIFIABLE ULTRA VISIBLE */}
-                                  <span className={`px-0.5 text-xs sm:text-sm font-black select-none pointer-events-none ${
-                                    isInvalid ? 'text-red-600' : 'text-slate-900'
-                                  }`}>
+                                  <span
+                                    style={{
+                                      fontWeight: noteCellStyle.fontWeight,
+                                      fontStyle: noteCellStyle.fontStyle,
+                                      textDecoration: noteCellStyle.textDecoration,
+                                      fontFamily: noteCellStyle.fontFamily,
+                                      fontSize: noteCellStyle.fontSize,
+                                      color: isInvalid ? '#dc2626' : (noteCellStyle.color || '#020617')
+                                    }}
+                                    className={`px-0.5 text-xs sm:text-sm select-none pointer-events-none ${
+                                      isInvalid ? 'text-red-600 font-black' : 'text-slate-900'
+                                    }`}
+                                  >
                                     /
                                   </span>
 
                                   {/* Barème maximal (défaut 20, modifiable) ULTRA VISIBLE */}
                                   <input
+                                    id={`input-note-max-${std.id}-${cIdx}`}
                                     type="text"
+                                    data-cell-key={noteCellKey}
+                                    data-cell-type="note"
                                     value={parsed.maxScore}
                                     onKeyDown={(e) => {
                                       if (!hasStudentName && e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -3512,8 +3781,40 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       const newRaw = formatStudentNote(parsed.scoreStr, newMax);
                                       handleRawNoteChange(std.id, cIdx, newRaw);
                                     }}
+                                    onFocus={(e) => {
+                                      setActiveCellInfo({
+                                        id: `cell-note-${rIdx}-${cIdx}`,
+                                        type: 'note',
+                                        rowIndex: rIdx,
+                                        noteColIndex: cIdx,
+                                        coordDisplay: `N${cIdx + 1}_${rIdx + 1}`,
+                                        value: noteVal || `.../${parsed.maxScore}`
+                                      });
+                                      syncInputHighlight(e.currentTarget, noteCellKey, 'note');
+                                    }}
+                                    onSelect={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
+                                    onMouseUp={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
+                                    onKeyUp={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
+                                    onClick={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
+                                    onBlur={() => {
+                                      if (!isFontFamilyMenuOpenRef.current) {
+                                        setHighlightedTarget(prev => prev?.elementId === `input-note-max-${std.id}-${cIdx}` ? null : prev);
+                                      }
+                                    }}
                                     maxLength={4}
-                                    className="w-[44%] text-left text-xs sm:text-[12px] font-black transition outline-none bg-transparent cursor-text text-slate-900 hover:text-blue-700 focus:text-blue-700"
+                                    style={{
+                                      fontWeight: noteCellStyle.fontWeight,
+                                      fontStyle: noteCellStyle.fontStyle,
+                                      textDecoration: noteCellStyle.textDecoration,
+                                      fontFamily: noteCellStyle.fontFamily,
+                                      fontSize: noteCellStyle.fontSize,
+                                      color: isInvalid ? '#dc2626' : (noteCellStyle.color || '#020617'),
+                                      backgroundColor: 'transparent',
+                                      textAlign: 'left'
+                                    }}
+                                    className={`w-[44%] min-w-0 text-left text-xs sm:text-sm transition outline-none bg-transparent cursor-text ${
+                                      noteCellStyle.color ? '' : 'text-slate-900 hover:text-blue-700 focus:text-blue-700'
+                                    }`}
                                     title="Barème maximal pour cette case"
                                   />
                                 </div>
@@ -3554,7 +3855,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               minWidth: `${colWidthAverage}px`,
                               maxWidth: `${colWidthAverage}px`,
                               height: `${rowHeight}px`,
-                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : (rowBg || undefined)
+                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : avgCellBg
                             }}
                             onClick={() => {
                               setActiveCellInfo({
@@ -3578,9 +3879,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             } flex items-center justify-between px-2 cursor-pointer relative shrink-0 transition-colors ${
                               std.hasInvalidNote
                                 ? 'bg-slate-200 text-slate-400 border border-slate-300'
-                                : 'bg-blue-50/40'
+                                : avgCellBg ? '' : 'bg-blue-50/40'
                             } ${
-                              activeCellInfo.id === `cell-avg-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-100/50' : ''
+                              activeCellInfo.id === `cell-avg-${rIdx}` ? `outline-2 outline-[#107c41] -outline-offset-2 z-10 ${avgCellBg ? '' : 'bg-blue-100/50'}` : ''
                             }`}
                             title={
                               std.hasInvalidNote
@@ -3588,23 +3889,35 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 : 'Moyenne générale de l\'élève (sur 20)'
                             }
                           >
-                            <span className={`w-full text-center text-xs font-black tracking-tight flex items-center justify-center gap-1 ${
-                              std.hasInvalidNote
-                                ? 'text-slate-400 font-mono text-sm tracking-widest'
-                                : std.average === null
-                                ? 'text-slate-300'
-                                : std.average >= 12
-                                ? 'text-emerald-700 bg-emerald-50/90 py-0.5 px-1.5 rounded border border-emerald-300'
-                                : std.average >= 10
-                                ? 'text-blue-700 bg-blue-50/90 py-0.5 px-1.5 rounded border border-blue-300'
-                                : 'text-rose-700 bg-rose-50/90 py-0.5 px-1.5 rounded border border-rose-300'
-                            }`}>
+                            <span
+                              data-cell-key={!std.hasInvalidNote && std.average !== null ? `${std.id}_avg` : undefined}
+                              data-cell-type={!std.hasInvalidNote && std.average !== null ? 'average' : undefined}
+                              style={!std.hasInvalidNote && std.average !== null && avgCustom ? {
+                                fontWeight: avgCustom.bold !== undefined ? (avgCustom.bold ? '900' : '400') : undefined,
+                                fontStyle: avgCustom.italic ? 'italic' : undefined,
+                                textDecoration: avgCellStyle.textDecoration !== 'none' ? avgCellStyle.textDecoration : undefined,
+                                fontFamily: avgCustom.fontFamily || undefined,
+                                fontSize: avgCustom.fontSize ? `${avgCustom.fontSize}px` : undefined,
+                                color: avgCustom.color || undefined
+                              } : undefined}
+                              className={`w-full text-center text-xs font-black tracking-tight flex items-center justify-center gap-1 ${
+                                std.hasInvalidNote
+                                  ? 'text-slate-400 font-mono text-sm tracking-widest'
+                                  : std.average === null
+                                  ? 'text-slate-300'
+                                  : std.average >= 12
+                                  ? 'select-text cursor-text text-emerald-700 bg-emerald-50/90 py-0.5 px-1.5 rounded border border-emerald-300'
+                                  : std.average >= 10
+                                  ? 'select-text cursor-text text-blue-700 bg-blue-50/90 py-0.5 px-1.5 rounded border border-blue-300'
+                                  : 'select-text cursor-text text-rose-700 bg-rose-50/90 py-0.5 px-1.5 rounded border border-rose-300'
+                              }`}
+                            >
                               {std.hasInvalidNote ? (
                                 '...'
                               ) : std.average !== null ? (
                                 <>
                                   <span>{std.averageFormatted}</span>
-                                  <span className="text-[10px] sm:text-[11px] opacity-75 font-black">/ 20</span>
+                                  <span className="text-[10px] sm:text-[11px] opacity-75">/ 20</span>
                                 </>
                               ) : (
                                 <span className="text-slate-300 font-semibold">-</span>
@@ -3632,7 +3945,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               minWidth: `${colWidthMention}px`,
                               maxWidth: `${colWidthMention}px`,
                               height: `${rowHeight}px`,
-                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : (rowBg || undefined)
+                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : mentionCellBg
                             }}
                             onClick={() => {
                               setActiveCellInfo({
@@ -3656,14 +3969,26 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             } flex items-center justify-center px-2 cursor-pointer relative shrink-0 transition-colors ${
                               std.hasInvalidNote
                                 ? 'bg-slate-200 text-slate-400 border border-slate-300'
-                                : 'bg-emerald-50/20'
+                                : mentionCellBg ? '' : 'bg-emerald-50/20'
                             } ${
-                              activeCellInfo.id === `cell-mention-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-emerald-100/50' : ''
+                              activeCellInfo.id === `cell-mention-${rIdx}` ? `outline-2 outline-[#107c41] -outline-offset-2 z-10 ${mentionCellBg ? '' : 'bg-emerald-100/50'}` : ''
                             }`}
                             title="Mention pédagogique de l'élève"
                           >
                             {std.mention && std.mention !== '-' ? (
-                              <span className={`px-2 py-0.5 rounded-md text-[11px] sm:text-xs border shadow-2xs whitespace-nowrap tracking-tight ${std.mentionClass}`}>
+                              <span
+                                data-cell-key={`${std.id}_mention`}
+                                data-cell-type="mention"
+                                style={mentionCustom ? {
+                                  fontWeight: mentionCustom.bold !== undefined ? (mentionCustom.bold ? '900' : '400') : undefined,
+                                  fontStyle: mentionCustom.italic ? 'italic' : undefined,
+                                  textDecoration: mentionCellStyle.textDecoration !== 'none' ? mentionCellStyle.textDecoration : undefined,
+                                  fontFamily: mentionCustom.fontFamily || undefined,
+                                  fontSize: mentionCustom.fontSize ? `${mentionCustom.fontSize}px` : undefined,
+                                  color: mentionCustom.color || undefined
+                                } : undefined}
+                                className={`select-text cursor-text px-2 py-0.5 rounded-md text-[11px] sm:text-xs border shadow-2xs whitespace-nowrap tracking-tight ${std.mentionClass}`}
+                              >
                                 {std.mention}
                               </span>
                             ) : (
