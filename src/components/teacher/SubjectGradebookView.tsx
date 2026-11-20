@@ -41,6 +41,13 @@ import * as XLSX from 'xlsx';
 import { SubjectItem, ClassItem, SchoolItem, SchoolYearItem, TermItem } from './TeacherClassesView';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
+import {
+  calculateSubjectAverage,
+  calculateClassRanks,
+  formatAverageDisplay,
+  getMention,
+  type EvaluationInput
+} from '../../utils/gradebookCalculations';
 
 interface SubjectGradebookViewProps {
   subject: SubjectItem;
@@ -51,10 +58,11 @@ interface SubjectGradebookViewProps {
   onBack: () => void;
 }
 
-// Métadonnées d'une colonne de notes (intitulé, barème max, couleur de case, couleur de colonne)
+// Métadonnées d'une colonne de notes (intitulé, barème max, coefficient d'évaluation, couleurs)
 export interface GradebookColumnMeta {
   title?: string;        // Intitulé personnalisable (ex: "NOTE", "DEVOIR", "INTERRO", "TP")
-  maxScore: number;     // Barème maximal par défaut (ex: 20, 10, 40)
+  maxScore: number;      // Barème maximal par défaut (ex: 20, 10, 40)
+  coeffEval?: number;    // Coefficient propre à l'évaluation (défaut 1)
   headerBgColor?: string;// Couleur de fond de l'en-tête seul
   columnBgColor?: string;// Couleur de fond de toute la colonne
 }
@@ -377,11 +385,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     targetId?: string | number;
   } | null>(null);
 
-  // Modale de modification d'intitulé et barème de la colonne
+  // Modale de modification d'intitulé, barème et coefficient d'évaluation de la colonne
   const [editingColModal, setEditingColModal] = useState<{
     colIndex: number;
     title: string;
     maxScore: number;
+    coeffEval: number;
   } | null>(null);
 
   // Mode déplacement actif pour une colonne (flèches bleues affichées)
@@ -776,32 +785,32 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     };
   }, [zoomPercent]);
 
-  // Calcul automatique de la mention pédagogique selon la moyenne
+  // Calcul automatique de la mention pédagogique selon les seuils exacts :
+  // < 10: Insuffisant | 10..12: Passable | 12..14: Assez bien | 14..16: Bien | >= 16: Très bien | null: —
   const getStudentMention = (average: number | null): { label: string; badgeClass: string } => {
-    if (average === null) return { label: '-', badgeClass: 'text-slate-400 font-semibold' };
+    const label = getMention(average);
+    if (average === null || label === '—') {
+      return { label: '—', badgeClass: 'text-slate-400 font-semibold' };
+    }
     if (average >= 16) {
-      return { label: 'Très Bien', badgeClass: 'bg-emerald-100 text-emerald-950 border-emerald-300 font-black' };
+      return { label, badgeClass: 'bg-emerald-100 text-emerald-950 border-emerald-300 font-black' };
     }
     if (average >= 14) {
-      return { label: 'Bien', badgeClass: 'bg-teal-100 text-teal-950 border-teal-300 font-extrabold' };
+      return { label, badgeClass: 'bg-teal-100 text-teal-950 border-teal-300 font-extrabold' };
     }
     if (average >= 12) {
-      return { label: 'Assez Bien', badgeClass: 'bg-sky-100 text-sky-950 border-sky-300 font-extrabold' };
+      return { label, badgeClass: 'bg-sky-100 text-sky-950 border-sky-300 font-extrabold' };
     }
     if (average >= 10) {
-      return { label: 'Passable', badgeClass: 'bg-amber-100 text-amber-950 border-amber-300 font-bold' };
+      return { label, badgeClass: 'bg-amber-100 text-amber-950 border-amber-300 font-bold' };
     }
-    if (average >= 8) {
-      return { label: 'Insuffisant', badgeClass: 'bg-orange-100 text-orange-950 border-orange-300 font-bold' };
-    }
-    return { label: 'Faible', badgeClass: 'bg-rose-100 text-rose-950 border-rose-300 font-bold' };
+    return { label, badgeClass: 'bg-rose-100 text-rose-950 border-rose-300 font-bold' };
   };
 
-  // Calcul dynamique des moyennes, des mentions et des rangs en temps réel
-  // Si un élève a une note > noteMaximale, sa moyenne n'est pas calculée (grisée avec '...') et rang '-'
+  // Calcul dynamique des moyennes (/20 pondérées par coeffEval), mentions et rangs (avec ex æquo 1e-6)
+  // Si un élève a une note > noteMaximale, sa moyenne n'est pas calculée (grisée avec '...') et rang '—'
   const studentsWithStats = useMemo(() => {
     const withAverage = students.map((std, idx) => {
-      let hasInvalidNote = false;
       const studentNotes = std.notes.slice(0, noteColumnCount);
 
       const parsedNotes = studentNotes.map((rawNote, cIdx) => {
@@ -809,12 +818,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         return parseStudentNote(rawNote, colDefaultMax);
       });
 
-      for (const p of parsedNotes) {
-        if (p.isInvalid) {
-          hasInvalidNote = true;
-          break;
-        }
-      }
+      const hasInvalidNote = parsedNotes.some(p => p.isInvalid);
 
       if (hasInvalidNote) {
         return {
@@ -822,59 +826,53 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           rowNumber: idx + 1,
           average: null,
           averageFormatted: '...',
-          mention: '-',
+          mention: '—',
           mentionClass: 'text-slate-400 font-semibold',
           hasInvalidNote: true,
-          rank: '-'
+          rank: '—'
         };
       }
 
-      // Notes valides ramenées sur 20 pour un calcul équitable
-      const validScoresOn20 = parsedNotes
-        .filter(p => p.scoreNum !== null && !p.isInvalid)
-        .map(p => (p.scoreNum! / p.maxScore) * 20);
+      // Étapes A1 & A2 via le moteur pur (ignore les notes vides, conserve 0 explicite, vérifie max > 0, pondère par coeffEval)
+      const evaluations: EvaluationInput[] = parsedNotes.map((p, cIdx) => ({
+        valeur: p.scoreNum,
+        max: p.maxScore,
+        coeffEval: columnMetas[cIdx]?.coeffEval ?? 1
+      }));
 
-      const avg = validScoresOn20.length > 0
-        ? validScoresOn20.reduce((sum, val) => sum + val, 0) / validScoresOn20.length
-        : null;
-
+      const subjectResult = calculateSubjectAverage(evaluations, { rejectExceedingMax: true });
+      const avg = subjectResult.moyenneMatiere;
       const mentionInfo = getStudentMention(avg);
 
       return {
         ...std,
         rowNumber: idx + 1,
         average: avg,
-        averageFormatted: avg !== null ? avg.toFixed(2) : '',
+        averageFormatted: avg !== null ? formatAverageDisplay(avg) : '',
         mention: mentionInfo.label,
         mentionClass: mentionInfo.badgeClass,
         hasInvalidNote: false,
-        rank: ''
+        rank: '—'
       };
     });
 
-    const sortedActive = [...withAverage]
-      .filter(s => s.average !== null && !s.hasInvalidNote)
-      .sort((a, b) => b.average! - a.average!);
-
-    const rankMap = new Map<string, string>();
-    let currentRank = 1;
-
-    sortedActive.forEach((s, i) => {
-      if (i > 0 && sortedActive[i - 1].average === s.average) {
-        rankMap.set(s.id, `${currentRank}e ex`);
-      } else {
-        currentRank = i + 1;
-        rankMap.set(s.id, currentRank === 1 ? '1er' : `${currentRank}e`);
-      }
-    });
+    // Calcul des rangs avec gestion rigoureuse des ex æquo (tolérance 1e-6)
+    const rankMap = calculateClassRanks(
+      withAverage.map(s => ({
+        id: s.id,
+        moyenne: s.hasInvalidNote ? null : s.average
+      })),
+      { tolerance: 1e-6 }
+    );
 
     return withAverage.map(s => {
       if (s.hasInvalidNote) {
-        return { ...s, rank: '-' };
+        return { ...s, rank: '—' };
       }
+      const rankEntry = rankMap.get(s.id);
       return {
         ...s,
-        rank: rankMap.get(s.id) || (s.name.trim() ? '-' : '')
+        rank: rankEntry && rankEntry.rankNumber !== null ? rankEntry.rankLabel : (s.name.trim() ? '—' : '')
       };
     });
   }, [students, noteColumnCount, columnMetas]);
@@ -1699,6 +1697,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       upEvent.stopPropagation();
       if (hasMoved) {
         justFinishedLineDragRef.current = true;
+        // Dès qu'on relâche la ligne après avoir agrandi/réduit, la couleur bleue disparaît immédiatement !
+        setSelectedLine(null);
         setTimeout(() => {
           justFinishedLineDragRef.current = false;
         }, 60);
@@ -1749,6 +1749,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       upEvent.stopPropagation();
       if (hasMoved) {
         justFinishedLineDragRef.current = true;
+        // Dès qu'on relâche la ligne après avoir agrandi/réduit, la couleur bleue disparaît immédiatement !
+        setSelectedLine(null);
         setTimeout(() => {
           justFinishedLineDragRef.current = false;
         }, 60);
@@ -3019,7 +3021,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               {colTitle} {i + 1}
                             </span>
                             <span className="text-[9.5px] font-bold text-slate-500 text-center w-full leading-tight mt-0.5">
-                              /{colMeta.maxScore}
+                              /{colMeta.maxScore}{colMeta.coeffEval && colMeta.coeffEval !== 1 ? ` · c.${colMeta.coeffEval}` : ''}
                             </span>
                           </div>
 
@@ -3058,13 +3060,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   setEditingColModal({
                                     colIndex: i,
                                     title: colMeta.title || 'NOTE',
-                                    maxScore: colMeta.maxScore || 20
+                                    maxScore: colMeta.maxScore || 20,
+                                    coeffEval: colMeta.coeffEval ?? 1
                                   });
                                 }}
                                 className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition"
                               >
                                 <Edit2 className="w-3.5 h-3.5 text-blue-600" />
-                                <span>Modifier l'intitulé & barème</span>
+                                <span>Modifier intitulé, barème & coef</span>
                               </button>
 
                               {/* 2. Déplacer la colonne */}
@@ -3307,7 +3310,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             }`}
                             title="Cliquer pour sélectionner, double-cliquer pour sélectionner la ligne"
                           >
-                            {std.rank && std.rank !== '-' ? (
+                            {std.rank && std.rank !== '-' && std.rank !== '—' ? (
                               <span
                                 data-cell-key={`${std.id}_rank`}
                                 data-cell-type="rank"
@@ -3320,7 +3323,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   color: rankCustom.color || undefined
                                 } : undefined}
                                 className={`select-text cursor-text px-2.5 py-1 rounded-md text-sm sm:text-base font-black shadow-xs tracking-tight ${
-                                  std.rank === '1er'
+                                  std.rank.startsWith('1er')
                                     ? 'bg-gradient-to-r from-amber-400 to-yellow-300 text-amber-950 border border-amber-400 ring-2 ring-amber-300/60'
                                     : std.rank.startsWith('2e')
                                     ? 'bg-slate-200 text-slate-900 border border-slate-300'
@@ -3332,7 +3335,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 {std.rank}
                               </span>
                             ) : (
-                              <span className="text-slate-300 text-sm font-bold">-</span>
+                              <span className="text-slate-300 text-sm font-bold">—</span>
                             )}
                             {renderColHandle('col-rank')}
                           </div>
@@ -4053,7 +4056,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   <span className="text-[10px] sm:text-[11px] opacity-75">/ 20</span>
                                 </>
                               ) : (
-                                <span className="text-slate-300 font-semibold">-</span>
+                                <span className="text-slate-300 font-semibold">—</span>
                               )}
                             </span>
 
@@ -4095,14 +4098,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             }`}
                             title="Mention pédagogique calculée automatiquement (case bloquée)"
                           >
-                            {std.mention && std.mention !== '-' ? (
+                            {std.mention && std.mention !== '-' && std.mention !== '—' ? (
                               <span
                                 className={`select-none pointer-events-none px-2 py-0.5 rounded-md text-[11px] sm:text-xs border shadow-2xs whitespace-nowrap tracking-tight ${std.mentionClass}`}
                               >
                                 {std.mention}
                               </span>
                             ) : (
-                              <span className="text-slate-300 text-xs font-semibold select-none pointer-events-none">-</span>
+                              <span className="text-slate-300 text-xs font-semibold select-none pointer-events-none">—</span>
                             )}
                             {renderColHandle('col-mention')}
                           </div>
@@ -4342,7 +4345,28 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   className="w-full h-9 px-3 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                 />
                 <p className="text-[10px] text-slate-400 mt-1">
-                  Exemple : 20 pour une note sur 20, 10 pour une note sur 10.
+                  Exemple : 20 pour une note sur 20, 40 pour une note sur 40.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1">
+                  Coefficient de l'évaluation (défaut : 1)
+                </label>
+                <input
+                  type="number"
+                  min={0.5}
+                  max={20}
+                  step={0.5}
+                  value={editingColModal.coeffEval}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setEditingColModal(prev => prev ? { ...prev, coeffEval: isNaN(val) ? 1 : val } : null);
+                  }}
+                  className="w-full h-9 px-3 border border-slate-300 rounded-lg text-xs font-semibold text-slate-800 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                />
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Exemple : 1 pour une interrogation, 2 ou 3 pour un devoir surveillé.
                 </p>
               </div>
             </div>
@@ -4361,13 +4385,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   const idx = editingColModal.colIndex;
                   const cleanTitle = editingColModal.title.trim().toUpperCase() || 'NOTE';
                   const cleanMax = editingColModal.maxScore > 0 ? editingColModal.maxScore : 20;
+                  const cleanCoeff = editingColModal.coeffEval > 0 ? editingColModal.coeffEval : 1;
 
                   setColumnMetas(prev => ({
                     ...prev,
                     [idx]: {
                       ...prev[idx],
                       title: cleanTitle,
-                      maxScore: cleanMax
+                      maxScore: cleanMax,
+                      coeffEval: cleanCoeff
                     }
                   }));
 
