@@ -1112,7 +1112,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         title="Cliquer pour sélectionner le trait vertical, glisser pour agrandir/réduire la colonne"
       >
         {active ? (
-          <div className="w-[3px] h-full bg-blue-600 shadow-[0_0_8px_#2563eb] pointer-events-none" />
+          <div className="w-[1.5px] h-full bg-sky-400 pointer-events-none" />
         ) : (
           <div className="w-[1.5px] h-full bg-slate-400 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none" />
         )}
@@ -1138,11 +1138,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         }}
         onMouseDown={(e) => handleStartRowResize(e, rowIndex)}
         onTouchStart={(e) => handleStartRowResize(e, rowIndex)}
-        className="absolute -bottom-2.5 left-0 w-full h-5 cursor-row-resize z-20 select-none flex items-center justify-center pointer-events-auto hover:bg-blue-500/20 transition-colors"
+        className="absolute -bottom-2.5 left-0 w-full h-5 cursor-row-resize z-20 select-none flex items-center justify-center pointer-events-auto hover:bg-sky-400/20 transition-colors"
         title="Cliquer ou double-cliquer pour sélectionner la ligne, glisser pour agrandir/réduire"
       >
         {active && (
-          <div className="w-full h-[3px] bg-blue-600 shadow-[0_0_8px_#2563eb] pointer-events-none" />
+          <div className="w-full h-[1.5px] bg-sky-400 pointer-events-none" />
         )}
       </div>
     );
@@ -1615,7 +1615,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-rank') ? null : { type: 'col', id: 'col-rank' });
                       }}
-                      className={`h-12 border-r ${isColActive('col-rank') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
+                      className={`h-12 border-r ${isColActive('col-rank') ? 'border-r-[1.5px] border-sky-400 z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
                       title="Rang de l'élève (Double-cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
@@ -1639,7 +1639,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-photo') ? null : { type: 'col', id: 'col-photo' });
                       }}
-                      className={`h-12 border-r ${isColActive('col-photo') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
+                      className={`h-12 border-r ${isColActive('col-photo') ? 'border-r-[1.5px] border-sky-400 z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
                       title="Profil / Photo (Double-cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
@@ -1663,7 +1663,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-name') ? null : { type: 'col', id: 'col-name' });
                       }}
-                      className={`h-12 border-r ${isColActive('col-name') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative group cursor-pointer`}
+                      className={`h-12 border-r ${isColActive('col-name') ? 'border-r-[1.5px] border-sky-400 z-10' : 'border-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative group cursor-pointer`}
                       title="Nom et Prénom (Double-cliquer pour sélectionner le trait vertical)"
                     >
                       <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
@@ -1824,7 +1824,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             e.stopPropagation();
                             setSelectedLine(prev => (prev?.type === 'col' && prev.id === `col-note-${i}`) ? null : { type: 'col', id: `col-note-${i}` });
                           }}
-                          className={`h-12 border-r ${isColActive(`col-note-${i}`) ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors cursor-pointer ${
+                          className={`h-12 border-r ${isColActive(`col-note-${i}`) ? 'border-r-[1.5px] border-sky-400 z-10' : 'border-slate-700'} flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors cursor-pointer ${
                             isMovingThis ? 'ring-2 ring-blue-500 bg-blue-50' : ''
                           }`}
                           title={`${colTitle} ${i + 1} (Double-cliquer pour sélectionner le trait vertical)`}
@@ -2079,7 +2079,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' });
                       }}
                       className={`h-12 border-r ${
-                        isColActive('col-moyenne') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'
+                        isColActive('col-moyenne') ? 'border-r-[1.5px] border-sky-400 z-10' : 'border-slate-700'
                       } flex items-center justify-center p-1 text-center bg-blue-100/70 shrink-0 relative cursor-pointer`}
                       title="Moyenne générale (Double-cliquer pour sélectionner le trait vertical)"
                     >
@@ -2130,7 +2130,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.rank ? `=RANG(M${rIdx + 1})` : ''
                               });
                             }}
-                            className={`border-r ${isColActive('col-rank') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center p-1 cursor-pointer relative shrink-0 ${
+                            className={`border-r ${isColActive('col-rank') ? 'border-r-[1.5px] border-sky-400 z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-[1.5px] border-sky-400 z-10' : 'border-b border-slate-400'} flex items-center justify-center p-1 cursor-pointer relative shrink-0 ${
                               activeCellInfo.id === `cell-rank-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-emerald-50/40' : ''
                             }`}
                             title="Cliquer pour sélectionner, double-cliquer pour sélectionner la ligne"
@@ -2153,29 +2153,32 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             {renderColHandle('col-rank')}
                           </div>
 
-                          {/* PROFIL / PHOTO : IMAGE CARRÉE OCCUPANT TOUT L'ESPACE AVEC MENU 3 POINTS */}
+                          {/* PROFIL / PHOTO : IMAGE CARRÉE OCCUPANT TOUT L'ESPACE AVEC MENU 3 POINTS VISIBLE */}
                           <div 
                             style={{ 
                               width: `${colWidthPhoto}px`, 
                               height: `${rowHeight}px`,
                               backgroundColor: rowBg || undefined
                             }}
-                            className={`border-r ${isColActive('col-photo') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center p-0 relative group shrink-0 ${
+                            className={`border-r ${isColActive('col-photo') ? 'border-r-[1.5px] border-sky-400 z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-[1.5px] border-sky-400 z-10' : 'border-b border-slate-400'} flex items-center justify-center p-0 relative group shrink-0 ${
                               activeCellInfo.id === `cell-photo-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
                             }`}
                             title={std.photoUrl ? "Cliquer pour voir la photo de l'élève" : "Cliquer pour ajouter une photo"}
                           >
                             {std.photoUrl ? (
-                              <div className="w-full h-full relative group/photo overflow-hidden">
-                                <img 
-                                  src={std.photoUrl} 
-                                  alt={std.name || 'Élève'} 
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setPreviewPhotoStudent(std);
-                                  }}
-                                  className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition duration-200" 
-                                />
+                              <div className="w-full h-full relative group/photo">
+                                {/* Conteneur avec overflow-hidden strictement pour l'image */}
+                                <div className="w-full h-full overflow-hidden">
+                                  <img 
+                                    src={std.photoUrl} 
+                                    alt={std.name || 'Élève'} 
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setPreviewPhotoStudent(std);
+                                    }}
+                                    className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition duration-200" 
+                                  />
+                                </div>
 
                                 {/* BOUTON 3 POINTS ⋮ POUR LA PHOTO */}
                                 <button
@@ -2189,21 +2192,21 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     setActiveMenuNameCol(false);
                                     setActiveColorPicker(null);
                                   }}
-                                  className={`absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-20 ${
+                                  className={`absolute top-1 right-1 p-1 rounded-md transition cursor-pointer z-30 ${
                                     activeMenuPhoto === std.id
-                                      ? 'bg-blue-600 text-white shadow-xs opacity-100'
-                                      : 'bg-black/50 text-white hover:bg-black/80 opacity-0 group-hover:opacity-100'
+                                      ? 'bg-sky-500 text-white shadow-md opacity-100 ring-2 ring-white'
+                                      : 'bg-black/60 text-white hover:bg-black/90 opacity-80 sm:opacity-0 sm:group-hover/photo:opacity-100 shadow-xs'
                                   }`}
-                                  title="Options de la photo"
+                                  title="Options de la photo (Remplacer / Supprimer)"
                                 >
-                                  <MoreVertical className="w-2.5 h-2.5 stroke-[2.5]" />
+                                  <MoreVertical className="w-3.5 h-3.5 stroke-[2.5]" />
                                 </button>
 
-                                {/* MENU CONTEXTUEL PHOTO */}
+                                {/* MENU CONTEXTUEL PHOTO - Hors d'overflow-hidden pour être 100% visible ! */}
                                 {activeMenuPhoto === std.id && (
                                   <div
                                     onClick={(e) => e.stopPropagation()}
-                                    className="absolute top-full left-0 mt-1 w-48 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95"
+                                    className={`absolute ${rIdx >= students.length - 2 ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 w-48 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95`}
                                   >
                                     <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate border-b border-slate-100 pb-1 mb-1">
                                       Photo : {std.name || `Élève ${rIdx + 1}`}
@@ -2215,10 +2218,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         setActiveMenuPhoto(null);
                                         handleTriggerPhotoUpload(std.id);
                                       }}
-                                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-blue-50 text-slate-700 hover:text-blue-700 transition"
+                                      className="w-full px-3 py-2 flex items-center gap-2 hover:bg-sky-50 text-slate-700 hover:text-sky-700 transition"
                                     >
-                                      <Camera className="w-3.5 h-3.5 text-blue-600" />
-                                      <span>Remplacer la photo</span>
+                                      <Camera className="w-4 h-4 text-sky-600" />
+                                      <span className="font-semibold">Remplacer la photo</span>
                                     </button>
 
                                     <button
@@ -2228,10 +2231,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         setStudents(prev => prev.map(s => s.id === std.id ? { ...s, photoUrl: undefined } : s));
                                         setIsSaved(false);
                                       }}
-                                      className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-red-50 text-red-600 transition"
+                                      className="w-full px-3 py-2 flex items-center gap-2 hover:bg-red-50 text-red-600 transition"
                                     >
-                                      <Trash2 className="w-3.5 h-3.5 text-red-500" />
-                                      <span>Supprimer la photo</span>
+                                      <Trash2 className="w-4 h-4 text-red-500" />
+                                      <span className="font-semibold">Supprimer la photo</span>
                                     </button>
                                   </div>
                                 )}
@@ -2266,7 +2269,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 value: std.name
                               });
                             }}
-                            className={`border-r ${isColActive('col-name') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center p-1.5 relative group shrink-0 ${
+                            className={`border-r ${isColActive('col-name') ? 'border-r-[1.5px] border-sky-400 z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-[1.5px] border-sky-400 z-10' : 'border-b border-slate-400'} flex items-center p-1.5 relative group shrink-0 ${
                               blockedNoteTarget?.studentId === std.id && !(std.name || '').trim() ? 'ring-2 ring-red-500 bg-red-50/60' : ''
                             } ${
                               activeCellInfo.id === `cell-name-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
@@ -2456,7 +2459,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     value: noteVal || `.../${parsed.maxScore}`
                                   });
                                 }}
-                                className={`border-r ${isThisColActive ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} flex items-center justify-center px-1 relative shrink-0 transition-colors group cursor-text ${
+                                className={`border-r ${isThisColActive ? 'border-r-[1.5px] border-sky-400 z-10' : 'border-slate-700'} ${isRowLineActive ? 'border-b-[1.5px] border-sky-400 z-10' : 'border-b border-slate-400'} flex items-center justify-center px-1 relative shrink-0 transition-colors group cursor-text ${
                                   isInvalid 
                                     ? 'bg-red-50 ring-2 ring-red-500 z-10' 
                                     : isSelectedNote 
@@ -2710,7 +2713,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               height: `${rowHeight}px`,
                               backgroundColor: rowBg || undefined
                             }}
-                            className={`border-r border-slate-700 ${isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'} bg-slate-50/60 flex items-center justify-center shrink-0 relative`}
+                            className={`border-r border-slate-700 ${isRowLineActive ? 'border-b-[1.5px] border-sky-400 z-10' : 'border-b border-slate-400'} bg-slate-50/60 flex items-center justify-center shrink-0 relative`}
                           >
                             <span className="text-slate-200 text-xs">•</span>
                           </div>
@@ -2739,8 +2742,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               e.stopPropagation();
                               setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' });
                             }}
-                            className={`border-r ${isColActive('col-moyenne') ? 'border-r-2 border-blue-600 shadow-[1px_0_8px_#2563eb] z-10' : 'border-slate-700'} flex items-center justify-between px-2 cursor-pointer relative shrink-0 transition-colors ${
-                              isRowLineActive ? 'border-b-2 border-blue-600 shadow-[0_1px_8px_#2563eb] z-10' : 'border-b border-slate-400'
+                            className={`border-r ${isColActive('col-moyenne') ? 'border-r-[1.5px] border-sky-400 z-10' : 'border-slate-700'} flex items-center justify-between px-2 cursor-pointer relative shrink-0 transition-colors ${
+                              isRowLineActive ? 'border-b-[1.5px] border-sky-400 z-10' : 'border-b border-slate-400'
                             } ${
                               std.hasInvalidNote
                                 ? 'bg-slate-200 text-slate-400 border border-slate-300'
