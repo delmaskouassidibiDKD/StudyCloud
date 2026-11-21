@@ -1464,7 +1464,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       {/* ========================================================================= */}
       {/* 2. ESPACE PRINCIPAL DE TRAVAIL (Plein écran Edge-to-Edge & Défilement fluide) */}
       {/* ========================================================================= */}
-      <main className="flex-1 flex flex-col h-full min-h-dvh overflow-y-auto overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-1.5 sm:pt-2 pb-24 md:pb-8 space-y-1.5">
+      <main className="flex-1 flex flex-col h-full min-h-dvh overflow-y-auto overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-1 sm:pt-1.5 pb-24 md:pb-8 space-y-1">
         
         {/* ----------------------------------------------------------------------- */}
         {/* EN-TÊTE COMPACT EN HAUT :                                               */}
@@ -1650,7 +1650,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* LIGNE POUR COMBLER L'ESPACE (MASQUÉ SI DANS UNE ÉCOLE)                  */}
         {/* ----------------------------------------------------------------------- */}
         {!selectedSchoolInside && (
-          <section className="space-y-1.5 pt-0.5 animate-fade-in">
+          <section className="space-y-1 animate-fade-in">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
@@ -1793,32 +1793,51 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               </div>
             </div>
 
-            {/* Ligne des boutons d'années successifs (Emplacement entouré en rouge sur l'image 3) */}
-            <div className="flex items-center gap-2.5 flex-wrap">
+            {/* Ligne des boutons d'années successifs avec sélection lumineuse (jamais noire) */}
+            <div className="flex items-center gap-2.5 flex-wrap py-1">
               {schoolYears.map((year) => {
                 const isSelected = selectedYearId === year.id;
                 const isWhite = !year.color || year.color === '#ffffff' || year.color === 'white';
+                const glowTheme = getLuminousLevelTheme(year.color);
 
                 return (
                   <div
                     key={year.id}
                     onClick={() => setSelectedYearId(year.id)}
-                    style={{
-                      backgroundColor: year.color || '#ffffff',
-                      color: year.textColor || (isWhite ? '#0f172a' : '#ffffff'),
-                      borderColor: isWhite ? '#cbd5e1' : year.color
-                    }}
-                    className={`group relative flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-extrabold tracking-wide cursor-pointer transition-all shadow-xs select-none ${
-                      isSelected 
-                        ? 'ring-2 ring-offset-2 ring-cyan-500 scale-105 shadow-md' 
-                        : 'hover:scale-102 hover:shadow'
+                    style={
+                      isSelected
+                        ? {
+                            background: glowTheme.bg,
+                            color: glowTheme.text,
+                            borderColor: glowTheme.border,
+                            boxShadow: glowTheme.shadow,
+                          }
+                        : {
+                            backgroundColor: isWhite ? '#ffffff' : year.color,
+                            color: year.textColor || (isWhite ? '#0f172a' : '#ffffff'),
+                            borderColor: isWhite ? '#cbd5e1' : year.color,
+                          }
+                    }
+                    className={`group relative overflow-hidden flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-extrabold tracking-wide cursor-pointer transition-all select-none ${
+                      isSelected
+                        ? 'border-2 scale-[1.03]'
+                        : 'border shadow-xs hover:scale-102 hover:shadow'
                     }`}
                     title={`Sélectionner l'année scolaire ${year.label}`}
                   >
-                    <Calendar className="w-3.5 h-3.5 opacity-80" />
-                    <span className="font-mono">{year.label}</span>
                     {isSelected && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 ring-2 ring-white ml-0.5"></span>
+                      <div
+                        className="absolute inset-0 pointer-events-none opacity-45 blur-md"
+                        style={{ background: glowTheme.aura }}
+                      />
+                    )}
+                    <Calendar className="relative z-10 w-3.5 h-3.5 opacity-85" />
+                    <span className="relative z-10 font-mono">{year.label}</span>
+                    {isSelected && (
+                      <span
+                        className="relative z-10 w-2 h-2 rounded-full ml-0.5"
+                        style={{ backgroundColor: glowTheme.dot, boxShadow: glowTheme.dotShadow }}
+                      />
                     )}
 
                     {/* Bouton de suppression au survol si plusieurs années */}
@@ -1826,7 +1845,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       <button
                         type="button"
                         onClick={(e) => handleDeleteYear(year.id, e)}
-                        className="opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded-full hover:bg-black/20 text-current transition"
+                        className="relative z-10 opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded-full hover:bg-black/15 text-current transition cursor-pointer"
                         title="Supprimer cette année"
                       >
                         <X className="w-3 h-3" />
@@ -1842,7 +1861,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* ----------------------------------------------------------------------- */}
         {/* ESPACE DE TRAVAIL PRINCIPAL (ÉCOLES OU CLASSES SELON LA NAVIGATION)    */}
         {/* ----------------------------------------------------------------------- */}
-        <section className="flex-1 flex flex-col justify-start pt-0.5">
+        <section className="flex-1 flex flex-col justify-start">
           {selectedSchoolInside ? (
             // =====================================================================
             // CAS 1 : ON EST "À L'INTÉRIEUR" D'UNE ÉCOLE -> NIVEAUX D'ÉTUDE -> CLASSES -> MATIÈRES
@@ -2593,7 +2612,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 </div>
               ) : (
                 // 2. ÉCOLES CRÉÉES : Cartes en 3D sous forme de bouton avec logo rond
-                <div className="space-y-4 pt-1 animate-fade-in">
+                <div className="space-y-2.5 pt-1 animate-fade-in">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-black uppercase tracking-wider text-slate-600">
