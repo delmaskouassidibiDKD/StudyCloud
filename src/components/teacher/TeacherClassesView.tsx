@@ -333,13 +333,85 @@ const SUGGESTED_YEARS = [
   `${CURRENT_YEAR - 1} - ${CURRENT_YEAR}`,
 ];
 
+const normalizeSearchText = (value: string): string =>
+  value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .trim();
+
+interface InlineSectionSearchProps {
+  isOpen: boolean;
+  query: string;
+  placeholder: string;
+  onToggle: () => void;
+  onChange: (value: string) => void;
+  onClose: () => void;
+}
+
+const InlineSectionSearch: React.FC<InlineSectionSearchProps> = ({
+  isOpen,
+  query,
+  placeholder,
+  onToggle,
+  onChange,
+  onClose,
+}) => {
+  return (
+    <div className="inline-flex items-center gap-1 shrink-0">
+      <button
+        type="button"
+        onClick={onToggle}
+        className={`w-6 h-6 rounded-md border flex items-center justify-center transition-all cursor-pointer shrink-0 ${
+          isOpen
+            ? 'bg-cyan-50 text-cyan-700 border-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.35)]'
+            : 'bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] border-slate-200/90 shadow-2xs'
+        }`}
+        title={isOpen ? 'Fermer la recherche' : placeholder}
+      >
+        <Search className="w-3 h-3 stroke-[2.4]" />
+      </button>
+
+      {isOpen && (
+        <div className="h-6 px-2 rounded-md bg-white/95 border border-cyan-400/80 shadow-2xs flex items-center gap-1 animate-in fade-in duration-150">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => onChange(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') onClose();
+            }}
+            placeholder={placeholder}
+            className="w-28 sm:w-36 bg-transparent text-[11px] font-semibold text-slate-800 placeholder-slate-400 focus:outline-none leading-none"
+            autoFocus
+          />
+          <button
+            type="button"
+            onClick={onClose}
+            className="w-4 h-4 rounded flex items-center justify-center text-slate-400 hover:text-red-500 hover:bg-slate-100 transition cursor-pointer shrink-0"
+            title="Fermer la recherche"
+          >
+            <X className="w-3 h-3 stroke-[2.5]" />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, user }) => {
   // 1. Accueil par défaut de cette application : le bouton "Tableau de bord" (comme entouré sur l'image 1)
   const [activeNavTab, setActiveNavTab] = useState<'dashboard' | 'trainees' | 'classes' | 'discussions' | 'groups' | 'library'>('dashboard');
 
-  // Recherche dans l'en-tête
-  const [searchQuery, setSearchQuery] = useState('');
-  const [isSearchOpen, setIsSearchOpen] = useState(false);
+  // Recherches rapides par section (Établissements, Niveaux, Classes, Matières)
+  const [isSchoolSearchOpen, setIsSchoolSearchOpen] = useState(false);
+  const [schoolSearchQuery, setSchoolSearchQuery] = useState('');
+  const [isLevelSearchOpen, setIsLevelSearchOpen] = useState(false);
+  const [levelSearchQuery, setLevelSearchQuery] = useState('');
+  const [isClassSearchOpen, setIsClassSearchOpen] = useState(false);
+  const [classSearchQuery, setClassSearchQuery] = useState('');
+  const [isSubjectSearchOpen, setIsSubjectSearchOpen] = useState(false);
+  const [subjectSearchQuery, setSubjectSearchQuery] = useState('');
 
   // Agrandissement progressif et plein écran (Image 2 & 3 - Desktop uniquement)
   const viewerExpandLevel = useViewerExpandLevel();
@@ -1337,18 +1409,71 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     });
   }, [subjects, activeClass, activeTerm, currentClassTerms]);
 
+  // Réinitialiser les recherches locales lors des changements de contexte
+  useEffect(() => {
+    setSchoolSearchQuery('');
+    setIsSchoolSearchOpen(false);
+  }, [selectedYearId]);
+
+  useEffect(() => {
+    setLevelSearchQuery('');
+    setIsLevelSearchOpen(false);
+    setClassSearchQuery('');
+    setIsClassSearchOpen(false);
+    setSubjectSearchQuery('');
+    setIsSubjectSearchOpen(false);
+  }, [selectedSchoolInside]);
+
+  useEffect(() => {
+    setClassSearchQuery('');
+    setIsClassSearchOpen(false);
+  }, [selectedLevelId]);
+
+  useEffect(() => {
+    setSubjectSearchQuery('');
+    setIsSubjectSearchOpen(false);
+  }, [selectedLevelId, selectedClassId, selectedTermId]);
+
+  // Listes filtrées par les champs de recherche rapides de chaque section
+  const filteredYearSchools = useMemo(() => {
+    const q = normalizeSearchText(schoolSearchQuery);
+    if (!q) return currentYearSchools;
+    return currentYearSchools.filter(s => normalizeSearchText(s.name).includes(q));
+  }, [currentYearSchools, schoolSearchQuery]);
+
+  const filteredSchoolLevels = useMemo(() => {
+    const q = normalizeSearchText(levelSearchQuery);
+    if (!q) return currentSchoolLevels;
+    return currentSchoolLevels.filter(l => normalizeSearchText(l.name).includes(q));
+  }, [currentSchoolLevels, levelSearchQuery]);
+
+  const filteredLevelClasses = useMemo(() => {
+    const q = normalizeSearchText(classSearchQuery);
+    if (!q) return currentLevelClasses;
+    return currentLevelClasses.filter(c => {
+      const hay = normalizeSearchText(`${getClassDisplayName(c)} ${c.level} ${c.slogan || ''} ${c.teacherName}`);
+      return hay.includes(q);
+    });
+  }, [currentLevelClasses, classSearchQuery]);
+
+  const filteredClassSubjects = useMemo(() => {
+    const q = normalizeSearchText(subjectSearchQuery);
+    if (!q) return currentClassSubjects;
+    return currentClassSubjects.filter(s => normalizeSearchText(s.name).includes(q));
+  }, [currentClassSubjects, subjectSearchQuery]);
+
   // --- GESTION PAR ESPACE / PAGE DE 3 LIGNES (1 BOUTON FIXE "+ MATIÈRE" + 17 MATIÈRES = 18 EMPLACEMENTS) ---
   const SUBJECTS_PER_PAGE = 17; // 1 bouton fixe devant + 17 matières = 3 lignes de 6 colonnes
   const [subjectPageIndex, setSubjectPageIndex] = useState<number>(0);
 
   const totalSubjectPages = useMemo(() => {
-    return Math.max(1, Math.ceil(currentClassSubjects.length / SUBJECTS_PER_PAGE));
-  }, [currentClassSubjects.length]);
+    return Math.max(1, Math.ceil(filteredClassSubjects.length / SUBJECTS_PER_PAGE));
+  }, [filteredClassSubjects.length]);
 
-  // Réinitialiser la page quand on change de niveau, de classe ou de trimestre
+  // Réinitialiser la page quand on change de niveau, de classe, de trimestre ou de recherche
   useEffect(() => {
     setSubjectPageIndex(0);
-  }, [selectedLevelId, selectedClassId, selectedTermId]);
+  }, [selectedLevelId, selectedClassId, selectedTermId, subjectSearchQuery]);
 
   // S'assurer que subjectPageIndex ne dépasse pas totalSubjectPages
   useEffect(() => {
@@ -1360,8 +1485,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // Matières découpées pour l'espace actuellement affiché
   const pagedSubjects = useMemo(() => {
     const start = subjectPageIndex * SUBJECTS_PER_PAGE;
-    return currentClassSubjects.slice(start, start + SUBJECTS_PER_PAGE);
-  }, [currentClassSubjects, subjectPageIndex]);
+    return filteredClassSubjects.slice(start, start + SUBJECTS_PER_PAGE);
+  }, [filteredClassSubjects, subjectPageIndex]);
 
   // Si le professeur clique et rentre à l'intérieur d'une matière créée :
   // Affichage du tableur de notes et moyennes plein écran (identique à WPS/Excel)
@@ -1491,13 +1616,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           </button>
 
           {/* Titre principal bien centré en haut (Tableau de bord OU Nom de l'école active) */}
-          <div
-            className={`flex items-center justify-center min-w-0 ${
-              !isSearchOpen
-                ? 'xl:absolute xl:left-1/2 xl:-translate-x-1/2 flex-1 xl:flex-initial'
-                : 'flex-1'
-            }`}
-          >
+          <div className="flex items-center justify-center min-w-0 xl:absolute xl:left-1/2 xl:-translate-x-1/2 flex-1 xl:flex-initial">
             {selectedSchoolInside ? (
               <div className="flex items-center gap-2 min-w-0">
                 <div className="w-7 h-7 rounded-full overflow-hidden border-2 border-white shadow-xs shrink-0 flex items-center justify-center bg-white/70">
@@ -1525,42 +1644,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
           {/* Zone haute droite : Utilitaires + Profil puis Agrandissement dans le creux tout à droite */}
           <div className="flex items-center gap-2 ml-auto flex-wrap justify-end z-10">
-            {/* Groupe utilitaires + profil enseignant */}
+            {/* Groupe utilitaires + profil enseignant (bouton recherche déplacé dans chaque section) */}
             <div className="flex items-center gap-1.5 bg-white/55 backdrop-blur-md px-1.5 py-1 rounded-2xl border border-white/80 shadow-2xs">
-              {/* Barre de recherche dynamique */}
-              <div className="relative flex items-center">
-                {isSearchOpen ? (
-                  <div className="flex items-center bg-white rounded-xl px-2.5 py-1 shadow-2xs border border-slate-200/80 transition-all w-40 sm:w-52">
-                    <Search className="w-3.5 h-3.5 text-slate-400 shrink-0 mr-1.5" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Recherche..."
-                      className="w-full bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none"
-                      autoFocus
-                    />
-                    {searchQuery && (
-                      <button type="button" onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                    <button type="button" onClick={() => setIsSearchOpen(false)} className="ml-1 text-slate-400 hover:text-slate-600 cursor-pointer">
-                      <X className="w-3 h-3" />
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setIsSearchOpen(true)}
-                    className="w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
-                    title="Rechercher"
-                  >
-                    <Search className="w-3.5 h-3.5" />
-                  </button>
-                )}
-              </div>
-
               {/* Notification Bell */}
               <button
                 type="button"
@@ -1923,7 +2008,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   {/* 1. BANDEAU DES NIVEAUX D'ÉTUDE (Boutons minces rectangulaires plats NON 3D, bouton + devant, Créer un niveau + flèches < > à droite) */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
                         <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 shrink-0">
                           Niveaux d'étude ({currentSchoolLevels.length})
                         </span>
@@ -1934,6 +2019,24 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         <span className="text-[10px] text-slate-400 hidden lg:inline-block font-medium truncate">
                           (Sélectionnez un niveau pour afficher et créer ses classes)
                         </span>
+                        <InlineSectionSearch
+                          isOpen={isLevelSearchOpen}
+                          query={levelSearchQuery}
+                          placeholder="Chercher un niveau..."
+                          onToggle={() => {
+                            if (isLevelSearchOpen) {
+                              setIsLevelSearchOpen(false);
+                              setLevelSearchQuery('');
+                            } else {
+                              setIsLevelSearchOpen(true);
+                            }
+                          }}
+                          onChange={setLevelSearchQuery}
+                          onClose={() => {
+                            setIsLevelSearchOpen(false);
+                            setLevelSearchQuery('');
+                          }}
+                        />
                       </div>
 
                       {/* Bouton Créer un niveau + Flèches de défilement horizontal gauche et droite au bord */}
@@ -1995,7 +2098,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         className="flex items-center gap-2 overflow-x-auto flex-nowrap scrollbar-none scroll-smooth py-2 px-1.5 -my-1 flex-1 min-w-0"
                         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                       >
-                        {currentSchoolLevels.map((lvl) => {
+                        {filteredSchoolLevels.length === 0 && levelSearchQuery.trim() ? (
+                          <div className="h-8 px-3 rounded-lg border border-slate-200/80 bg-white/75 text-slate-500 text-xs font-bold flex items-center gap-1.5 shrink-0 select-none">
+                            <span>Non trouvé</span>
+                          </div>
+                        ) : (
+                        filteredSchoolLevels.map((lvl) => {
                           const isSelected = activeLevel?.id === lvl.id;
                           const levelClassesCount = classes.filter(
                             c => c.schoolId === selectedSchoolInside.id && c.levelId === lvl.id
@@ -2083,7 +2191,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               </button>
                             </div>
                           );
-                        })}
+                        })
+                        )}
                       </div>
                     </div>
                   </div>
@@ -2091,8 +2200,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   {/* 2. BANDEAU DES CLASSES DU NIVEAU ACTIF (Cartes 3D de taille réduite + halo lumineux à la sélection) */}
                   {activeLevel && (
                     <div className="pt-1 border-t border-cyan-900/10">
-                      <div className="flex items-center justify-between mb-1">
-                        <div className="flex items-center gap-2 min-w-0">
+                      <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 min-w-0 flex-wrap">
                           <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 shrink-0">
                             Classes ({currentLevelClasses.length})
                           </span>
@@ -2111,6 +2220,24 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           <span className="text-[10px] text-slate-400 hidden sm:inline-block font-medium truncate">
                             (Sélectionnez une classe pour afficher et créer ses matières)
                           </span>
+                          <InlineSectionSearch
+                            isOpen={isClassSearchOpen}
+                            query={classSearchQuery}
+                            placeholder="Chercher une classe..."
+                            onToggle={() => {
+                              if (isClassSearchOpen) {
+                                setIsClassSearchOpen(false);
+                                setClassSearchQuery('');
+                              } else {
+                                setIsClassSearchOpen(true);
+                              }
+                            }}
+                            onChange={setClassSearchQuery}
+                            onClose={() => {
+                              setIsClassSearchOpen(false);
+                              setClassSearchQuery('');
+                            }}
+                          />
                         </div>
 
                         {/* Flèches de défilement horizontal gauche et droite */}
@@ -2186,7 +2313,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             className="flex items-stretch gap-3 overflow-x-auto pt-3.5 pb-2.5 px-2 scrollbar-none scroll-smooth flex-nowrap flex-1 min-w-0"
                             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                           >
-                            {currentLevelClasses.map((cls) => {
+                            {filteredLevelClasses.length === 0 && classSearchQuery.trim() ? (
+                              <div className="px-4 py-2 rounded-xl border border-slate-200/80 bg-white/75 text-slate-500 text-xs font-bold flex items-center justify-center shrink-0 select-none">
+                                Non trouvé
+                              </div>
+                            ) : (
+                            filteredLevelClasses.map((cls) => {
                               const isSelected = activeClass?.id === cls.id;
                               const classSubjCount = subjects.filter(s => s.classId === cls.id).length;
                               const displayClassName = getClassDisplayName(cls);
@@ -2276,7 +2408,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                   </div>
                                 </div>
                               );
-                            })}
+                            })
+                            )}
                           </div>
                         </div>
                       )}
@@ -2430,6 +2563,24 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         <span className="text-[10px] font-black text-slate-700 bg-white/80 px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
                           Espace {subjectPageIndex + 1} / {totalSubjectPages}
                         </span>
+                        <InlineSectionSearch
+                          isOpen={isSubjectSearchOpen}
+                          query={subjectSearchQuery}
+                          placeholder="Chercher une matière..."
+                          onToggle={() => {
+                            if (isSubjectSearchOpen) {
+                              setIsSubjectSearchOpen(false);
+                              setSubjectSearchQuery('');
+                            } else {
+                              setIsSubjectSearchOpen(true);
+                            }
+                          }}
+                          onChange={setSubjectSearchQuery}
+                          onClose={() => {
+                            setIsSubjectSearchOpen(false);
+                            setSubjectSearchQuery('');
+                          }}
+                        />
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
@@ -2503,8 +2654,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         </div>
                       </button>
 
-                      {/* 2. Matières de cet espace (format réduit) */}
-                      {pagedSubjects.map((subj) => {
+                      {/* 2. Matières de cet espace (format réduit) ou "Non trouvé" si recherche sans résultat */}
+                      {pagedSubjects.length === 0 && subjectSearchQuery.trim() ? (
+                        <div className="rounded-lg border border-slate-200/80 bg-white/75 px-3 py-2 min-h-[50px] sm:min-h-[54px] flex items-center justify-center text-xs font-bold text-slate-500 select-none">
+                          Non trouvé
+                        </div>
+                      ) : (
+                      pagedSubjects.map((subj) => {
                         const isWhite = !subj.color || subj.color === '#ffffff' || subj.color === 'white';
 
                         return (
@@ -2566,7 +2722,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             </div>
                           </div>
                         );
-                      })}
+                      })
+                      )}
 
                     </div>
                   </div>
@@ -2615,8 +2772,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               ) : (
                 // 2. ÉCOLES CRÉÉES : Cartes en 3D sous forme de bouton avec logo rond
                 <div className="space-y-2.5 pt-1 animate-fade-in">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-black uppercase tracking-wider text-slate-600">
                         Établissements scolaires ({currentYearSchools.length})
                       </span>
@@ -2624,6 +2781,24 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       <span className="text-xs font-bold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200/50">
                         Rentrée {currentSelectedYear.label}
                       </span>
+                      <InlineSectionSearch
+                        isOpen={isSchoolSearchOpen}
+                        query={schoolSearchQuery}
+                        placeholder="Chercher une école..."
+                        onToggle={() => {
+                          if (isSchoolSearchOpen) {
+                            setIsSchoolSearchOpen(false);
+                            setSchoolSearchQuery('');
+                          } else {
+                            setIsSchoolSearchOpen(true);
+                          }
+                        }}
+                        onChange={setSchoolSearchQuery}
+                        onClose={() => {
+                          setIsSchoolSearchOpen(false);
+                          setSchoolSearchQuery('');
+                        }}
+                      />
                     </div>
                   </div>
 
@@ -2651,7 +2826,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </span>
                     </button>
 
-                    {currentYearSchools.map((school) => {
+                    {filteredYearSchools.length === 0 && schoolSearchQuery.trim() ? (
+                      <div className="min-h-[170px] rounded-2xl border border-slate-200/90 bg-white/75 backdrop-blur-md p-5 flex items-center justify-center text-sm font-bold text-slate-500 select-none">
+                        Non trouvé
+                      </div>
+                    ) : (
+                    filteredYearSchools.map((school) => {
                       const isSelected = selectedSchoolId === school.id;
                       const isWhite = !school.color || school.color === '#ffffff' || school.color === 'white';
                       const schoolLevelsCount = studyLevels.filter(l => l.schoolId === school.id).length;
@@ -2760,7 +2940,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           </div>
                         </div>
                       );
-                    })}
+                    })
+                    )}
                   </div>
                 </div>
               )
