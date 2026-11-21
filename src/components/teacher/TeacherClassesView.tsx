@@ -1345,14 +1345,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         
         {/* ----------------------------------------------------------------------- */}
         {/* EN-TÊTE STRUCTURÉ EN 2 NIVEAUX PRO :                                    */}
-        {/* Ligne 1 (Tout en haut) : Retour (coin gauche) + Utilitaires/Profil +    */}
-        {/*                          Contrôles d'agrandissement (creux droit)       */}
-        {/* Ligne 2 (Dessous)      : Fil d'Ariane & Titre (gauche) + CTA (droite)   */}
+        {/* Ligne 1 (Tout en haut) : Retour (gauche) | Titre bien centré (milieu) | */}
+        {/*                          Utilitaires/Profil + Agrandissement (droite)   */}
+        {/* Ligne 2 (Dessous)      : Bouton principal (+ Créer un niveau / rentrée) */}
         {/* ----------------------------------------------------------------------- */}
-        <header className="flex flex-col gap-2">
-          {/* LIGNE 1 : BARRE SUPÉRIEURE (Retour en haut à gauche | Recherche, Notifs, Paramètres, Profil + Agrandissement dans le creux à droite) */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            {/* Bouton Retour placé tout en haut à gauche (au-dessus de Tableau de bord) */}
+        <header className="flex flex-col gap-1.5">
+          {/* LIGNE 1 : BARRE SUPÉRIEURE (Retour à gauche | Titre centré | Utilitaires & Agrandissement à droite) */}
+          <div className="relative flex items-center justify-between gap-2 flex-wrap">
+            {/* Bouton Retour placé tout en haut à gauche */}
             <button
               type="button"
               onClick={() => {
@@ -1364,16 +1364,49 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   onBack();
                 }
               }}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/85 hover:bg-white text-slate-700 hover:text-[#00313d] border border-white/95 shadow-xs transition active:scale-95 font-bold text-xs cursor-pointer shrink-0"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/85 hover:bg-white text-slate-700 hover:text-[#00313d] border border-white/95 shadow-xs transition active:scale-95 font-bold text-xs cursor-pointer shrink-0 z-10"
               title={selectedSchoolInside ? "Retour à la liste des écoles" : "Retour à l'accueil"}
             >
               <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
               <span>Retour</span>
             </button>
 
-            {/* Zone haute droite : Utilitaires + Profil (au-dessus du bouton Créer un niveau) puis Agrandissement dans le creux tout à droite */}
-            <div className="flex items-center gap-2 ml-auto flex-wrap justify-end">
-              {/* Groupe utilitaires + profil enseignant (ex-zone verte, positionné proprement en haut) */}
+            {/* Titre principal bien centré en haut (Tableau de bord OU Nom de l'école active) */}
+            <div
+              className={`flex items-center justify-center min-w-0 ${
+                !isSearchOpen
+                  ? 'xl:absolute xl:left-1/2 xl:-translate-x-1/2 flex-1 xl:flex-initial'
+                  : 'flex-1'
+              }`}
+            >
+              {selectedSchoolInside ? (
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-7 h-7 rounded-full overflow-hidden border-2 border-white shadow-xs shrink-0 flex items-center justify-center bg-white/70">
+                    {selectedSchoolInside.logoUrl ? (
+                      <img src={selectedSchoolInside.logoUrl} alt={selectedSchoolInside.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="font-black text-[11px] text-[#00313d]">
+                        {selectedSchoolInside.name.slice(0, 2).toUpperCase()}
+                      </span>
+                    )}
+                  </div>
+                  <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-[#0f2430] tracking-tight leading-none truncate">
+                    {selectedSchoolInside.name}
+                  </h1>
+                  <span className="text-[10px] font-extrabold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200/60 hidden sm:inline-block shrink-0">
+                    {currentSelectedYear?.label}
+                  </span>
+                </div>
+              ) : (
+                <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-[#0f2430] tracking-tight leading-none text-center truncate">
+                  Tableau de bord
+                </h1>
+              )}
+            </div>
+
+            {/* Zone haute droite : Utilitaires + Profil (au-dessus du bouton Créer) puis Agrandissement dans le creux tout à droite */}
+            <div className="flex items-center gap-2 ml-auto flex-wrap justify-end z-10">
+              {/* Groupe utilitaires + profil enseignant */}
               <div className="flex items-center gap-1.5 bg-white/55 backdrop-blur-md px-1.5 py-1 rounded-2xl border border-white/80 shadow-2xs">
                 {/* Barre de recherche dynamique */}
                 <div className="relative flex items-center">
@@ -1493,48 +1526,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             </div>
           </div>
 
-          {/* LIGNE 2 : FIL D'ARIANE & TITRE À GAUCHE | BOUTON PRINCIPAL (+ Créer un niveau / + Créer une rentrée) À DROITE */}
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-2 pt-0.5">
-            <div>
-              <div className="text-[11px] font-semibold text-slate-400 tracking-wider flex items-center gap-1.5 mb-0.5">
-                <span>Tableau de bord</span>
-                {selectedSchoolInside ? (
-                  <>
-                    <span>/</span>
-                    <span className="text-slate-500">{currentSelectedYear?.label}</span>
-                    <span>/</span>
-                    <span className="text-cyan-700 font-extrabold">{selectedSchoolInside.name}</span>
-                  </>
-                ) : null}
-              </div>
-
-              <div className="flex items-center gap-2">
-                {selectedSchoolInside ? (
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-full overflow-hidden border-2 border-white shadow-xs shrink-0 flex items-center justify-center bg-white/60">
-                      {selectedSchoolInside.logoUrl ? (
-                        <img src={selectedSchoolInside.logoUrl} alt={selectedSchoolInside.name} className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="font-black text-xs text-[#00313d]">
-                          {selectedSchoolInside.name.slice(0, 2).toUpperCase()}
-                        </span>
-                      )}
-                    </div>
-                    <h1 className="text-xl sm:text-2xl font-black text-[#0f2430] tracking-tight leading-none">
-                      {selectedSchoolInside.name}
-                    </h1>
-                    <span className="text-[10px] font-extrabold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200/60 hidden sm:inline-block">
-                      {currentSelectedYear?.label}
-                    </span>
-                  </div>
-                ) : (
-                  <h1 className="text-xl sm:text-2xl font-black text-[#0f2430] tracking-tight leading-none">
-                    Tableau de bord
-                  </h1>
-                )}
-              </div>
-            </div>
-
+          {/* LIGNE 2 : BOUTON PRINCIPAL (+ Créer un niveau / + Créer une rentrée) ALIGNÉ À DROITE */}
+          <div className="flex items-center justify-end gap-2">
             {/* ------------------------------------------------------------------- */}
             {/* BOUTON D'ACTION PRINCIPAL : Créer un niveau (si dans l'école) OU Créer une rentrée */}
             {/* ------------------------------------------------------------------- */}
