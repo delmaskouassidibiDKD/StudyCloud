@@ -235,6 +235,37 @@ export function getUserGradebookCacheKey(userId: string, subjectId: string, term
   return `studycloud_teacher_u_${safeUserSegment(userId)}_gb_${subjectId}_${termId || 't1'}`;
 }
 
+export function isOfflineOrNetworkError(err: any): boolean {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return true;
+  if (!err) return false;
+  if (err.status && typeof err.status === 'number') return false;
+  const msg = String(err.message || err || '').toLowerCase();
+  return (
+    err instanceof TypeError ||
+    msg.includes('failed to fetch') ||
+    msg.includes('networkerror') ||
+    msg.includes('network request failed') ||
+    msg.includes('load failed') ||
+    msg.includes('internet') ||
+    msg.includes('hors ligne') ||
+    msg.includes('offline')
+  );
+}
+
+export function clearUserGradebookCaches(userId: string, subjectIds: string[]): void {
+  if (!userId || !subjectIds.length) return;
+  try {
+    const userPrefix = `studycloud_teacher_u_${safeUserSegment(userId)}_gb_`;
+    const targets = subjectIds.map((sid) => `${userPrefix}${sid}_`);
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const key = localStorage.key(i);
+      if (key && targets.some((prefix) => key.startsWith(prefix))) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch {}
+}
+
 export function readUserBootstrapCache(userId: string): TeacherBootstrapResponse | null {
   if (!userId) return null;
   try {
@@ -443,9 +474,28 @@ export const TeacherGradebookAPI = {
       body: input,
     }),
 
+  updateYear: (id: string, input: { label: string; color: string; textColor?: string }) =>
+    teacherFetchJson<{ success: boolean; year: SchoolYearItem }>(`/api/teacher/years/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      body: input,
+    }),
+
   deleteYear: (id: string) =>
     teacherFetchJson<{ success: boolean; deletedId: string }>(`/api/teacher/years/${encodeURIComponent(id)}`, {
       method: 'DELETE',
+    }),
+
+  syncAll: (payload: {
+    schoolYears: SchoolYearItem[];
+    schools: SchoolItem[];
+    studyLevels: StudyLevelItem[];
+    classes: ClassItem[];
+    terms: TermItem[];
+    subjects: SubjectItem[];
+  }) =>
+    teacherFetchJson<TeacherBootstrapResponse & { syncedAt: number }>('/api/teacher/sync', {
+      method: 'POST',
+      body: payload,
     }),
 
   createSchool: (input: {

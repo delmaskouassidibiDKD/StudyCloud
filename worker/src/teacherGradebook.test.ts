@@ -511,3 +511,111 @@ test('Migration locale (import-local) isole les IDs même si deux comptes migren
   // 2 logos écoles + 2 photos élèves dans R2, strictement séparés par dossier user_id !
   assert.equal(r2Images.store.size, 4);
 });
+
+test('Modification (PUT), synchronisation manuelle (POST /sync) et suppression en cascade complète d’une année scolaire', async () => {
+  const { r2Images, callApi } = createHarness();
+
+  // 1. Alice crée une année -> école -> niveau -> classe -> matière
+  const yRes = await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027', color: '#00313d', textColor: '#ffffff' },
+  });
+  const { year } = await yRes.json();
+
+  // 2. Alice modifie le libellé et la couleur de l'année (PUT /api/teacher/years/:id)
+  const updRes = await callApi(`/api/teacher/years/${year.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { label: '2027 - 2028', color: '#0284c7', textColor: '#ffffff' },
+  });
+  assert.equal(updRes.status, 200);
+  const { year: updatedYear } = await updRes.json();
+  assert.equal(updatedYear.label, '2027 - 2028');
+  assert.equal(updatedYear.color, '#0284c7');
+
+  // Bob ne peut PAS modifier l'année d'Alice -> 404
+  const bobUpd = await callApi(`/api/teacher/years/${year.id}`, {
+    method: 'PUT',
+    token: 'token-bob',
+    body: { label: 'Pirate', color: '#000000' },
+  });
+  assert.equal(bobUpd.status, 404);
+
+  // 3. Synchronisation manuelle (POST /api/teacher/sync) avec une école créée hors-ligne + logo PNG
+  const syncRes = await callApi('/api/teacher/sync', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      schoolYears: [updatedYear],
+      schools: [
+        {
+          id: 'school-offline-1',
+          yearId: year.id,
+          name: 'Lycée Sync',
+          logoUrl: VALID_PNG_DATA_URL,
+          color: '#ffffff',
+          textColor: '#0f172a',
+          borderColor: '#e2e8f0',
+          borderDarkColor: '#cbd5e1',
+          createdAt: Date.now(),
+        },
+      ],
+      studyLevels: [{ id: 'lvl-sync-1', schoolId: 'school-offline-1', yearId: year.id, name: '2nde', createdAt: Date.now() }],
+      classes: [
+        {
+          id: 'cls-sync-1',
+          levelId: 'lvl-sync-1',
+          schoolId: 'school-offline-1',
+          yearId: year.id,
+          level: '2nde',
+          name: '2nde C',
+          teacherName: 'Alice',
+          color: '#ffffff',
+          textColor: '#0f172a',
+          borderColor: '#e2e8f0',
+          borderDarkColor: '#cbd5e1',
+          iconGradient: 'from-amber-500 to-orange-600',
+          createdAt: Date.now(),
+        },
+      ],
+      terms: [{ id: 'term-sync-1', classId: 'cls-sync-1', schoolId: 'school-offline-1', yearId: year.id, number: 1, name: 'Trimestre 1', createdAt: Date.now() }],
+      subjects: [
+        {
+          id: 'subj-sync-1',
+          classId: 'cls-sync-1',
+          termId: 'term-sync-1',
+          schoolId: 'school-offline-1',
+          yearId: year.id,
+          name: 'Physique',
+          color: '#ffffff',
+          textColor: '#0f172a',
+          borderColor: '#e2e8f0',
+          borderDarkColor: '#cbd5e1',
+          createdAt: Date.now(),
+        },
+      ],
+    },
+  });
+  assert.equal(syncRes.status, 200);
+  const syncData = await syncRes.json();
+  assert.equal(syncData.schools.length, 1);
+  assert.equal(syncData.subjects.length, 1);
+  assert.equal(r2Images.store.size, 1);
+
+  // 4. Suppression en cascade de l'année -> supprime école, niveau, classe, trimestre, matière ET logo R2 !
+  const delYearRes = await callApi(`/api/teacher/years/${year.id}`, {
+    method: 'DELETE',
+    token: 'token-alice',
+  });
+  assert.equal(delYearRes.status, 200);
+  assert.equal(r2Images.store.size, 0);
+
+  const afterDel = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  assert.equal(afterDel.schoolYears.length, 0);
+  assert.equal(afterDel.schools.length, 0);
+  assert.equal(afterDel.studyLevels.length, 0);
+  assert.equal(afterDel.classes.length, 0);
+  assert.equal(afterDel.terms.length, 0);
+  assert.equal(afterDel.subjects.length, 0);
+});

@@ -33,7 +33,10 @@ import {
   Minimize2,
   Cloud,
   CloudOff,
-  Loader2
+  Loader2,
+  Save,
+  WifiOff,
+  CheckCircle2
 } from 'lucide-react';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import { DnaLogo } from '../DnaLogo';
@@ -47,9 +50,9 @@ import {
   getTeacherAuthToken,
   readUserBootstrapCache,
   writeUserBootstrapCache,
-  hasLegacyUnscopedTeacherData,
-  collectLegacyUnscopedTeacherData,
   clearLegacyUnscopedTeacherData,
+  clearUserGradebookCaches,
+  isOfflineOrNetworkError,
 } from '../../services/teacherGradebookApi';
 import type { GradebookInspection } from '../../utils/teacherTransferEngine';
 
@@ -425,15 +428,89 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     [authUserId]
   );
 
-  // État de synchronisation Cloudflare D1 + R2
+  // État de synchronisation Cloudflare D1 + R2 (automatique + bouton manuel "Enregistrer")
   const [cloudStatus, setCloudStatus] = useState<'loading' | 'ready' | 'syncing' | 'error'>(() =>
     getTeacherAuthToken() ? 'loading' : 'ready'
   );
   const [cloudError, setCloudError] = useState<string | null>(null);
+  const [saveUiState, setSaveUiState] = useState<'idle' | 'saving' | 'saved' | 'offline' | 'error'>(() =>
+    typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'idle'
+  );
+  const [saveFeedbackMessage, setSaveFeedbackMessage] = useState<string | null>(null);
+  const [isOnline, setIsOnline] = useState<boolean>(() =>
+    typeof navigator !== 'undefined' ? navigator.onLine : true
+  );
+  const activeSaveCountRef = useRef<number>(0);
   const [serverGradebookStats, setServerGradebookStats] = useState<Record<string, GradebookInspection>>(
     () => initialCloudCache?.gradebookStats || {}
   );
   const isCloudHydratedRef = useRef<boolean>(false);
+
+  // Surveillance temps réel de la connexion Internet (hors ligne / en ligne)
+  useEffect(() => {
+    const handleOffline = () => {
+      setIsOnline(false);
+      setSaveUiState('offline');
+      setSaveFeedbackMessage('Hors ligne : échec de la connexion. Vérifiez votre connexion Internet puis appuyez sur Enregistrer.');
+    };
+    const handleOnline = () => {
+      setIsOnline(true);
+      setSaveUiState((prev) => (prev === 'offline' ? 'idle' : prev));
+      setSaveFeedbackMessage((prev) => (prev && prev.toLowerCase().includes('hors ligne') ? null : prev));
+    };
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, []);
+
+  // Exécuteur unifié de toute écriture D1/R2 : met à jour le statut "Enregistrement en cours..." -> "Enregistré avec succès" ou "Hors ligne — Échec"
+  const runCloudMutation = useCallback(async <T,>(
+    task: () => Promise<T>,
+    errorFallback: string
+  ): Promise<T | null> => {
+    if (!getTeacherAuthToken()) {
+      setSaveUiState('error');
+      setSaveFeedbackMessage('Session non connectée. Veuillez vous reconnecter pour enregistrer dans la base de données.');
+      return null;
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setIsOnline(false);
+      setSaveUiState('offline');
+      setSaveFeedbackMessage("Hors ligne — Échec de l'enregistrement : aucune connexion Internet détectée.");
+      return null;
+    }
+
+    activeSaveCountRef.current += 1;
+    setSaveUiState('saving');
+    setSaveFeedbackMessage(null);
+    setCloudError(null);
+
+    try {
+      const result = await task();
+      activeSaveCountRef.current = Math.max(0, activeSaveCountRef.current - 1);
+      if (activeSaveCountRef.current === 0) {
+        setSaveUiState('saved');
+        setCloudStatus('ready');
+      }
+      return result;
+    } catch (err: any) {
+      activeSaveCountRef.current = Math.max(0, activeSaveCountRef.current - 1);
+      if (isOfflineOrNetworkError(err)) {
+        setIsOnline(false);
+        setSaveUiState('offline');
+        setSaveFeedbackMessage("Hors ligne — Échec de l'enregistrement : impossible de joindre Cloudflare D1.");
+      } else {
+        setSaveUiState('error');
+        setSaveFeedbackMessage(err?.message || errorFallback);
+        setCloudStatus('error');
+        setCloudError(err?.message || errorFallback);
+      }
+      return null;
+    }
+  }, []);
 
   // 1. Accueil par défaut de cette application : le bouton "Tableau de bord" (comme entouré sur l'image 1)
   const [activeNavTab, setActiveNavTab] = useState<'dashboard' | 'trainees' | 'classes' | 'discussions' | 'groups' | 'library'>('dashboard');
@@ -546,41 +623,27 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // Matière sélectionnée dans laquelle on est "rentré" à l'intérieur pour afficher le tableur de notes & moyennes
   const [selectedSubjectInside, setSelectedSubjectInside] = useState<SubjectItem | null>(null);
 
-  // Chargement complet & isolation stricte par compte depuis Cloudflare D1 (+ migration unique des anciennes données locales)
+  // Chargement complet & isolation stricte par compte depuis Cloudflare D1 (démarrage vierge à ZÉRO — aucune année pré-créée)
   const loadFromCloudD1 = useCallback(async () => {
+    // Nettoyer définitivement toute ancienne donnée locale non scopée héritée du code précédent
+    clearLegacyUnscopedTeacherData();
+
     if (!getTeacherAuthToken() || !authUserId) {
       setCloudStatus('ready');
       return;
     }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setIsOnline(false);
+      setCloudStatus('error');
+      setSaveUiState('offline');
+      setSaveFeedbackMessage("Hors ligne — Impossible de charger ou d'enregistrer vos données. Vérifiez votre connexion.");
+      return;
+    }
+
     setCloudStatus('loading');
     setCloudError(null);
     try {
-      let data = await TeacherGradebookAPI.bootstrap();
-
-      // Si le compte D1 est neuf mais que des données locales pré-cloud existent sur cet appareil : migration unique D1 + R2
-      if (data.isEmpty && hasLegacyUnscopedTeacherData()) {
-        const legacy = collectLegacyUnscopedTeacherData();
-        if (legacy.schools.length > 0 || legacy.schoolYears.length > 0) {
-          data = await TeacherGradebookAPI.importLocal(legacy);
-          clearLegacyUnscopedTeacherData();
-        }
-      }
-
-      // Si le compte D1 n'a encore aucune année scolaire, créer la rentrée courante directement en base D1
-      if (data.schoolYears.length === 0) {
-        const defaultLabel = `${CURRENT_YEAR} - ${CURRENT_YEAR + 1}`;
-        const created = await TeacherGradebookAPI.createYear({
-          id: generateTeacherEntityId('year'),
-          label: defaultLabel,
-          color: '#00313d',
-          textColor: '#ffffff',
-        });
-        data = {
-          ...data,
-          isEmpty: false,
-          schoolYears: [created.year],
-        };
-      }
+      const data = await TeacherGradebookAPI.bootstrap();
 
       setSchoolYears(data.schoolYears);
       setSchools(data.schools);
@@ -600,10 +663,54 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       isCloudHydratedRef.current = true;
       setCloudStatus('ready');
     } catch (err: any) {
-      setCloudStatus('error');
-      setCloudError(err?.message || 'Impossible de charger vos données depuis Cloudflare D1.');
+      if (isOfflineOrNetworkError(err)) {
+        setIsOnline(false);
+        setSaveUiState('offline');
+        setSaveFeedbackMessage("Hors ligne — Impossible de joindre Cloudflare D1.");
+      } else {
+        setCloudStatus('error');
+        setCloudError(err?.message || 'Impossible de charger vos données depuis Cloudflare D1.');
+      }
     }
   }, [authUserId]);
+
+  // Bouton manuel "Enregistrer" : vérifie la connexion et synchronise / sauvegarde tout dans Cloudflare D1
+  const handleManualSave = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setIsOnline(false);
+      setSaveUiState('offline');
+      setSaveFeedbackMessage("Hors ligne — Échec de l'enregistrement : aucune connexion Internet détectée.");
+      return;
+    }
+    const synced = await runCloudMutation(
+      () =>
+        TeacherGradebookAPI.syncAll({
+          schoolYears,
+          schools,
+          studyLevels,
+          classes,
+          terms,
+          subjects,
+        }),
+      "Échec de l'enregistrement manuel dans la base de données."
+    );
+    if (synced && authUserId) {
+      setSchoolYears(synced.schoolYears);
+      setSchools(synced.schools);
+      setStudyLevels(synced.studyLevels);
+      setClasses(synced.classes);
+      setTerms(synced.terms);
+      setSubjects(synced.subjects);
+      setServerGradebookStats(synced.gradebookStats || {});
+      setSelectedYearId((prev) =>
+        prev && synced.schoolYears.some((y) => y.id === prev) ? prev : synced.schoolYears[0]?.id || ''
+      );
+      setSelectedSchoolInside((prev) =>
+        prev ? synced.schools.find((s) => s.id === prev.id) || null : null
+      );
+      writeUserBootstrapCache(authUserId, synced);
+    }
+  }, [authUserId, schoolYears, schools, studyLevels, classes, terms, subjects, runCloudMutation]);
 
   useEffect(() => {
     isCloudHydratedRef.current = false;
@@ -695,17 +802,19 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   }, [classes, terms]);
 
   // --- ÉTATS POUR LES MENUS CONTEXTUELS "3 TRAITS", ÉDITION ET SUPPRESSION SÉCURISÉE ---
+  type ManagedEntityType = 'year' | 'school' | 'level' | 'class' | 'subject';
+
   interface ActiveMenuState {
-    type: 'school' | 'level' | 'class' | 'subject';
+    type: ManagedEntityType;
     id: string;
     item: any;
     position: { top: number; left: number };
   }
   const [activeMenu, setActiveMenu] = useState<ActiveMenuState | null>(null);
 
-  // Cible de suppression sécurisée (nécessite la saisie exacte du nom)
+  // Cible de suppression sécurisée (nécessite la saisie / copie exacte du nom)
   interface DeleteTargetState {
-    type: 'school' | 'level' | 'class' | 'subject';
+    type: ManagedEntityType;
     id: string;
     name: string;
     displayName: string;
@@ -715,6 +824,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
 
   // États des éléments en cours de modification
+  const [editingYear, setEditingYear] = useState<SchoolYearItem | null>(null);
+  const [editYearLabel, setEditYearLabel] = useState('');
+  const [editYearColorObj, setEditYearColorObj] = useState(YEAR_COLOR_OPTIONS[0]);
   const [editingSchool, setEditingSchool] = useState<SchoolItem | null>(null);
   const [editingLevel, setEditingLevel] = useState<StudyLevelItem | null>(null);
   const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
@@ -744,7 +856,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // Positionnement intelligent du menu 3 traits (ne se coupe jamais dans le creux, ne déborde pas)
   const handleOpenMenu = (
     e: React.MouseEvent<HTMLButtonElement>,
-    type: 'school' | 'level' | 'class' | 'subject',
+    type: ManagedEntityType,
     item: any
   ) => {
     e.stopPropagation();
@@ -778,9 +890,17 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     });
   };
 
-  const handleTriggerEdit = (type: 'school' | 'level' | 'class' | 'subject', item: any) => {
+  const handleTriggerEdit = (type: ManagedEntityType, item: any) => {
     setActiveMenu(null);
-    if (type === 'school') {
+    if (type === 'year') {
+      const yr = item as SchoolYearItem;
+      setEditingYear(yr);
+      setEditYearLabel(yr.label);
+      setEditYearColorObj(
+        YEAR_COLOR_OPTIONS.find(c => c.bg === yr.color) ||
+        YEAR_COLOR_OPTIONS[0]
+      );
+    } else if (type === 'school') {
       const school = item as SchoolItem;
       setEditingSchool(school);
       setSchoolName(school.name);
@@ -823,35 +943,54 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     }
   };
 
-  const handleTriggerDelete = (type: 'school' | 'level' | 'class' | 'subject', item: any) => {
+  const handleTriggerDelete = (type: ManagedEntityType, item: any) => {
     setActiveMenu(null);
-    if (type === 'school') {
+    if (type === 'year') {
+      const yr = item as SchoolYearItem;
+      const linkedSchools = schools.filter(s => s.yearId === yr.id).length;
+      const linkedLevels = studyLevels.filter(l => l.yearId === yr.id).length;
+      const linkedClasses = classes.filter(c => c.yearId === yr.id).length;
+      const linkedSubjects = subjects.filter(s => s.yearId === yr.id).length;
+      setDeleteTarget({
+        type: 'year',
+        id: yr.id,
+        name: yr.label,
+        displayName: `la rentrée scolaire "${yr.label}"`,
+        warningMessage: `Tout ce qui est lié à cette année (${linkedSchools} établissement(s), ${linkedLevels} niveau(x), ${linkedClasses} classe(s), ${linkedSubjects} matière(s), ainsi que tous les trimestres, élèves, photos de profil et notes) sera définitivement supprimé de la base de données.`
+      });
+    } else if (type === 'school') {
       const school = item as SchoolItem;
+      const linkedLevels = studyLevels.filter(l => l.schoolId === school.id).length;
+      const linkedClasses = classes.filter(c => c.schoolId === school.id).length;
+      const linkedSubjects = subjects.filter(s => s.schoolId === school.id).length;
       setDeleteTarget({
         type: 'school',
         id: school.id,
         name: school.name,
         displayName: `l'établissement "${school.name}"`,
-        warningMessage: "Tous les niveaux d'étude, classes, matières, évaluations et données associées à cet établissement seront définitivement supprimés."
+        warningMessage: `Tout ce qui est lié à cet établissement (${linkedLevels} niveau(x), ${linkedClasses} classe(s), ${linkedSubjects} matière(s), élèves, photos et notes) sera définitivement supprimé de la base de données.`
       });
     } else if (type === 'level') {
       const lvl = item as StudyLevelItem;
+      const linkedClassIds = new Set(classes.filter(c => c.levelId === lvl.id).map(c => c.id));
+      const linkedSubjects = subjects.filter(s => linkedClassIds.has(s.classId)).length;
       setDeleteTarget({
         type: 'level',
         id: lvl.id,
         name: lvl.name,
         displayName: `le niveau d'étude "${lvl.name}"`,
-        warningMessage: "Toutes les classes, trimestres, matières, élèves enregistrés, notes et moyennes associés à ce niveau d'étude seront définitivement supprimés."
+        warningMessage: `Tout ce qui est lié à ce niveau (${linkedClassIds.size} classe(s), ${linkedSubjects} matière(s), trimestres, élèves, photos et notes) sera définitivement supprimé de la base de données.`
       });
     } else if (type === 'class') {
       const cls = item as ClassItem;
       const fullName = getClassDisplayName(cls);
+      const linkedSubjects = subjects.filter(s => s.classId === cls.id).length;
       setDeleteTarget({
         type: 'class',
         id: cls.id,
         name: fullName,
         displayName: `la classe "${fullName}"`,
-        warningMessage: "Toutes les matières, les élèves enregistrés, les notes et moyennes associées à cette classe seront définitivement supprimés."
+        warningMessage: `Tout ce qui est lié à cette classe (${linkedSubjects} matière(s), trimestres, élèves enregistrés, photos et notes) sera définitivement supprimé de la base de données.`
       });
     } else if (type === 'subject') {
       const subj = item as SubjectItem;
@@ -860,13 +999,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         id: subj.id,
         name: subj.name,
         displayName: `la matière "${subj.name}"`,
-        warningMessage: "Toutes les évaluations, notes et coefficients associés à cette matière seront définitivement supprimés."
+        warningMessage: "Toutes les évaluations, notes, photos d'élèves et coefficients associés à cette matière seront définitivement supprimés de la base de données."
       });
     }
     setDeleteConfirmInput('');
   };
 
-  const handleConfirmDelete = (e?: React.FormEvent) => {
+  const handleConfirmDelete = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!deleteTarget) return;
     if (deleteConfirmInput.trim().toLowerCase() !== deleteTarget.name.trim().toLowerCase()) return;
@@ -874,64 +1013,104 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     const targetType = deleteTarget.type;
     const id = deleteTarget.id;
 
-    if (targetType === 'school') {
-      setSchools(prev => prev.filter(s => s.id !== id));
-      setStudyLevels(prev => prev.filter(l => l.schoolId !== id));
-      setClasses(prev => prev.filter(c => c.schoolId !== id));
-      setSubjects(prev => prev.filter(s => s.schoolId !== id));
-      setTerms(prev => prev.filter(t => t.schoolId !== id));
-      if (selectedSchoolId === id) setSelectedSchoolId(null);
-      if (selectedSchoolInside?.id === id) setSelectedSchoolInside(null);
-      setSelectedLevelId(null);
-      setSelectedClassId(null);
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.deleteSchool(id).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || "Erreur lors de la suppression de l'établissement.");
-          loadFromCloudD1();
-        });
-      }
-    } else if (targetType === 'level') {
-      const deletedClassIds = new Set(classes.filter(c => c.levelId === id).map(c => c.id));
-      setStudyLevels(prev => prev.filter(l => l.id !== id));
-      setClasses(prev => prev.filter(c => c.levelId !== id));
-      setSubjects(prev => prev.filter(s => !deletedClassIds.has(s.classId)));
-      setTerms(prev => prev.filter(t => !deletedClassIds.has(t.classId)));
-      if (selectedLevelId === id) setSelectedLevelId(null);
-      if (selectedClassId && deletedClassIds.has(selectedClassId)) setSelectedClassId(null);
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.deleteLevel(id).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || 'Erreur lors de la suppression du niveau.');
-          loadFromCloudD1();
-        });
-      }
-    } else if (targetType === 'class') {
-      setClasses(prev => prev.filter(c => c.id !== id));
-      setSubjects(prev => prev.filter(s => s.classId !== id));
-      setTerms(prev => prev.filter(t => t.classId !== id));
-      if (selectedClassId === id) setSelectedClassId(null);
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.deleteClass(id).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || 'Erreur lors de la suppression de la classe.');
-          loadFromCloudD1();
-        });
-      }
-    } else if (targetType === 'subject') {
-      setSubjects(prev => prev.filter(s => s.id !== id));
-      if (selectedSubjectInside?.id === id) setSelectedSubjectInside(null);
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.deleteSubject(id).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || 'Erreur lors de la suppression de la matière.');
-          loadFromCloudD1();
-        });
-      }
+    // Si hors ligne, bloquer proprement et afficher l'échec hors-ligne plutôt que de simuler une suppression non enregistrée
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      setIsOnline(false);
+      setSaveUiState('offline');
+      setSaveFeedbackMessage("Hors ligne — Échec de la suppression : aucune connexion Internet détectée.");
+      setDeleteTarget(null);
+      setDeleteConfirmInput('');
+      return;
     }
 
     setDeleteTarget(null);
     setDeleteConfirmInput('');
+
+    if (targetType === 'year') {
+      const deletedSubjectIds = subjects.filter(s => s.yearId === id).map(s => s.id);
+      const ok = await runCloudMutation(
+        () => TeacherGradebookAPI.deleteYear(id),
+        "Erreur lors de la suppression de l'année scolaire."
+      );
+      if (ok) {
+        setSchoolYears(prev => {
+          const updated = prev.filter(y => y.id !== id);
+          if (selectedYearId === id) {
+            setSelectedYearId(updated[0]?.id || '');
+          }
+          return updated;
+        });
+        setSchools(prev => prev.filter(s => s.yearId !== id));
+        setStudyLevels(prev => prev.filter(l => l.yearId !== id));
+        setClasses(prev => prev.filter(c => c.yearId !== id));
+        setTerms(prev => prev.filter(t => t.yearId !== id));
+        setSubjects(prev => prev.filter(s => s.yearId !== id));
+        if (selectedSchoolInside?.yearId === id) setSelectedSchoolInside(null);
+        setSelectedSchoolId(null);
+        setSelectedLevelId(null);
+        setSelectedClassId(null);
+        setSelectedTermId(null);
+        clearUserGradebookCaches(authUserId, deletedSubjectIds);
+      }
+    } else if (targetType === 'school') {
+      const deletedSubjectIds = subjects.filter(s => s.schoolId === id).map(s => s.id);
+      const ok = await runCloudMutation(
+        () => TeacherGradebookAPI.deleteSchool(id),
+        "Erreur lors de la suppression de l'établissement."
+      );
+      if (ok) {
+        setSchools(prev => prev.filter(s => s.id !== id));
+        setStudyLevels(prev => prev.filter(l => l.schoolId !== id));
+        setClasses(prev => prev.filter(c => c.schoolId !== id));
+        setSubjects(prev => prev.filter(s => s.schoolId !== id));
+        setTerms(prev => prev.filter(t => t.schoolId !== id));
+        if (selectedSchoolId === id) setSelectedSchoolId(null);
+        if (selectedSchoolInside?.id === id) setSelectedSchoolInside(null);
+        setSelectedLevelId(null);
+        setSelectedClassId(null);
+        setSelectedTermId(null);
+        clearUserGradebookCaches(authUserId, deletedSubjectIds);
+      }
+    } else if (targetType === 'level') {
+      const deletedClassIds = new Set(classes.filter(c => c.levelId === id).map(c => c.id));
+      const deletedSubjectIds = subjects.filter(s => deletedClassIds.has(s.classId)).map(s => s.id);
+      const ok = await runCloudMutation(
+        () => TeacherGradebookAPI.deleteLevel(id),
+        'Erreur lors de la suppression du niveau.'
+      );
+      if (ok) {
+        setStudyLevels(prev => prev.filter(l => l.id !== id));
+        setClasses(prev => prev.filter(c => c.levelId !== id));
+        setSubjects(prev => prev.filter(s => !deletedClassIds.has(s.classId)));
+        setTerms(prev => prev.filter(t => !deletedClassIds.has(t.classId)));
+        if (selectedLevelId === id) setSelectedLevelId(null);
+        if (selectedClassId && deletedClassIds.has(selectedClassId)) setSelectedClassId(null);
+        clearUserGradebookCaches(authUserId, deletedSubjectIds);
+      }
+    } else if (targetType === 'class') {
+      const deletedSubjectIds = subjects.filter(s => s.classId === id).map(s => s.id);
+      const ok = await runCloudMutation(
+        () => TeacherGradebookAPI.deleteClass(id),
+        'Erreur lors de la suppression de la classe.'
+      );
+      if (ok) {
+        setClasses(prev => prev.filter(c => c.id !== id));
+        setSubjects(prev => prev.filter(s => s.classId !== id));
+        setTerms(prev => prev.filter(t => t.classId !== id));
+        if (selectedClassId === id) setSelectedClassId(null);
+        clearUserGradebookCaches(authUserId, deletedSubjectIds);
+      }
+    } else if (targetType === 'subject') {
+      const ok = await runCloudMutation(
+        () => TeacherGradebookAPI.deleteSubject(id),
+        'Erreur lors de la suppression de la matière.'
+      );
+      if (ok) {
+        setSubjects(prev => prev.filter(s => s.id !== id));
+        if (selectedSubjectInside?.id === id) setSelectedSubjectInside(null);
+        clearUserGradebookCaches(authUserId, [id]);
+      }
+    }
   };
 
   // État du modal "Créer / Modifier un niveau d'étude" (ex-menu de niveau CP1, Terminale, Licence...)
@@ -970,18 +1149,16 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setClasses(prev => prev.map(c => c.levelId === editingLevel.id ? { ...c, level: cleanName } : c));
       setIsAddLevelModalOpen(false);
       resetLevelForm();
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.updateLevel(updatedLevel.id, {
-          name: updatedLevel.name,
-          color: updatedLevel.color,
-          textColor: updatedLevel.textColor,
-          borderColor: updatedLevel.borderColor,
-        }).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || 'Erreur de mise à jour du niveau.');
-          loadFromCloudD1();
-        });
-      }
+      runCloudMutation(
+        () =>
+          TeacherGradebookAPI.updateLevel(updatedLevel.id, {
+            name: updatedLevel.name,
+            color: updatedLevel.color,
+            textColor: updatedLevel.textColor,
+            borderColor: updatedLevel.borderColor,
+          }),
+        'Erreur de mise à jour du niveau.'
+      );
     } else {
       if (!selectedSchoolInside) return;
       const newLevel: StudyLevelItem = {
@@ -998,25 +1175,23 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSelectedLevelId(newLevel.id);
       setIsAddLevelModalOpen(false);
       resetLevelForm();
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.createLevel({
-          id: newLevel.id,
-          schoolId: newLevel.schoolId,
-          name: newLevel.name,
-          color: newLevel.color,
-          textColor: newLevel.textColor,
-          borderColor: newLevel.borderColor,
-        }).then((res) => {
-          if (res?.level && res.level.id !== newLevel.id) {
-            setStudyLevels(prev => prev.map(l => l.id === newLevel.id ? res.level : l));
-            setSelectedLevelId(res.level.id);
-          }
-        }).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || 'Erreur de création du niveau.');
-          loadFromCloudD1();
-        });
-      }
+      runCloudMutation(
+        () =>
+          TeacherGradebookAPI.createLevel({
+            id: newLevel.id,
+            schoolId: newLevel.schoolId,
+            name: newLevel.name,
+            color: newLevel.color,
+            textColor: newLevel.textColor,
+            borderColor: newLevel.borderColor,
+          }),
+        'Erreur de création du niveau.'
+      ).then((res) => {
+        if (res?.level && res.level.id !== newLevel.id) {
+          setStudyLevels(prev => prev.map(l => l.id === newLevel.id ? res.level : l));
+          setSelectedLevelId(res.level.id);
+        }
+      });
     }
   };
 
@@ -1065,22 +1240,20 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setClasses(prev => prev.map(c => c.id === editingClass.id ? updated : c));
       setIsAddClassModalOpen(false);
       resetClassForm();
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.updateClass(updated.id, {
-          name: updated.name || '',
-          slogan: updated.slogan,
-          teacherName: updated.teacherName,
-          color: updated.color,
-          textColor: updated.textColor,
-          borderColor: updated.borderColor,
-          borderDarkColor: updated.borderDarkColor,
-          iconGradient: updated.iconGradient,
-        }).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || 'Erreur de mise à jour de la classe.');
-          loadFromCloudD1();
-        });
-      }
+      runCloudMutation(
+        () =>
+          TeacherGradebookAPI.updateClass(updated.id, {
+            name: updated.name || '',
+            slogan: updated.slogan,
+            teacherName: updated.teacherName,
+            color: updated.color,
+            textColor: updated.textColor,
+            borderColor: updated.borderColor,
+            borderDarkColor: updated.borderDarkColor,
+            iconGradient: updated.iconGradient,
+          }),
+        'Erreur de mise à jour de la classe.'
+      );
     } else {
       if (!selectedSchoolInside || !activeLevel) return;
       const newClassId = generateTeacherEntityId('class');
@@ -1112,32 +1285,30 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSelectedTermId(defaultTerms[0].id);
       setIsAddClassModalOpen(false);
       resetClassForm();
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.createClass({
-          id: newClass.id,
-          levelId: activeLevel.id,
-          name: newClass.name || '',
-          slogan: newClass.slogan,
-          teacherName: newClass.teacherName,
-          color: newClass.color,
-          textColor: newClass.textColor,
-          borderColor: newClass.borderColor,
-          borderDarkColor: newClass.borderDarkColor,
-          iconGradient: newClass.iconGradient,
-          defaultTerms: defaultTerms.map(t => ({ id: t.id, number: t.number, name: t.name })),
-        }).then((res) => {
-          if (res?.classItem && res.classItem.id !== newClass.id) {
-            setClasses(prev => prev.map(c => c.id === newClass.id ? res.classItem : c));
-            setTerms(prev => [...prev.filter(t => t.classId !== newClass.id), ...res.terms]);
-            setSelectedClassId(res.classItem.id);
-            setSelectedTermId(res.terms[0]?.id || null);
-          }
-        }).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || 'Erreur de création de la classe.');
-          loadFromCloudD1();
-        });
-      }
+      runCloudMutation(
+        () =>
+          TeacherGradebookAPI.createClass({
+            id: newClass.id,
+            levelId: activeLevel.id,
+            name: newClass.name || '',
+            slogan: newClass.slogan,
+            teacherName: newClass.teacherName,
+            color: newClass.color,
+            textColor: newClass.textColor,
+            borderColor: newClass.borderColor,
+            borderDarkColor: newClass.borderDarkColor,
+            iconGradient: newClass.iconGradient,
+            defaultTerms: defaultTerms.map(t => ({ id: t.id, number: t.number, name: t.name })),
+          }),
+        'Erreur de création de la classe.'
+      ).then((res) => {
+        if (res?.classItem && res.classItem.id !== newClass.id) {
+          setClasses(prev => prev.map(c => c.id === newClass.id ? res.classItem : c));
+          setTerms(prev => [...prev.filter(t => t.classId !== newClass.id), ...res.terms]);
+          setSelectedClassId(res.classItem.id);
+          setSelectedTermId(res.terms[0]?.id || null);
+        }
+      });
     }
   };
 
@@ -1188,20 +1359,18 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSubjects(prev => prev.map(s => s.id === editingSubject.id ? updated : s));
       setIsAddSubjectModalOpen(false);
       resetSubjectForm();
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.updateSubject(updated.id, {
-          name: updated.name,
-          coefficient: parsedCoeff ?? null,
-          color: updated.color,
-          textColor: updated.textColor,
-          borderColor: updated.borderColor,
-          borderDarkColor: updated.borderDarkColor,
-        }).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || 'Erreur de mise à jour de la matière.');
-          loadFromCloudD1();
-        });
-      }
+      runCloudMutation(
+        () =>
+          TeacherGradebookAPI.updateSubject(updated.id, {
+            name: updated.name,
+            coefficient: parsedCoeff ?? null,
+            color: updated.color,
+            textColor: updated.textColor,
+            borderColor: updated.borderColor,
+            borderDarkColor: updated.borderDarkColor,
+          }),
+        'Erreur de mise à jour de la matière.'
+      );
     } else {
       if (!activeClass || !selectedSchoolInside) return;
       const targetTermId = activeTerm?.id || currentClassTerms[0]?.id;
@@ -1228,27 +1397,25 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       }
       setIsAddSubjectModalOpen(false);
       resetSubjectForm();
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.createSubject({
-          id: newSubject.id,
-          classId: newSubject.classId,
-          termId: targetTermId,
-          name: newSubject.name,
-          coefficient: parsedCoeff,
-          color: newSubject.color,
-          textColor: newSubject.textColor,
-          borderColor: newSubject.borderColor,
-          borderDarkColor: newSubject.borderDarkColor,
-        }).then((res) => {
-          if (res?.subject && res.subject.id !== newSubject.id) {
-            setSubjects(prev => prev.map(s => s.id === newSubject.id ? res.subject : s));
-          }
-        }).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || 'Erreur de création de la matière.');
-          loadFromCloudD1();
-        });
-      }
+      runCloudMutation(
+        () =>
+          TeacherGradebookAPI.createSubject({
+            id: newSubject.id,
+            classId: newSubject.classId,
+            termId: targetTermId,
+            name: newSubject.name,
+            coefficient: parsedCoeff,
+            color: newSubject.color,
+            textColor: newSubject.textColor,
+            borderColor: newSubject.borderColor,
+            borderDarkColor: newSubject.borderDarkColor,
+          }),
+        'Erreur de création de la matière.'
+      ).then((res) => {
+        if (res?.subject && res.subject.id !== newSubject.id) {
+          setSubjects(prev => prev.map(s => s.id === newSubject.id ? res.subject : s));
+        }
+      });
     }
   };
 
@@ -1335,26 +1502,24 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       const targetId = editingSchool.id;
       setIsAddSchoolModalOpen(false);
       setEditingSchool(null);
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.updateSchool(targetId, {
-          name: updated.name,
-          logoDataUrl: pickedNewDataUrl,
-          removeLogo: removedLogo,
-          color: updated.color,
-          textColor: updated.textColor,
-          borderColor: updated.borderColor,
-          borderDarkColor: updated.borderDarkColor,
-        }).then((res) => {
-          if (res?.school) {
-            setSchools(prev => prev.map(s => s.id === targetId ? res.school : s));
-            setSelectedSchoolInside(prev => (prev?.id === targetId ? res.school : prev));
-          }
-        }).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || "Erreur de mise à jour de l'établissement.");
-          loadFromCloudD1();
-        });
-      }
+      runCloudMutation(
+        () =>
+          TeacherGradebookAPI.updateSchool(targetId, {
+            name: updated.name,
+            logoDataUrl: pickedNewDataUrl,
+            removeLogo: removedLogo,
+            color: updated.color,
+            textColor: updated.textColor,
+            borderColor: updated.borderColor,
+            borderDarkColor: updated.borderDarkColor,
+          }),
+        "Erreur de mise à jour de l'établissement."
+      ).then((res) => {
+        if (res?.school) {
+          setSchools(prev => prev.map(s => s.id === targetId ? res.school : s));
+          setSelectedSchoolInside(prev => (prev?.id === targetId ? res.school : prev));
+        }
+      });
     } else {
       if (!selectedYearId) return;
       const pickedDataUrl = schoolLogo && schoolLogo.startsWith('data:image/') ? schoolLogo : null;
@@ -1373,27 +1538,25 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSchools(prev => [...prev, newSchool]);
       setSelectedSchoolId(newSchool.id);
       setIsAddSchoolModalOpen(false);
-      if (getTeacherAuthToken()) {
-        TeacherGradebookAPI.createSchool({
-          id: newSchool.id,
-          yearId: newSchool.yearId,
-          name: newSchool.name,
-          logoDataUrl: pickedDataUrl,
-          color: newSchool.color,
-          textColor: newSchool.textColor,
-          borderColor: newSchool.borderColor,
-          borderDarkColor: newSchool.borderDarkColor,
-        }).then((res) => {
-          if (res?.school) {
-            setSchools(prev => prev.map(s => s.id === newSchool.id ? res.school : s));
-            setSelectedSchoolId(res.school.id);
-          }
-        }).catch((err) => {
-          setCloudStatus('error');
-          setCloudError(err?.message || "Erreur de création de l'établissement.");
-          loadFromCloudD1();
-        });
-      }
+      runCloudMutation(
+        () =>
+          TeacherGradebookAPI.createSchool({
+            id: newSchool.id,
+            yearId: newSchool.yearId,
+            name: newSchool.name,
+            logoDataUrl: pickedDataUrl,
+            color: newSchool.color,
+            textColor: newSchool.textColor,
+            borderColor: newSchool.borderColor,
+            borderDarkColor: newSchool.borderDarkColor,
+          }),
+        "Erreur de création de l'établissement."
+      ).then((res) => {
+        if (res?.school) {
+          setSchools(prev => prev.map(s => s.id === newSchool.id ? res.school : s));
+          setSelectedSchoolId(res.school.id);
+        }
+      });
     }
 
     setSchoolName('');
@@ -1454,50 +1617,55 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setSchoolYears(prev => [...prev, newYearItem]);
     setSelectedYearId(newYearItem.id);
     setIsCreateMenuOpen(false);
-    if (getTeacherAuthToken()) {
-      TeacherGradebookAPI.createYear({
-        id: newYearItem.id,
-        label: newYearItem.label,
-        color: newYearItem.color,
-        textColor: newYearItem.textColor,
-      }).then((res) => {
-        if (res?.year && res.year.id !== newYearItem.id) {
-          setSchoolYears(prev => prev.map(y => y.id === newYearItem.id ? res.year : y));
-          setSelectedYearId(res.year.id);
-        }
-      }).catch((err) => {
-        setCloudStatus('error');
-        setCloudError(err?.message || "Erreur de création de l'année scolaire.");
-        loadFromCloudD1();
-      });
-    }
+    runCloudMutation(
+      () =>
+        TeacherGradebookAPI.createYear({
+          id: newYearItem.id,
+          label: newYearItem.label,
+          color: newYearItem.color,
+          textColor: newYearItem.textColor,
+        }),
+      "Erreur de création de l'année scolaire."
+    ).then((res) => {
+      if (res?.year && res.year.id !== newYearItem.id) {
+        setSchoolYears(prev => prev.map(y => y.id === newYearItem.id ? res.year : y));
+        setSelectedYearId(res.year.id);
+      }
+    });
   };
 
-  // Suppression d'une rentrée scolaire (cascade D1 + nettoyage R2)
-  const handleDeleteYear = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    setSchoolYears(prev => {
-      const updated = prev.filter(y => y.id !== id);
-      if (selectedYearId === id && updated.length > 0) {
-        setSelectedYearId(updated[0].id);
-      }
-      return updated;
-    });
-    setSchools(prev => prev.filter(s => s.yearId !== id));
-    setStudyLevels(prev => prev.filter(l => l.yearId !== id));
-    setClasses(prev => prev.filter(c => c.yearId !== id));
-    setTerms(prev => prev.filter(t => t.yearId !== id));
-    setSubjects(prev => prev.filter(s => s.yearId !== id));
-    if (selectedSchoolInside?.yearId === id) {
-      setSelectedSchoolInside(null);
-    }
-    if (getTeacherAuthToken()) {
-      TeacherGradebookAPI.deleteYear(id).catch((err) => {
-        setCloudStatus('error');
-        setCloudError(err?.message || "Erreur de suppression de l'année scolaire.");
-        loadFromCloudD1();
-      });
-    }
+  // Modification d'une rentrée scolaire existante (via bouton 3 traits -> Modifier)
+  const isEditYearDirty = editingYear
+    ? (
+        editYearLabel.trim() !== editingYear.label ||
+        editYearColorObj.bg !== editingYear.color
+      )
+    : false;
+
+  const handleSaveEditYear = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!editingYear || !isEditYearDirty) return;
+    const cleanLabel = editYearLabel.trim();
+    if (!cleanLabel) return;
+
+    const updatedYear: SchoolYearItem = {
+      ...editingYear,
+      label: cleanLabel,
+      color: editYearColorObj.bg,
+      textColor: editYearColorObj.text,
+    };
+    const targetId = editingYear.id;
+    setSchoolYears(prev => prev.map(y => y.id === targetId ? updatedYear : y));
+    setEditingYear(null);
+    runCloudMutation(
+      () =>
+        TeacherGradebookAPI.updateYear(targetId, {
+          label: updatedYear.label,
+          color: updatedYear.color,
+          textColor: updatedYear.textColor,
+        }),
+      "Erreur de mise à jour de l'année scolaire."
+    );
   };
 
   const navItems = [
@@ -1601,23 +1769,21 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setTerms(prev => [...prev, newTerm]);
     setSelectedTermId(newTerm.id);
     setIsAddTermModalOpen(false);
-    if (getTeacherAuthToken()) {
-      TeacherGradebookAPI.createTerm({
-        id: newTerm.id,
-        classId: newTerm.classId,
-        number: newTerm.number,
-        name: newTerm.name,
-      }).then((res) => {
-        if (res?.term && res.term.id !== newTerm.id) {
-          setTerms(prev => prev.map(t => t.id === newTerm.id ? res.term : t));
-          setSelectedTermId(res.term.id);
-        }
-      }).catch((err) => {
-        setCloudStatus('error');
-        setCloudError(err?.message || 'Erreur de création du trimestre.');
-        loadFromCloudD1();
-      });
-    }
+    runCloudMutation(
+      () =>
+        TeacherGradebookAPI.createTerm({
+          id: newTerm.id,
+          classId: newTerm.classId,
+          number: newTerm.number,
+          name: newTerm.name,
+        }),
+      'Erreur de création du trimestre.'
+    ).then((res) => {
+      if (res?.term && res.term.id !== newTerm.id) {
+        setTerms(prev => prev.map(t => t.id === newTerm.id ? res.term : t));
+        setSelectedTermId(res.term.id);
+      }
+    });
   };
 
   // Matières de la classe active DANS LE TRIMESTRE ACTIF SÉLECTIONNÉ
@@ -1823,32 +1989,99 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* Retour (gauche) | Titre bien centré (milieu) | Utilitaires & Agrandissement (droite) */}
         {/* ----------------------------------------------------------------------- */}
         <header className="relative flex items-center justify-between gap-2 flex-wrap">
-          {/* Bouton Retour placé tout en haut à gauche */}
-          <button
-            type="button"
-            onClick={() => {
-              if (isTransferViewOpen) {
-                setIsTransferViewOpen(false);
-              } else if (selectedSchoolInside) {
-                setSelectedSchoolInside(null);
-              } else {
-                setIsViewerMaximized(false);
-                resetViewerExpand();
-                onBack();
+          {/* Groupe haut gauche : Bouton Retour + Bouton manuel Enregistrer + Statut d'enregistrement automatique */}
+          <div className="flex items-center gap-2 flex-wrap z-10 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                if (isTransferViewOpen) {
+                  setIsTransferViewOpen(false);
+                } else if (selectedSchoolInside) {
+                  setSelectedSchoolInside(null);
+                } else {
+                  setIsViewerMaximized(false);
+                  resetViewerExpand();
+                  onBack();
+                }
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/85 hover:bg-white text-slate-700 hover:text-[#00313d] border border-white/95 shadow-xs transition active:scale-95 font-bold text-xs cursor-pointer shrink-0"
+              title={
+                isTransferViewOpen
+                  ? "Retour à l'établissement"
+                  : selectedSchoolInside
+                  ? "Retour à la liste des écoles"
+                  : "Retour à l'accueil"
               }
-            }}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/85 hover:bg-white text-slate-700 hover:text-[#00313d] border border-white/95 shadow-xs transition active:scale-95 font-bold text-xs cursor-pointer shrink-0 z-10"
-            title={
-              isTransferViewOpen
-                ? "Retour à l'établissement"
-                : selectedSchoolInside
-                ? "Retour à la liste des écoles"
-                : "Retour à l'accueil"
-            }
-          >
-            <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
-            <span>Retour</span>
-          </button>
+            >
+              <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+              <span>Retour</span>
+            </button>
+
+            {/* Bouton Enregistrer manuel (zone entourée en vert) */}
+            <button
+              type="button"
+              onClick={() => handleManualSave()}
+              disabled={saveUiState === 'saving'}
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border shadow-xs transition active:scale-95 shrink-0 cursor-pointer ${
+                saveUiState === 'offline' || saveUiState === 'error'
+                  ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
+                  : saveUiState === 'saving'
+                  ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-wait'
+                  : 'bg-white/90 hover:bg-white text-[#00313d] border-white/95'
+              }`}
+              title="Enregistrer manuellement et vérifier la synchronisation avec la base de données"
+            >
+              {saveUiState === 'saving' ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-600" />
+              ) : (
+                <Save className="w-3.5 h-3.5 stroke-[2.2]" />
+              )}
+              <span>Enregistrer</span>
+            </button>
+
+            {/* Statut d'enregistrement automatique en direct juste à côté du bouton manuel */}
+            <div
+              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all select-none ${
+                saveUiState === 'saving'
+                  ? 'bg-amber-50/90 text-amber-800 border-amber-200/80'
+                  : saveUiState === 'saved'
+                  ? 'bg-emerald-50/95 text-emerald-700 border-emerald-200/90'
+                  : saveUiState === 'offline' || !isOnline
+                  ? 'bg-red-50 text-red-700 border-red-200'
+                  : saveUiState === 'error'
+                  ? 'bg-red-50 text-red-700 border-red-200'
+                  : 'bg-white/65 text-slate-500 border-white/80'
+              }`}
+              title={saveFeedbackMessage || 'Synchronisation automatique avec la base de données Cloudflare D1'}
+            >
+              {saveUiState === 'saving' ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin text-amber-700 shrink-0" />
+                  <span>Enregistrement en cours...</span>
+                </>
+              ) : saveUiState === 'saved' ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Enregistré avec succès</span>
+                </>
+              ) : saveUiState === 'offline' || !isOnline ? (
+                <>
+                  <WifiOff className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                  <span>Hors ligne — Échec</span>
+                </>
+              ) : saveUiState === 'error' ? (
+                <>
+                  <CloudOff className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                  <span>Échec de l&apos;enregistrement</span>
+                </>
+              ) : (
+                <>
+                  <Cloud className="w-3.5 h-3.5 text-cyan-700 shrink-0" />
+                  <span>Base connectée</span>
+                </>
+              )}
+            </div>
+          </div>
 
           {/* Titre principal bien centré en haut (Tableau de bord OU Nom de l'école active) */}
           <div className="flex items-center justify-center min-w-0 xl:absolute xl:left-1/2 xl:-translate-x-1/2 flex-1 xl:flex-initial">
@@ -2160,17 +2393,25 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       />
                     )}
 
-                    {/* Bouton de suppression au survol si plusieurs années */}
-                    {schoolYears.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={(e) => handleDeleteYear(year.id, e)}
-                        className="relative z-10 opacity-0 group-hover:opacity-100 ml-1 p-0.5 rounded-full hover:bg-black/15 text-current transition cursor-pointer"
-                        title="Supprimer cette année"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
+                    {/* Bouton 3 traits (≡) pour Modifier ou Supprimer la rentrée scolaire */}
+                    <button
+                      type="button"
+                      onClick={(e) => handleOpenMenu(e, 'year', year)}
+                      className={`card-menu-trigger relative z-10 ml-1 w-6 h-6 rounded-lg flex items-center justify-center transition cursor-pointer ${
+                        isSelected
+                          ? 'hover:bg-black/10 text-current opacity-85 hover:opacity-100'
+                          : isWhite
+                          ? 'text-slate-400 hover:text-slate-800 hover:bg-slate-100'
+                          : 'text-white/75 hover:text-white hover:bg-black/20'
+                      }`}
+                      title="Modifier ou supprimer cette rentrée scolaire"
+                    >
+                      <div className="w-3 h-2.5 flex flex-col justify-between items-center pointer-events-none">
+                        <span className="w-full h-[1.6px] bg-current rounded-full"></span>
+                        <span className="w-full h-[1.6px] bg-current rounded-full"></span>
+                        <span className="w-full h-[1.6px] bg-current rounded-full"></span>
+                      </div>
+                    </button>
                   </div>
                 );
               })}
@@ -2178,18 +2419,22 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           </section>
         )}
 
-        {/* Bannière discrète de synchronisation / reprise d'erreur Cloudflare D1 */}
-        {cloudStatus === 'error' && (
-          <div className="mb-2.5 px-3 py-2 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between gap-2 text-xs text-red-800">
+        {/* Bannière d'alerte Hors-ligne / Échec de synchronisation Cloudflare D1 */}
+        {(saveUiState === 'offline' || saveUiState === 'error' || cloudStatus === 'error') && (
+          <div className="mb-2.5 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between gap-2 text-xs text-red-800 shadow-2xs">
             <div className="flex items-center gap-2 min-w-0">
-              <CloudOff className="w-4 h-4 shrink-0 text-red-600" />
-              <span className="truncate font-medium">
-                {cloudError || 'Connexion au cloud interrompue.'}
+              {saveUiState === 'offline' || !isOnline ? (
+                <WifiOff className="w-4 h-4 shrink-0 text-red-600" />
+              ) : (
+                <CloudOff className="w-4 h-4 shrink-0 text-red-600" />
+              )}
+              <span className="font-semibold">
+                {saveFeedbackMessage || cloudError || 'Hors ligne — Échec de la connexion à la base de données.'}
               </span>
             </div>
             <button
               type="button"
-              onClick={() => loadFromCloudD1()}
+              onClick={() => (cloudStatus === 'error' && !isCloudHydratedRef.current ? loadFromCloudD1() : handleManualSave())}
               className="px-2.5 py-1 rounded-lg bg-white hover:bg-red-100 border border-red-300 text-[11px] font-bold text-red-700 shrink-0 transition cursor-pointer"
             >
               Réessayer
@@ -2231,27 +2476,22 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   setClasses(next.classes);
                   setTerms(next.terms);
                   setSubjects(next.subjects);
-                  if (getTeacherAuthToken()) {
-                    try {
-                      const res = await TeacherGradebookAPI.executeTransfer({
+                  const res = await runCloudMutation(
+                    () =>
+                      TeacherGradebookAPI.executeTransfer({
                         createdLevels: next.createdLevels,
                         createdClasses: next.createdClasses,
                         createdTerms: next.createdTerms,
                         createdSubjects: next.createdSubjects,
                         updatedSubjects: next.updatedSubjects,
                         gradebookCopies: next.gradebookCopyOps,
-                      });
-                      if (res?.gradebookStats) {
-                        setServerGradebookStats(res.gradebookStats);
-                      }
-                      return res?.serverSummary;
-                    } catch (err: any) {
-                      setCloudStatus('error');
-                      setCloudError(err?.message || 'Erreur lors du transfert sur Cloudflare D1.');
-                      loadFromCloudD1();
-                    }
+                      }),
+                    'Erreur lors du transfert sur Cloudflare D1.'
+                  );
+                  if (res?.gradebookStats) {
+                    setServerGradebookStats(res.gradebookStats);
                   }
-                  return undefined;
+                  return res?.serverSummary;
                 }}
                 onClose={() => setIsTransferViewOpen(false)}
               />
@@ -3260,20 +3500,149 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 </div>
               )
             ) : (
-              <div className="text-center space-y-3 p-8 bg-white/60 backdrop-blur-md rounded-3xl border border-white/80 max-w-md mx-auto my-auto">
-                <div className="w-12 h-12 rounded-2xl bg-[#00313d] text-white flex items-center justify-center mx-auto shadow-md">
-                  <Calendar className="w-6 h-6" />
-                </div>
-                <h3 className="text-base font-extrabold text-slate-800">
-                  Aucune rentrée scolaire active
-                </h3>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  Cliquez sur le bouton « Créer une rentrée scolaire » en haut à droite pour ajouter votre première année scolaire (ex: 2026 - 2027).
-                </p>
+              <div className="flex-1 flex flex-col items-center justify-center py-12 px-4 animate-fade-in">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateMenuOpen(true)}
+                  className="group relative w-64 h-64 sm:w-72 sm:h-72 border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/50 hover:bg-white/85 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
+                  title="Créer votre première rentrée scolaire"
+                >
+                  <div className="w-16 h-16 rounded-2xl bg-[#00313d] text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-[#00242e] transition-all duration-300 mb-4 border border-cyan-300/30">
+                    <Plus className="w-8 h-8 stroke-[3]" />
+                  </div>
+                  <span className="text-base font-black text-slate-800 group-hover:text-[#00313d] transition-colors">
+                    Créer une rentrée scolaire
+                  </span>
+                  <p className="text-xs text-slate-500 max-w-[215px] mt-2 leading-relaxed">
+                    Commencez à partir de zéro en créant votre première année scolaire (ex : 2026 - 2027), puis vos écoles, niveaux, classes et matières.
+                  </p>
+                  <div className="mt-4 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200/60 text-[10px] font-extrabold text-cyan-800">
+                    Nouvelle rentrée +
+                  </div>
+                </button>
               </div>
             )
           )}
         </section>
+
+        {/* ========================================================================= */}
+        {/* MODAL DE MODIFICATION D'UNE RENTRÉE SCOLAIRE (MENU 3 TRAITS -> MODIFIER) */}
+        {/* ========================================================================= */}
+        {editingYear && (
+          <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
+            <div
+              className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-150"
+              style={{ boxShadow: '0 25px 50px -12px rgba(0, 49, 61, 0.35)' }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-[#00313d] text-white flex items-center justify-center shadow-md">
+                    <Pencil className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-black text-[#00313d] leading-none">
+                      Modifier la rentrée scolaire
+                    </h2>
+                    <span className="text-[11px] font-semibold text-slate-400 mt-1 inline-block">
+                      {editingYear.label}
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setEditingYear(null)}
+                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleSaveEditYear} className="p-5 sm:p-6 space-y-4">
+                <div className="space-y-1.5">
+                  <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                    Année scolaire (max 12 caractères) <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={editYearLabel}
+                    onChange={(e) => setEditYearLabel(e.target.value.replace(/[^0-9\s-]/g, '').slice(0, 12))}
+                    maxLength={12}
+                    placeholder="ex: 2026 - 2027"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white font-mono font-bold text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                    autoFocus
+                  />
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {SUGGESTED_YEARS.map((sug) => (
+                      <button
+                        key={sug}
+                        type="button"
+                        onClick={() => setEditYearLabel(sug)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold font-mono transition cursor-pointer ${
+                          editYearLabel === sug
+                            ? 'bg-cyan-600 text-white'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {sug}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700 mb-2">
+                    Couleur du bouton de l&apos;année
+                  </label>
+                  <div className="grid grid-cols-5 gap-2">
+                    {YEAR_COLOR_OPTIONS.map((col) => {
+                      const isSelected = editYearColorObj.id === col.id;
+                      return (
+                        <button
+                          key={col.id}
+                          type="button"
+                          onClick={() => setEditYearColorObj(col)}
+                          style={{ backgroundColor: col.bg, borderColor: col.border }}
+                          className={`w-full h-8 rounded-lg border flex items-center justify-center transition-all cursor-pointer ${
+                            isSelected ? 'scale-105 shadow-md ring-2 ring-offset-1 ring-cyan-500' : 'hover:scale-105'
+                          }`}
+                          title={col.label}
+                        >
+                          {isSelected && (
+                            <Check className={`w-3.5 h-3.5 ${col.id === 'white' ? 'text-slate-800' : 'text-white'} stroke-[3]`} />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-slate-100 flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setEditingYear(null)}
+                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition cursor-pointer"
+                  >
+                    Annuler
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={!editYearLabel.trim() || !isEditYearDirty}
+                    style={{ backgroundColor: editYearLabel.trim() && isEditYearDirty ? '#00313d' : undefined }}
+                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition shadow-md flex items-center justify-center gap-2 ${
+                      editYearLabel.trim() && isEditYearDirty
+                        ? 'text-white hover:bg-[#00242e] cursor-pointer active:scale-95'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <Check className="w-4 h-4" />
+                    <span>Enregistrer</span>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* ========================================================================= */}
         {/* MODAL PROFESSIONNEL POUR AJOUTER / MODIFIER UNE ÉCOLE                      */}

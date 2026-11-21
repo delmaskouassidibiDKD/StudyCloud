@@ -619,9 +619,39 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       year: { id, label, color, textColor, createdAt: now }
     }, 201, origin);
   }
-  const yearDeleteMatch = path.match(/^\/api\/teacher\/years\/([^/]+)$/);
-  if (yearDeleteMatch && method === "DELETE") {
-    const yearId = decodeURIComponent(yearDeleteMatch[1]);
+  const yearItemMatch = path.match(/^\/api\/teacher\/years\/([^/]+)$/);
+  if (yearItemMatch && method === "PUT") {
+    const yearId = decodeURIComponent(yearItemMatch[1]);
+    const existing = await db.prepare("SELECT * FROM teacher_school_years WHERE id = ? AND user_id = ? LIMIT 1").bind(yearId, userId).first();
+    if (!existing) return errorResponse2("Ann\xE9e scolaire introuvable.", 404, origin);
+    const body = await request.json().catch(() => ({}));
+    const label = String(body.label ?? existing.label ?? "").trim().slice(0, 30);
+    if (!label) return errorResponse2("Libell\xE9 d\u2019ann\xE9e scolaire requis.", 400, origin);
+    const duplicate = await db.prepare("SELECT id FROM teacher_school_years WHERE user_id = ? AND id != ? AND LOWER(label) = LOWER(?) LIMIT 1").bind(userId, yearId, label).first();
+    if (duplicate) {
+      return errorResponse2("Une rentr\xE9e scolaire portant ce nom existe d\xE9j\xE0.", 409, origin);
+    }
+    const color = String(body.color || existing.color || "#00313d").slice(0, 32);
+    const textColor = String(body.textColor || existing.text_color || "#ffffff").slice(0, 32);
+    const now = Date.now();
+    await db.prepare(
+      `UPDATE teacher_school_years
+         SET label = ?, color = ?, text_color = ?, updated_at = ?
+         WHERE id = ? AND user_id = ?`
+    ).bind(label, color, textColor, now, yearId, userId).run();
+    return jsonResponse2({
+      success: true,
+      year: {
+        id: yearId,
+        label,
+        color,
+        textColor,
+        createdAt: Number(existing.created_at)
+      }
+    }, 200, origin);
+  }
+  if (yearItemMatch && method === "DELETE") {
+    const yearId = decodeURIComponent(yearItemMatch[1]);
     const own = await db.prepare("SELECT id FROM teacher_school_years WHERE id = ? AND user_id = ? LIMIT 1").bind(yearId, userId).first();
     if (!own) return errorResponse2("Ann\xE9e scolaire introuvable.", 404, origin);
     const [schoolLogos, studentPhotos] = await Promise.all([
@@ -2135,6 +2165,252 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     }
     const payload = await buildBootstrapPayload(db, userId, apiOrigin, jwtSecret);
     return jsonResponse2({ ...payload, migrated: true }, 200, origin);
+  }
+  if (path === "/api/teacher/sync" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const now = Date.now();
+    const years = Array.isArray(body.schoolYears) ? body.schoolYears.slice(0, 60) : [];
+    const schools = Array.isArray(body.schools) ? body.schools.slice(0, 150) : [];
+    const levels = Array.isArray(body.studyLevels) ? body.studyLevels.slice(0, 400) : [];
+    const classes = Array.isArray(body.classes) ? body.classes.slice(0, 600) : [];
+    const terms = Array.isArray(body.terms) ? body.terms.slice(0, 2e3) : [];
+    const subjects = Array.isArray(body.subjects) ? body.subjects.slice(0, 3e3) : [];
+    const [curYears, curSchools, curLevels, curClasses, curTerms, curSubjects] = await Promise.all([
+      db.prepare("SELECT id FROM teacher_school_years WHERE user_id = ?").bind(userId).all(),
+      db.prepare("SELECT id, logo_r2_key FROM teacher_schools WHERE user_id = ?").bind(userId).all(),
+      db.prepare("SELECT id FROM teacher_study_levels WHERE user_id = ?").bind(userId).all(),
+      db.prepare("SELECT id FROM teacher_classes WHERE user_id = ?").bind(userId).all(),
+      db.prepare("SELECT id FROM teacher_terms WHERE user_id = ?").bind(userId).all(),
+      db.prepare("SELECT id FROM teacher_subjects WHERE user_id = ?").bind(userId).all()
+    ]);
+    const ownedYears = new Set((curYears.results || []).map((r) => r.id));
+    const ownedSchoolsMap = /* @__PURE__ */ new Map();
+    for (const r of curSchools.results || []) ownedSchoolsMap.set(r.id, r.logo_r2_key || null);
+    const ownedLevels = new Set((curLevels.results || []).map((r) => r.id));
+    const ownedClasses = new Set((curClasses.results || []).map((r) => r.id));
+    const ownedTerms = new Set((curTerms.results || []).map((r) => r.id));
+    const ownedSubjects = new Set((curSubjects.results || []).map((r) => r.id));
+    const stmts = [];
+    for (const y of years) {
+      if (!y?.id || !y?.label) continue;
+      const yId = String(y.id).slice(0, 80);
+      const label = String(y.label).trim().slice(0, 30);
+      if (!label) continue;
+      if (ownedYears.has(yId)) {
+        stmts.push(
+          db.prepare("UPDATE teacher_school_years SET label = ?, color = ?, text_color = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(label, String(y.color || "#00313d").slice(0, 32), String(y.textColor || "#ffffff").slice(0, 32), now, yId, userId)
+        );
+      } else {
+        stmts.push(
+          db.prepare("INSERT OR IGNORE INTO teacher_school_years (id, user_id, label, color, text_color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)").bind(yId, userId, label, String(y.color || "#00313d").slice(0, 32), String(y.textColor || "#ffffff").slice(0, 32), Number(y.createdAt) || now, now)
+        );
+        ownedYears.add(yId);
+      }
+    }
+    for (const s of schools) {
+      if (!s?.id || !s?.name || !s?.yearId || !ownedYears.has(String(s.yearId))) continue;
+      const sId = String(s.id).slice(0, 80);
+      const name = String(s.name).trim().slice(0, 120);
+      if (!name) continue;
+      let logoR2Key = ownedSchoolsMap.get(sId) ?? (s.logoR2Key && isOwnedR2Key(s.logoR2Key, userId) ? s.logoR2Key : null);
+      if (typeof s.logoUrl === "string" && s.logoUrl.startsWith("data:image/")) {
+        const bytes = decodeBase64DataUrl(s.logoUrl);
+        const fmt = bytes ? detectValidatedImageFormat(bytes) : null;
+        if (bytes && fmt) {
+          const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+          logoR2Key = `teacher-school-logos/${sanitizeSegment(userId)}/${sanitizeSegment(sId)}_${now}_${rand}.${fmt.ext}`;
+          await uploadImageBytesToR2(rawEnv, logoR2Key, bytes, fmt.contentType, {
+            userId: sanitizeSegment(userId),
+            kind: "school_logo",
+            schoolId: sanitizeSegment(sId)
+          });
+        }
+      }
+      if (ownedSchoolsMap.has(sId)) {
+        stmts.push(
+          db.prepare(
+            `UPDATE teacher_schools
+             SET name = ?, logo_r2_key = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, updated_at = ?
+             WHERE id = ? AND user_id = ?`
+          ).bind(
+            name,
+            logoR2Key,
+            String(s.color || "#ffffff").slice(0, 32),
+            String(s.textColor || "#0f172a").slice(0, 32),
+            String(s.borderColor || "#e2e8f0").slice(0, 32),
+            String(s.borderDarkColor || "#cbd5e1").slice(0, 32),
+            now,
+            sId,
+            userId
+          )
+        );
+      } else {
+        stmts.push(
+          db.prepare(
+            `INSERT OR IGNORE INTO teacher_schools
+              (id, user_id, year_id, name, logo_r2_key, color, text_color, border_color, border_dark_color, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            sId,
+            userId,
+            String(s.yearId).slice(0, 80),
+            name,
+            logoR2Key,
+            String(s.color || "#ffffff").slice(0, 32),
+            String(s.textColor || "#0f172a").slice(0, 32),
+            String(s.borderColor || "#e2e8f0").slice(0, 32),
+            String(s.borderDarkColor || "#cbd5e1").slice(0, 32),
+            Number(s.createdAt) || now,
+            now
+          )
+        );
+        ownedSchoolsMap.set(sId, logoR2Key);
+      }
+    }
+    for (const l of levels) {
+      if (!l?.id || !l?.name || !l?.schoolId || !l?.yearId || !ownedSchoolsMap.has(String(l.schoolId))) continue;
+      const lId = String(l.id).slice(0, 80);
+      const name = String(l.name).trim().slice(0, 80);
+      if (!name) continue;
+      if (ownedLevels.has(lId)) {
+        stmts.push(
+          db.prepare("UPDATE teacher_study_levels SET name = ?, color = ?, text_color = ?, border_color = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(name, String(l.color || "#ffffff").slice(0, 32), String(l.textColor || "#0f172a").slice(0, 32), String(l.borderColor || "#cbd5e1").slice(0, 32), now, lId, userId)
+        );
+      } else {
+        stmts.push(
+          db.prepare(
+            `INSERT OR IGNORE INTO teacher_study_levels
+              (id, user_id, school_id, year_id, name, color, text_color, border_color, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+          ).bind(lId, userId, String(l.schoolId).slice(0, 80), String(l.yearId).slice(0, 80), name, String(l.color || "#ffffff").slice(0, 32), String(l.textColor || "#0f172a").slice(0, 32), String(l.borderColor || "#cbd5e1").slice(0, 32), Number(l.createdAt) || now, now)
+        );
+        ownedLevels.add(lId);
+      }
+    }
+    for (const c of classes) {
+      if (!c?.id || !c?.levelId || !c?.schoolId || !c?.yearId || !ownedLevels.has(String(c.levelId))) continue;
+      const cId = String(c.id).slice(0, 80);
+      if (ownedClasses.has(cId)) {
+        stmts.push(
+          db.prepare(
+            `UPDATE teacher_classes
+             SET level_name = ?, name = ?, slogan = ?, teacher_name = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, icon_gradient = ?, updated_at = ?
+             WHERE id = ? AND user_id = ?`
+          ).bind(
+            String(c.level || "").trim().slice(0, 80),
+            String(c.name || "").trim().slice(0, 80),
+            c.slogan ? String(c.slogan).trim().slice(0, 140) : null,
+            String(c.teacherName || "").trim().slice(0, 100),
+            String(c.color || "#ffffff").slice(0, 32),
+            String(c.textColor || "#0f172a").slice(0, 32),
+            String(c.borderColor || "#e2e8f0").slice(0, 32),
+            String(c.borderDarkColor || "#cbd5e1").slice(0, 32),
+            String(c.iconGradient || "from-amber-500 to-orange-600").slice(0, 80),
+            now,
+            cId,
+            userId
+          )
+        );
+      } else {
+        stmts.push(
+          db.prepare(
+            `INSERT OR IGNORE INTO teacher_classes
+              (id, user_id, level_id, school_id, year_id, level_name, name, slogan, teacher_name, subject_label, color, text_color, border_color, border_dark_color, icon_gradient, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            cId,
+            userId,
+            String(c.levelId).slice(0, 80),
+            String(c.schoolId).slice(0, 80),
+            String(c.yearId).slice(0, 80),
+            String(c.level || "").trim().slice(0, 80),
+            String(c.name || "").trim().slice(0, 80),
+            c.slogan ? String(c.slogan).trim().slice(0, 140) : null,
+            String(c.teacherName || "").trim().slice(0, 100),
+            String(c.color || "#ffffff").slice(0, 32),
+            String(c.textColor || "#0f172a").slice(0, 32),
+            String(c.borderColor || "#e2e8f0").slice(0, 32),
+            String(c.borderDarkColor || "#cbd5e1").slice(0, 32),
+            String(c.iconGradient || "from-amber-500 to-orange-600").slice(0, 80),
+            Number(c.createdAt) || now,
+            now
+          )
+        );
+        ownedClasses.add(cId);
+      }
+    }
+    for (const t of terms) {
+      if (!t?.id || !t?.classId || !t?.schoolId || !t?.yearId || !ownedClasses.has(String(t.classId))) continue;
+      const tId = String(t.id).slice(0, 80);
+      if (ownedTerms.has(tId)) {
+        stmts.push(
+          db.prepare("UPDATE teacher_terms SET number = ?, name = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(Math.max(1, Number(t.number) || 1), String(t.name || "Trimestre 1").trim().slice(0, 50), now, tId, userId)
+        );
+      } else {
+        stmts.push(
+          db.prepare(
+            `INSERT OR IGNORE INTO teacher_terms
+              (id, user_id, class_id, school_id, year_id, number, name, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(tId, userId, String(t.classId).slice(0, 80), String(t.schoolId).slice(0, 80), String(t.yearId).slice(0, 80), Math.max(1, Number(t.number) || 1), String(t.name || "Trimestre 1").trim().slice(0, 50), Number(t.createdAt) || now, now)
+        );
+        ownedTerms.add(tId);
+      }
+    }
+    for (const s of subjects) {
+      if (!s?.id || !s?.name || !s?.classId || !s?.termId || !s?.schoolId || !s?.yearId) continue;
+      if (!ownedClasses.has(String(s.classId)) || !ownedTerms.has(String(s.termId))) continue;
+      const sId = String(s.id).slice(0, 80);
+      const coeff = s.coefficient !== void 0 && s.coefficient !== null && Number.isFinite(Number(s.coefficient)) ? Number(s.coefficient) : null;
+      if (ownedSubjects.has(sId)) {
+        stmts.push(
+          db.prepare(
+            `UPDATE teacher_subjects
+             SET name = ?, coefficient = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, updated_at = ?
+             WHERE id = ? AND user_id = ?`
+          ).bind(
+            String(s.name).trim().slice(0, 100),
+            coeff,
+            String(s.color || "#ffffff").slice(0, 32),
+            String(s.textColor || "#0f172a").slice(0, 32),
+            String(s.borderColor || "#e2e8f0").slice(0, 32),
+            String(s.borderDarkColor || "#cbd5e1").slice(0, 32),
+            now,
+            sId,
+            userId
+          )
+        );
+      } else {
+        stmts.push(
+          db.prepare(
+            `INSERT OR IGNORE INTO teacher_subjects
+              (id, user_id, class_id, term_id, school_id, year_id, name, coefficient, color, text_color, border_color, border_dark_color, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            sId,
+            userId,
+            String(s.classId).slice(0, 80),
+            String(s.termId).slice(0, 80),
+            String(s.schoolId).slice(0, 80),
+            String(s.yearId).slice(0, 80),
+            String(s.name).trim().slice(0, 100),
+            coeff,
+            String(s.color || "#ffffff").slice(0, 32),
+            String(s.textColor || "#0f172a").slice(0, 32),
+            String(s.borderColor || "#e2e8f0").slice(0, 32),
+            String(s.borderDarkColor || "#cbd5e1").slice(0, 32),
+            Number(s.createdAt) || now,
+            now
+          )
+        );
+        ownedSubjects.add(sId);
+      }
+    }
+    if (stmts.length > 0) {
+      await runBatchChunked(db, stmts, 80);
+    }
+    const payload = await buildBootstrapPayload(db, userId, apiOrigin, jwtSecret);
+    return jsonResponse2({ ...payload, syncedAt: now }, 200, origin);
   }
   return errorResponse2(`Route enseignant non trouv\xE9e : ${method} ${path}`, 404, origin);
 }
