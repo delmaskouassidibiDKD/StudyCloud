@@ -528,6 +528,23 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // Vue dédiée de transfert / duplication (s'ouvre "à l'intérieur" comme les cartes)
   const [isTransferViewOpen, setIsTransferViewOpen] = useState(false);
 
+  // Vidéo d'animation continue plein écran en arrière-plan (accélérée pour un mouvement dynamique bien visible)
+  const bgVideoRef = useRef<HTMLVideoElement>(null);
+  const BG_VIDEO_PLAYBACK_RATE = 2.15;
+
+  const ensureBackgroundVideoPlaying = useCallback(() => {
+    const vid = bgVideoRef.current;
+    if (!vid) return;
+    vid.muted = true;
+    vid.defaultPlaybackRate = BG_VIDEO_PLAYBACK_RATE;
+    if (vid.playbackRate !== BG_VIDEO_PLAYBACK_RATE) {
+      vid.playbackRate = BG_VIDEO_PLAYBACK_RATE;
+    }
+    if (vid.paused) {
+      vid.play().catch(() => {});
+    }
+  }, []);
+
   // Agrandissement progressif et plein écran (Image 2 & 3 - Desktop uniquement)
   const viewerExpandLevel = useViewerExpandLevel();
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
@@ -622,6 +639,20 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   // Matière sélectionnée dans laquelle on est "rentré" à l'intérieur pour afficher le tableur de notes & moyennes
   const [selectedSubjectInside, setSelectedSubjectInside] = useState<SubjectItem | null>(null);
+
+  // Relancer automatiquement la vidéo de fond accélérée au retour d'une matière ou d'un autre onglet
+  useEffect(() => {
+    ensureBackgroundVideoPlaying();
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        ensureBackgroundVideoPlaying();
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+    };
+  }, [ensureBackgroundVideoPlaying, selectedSubjectInside]);
 
   // Chargement complet & isolation stricte par compte depuis Cloudflare D1 (démarrage vierge à ZÉRO — aucune année pré-créée)
   const loadFromCloudD1 = useCallback(async () => {
@@ -1904,7 +1935,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           : 'relative w-full h-full min-h-dvh'
       }`}
       style={{
-        background: 'linear-gradient(135deg, #dcf0fa 0%, #e6f4fb 35%, #edf7fc 70%, #dff2fa 100%)'
+        backgroundColor: '#091226'
       }}
     >
       {/* ========================================================================= */}
@@ -1980,9 +2011,33 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       </aside>
 
       {/* ========================================================================= */}
-      {/* 2. ESPACE PRINCIPAL DE TRAVAIL (Plein écran Edge-to-Edge & Défilement fluide) */}
+      {/* 2. ESPACE PRINCIPAL DE TRAVAIL AVEC VIDÉO ANIMÉE CONTINUE PLEIN ÉCRAN     */}
       {/* ========================================================================= */}
-      <main className="flex-1 flex flex-col h-full min-h-dvh overflow-y-auto overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-1 sm:pt-1.5 pb-24 md:pb-8 space-y-1">
+      <main className="relative flex-1 flex flex-col h-full min-h-dvh overflow-hidden bg-[#091226]">
+        {/* Vidéo animée continue plein écran en fond (toujours présente, nette et rapide) */}
+        <video
+          ref={bgVideoRef}
+          src="/assets/teacher-bg-animation.mp4"
+          autoPlay
+          loop
+          muted
+          playsInline
+          preload="auto"
+          onLoadedMetadata={ensureBackgroundVideoPlaying}
+          onCanPlay={ensureBackgroundVideoPlaying}
+          onPlay={ensureBackgroundVideoPlaying}
+          className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none select-none z-0"
+          style={{ filter: 'brightness(1.14) contrast(1.06) saturate(1.12)' }}
+        />
+
+        {/* Voile ultra-léger uniquement sur les bords haut/bas pour garder la scène centrale 100 % nette */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 pointer-events-none z-[1] bg-gradient-to-b from-[#070f20]/45 via-transparent to-[#070f20]/30"
+        />
+
+        {/* Contenu défilable au-dessus de l'animation continue */}
+        <div className="relative z-10 flex-1 flex flex-col h-full overflow-y-auto overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-1.5 sm:pt-2 pb-24 md:pb-8 space-y-1.5">
         
         {/* ----------------------------------------------------------------------- */}
         {/* EN-TÊTE COMPACT EN HAUT :                                               */}
@@ -2050,7 +2105,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   ? 'bg-red-50 text-red-700 border-red-200'
                   : saveUiState === 'error'
                   ? 'bg-red-50 text-red-700 border-red-200'
-                  : 'bg-white/65 text-slate-500 border-white/80'
+                  : 'bg-white/90 text-slate-700 border-white shadow-xs'
               }`}
               title={saveFeedbackMessage || 'Synchronisation automatique avec la base de données Cloudflare D1'}
             >
@@ -2087,7 +2142,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           <div className="flex items-center justify-center min-w-0 xl:absolute xl:left-1/2 xl:-translate-x-1/2 flex-1 xl:flex-initial">
             {selectedSchoolInside ? (
               <div className="flex items-center gap-2 min-w-0">
-                <div className="w-7 h-7 rounded-full overflow-hidden border-2 border-white shadow-xs shrink-0 flex items-center justify-center bg-white/70">
+                <div className="w-7 h-7 rounded-full overflow-hidden border-2 border-white shadow-md shrink-0 flex items-center justify-center bg-white/90">
                   {selectedSchoolInside.logoUrl ? (
                     <img src={selectedSchoolInside.logoUrl} alt={selectedSchoolInside.name} className="w-full h-full object-cover" />
                   ) : (
@@ -2096,15 +2151,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     </span>
                   )}
                 </div>
-                <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-[#0f2430] tracking-tight leading-none truncate">
+                <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-white tracking-tight leading-none truncate drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">
                   {selectedSchoolInside.name}
                 </h1>
-                <span className="text-[10px] font-extrabold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200/60 hidden sm:inline-block shrink-0">
+                <span className="text-[10px] font-extrabold text-cyan-100 bg-cyan-950/65 backdrop-blur-sm px-2 py-0.5 rounded-lg border border-cyan-300/40 hidden sm:inline-block shrink-0">
                   {currentSelectedYear?.label}
                 </span>
               </div>
             ) : (
-              <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-[#0f2430] tracking-tight leading-none text-center truncate">
+              <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-white tracking-tight leading-none text-center truncate drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">
                 Tableau de bord
               </h1>
             )}
@@ -2206,10 +2261,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           <section className="space-y-1 animate-fade-in">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
                   Rentrées scolaires enregistrées :
                 </span>
-                <span className="text-[11px] font-extrabold text-[#00313d]">
+                <span className="text-[11px] font-black text-cyan-200 drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
                   ({schoolYears.length})
                 </span>
               </div>
@@ -2522,19 +2577,19 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       resetLevelForm();
                       setIsAddLevelModalOpen(true);
                     }}
-                    className="group relative w-64 h-64 sm:w-72 sm:h-72 border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/50 hover:bg-white/85 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
+                    className="group relative w-60 h-56 sm:w-64 sm:h-60 border-2 border-dashed border-cyan-300/70 hover:border-cyan-200 bg-[#081329]/45 hover:bg-[#081329]/65 backdrop-blur-[4px] rounded-3xl flex flex-col items-center justify-center p-5 text-center cursor-pointer transition-all duration-300 shadow-[0_12px_36px_rgba(0,0,0,0.45)] hover:shadow-[0_16px_42px_rgba(6,182,212,0.28)] hover:-translate-y-1 active:translate-y-0"
                     title="Créer un niveau d'étude"
                   >
-                    <div className="w-16 h-16 rounded-2xl bg-[#00313d] text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-[#00242e] transition-all duration-300 mb-4 border border-cyan-300/30">
-                      <Plus className="w-8 h-8 stroke-[3]" />
+                    <div className="w-14 h-14 rounded-2xl bg-cyan-500/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-cyan-400 transition-all duration-300 mb-3 border border-cyan-200/50">
+                      <Plus className="w-7 h-7 stroke-[3]" />
                     </div>
-                    <span className="text-base font-black text-slate-800 group-hover:text-[#00313d] transition-colors">
+                    <span className="text-base font-black text-white drop-shadow-sm transition-colors">
                       Créer un niveau d'étude
                     </span>
-                    <p className="text-xs text-slate-500 max-w-[225px] mt-2 leading-relaxed">
-                      Commencez par créer un niveau (CP1, 6ème, 2nde, Terminale, Licence...) dans <span className="font-bold text-[#00313d]">{selectedSchoolInside.name}</span>
+                    <p className="text-xs text-slate-200/95 max-w-[225px] mt-1.5 leading-relaxed">
+                      Commencez par créer un niveau (CP1, 6ème, 2nde, Terminale, Licence...) dans <span className="font-bold text-cyan-200">{selectedSchoolInside.name}</span>
                     </p>
-                    <div className="mt-4 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200/60 text-[10px] font-extrabold text-cyan-800">
+                    <div className="mt-3 px-3 py-1 rounded-full bg-cyan-400/20 border border-cyan-300/50 text-[10px] font-extrabold text-cyan-100">
                       Nouveau niveau +
                     </div>
                   </button>
@@ -2547,20 +2602,20 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 {/* ------------------------------------------------------------- */}
                 {/* ZONE NIVEAUX D'ÉTUDE + CLASSES : STICKY TOP AU DÉFILEMENT     */}
                 {/* ------------------------------------------------------------- */}
-                <div className="sticky top-0 z-20 -mx-3.5 sm:-mx-6 lg:-mx-8 px-3.5 sm:px-6 lg:px-8 pt-0.5 pb-2 backdrop-blur-md bg-[#dcf0fa]/95 border-b border-cyan-900/10 space-y-2">
+                <div className="sticky top-0 z-20 -mx-3.5 sm:-mx-6 lg:-mx-8 px-3.5 sm:px-6 lg:px-8 pt-1 pb-2 backdrop-blur-md bg-[#081226]/55 border-b border-white/15 space-y-2">
                   
                   {/* 1. BANDEAU DES NIVEAUX D'ÉTUDE (Boutons minces rectangulaires plats NON 3D, bouton + devant, Créer un niveau + flèches < > à droite) */}
                   <div className="space-y-1">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 shrink-0">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-white drop-shadow-sm shrink-0">
                           Niveaux d'étude ({currentSchoolLevels.length})
                         </span>
-                        <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                        <span className="text-[11px] font-bold text-cyan-800 bg-white/90 px-2 py-0.5 rounded-md border border-cyan-200/60 shadow-2xs truncate">
+                        <span className="text-xs text-cyan-200/70 font-bold">&bull;</span>
+                        <span className="text-[11px] font-bold text-cyan-900 bg-white/95 px-2 py-0.5 rounded-md border border-cyan-200/60 shadow-2xs truncate">
                           {selectedSchoolInside.name}
                         </span>
-                        <span className="text-[10px] text-slate-400 hidden lg:inline-block font-medium truncate">
+                        <span className="text-[10px] text-slate-200/85 hidden lg:inline-block font-medium truncate">
                           (Sélectionnez un niveau pour afficher et créer ses classes)
                         </span>
                         <InlineSectionSearch
@@ -2753,13 +2808,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                   {/* 2. BANDEAU DES CLASSES DU NIVEAU ACTIF (Cartes 3D de taille réduite + halo lumineux à la sélection) */}
                   {activeLevel && (
-                    <div className="pt-1 border-t border-cyan-900/10">
+                    <div className="pt-1 border-t border-white/15">
                       <div className="flex items-center justify-between mb-1 gap-2 flex-wrap">
                         <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                          <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 shrink-0">
+                          <span className="text-[11px] font-black uppercase tracking-wider text-white drop-shadow-sm shrink-0">
                             Classes ({currentLevelClasses.length})
                           </span>
-                          <span className="text-xs text-slate-400 font-bold">&bull;</span>
+                          <span className="text-xs text-cyan-200/70 font-bold">&bull;</span>
                           <span
                             className="text-[11px] font-black px-2 py-0.5 rounded-md border shrink-0"
                             style={{
@@ -2771,7 +2826,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           >
                             {activeLevel.name}
                           </span>
-                          <span className="text-[10px] text-slate-400 hidden sm:inline-block font-medium truncate">
+                          <span className="text-[10px] text-slate-200/85 hidden sm:inline-block font-medium truncate">
                             (Sélectionnez une classe pour afficher et créer ses matières)
                           </span>
                           <InlineSectionSearch
@@ -2823,7 +2878,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               resetClassForm();
                               setIsAddClassModalOpen(true);
                             }}
-                            className="w-full sm:w-auto px-5 py-3 border-2 border-dashed border-cyan-800/35 hover:border-cyan-600 bg-white/60 hover:bg-white rounded-xl flex items-center justify-center sm:justify-start gap-3 transition-all cursor-pointer group"
+                            className="w-full sm:w-auto px-5 py-3 border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white rounded-xl flex items-center justify-center sm:justify-start gap-3 transition-all cursor-pointer group shadow-md"
                             title={`Créer la première classe dans ${activeLevel.name}`}
                           >
                             <div className="w-8 h-8 rounded-lg bg-[#00313d] text-white flex items-center justify-center shadow-xs group-hover:scale-105 transition shrink-0">
@@ -2850,7 +2905,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                 resetClassForm();
                                 setIsAddClassModalOpen(true);
                               }}
-                              className="w-28 sm:w-32 shrink-0 border-2 border-dashed border-cyan-800/35 hover:border-cyan-500 bg-white/65 hover:bg-white backdrop-blur-md rounded-xl px-2.5 py-2 flex flex-col items-center justify-center gap-1 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs"
+                              className="w-28 sm:w-32 shrink-0 border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white backdrop-blur-md rounded-xl px-2.5 py-2 flex flex-col items-center justify-center gap-1 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-sm"
                               title={`Ajouter une classe dans ${activeLevel.name}`}
                             >
                               <div className="w-6 h-6 rounded-md bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-2xs transition shrink-0">
@@ -2979,11 +3034,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     {/* En-tête de la section trimestres avec flèches */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
                           Trimestres ({currentClassTerms.length})
                         </span>
-                        <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                        <span className="text-[11px] font-bold text-cyan-900 bg-cyan-50/90 px-2 py-0.5 rounded-md border border-cyan-300/80 shadow-2xs">
+                        <span className="text-xs text-cyan-200/75 font-bold">&bull;</span>
+                        <span className="text-[11px] font-bold text-cyan-900 bg-white/95 px-2 py-0.5 rounded-md border border-cyan-300/80 shadow-2xs">
                           {getClassFullLabel(activeClass)}
                         </span>
                       </div>
@@ -3074,7 +3129,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       <button
                         type="button"
                         onClick={() => setIsAddTermModalOpen(true)}
-                        className="shrink-0 px-3 py-1.5 rounded-lg border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/60 hover:bg-white text-slate-700 hover:text-[#00313d] flex items-center gap-1.5 transition-all duration-200 shadow-2xs hover:shadow-xs group hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                        className="shrink-0 px-3 py-1.5 rounded-lg border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white text-slate-800 hover:text-[#00313d] flex items-center gap-1.5 transition-all duration-200 shadow-sm group hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
                         title={`Ajouter le Trimestre ${nextTermNumber}`}
                       >
                         <div className="w-4 h-4 rounded bg-[#00313d] text-white flex items-center justify-center group-hover:scale-110 transition-transform">
@@ -3096,16 +3151,16 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     {/* En-tête de la section matières avec navigation par espace */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
                           Matières ({currentClassSubjects.length})
                         </span>
-                        <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                        <span className="text-[11px] font-bold text-cyan-900 bg-cyan-50/90 px-2 py-0.5 rounded-md border border-cyan-300/80 shadow-2xs">
+                        <span className="text-xs text-cyan-200/75 font-bold">&bull;</span>
+                        <span className="text-[11px] font-bold text-cyan-900 bg-white/95 px-2 py-0.5 rounded-md border border-cyan-300/80 shadow-2xs">
                           {getClassFullLabel(activeClass)}
                         </span>
                         {activeTerm && (
                           <>
-                            <span className="text-xs text-slate-400 font-bold">&bull;</span>
+                            <span className="text-xs text-cyan-200/75 font-bold">&bull;</span>
                             <span
                               className="text-[11px] font-black text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-400"
                               style={{ boxShadow: '0 0 10px rgba(16, 185, 129, 0.35)' }}
@@ -3114,7 +3169,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             </span>
                           </>
                         )}
-                        <span className="text-[10px] font-black text-slate-700 bg-white/80 px-2 py-0.5 rounded-md border border-slate-200 shadow-2xs">
+                        <span className="text-[10px] font-black text-slate-800 bg-white/90 px-2 py-0.5 rounded-md border border-white shadow-2xs">
                           Espace {subjectPageIndex + 1} / {totalSubjectPages}
                         </span>
                         <InlineSectionSearch
@@ -3138,7 +3193,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[10px] font-semibold text-slate-500 hidden sm:inline-block">
+                        <span className="text-[10px] font-semibold text-slate-200/90 drop-shadow-sm hidden sm:inline-block">
                           {pagedSubjects.length}/{SUBJECTS_PER_PAGE} dans cet espace &bull; 3 lignes max
                         </span>
 
@@ -3192,7 +3247,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           resetSubjectForm();
                           setIsAddSubjectModalOpen(true);
                         }}
-                        className="rounded-lg border-2 border-dashed border-red-500/75 hover:border-red-600 bg-white/70 hover:bg-white/95 backdrop-blur-md px-2 py-1.5 min-h-[50px] sm:min-h-[54px] flex items-center justify-center gap-1.5 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs hover:shadow-sm active:translate-y-0"
+                        className="rounded-lg border-2 border-dashed border-red-400/90 hover:border-red-500 bg-white/92 hover:bg-white backdrop-blur-md px-2 py-1.5 min-h-[50px] sm:min-h-[54px] flex items-center justify-center gap-1.5 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-sm hover:shadow-md active:translate-y-0"
                         title="Créer une nouvelle matière pour cette classe"
                       >
                         <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-red-600 to-orange-500 text-white flex items-center justify-center group-hover:scale-110 shadow-2xs transition-transform shrink-0">
@@ -3301,24 +3356,24 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
                       setIsAddSchoolModalOpen(true);
                     }}
-                    className="group relative w-64 h-64 sm:w-72 sm:h-72 border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/50 hover:bg-white/85 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
+                    className="group relative w-60 h-56 sm:w-64 sm:h-60 border-2 border-dashed border-cyan-300/70 hover:border-cyan-200 bg-[#081329]/45 hover:bg-[#081329]/65 backdrop-blur-[4px] rounded-3xl flex flex-col items-center justify-center p-5 text-center cursor-pointer transition-all duration-300 shadow-[0_12px_36px_rgba(0,0,0,0.45)] hover:shadow-[0_16px_42px_rgba(6,182,212,0.28)] hover:-translate-y-1 active:translate-y-0"
                     title="Ajouter une école"
                   >
                     {/* Icône Plus dans un conteneur carré stylisé */}
-                    <div className="w-16 h-16 rounded-2xl bg-[#00313d] text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-[#00242e] transition-all duration-300 mb-4 border border-cyan-300/30">
-                      <Plus className="w-8 h-8 stroke-[3]" />
+                    <div className="w-14 h-14 rounded-2xl bg-cyan-500/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-cyan-400 transition-all duration-300 mb-3 border border-cyan-200/50">
+                      <Plus className="w-7 h-7 stroke-[3]" />
                     </div>
 
                     {/* Titre et incitation */}
-                    <span className="text-base font-black text-slate-800 group-hover:text-[#00313d] transition-colors">
+                    <span className="text-base font-black text-white drop-shadow-sm transition-colors">
                       Ajouter une école
                     </span>
-                    <p className="text-xs text-slate-500 max-w-[200px] mt-2 leading-relaxed">
-                      Cliquez ici pour configurer un établissement scolaire pour la rentrée <span className="font-bold text-[#00313d]">{currentSelectedYear.label}</span>
+                    <p className="text-xs text-slate-200/95 max-w-[200px] mt-1.5 leading-relaxed">
+                      Cliquez ici pour configurer un établissement scolaire pour la rentrée <span className="font-bold text-cyan-200">{currentSelectedYear.label}</span>
                     </p>
 
                     {/* Petit badge subtil */}
-                    <div className="mt-4 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200/60 text-[10px] font-extrabold text-cyan-800">
+                    <div className="mt-3 px-3 py-1 rounded-full bg-cyan-400/20 border border-cyan-300/50 text-[10px] font-extrabold text-cyan-100">
                       Nouveau +
                     </div>
                   </button>
@@ -3328,11 +3383,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 <div className="space-y-2.5 pt-1 animate-fade-in">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-black uppercase tracking-wider text-slate-600">
+                      <span className="text-xs font-black uppercase tracking-wider text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
                         Établissements scolaires ({currentYearSchools.length})
                       </span>
-                      <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                      <span className="text-xs font-bold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200/50">
+                      <span className="text-xs text-cyan-200/75 font-bold">&bull;</span>
+                      <span className="text-xs font-bold text-cyan-900 bg-white/95 px-2 py-0.5 rounded-lg border border-cyan-200/60 shadow-2xs">
                         Rentrée {currentSelectedYear.label}
                       </span>
                       <InlineSectionSearch
@@ -3367,7 +3422,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
                         setIsAddSchoolModalOpen(true);
                       }}
-                      className="min-h-[170px] border-2 border-dashed border-cyan-800/35 hover:border-cyan-600 bg-white/55 hover:bg-white/85 backdrop-blur-md rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group hover:-translate-y-1 shadow-xs hover:shadow-md"
+                      className="min-h-[170px] border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white backdrop-blur-md rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group hover:-translate-y-1 shadow-md hover:shadow-lg"
                     >
                       <div className="w-12 h-12 rounded-xl bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-sm transition mb-2.5">
                         <Plus className="w-6 h-6 stroke-[2.5]" />
@@ -3500,23 +3555,23 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 </div>
               )
             ) : (
-              <div className="flex-1 flex flex-col items-center justify-center py-12 px-4 animate-fade-in">
+              <div className="flex-1 flex flex-col items-center justify-center py-8 px-4 animate-fade-in">
                 <button
                   type="button"
                   onClick={() => setIsCreateMenuOpen(true)}
-                  className="group relative w-64 h-64 sm:w-72 sm:h-72 border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/50 hover:bg-white/85 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
+                  className="group relative w-60 h-56 sm:w-64 sm:h-60 border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-[#081329]/42 hover:bg-[#081329]/62 backdrop-blur-[4px] rounded-3xl flex flex-col items-center justify-center p-5 text-center cursor-pointer transition-all duration-300 shadow-[0_12px_36px_rgba(0,0,0,0.45)] hover:shadow-[0_16px_42px_rgba(6,182,212,0.3)] hover:-translate-y-1 active:translate-y-0"
                   title="Créer votre première rentrée scolaire"
                 >
-                  <div className="w-16 h-16 rounded-2xl bg-[#00313d] text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-[#00242e] transition-all duration-300 mb-4 border border-cyan-300/30">
-                    <Plus className="w-8 h-8 stroke-[3]" />
+                  <div className="w-14 h-14 rounded-2xl bg-cyan-500/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-cyan-400 transition-all duration-300 mb-3 border border-cyan-200/50">
+                    <Plus className="w-7 h-7 stroke-[3]" />
                   </div>
-                  <span className="text-base font-black text-slate-800 group-hover:text-[#00313d] transition-colors">
+                  <span className="text-base font-black text-white drop-shadow-sm transition-colors">
                     Créer une rentrée scolaire
                   </span>
-                  <p className="text-xs text-slate-500 max-w-[215px] mt-2 leading-relaxed">
+                  <p className="text-xs text-slate-200/95 max-w-[215px] mt-1.5 leading-relaxed">
                     Commencez à partir de zéro en créant votre première année scolaire (ex : 2026 - 2027), puis vos écoles, niveaux, classes et matières.
                   </p>
-                  <div className="mt-4 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200/60 text-[10px] font-extrabold text-cyan-800">
+                  <div className="mt-3 px-3 py-1 rounded-full bg-cyan-400/20 border border-cyan-300/50 text-[10px] font-extrabold text-cyan-100">
                     Nouvelle rentrée +
                   </div>
                 </button>
@@ -4707,6 +4762,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             </div>
           </div>
         )}
+        </div>
       </main>
 
       {/* ========================================================================= */}
