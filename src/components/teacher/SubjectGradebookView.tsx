@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   Copy,
   Pen,
@@ -36,7 +36,10 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  RotateCcw
+  RotateCcw,
+  Cloud,
+  CloudOff,
+  Loader2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SubjectItem, ClassItem, SchoolItem, SchoolYearItem, TermItem } from './TeacherClassesView';
@@ -49,6 +52,15 @@ import {
   getMention,
   type EvaluationInput
 } from '../../utils/gradebookCalculations';
+import {
+  TeacherGradebookAPI,
+  compressImageToUpload,
+  generateTeacherEntityId,
+  getTeacherAuthToken,
+  readUserGradebookCache,
+  writeUserGradebookCache,
+  type TeacherGradebookPayload,
+} from '../../services/teacherGradebookApi';
 
 interface SubjectGradebookViewProps {
   subject: SubjectItem;
@@ -56,6 +68,8 @@ interface SubjectGradebookViewProps {
   schoolYear?: SchoolYearItem | null;
   school?: SchoolItem | null;
   term?: TermItem | null;
+  userId?: string;
+  onGradebookSynced?: () => void;
   onBack: () => void;
 }
 
@@ -71,8 +85,10 @@ export interface GradebookColumnMeta {
 // Structure d'un élève dans le tableau moderne de notes
 export interface StudentGradeRow {
   id: string;
+  studentUid?: string;
   name: string;
   photoUrl?: string;
+  photoR2Key?: string;
   notes: string[]; // Notes dynamiques stockées sous forme "score/max" ou "score"
 }
 
@@ -278,76 +294,42 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   schoolYear,
   school,
   term,
+  userId,
+  onGradebookSynced,
   onBack,
 }) => {
   const viewerExpandLevel = useViewerExpandLevel();
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
 
-  // Clés de persistance locale
-  const storageKey = `studycloud_student_gradebook_${subject.id}_${term?.id || 't1'}`;
-  const colCountKey = `studycloud_note_col_count_${subject.id}_${term?.id || 't1'}`;
-  const colWidthKey = `studycloud_note_col_width_${subject.id}_${term?.id || 't1'}`;
-  const colWidthRankKey = `studycloud_col_width_rank_${subject.id}_${term?.id || 't1'}`;
-  const colWidthPhotoKey = `studycloud_col_width_photo_${subject.id}_${term?.id || 't1'}`;
-  const colWidthNameKey = `studycloud_col_width_name_${subject.id}_${term?.id || 't1'}`;
-  const colWidthAvgKey = `studycloud_col_width_avg_${subject.id}_${term?.id || 't1'}`;
-  const colWidthMentionKey = `studycloud_col_width_mention_${subject.id}_${term?.id || 't1'}`;
-  const customNoteWidthsKey = `studycloud_custom_note_widths_${subject.id}_${term?.id || 't1'}`;
-  const rowHeightsKey = `studycloud_row_heights_${subject.id}_${term?.id || 't1'}`;
-  const colMetasKey = `studycloud_col_metas_${subject.id}_${term?.id || 't1'}`;
+  const effectiveTermId = term?.id || subject.termId || 't1';
+  const effectiveUserId = userId || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') || '' : '');
+  const initialCachedSheet = useMemo(
+    () => (effectiveUserId ? readUserGradebookCache(effectiveUserId, subject.id, effectiveTermId) : null),
+    [effectiveUserId, subject.id, effectiveTermId]
+  );
 
   // Référence du conteneur de défilement
   const gridContainerRef = useRef<HTMLDivElement>(null);
 
   // Nombre de colonnes de notes dynamique (infini, minimum 1, 7 par défaut)
   const [noteColumnCount, setNoteColumnCount] = useState<number>(() => {
-    try {
-      const savedCount = localStorage.getItem(colCountKey);
-      if (savedCount) {
-        const count = parseInt(savedCount, 10);
-        if (!isNaN(count) && count >= 1) return count;
-      }
-      const savedData = localStorage.getItem(storageKey);
-      if (savedData) {
-        const parsed = JSON.parse(savedData);
-        if (Array.isArray(parsed) && parsed.length > 0 && Array.isArray(parsed[0].notes)) {
-          return Math.max(7, parsed[0].notes.length);
-        }
-      }
-    } catch { }
+    if (initialCachedSheet?.noteColumnCount && initialCachedSheet.noteColumnCount >= 1) {
+      return initialCachedSheet.noteColumnCount;
+    }
     return 7;
   });
 
   // Métadonnées de chaque colonne de note (titre, barème max, couleur de fond)
   const [columnMetas, setColumnMetas] = useState<{ [colIndex: number]: GradebookColumnMeta }>(() => {
-    try {
-      const s = localStorage.getItem(colMetasKey);
-      if (s) {
-        const parsed = JSON.parse(s);
-        if (typeof parsed === 'object') return parsed;
-      }
-    } catch { }
-    return {};
+    return initialCachedSheet?.columnMetas || {};
   });
 
-  // Clés de stockage pour les couleurs personnalisées
-  const cellColorsKey = `studycloud_cell_colors_${subject.id}_${term?.id || 't1'}`;
-  const rowColorsKey = `studycloud_row_colors_${subject.id}_${term?.id || 't1'}`;
-
   const [cellColors, setCellColors] = useState<{ [key: string]: string }>(() => {
-    try {
-      const s = localStorage.getItem(cellColorsKey);
-      if (s) return JSON.parse(s);
-    } catch {}
-    return {};
+    return initialCachedSheet?.styles?.cellColors || {};
   });
 
   const [rowColors, setRowColors] = useState<{ [rowId: string]: string }>(() => {
-    try {
-      const s = localStorage.getItem(rowColorsKey);
-      if (s) return JSON.parse(s);
-    } catch {}
-    return {};
+    return initialCachedSheet?.styles?.rowColors || {};
   });
 
   // Menu contextuel 3 points de colonne
@@ -365,14 +347,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Message rouge d'alerte ciblé sur la case où l'utilisateur tente d'écrire une note sans nom d'élève
   const [blockedNoteTarget, setBlockedNoteTarget] = useState<{ studentId: string; colIndex: number } | null>(null);
 
-  // Clé et état pour les styles personnalisés des cellules (gras, couleur texte, fond, police, taille)
-  const cellCustomStylesKey = `studycloud_cell_styles_${subject.id}_${term?.id || 't1'}`;
+  // État pour les styles personnalisés des cellules (gras, couleur texte, fond, police, taille)
   const [cellCustomStyles, setCellCustomStyles] = useState<{ [cellKey: string]: CellCustomStyle }>(() => {
-    try {
-      const s = localStorage.getItem(cellCustomStylesKey);
-      if (s) return JSON.parse(s);
-    } catch {}
-    return {};
+    return initialCachedSheet?.styles?.cellCustomStyles || {};
   });
 
   // États pour les menus déroulants interactifs du Ruban Excel
@@ -428,81 +405,51 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   // Largeurs personnalisables et modelables des colonnes
   const [colWidthRank, setColWidthRank] = useState<number>(() => {
-    try {
-      const s = localStorage.getItem(colWidthRankKey);
-      if (s) { const n = parseInt(s, 10); if (!isNaN(n) && n >= 55) return n; }
-    } catch { }
-    return 68;
+    const n = initialCachedSheet?.layout?.colWidthRank;
+    return typeof n === 'number' && n >= 55 ? n : 68;
   });
 
   const [colWidthPhoto, setColWidthPhoto] = useState<number>(() => {
-    try {
-      const s = localStorage.getItem(colWidthPhotoKey);
-      if (s) { const n = parseInt(s, 10); if (!isNaN(n) && n >= 60) return n; }
-    } catch { }
-    return 76;
+    const n = initialCachedSheet?.layout?.colWidthPhoto;
+    return typeof n === 'number' && n >= 60 ? n : 76;
   });
 
   const [colWidthName, setColWidthName] = useState<number>(() => {
-    try {
-      const s = localStorage.getItem(colWidthNameKey);
-      if (s) { const n = parseInt(s, 10); if (!isNaN(n) && n >= 150) return n; }
-    } catch { }
-    return 280;
+    const n = initialCachedSheet?.layout?.colWidthName;
+    return typeof n === 'number' && n >= 150 ? n : 280;
   });
 
   const [noteColWidth, setNoteColWidth] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem(colWidthKey);
-      if (saved) {
-        const w = parseInt(saved, 10);
-        if (!isNaN(w) && w >= 96 && w <= 240) return w;
-      }
-    } catch { }
-    return 96;
+    const w = initialCachedSheet?.layout?.noteColWidth;
+    return typeof w === 'number' && w >= 96 && w <= 240 ? w : 96;
   });
 
   // Largeurs individuelles pour chaque colonne de note
   const [customNoteWidths, setCustomNoteWidths] = useState<{ [index: number]: number }>(() => {
-    try {
-      const s = localStorage.getItem(customNoteWidthsKey);
-      if (s) {
-        const parsed = JSON.parse(s);
-        if (typeof parsed === 'object' && parsed !== null) {
-          const clamped: { [index: number]: number } = {};
-          for (const [k, v] of Object.entries(parsed)) {
-            if (typeof v === 'number') clamped[Number(k)] = Math.max(96, v);
-          }
-          return clamped;
-        }
+    const raw = initialCachedSheet?.layout?.customNoteWidths;
+    if (raw && typeof raw === 'object') {
+      const clamped: { [index: number]: number } = {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (typeof v === 'number') clamped[Number(k)] = Math.max(96, v);
       }
-    } catch { }
+      return clamped;
+    }
     return {};
   });
 
   const [colWidthAverage, setColWidthAverage] = useState<number>(() => {
-    try {
-      const s = localStorage.getItem(colWidthAvgKey);
-      if (s) { const n = parseInt(s, 10); if (!isNaN(n) && n >= 75) return n; }
-    } catch { }
-    return 104;
+    const n = initialCachedSheet?.layout?.colWidthAverage;
+    return typeof n === 'number' && n >= 75 ? n : 104;
   });
 
   const [colWidthMention, setColWidthMention] = useState<number>(() => {
-    try {
-      const s = localStorage.getItem(colWidthMentionKey);
-      if (s) { const n = parseInt(s, 10); if (!isNaN(n) && n >= 80) return n; }
-    } catch { }
-    return 108;
+    const n = initialCachedSheet?.layout?.colWidthMention;
+    return typeof n === 'number' && n >= 80 ? n : 108;
   });
 
   // Hauteurs personnalisées de chaque ligne d'élève
   const [customRowHeights, setCustomRowHeights] = useState<{ [index: number]: number }>(() => {
-    try {
-      const s = localStorage.getItem(rowHeightsKey);
-      if (s) { const parsed = JSON.parse(s); if (typeof parsed === 'object') return parsed; }
-    } catch { }
-    return {};
+    return initialCachedSheet?.layout?.customRowHeights || {};
   });
 
   // ÉTAT DE SÉLECTION STRICT : Une seule ligne sélectionnée à la fois (exclusive)
@@ -510,29 +457,29 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const [selectedLine, setSelectedLine] = useState<{ type: 'col' | 'row'; id: string } | null>(null);
   const [resizingLine, setResizingLine] = useState<{ type: 'col' | 'row'; id: string } | null>(null);
 
-  // Liste des élèves avec leurs notes (Infini, persistance locale)
+  // Liste des élèves avec leurs notes (Infini, synchronisé avec Cloudflare D1 + photos dans R2)
   const [students, setStudents] = useState<StudentGradeRow[]>(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          const maxNotes = Math.max(7, ...parsed.map((p: any) => p.notes?.length || 0));
-          return parsed.map((s: any, idx: number) => ({
-            id: s.id || `student-${Date.now()}-${idx}`,
-            name: s.name || '',
-            photoUrl: s.photoUrl,
-            notes: Array.from({ length: maxNotes }, (_, i) => s.notes?.[i] || '')
-          }));
-        }
-      }
-    } catch { }
+    if (Array.isArray(initialCachedSheet?.students) && initialCachedSheet.students.length > 0) {
+      const maxNotes = Math.max(
+        initialCachedSheet.noteColumnCount || 7,
+        ...initialCachedSheet.students.map((p) => p.notes?.length || 0)
+      );
+      return initialCachedSheet.students.map((s) => ({
+        id: s.id || generateTeacherEntityId('std'),
+        studentUid: s.studentUid || s.id,
+        name: s.name || '',
+        photoUrl: s.photoUrl,
+        photoR2Key: s.photoR2Key,
+        notes: Array.from({ length: maxNotes }, (_, i) => s.notes?.[i] || ''),
+      }));
+    }
 
-    return Array.from({ length: 8 }, (_, i) => ({
-      id: `student-${Date.now()}-${i}`,
+    return Array.from({ length: 8 }, () => ({
+      id: generateTeacherEntityId('std'),
       name: '',
       photoUrl: undefined,
-      notes: Array(7).fill('')
+      photoR2Key: undefined,
+      notes: Array(7).fill(''),
     }));
   });
 
@@ -575,8 +522,22 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const [sheetTabs, setSheetTabs] = useState<string[]>(['Feuille1']);
   const [activeSheetTab, setActiveSheetTab] = useState<string>('Feuille1');
 
-  // État de sauvegarde
+  // État de sauvegarde cloud D1 + R2
   const [isSaved, setIsSaved] = useState<boolean>(true);
+  const [cloudSaveStatus, setCloudSaveStatus] = useState<'loading' | 'saved' | 'saving' | 'error'>(() =>
+    getTeacherAuthToken() ? 'loading' : 'saved'
+  );
+  const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
+  const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
+
+  // Refs pour auto-sauvegarde sérialisée (anti-conflit, zéro perte de frappe)
+  const hasHydratedRef = useRef<boolean>(false);
+  const skipNextAutoSaveRef = useRef<boolean>(true);
+  const hasPendingCloudChangesRef = useRef<boolean>(false);
+  const isCloudSavingRef = useRef<boolean>(false);
+  const needsFollowupSaveRef = useRef<boolean>(false);
+  const debounceTimerRef = useRef<number | null>(null);
+  const latestPayloadRef = useRef<TeacherGradebookPayload | null>(null);
 
   // Référence upload photo
   const photoInputRef = useRef<HTMLInputElement>(null);
@@ -587,26 +548,256 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const [isDraggingRight, setIsDraggingRight] = useState(false);
   const [dragPreviewRows, setDragPreviewRows] = useState(0);
 
-  // Sauvegarde persistante dans le localStorage
-  useEffect(() => {
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(students));
-      localStorage.setItem(colCountKey, noteColumnCount.toString());
-      localStorage.setItem(colWidthKey, noteColWidth.toString());
-      localStorage.setItem(colWidthRankKey, colWidthRank.toString());
-      localStorage.setItem(colWidthPhotoKey, colWidthPhoto.toString());
-      localStorage.setItem(colWidthNameKey, colWidthName.toString());
-      localStorage.setItem(colWidthAvgKey, colWidthAverage.toString());
-      localStorage.setItem(colWidthMentionKey, colWidthMention.toString());
-      localStorage.setItem(customNoteWidthsKey, JSON.stringify(customNoteWidths));
-      localStorage.setItem(rowHeightsKey, JSON.stringify(customRowHeights));
-      localStorage.setItem(colMetasKey, JSON.stringify(columnMetas));
-      localStorage.setItem(cellColorsKey, JSON.stringify(cellColors));
-      localStorage.setItem(rowColorsKey, JSON.stringify(rowColors));
-      localStorage.setItem(cellCustomStylesKey, JSON.stringify(cellCustomStyles));
+  // Construction du snapshot courant (toujours à jour pour l'auto-save)
+  const currentPayload = useMemo<TeacherGradebookPayload>(() => ({
+    noteColumnCount,
+    columnMetas,
+    layout: {
+      noteColWidth,
+      colWidthRank,
+      colWidthPhoto,
+      colWidthName,
+      colWidthAverage,
+      colWidthMention,
+      customNoteWidths,
+      customRowHeights,
+    },
+    styles: {
+      cellColors,
+      rowColors,
+      cellCustomStyles,
+    },
+    students,
+  }), [
+    noteColumnCount,
+    columnMetas,
+    noteColWidth,
+    colWidthRank,
+    colWidthPhoto,
+    colWidthName,
+    colWidthAverage,
+    colWidthMention,
+    customNoteWidths,
+    customRowHeights,
+    cellColors,
+    rowColors,
+    cellCustomStyles,
+    students,
+  ]);
+
+  latestPayloadRef.current = currentPayload;
+
+  // Moteur d'envoi cloud D1 sérialisé (file d'attente anti-course)
+  const flushCloudSave = useCallback(async (opts?: { keepalive?: boolean }) => {
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    if (!hasPendingCloudChangesRef.current || !latestPayloadRef.current) return;
+    if (!getTeacherAuthToken()) {
+      hasPendingCloudChangesRef.current = false;
       setIsSaved(true);
-    } catch { }
-  }, [students, noteColumnCount, noteColWidth, colWidthRank, colWidthPhoto, colWidthName, colWidthAverage, colWidthMention, customNoteWidths, customRowHeights, columnMetas, cellColors, rowColors, storageKey, colCountKey, colWidthKey, colWidthRankKey, colWidthPhotoKey, colWidthNameKey, colWidthAvgKey, colWidthMentionKey, customNoteWidthsKey, rowHeightsKey, colMetasKey, cellColorsKey, rowColorsKey, cellCustomStyles, cellCustomStylesKey]);
+      setCloudSaveStatus('saved');
+      return;
+    }
+    if (isCloudSavingRef.current) {
+      needsFollowupSaveRef.current = true;
+      return;
+    }
+
+    isCloudSavingRef.current = true;
+    hasPendingCloudChangesRef.current = false;
+    setCloudSaveStatus('saving');
+    setCloudSaveError(null);
+
+    try {
+      await TeacherGradebookAPI.saveGradebook(
+        subject.id,
+        effectiveTermId,
+        latestPayloadRef.current,
+        { keepalive: opts?.keepalive }
+      );
+      if (needsFollowupSaveRef.current) {
+        needsFollowupSaveRef.current = false;
+        hasPendingCloudChangesRef.current = true;
+        isCloudSavingRef.current = false;
+        await flushCloudSave(opts);
+        return;
+      }
+      setIsSaved(true);
+      setCloudSaveStatus('saved');
+      onGradebookSynced?.();
+    } catch (err: any) {
+      hasPendingCloudChangesRef.current = true;
+      setIsSaved(false);
+      setCloudSaveStatus('error');
+      setCloudSaveError(err?.message || 'Erreur de synchronisation cloud');
+    } finally {
+      isCloudSavingRef.current = false;
+    }
+  }, [subject.id, effectiveTermId, onGradebookSynced]);
+
+  // 1. Chargement initial depuis Cloudflare D1 (source de vérité du compte utilisateur)
+  useEffect(() => {
+    let cancelled = false;
+    const controller = new AbortController();
+    hasHydratedRef.current = false;
+    skipNextAutoSaveRef.current = true;
+
+    const loadFromCloud = async () => {
+      if (!getTeacherAuthToken()) {
+        hasHydratedRef.current = true;
+        setCloudSaveStatus('saved');
+        return;
+      }
+      setCloudSaveStatus('loading');
+      setCloudSaveError(null);
+      try {
+        const res = await TeacherGradebookAPI.getGradebook(subject.id, effectiveTermId, controller.signal);
+        if (cancelled) return;
+        if (res && res.exists) {
+          skipNextAutoSaveRef.current = true;
+          const cols = Math.max(1, Number(res.noteColumnCount) || 7);
+          const hydratedStudents: StudentGradeRow[] = Array.isArray(res.students) && res.students.length > 0
+            ? res.students.map((s) => ({
+                id: s.id || generateTeacherEntityId('std'),
+                studentUid: s.studentUid || s.id,
+                name: s.name || '',
+                photoUrl: s.photoUrl,
+                photoR2Key: s.photoR2Key,
+                notes: Array.from({ length: cols }, (_, i) => s.notes?.[i] || ''),
+              }))
+            : Array.from({ length: 8 }, () => ({
+                id: generateTeacherEntityId('std'),
+                name: '',
+                photoUrl: undefined,
+                photoR2Key: undefined,
+                notes: Array(cols).fill(''),
+              }));
+
+          while (hydratedStudents.length < 8) {
+            hydratedStudents.push({
+              id: generateTeacherEntityId('std'),
+              name: '',
+              photoUrl: undefined,
+              photoR2Key: undefined,
+              notes: Array(cols).fill(''),
+            });
+          }
+
+          setNoteColumnCount(cols);
+          setColumnMetas(res.columnMetas || {});
+          if (typeof res.layout?.noteColWidth === 'number') setNoteColWidth(Math.max(96, Math.min(240, res.layout.noteColWidth)));
+          if (typeof res.layout?.colWidthRank === 'number') setColWidthRank(Math.max(55, res.layout.colWidthRank));
+          if (typeof res.layout?.colWidthPhoto === 'number') setColWidthPhoto(Math.max(60, res.layout.colWidthPhoto));
+          if (typeof res.layout?.colWidthName === 'number') setColWidthName(Math.max(150, res.layout.colWidthName));
+          if (typeof res.layout?.colWidthAverage === 'number') setColWidthAverage(Math.max(75, res.layout.colWidthAverage));
+          if (typeof res.layout?.colWidthMention === 'number') setColWidthMention(Math.max(80, res.layout.colWidthMention));
+          if (res.layout?.customNoteWidths) setCustomNoteWidths(res.layout.customNoteWidths);
+          if (res.layout?.customRowHeights) setCustomRowHeights(res.layout.customRowHeights);
+          setCellColors(res.styles?.cellColors || {});
+          setRowColors(res.styles?.rowColors || {});
+          setCellCustomStyles(res.styles?.cellCustomStyles || {});
+          setStudents(hydratedStudents);
+
+          if (effectiveUserId) {
+            writeUserGradebookCache(effectiveUserId, subject.id, effectiveTermId, {
+              noteColumnCount: cols,
+              columnMetas: res.columnMetas || {},
+              layout: {
+                noteColWidth: res.layout?.noteColWidth ?? 96,
+                colWidthRank: res.layout?.colWidthRank ?? 68,
+                colWidthPhoto: res.layout?.colWidthPhoto ?? 76,
+                colWidthName: res.layout?.colWidthName ?? 280,
+                colWidthAverage: res.layout?.colWidthAverage ?? 104,
+                colWidthMention: res.layout?.colWidthMention ?? 108,
+                customNoteWidths: res.layout?.customNoteWidths || {},
+                customRowHeights: res.layout?.customRowHeights || {},
+              },
+              styles: {
+                cellColors: res.styles?.cellColors || {},
+                rowColors: res.styles?.rowColors || {},
+                cellCustomStyles: res.styles?.cellCustomStyles || {},
+              },
+              students: hydratedStudents,
+            });
+          }
+        }
+        hasHydratedRef.current = true;
+        setIsSaved(true);
+        setCloudSaveStatus('saved');
+      } catch (err: any) {
+        if (cancelled || err?.name === 'AbortError') return;
+        hasHydratedRef.current = true;
+        setCloudSaveStatus('error');
+        setCloudSaveError(err?.message || 'Impossible de charger le tableur depuis le cloud');
+      }
+    };
+
+    loadFromCloud();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [subject.id, effectiveTermId, effectiveUserId]);
+
+  // 2. Auto-sauvegarde fluide (cache isolé par userId immédiat + envoi D1 groupé 650 ms)
+  useEffect(() => {
+    if (effectiveUserId) {
+      writeUserGradebookCache(effectiveUserId, subject.id, effectiveTermId, currentPayload);
+    }
+
+    if (!hasHydratedRef.current) return;
+    if (skipNextAutoSaveRef.current) {
+      skipNextAutoSaveRef.current = false;
+      return;
+    }
+
+    hasPendingCloudChangesRef.current = true;
+    setIsSaved(false);
+    setCloudSaveStatus('saving');
+
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+    }
+    debounceTimerRef.current = window.setTimeout(() => {
+      debounceTimerRef.current = null;
+      flushCloudSave();
+    }, 650);
+  }, [currentPayload, effectiveUserId, subject.id, effectiveTermId, flushCloudSave]);
+
+  // 3. Flush automatique lors d'un changement d'onglet ou fermeture de page (zéro perte)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && hasPendingCloudChangesRef.current) {
+        flushCloudSave({ keepalive: true });
+      }
+    };
+    const handlePageHide = () => {
+      if (hasPendingCloudChangesRef.current) {
+        flushCloudSave({ keepalive: true });
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('pagehide', handlePageHide);
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('pagehide', handlePageHide);
+      if (debounceTimerRef.current !== null) {
+        window.clearTimeout(debounceTimerRef.current);
+      }
+      if (hasPendingCloudChangesRef.current) {
+        flushCloudSave({ keepalive: true });
+      }
+    };
+  }, [flushCloudSave]);
+
+  const handleSafeBack = async () => {
+    if (hasPendingCloudChangesRef.current) {
+      await flushCloudSave();
+    }
+    onBack();
+  };
 
   // =========================================================================
   // HISTORIQUE COMPLET ANNULER / RÉTABLIR (UNDO / REDO) POUR TOUTE MODIFICATION
@@ -1209,9 +1400,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Ajout d'une ligne d'élève
   const handleAddStudentRow = () => {
     const newStudent: StudentGradeRow = {
-      id: `student-${Date.now()}-${students.length}`,
+      id: generateTeacherEntityId('std'),
       name: '',
       photoUrl: undefined,
+      photoR2Key: undefined,
       notes: Array(noteColumnCount).fill('')
     };
     setStudents(prev => [...prev, newStudent]);
@@ -1222,10 +1414,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const handleAddMultipleStudentRows = (count: number) => {
     if (count <= 0) return;
     setStudents(prev => {
-      const newRows: StudentGradeRow[] = Array.from({ length: count }, (_, i) => ({
-        id: `student-${Date.now()}-${prev.length + i}`,
+      const newRows: StudentGradeRow[] = Array.from({ length: count }, () => ({
+        id: generateTeacherEntityId('std'),
         name: '',
         photoUrl: undefined,
+        photoR2Key: undefined,
         notes: Array(noteColumnCount).fill('')
       }));
       return [...prev, ...newRows];
@@ -1298,9 +1491,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const handleDeleteStudentRow = (studentId: string) => {
     if (students.length <= 1) {
       setStudents([{
-        id: `student-${Date.now()}-0`,
+        id: generateTeacherEntityId('std'),
         name: '',
         photoUrl: undefined,
+        photoR2Key: undefined,
         notes: Array(noteColumnCount).fill('')
       }]);
       return;
@@ -1309,20 +1503,23 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     setIsSaved(false);
   };
 
-  // Upload photo
+  // Upload photo vers le dossier R2 dédié des photos de profil élèves
   const handleTriggerPhotoUpload = (studentId: string) => {
     setUploadingStudentId(studentId);
     photoInputRef.current?.click();
   };
 
-  const handlePhotoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file || !uploadingStudentId) return;
+    const targetStudentId = uploadingStudentId;
+    e.target.value = '';
+    if (!file || !targetStudentId) return;
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const base64 = event.target?.result as string;
-      const targetStudentId = uploadingStudentId;
+    setIsUploadingPhoto(true);
+    try {
+      const { blob, dataUrl } = await compressImageToUpload(file, 256, 0.84);
+
+      // Aperçu instantané + agrandissement automatique de la case photo
       setStudents(prev => {
         const studentIndex = prev.findIndex(s => s.id === targetStudentId);
         if (studentIndex >= 0) {
@@ -1331,14 +1528,33 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             [studentIndex]: Math.max(rowPrev[studentIndex] || 44, 80)
           }));
         }
-        return prev.map(s => s.id === targetStudentId ? { ...s, photoUrl: base64 } : s);
+        return prev.map(s => s.id === targetStudentId ? { ...s, photoUrl: dataUrl } : s);
       });
-      // La case grandit automatiquement en largeur et en hauteur pour un affichage carré optimal
       setColWidthPhoto(prev => Math.max(prev, 80));
       setIsSaved(false);
-    };
-    reader.readAsDataURL(file);
-    e.target.value = '';
+
+      // Envoi binaire compressé vers Cloudflare R2 (teacher-student-photos/{user_id}/...)
+      if (getTeacherAuthToken()) {
+        const uploaded = await TeacherGradebookAPI.uploadStudentPhoto({
+          subjectId: subject.id,
+          termId: effectiveTermId,
+          studentId: targetStudentId,
+          blob,
+        });
+        setStudents(prev =>
+          prev.map(s =>
+            s.id === targetStudentId
+              ? { ...s, photoR2Key: uploaded.photoR2Key, photoUrl: uploaded.photoUrl }
+              : s
+          )
+        );
+      }
+    } catch (err: any) {
+      setCloudSaveStatus('error');
+      setCloudSaveError(err?.message || "Échec de l'envoi de la photo élève vers R2");
+    } finally {
+      setIsUploadingPhoto(false);
+    }
   };
 
   // Application d'une couleur pour l'en-tête ou toute la colonne
@@ -1734,9 +1950,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           const targetRowIdx = (activeCellInfo.rowIndex ?? 0) + rowOffset;
           if (targetRowIdx >= next.length) {
             next.push({
-              id: `student-${Date.now()}-${targetRowIdx}`,
+              id: generateTeacherEntityId('std'),
               name: '',
               photoUrl: undefined,
+              photoR2Key: undefined,
               notes: Array(noteColumnCount).fill('')
             });
           }
@@ -2239,7 +2456,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
-            onClick={onBack}
+            onClick={handleSafeBack}
             className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300/90 shadow-2xs transition active:scale-95 cursor-pointer shrink-0"
             title="Retour à la liste des matières"
           >
@@ -2314,9 +2531,42 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             <span className="hidden md:inline">Exporter .xlsx</span>
           </button>
 
-          <span className="text-[10px] text-slate-400 font-medium hidden lg:inline">
-            {isSaved ? 'Enregistré' : 'Enregistrement...'}
-          </span>
+          {cloudSaveStatus === 'error' ? (
+            <button
+              type="button"
+              onClick={() => flushCloudSave()}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-50 hover:bg-red-100 border border-red-200 text-[10px] font-semibold text-red-700 transition cursor-pointer"
+              title={cloudSaveError || 'Cliquer pour relancer la synchronisation cloud'}
+            >
+              <CloudOff className="w-3 h-3" />
+              <span>Réessayer</span>
+            </button>
+          ) : (
+            <span
+              className={`hidden lg:inline-flex items-center gap-1 text-[10px] font-medium ${
+                cloudSaveStatus === 'saved' && isSaved ? 'text-emerald-700' : 'text-slate-500'
+              }`}
+              title="Synchronisation automatique sécurisée sur Cloudflare D1 & R2"
+            >
+              {cloudSaveStatus === 'loading' || cloudSaveStatus === 'saving' || isUploadingPhoto || !isSaved ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin text-slate-500" />
+                  <span>
+                    {cloudSaveStatus === 'loading'
+                      ? 'Chargement...'
+                      : isUploadingPhoto
+                      ? 'Envoi photo...'
+                      : 'Enregistrement...'}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Cloud className="w-3 h-3 text-emerald-600" />
+                  <span>Enregistré</span>
+                </>
+              )}
+            </span>
+          )}
 
           <div className="flex items-center gap-1.5 shrink-0 ml-0.5">
             <ViewerSuperExpandButton
@@ -3943,8 +4193,17 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       type="button"
                                       onClick={() => {
                                         setActiveMenuPhoto(null);
-                                        setStudents(prev => prev.map(s => s.id === std.id ? { ...s, photoUrl: undefined } : s));
+                                        const oldKey = std.photoR2Key;
+                                        setStudents(prev => prev.map(s => s.id === std.id ? { ...s, photoUrl: undefined, photoR2Key: undefined } : s));
                                         setIsSaved(false);
+                                        if (getTeacherAuthToken() && oldKey) {
+                                          TeacherGradebookAPI.deleteStudentPhoto({
+                                            subjectId: subject.id,
+                                            termId: effectiveTermId,
+                                            studentId: std.id,
+                                            photoR2Key: oldKey,
+                                          }).catch(() => {});
+                                        }
                                       }}
                                       className="w-full px-3 py-2 flex items-center gap-2 hover:bg-red-50 text-red-600 transition"
                                     >

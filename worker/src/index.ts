@@ -2,6 +2,8 @@
  * StudyCloud - Cloudflare Worker Backend API
  * Gère la communication complète entre StudyCloud, Cloudflare D1 (SQL) et Cloudflare R2 (Storage).
  */
+import { handleTeacherGradebookRoutes, sanitizeSegment as sanitizeTeacherSegment } from './teacherGradebook';
+
 interface D1PreparedStatement {
   bind(...values: any[]): D1PreparedStatement;
   first<T = any>(colName?: string): Promise<T | null>;
@@ -5461,6 +5463,8 @@ a:hover{transform:translateY(-2px)}
             `videos/${userId}/`,
             `documents/${userId}/`,
             `downloads/${userId}/`,
+            `teacher-student-photos/${sanitizeTeacherSegment(userId)}/`,
+            `teacher-school-logos/${sanitizeTeacherSegment(userId)}/`,
           ];
 
           for (const b of r2Buckets) {
@@ -5575,6 +5579,14 @@ a:hover{transform:translateY(-2px)}
           'user_requests_history_purge',
           'user_dashboard_sites',
           'user_word_counts',
+          'teacher_gradebook_students',
+          'teacher_gradebooks',
+          'teacher_subjects',
+          'teacher_terms',
+          'teacher_classes',
+          'teacher_study_levels',
+          'teacher_schools',
+          'teacher_school_years',
         ];
 
         for (const table of tablesWithUserId) {
@@ -5708,6 +5720,23 @@ a:hover{transform:translateY(-2px)}
             }
           }
         }
+      }
+
+      // ----------------------------------------------------------------------
+      // MODULE ENSEIGNANT (CALCUL DE MOYENNE & GESTION SCOLAIRE) — /api/teacher/*
+      // ----------------------------------------------------------------------
+      if (path.startsWith('/api/teacher/')) {
+        const teacherRes = await handleTeacherGradebookRoutes(request, url, path, method, {
+          db: env.DB,
+          rawEnv,
+          origin,
+          jwtSecret: JWT_SECRET,
+          getAuthUser,
+          corsHeaders,
+          jsonResponse,
+          errorResponse,
+        });
+        if (teacherRes) return teacherRes;
       }
 
       // ----------------------------------------------------------------------

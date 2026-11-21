@@ -75,11 +75,26 @@ export interface TransferSummary {
   warnings: string[];
 }
 
+export interface GradebookCopyOperation {
+  sourceSubjectId: string;
+  sourceTermId: string;
+  targetSubjectId: string;
+  targetTermId: string;
+  conflictStrategy: ConflictStrategy;
+  options: GradebookCopyOptions;
+}
+
 export interface TransferExecutionResult {
   nextStudyLevels: StudyLevelItem[];
   nextClasses: ClassItem[];
   nextTerms: TermItem[];
   nextSubjects: SubjectItem[];
+  createdLevels: StudyLevelItem[];
+  createdClasses: ClassItem[];
+  createdTerms: TermItem[];
+  createdSubjects: SubjectItem[];
+  updatedSubjects: SubjectItem[];
+  gradebookCopyOps: GradebookCopyOperation[];
   summary: TransferSummary;
 }
 
@@ -533,13 +548,19 @@ interface MutableState {
   classes: ClassItem[];
   terms: TermItem[];
   subjects: SubjectItem[];
+  updatedSubjectIds: Set<string>;
+  gradebookCopyOps: GradebookCopyOperation[];
   summary: TransferSummary;
   uidCounter: number;
 }
 
 const nextUid = (state: MutableState, prefix: string): string => {
   state.uidCounter += 1;
-  return `${prefix}-${Date.now()}-${state.uidCounter}`;
+  const rand =
+    typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID().replace(/-/g, '').slice(0, 8)
+      : Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${Date.now()}-${rand}-${state.uidCounter}`;
 };
 
 const ensureTermInClass = (
@@ -604,6 +625,17 @@ const copySubjectIntoTarget = (
     }
 
     state.summary.subjectsUpdated += 1;
+    state.updatedSubjectIds.add(existing.id);
+    if (gradebookOptions.contentMode !== 'none') {
+      state.gradebookCopyOps.push({
+        sourceSubjectId: srcSubject.id,
+        sourceTermId: srcTermId || 't1',
+        targetSubjectId: existing.id,
+        targetTermId: targetTerm.id,
+        conflictStrategy,
+        options: { ...gradebookOptions },
+      });
+    }
     const cloneRes = cloneGradebookStorage(
       srcSubject.id,
       srcTermId,
@@ -636,6 +668,17 @@ const copySubjectIntoTarget = (
   };
   state.subjects.push(newSubject);
   state.summary.subjectsCreated += 1;
+
+  if (gradebookOptions.contentMode !== 'none') {
+    state.gradebookCopyOps.push({
+      sourceSubjectId: srcSubject.id,
+      sourceTermId: srcTermId || 't1',
+      targetSubjectId: newSubject.id,
+      targetTermId: targetTerm.id,
+      conflictStrategy,
+      options: { ...gradebookOptions },
+    });
+  }
 
   const cloneRes = cloneGradebookStorage(
     srcSubject.id,
@@ -730,6 +773,8 @@ export const executeTransfer = (
     classes: dataset.classes.map((c) => ({ ...c })),
     terms: dataset.terms.map((t) => ({ ...t })),
     subjects: dataset.subjects.map((s) => ({ ...s })),
+    updatedSubjectIds: new Set<string>(),
+    gradebookCopyOps: [],
     summary: {
       levelsCreated: 0,
       classesCreated: 0,
@@ -872,6 +917,16 @@ export const executeTransfer = (
     for (const target of plan.targetEntries) {
       if (target.subjectId === plan.sourceSubjectId && target.termId === plan.sourceTermId) {
         continue;
+      }
+      if (plan.gradebook.contentMode !== 'none') {
+        state.gradebookCopyOps.push({
+          sourceSubjectId: plan.sourceSubjectId,
+          sourceTermId: plan.sourceTermId,
+          targetSubjectId: target.subjectId,
+          targetTermId: target.termId,
+          conflictStrategy: 'replace',
+          options: { ...plan.gradebook },
+        });
       }
       const res = cloneGradebookStorage(
         plan.sourceSubjectId,
@@ -1058,11 +1113,22 @@ export const executeTransfer = (
     }
   }
 
+  const origLevelIds = new Set(dataset.studyLevels.map((l) => l.id));
+  const origClassIds = new Set(dataset.classes.map((c) => c.id));
+  const origTermIds = new Set(dataset.terms.map((t) => t.id));
+  const origSubjectIds = new Set(dataset.subjects.map((s) => s.id));
+
   return {
     nextStudyLevels: state.studyLevels,
     nextClasses: state.classes,
     nextTerms: state.terms,
     nextSubjects: state.subjects,
+    createdLevels: state.studyLevels.filter((l) => !origLevelIds.has(l.id)),
+    createdClasses: state.classes.filter((c) => !origClassIds.has(c.id)),
+    createdTerms: state.terms.filter((t) => !origTermIds.has(t.id)),
+    createdSubjects: state.subjects.filter((s) => !origSubjectIds.has(s.id)),
+    updatedSubjects: state.subjects.filter((s) => origSubjectIds.has(s.id) && state.updatedSubjectIds.has(s.id)),
+    gradebookCopyOps: state.gradebookCopyOps,
     summary: state.summary,
   };
 };

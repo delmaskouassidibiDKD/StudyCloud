@@ -34,6 +34,7 @@ import {
   type TransferSummary,
   type TransferPlan,
   type GradebookInspection,
+  type GradebookCopyOperation,
 } from '../../utils/teacherTransferEngine';
 
 interface TeacherTransferViewProps {
@@ -48,12 +49,19 @@ interface TeacherTransferViewProps {
   classes: ClassItem[];
   terms: TermItem[];
   subjects: SubjectItem[];
+  serverGradebookStats?: Record<string, GradebookInspection>;
   onApplyTransfer: (next: {
     studyLevels: StudyLevelItem[];
     classes: ClassItem[];
     terms: TermItem[];
     subjects: SubjectItem[];
-  }) => void;
+    createdLevels: StudyLevelItem[];
+    createdClasses: ClassItem[];
+    createdTerms: TermItem[];
+    createdSubjects: SubjectItem[];
+    updatedSubjects: SubjectItem[];
+    gradebookCopyOps: GradebookCopyOperation[];
+  }) => Promise<{ gradebooksCopied?: number; studentsCopied?: number; notesCopied?: number; photosCopied?: number } | void> | void;
   onClose: () => void;
 }
 
@@ -79,12 +87,14 @@ export const TeacherTransferView: React.FC<TeacherTransferViewProps> = ({
   classes,
   terms,
   subjects,
+  serverGradebookStats,
   onApplyTransfer,
   onClose,
 }) => {
   // Navigation interne : null = écran d'accueil des options, sinon on est "entré" dans un mode précis
   const [selectedMode, setSelectedMode] = useState<TransferMode | null>(null);
   const [lastResult, setLastResult] = useState<{ mode: TransferMode; summary: TransferSummary } | null>(null);
+  const [isTransferring, setIsTransferring] = useState(false);
 
   // Données de l'école courante
   const schoolLevels = useMemo(
@@ -104,17 +114,21 @@ export const TeacherTransferView: React.FC<TeacherTransferViewProps> = ({
     [schools, currentSchool.id]
   );
 
-  // Cache d'inspection réelle des tableurs (élèves, photos, notes, barèmes, mise en forme)
+  // Cache d'inspection réelle des tableurs (priorité aux statistiques Cloudflare D1, sinon inspection locale)
   const gradebookStatsMap = useMemo(() => {
     const map = new Map<string, GradebookInspection>();
     for (const subj of schoolSubjects) {
       const clsTerms = terms.filter((t) => t.classId === subj.classId);
       const effTermId = getEffectiveSubjectTermId(subj, clsTerms);
       const key = `${subj.id}__${effTermId || 't1'}`;
-      map.set(key, inspectGradebookStorage(subj.id, effTermId));
+      if (serverGradebookStats && serverGradebookStats[key]) {
+        map.set(key, serverGradebookStats[key]);
+      } else {
+        map.set(key, inspectGradebookStorage(subj.id, effTermId));
+      }
     }
     return map;
-  }, [schoolSubjects, terms]);
+  }, [schoolSubjects, terms, serverGradebookStats]);
 
   const getSubjectStats = (subj: SubjectItem): GradebookInspection => {
     const clsTerms = terms.filter((t) => t.classId === subj.classId);
@@ -605,8 +619,8 @@ export const TeacherTransferView: React.FC<TeacherTransferViewProps> = ({
   ]);
 
   // ---------- Exécution du transfert ----------
-  const handleRunTransfer = () => {
-    if (!selectedMode || !validationState.canExecute) return;
+  const handleRunTransfer = async () => {
+    if (!selectedMode || !validationState.canExecute || isTransferring) return;
 
     let plan: TransferPlan | null = null;
 
@@ -676,23 +690,49 @@ export const TeacherTransferView: React.FC<TeacherTransferViewProps> = ({
 
     if (!plan) return;
 
-    const result = executeTransfer(plan, {
-      schoolYears,
-      schools,
-      studyLevels,
-      classes,
-      terms,
-      subjects,
-    });
+    setIsTransferring(true);
+    try {
+      const result = executeTransfer(
+        plan,
+        {
+          schoolYears,
+          schools,
+          studyLevels,
+          classes,
+          terms,
+          subjects,
+        },
+        // En mode cloud connecté, la copie réelle des tableurs + photos R2 est effectuée côté D1/R2
+        serverGradebookStats ? null : undefined
+      );
 
-    onApplyTransfer({
-      studyLevels: result.nextStudyLevels,
-      classes: result.nextClasses,
-      terms: result.nextTerms,
-      subjects: result.nextSubjects,
-    });
+      const serverSummary = await onApplyTransfer({
+        studyLevels: result.nextStudyLevels,
+        classes: result.nextClasses,
+        terms: result.nextTerms,
+        subjects: result.nextSubjects,
+        createdLevels: result.createdLevels,
+        createdClasses: result.createdClasses,
+        createdTerms: result.createdTerms,
+        createdSubjects: result.createdSubjects,
+        updatedSubjects: result.updatedSubjects,
+        gradebookCopyOps: result.gradebookCopyOps,
+      });
 
-    setLastResult({ mode: selectedMode, summary: result.summary });
+      const mergedSummary: TransferSummary = serverSummary
+        ? {
+            ...result.summary,
+            gradebooksCopied: serverSummary.gradebooksCopied ?? result.summary.gradebooksCopied,
+            studentsCopied: serverSummary.studentsCopied ?? result.summary.studentsCopied,
+            notesCopied: serverSummary.notesCopied ?? result.summary.notesCopied,
+            photosCopied: serverSummary.photosCopied ?? result.summary.photosCopied,
+          }
+        : result.summary;
+
+      setLastResult({ mode: selectedMode, summary: mergedSummary });
+    } finally {
+      setIsTransferring(false);
+    }
   };
 
   // ---------- Helper UI : Bloc d'options de contenu des tableurs (sobre & précis) ----------
@@ -2346,16 +2386,16 @@ export const TeacherTransferView: React.FC<TeacherTransferViewProps> = ({
                 </button>
                 <button
                   type="button"
-                  disabled={!validationState.canExecute}
+                  disabled={!validationState.canExecute || isTransferring}
                   onClick={handleRunTransfer}
                   className={`flex-1 py-2 px-4 rounded-lg text-xs font-semibold flex items-center justify-center gap-2 transition ${
-                    validationState.canExecute
+                    validationState.canExecute && !isTransferring
                       ? 'bg-slate-900 hover:bg-slate-800 text-white cursor-pointer'
                       : 'bg-slate-200 text-slate-400 cursor-not-allowed'
                   }`}
                 >
-                  <ArrowLeftRight className="w-3.5 h-3.5" />
-                  <span>Lancer le transfert</span>
+                  <ArrowLeftRight className={`w-3.5 h-3.5 ${isTransferring ? 'animate-spin' : ''}`} />
+                  <span>{isTransferring ? 'Transfert vers le cloud...' : 'Lancer le transfert'}</span>
                 </button>
               </div>
             </div>

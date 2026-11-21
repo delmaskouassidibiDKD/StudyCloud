@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import {
   LayoutDashboard,
   Users,
@@ -30,13 +30,28 @@ import {
   ChevronRight,
   Copy,
   Maximize2,
-  Minimize2
+  Minimize2,
+  Cloud,
+  CloudOff,
+  Loader2
 } from 'lucide-react';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import { DnaLogo } from '../DnaLogo';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
 import { SubjectGradebookView } from './SubjectGradebookView';
 import { TeacherTransferView } from './TeacherTransferView';
+import { useAuth } from '../../context/AuthContext';
+import {
+  TeacherGradebookAPI,
+  generateTeacherEntityId,
+  getTeacherAuthToken,
+  readUserBootstrapCache,
+  writeUserBootstrapCache,
+  hasLegacyUnscopedTeacherData,
+  collectLegacyUnscopedTeacherData,
+  clearLegacyUnscopedTeacherData,
+} from '../../services/teacherGradebookApi';
+import type { GradebookInspection } from '../../utils/teacherTransferEngine';
 
 export interface SchoolYearItem {
   id: string;
@@ -50,7 +65,8 @@ export interface SchoolItem {
   id: string;
   yearId: string; // Attache l'école à la rentrée scolaire sélectionnée
   name: string; // Nom de l'école (requis)
-  logoUrl?: string; // Logo de l'école (facultatif, image base64)
+  logoUrl?: string; // Logo de l'école (URL signée R2 ou aperçu temporaire)
+  logoR2Key?: string; // Clé privée R2 (teacher-school-logos/{user_id}/...)
   color: string; // hex couleur de la carte
   textColor: string;
   borderColor: string;
@@ -402,6 +418,23 @@ const InlineSectionSearch: React.FC<InlineSectionSearchProps> = ({
 };
 
 export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, user }) => {
+  const { user: authUser } = useAuth();
+  const authUserId = authUser?.id || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') || '' : '');
+  const initialCloudCache = useMemo(
+    () => (authUserId ? readUserBootstrapCache(authUserId) : null),
+    [authUserId]
+  );
+
+  // État de synchronisation Cloudflare D1 + R2
+  const [cloudStatus, setCloudStatus] = useState<'loading' | 'ready' | 'syncing' | 'error'>(() =>
+    getTeacherAuthToken() ? 'loading' : 'ready'
+  );
+  const [cloudError, setCloudError] = useState<string | null>(null);
+  const [serverGradebookStats, setServerGradebookStats] = useState<Record<string, GradebookInspection>>(
+    () => initialCloudCache?.gradebookStats || {}
+  );
+  const isCloudHydratedRef = useRef<boolean>(false);
+
   // 1. Accueil par défaut de cette application : le bouton "Tableau de bord" (comme entouré sur l'image 1)
   const [activeNavTab, setActiveNavTab] = useState<'dashboard' | 'trainees' | 'classes' | 'discussions' | 'groups' | 'library'>('dashboard');
 
@@ -443,43 +476,20 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [viewerExpandLevel, isViewerMaximized]);
 
-  // Années scolaires créées (Persistance locale)
+  // Années scolaires créées (isolées par user_id dans Cloudflare D1)
   const [schoolYears, setSchoolYears] = useState<SchoolYearItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_teacher_school_years');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch { }
-    // Par défaut, première rentrée scolaire 2026 - 2027 pré-initialisée
-    return [
-      { id: 'year-default', label: `${CURRENT_YEAR} - ${CURRENT_YEAR + 1}`, color: '#00313d', textColor: '#ffffff', createdAt: Date.now() }
-    ];
+    if (initialCloudCache?.schoolYears && initialCloudCache.schoolYears.length > 0) {
+      return initialCloudCache.schoolYears;
+    }
+    return [];
   });
 
   const [selectedYearId, setSelectedYearId] = useState<string>(() => {
-    return schoolYears[0]?.id || '';
+    return initialCloudCache?.schoolYears?.[0]?.id || '';
   });
 
-  // Sauvegarde persistante des années scolaires
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_teacher_school_years', JSON.stringify(schoolYears));
-    } catch { }
-  }, [schoolYears]);
-
-  // Écoles créées attachées à chaque année scolaire (Persistance locale)
-  const [schools, setSchools] = useState<SchoolItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_teacher_schools');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch { }
-    return [];
-  });
+  // Écoles créées attachées à chaque année scolaire (isolées par user_id dans D1 + logo R2)
+  const [schools, setSchools] = useState<SchoolItem[]>(() => initialCloudCache?.schools || []);
 
   const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
 
@@ -487,23 +497,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [selectedSchoolInside, setSelectedSchoolInside] = useState<SchoolItem | null>(null);
 
   // Niveaux d'étude créés attachés à chaque école (CP1, 6ème, 2nde, Terminale, Licence 1...)
-  const [studyLevels, setStudyLevels] = useState<StudyLevelItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_teacher_study_levels');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch { }
-    return [];
-  });
-
-  // Sauvegarde persistante des niveaux d'étude
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_teacher_study_levels', JSON.stringify(studyLevels));
-    } catch { }
-  }, [studyLevels]);
+  const [studyLevels, setStudyLevels] = useState<StudyLevelItem[]>(() => initialCloudCache?.studyLevels || []);
 
   // Niveau d'étude activement sélectionné dans l'école
   const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
@@ -521,71 +515,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     }
   };
 
-  // Classes créées attachées à chaque niveau d'étude & école (Persistance locale)
-  const [classes, setClasses] = useState<ClassItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_teacher_classes');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch { }
-    return [];
-  });
-
-  // Sauvegarde persistante des classes
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_teacher_classes', JSON.stringify(classes));
-    } catch { }
-  }, [classes]);
-
-  // Migration automatique : attacher toute ancienne classe sans levelId à un niveau d'étude créé automatiquement
-  useEffect(() => {
-    const unlinked = classes.filter(c => !c.levelId);
-    if (unlinked.length === 0) return;
-
-    const createdLevels: StudyLevelItem[] = [];
-    const levelIdByClassId = new Map<string, string>();
-
-    unlinked.forEach((cls, idx) => {
-      const cleanLevelName = (cls.level || 'Général').trim();
-      const slug = cleanLevelName.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || `lvl-${idx}`;
-      const existing = [...studyLevels, ...createdLevels].find(
-        l => l.schoolId === cls.schoolId && l.name.trim().toLowerCase() === cleanLevelName.toLowerCase()
-      );
-      if (existing) {
-        levelIdByClassId.set(cls.id, existing.id);
-      } else {
-        const deterministicId = `level-mig-${cls.schoolId}-${slug}`;
-        const newLevel: StudyLevelItem = {
-          id: deterministicId,
-          schoolId: cls.schoolId,
-          yearId: cls.yearId,
-          name: cleanLevelName,
-          color: '#ffffff',
-          textColor: '#0f172a',
-          borderColor: '#cbd5e1',
-          createdAt: cls.createdAt || Date.now() + idx,
-        };
-        createdLevels.push(newLevel);
-        levelIdByClassId.set(cls.id, deterministicId);
-      }
-    });
-
-    if (createdLevels.length > 0) {
-      setStudyLevels(prev => {
-        const toAdd = createdLevels.filter(
-          nl => !prev.some(p => p.id === nl.id || (p.schoolId === nl.schoolId && p.name.trim().toLowerCase() === nl.name.trim().toLowerCase()))
-        );
-        return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
-      });
-    }
-
-    setClasses(prev =>
-      prev.map(c => (c.levelId ? c : { ...c, levelId: levelIdByClassId.get(c.id) || c.levelId }))
-    );
-  }, [classes, studyLevels]);
+  // Classes créées attachées à chaque niveau d'étude & école (isolées par user_id dans D1)
+  const [classes, setClasses] = useState<ClassItem[]>(() => initialCloudCache?.classes || []);
 
   // Classe activement sélectionnée parmi les classes du niveau d'étude actif
   const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
@@ -603,49 +534,108 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     }
   };
 
-  // Matières créées attachées à chaque classe (Persistance locale)
-  const [subjects, setSubjects] = useState<SubjectItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_teacher_subjects');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch { }
-    return [];
-  });
-
-  // Sauvegarde persistante des matières
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_teacher_subjects', JSON.stringify(subjects));
-    } catch { }
-  }, [subjects]);
+  // Matières créées attachées à chaque classe & trimestre (isolées par user_id dans D1)
+  const [subjects, setSubjects] = useState<SubjectItem[]>(() => initialCloudCache?.subjects || []);
 
   // Trimestres des classes (Trimestre 1, 2, 3 créés automatiquement par classe)
-  const [terms, setTerms] = useState<TermItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_teacher_terms');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      }
-    } catch { }
-    return [];
-  });
-
-  // Sauvegarde persistante des trimestres
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_teacher_terms', JSON.stringify(terms));
-    } catch { }
-  }, [terms]);
+  const [terms, setTerms] = useState<TermItem[]>(() => initialCloudCache?.terms || []);
 
   // Trimestre actif sélectionné
   const [selectedTermId, setSelectedTermId] = useState<string | null>(null);
 
   // Matière sélectionnée dans laquelle on est "rentré" à l'intérieur pour afficher le tableur de notes & moyennes
   const [selectedSubjectInside, setSelectedSubjectInside] = useState<SubjectItem | null>(null);
+
+  // Chargement complet & isolation stricte par compte depuis Cloudflare D1 (+ migration unique des anciennes données locales)
+  const loadFromCloudD1 = useCallback(async () => {
+    if (!getTeacherAuthToken() || !authUserId) {
+      setCloudStatus('ready');
+      return;
+    }
+    setCloudStatus('loading');
+    setCloudError(null);
+    try {
+      let data = await TeacherGradebookAPI.bootstrap();
+
+      // Si le compte D1 est neuf mais que des données locales pré-cloud existent sur cet appareil : migration unique D1 + R2
+      if (data.isEmpty && hasLegacyUnscopedTeacherData()) {
+        const legacy = collectLegacyUnscopedTeacherData();
+        if (legacy.schools.length > 0 || legacy.schoolYears.length > 0) {
+          data = await TeacherGradebookAPI.importLocal(legacy);
+          clearLegacyUnscopedTeacherData();
+        }
+      }
+
+      // Si le compte D1 n'a encore aucune année scolaire, créer la rentrée courante directement en base D1
+      if (data.schoolYears.length === 0) {
+        const defaultLabel = `${CURRENT_YEAR} - ${CURRENT_YEAR + 1}`;
+        const created = await TeacherGradebookAPI.createYear({
+          id: generateTeacherEntityId('year'),
+          label: defaultLabel,
+          color: '#00313d',
+          textColor: '#ffffff',
+        });
+        data = {
+          ...data,
+          isEmpty: false,
+          schoolYears: [created.year],
+        };
+      }
+
+      setSchoolYears(data.schoolYears);
+      setSchools(data.schools);
+      setStudyLevels(data.studyLevels);
+      setClasses(data.classes);
+      setTerms(data.terms);
+      setSubjects(data.subjects);
+      setServerGradebookStats(data.gradebookStats || {});
+      setSelectedYearId((prev) =>
+        prev && data.schoolYears.some((y) => y.id === prev) ? prev : data.schoolYears[0]?.id || ''
+      );
+      setSelectedSchoolInside((prev) =>
+        prev ? data.schools.find((s) => s.id === prev.id) || null : null
+      );
+
+      writeUserBootstrapCache(authUserId, data);
+      isCloudHydratedRef.current = true;
+      setCloudStatus('ready');
+    } catch (err: any) {
+      setCloudStatus('error');
+      setCloudError(err?.message || 'Impossible de charger vos données depuis Cloudflare D1.');
+    }
+  }, [authUserId]);
+
+  useEffect(() => {
+    isCloudHydratedRef.current = false;
+    loadFromCloudD1();
+  }, [loadFromCloudD1]);
+
+  // Maintenir le cache isolé par user_id synchronisé (jamais de clés partagées entre comptes)
+  useEffect(() => {
+    if (!authUserId || !isCloudHydratedRef.current) return;
+    writeUserBootstrapCache(authUserId, {
+      success: true,
+      userId: authUserId,
+      isEmpty: schoolYears.length === 0 && schools.length === 0,
+      schoolYears,
+      schools,
+      studyLevels,
+      classes,
+      terms,
+      subjects,
+      gradebookStats: serverGradebookStats,
+    });
+  }, [authUserId, schoolYears, schools, studyLevels, classes, terms, subjects, serverGradebookStats]);
+
+  // Rafraîchir uniquement les stats de tableurs après fermeture/sauvegarde d'un tableur
+  const refreshCloudStats = useCallback(async () => {
+    if (!getTeacherAuthToken() || !authUserId) return;
+    try {
+      const data = await TeacherGradebookAPI.bootstrap();
+      setServerGradebookStats(data.gradebookStats || {});
+      writeUserBootstrapCache(authUserId, data);
+    } catch {}
+  }, [authUserId]);
 
   // Réinitialiser la matière affichée si l'on change de niveau, de classe, d'école ou de trimestre
   useEffect(() => {
@@ -679,26 +669,30 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setTimeout(() => setIsCopiedDeleteName(false), 2000);
   };
 
-  // Migration automatique : s'assurer que toutes les classes existantes ont leurs 3 trimestres par défaut
+  // Les 3 trimestres par défaut sont créés atomiquement avec chaque classe dans D1.
+  // Filet de sécurité si une classe importée ancienne n'avait pas encore de trimestre.
   useEffect(() => {
-    if (classes.length === 0) return;
-    setTerms(prev => {
-      let updated = [...prev];
-      let added = false;
-      classes.forEach(c => {
-        const classTerms = updated.filter(t => t.classId === c.id);
-        if (classTerms.length === 0) {
-          added = true;
-          updated.push(
-            { id: `term-${c.id}-1`, classId: c.id, schoolId: c.schoolId, yearId: c.yearId, number: 1, name: 'Trimestre 1', createdAt: Date.now() },
-            { id: `term-${c.id}-2`, classId: c.id, schoolId: c.schoolId, yearId: c.yearId, number: 2, name: 'Trimestre 2', createdAt: Date.now() + 1 },
-            { id: `term-${c.id}-3`, classId: c.id, schoolId: c.schoolId, yearId: c.yearId, number: 3, name: 'Trimestre 3', createdAt: Date.now() + 2 }
-          );
+    if (!isCloudHydratedRef.current || classes.length === 0) return;
+    const missingClasses = classes.filter(c => !terms.some(t => t.classId === c.id));
+    if (missingClasses.length === 0) return;
+    missingClasses.forEach((c) => {
+      [1, 2, 3].forEach((num) => {
+        const newTerm: TermItem = {
+          id: generateTeacherEntityId(`term-${num}`),
+          classId: c.id,
+          schoolId: c.schoolId,
+          yearId: c.yearId,
+          number: num,
+          name: `Trimestre ${num}`,
+          createdAt: Date.now() + num,
+        };
+        setTerms(prev => (prev.some(t => t.classId === c.id && t.number === num) ? prev : [...prev, newTerm]));
+        if (getTeacherAuthToken()) {
+          TeacherGradebookAPI.createTerm({ id: newTerm.id, classId: c.id, number: num, name: newTerm.name }).catch(() => {});
         }
       });
-      return added ? updated : prev;
     });
-  }, [classes]);
+  }, [classes, terms]);
 
   // --- ÉTATS POUR LES MENUS CONTEXTUELS "3 TRAITS", ÉDITION ET SUPPRESSION SÉCURISÉE ---
   interface ActiveMenuState {
@@ -877,8 +871,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     if (!deleteTarget) return;
     if (deleteConfirmInput.trim().toLowerCase() !== deleteTarget.name.trim().toLowerCase()) return;
 
-    if (deleteTarget.type === 'school') {
-      const id = deleteTarget.id;
+    const targetType = deleteTarget.type;
+    const id = deleteTarget.id;
+
+    if (targetType === 'school') {
       setSchools(prev => prev.filter(s => s.id !== id));
       setStudyLevels(prev => prev.filter(l => l.schoolId !== id));
       setClasses(prev => prev.filter(c => c.schoolId !== id));
@@ -888,8 +884,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       if (selectedSchoolInside?.id === id) setSelectedSchoolInside(null);
       setSelectedLevelId(null);
       setSelectedClassId(null);
-    } else if (deleteTarget.type === 'level') {
-      const id = deleteTarget.id;
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.deleteSchool(id).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || "Erreur lors de la suppression de l'établissement.");
+          loadFromCloudD1();
+        });
+      }
+    } else if (targetType === 'level') {
       const deletedClassIds = new Set(classes.filter(c => c.levelId === id).map(c => c.id));
       setStudyLevels(prev => prev.filter(l => l.id !== id));
       setClasses(prev => prev.filter(c => c.levelId !== id));
@@ -897,16 +899,35 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setTerms(prev => prev.filter(t => !deletedClassIds.has(t.classId)));
       if (selectedLevelId === id) setSelectedLevelId(null);
       if (selectedClassId && deletedClassIds.has(selectedClassId)) setSelectedClassId(null);
-    } else if (deleteTarget.type === 'class') {
-      const id = deleteTarget.id;
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.deleteLevel(id).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || 'Erreur lors de la suppression du niveau.');
+          loadFromCloudD1();
+        });
+      }
+    } else if (targetType === 'class') {
       setClasses(prev => prev.filter(c => c.id !== id));
       setSubjects(prev => prev.filter(s => s.classId !== id));
       setTerms(prev => prev.filter(t => t.classId !== id));
       if (selectedClassId === id) setSelectedClassId(null);
-    } else if (deleteTarget.type === 'subject') {
-      const id = deleteTarget.id;
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.deleteClass(id).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || 'Erreur lors de la suppression de la classe.');
+          loadFromCloudD1();
+        });
+      }
+    } else if (targetType === 'subject') {
       setSubjects(prev => prev.filter(s => s.id !== id));
       if (selectedSubjectInside?.id === id) setSelectedSubjectInside(null);
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.deleteSubject(id).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || 'Erreur lors de la suppression de la matière.');
+          loadFromCloudD1();
+        });
+      }
     }
 
     setDeleteTarget(null);
@@ -946,14 +967,25 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         borderColor: selectedStudyLevelColor.border,
       };
       setStudyLevels(prev => prev.map(l => l.id === editingLevel.id ? updatedLevel : l));
-      // Synchroniser le nom du niveau sur toutes les classes rattachées
       setClasses(prev => prev.map(c => c.levelId === editingLevel.id ? { ...c, level: cleanName } : c));
       setIsAddLevelModalOpen(false);
       resetLevelForm();
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.updateLevel(updatedLevel.id, {
+          name: updatedLevel.name,
+          color: updatedLevel.color,
+          textColor: updatedLevel.textColor,
+          borderColor: updatedLevel.borderColor,
+        }).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || 'Erreur de mise à jour du niveau.');
+          loadFromCloudD1();
+        });
+      }
     } else {
       if (!selectedSchoolInside) return;
       const newLevel: StudyLevelItem = {
-        id: `level-${Date.now()}`,
+        id: generateTeacherEntityId('level'),
         schoolId: selectedSchoolInside.id,
         yearId: selectedSchoolInside.yearId,
         name: cleanName,
@@ -966,6 +998,25 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSelectedLevelId(newLevel.id);
       setIsAddLevelModalOpen(false);
       resetLevelForm();
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.createLevel({
+          id: newLevel.id,
+          schoolId: newLevel.schoolId,
+          name: newLevel.name,
+          color: newLevel.color,
+          textColor: newLevel.textColor,
+          borderColor: newLevel.borderColor,
+        }).then((res) => {
+          if (res?.level && res.level.id !== newLevel.id) {
+            setStudyLevels(prev => prev.map(l => l.id === newLevel.id ? res.level : l));
+            setSelectedLevelId(res.level.id);
+          }
+        }).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || 'Erreur de création du niveau.');
+          loadFromCloudD1();
+        });
+      }
     }
   };
 
@@ -1014,9 +1065,26 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setClasses(prev => prev.map(c => c.id === editingClass.id ? updated : c));
       setIsAddClassModalOpen(false);
       resetClassForm();
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.updateClass(updated.id, {
+          name: updated.name || '',
+          slogan: updated.slogan,
+          teacherName: updated.teacherName,
+          color: updated.color,
+          textColor: updated.textColor,
+          borderColor: updated.borderColor,
+          borderDarkColor: updated.borderDarkColor,
+          iconGradient: updated.iconGradient,
+        }).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || 'Erreur de mise à jour de la classe.');
+          loadFromCloudD1();
+        });
+      }
     } else {
       if (!selectedSchoolInside || !activeLevel) return;
-      const newClassId = `class-${Date.now()}`;
+      const newClassId = generateTeacherEntityId('class');
+      const now = Date.now();
       const newClass: ClassItem = {
         id: newClassId,
         levelId: activeLevel.id,
@@ -1031,12 +1099,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         borderColor: selectedClassColor.border,
         borderDarkColor: selectedClassColor.borderDark,
         iconGradient: selectedClassColor.iconGradient,
-        createdAt: Date.now()
+        createdAt: now
       };
       const defaultTerms: TermItem[] = [
-        { id: `term-${newClassId}-1`, classId: newClassId, schoolId: selectedSchoolInside.id, yearId: selectedSchoolInside.yearId, number: 1, name: 'Trimestre 1', createdAt: Date.now() },
-        { id: `term-${newClassId}-2`, classId: newClassId, schoolId: selectedSchoolInside.id, yearId: selectedSchoolInside.yearId, number: 2, name: 'Trimestre 2', createdAt: Date.now() + 1 },
-        { id: `term-${newClassId}-3`, classId: newClassId, schoolId: selectedSchoolInside.id, yearId: selectedSchoolInside.yearId, number: 3, name: 'Trimestre 3', createdAt: Date.now() + 2 }
+        { id: generateTeacherEntityId('term1'), classId: newClassId, schoolId: selectedSchoolInside.id, yearId: selectedSchoolInside.yearId, number: 1, name: 'Trimestre 1', createdAt: now },
+        { id: generateTeacherEntityId('term2'), classId: newClassId, schoolId: selectedSchoolInside.id, yearId: selectedSchoolInside.yearId, number: 2, name: 'Trimestre 2', createdAt: now + 1 },
+        { id: generateTeacherEntityId('term3'), classId: newClassId, schoolId: selectedSchoolInside.id, yearId: selectedSchoolInside.yearId, number: 3, name: 'Trimestre 3', createdAt: now + 2 }
       ];
       setClasses(prev => [...prev, newClass]);
       setTerms(prev => [...prev, ...defaultTerms]);
@@ -1044,6 +1112,32 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSelectedTermId(defaultTerms[0].id);
       setIsAddClassModalOpen(false);
       resetClassForm();
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.createClass({
+          id: newClass.id,
+          levelId: activeLevel.id,
+          name: newClass.name || '',
+          slogan: newClass.slogan,
+          teacherName: newClass.teacherName,
+          color: newClass.color,
+          textColor: newClass.textColor,
+          borderColor: newClass.borderColor,
+          borderDarkColor: newClass.borderDarkColor,
+          iconGradient: newClass.iconGradient,
+          defaultTerms: defaultTerms.map(t => ({ id: t.id, number: t.number, name: t.name })),
+        }).then((res) => {
+          if (res?.classItem && res.classItem.id !== newClass.id) {
+            setClasses(prev => prev.map(c => c.id === newClass.id ? res.classItem : c));
+            setTerms(prev => [...prev.filter(t => t.classId !== newClass.id), ...res.terms]);
+            setSelectedClassId(res.classItem.id);
+            setSelectedTermId(res.terms[0]?.id || null);
+          }
+        }).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || 'Erreur de création de la classe.');
+          loadFromCloudD1();
+        });
+      }
     }
   };
 
@@ -1094,11 +1188,26 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSubjects(prev => prev.map(s => s.id === editingSubject.id ? updated : s));
       setIsAddSubjectModalOpen(false);
       resetSubjectForm();
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.updateSubject(updated.id, {
+          name: updated.name,
+          coefficient: parsedCoeff ?? null,
+          color: updated.color,
+          textColor: updated.textColor,
+          borderColor: updated.borderColor,
+          borderDarkColor: updated.borderDarkColor,
+        }).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || 'Erreur de mise à jour de la matière.');
+          loadFromCloudD1();
+        });
+      }
     } else {
       if (!activeClass || !selectedSchoolInside) return;
-      const targetTermId = activeTerm?.id || currentClassTerms[0]?.id || `term-${activeClass.id}-1`;
+      const targetTermId = activeTerm?.id || currentClassTerms[0]?.id;
+      if (!targetTermId) return;
       const newSubject: SubjectItem = {
-        id: `subject-${Date.now()}`,
+        id: generateTeacherEntityId('subject'),
         classId: activeClass.id,
         termId: targetTermId,
         schoolId: selectedSchoolInside.id,
@@ -1112,7 +1221,6 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         createdAt: Date.now()
       };
       setSubjects(prev => [...prev, newSubject]);
-      // Si le nombre de matières ouvre un nouvel espace (17 matières + 1 bouton fixe "+ Matière" = 18 emplacements par espace), basculer dessus
       const nextCount = currentClassSubjects.length + 1;
       const targetPage = Math.floor((nextCount - 1) / 17);
       if (targetPage !== subjectPageIndex) {
@@ -1120,15 +1228,29 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       }
       setIsAddSubjectModalOpen(false);
       resetSubjectForm();
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.createSubject({
+          id: newSubject.id,
+          classId: newSubject.classId,
+          termId: targetTermId,
+          name: newSubject.name,
+          coefficient: parsedCoeff,
+          color: newSubject.color,
+          textColor: newSubject.textColor,
+          borderColor: newSubject.borderColor,
+          borderDarkColor: newSubject.borderDarkColor,
+        }).then((res) => {
+          if (res?.subject && res.subject.id !== newSubject.id) {
+            setSubjects(prev => prev.map(s => s.id === newSubject.id ? res.subject : s));
+          }
+        }).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || 'Erreur de création de la matière.');
+          loadFromCloudD1();
+        });
+      }
     }
   };
-
-  // Sauvegarde persistante des écoles
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_teacher_schools', JSON.stringify(schools));
-    } catch { }
-  }, [schools]);
 
   // État du modal "Ajouter une école"
   const [isAddSchoolModalOpen, setIsAddSchoolModalOpen] = useState(false);
@@ -1186,7 +1308,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       )
     : schoolName.trim().length > 0;
 
-  // Création ou modification d'une école
+  // Création ou modification d'une école (D1 + logo privé R2)
   const handleCreateSchool = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const cleanName = schoolName.trim();
@@ -1194,10 +1316,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
     if (editingSchool) {
       if (!isSchoolDirty) return;
+      const pickedNewDataUrl = schoolLogo && schoolLogo.startsWith('data:image/') ? schoolLogo : null;
+      const removedLogo = Boolean(editingSchool.logoUrl && !schoolLogo);
       const updated: SchoolItem = {
         ...editingSchool,
         name: cleanName,
         logoUrl: schoolLogo || undefined,
+        logoR2Key: removedLogo ? undefined : editingSchool.logoR2Key,
         color: selectedSchoolColor.bg,
         textColor: selectedSchoolColor.text,
         borderColor: selectedSchoolColor.border,
@@ -1207,12 +1332,34 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       if (selectedSchoolInside?.id === editingSchool.id) {
         setSelectedSchoolInside(updated);
       }
+      const targetId = editingSchool.id;
       setIsAddSchoolModalOpen(false);
       setEditingSchool(null);
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.updateSchool(targetId, {
+          name: updated.name,
+          logoDataUrl: pickedNewDataUrl,
+          removeLogo: removedLogo,
+          color: updated.color,
+          textColor: updated.textColor,
+          borderColor: updated.borderColor,
+          borderDarkColor: updated.borderDarkColor,
+        }).then((res) => {
+          if (res?.school) {
+            setSchools(prev => prev.map(s => s.id === targetId ? res.school : s));
+            setSelectedSchoolInside(prev => (prev?.id === targetId ? res.school : prev));
+          }
+        }).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || "Erreur de mise à jour de l'établissement.");
+          loadFromCloudD1();
+        });
+      }
     } else {
       if (!selectedYearId) return;
+      const pickedDataUrl = schoolLogo && schoolLogo.startsWith('data:image/') ? schoolLogo : null;
       const newSchool: SchoolItem = {
-        id: `school-${Date.now()}`,
+        id: generateTeacherEntityId('school'),
         yearId: selectedYearId,
         name: cleanName,
         logoUrl: schoolLogo || undefined,
@@ -1226,6 +1373,27 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSchools(prev => [...prev, newSchool]);
       setSelectedSchoolId(newSchool.id);
       setIsAddSchoolModalOpen(false);
+      if (getTeacherAuthToken()) {
+        TeacherGradebookAPI.createSchool({
+          id: newSchool.id,
+          yearId: newSchool.yearId,
+          name: newSchool.name,
+          logoDataUrl: pickedDataUrl,
+          color: newSchool.color,
+          textColor: newSchool.textColor,
+          borderColor: newSchool.borderColor,
+          borderDarkColor: newSchool.borderDarkColor,
+        }).then((res) => {
+          if (res?.school) {
+            setSchools(prev => prev.map(s => s.id === newSchool.id ? res.school : s));
+            setSelectedSchoolId(res.school.id);
+          }
+        }).catch((err) => {
+          setCloudStatus('error');
+          setCloudError(err?.message || "Erreur de création de l'établissement.");
+          loadFromCloudD1();
+        });
+      }
     }
 
     setSchoolName('');
@@ -1262,13 +1430,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setInputYearValue(filtered);
   };
 
-  // Création / Application de l'année scolaire
+  // Création / Application de l'année scolaire (D1)
   const handleApplyYear = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const cleanLabel = inputYearValue.trim();
     if (!cleanLabel) return;
 
-    // Vérifier si l'année existe déjà
     const existing = schoolYears.find(y => y.label.toLowerCase() === cleanLabel.toLowerCase());
     if (existing) {
       setSelectedYearId(existing.id);
@@ -1277,7 +1444,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     }
 
     const newYearItem: SchoolYearItem = {
-      id: `year-${Date.now()}`,
+      id: generateTeacherEntityId('year'),
       label: cleanLabel,
       color: selectedColorObj.bg,
       textColor: selectedColorObj.text,
@@ -1287,9 +1454,26 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setSchoolYears(prev => [...prev, newYearItem]);
     setSelectedYearId(newYearItem.id);
     setIsCreateMenuOpen(false);
+    if (getTeacherAuthToken()) {
+      TeacherGradebookAPI.createYear({
+        id: newYearItem.id,
+        label: newYearItem.label,
+        color: newYearItem.color,
+        textColor: newYearItem.textColor,
+      }).then((res) => {
+        if (res?.year && res.year.id !== newYearItem.id) {
+          setSchoolYears(prev => prev.map(y => y.id === newYearItem.id ? res.year : y));
+          setSelectedYearId(res.year.id);
+        }
+      }).catch((err) => {
+        setCloudStatus('error');
+        setCloudError(err?.message || "Erreur de création de l'année scolaire.");
+        loadFromCloudD1();
+      });
+    }
   };
 
-  // Suppression d'une rentrée scolaire
+  // Suppression d'une rentrée scolaire (cascade D1 + nettoyage R2)
   const handleDeleteYear = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     setSchoolYears(prev => {
@@ -1299,6 +1483,21 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       }
       return updated;
     });
+    setSchools(prev => prev.filter(s => s.yearId !== id));
+    setStudyLevels(prev => prev.filter(l => l.yearId !== id));
+    setClasses(prev => prev.filter(c => c.yearId !== id));
+    setTerms(prev => prev.filter(t => t.yearId !== id));
+    setSubjects(prev => prev.filter(s => s.yearId !== id));
+    if (selectedSchoolInside?.yearId === id) {
+      setSelectedSchoolInside(null);
+    }
+    if (getTeacherAuthToken()) {
+      TeacherGradebookAPI.deleteYear(id).catch((err) => {
+        setCloudStatus('error');
+        setCloudError(err?.message || "Erreur de suppression de l'année scolaire.");
+        loadFromCloudD1();
+      });
+    }
   };
 
   const navItems = [
@@ -1387,11 +1586,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     return Math.max(...currentClassTerms.map(t => t.number)) + 1;
   }, [currentClassTerms]);
 
-  // Confirmation de l'ajout d'un nouveau trimestre pour la classe active
+  // Confirmation de l'ajout d'un nouveau trimestre pour la classe active (D1)
   const handleConfirmAddTerm = () => {
     if (!activeClass || !selectedSchoolInside) return;
     const newTerm: TermItem = {
-      id: `term-${activeClass.id}-${Date.now()}`,
+      id: generateTeacherEntityId('term'),
       classId: activeClass.id,
       schoolId: selectedSchoolInside.id,
       yearId: selectedSchoolInside.yearId,
@@ -1402,6 +1601,23 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setTerms(prev => [...prev, newTerm]);
     setSelectedTermId(newTerm.id);
     setIsAddTermModalOpen(false);
+    if (getTeacherAuthToken()) {
+      TeacherGradebookAPI.createTerm({
+        id: newTerm.id,
+        classId: newTerm.classId,
+        number: newTerm.number,
+        name: newTerm.name,
+      }).then((res) => {
+        if (res?.term && res.term.id !== newTerm.id) {
+          setTerms(prev => prev.map(t => t.id === newTerm.id ? res.term : t));
+          setSelectedTermId(res.term.id);
+        }
+      }).catch((err) => {
+        setCloudStatus('error');
+        setCloudError(err?.message || 'Erreur de création du trimestre.');
+        loadFromCloudD1();
+      });
+    }
   };
 
   // Matières de la classe active DANS LE TRIMESTRE ACTIF SÉLECTIONNÉ
@@ -1504,7 +1720,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         schoolYear={currentSelectedYear}
         school={selectedSchoolInside}
         term={activeTerm}
-        onBack={() => setSelectedSubjectInside(null)}
+        userId={authUserId}
+        onGradebookSynced={refreshCloudStats}
+        onBack={() => {
+          setSelectedSubjectInside(null);
+          refreshCloudStats();
+        }}
       />
     );
   }
@@ -1957,6 +2178,32 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           </section>
         )}
 
+        {/* Bannière discrète de synchronisation / reprise d'erreur Cloudflare D1 */}
+        {cloudStatus === 'error' && (
+          <div className="mb-2.5 px-3 py-2 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between gap-2 text-xs text-red-800">
+            <div className="flex items-center gap-2 min-w-0">
+              <CloudOff className="w-4 h-4 shrink-0 text-red-600" />
+              <span className="truncate font-medium">
+                {cloudError || 'Connexion au cloud interrompue.'}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => loadFromCloudD1()}
+              className="px-2.5 py-1 rounded-lg bg-white hover:bg-red-100 border border-red-300 text-[11px] font-bold text-red-700 shrink-0 transition cursor-pointer"
+            >
+              Réessayer
+            </button>
+          </div>
+        )}
+
+        {cloudStatus === 'loading' && schoolYears.length === 0 && (
+          <div className="mb-2.5 px-3 py-2 rounded-xl bg-white/80 border border-slate-200 flex items-center gap-2 text-xs text-slate-600">
+            <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
+            <span className="font-medium">Chargement sécurisé de votre espace depuis Cloudflare D1...</span>
+          </div>
+        )}
+
         {/* ----------------------------------------------------------------------- */}
         {/* ESPACE DE TRAVAIL PRINCIPAL (ÉCOLES OU CLASSES SELON LA NAVIGATION)    */}
         {/* ----------------------------------------------------------------------- */}
@@ -1978,11 +2225,33 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 classes={classes}
                 terms={terms}
                 subjects={subjects}
-                onApplyTransfer={(next) => {
+                serverGradebookStats={getTeacherAuthToken() ? serverGradebookStats : undefined}
+                onApplyTransfer={async (next) => {
                   setStudyLevels(next.studyLevels);
                   setClasses(next.classes);
                   setTerms(next.terms);
                   setSubjects(next.subjects);
+                  if (getTeacherAuthToken()) {
+                    try {
+                      const res = await TeacherGradebookAPI.executeTransfer({
+                        createdLevels: next.createdLevels,
+                        createdClasses: next.createdClasses,
+                        createdTerms: next.createdTerms,
+                        createdSubjects: next.createdSubjects,
+                        updatedSubjects: next.updatedSubjects,
+                        gradebookCopies: next.gradebookCopyOps,
+                      });
+                      if (res?.gradebookStats) {
+                        setServerGradebookStats(res.gradebookStats);
+                      }
+                      return res?.serverSummary;
+                    } catch (err: any) {
+                      setCloudStatus('error');
+                      setCloudError(err?.message || 'Erreur lors du transfert sur Cloudflare D1.');
+                      loadFromCloudD1();
+                    }
+                  }
+                  return undefined;
                 }}
                 onClose={() => setIsTransferViewOpen(false)}
               />

@@ -15,6 +15,2130 @@
 /* eslint-disable */
 
 
+// worker/src/teacherGradebook.ts
+var MAX_IMAGE_BYTES = 600 * 1024;
+var SIGNED_MEDIA_TTL_SECONDS = 12 * 3600;
+var initializedTeacherDbs = /* @__PURE__ */ new WeakSet();
+async function ensureTeacherGradebookTables(db) {
+  if (!db || initializedTeacherDbs.has(db)) return;
+  const statements = [
+    `CREATE TABLE IF NOT EXISTS teacher_school_years (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      label TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#00313d',
+      text_color TEXT DEFAULT '#ffffff',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_years_user ON teacher_school_years(user_id, created_at)`,
+    `CREATE TABLE IF NOT EXISTS teacher_schools (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      year_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      logo_r2_key TEXT DEFAULT NULL,
+      color TEXT NOT NULL DEFAULT '#ffffff',
+      text_color TEXT NOT NULL DEFAULT '#0f172a',
+      border_color TEXT NOT NULL DEFAULT '#e2e8f0',
+      border_dark_color TEXT NOT NULL DEFAULT '#cbd5e1',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (year_id) REFERENCES teacher_school_years(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_schools_user_year ON teacher_schools(user_id, year_id, created_at)`,
+    `CREATE TABLE IF NOT EXISTS teacher_study_levels (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      school_id TEXT NOT NULL,
+      year_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      color TEXT DEFAULT '#ffffff',
+      text_color TEXT DEFAULT '#0f172a',
+      border_color TEXT DEFAULT '#cbd5e1',
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (school_id) REFERENCES teacher_schools(id) ON DELETE CASCADE,
+      FOREIGN KEY (year_id) REFERENCES teacher_school_years(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_levels_user_school ON teacher_study_levels(user_id, school_id, sort_order, created_at)`,
+    `CREATE TABLE IF NOT EXISTS teacher_classes (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      level_id TEXT NOT NULL,
+      school_id TEXT NOT NULL,
+      year_id TEXT NOT NULL,
+      level_name TEXT NOT NULL,
+      name TEXT DEFAULT '',
+      slogan TEXT DEFAULT NULL,
+      teacher_name TEXT NOT NULL DEFAULT '',
+      subject_label TEXT DEFAULT NULL,
+      color TEXT NOT NULL DEFAULT '#ffffff',
+      text_color TEXT NOT NULL DEFAULT '#0f172a',
+      border_color TEXT NOT NULL DEFAULT '#e2e8f0',
+      border_dark_color TEXT NOT NULL DEFAULT '#cbd5e1',
+      icon_gradient TEXT NOT NULL DEFAULT 'from-amber-500 to-orange-600',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (level_id) REFERENCES teacher_study_levels(id) ON DELETE CASCADE,
+      FOREIGN KEY (school_id) REFERENCES teacher_schools(id) ON DELETE CASCADE,
+      FOREIGN KEY (year_id) REFERENCES teacher_school_years(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_classes_user_level ON teacher_classes(user_id, school_id, level_id, created_at)`,
+    `CREATE TABLE IF NOT EXISTS teacher_terms (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      school_id TEXT NOT NULL,
+      year_id TEXT NOT NULL,
+      number INTEGER NOT NULL DEFAULT 1,
+      name TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (class_id) REFERENCES teacher_classes(id) ON DELETE CASCADE,
+      FOREIGN KEY (school_id) REFERENCES teacher_schools(id) ON DELETE CASCADE,
+      FOREIGN KEY (year_id) REFERENCES teacher_school_years(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_terms_user_class ON teacher_terms(user_id, class_id, number)`,
+    `CREATE TABLE IF NOT EXISTS teacher_subjects (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      term_id TEXT NOT NULL,
+      school_id TEXT NOT NULL,
+      year_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      coefficient REAL DEFAULT NULL,
+      color TEXT NOT NULL DEFAULT '#ffffff',
+      text_color TEXT NOT NULL DEFAULT '#0f172a',
+      border_color TEXT NOT NULL DEFAULT '#e2e8f0',
+      border_dark_color TEXT NOT NULL DEFAULT '#cbd5e1',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (class_id) REFERENCES teacher_classes(id) ON DELETE CASCADE,
+      FOREIGN KEY (term_id) REFERENCES teacher_terms(id) ON DELETE CASCADE,
+      FOREIGN KEY (school_id) REFERENCES teacher_schools(id) ON DELETE CASCADE,
+      FOREIGN KEY (year_id) REFERENCES teacher_school_years(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_subjects_user_class_term ON teacher_subjects(user_id, class_id, term_id, created_at)`,
+    `CREATE TABLE IF NOT EXISTS teacher_gradebooks (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      term_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      school_id TEXT NOT NULL,
+      year_id TEXT NOT NULL,
+      note_col_count INTEGER NOT NULL DEFAULT 7,
+      col_metas_json TEXT NOT NULL DEFAULT '{}',
+      layout_json TEXT NOT NULL DEFAULT '{}',
+      styles_json TEXT NOT NULL DEFAULT '{}',
+      version INTEGER NOT NULL DEFAULT 1,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE (user_id, subject_id, term_id),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (subject_id) REFERENCES teacher_subjects(id) ON DELETE CASCADE,
+      FOREIGN KEY (term_id) REFERENCES teacher_terms(id) ON DELETE CASCADE,
+      FOREIGN KEY (class_id) REFERENCES teacher_classes(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_gb_user_subject_term ON teacher_gradebooks(user_id, subject_id, term_id)`,
+    `CREATE TABLE IF NOT EXISTS teacher_gradebook_students (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      gradebook_id TEXT NOT NULL,
+      subject_id TEXT NOT NULL,
+      term_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      student_uid TEXT NOT NULL,
+      row_order INTEGER NOT NULL DEFAULT 0,
+      full_name TEXT NOT NULL DEFAULT '',
+      photo_r2_key TEXT DEFAULT NULL,
+      notes_json TEXT NOT NULL DEFAULT '[]',
+      average_20 REAL DEFAULT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (gradebook_id) REFERENCES teacher_gradebooks(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_gb_students_gb ON teacher_gradebook_students(user_id, gradebook_id, row_order)`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_gb_students_class_term ON teacher_gradebook_students(user_id, class_id, term_id, student_uid)`
+  ];
+  await db.batch(statements.map((sql) => db.prepare(sql)));
+  initializedTeacherDbs.add(db);
+}
+function getTeacherPhotosBucket(rawEnv) {
+  if (!rawEnv) return null;
+  return rawEnv.BUCKET_TEACHER_PHOTOS || rawEnv.MON_R2_TEACHER_PHOTOS || rawEnv.BUCKET_IMAGES || rawEnv.MON_R2_IMAGES || rawEnv["MON_R2-IMAGES"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"] || null;
+}
+function getFallbackMainBucket(rawEnv) {
+  if (!rawEnv) return null;
+  return rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"] || null;
+}
+function sanitizeSegment(raw, fallback = "item") {
+  const clean = String(raw || "").trim().replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 80);
+  return clean || fallback;
+}
+function makeId(prefix) {
+  const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 12);
+  return `${prefix}-${Date.now()}-${rand}`;
+}
+async function runBatchChunked(db, stmts, chunkSize = 80) {
+  if (!stmts || stmts.length === 0) return;
+  for (let i = 0; i < stmts.length; i += chunkSize) {
+    await db.batch(stmts.slice(i, i + chunkSize));
+  }
+}
+async function resolveSafeNewId(db, table, candidate, prefix) {
+  const raw = typeof candidate === "string" ? candidate.trim() : "";
+  if (!raw || raw.length > 80 || raw === "year-default" || !/^[a-zA-Z0-9_-]+$/.test(raw)) {
+    return makeId(prefix);
+  }
+  const existing = await db.prepare(`SELECT id FROM ${table} WHERE id = ? LIMIT 1`).bind(raw).first();
+  return existing ? makeId(prefix) : raw;
+}
+function isOwnedR2Key(key, userId) {
+  if (!key || typeof key !== "string") return false;
+  if (key.includes("..") || key.includes("\\") || key.includes("\0")) return false;
+  const safeUser = sanitizeSegment(userId);
+  return key.startsWith(`teacher-student-photos/${safeUser}/`) || key.startsWith(`teacher-school-logos/${safeUser}/`);
+}
+function extractOwnerSegmentFromR2Key(key) {
+  if (!key || typeof key !== "string") return null;
+  if (key.includes("..") || key.includes("\\") || key.includes("\0")) return null;
+  const match = key.match(/^(?:teacher-student-photos|teacher-school-logos)\/([a-zA-Z0-9_-]+)\/[a-zA-Z0-9_./-]+$/);
+  return match ? match[1] : null;
+}
+async function hmacHex(secret, message) {
+  const enc = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    "raw",
+    enc.encode(secret),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"]
+  );
+  const sigBuf = await crypto.subtle.sign("HMAC", key, enc.encode(message));
+  return Array.from(new Uint8Array(sigBuf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+function timingSafeEqualStr(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+async function signTeacherMediaUrl(origin, key, jwtSecret) {
+  if (!key) return void 0;
+  const exp = Math.floor(Date.now() / 1e3) + SIGNED_MEDIA_TTL_SECONDS;
+  const sig = await hmacHex(jwtSecret, `teacher-media:${key}:${exp}`);
+  return `${origin}/api/teacher/media?key=${encodeURIComponent(key)}&exp=${exp}&sig=${sig}`;
+}
+async function verifyTeacherMediaSignature(key, expStr, sig, jwtSecret) {
+  const exp = parseInt(expStr, 10);
+  if (!Number.isFinite(exp) || exp < Math.floor(Date.now() / 1e3)) return false;
+  if (!sig || !/^[a-f0-9]{64}$/i.test(sig)) return false;
+  const expected = await hmacHex(jwtSecret, `teacher-media:${key}:${exp}`);
+  return timingSafeEqualStr(sig.toLowerCase(), expected.toLowerCase());
+}
+function detectValidatedImageFormat(bytes) {
+  if (!bytes || bytes.length < 12 || bytes.length > MAX_IMAGE_BYTES) return null;
+  if (bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) {
+    return { contentType: "image/jpeg", ext: "jpg" };
+  }
+  if (bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71 && bytes[4] === 13 && bytes[5] === 10 && bytes[6] === 26 && bytes[7] === 10) {
+    return { contentType: "image/png", ext: "png" };
+  }
+  if (bytes[0] === 82 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 70 && bytes[8] === 87 && bytes[9] === 69 && bytes[10] === 66 && bytes[11] === 80) {
+    return { contentType: "image/webp", ext: "webp" };
+  }
+  return null;
+}
+function decodeBase64DataUrl(dataUrl) {
+  if (!dataUrl || typeof dataUrl !== "string") return null;
+  const match = dataUrl.match(/^data:image\/(?:png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=\s]+)$/i);
+  if (!match) return null;
+  const cleanB64 = match[1].replace(/\s+/g, "");
+  if (cleanB64.length > MAX_IMAGE_BYTES * 1.45) return null;
+  try {
+    const bin = atob(cleanB64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) {
+      bytes[i] = bin.charCodeAt(i);
+    }
+    return bytes;
+  } catch {
+    return null;
+  }
+}
+async function uploadImageBytesToR2(rawEnv, key, bytes, contentType, customMetadata) {
+  const bucket = getTeacherPhotosBucket(rawEnv);
+  if (!bucket) return false;
+  await bucket.put(key, bytes, {
+    httpMetadata: {
+      contentType,
+      cacheControl: "private, max-age=31536000"
+    },
+    customMetadata
+  });
+  return true;
+}
+async function deleteOwnedR2Keys(rawEnv, userId, keys) {
+  const safeKeys = Array.from(new Set(keys.filter((k) => isOwnedR2Key(k, userId))));
+  if (safeKeys.length === 0) return;
+  const bucket = getTeacherPhotosBucket(rawEnv);
+  const fallback = getFallbackMainBucket(rawEnv);
+  const buckets = [bucket, fallback].filter((b, idx, arr) => b && arr.indexOf(b) === idx);
+  for (const b of buckets) {
+    for (let i = 0; i < safeKeys.length; i += 100) {
+      const chunk = safeKeys.slice(i, i + 100);
+      try {
+        await b.delete(chunk);
+      } catch {
+      }
+    }
+  }
+}
+async function copyOwnedR2Photo(rawEnv, userId, sourceKey, targetSchoolId, targetClassId, targetStudentId) {
+  if (!isOwnedR2Key(sourceKey, userId)) return null;
+  const bucket = getTeacherPhotosBucket(rawEnv);
+  if (!bucket) return null;
+  let obj = await bucket.get(sourceKey);
+  if (!obj) {
+    const fallback = getFallbackMainBucket(rawEnv);
+    if (fallback && fallback !== bucket) {
+      obj = await fallback.get(sourceKey);
+    }
+  }
+  if (!obj) return null;
+  const buf = await obj.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  const fmt = detectValidatedImageFormat(bytes);
+  if (!fmt) return null;
+  const safeUser = sanitizeSegment(userId);
+  const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+  const destKey = `teacher-student-photos/${safeUser}/${sanitizeSegment(targetSchoolId)}/${sanitizeSegment(targetClassId)}/${sanitizeSegment(targetStudentId)}_${Date.now()}_${rand}.${fmt.ext}`;
+  await bucket.put(destKey, bytes, {
+    httpMetadata: {
+      contentType: fmt.contentType,
+      cacheControl: "private, max-age=31536000"
+    },
+    customMetadata: {
+      userId: safeUser,
+      kind: "student_photo",
+      schoolId: sanitizeSegment(targetSchoolId),
+      classId: sanitizeSegment(targetClassId),
+      studentId: sanitizeSegment(targetStudentId)
+    }
+  });
+  return destKey;
+}
+function safeParseJson(raw, fallback) {
+  if (raw === null || raw === void 0) return fallback;
+  if (typeof raw === "object") return raw;
+  try {
+    return JSON.parse(String(raw));
+  } catch {
+    return fallback;
+  }
+}
+function normalizeNameForMatch(val) {
+  return String(val || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+}
+function computeAverage20(notes, colMetas) {
+  if (!Array.isArray(notes) || notes.length === 0) return null;
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (let i = 0; i < notes.length; i++) {
+    const raw = String(notes[i] || "").trim();
+    if (!raw) continue;
+    const meta = colMetas?.[i] || colMetas?.[String(i)] || {};
+    const defaultMax = Number(meta.maxScore) > 0 ? Number(meta.maxScore) : 20;
+    const coeffEval = Number(meta.coeffEval) > 0 ? Number(meta.coeffEval) : 1;
+    let score;
+    let maxScore = defaultMax;
+    if (raw.includes("/")) {
+      const [sPart, mPart] = raw.split("/");
+      score = parseFloat(sPart.replace(",", "."));
+      const parsedM = parseFloat((mPart || "").replace(",", "."));
+      if (Number.isFinite(parsedM) && parsedM > 0) maxScore = parsedM;
+    } else {
+      score = parseFloat(raw.replace(",", "."));
+    }
+    if (!Number.isFinite(score) || score < 0 || maxScore <= 0 || score > maxScore) continue;
+    const scoreOn20 = score / maxScore * 20;
+    weightedSum += scoreOn20 * coeffEval;
+    totalWeight += coeffEval;
+  }
+  if (totalWeight <= 0) return null;
+  return Math.round(weightedSum / totalWeight * 100) / 100;
+}
+async function computeGradebookStatsMap(db, userId) {
+  const [gbRes, stRes] = await Promise.all([
+    db.prepare(
+      `SELECT id, subject_id, term_id, note_col_count, col_metas_json, styles_json
+         FROM teacher_gradebooks
+         WHERE user_id = ?`
+    ).bind(userId).all(),
+    db.prepare(
+      `SELECT gradebook_id, full_name, photo_r2_key, notes_json
+         FROM teacher_gradebook_students
+         WHERE user_id = ?`
+    ).bind(userId).all()
+  ]);
+  const studentsByGb = /* @__PURE__ */ new Map();
+  for (const row of stRes.results || []) {
+    const list = studentsByGb.get(row.gradebook_id) || [];
+    list.push(row);
+    studentsByGb.set(row.gradebook_id, list);
+  }
+  const stats = {};
+  for (const gb of gbRes.results || []) {
+    const key = `${gb.subject_id}__${gb.term_id || "t1"}`;
+    const rows = studentsByGb.get(gb.id) || [];
+    let namedStudentsCount = 0;
+    let photosCount = 0;
+    let notesCount = 0;
+    for (const st of rows) {
+      if (String(st.full_name || "").trim().length > 0) namedStudentsCount++;
+      if (st.photo_r2_key) photosCount++;
+      const notes = safeParseJson(st.notes_json, []);
+      if (Array.isArray(notes)) {
+        for (const n of notes) {
+          if (typeof n === "string" && n.trim().length > 0) notesCount++;
+        }
+      }
+    }
+    const colMetas = safeParseJson(gb.col_metas_json, {});
+    const hasCustomMetas = Object.values(colMetas).some(
+      (m) => m && (m.title && String(m.title).trim().length > 0 || typeof m.maxScore === "number" && m.maxScore !== 20 || typeof m.coeffEval === "number" && m.coeffEval !== 1)
+    );
+    const styles = safeParseJson(gb.styles_json, {});
+    const hasFormatting = Object.keys(styles?.cellColors || {}).length > 0 || Object.keys(styles?.rowColors || {}).length > 0 || Object.keys(styles?.cellCustomStyles || {}).length > 0 || Object.values(colMetas).some((m) => Boolean(m?.headerBgColor || m?.columnBgColor));
+    stats[key] = {
+      hasStorage: true,
+      totalRows: rows.length,
+      namedStudentsCount,
+      photosCount,
+      notesCount,
+      noteColumnCount: Math.max(1, Number(gb.note_col_count) || 7),
+      hasCustomMetas,
+      hasFormatting
+    };
+  }
+  return stats;
+}
+async function buildBootstrapPayload(db, userId, origin, jwtSecret) {
+  const [yearsRes, schoolsRes, levelsRes, classesRes, termsRes, subjectsRes, gradebookStats] = await Promise.all([
+    db.prepare("SELECT * FROM teacher_school_years WHERE user_id = ? ORDER BY created_at ASC").bind(userId).all(),
+    db.prepare("SELECT * FROM teacher_schools WHERE user_id = ? ORDER BY created_at ASC").bind(userId).all(),
+    db.prepare("SELECT * FROM teacher_study_levels WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC").bind(userId).all(),
+    db.prepare("SELECT * FROM teacher_classes WHERE user_id = ? ORDER BY created_at ASC").bind(userId).all(),
+    db.prepare("SELECT * FROM teacher_terms WHERE user_id = ? ORDER BY number ASC, created_at ASC").bind(userId).all(),
+    db.prepare("SELECT * FROM teacher_subjects WHERE user_id = ? ORDER BY created_at ASC").bind(userId).all(),
+    computeGradebookStatsMap(db, userId)
+  ]);
+  const schoolYears = (yearsRes.results || []).map((r) => ({
+    id: r.id,
+    label: r.label,
+    color: r.color || "#00313d",
+    textColor: r.text_color || "#ffffff",
+    createdAt: Number(r.created_at) || Date.now()
+  }));
+  const schools = await Promise.all(
+    (schoolsRes.results || []).map(async (r) => ({
+      id: r.id,
+      yearId: r.year_id,
+      name: r.name,
+      logoR2Key: r.logo_r2_key || void 0,
+      logoUrl: r.logo_r2_key ? await signTeacherMediaUrl(origin, r.logo_r2_key, jwtSecret) : void 0,
+      color: r.color || "#ffffff",
+      textColor: r.text_color || "#0f172a",
+      borderColor: r.border_color || "#e2e8f0",
+      borderDarkColor: r.border_dark_color || "#cbd5e1",
+      createdAt: Number(r.created_at) || Date.now()
+    }))
+  );
+  const studyLevels = (levelsRes.results || []).map((r) => ({
+    id: r.id,
+    schoolId: r.school_id,
+    yearId: r.year_id,
+    name: r.name,
+    color: r.color || "#ffffff",
+    textColor: r.text_color || "#0f172a",
+    borderColor: r.border_color || "#cbd5e1",
+    createdAt: Number(r.created_at) || Date.now()
+  }));
+  const classes = (classesRes.results || []).map((r) => ({
+    id: r.id,
+    levelId: r.level_id,
+    schoolId: r.school_id,
+    yearId: r.year_id,
+    level: r.level_name,
+    name: r.name || void 0,
+    slogan: r.slogan || void 0,
+    teacherName: r.teacher_name || "",
+    subject: r.subject_label || void 0,
+    color: r.color || "#ffffff",
+    textColor: r.text_color || "#0f172a",
+    borderColor: r.border_color || "#e2e8f0",
+    borderDarkColor: r.border_dark_color || "#cbd5e1",
+    iconGradient: r.icon_gradient || "from-amber-500 to-orange-600",
+    createdAt: Number(r.created_at) || Date.now()
+  }));
+  const terms = (termsRes.results || []).map((r) => ({
+    id: r.id,
+    classId: r.class_id,
+    schoolId: r.school_id,
+    yearId: r.year_id,
+    number: Number(r.number) || 1,
+    name: r.name,
+    createdAt: Number(r.created_at) || Date.now()
+  }));
+  const subjects = (subjectsRes.results || []).map((r) => ({
+    id: r.id,
+    classId: r.class_id,
+    termId: r.term_id,
+    schoolId: r.school_id,
+    yearId: r.year_id,
+    name: r.name,
+    coefficient: r.coefficient !== null && r.coefficient !== void 0 ? Number(r.coefficient) : void 0,
+    color: r.color || "#ffffff",
+    textColor: r.text_color || "#0f172a",
+    borderColor: r.border_color || "#e2e8f0",
+    borderDarkColor: r.border_dark_color || "#cbd5e1",
+    createdAt: Number(r.created_at) || Date.now()
+  }));
+  return {
+    success: true,
+    userId,
+    isEmpty: schoolYears.length === 0 && schools.length === 0,
+    schoolYears,
+    schools,
+    studyLevels,
+    classes,
+    terms,
+    subjects,
+    gradebookStats
+  };
+}
+async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
+  if (!path.startsWith("/api/teacher/")) return null;
+  const { db, rawEnv, origin, jwtSecret, getAuthUser, corsHeaders: corsHeaders2, jsonResponse: jsonResponse2, errorResponse: errorResponse2 } = deps;
+  if (!db) {
+    return errorResponse2("Base de donn\xE9es D1 non disponible.", 503, origin);
+  }
+  if (path === "/api/teacher/media" && method === "GET") {
+    const key = url.searchParams.get("key") || "";
+    const ownerSegment = extractOwnerSegmentFromR2Key(key);
+    if (!ownerSegment) {
+      return errorResponse2("Cl\xE9 m\xE9dia invalide.", 400, origin);
+    }
+    let authorized = false;
+    const sig = url.searchParams.get("sig") || "";
+    const exp = url.searchParams.get("exp") || "";
+    if (sig && exp) {
+      authorized = await verifyTeacherMediaSignature(key, exp, sig, jwtSecret);
+    }
+    if (!authorized) {
+      const authUser2 = await getAuthUser(request);
+      if (authUser2?.userId && sanitizeSegment(String(authUser2.userId)) === ownerSegment) {
+        authorized = true;
+      }
+    }
+    if (!authorized) {
+      return errorResponse2("Acc\xE8s non autoris\xE9 \xE0 cette photo.", 403, origin);
+    }
+    const bucket = getTeacherPhotosBucket(rawEnv);
+    const fallback = getFallbackMainBucket(rawEnv);
+    let obj = bucket ? await bucket.get(key) : null;
+    if (!obj && fallback && fallback !== bucket) {
+      obj = await fallback.get(key);
+    }
+    if (!obj) {
+      return errorResponse2("Image introuvable.", 404, origin);
+    }
+    const contentType = obj.httpMetadata?.contentType || "image/webp";
+    return new Response(obj.body, {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "X-Content-Type-Options": "nosniff",
+        "Cache-Control": "private, max-age=3600",
+        "Cross-Origin-Resource-Policy": "cross-origin",
+        ...corsHeaders2(origin)
+      }
+    });
+  }
+  const authUser = await getAuthUser(request);
+  if (!authUser || !authUser.userId) {
+    return errorResponse2("Authentification requise. Veuillez vous reconnecter.", 401, origin);
+  }
+  const userId = String(authUser.userId);
+  const apiOrigin = url.origin;
+  await ensureTeacherGradebookTables(db);
+  if (path === "/api/teacher/bootstrap" && method === "GET") {
+    const payload = await buildBootstrapPayload(db, userId, apiOrigin, jwtSecret);
+    return jsonResponse2(payload, 200, origin);
+  }
+  if (path === "/api/teacher/years" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const label = String(body.label || "").trim().slice(0, 30);
+    if (!label) return errorResponse2("Libell\xE9 d\u2019ann\xE9e scolaire requis.", 400, origin);
+    const existing = await db.prepare("SELECT * FROM teacher_school_years WHERE user_id = ? AND LOWER(label) = LOWER(?) LIMIT 1").bind(userId, label).first();
+    if (existing) {
+      return jsonResponse2({
+        success: true,
+        year: {
+          id: existing.id,
+          label: existing.label,
+          color: existing.color,
+          textColor: existing.text_color,
+          createdAt: Number(existing.created_at)
+        }
+      }, 200, origin);
+    }
+    const now = Date.now();
+    const id = await resolveSafeNewId(db, "teacher_school_years", body.id, "year");
+    const color = String(body.color || "#00313d").slice(0, 32);
+    const textColor = String(body.textColor || "#ffffff").slice(0, 32);
+    await db.prepare(
+      `INSERT INTO teacher_school_years (id, user_id, label, color, text_color, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, userId, label, color, textColor, now, now).run();
+    return jsonResponse2({
+      success: true,
+      year: { id, label, color, textColor, createdAt: now }
+    }, 201, origin);
+  }
+  const yearDeleteMatch = path.match(/^\/api\/teacher\/years\/([^/]+)$/);
+  if (yearDeleteMatch && method === "DELETE") {
+    const yearId = decodeURIComponent(yearDeleteMatch[1]);
+    const own = await db.prepare("SELECT id FROM teacher_school_years WHERE id = ? AND user_id = ? LIMIT 1").bind(yearId, userId).first();
+    if (!own) return errorResponse2("Ann\xE9e scolaire introuvable.", 404, origin);
+    const [schoolLogos, studentPhotos] = await Promise.all([
+      db.prepare("SELECT logo_r2_key FROM teacher_schools WHERE year_id = ? AND user_id = ? AND logo_r2_key IS NOT NULL").bind(yearId, userId).all(),
+      db.prepare(
+        `SELECT s.photo_r2_key
+         FROM teacher_gradebook_students s
+         JOIN teacher_gradebooks g ON g.id = s.gradebook_id
+         WHERE g.year_id = ? AND s.user_id = ? AND s.photo_r2_key IS NOT NULL`
+      ).bind(yearId, userId).all()
+    ]);
+    const r2Keys = [
+      ...(schoolLogos.results || []).map((r) => r.logo_r2_key),
+      ...(studentPhotos.results || []).map((r) => r.photo_r2_key)
+    ];
+    await db.batch([
+      db.prepare(`DELETE FROM teacher_gradebook_students WHERE user_id = ? AND gradebook_id IN (SELECT id FROM teacher_gradebooks WHERE year_id = ? AND user_id = ?)`).bind(userId, yearId, userId),
+      db.prepare("DELETE FROM teacher_gradebooks WHERE year_id = ? AND user_id = ?").bind(yearId, userId),
+      db.prepare("DELETE FROM teacher_subjects WHERE year_id = ? AND user_id = ?").bind(yearId, userId),
+      db.prepare("DELETE FROM teacher_terms WHERE year_id = ? AND user_id = ?").bind(yearId, userId),
+      db.prepare("DELETE FROM teacher_classes WHERE year_id = ? AND user_id = ?").bind(yearId, userId),
+      db.prepare("DELETE FROM teacher_study_levels WHERE year_id = ? AND user_id = ?").bind(yearId, userId),
+      db.prepare("DELETE FROM teacher_schools WHERE year_id = ? AND user_id = ?").bind(yearId, userId),
+      db.prepare("DELETE FROM teacher_school_years WHERE id = ? AND user_id = ?").bind(yearId, userId)
+    ]);
+    await deleteOwnedR2Keys(rawEnv, userId, r2Keys);
+    return jsonResponse2({ success: true, deletedId: yearId }, 200, origin);
+  }
+  if (path === "/api/teacher/schools" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const name = String(body.name || "").trim().slice(0, 120);
+    const yearId = String(body.yearId || "").trim();
+    if (!name || !yearId) return errorResponse2("Nom de l\u2019\xE9cole et ann\xE9e scolaire requis.", 400, origin);
+    const ownYear = await db.prepare("SELECT id FROM teacher_school_years WHERE id = ? AND user_id = ? LIMIT 1").bind(yearId, userId).first();
+    if (!ownYear) return errorResponse2("Ann\xE9e scolaire non autoris\xE9e ou introuvable.", 404, origin);
+    const now = Date.now();
+    const id = await resolveSafeNewId(db, "teacher_schools", body.id, "school");
+    let logoR2Key = null;
+    if (typeof body.logoDataUrl === "string" && body.logoDataUrl.startsWith("data:image/")) {
+      const bytes = decodeBase64DataUrl(body.logoDataUrl);
+      const fmt = bytes ? detectValidatedImageFormat(bytes) : null;
+      if (!bytes || !fmt) return errorResponse2("Format de logo invalide (PNG/JPEG/WebP, max 600 Ko).", 400, origin);
+      const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+      logoR2Key = `teacher-school-logos/${sanitizeSegment(userId)}/${sanitizeSegment(id)}_${now}_${rand}.${fmt.ext}`;
+      await uploadImageBytesToR2(rawEnv, logoR2Key, bytes, fmt.contentType, {
+        userId: sanitizeSegment(userId),
+        kind: "school_logo",
+        schoolId: sanitizeSegment(id)
+      });
+    }
+    const color = String(body.color || "#ffffff").slice(0, 32);
+    const textColor = String(body.textColor || "#0f172a").slice(0, 32);
+    const borderColor = String(body.borderColor || "#e2e8f0").slice(0, 32);
+    const borderDarkColor = String(body.borderDarkColor || "#cbd5e1").slice(0, 32);
+    await db.prepare(
+      `INSERT INTO teacher_schools
+          (id, user_id, year_id, name, logo_r2_key, color, text_color, border_color, border_dark_color, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, userId, yearId, name, logoR2Key, color, textColor, borderColor, borderDarkColor, now, now).run();
+    const logoUrl = logoR2Key ? await signTeacherMediaUrl(apiOrigin, logoR2Key, jwtSecret) : void 0;
+    return jsonResponse2({
+      success: true,
+      school: {
+        id,
+        yearId,
+        name,
+        logoR2Key: logoR2Key || void 0,
+        logoUrl,
+        color,
+        textColor,
+        borderColor,
+        borderDarkColor,
+        createdAt: now
+      }
+    }, 201, origin);
+  }
+  const schoolItemMatch = path.match(/^\/api\/teacher\/schools\/([^/]+)$/);
+  if (schoolItemMatch && method === "PUT") {
+    const schoolId = decodeURIComponent(schoolItemMatch[1]);
+    const existing = await db.prepare("SELECT * FROM teacher_schools WHERE id = ? AND user_id = ? LIMIT 1").bind(schoolId, userId).first();
+    if (!existing) return errorResponse2("\xC9tablissement introuvable.", 404, origin);
+    const body = await request.json().catch(() => ({}));
+    const name = String(body.name || existing.name).trim().slice(0, 120);
+    if (!name) return errorResponse2("Le nom de l\u2019\xE9cole ne peut pas \xEAtre vide.", 400, origin);
+    const now = Date.now();
+    let logoR2Key = existing.logo_r2_key || null;
+    let oldKeyToDelete = null;
+    if (body.removeLogo === true) {
+      oldKeyToDelete = logoR2Key;
+      logoR2Key = null;
+    } else if (typeof body.logoDataUrl === "string" && body.logoDataUrl.startsWith("data:image/")) {
+      const bytes = decodeBase64DataUrl(body.logoDataUrl);
+      const fmt = bytes ? detectValidatedImageFormat(bytes) : null;
+      if (!bytes || !fmt) return errorResponse2("Format de logo invalide (PNG/JPEG/WebP, max 600 Ko).", 400, origin);
+      const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+      const newKey = `teacher-school-logos/${sanitizeSegment(userId)}/${sanitizeSegment(schoolId)}_${now}_${rand}.${fmt.ext}`;
+      await uploadImageBytesToR2(rawEnv, newKey, bytes, fmt.contentType, {
+        userId: sanitizeSegment(userId),
+        kind: "school_logo",
+        schoolId: sanitizeSegment(schoolId)
+      });
+      oldKeyToDelete = logoR2Key;
+      logoR2Key = newKey;
+    }
+    const color = String(body.color || existing.color).slice(0, 32);
+    const textColor = String(body.textColor || existing.text_color).slice(0, 32);
+    const borderColor = String(body.borderColor || existing.border_color).slice(0, 32);
+    const borderDarkColor = String(body.borderDarkColor || existing.border_dark_color).slice(0, 32);
+    await db.prepare(
+      `UPDATE teacher_schools
+         SET name = ?, logo_r2_key = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, updated_at = ?
+         WHERE id = ? AND user_id = ?`
+    ).bind(name, logoR2Key, color, textColor, borderColor, borderDarkColor, now, schoolId, userId).run();
+    if (oldKeyToDelete && oldKeyToDelete !== logoR2Key) {
+      await deleteOwnedR2Keys(rawEnv, userId, [oldKeyToDelete]);
+    }
+    const logoUrl = logoR2Key ? await signTeacherMediaUrl(apiOrigin, logoR2Key, jwtSecret) : void 0;
+    return jsonResponse2({
+      success: true,
+      school: {
+        id: schoolId,
+        yearId: existing.year_id,
+        name,
+        logoR2Key: logoR2Key || void 0,
+        logoUrl,
+        color,
+        textColor,
+        borderColor,
+        borderDarkColor,
+        createdAt: Number(existing.created_at)
+      }
+    }, 200, origin);
+  }
+  if (schoolItemMatch && method === "DELETE") {
+    const schoolId = decodeURIComponent(schoolItemMatch[1]);
+    const existing = await db.prepare("SELECT id, logo_r2_key FROM teacher_schools WHERE id = ? AND user_id = ? LIMIT 1").bind(schoolId, userId).first();
+    if (!existing) return errorResponse2("\xC9tablissement introuvable.", 404, origin);
+    const studentPhotos = await db.prepare(
+      `SELECT s.photo_r2_key
+         FROM teacher_gradebook_students s
+         JOIN teacher_gradebooks g ON g.id = s.gradebook_id
+         WHERE g.school_id = ? AND s.user_id = ? AND s.photo_r2_key IS NOT NULL`
+    ).bind(schoolId, userId).all();
+    const r2Keys = [
+      existing.logo_r2_key,
+      ...(studentPhotos.results || []).map((r) => r.photo_r2_key)
+    ];
+    await db.batch([
+      db.prepare(`DELETE FROM teacher_gradebook_students WHERE user_id = ? AND gradebook_id IN (SELECT id FROM teacher_gradebooks WHERE school_id = ? AND user_id = ?)`).bind(userId, schoolId, userId),
+      db.prepare("DELETE FROM teacher_gradebooks WHERE school_id = ? AND user_id = ?").bind(schoolId, userId),
+      db.prepare("DELETE FROM teacher_subjects WHERE school_id = ? AND user_id = ?").bind(schoolId, userId),
+      db.prepare("DELETE FROM teacher_terms WHERE school_id = ? AND user_id = ?").bind(schoolId, userId),
+      db.prepare("DELETE FROM teacher_classes WHERE school_id = ? AND user_id = ?").bind(schoolId, userId),
+      db.prepare("DELETE FROM teacher_study_levels WHERE school_id = ? AND user_id = ?").bind(schoolId, userId),
+      db.prepare("DELETE FROM teacher_schools WHERE id = ? AND user_id = ?").bind(schoolId, userId)
+    ]);
+    await deleteOwnedR2Keys(rawEnv, userId, r2Keys);
+    return jsonResponse2({ success: true, deletedId: schoolId }, 200, origin);
+  }
+  if (path === "/api/teacher/levels" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const schoolId = String(body.schoolId || "").trim();
+    const name = String(body.name || "").trim().slice(0, 80);
+    if (!schoolId || !name) return errorResponse2("\xC9cole et nom du niveau requis.", 400, origin);
+    const ownSchool = await db.prepare("SELECT id, year_id FROM teacher_schools WHERE id = ? AND user_id = ? LIMIT 1").bind(schoolId, userId).first();
+    if (!ownSchool) return errorResponse2("\xC9tablissement introuvable ou non autoris\xE9.", 404, origin);
+    const now = Date.now();
+    const id = await resolveSafeNewId(db, "teacher_study_levels", body.id, "level");
+    const color = String(body.color || "#ffffff").slice(0, 32);
+    const textColor = String(body.textColor || "#0f172a").slice(0, 32);
+    const borderColor = String(body.borderColor || "#cbd5e1").slice(0, 32);
+    await db.prepare(
+      `INSERT INTO teacher_study_levels (id, user_id, school_id, year_id, name, color, text_color, border_color, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, userId, schoolId, ownSchool.year_id, name, color, textColor, borderColor, Number(body.sortOrder) || 0, now, now).run();
+    return jsonResponse2({
+      success: true,
+      level: {
+        id,
+        schoolId,
+        yearId: ownSchool.year_id,
+        name,
+        color,
+        textColor,
+        borderColor,
+        createdAt: now
+      }
+    }, 201, origin);
+  }
+  const levelItemMatch = path.match(/^\/api\/teacher\/levels\/([^/]+)$/);
+  if (levelItemMatch && method === "PUT") {
+    const levelId = decodeURIComponent(levelItemMatch[1]);
+    const existing = await db.prepare("SELECT * FROM teacher_study_levels WHERE id = ? AND user_id = ? LIMIT 1").bind(levelId, userId).first();
+    if (!existing) return errorResponse2("Niveau d\u2019\xE9tude introuvable.", 404, origin);
+    const body = await request.json().catch(() => ({}));
+    const name = String(body.name || existing.name).trim().slice(0, 80);
+    if (!name) return errorResponse2("Nom du niveau requis.", 400, origin);
+    const now = Date.now();
+    const color = String(body.color || existing.color || "#ffffff").slice(0, 32);
+    const textColor = String(body.textColor || existing.text_color || "#0f172a").slice(0, 32);
+    const borderColor = String(body.borderColor || existing.border_color || "#cbd5e1").slice(0, 32);
+    await db.batch([
+      db.prepare(
+        `UPDATE teacher_study_levels
+           SET name = ?, color = ?, text_color = ?, border_color = ?, updated_at = ?
+           WHERE id = ? AND user_id = ?`
+      ).bind(name, color, textColor, borderColor, now, levelId, userId),
+      db.prepare(
+        `UPDATE teacher_classes
+           SET level_name = ?, updated_at = ?
+           WHERE level_id = ? AND user_id = ?`
+      ).bind(name, now, levelId, userId)
+    ]);
+    return jsonResponse2({
+      success: true,
+      level: {
+        id: levelId,
+        schoolId: existing.school_id,
+        yearId: existing.year_id,
+        name,
+        color,
+        textColor,
+        borderColor,
+        createdAt: Number(existing.created_at)
+      }
+    }, 200, origin);
+  }
+  if (levelItemMatch && method === "DELETE") {
+    const levelId = decodeURIComponent(levelItemMatch[1]);
+    const existing = await db.prepare("SELECT id FROM teacher_study_levels WHERE id = ? AND user_id = ? LIMIT 1").bind(levelId, userId).first();
+    if (!existing) return errorResponse2("Niveau d\u2019\xE9tude introuvable.", 404, origin);
+    const studentPhotos = await db.prepare(
+      `SELECT s.photo_r2_key
+         FROM teacher_gradebook_students s
+         JOIN teacher_classes c ON c.id = s.class_id
+         WHERE c.level_id = ? AND s.user_id = ? AND s.photo_r2_key IS NOT NULL`
+    ).bind(levelId, userId).all();
+    const r2Keys = (studentPhotos.results || []).map((r) => r.photo_r2_key);
+    await db.batch([
+      db.prepare(`DELETE FROM teacher_gradebook_students WHERE user_id = ? AND class_id IN (SELECT id FROM teacher_classes WHERE level_id = ? AND user_id = ?)`).bind(userId, levelId, userId),
+      db.prepare(`DELETE FROM teacher_gradebooks WHERE user_id = ? AND class_id IN (SELECT id FROM teacher_classes WHERE level_id = ? AND user_id = ?)`).bind(userId, levelId, userId),
+      db.prepare(`DELETE FROM teacher_subjects WHERE user_id = ? AND class_id IN (SELECT id FROM teacher_classes WHERE level_id = ? AND user_id = ?)`).bind(userId, levelId, userId),
+      db.prepare(`DELETE FROM teacher_terms WHERE user_id = ? AND class_id IN (SELECT id FROM teacher_classes WHERE level_id = ? AND user_id = ?)`).bind(userId, levelId, userId),
+      db.prepare("DELETE FROM teacher_classes WHERE level_id = ? AND user_id = ?").bind(levelId, userId),
+      db.prepare("DELETE FROM teacher_study_levels WHERE id = ? AND user_id = ?").bind(levelId, userId)
+    ]);
+    await deleteOwnedR2Keys(rawEnv, userId, r2Keys);
+    return jsonResponse2({ success: true, deletedId: levelId }, 200, origin);
+  }
+  if (path === "/api/teacher/classes" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const levelId = String(body.levelId || "").trim();
+    const name = String(body.name || "").trim().slice(0, 80);
+    const teacherName = String(body.teacherName || "").trim().slice(0, 100);
+    if (!levelId || !name || !teacherName) {
+      return errorResponse2("Niveau d\u2019\xE9tude, nom de classe et professeur requis.", 400, origin);
+    }
+    const ownLevel = await db.prepare("SELECT id, school_id, year_id, name FROM teacher_study_levels WHERE id = ? AND user_id = ? LIMIT 1").bind(levelId, userId).first();
+    if (!ownLevel) return errorResponse2("Niveau d\u2019\xE9tude introuvable ou non autoris\xE9.", 404, origin);
+    const now = Date.now();
+    const classId = await resolveSafeNewId(db, "teacher_classes", body.id, "class");
+    const slogan = body.slogan ? String(body.slogan).trim().slice(0, 140) : null;
+    const color = String(body.color || "#ffffff").slice(0, 32);
+    const textColor = String(body.textColor || "#0f172a").slice(0, 32);
+    const borderColor = String(body.borderColor || "#e2e8f0").slice(0, 32);
+    const borderDarkColor = String(body.borderDarkColor || "#cbd5e1").slice(0, 32);
+    const iconGradient = String(body.iconGradient || "from-amber-500 to-orange-600").slice(0, 80);
+    const defaultTerms = Array.isArray(body.defaultTerms) && body.defaultTerms.length > 0 ? body.defaultTerms.slice(0, 12).map((t, idx) => ({
+      id: t.id && typeof t.id === "string" && t.id.length <= 80 ? t.id : `term-${classId}-${idx + 1}`,
+      number: Number(t.number) || idx + 1,
+      name: String(t.name || `Trimestre ${idx + 1}`).trim().slice(0, 40),
+      createdAt: now + idx
+    })) : [
+      { id: `term-${classId}-1`, number: 1, name: "Trimestre 1", createdAt: now },
+      { id: `term-${classId}-2`, number: 2, name: "Trimestre 2", createdAt: now + 1 },
+      { id: `term-${classId}-3`, number: 3, name: "Trimestre 3", createdAt: now + 2 }
+    ];
+    const stmts = [
+      db.prepare(
+        `INSERT INTO teacher_classes
+            (id, user_id, level_id, school_id, year_id, level_name, name, slogan, teacher_name, subject_label, color, text_color, border_color, border_dark_color, icon_gradient, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(
+        classId,
+        userId,
+        levelId,
+        ownLevel.school_id,
+        ownLevel.year_id,
+        ownLevel.name,
+        name,
+        slogan,
+        teacherName,
+        color,
+        textColor,
+        borderColor,
+        borderDarkColor,
+        iconGradient,
+        now,
+        now
+      ),
+      ...defaultTerms.map(
+        (t) => db.prepare(
+          `INSERT INTO teacher_terms (id, user_id, class_id, school_id, year_id, number, name, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(t.id, userId, classId, ownLevel.school_id, ownLevel.year_id, t.number, t.name, t.createdAt, now)
+      )
+    ];
+    await db.batch(stmts);
+    return jsonResponse2({
+      success: true,
+      classItem: {
+        id: classId,
+        levelId,
+        schoolId: ownLevel.school_id,
+        yearId: ownLevel.year_id,
+        level: ownLevel.name,
+        name,
+        slogan: slogan || void 0,
+        teacherName,
+        color,
+        textColor,
+        borderColor,
+        borderDarkColor,
+        iconGradient,
+        createdAt: now
+      },
+      terms: defaultTerms.map((t) => ({
+        id: t.id,
+        classId,
+        schoolId: ownLevel.school_id,
+        yearId: ownLevel.year_id,
+        number: t.number,
+        name: t.name,
+        createdAt: t.createdAt
+      }))
+    }, 201, origin);
+  }
+  const classItemMatch = path.match(/^\/api\/teacher\/classes\/([^/]+)$/);
+  if (classItemMatch && method === "PUT") {
+    const classId = decodeURIComponent(classItemMatch[1]);
+    const existing = await db.prepare("SELECT * FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(classId, userId).first();
+    if (!existing) return errorResponse2("Classe introuvable.", 404, origin);
+    const body = await request.json().catch(() => ({}));
+    const name = String(body.name ?? existing.name ?? "").trim().slice(0, 80);
+    const teacherName = String(body.teacherName ?? existing.teacher_name ?? "").trim().slice(0, 100);
+    const slogan = body.slogan !== void 0 ? String(body.slogan).trim().slice(0, 140) || null : existing.slogan;
+    const color = String(body.color || existing.color).slice(0, 32);
+    const textColor = String(body.textColor || existing.text_color).slice(0, 32);
+    const borderColor = String(body.borderColor || existing.border_color).slice(0, 32);
+    const borderDarkColor = String(body.borderDarkColor || existing.border_dark_color).slice(0, 32);
+    const iconGradient = String(body.iconGradient || existing.icon_gradient).slice(0, 80);
+    const now = Date.now();
+    await db.prepare(
+      `UPDATE teacher_classes
+         SET name = ?, slogan = ?, teacher_name = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, icon_gradient = ?, updated_at = ?
+         WHERE id = ? AND user_id = ?`
+    ).bind(name, slogan, teacherName, color, textColor, borderColor, borderDarkColor, iconGradient, now, classId, userId).run();
+    return jsonResponse2({
+      success: true,
+      classItem: {
+        id: classId,
+        levelId: existing.level_id,
+        schoolId: existing.school_id,
+        yearId: existing.year_id,
+        level: existing.level_name,
+        name: name || void 0,
+        slogan: slogan || void 0,
+        teacherName,
+        color,
+        textColor,
+        borderColor,
+        borderDarkColor,
+        iconGradient,
+        createdAt: Number(existing.created_at)
+      }
+    }, 200, origin);
+  }
+  if (classItemMatch && method === "DELETE") {
+    const classId = decodeURIComponent(classItemMatch[1]);
+    const existing = await db.prepare("SELECT id FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(classId, userId).first();
+    if (!existing) return errorResponse2("Classe introuvable.", 404, origin);
+    const studentPhotos = await db.prepare("SELECT photo_r2_key FROM teacher_gradebook_students WHERE class_id = ? AND user_id = ? AND photo_r2_key IS NOT NULL").bind(classId, userId).all();
+    const r2Keys = (studentPhotos.results || []).map((r) => r.photo_r2_key);
+    await db.batch([
+      db.prepare("DELETE FROM teacher_gradebook_students WHERE class_id = ? AND user_id = ?").bind(classId, userId),
+      db.prepare("DELETE FROM teacher_gradebooks WHERE class_id = ? AND user_id = ?").bind(classId, userId),
+      db.prepare("DELETE FROM teacher_subjects WHERE class_id = ? AND user_id = ?").bind(classId, userId),
+      db.prepare("DELETE FROM teacher_terms WHERE class_id = ? AND user_id = ?").bind(classId, userId),
+      db.prepare("DELETE FROM teacher_classes WHERE id = ? AND user_id = ?").bind(classId, userId)
+    ]);
+    await deleteOwnedR2Keys(rawEnv, userId, r2Keys);
+    return jsonResponse2({ success: true, deletedId: classId }, 200, origin);
+  }
+  if (path === "/api/teacher/terms" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const classId = String(body.classId || "").trim();
+    const name = String(body.name || "").trim().slice(0, 50);
+    const number = Math.max(1, parseInt(String(body.number || 1), 10) || 1);
+    if (!classId || !name) return errorResponse2("Classe et nom du trimestre requis.", 400, origin);
+    const ownClass = await db.prepare("SELECT id, school_id, year_id FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(classId, userId).first();
+    if (!ownClass) return errorResponse2("Classe introuvable ou non autoris\xE9e.", 404, origin);
+    const now = Date.now();
+    const id = await resolveSafeNewId(db, "teacher_terms", body.id, "term");
+    await db.prepare(
+      `INSERT INTO teacher_terms (id, user_id, class_id, school_id, year_id, number, name, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, userId, classId, ownClass.school_id, ownClass.year_id, number, name, now, now).run();
+    return jsonResponse2({
+      success: true,
+      term: {
+        id,
+        classId,
+        schoolId: ownClass.school_id,
+        yearId: ownClass.year_id,
+        number,
+        name,
+        createdAt: now
+      }
+    }, 201, origin);
+  }
+  const termDeleteMatch = path.match(/^\/api\/teacher\/terms\/([^/]+)$/);
+  if (termDeleteMatch && method === "DELETE") {
+    const termId = decodeURIComponent(termDeleteMatch[1]);
+    const ownTerm = await db.prepare("SELECT id FROM teacher_terms WHERE id = ? AND user_id = ? LIMIT 1").bind(termId, userId).first();
+    if (!ownTerm) return errorResponse2("Trimestre introuvable.", 404, origin);
+    const studentPhotos = await db.prepare("SELECT photo_r2_key FROM teacher_gradebook_students WHERE term_id = ? AND user_id = ? AND photo_r2_key IS NOT NULL").bind(termId, userId).all();
+    const r2Keys = (studentPhotos.results || []).map((r) => r.photo_r2_key);
+    await db.batch([
+      db.prepare("DELETE FROM teacher_gradebook_students WHERE term_id = ? AND user_id = ?").bind(termId, userId),
+      db.prepare("DELETE FROM teacher_gradebooks WHERE term_id = ? AND user_id = ?").bind(termId, userId),
+      db.prepare("DELETE FROM teacher_subjects WHERE term_id = ? AND user_id = ?").bind(termId, userId),
+      db.prepare("DELETE FROM teacher_terms WHERE id = ? AND user_id = ?").bind(termId, userId)
+    ]);
+    await deleteOwnedR2Keys(rawEnv, userId, r2Keys);
+    return jsonResponse2({ success: true, deletedId: termId }, 200, origin);
+  }
+  if (path === "/api/teacher/subjects" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const classId = String(body.classId || "").trim();
+    const termId = String(body.termId || "").trim();
+    const name = String(body.name || "").trim().slice(0, 100);
+    if (!classId || !termId || !name) return errorResponse2("Classe, trimestre et nom de mati\xE8re requis.", 400, origin);
+    const [ownClass, ownTerm] = await Promise.all([
+      db.prepare("SELECT id, school_id, year_id FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(classId, userId).first(),
+      db.prepare("SELECT id, class_id FROM teacher_terms WHERE id = ? AND user_id = ? LIMIT 1").bind(termId, userId).first()
+    ]);
+    if (!ownClass || !ownTerm || ownTerm.class_id !== ownClass.id) {
+      return errorResponse2("Classe ou trimestre introuvable ou non coh\xE9rent.", 404, origin);
+    }
+    const now = Date.now();
+    const id = await resolveSafeNewId(db, "teacher_subjects", body.id, "subject");
+    const coeffRaw = body.coefficient !== void 0 && body.coefficient !== null && body.coefficient !== "" ? Number(body.coefficient) : null;
+    const coefficient = coeffRaw !== null && Number.isFinite(coeffRaw) ? coeffRaw : null;
+    const color = String(body.color || "#ffffff").slice(0, 32);
+    const textColor = String(body.textColor || "#0f172a").slice(0, 32);
+    const borderColor = String(body.borderColor || "#e2e8f0").slice(0, 32);
+    const borderDarkColor = String(body.borderDarkColor || "#cbd5e1").slice(0, 32);
+    await db.prepare(
+      `INSERT INTO teacher_subjects
+          (id, user_id, class_id, term_id, school_id, year_id, name, coefficient, color, text_color, border_color, border_dark_color, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(id, userId, classId, termId, ownClass.school_id, ownClass.year_id, name, coefficient, color, textColor, borderColor, borderDarkColor, now, now).run();
+    return jsonResponse2({
+      success: true,
+      subject: {
+        id,
+        classId,
+        termId,
+        schoolId: ownClass.school_id,
+        yearId: ownClass.year_id,
+        name,
+        coefficient: coefficient ?? void 0,
+        color,
+        textColor,
+        borderColor,
+        borderDarkColor,
+        createdAt: now
+      }
+    }, 201, origin);
+  }
+  const subjectItemMatch = path.match(/^\/api\/teacher\/subjects\/([^/]+)$/);
+  if (subjectItemMatch && method === "PUT") {
+    const subjectId = decodeURIComponent(subjectItemMatch[1]);
+    const existing = await db.prepare("SELECT * FROM teacher_subjects WHERE id = ? AND user_id = ? LIMIT 1").bind(subjectId, userId).first();
+    if (!existing) return errorResponse2("Mati\xE8re introuvable.", 404, origin);
+    const body = await request.json().catch(() => ({}));
+    const name = String(body.name ?? existing.name).trim().slice(0, 100);
+    if (!name) return errorResponse2("Nom de mati\xE8re requis.", 400, origin);
+    let coefficient = existing.coefficient;
+    if (body.coefficient !== void 0) {
+      if (body.coefficient === null || body.coefficient === "") coefficient = null;
+      else {
+        const parsed = Number(body.coefficient);
+        coefficient = Number.isFinite(parsed) ? parsed : existing.coefficient;
+      }
+    }
+    const color = String(body.color || existing.color).slice(0, 32);
+    const textColor = String(body.textColor || existing.text_color).slice(0, 32);
+    const borderColor = String(body.borderColor || existing.border_color).slice(0, 32);
+    const borderDarkColor = String(body.borderDarkColor || existing.border_dark_color).slice(0, 32);
+    const now = Date.now();
+    await db.prepare(
+      `UPDATE teacher_subjects
+         SET name = ?, coefficient = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, updated_at = ?
+         WHERE id = ? AND user_id = ?`
+    ).bind(name, coefficient, color, textColor, borderColor, borderDarkColor, now, subjectId, userId).run();
+    return jsonResponse2({
+      success: true,
+      subject: {
+        id: subjectId,
+        classId: existing.class_id,
+        termId: existing.term_id,
+        schoolId: existing.school_id,
+        yearId: existing.year_id,
+        name,
+        coefficient: coefficient ?? void 0,
+        color,
+        textColor,
+        borderColor,
+        borderDarkColor,
+        createdAt: Number(existing.created_at)
+      }
+    }, 200, origin);
+  }
+  if (subjectItemMatch && method === "DELETE") {
+    const subjectId = decodeURIComponent(subjectItemMatch[1]);
+    const existing = await db.prepare("SELECT id FROM teacher_subjects WHERE id = ? AND user_id = ? LIMIT 1").bind(subjectId, userId).first();
+    if (!existing) return errorResponse2("Mati\xE8re introuvable.", 404, origin);
+    const studentPhotos = await db.prepare("SELECT photo_r2_key FROM teacher_gradebook_students WHERE subject_id = ? AND user_id = ? AND photo_r2_key IS NOT NULL").bind(subjectId, userId).all();
+    const r2Keys = (studentPhotos.results || []).map((r) => r.photo_r2_key);
+    await db.batch([
+      db.prepare("DELETE FROM teacher_gradebook_students WHERE subject_id = ? AND user_id = ?").bind(subjectId, userId),
+      db.prepare("DELETE FROM teacher_gradebooks WHERE subject_id = ? AND user_id = ?").bind(subjectId, userId),
+      db.prepare("DELETE FROM teacher_subjects WHERE id = ? AND user_id = ?").bind(subjectId, userId)
+    ]);
+    await deleteOwnedR2Keys(rawEnv, userId, r2Keys);
+    return jsonResponse2({ success: true, deletedId: subjectId }, 200, origin);
+  }
+  const gradebookMatch = path.match(/^\/api\/teacher\/gradebook\/([^/]+)\/([^/]+)$/);
+  if (gradebookMatch && method === "GET") {
+    const subjectId = decodeURIComponent(gradebookMatch[1]);
+    const termId = decodeURIComponent(gradebookMatch[2]);
+    const ownSubject = await db.prepare("SELECT id, class_id, school_id, year_id FROM teacher_subjects WHERE id = ? AND user_id = ? LIMIT 1").bind(subjectId, userId).first();
+    if (!ownSubject) return errorResponse2("Mati\xE8re introuvable ou non autoris\xE9e.", 404, origin);
+    const gb = await db.prepare("SELECT * FROM teacher_gradebooks WHERE user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1").bind(userId, subjectId, termId).first();
+    if (!gb) {
+      return jsonResponse2({
+        success: true,
+        exists: false,
+        version: 0,
+        noteColumnCount: 7,
+        columnMetas: {},
+        layout: {},
+        styles: {},
+        students: []
+      }, 200, origin);
+    }
+    const stRes = await db.prepare(
+      `SELECT * FROM teacher_gradebook_students
+         WHERE user_id = ? AND gradebook_id = ?
+         ORDER BY row_order ASC, created_at ASC`
+    ).bind(userId, gb.id).all();
+    const students = await Promise.all(
+      (stRes.results || []).map(async (row) => ({
+        id: row.id,
+        studentUid: row.student_uid || row.id,
+        name: row.full_name || "",
+        photoR2Key: row.photo_r2_key || void 0,
+        photoUrl: row.photo_r2_key ? await signTeacherMediaUrl(apiOrigin, row.photo_r2_key, jwtSecret) : void 0,
+        notes: safeParseJson(row.notes_json, [])
+      }))
+    );
+    return jsonResponse2({
+      success: true,
+      exists: true,
+      gradebookId: gb.id,
+      version: Number(gb.version) || 1,
+      updatedAt: Number(gb.updated_at) || Date.now(),
+      noteColumnCount: Math.max(1, Number(gb.note_col_count) || 7),
+      columnMetas: safeParseJson(gb.col_metas_json, {}),
+      layout: safeParseJson(gb.layout_json, {}),
+      styles: safeParseJson(gb.styles_json, {}),
+      students
+    }, 200, origin);
+  }
+  if (gradebookMatch && method === "PUT") {
+    const subjectId = decodeURIComponent(gradebookMatch[1]);
+    const termId = decodeURIComponent(gradebookMatch[2]);
+    const [ownSubject, ownTerm] = await Promise.all([
+      db.prepare("SELECT id, class_id, school_id, year_id FROM teacher_subjects WHERE id = ? AND user_id = ? LIMIT 1").bind(subjectId, userId).first(),
+      db.prepare("SELECT id, class_id FROM teacher_terms WHERE id = ? AND user_id = ? LIMIT 1").bind(termId, userId).first()
+    ]);
+    if (!ownSubject) return errorResponse2("Mati\xE8re introuvable ou non autoris\xE9e.", 404, origin);
+    if (!ownTerm || ownTerm.class_id !== ownSubject.class_id) {
+      return errorResponse2("Trimestre invalide pour cette mati\xE8re.", 400, origin);
+    }
+    const body = await request.json().catch(() => ({}));
+    const noteColumnCount = Math.min(200, Math.max(1, parseInt(String(body.noteColumnCount ?? 7), 10) || 7));
+    const columnMetas = typeof body.columnMetas === "object" && body.columnMetas !== null ? body.columnMetas : {};
+    const layout = typeof body.layout === "object" && body.layout !== null ? body.layout : {};
+    const styles = typeof body.styles === "object" && body.styles !== null ? body.styles : {};
+    const incomingStudents = Array.isArray(body.students) ? body.students.slice(0, 600) : [];
+    const now = Date.now();
+    const existingGb = await db.prepare("SELECT id, version FROM teacher_gradebooks WHERE user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1").bind(userId, subjectId, termId).first();
+    const gradebookId = existingGb ? existingGb.id : makeId("gb");
+    const nextVersion = existingGb ? (Number(existingGb.version) || 1) + 1 : 1;
+    const prevPhotosRes = existingGb ? await db.prepare("SELECT id, photo_r2_key FROM teacher_gradebook_students WHERE user_id = ? AND gradebook_id = ?").bind(userId, gradebookId).all() : { results: [] };
+    const prevKeyByStudentId = /* @__PURE__ */ new Map();
+    for (const r of prevPhotosRes.results || []) {
+      if (r.photo_r2_key) prevKeyByStudentId.set(r.id, r.photo_r2_key);
+    }
+    const keptR2Keys = /* @__PURE__ */ new Set();
+    const preparedRows = [];
+    for (let idx = 0; idx < incomingStudents.length; idx++) {
+      const s = incomingStudents[idx] || {};
+      const rowId = s.id && typeof s.id === "string" && s.id.length <= 80 ? s.id : makeId("std");
+      const studentUid = s.studentUid && typeof s.studentUid === "string" && s.studentUid.length <= 80 ? s.studentUid : rowId;
+      const fullName = String(s.name || "").slice(0, 160);
+      const notes = Array.isArray(s.notes) ? s.notes.slice(0, 200).map((n) => String(n ?? "").slice(0, 32)) : [];
+      let photoR2Key = null;
+      if (s.photoR2Key && isOwnedR2Key(String(s.photoR2Key), userId)) {
+        photoR2Key = String(s.photoR2Key);
+      } else if (s.photoUrl && typeof s.photoUrl === "string" && s.photoUrl.startsWith("data:image/")) {
+        const bytes = decodeBase64DataUrl(s.photoUrl);
+        const fmt = bytes ? detectValidatedImageFormat(bytes) : null;
+        if (bytes && fmt) {
+          const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+          const uploadedKey = `teacher-student-photos/${sanitizeSegment(userId)}/${sanitizeSegment(ownSubject.school_id)}/${sanitizeSegment(ownSubject.class_id)}/${sanitizeSegment(rowId)}_${now}_${rand}.${fmt.ext}`;
+          await uploadImageBytesToR2(rawEnv, uploadedKey, bytes, fmt.contentType, {
+            userId: sanitizeSegment(userId),
+            kind: "student_photo",
+            schoolId: sanitizeSegment(ownSubject.school_id),
+            classId: sanitizeSegment(ownSubject.class_id),
+            studentId: sanitizeSegment(rowId)
+          });
+          photoR2Key = uploadedKey;
+        }
+      } else if (s.photoUrl && prevKeyByStudentId.has(rowId)) {
+        photoR2Key = prevKeyByStudentId.get(rowId) || null;
+      }
+      if (photoR2Key) keptR2Keys.add(photoR2Key);
+      const average20 = computeAverage20(notes, columnMetas);
+      preparedRows.push({
+        id: rowId,
+        studentUid,
+        rowOrder: idx,
+        fullName,
+        photoR2Key,
+        notesJson: JSON.stringify(notes),
+        average20
+      });
+    }
+    const stmts = [];
+    if (existingGb) {
+      stmts.push(
+        db.prepare(
+          `UPDATE teacher_gradebooks
+             SET note_col_count = ?, col_metas_json = ?, layout_json = ?, styles_json = ?, version = ?, updated_at = ?
+             WHERE id = ? AND user_id = ?`
+        ).bind(
+          noteColumnCount,
+          JSON.stringify(columnMetas),
+          JSON.stringify(layout),
+          JSON.stringify(styles),
+          nextVersion,
+          now,
+          gradebookId,
+          userId
+        )
+      );
+    } else {
+      stmts.push(
+        db.prepare(
+          `INSERT INTO teacher_gradebooks
+              (id, user_id, subject_id, term_id, class_id, school_id, year_id, note_col_count, col_metas_json, layout_json, styles_json, version, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
+        ).bind(
+          gradebookId,
+          userId,
+          subjectId,
+          termId,
+          ownSubject.class_id,
+          ownSubject.school_id,
+          ownSubject.year_id,
+          noteColumnCount,
+          JSON.stringify(columnMetas),
+          JSON.stringify(layout),
+          JSON.stringify(styles),
+          now,
+          now
+        )
+      );
+    }
+    stmts.push(
+      db.prepare("DELETE FROM teacher_gradebook_students WHERE user_id = ? AND gradebook_id = ?").bind(userId, gradebookId)
+    );
+    for (const row of preparedRows) {
+      stmts.push(
+        db.prepare(
+          `INSERT INTO teacher_gradebook_students
+              (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          row.id,
+          userId,
+          gradebookId,
+          subjectId,
+          termId,
+          ownSubject.class_id,
+          row.studentUid,
+          row.rowOrder,
+          row.fullName,
+          row.photoR2Key,
+          row.notesJson,
+          row.average20,
+          now,
+          now
+        )
+      );
+    }
+    await runBatchChunked(db, stmts, 80);
+    const orphanKeys = [];
+    for (const prevKey of prevKeyByStudentId.values()) {
+      if (!keptR2Keys.has(prevKey)) orphanKeys.push(prevKey);
+    }
+    if (orphanKeys.length > 0) {
+      await deleteOwnedR2Keys(rawEnv, userId, orphanKeys);
+    }
+    return jsonResponse2({
+      success: true,
+      gradebookId,
+      version: nextVersion,
+      updatedAt: now,
+      savedStudentsCount: preparedRows.length
+    }, 200, origin);
+  }
+  if (path === "/api/teacher/photos/student" && method === "POST") {
+    const contentTypeHeader = request.headers.get("content-type") || "";
+    let subjectId = "";
+    let termId = "";
+    let studentId = "";
+    let bytes = null;
+    if (contentTypeHeader.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      subjectId = String(formData.get("subjectId") || "").trim();
+      termId = String(formData.get("termId") || "").trim();
+      studentId = String(formData.get("studentId") || "").trim();
+      const file = formData.get("file");
+      if (file && typeof file.arrayBuffer === "function") {
+        const ab = await file.arrayBuffer();
+        bytes = new Uint8Array(ab);
+      }
+    } else {
+      const body = await request.json().catch(() => ({}));
+      subjectId = String(body.subjectId || "").trim();
+      termId = String(body.termId || "").trim();
+      studentId = String(body.studentId || "").trim();
+      if (typeof body.dataUrl === "string") {
+        bytes = decodeBase64DataUrl(body.dataUrl);
+      }
+    }
+    if (!subjectId || !studentId || !bytes) {
+      return errorResponse2("Param\xE8tres photo incomplets (subjectId, studentId, image requis).", 400, origin);
+    }
+    const fmt = detectValidatedImageFormat(bytes);
+    if (!fmt) {
+      return errorResponse2("Image invalide ou trop lourde (formats accept\xE9s : JPEG, PNG, WebP, max 600 Ko).", 400, origin);
+    }
+    const ownSubject = await db.prepare("SELECT id, class_id, school_id FROM teacher_subjects WHERE id = ? AND user_id = ? LIMIT 1").bind(subjectId, userId).first();
+    if (!ownSubject) return errorResponse2("Mati\xE8re introuvable ou non autoris\xE9e.", 404, origin);
+    const now = Date.now();
+    const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+    const photoR2Key = `teacher-student-photos/${sanitizeSegment(userId)}/${sanitizeSegment(ownSubject.school_id)}/${sanitizeSegment(ownSubject.class_id)}/${sanitizeSegment(studentId)}_${now}_${rand}.${fmt.ext}`;
+    const uploaded = await uploadImageBytesToR2(rawEnv, photoR2Key, bytes, fmt.contentType, {
+      userId: sanitizeSegment(userId),
+      kind: "student_photo",
+      schoolId: sanitizeSegment(ownSubject.school_id),
+      classId: sanitizeSegment(ownSubject.class_id),
+      studentId: sanitizeSegment(studentId)
+    });
+    if (!uploaded) {
+      return errorResponse2("Stockage R2 indisponible pour enregistrer la photo.", 503, origin);
+    }
+    if (termId) {
+      const existingRow = await db.prepare(
+        `SELECT id, photo_r2_key FROM teacher_gradebook_students
+           WHERE id = ? AND user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1`
+      ).bind(studentId, userId, subjectId, termId).first();
+      if (existingRow) {
+        await db.prepare("UPDATE teacher_gradebook_students SET photo_r2_key = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(photoR2Key, now, studentId, userId).run();
+        if (existingRow.photo_r2_key && existingRow.photo_r2_key !== photoR2Key) {
+          await deleteOwnedR2Keys(rawEnv, userId, [existingRow.photo_r2_key]);
+        }
+      }
+    }
+    const photoUrl = await signTeacherMediaUrl(apiOrigin, photoR2Key, jwtSecret);
+    return jsonResponse2({
+      success: true,
+      photoR2Key,
+      photoUrl
+    }, 200, origin);
+  }
+  if (path === "/api/teacher/photos/student" && method === "DELETE") {
+    const body = await request.json().catch(() => ({}));
+    const photoR2Key = String(body.photoR2Key || "").trim();
+    const studentId = String(body.studentId || "").trim();
+    const subjectId = String(body.subjectId || "").trim();
+    const termId = String(body.termId || "").trim();
+    if (photoR2Key && !isOwnedR2Key(photoR2Key, userId)) {
+      return errorResponse2("Acc\xE8s refus\xE9 sur cette cl\xE9 photo.", 403, origin);
+    }
+    let keyToDelete = photoR2Key || null;
+    if (studentId && subjectId && termId) {
+      const existingRow = await db.prepare(
+        `SELECT photo_r2_key FROM teacher_gradebook_students
+           WHERE id = ? AND user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1`
+      ).bind(studentId, userId, subjectId, termId).first();
+      if (existingRow?.photo_r2_key && !keyToDelete) {
+        keyToDelete = existingRow.photo_r2_key;
+      }
+      await db.prepare(
+        `UPDATE teacher_gradebook_students
+           SET photo_r2_key = NULL, updated_at = ?
+           WHERE id = ? AND user_id = ? AND subject_id = ? AND term_id = ?`
+      ).bind(Date.now(), studentId, userId, subjectId, termId).run();
+    }
+    if (keyToDelete) {
+      await deleteOwnedR2Keys(rawEnv, userId, [keyToDelete]);
+    }
+    return jsonResponse2({ success: true }, 200, origin);
+  }
+  if (path === "/api/teacher/transfer" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const createdLevels = Array.isArray(body.createdLevels) ? body.createdLevels : [];
+    const createdClasses = Array.isArray(body.createdClasses) ? body.createdClasses : [];
+    const createdTerms = Array.isArray(body.createdTerms) ? body.createdTerms : [];
+    const createdSubjects = Array.isArray(body.createdSubjects) ? body.createdSubjects : [];
+    const updatedSubjects = Array.isArray(body.updatedSubjects) ? body.updatedSubjects : [];
+    const gradebookCopies = Array.isArray(body.gradebookCopies) ? body.gradebookCopies : [];
+    const [userSchoolsRes, userLevelsRes, userClassesRes, userTermsRes] = await Promise.all([
+      db.prepare("SELECT id, year_id FROM teacher_schools WHERE user_id = ?").bind(userId).all(),
+      db.prepare("SELECT id FROM teacher_study_levels WHERE user_id = ?").bind(userId).all(),
+      db.prepare("SELECT id FROM teacher_classes WHERE user_id = ?").bind(userId).all(),
+      db.prepare("SELECT id FROM teacher_terms WHERE user_id = ?").bind(userId).all()
+    ]);
+    const ownedSchoolYearMap = /* @__PURE__ */ new Map();
+    for (const s of userSchoolsRes.results || []) ownedSchoolYearMap.set(s.id, s.year_id);
+    const ownedLevelIds = new Set((userLevelsRes.results || []).map((r) => r.id));
+    const ownedClassIds = new Set((userClassesRes.results || []).map((r) => r.id));
+    const ownedTermIds = new Set((userTermsRes.results || []).map((r) => r.id));
+    const now = Date.now();
+    const structStmts = [];
+    for (const lv of createdLevels) {
+      if (!lv?.id || !lv?.schoolId || !ownedSchoolYearMap.has(lv.schoolId)) continue;
+      const lvId = String(lv.id).slice(0, 80);
+      ownedLevelIds.add(lvId);
+      structStmts.push(
+        db.prepare(
+          `INSERT OR IGNORE INTO teacher_study_levels
+              (id, user_id, school_id, year_id, name, color, text_color, border_color, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+        ).bind(
+          lvId,
+          userId,
+          lv.schoolId,
+          ownedSchoolYearMap.get(lv.schoolId),
+          String(lv.name || "Niveau").trim().slice(0, 80),
+          String(lv.color || "#ffffff").slice(0, 32),
+          String(lv.textColor || "#0f172a").slice(0, 32),
+          String(lv.borderColor || "#cbd5e1").slice(0, 32),
+          Number(lv.createdAt) || now,
+          now
+        )
+      );
+    }
+    for (const cls of createdClasses) {
+      if (!cls?.id || !cls?.schoolId || !cls?.levelId || !ownedSchoolYearMap.has(cls.schoolId)) continue;
+      const clsLevelId = String(cls.levelId).slice(0, 80);
+      if (!ownedLevelIds.has(clsLevelId)) continue;
+      const clsId = String(cls.id).slice(0, 80);
+      ownedClassIds.add(clsId);
+      structStmts.push(
+        db.prepare(
+          `INSERT OR IGNORE INTO teacher_classes
+              (id, user_id, level_id, school_id, year_id, level_name, name, slogan, teacher_name, subject_label, color, text_color, border_color, border_dark_color, icon_gradient, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          clsId,
+          userId,
+          clsLevelId,
+          cls.schoolId,
+          ownedSchoolYearMap.get(cls.schoolId),
+          String(cls.level || "Niveau").trim().slice(0, 80),
+          String(cls.name || "").trim().slice(0, 80),
+          cls.slogan ? String(cls.slogan).trim().slice(0, 140) : null,
+          String(cls.teacherName || "").trim().slice(0, 100),
+          String(cls.color || "#ffffff").slice(0, 32),
+          String(cls.textColor || "#0f172a").slice(0, 32),
+          String(cls.borderColor || "#e2e8f0").slice(0, 32),
+          String(cls.borderDarkColor || "#cbd5e1").slice(0, 32),
+          String(cls.iconGradient || "from-amber-500 to-orange-600").slice(0, 80),
+          Number(cls.createdAt) || now,
+          now
+        )
+      );
+    }
+    for (const term of createdTerms) {
+      if (!term?.id || !term?.classId || !term?.schoolId || !ownedSchoolYearMap.has(term.schoolId)) continue;
+      const tClassId = String(term.classId).slice(0, 80);
+      if (!ownedClassIds.has(tClassId)) continue;
+      const termId = String(term.id).slice(0, 80);
+      ownedTermIds.add(termId);
+      structStmts.push(
+        db.prepare(
+          `INSERT OR IGNORE INTO teacher_terms
+              (id, user_id, class_id, school_id, year_id, number, name, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          termId,
+          userId,
+          tClassId,
+          term.schoolId,
+          ownedSchoolYearMap.get(term.schoolId),
+          Math.max(1, Number(term.number) || 1),
+          String(term.name || "Trimestre 1").trim().slice(0, 50),
+          Number(term.createdAt) || now,
+          now
+        )
+      );
+    }
+    for (const subj of createdSubjects) {
+      if (!subj?.id || !subj?.classId || !subj?.termId || !subj?.schoolId || !ownedSchoolYearMap.has(subj.schoolId)) continue;
+      const sClassId = String(subj.classId).slice(0, 80);
+      const sTermId = String(subj.termId).slice(0, 80);
+      if (!ownedClassIds.has(sClassId) || !ownedTermIds.has(sTermId)) continue;
+      const coeff = subj.coefficient !== void 0 && subj.coefficient !== null && Number.isFinite(Number(subj.coefficient)) ? Number(subj.coefficient) : null;
+      structStmts.push(
+        db.prepare(
+          `INSERT OR IGNORE INTO teacher_subjects
+              (id, user_id, class_id, term_id, school_id, year_id, name, coefficient, color, text_color, border_color, border_dark_color, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          String(subj.id).slice(0, 80),
+          userId,
+          sClassId,
+          sTermId,
+          subj.schoolId,
+          ownedSchoolYearMap.get(subj.schoolId),
+          String(subj.name || "Mati\xE8re").trim().slice(0, 100),
+          coeff,
+          String(subj.color || "#ffffff").slice(0, 32),
+          String(subj.textColor || "#0f172a").slice(0, 32),
+          String(subj.borderColor || "#e2e8f0").slice(0, 32),
+          String(subj.borderDarkColor || "#cbd5e1").slice(0, 32),
+          Number(subj.createdAt) || now,
+          now
+        )
+      );
+    }
+    for (const subj of updatedSubjects) {
+      if (!subj?.id) continue;
+      const coeff = subj.coefficient !== void 0 && subj.coefficient !== null && Number.isFinite(Number(subj.coefficient)) ? Number(subj.coefficient) : null;
+      structStmts.push(
+        db.prepare(
+          `UPDATE teacher_subjects
+             SET coefficient = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, updated_at = ?
+             WHERE id = ? AND user_id = ?`
+        ).bind(
+          coeff,
+          String(subj.color || "#ffffff").slice(0, 32),
+          String(subj.textColor || "#0f172a").slice(0, 32),
+          String(subj.borderColor || "#e2e8f0").slice(0, 32),
+          String(subj.borderDarkColor || "#cbd5e1").slice(0, 32),
+          now,
+          String(subj.id),
+          userId
+        )
+      );
+    }
+    if (structStmts.length > 0) {
+      await runBatchChunked(db, structStmts, 80);
+    }
+    let gradebooksCopied = 0;
+    let studentsCopied = 0;
+    let notesCopied = 0;
+    let photosCopied = 0;
+    for (const op of gradebookCopies) {
+      if (!op?.sourceSubjectId || !op?.targetSubjectId || !op?.options) continue;
+      const opts = op.options;
+      if (opts.contentMode === "none") continue;
+      const srcSubjectId = String(op.sourceSubjectId);
+      const srcTermId = String(op.sourceTermId || "");
+      const dstSubjectId = String(op.targetSubjectId);
+      const dstTermId = String(op.targetTermId || "");
+      const mode = op.conflictStrategy === "merge" ? "merge" : "replace";
+      const [srcGb, dstSubj] = await Promise.all([
+        db.prepare("SELECT * FROM teacher_gradebooks WHERE user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1").bind(userId, srcSubjectId, srcTermId).first(),
+        db.prepare("SELECT id, class_id, school_id, year_id FROM teacher_subjects WHERE id = ? AND user_id = ? LIMIT 1").bind(dstSubjectId, userId).first()
+      ]);
+      if (!srcGb || !dstSubj) continue;
+      const srcStudentsRes = await db.prepare("SELECT * FROM teacher_gradebook_students WHERE user_id = ? AND gradebook_id = ? ORDER BY row_order ASC").bind(userId, srcGb.id).all();
+      const srcStudents = srcStudentsRes.results || [];
+      const existingDstGb = await db.prepare("SELECT * FROM teacher_gradebooks WHERE user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1").bind(userId, dstSubjectId, dstTermId).first();
+      const existingDstStudentsRes = existingDstGb ? await db.prepare("SELECT * FROM teacher_gradebook_students WHERE user_id = ? AND gradebook_id = ? ORDER BY row_order ASC").bind(userId, existingDstGb.id).all() : { results: [] };
+      const existingDstStudents = existingDstStudentsRes.results || [];
+      const srcColCount = Math.max(1, Number(srcGb.note_col_count) || 7);
+      const dstColCount = existingDstGb ? Math.max(1, Number(existingDstGb.note_col_count) || 7) : 7;
+      const finalColCount = mode === "merge" ? Math.max(srcColCount, dstColCount) : srcColCount;
+      const srcColMetas = safeParseJson(srcGb.col_metas_json, {});
+      const dstColMetas = existingDstGb ? safeParseJson(existingDstGb.col_metas_json, {}) : {};
+      let finalColMetas = mode === "merge" ? { ...dstColMetas } : {};
+      if (opts.includeMetas) {
+        for (const [k, m] of Object.entries(srcColMetas)) {
+          if (mode === "merge" && finalColMetas[k]) continue;
+          finalColMetas[k] = {
+            title: m?.title,
+            maxScore: typeof m?.maxScore === "number" ? m.maxScore : 20,
+            coeffEval: typeof m?.coeffEval === "number" ? m.coeffEval : 1,
+            ...opts.includeFormatting ? {
+              headerBgColor: m?.headerBgColor,
+              columnBgColor: m?.columnBgColor
+            } : {}
+          };
+        }
+      }
+      const finalLayout = opts.includeFormatting ? safeParseJson(srcGb.layout_json, {}) : existingDstGb ? safeParseJson(existingDstGb.layout_json, {}) : {};
+      const finalStyles = opts.includeFormatting ? safeParseJson(srcGb.styles_json, {}) : existingDstGb ? safeParseJson(existingDstGb.styles_json, {}) : {};
+      const dstGradebookId = existingDstGb ? existingDstGb.id : makeId("gb");
+      const nextVer = existingDstGb ? (Number(existingDstGb.version) || 1) + 1 : 1;
+      const finalRows = [];
+      if (opts.contentMode === "structure") {
+        if (mode === "merge" && existingDstStudents.length > 0) {
+          for (const st of existingDstStudents) {
+            const notes = safeParseJson(st.notes_json, []);
+            while (notes.length < finalColCount) notes.push("");
+            finalRows.push({
+              id: st.id,
+              studentUid: st.student_uid || st.id,
+              fullName: st.full_name || "",
+              photoR2Key: st.photo_r2_key || null,
+              notes
+            });
+          }
+        } else {
+          for (let i = 0; i < 8; i++) {
+            const rid = makeId("std");
+            finalRows.push({
+              id: rid,
+              studentUid: rid,
+              fullName: "",
+              photoR2Key: null,
+              notes: Array(finalColCount).fill("")
+            });
+          }
+        }
+      } else {
+        const existingByName = /* @__PURE__ */ new Map();
+        if (mode === "merge") {
+          for (const st of existingDstStudents) {
+            const notes = safeParseJson(st.notes_json, []);
+            while (notes.length < finalColCount) notes.push("");
+            const norm = normalizeNameForMatch(st.full_name);
+            if (norm) existingByName.set(norm, finalRows.length);
+            finalRows.push({
+              id: st.id,
+              studentUid: st.student_uid || st.id,
+              fullName: st.full_name || "",
+              photoR2Key: st.photo_r2_key || null,
+              notes
+            });
+          }
+        }
+        const namedSrc = srcStudents.filter((s) => String(s.full_name || "").trim().length > 0);
+        for (const srcSt of namedSrc) {
+          const norm = normalizeNameForMatch(srcSt.full_name);
+          const srcNotes = safeParseJson(srcSt.notes_json, []);
+          const copiedNotes = Array.from({ length: finalColCount }, (_, idx) => {
+            if (opts.contentMode === "students_and_notes") {
+              const v = String(srcNotes[idx] || "");
+              if (v.trim()) notesCopied++;
+              return v;
+            }
+            return "";
+          });
+          if (mode === "merge" && norm && existingByName.has(norm)) {
+            const targetIdx = existingByName.get(norm);
+            const targetRow = finalRows[targetIdx];
+            if (opts.contentMode === "students_and_notes") {
+              targetRow.notes = targetRow.notes.map(
+                (existingVal, idx) => existingVal.trim() ? existingVal : copiedNotes[idx] || ""
+              );
+            }
+            if (opts.includePhotos && !targetRow.photoR2Key && srcSt.photo_r2_key) {
+              const copiedKey = await copyOwnedR2Photo(rawEnv, userId, srcSt.photo_r2_key, dstSubj.school_id, dstSubj.class_id, targetRow.id);
+              if (copiedKey) {
+                targetRow.photoR2Key = copiedKey;
+                photosCopied++;
+              }
+            }
+            continue;
+          }
+          const newRowId = makeId("std");
+          let newPhotoKey = null;
+          if (opts.includePhotos && srcSt.photo_r2_key) {
+            newPhotoKey = await copyOwnedR2Photo(rawEnv, userId, srcSt.photo_r2_key, dstSubj.school_id, dstSubj.class_id, newRowId);
+            if (newPhotoKey) photosCopied++;
+          }
+          finalRows.push({
+            id: newRowId,
+            studentUid: srcSt.student_uid || newRowId,
+            fullName: String(srcSt.full_name || "").trim(),
+            photoR2Key: newPhotoKey,
+            notes: copiedNotes
+          });
+          studentsCopied++;
+        }
+        while (finalRows.length < 8) {
+          const rid = makeId("std");
+          finalRows.push({
+            id: rid,
+            studentUid: rid,
+            fullName: "",
+            photoR2Key: null,
+            notes: Array(finalColCount).fill("")
+          });
+        }
+      }
+      const gbStmts = [];
+      if (existingDstGb) {
+        gbStmts.push(
+          db.prepare(
+            `UPDATE teacher_gradebooks
+               SET note_col_count = ?, col_metas_json = ?, layout_json = ?, styles_json = ?, version = ?, updated_at = ?
+               WHERE id = ? AND user_id = ?`
+          ).bind(
+            finalColCount,
+            JSON.stringify(finalColMetas),
+            JSON.stringify(finalLayout),
+            JSON.stringify(finalStyles),
+            nextVer,
+            now,
+            dstGradebookId,
+            userId
+          )
+        );
+      } else {
+        gbStmts.push(
+          db.prepare(
+            `INSERT INTO teacher_gradebooks
+                (id, user_id, subject_id, term_id, class_id, school_id, year_id, note_col_count, col_metas_json, layout_json, styles_json, version, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
+          ).bind(
+            dstGradebookId,
+            userId,
+            dstSubjectId,
+            dstTermId,
+            dstSubj.class_id,
+            dstSubj.school_id,
+            dstSubj.year_id,
+            finalColCount,
+            JSON.stringify(finalColMetas),
+            JSON.stringify(finalLayout),
+            JSON.stringify(finalStyles),
+            now,
+            now
+          )
+        );
+      }
+      gbStmts.push(
+        db.prepare("DELETE FROM teacher_gradebook_students WHERE user_id = ? AND gradebook_id = ?").bind(userId, dstGradebookId)
+      );
+      for (let i = 0; i < finalRows.length; i++) {
+        const r = finalRows[i];
+        gbStmts.push(
+          db.prepare(
+            `INSERT INTO teacher_gradebook_students
+                (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            r.id,
+            userId,
+            dstGradebookId,
+            dstSubjectId,
+            dstTermId,
+            dstSubj.class_id,
+            r.studentUid,
+            i,
+            r.fullName,
+            r.photoR2Key,
+            JSON.stringify(r.notes),
+            computeAverage20(r.notes, finalColMetas),
+            now,
+            now
+          )
+        );
+      }
+      await runBatchChunked(db, gbStmts, 80);
+      if (mode === "replace" && existingDstStudents.length > 0) {
+        const keptSet = new Set(finalRows.map((r) => r.photoR2Key).filter(Boolean));
+        const toClean = existingDstStudents.map((s) => s.photo_r2_key).filter((k) => k && !keptSet.has(k));
+        if (toClean.length > 0) {
+          await deleteOwnedR2Keys(rawEnv, userId, toClean);
+        }
+      }
+      gradebooksCopied++;
+    }
+    const gradebookStats = await computeGradebookStatsMap(db, userId);
+    return jsonResponse2({
+      success: true,
+      serverSummary: {
+        gradebooksCopied,
+        studentsCopied,
+        notesCopied,
+        photosCopied
+      },
+      gradebookStats
+    }, 200, origin);
+  }
+  if (path === "/api/teacher/import-local" && method === "POST") {
+    const body = await request.json().catch(() => ({}));
+    const now = Date.now();
+    const years = Array.isArray(body.schoolYears) ? body.schoolYears.slice(0, 50) : [];
+    const schools = Array.isArray(body.schools) ? body.schools.slice(0, 100) : [];
+    const levels = Array.isArray(body.studyLevels) ? body.studyLevels.slice(0, 300) : [];
+    const classes = Array.isArray(body.classes) ? body.classes.slice(0, 500) : [];
+    const terms = Array.isArray(body.terms) ? body.terms.slice(0, 1500) : [];
+    const subjects = Array.isArray(body.subjects) ? body.subjects.slice(0, 2e3) : [];
+    const gradebooks = Array.isArray(body.gradebooks) ? body.gradebooks.slice(0, 500) : [];
+    const idPrefix = sanitizeSegment(userId).slice(0, 8);
+    const mapId = (rawId, kind) => {
+      const clean = String(rawId || makeId(kind)).slice(0, 64);
+      if (clean.startsWith(`${idPrefix}_`)) return clean;
+      return `${idPrefix}_${clean}`.slice(0, 80);
+    };
+    const yearIdMap = /* @__PURE__ */ new Map();
+    const schoolIdMap = /* @__PURE__ */ new Map();
+    const levelIdMap = /* @__PURE__ */ new Map();
+    const classIdMap = /* @__PURE__ */ new Map();
+    const termIdMap = /* @__PURE__ */ new Map();
+    const subjectIdMap = /* @__PURE__ */ new Map();
+    const stmts = [];
+    for (const y of years) {
+      if (!y?.id || !y?.label) continue;
+      const newId = mapId(y.id, "year");
+      yearIdMap.set(y.id, newId);
+      stmts.push(
+        db.prepare(
+          `INSERT OR IGNORE INTO teacher_school_years (id, user_id, label, color, text_color, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          newId,
+          userId,
+          String(y.label).trim().slice(0, 30),
+          String(y.color || "#00313d").slice(0, 32),
+          String(y.textColor || "#ffffff").slice(0, 32),
+          Number(y.createdAt) || now,
+          now
+        )
+      );
+    }
+    for (const s of schools) {
+      if (!s?.id || !s?.name) continue;
+      const mappedYearId = yearIdMap.get(s.yearId);
+      if (!mappedYearId) continue;
+      const newId = mapId(s.id, "school");
+      schoolIdMap.set(s.id, newId);
+      let logoR2Key = null;
+      if (typeof s.logoUrl === "string" && s.logoUrl.startsWith("data:image/")) {
+        const bytes = decodeBase64DataUrl(s.logoUrl);
+        const fmt = bytes ? detectValidatedImageFormat(bytes) : null;
+        if (bytes && fmt) {
+          const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+          logoR2Key = `teacher-school-logos/${sanitizeSegment(userId)}/${sanitizeSegment(newId)}_${now}_${rand}.${fmt.ext}`;
+          await uploadImageBytesToR2(rawEnv, logoR2Key, bytes, fmt.contentType, {
+            userId: sanitizeSegment(userId),
+            kind: "school_logo",
+            schoolId: sanitizeSegment(newId)
+          });
+        }
+      }
+      stmts.push(
+        db.prepare(
+          `INSERT OR IGNORE INTO teacher_schools
+              (id, user_id, year_id, name, logo_r2_key, color, text_color, border_color, border_dark_color, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          newId,
+          userId,
+          mappedYearId,
+          String(s.name).trim().slice(0, 120),
+          logoR2Key,
+          String(s.color || "#ffffff").slice(0, 32),
+          String(s.textColor || "#0f172a").slice(0, 32),
+          String(s.borderColor || "#e2e8f0").slice(0, 32),
+          String(s.borderDarkColor || "#cbd5e1").slice(0, 32),
+          Number(s.createdAt) || now,
+          now
+        )
+      );
+    }
+    for (const l of levels) {
+      if (!l?.id || !l?.name) continue;
+      const mappedSchoolId = schoolIdMap.get(l.schoolId);
+      const mappedYearId = yearIdMap.get(l.yearId);
+      if (!mappedSchoolId || !mappedYearId) continue;
+      const newId = mapId(l.id, "level");
+      levelIdMap.set(l.id, newId);
+      stmts.push(
+        db.prepare(
+          `INSERT OR IGNORE INTO teacher_study_levels
+              (id, user_id, school_id, year_id, name, color, text_color, border_color, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+        ).bind(
+          newId,
+          userId,
+          mappedSchoolId,
+          mappedYearId,
+          String(l.name).trim().slice(0, 80),
+          String(l.color || "#ffffff").slice(0, 32),
+          String(l.textColor || "#0f172a").slice(0, 32),
+          String(l.borderColor || "#cbd5e1").slice(0, 32),
+          Number(l.createdAt) || now,
+          now
+        )
+      );
+    }
+    for (const c of classes) {
+      if (!c?.id) continue;
+      const mappedSchoolId = schoolIdMap.get(c.schoolId);
+      const mappedYearId = yearIdMap.get(c.yearId);
+      let mappedLevelId = c.levelId ? levelIdMap.get(c.levelId) : void 0;
+      if (!mappedSchoolId || !mappedYearId) continue;
+      if (!mappedLevelId) {
+        const fallbackLevelId = mapId(`lvl-${c.schoolId}-${sanitizeSegment(c.level || "general")}`, "level");
+        mappedLevelId = fallbackLevelId;
+        stmts.push(
+          db.prepare(
+            `INSERT OR IGNORE INTO teacher_study_levels
+                (id, user_id, school_id, year_id, name, color, text_color, border_color, sort_order, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, '#ffffff', '#0f172a', '#cbd5e1', 0, ?, ?)`
+          ).bind(fallbackLevelId, userId, mappedSchoolId, mappedYearId, String(c.level || "G\xE9n\xE9ral").trim().slice(0, 80), now, now)
+        );
+      }
+      const newId = mapId(c.id, "class");
+      classIdMap.set(c.id, newId);
+      stmts.push(
+        db.prepare(
+          `INSERT OR IGNORE INTO teacher_classes
+              (id, user_id, level_id, school_id, year_id, level_name, name, slogan, teacher_name, subject_label, color, text_color, border_color, border_dark_color, icon_gradient, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          newId,
+          userId,
+          mappedLevelId,
+          mappedSchoolId,
+          mappedYearId,
+          String(c.level || "G\xE9n\xE9ral").trim().slice(0, 80),
+          String(c.name || "").trim().slice(0, 80),
+          c.slogan ? String(c.slogan).trim().slice(0, 140) : null,
+          String(c.teacherName || "").trim().slice(0, 100),
+          String(c.color || "#ffffff").slice(0, 32),
+          String(c.textColor || "#0f172a").slice(0, 32),
+          String(c.borderColor || "#e2e8f0").slice(0, 32),
+          String(c.borderDarkColor || "#cbd5e1").slice(0, 32),
+          String(c.iconGradient || "from-amber-500 to-orange-600").slice(0, 80),
+          Number(c.createdAt) || now,
+          now
+        )
+      );
+    }
+    for (const t of terms) {
+      if (!t?.id) continue;
+      const mappedClassId = classIdMap.get(t.classId);
+      const mappedSchoolId = schoolIdMap.get(t.schoolId);
+      const mappedYearId = yearIdMap.get(t.yearId);
+      if (!mappedClassId || !mappedSchoolId || !mappedYearId) continue;
+      const newId = mapId(t.id, "term");
+      termIdMap.set(t.id, newId);
+      stmts.push(
+        db.prepare(
+          `INSERT OR IGNORE INTO teacher_terms
+              (id, user_id, class_id, school_id, year_id, number, name, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          newId,
+          userId,
+          mappedClassId,
+          mappedSchoolId,
+          mappedYearId,
+          Math.max(1, Number(t.number) || 1),
+          String(t.name || "Trimestre 1").trim().slice(0, 50),
+          Number(t.createdAt) || now,
+          now
+        )
+      );
+    }
+    for (const s of subjects) {
+      if (!s?.id || !s?.name) continue;
+      const mappedClassId = classIdMap.get(s.classId);
+      const mappedTermId = s.termId ? termIdMap.get(s.termId) : void 0;
+      const mappedSchoolId = schoolIdMap.get(s.schoolId);
+      const mappedYearId = yearIdMap.get(s.yearId);
+      if (!mappedClassId || !mappedTermId || !mappedSchoolId || !mappedYearId) continue;
+      const newId = mapId(s.id, "subject");
+      subjectIdMap.set(s.id, newId);
+      const coeff = s.coefficient !== void 0 && s.coefficient !== null && Number.isFinite(Number(s.coefficient)) ? Number(s.coefficient) : null;
+      stmts.push(
+        db.prepare(
+          `INSERT OR IGNORE INTO teacher_subjects
+              (id, user_id, class_id, term_id, school_id, year_id, name, coefficient, color, text_color, border_color, border_dark_color, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          newId,
+          userId,
+          mappedClassId,
+          mappedTermId,
+          mappedSchoolId,
+          mappedYearId,
+          String(s.name).trim().slice(0, 100),
+          coeff,
+          String(s.color || "#ffffff").slice(0, 32),
+          String(s.textColor || "#0f172a").slice(0, 32),
+          String(s.borderColor || "#e2e8f0").slice(0, 32),
+          String(s.borderDarkColor || "#cbd5e1").slice(0, 32),
+          Number(s.createdAt) || now,
+          now
+        )
+      );
+    }
+    if (stmts.length > 0) {
+      await runBatchChunked(db, stmts, 80);
+    }
+    for (const gb of gradebooks) {
+      const mappedSubjectId = subjectIdMap.get(gb.subjectId);
+      const mappedTermId = termIdMap.get(gb.termId);
+      const mappedClassId = classIdMap.get(gb.classId);
+      const mappedSchoolId = schoolIdMap.get(gb.schoolId);
+      const mappedYearId = yearIdMap.get(gb.yearId);
+      if (!mappedSubjectId || !mappedTermId || !mappedClassId || !mappedSchoolId || !mappedYearId) continue;
+      const gbId = makeId("gb");
+      const noteColCount = Math.min(200, Math.max(1, Number(gb.noteColumnCount) || 7));
+      const colMetas = typeof gb.columnMetas === "object" && gb.columnMetas !== null ? gb.columnMetas : {};
+      const layout = typeof gb.layout === "object" && gb.layout !== null ? gb.layout : {};
+      const styles = typeof gb.styles === "object" && gb.styles !== null ? gb.styles : {};
+      const studentsList = Array.isArray(gb.students) ? gb.students.slice(0, 600) : [];
+      const gbStmts = [
+        db.prepare(
+          `INSERT OR IGNORE INTO teacher_gradebooks
+              (id, user_id, subject_id, term_id, class_id, school_id, year_id, note_col_count, col_metas_json, layout_json, styles_json, version, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`
+        ).bind(
+          gbId,
+          userId,
+          mappedSubjectId,
+          mappedTermId,
+          mappedClassId,
+          mappedSchoolId,
+          mappedYearId,
+          noteColCount,
+          JSON.stringify(colMetas),
+          JSON.stringify(layout),
+          JSON.stringify(styles),
+          now,
+          now
+        )
+      ];
+      for (let i = 0; i < studentsList.length; i++) {
+        const st = studentsList[i] || {};
+        const stId = makeId("std");
+        let photoR2Key = null;
+        if (typeof st.photoUrl === "string" && st.photoUrl.startsWith("data:image/")) {
+          const bytes = decodeBase64DataUrl(st.photoUrl);
+          const fmt = bytes ? detectValidatedImageFormat(bytes) : null;
+          if (bytes && fmt) {
+            const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+            photoR2Key = `teacher-student-photos/${sanitizeSegment(userId)}/${sanitizeSegment(mappedSchoolId)}/${sanitizeSegment(mappedClassId)}/${sanitizeSegment(stId)}_${now}_${rand}.${fmt.ext}`;
+            await uploadImageBytesToR2(rawEnv, photoR2Key, bytes, fmt.contentType, {
+              userId: sanitizeSegment(userId),
+              kind: "student_photo",
+              schoolId: sanitizeSegment(mappedSchoolId),
+              classId: sanitizeSegment(mappedClassId),
+              studentId: sanitizeSegment(stId)
+            });
+          }
+        }
+        const notes = Array.isArray(st.notes) ? st.notes.slice(0, 200).map((n) => String(n ?? "").slice(0, 32)) : [];
+        gbStmts.push(
+          db.prepare(
+            `INSERT INTO teacher_gradebook_students
+                (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(
+            stId,
+            userId,
+            gbId,
+            mappedSubjectId,
+            mappedTermId,
+            mappedClassId,
+            stId,
+            i,
+            String(st.name || "").slice(0, 160),
+            photoR2Key,
+            JSON.stringify(notes),
+            computeAverage20(notes, colMetas),
+            now,
+            now
+          )
+        );
+      }
+      await runBatchChunked(db, gbStmts, 80);
+    }
+    const payload = await buildBootstrapPayload(db, userId, apiOrigin, jwtSecret);
+    return jsonResponse2({ ...payload, migrated: true }, 200, origin);
+  }
+  return errorResponse2(`Route enseignant non trouv\xE9e : ${method} ${path}`, 404, origin);
+}
+
 // worker/src/index.ts
 var DNA_LOGO_PNG_B64 = "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";
 var DNA_LOGO_SVG = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -4686,7 +6810,9 @@ a:hover{transform:translateY(-2px)}
             `images/${userId}/`,
             `videos/${userId}/`,
             `documents/${userId}/`,
-            `downloads/${userId}/`
+            `downloads/${userId}/`,
+            `teacher-student-photos/${sanitizeSegment(userId)}/`,
+            `teacher-school-logos/${sanitizeSegment(userId)}/`
           ];
           for (const b of r2Buckets) {
             if (typeof b.list !== "function") continue;
@@ -4798,7 +6924,15 @@ a:hover{transform:translateY(-2px)}
           "user_subscriptions",
           "user_requests_history_purge",
           "user_dashboard_sites",
-          "user_word_counts"
+          "user_word_counts",
+          "teacher_gradebook_students",
+          "teacher_gradebooks",
+          "teacher_subjects",
+          "teacher_terms",
+          "teacher_classes",
+          "teacher_study_levels",
+          "teacher_schools",
+          "teacher_school_years"
         ];
         for (const table of tablesWithUserId) {
           try {
@@ -4908,6 +7042,19 @@ a:hover{transform:translateY(-2px)}
             }
           }
         }
+      }
+      if (path.startsWith("/api/teacher/")) {
+        const teacherRes = await handleTeacherGradebookRoutes(request, url, path, method, {
+          db: env.DB,
+          rawEnv,
+          origin,
+          jwtSecret: JWT_SECRET,
+          getAuthUser,
+          corsHeaders,
+          jsonResponse,
+          errorResponse
+        });
+        if (teacherRes) return teacherRes;
       }
       if (path.startsWith("/api/auth/") && path !== "/api/auth/check-verification-status" && !isSchemaInitialized) {
         await ensureDatabaseSchema(env.DB);
