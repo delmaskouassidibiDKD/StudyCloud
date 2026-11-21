@@ -144,6 +144,129 @@ const YEAR_COLOR_OPTIONS = [
   { id: 'red', label: 'Rouge Écarlate', bg: '#dc2626', text: '#ffffff', border: '#b91c1c' },
 ];
 
+// Style lumineux éclatant pour les éléments sélectionnés (inspiré des halos de la barre latérale gauche, plus lumineux et jamais noir)
+interface LuminousSelectionTheme {
+  bg: string;
+  border: string;
+  shadow: string;
+  aura: string;
+  dot: string;
+  dotShadow: string;
+  text: string;
+  badgeBg: string;
+  badgeText: string;
+  badgeBorder: string;
+}
+
+const getLuminousLevelTheme = (colorHex?: string): LuminousSelectionTheme => {
+  switch ((colorHex || '').toLowerCase()) {
+    case '#2563eb': // Bleu Roi
+      return {
+        bg: 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 55%, #e0f2fe 100%)',
+        border: '#3b82f6',
+        shadow: '0 0 0 2px rgba(96, 165, 250, 0.6), 0 0 18px 4px rgba(59, 130, 246, 0.6), 0 0 32px 0px rgba(96, 165, 250, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+        aura: 'radial-gradient(circle, rgba(96, 165, 250, 0.7) 0%, transparent 72%)',
+        dot: '#3b82f6',
+        dotShadow: '0 0 10px 2px rgba(59, 130, 246, 0.95)',
+        text: '#1e3a8a',
+        badgeBg: 'rgba(59, 130, 246, 0.14)',
+        badgeText: '#1d4ed8',
+        badgeBorder: 'rgba(59, 130, 246, 0.55)',
+      };
+    case '#059669': // Émeraude
+      return {
+        bg: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 55%, #ccfbf1 100%)',
+        border: '#10b981',
+        shadow: '0 0 0 2px rgba(52, 211, 153, 0.6), 0 0 18px 4px rgba(16, 185, 129, 0.6), 0 0 32px 0px rgba(52, 211, 153, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+        aura: 'radial-gradient(circle, rgba(52, 211, 153, 0.7) 0%, transparent 72%)',
+        dot: '#10b981',
+        dotShadow: '0 0 10px 2px rgba(16, 185, 129, 0.95)',
+        text: '#064e3b',
+        badgeBg: 'rgba(16, 185, 129, 0.14)',
+        badgeText: '#047857',
+        badgeBorder: 'rgba(16, 185, 129, 0.55)',
+      };
+    case '#ea580c': // Orange Ambré
+      return {
+        bg: 'linear-gradient(135deg, #fff7ed 0%, #ffedd5 55%, #fef3c7 100%)',
+        border: '#f97316',
+        shadow: '0 0 0 2px rgba(251, 146, 60, 0.65), 0 0 18px 4px rgba(249, 115, 22, 0.62), 0 0 32px 0px rgba(251, 146, 60, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+        aura: 'radial-gradient(circle, rgba(251, 146, 60, 0.72) 0%, transparent 72%)',
+        dot: '#f97316',
+        dotShadow: '0 0 10px 2px rgba(249, 115, 22, 0.95)',
+        text: '#7c2d12',
+        badgeBg: 'rgba(249, 115, 22, 0.14)',
+        badgeText: '#c2410c',
+        badgeBorder: 'rgba(249, 115, 22, 0.55)',
+      };
+    case '#db2777': // Rose Framboise
+      return {
+        bg: 'linear-gradient(135deg, #fdf2f8 0%, #fce7f3 55%, #fae8ff 100%)',
+        border: '#ec4899',
+        shadow: '0 0 0 2px rgba(244, 114, 182, 0.65), 0 0 18px 4px rgba(236, 72, 153, 0.6), 0 0 32px 0px rgba(244, 114, 182, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+        aura: 'radial-gradient(circle, rgba(244, 114, 182, 0.72) 0%, transparent 72%)',
+        dot: '#ec4899',
+        dotShadow: '0 0 10px 2px rgba(236, 72, 153, 0.95)',
+        text: '#831843',
+        badgeBg: 'rgba(236, 72, 153, 0.14)',
+        badgeText: '#be185d',
+        badgeBorder: 'rgba(236, 72, 153, 0.55)',
+      };
+    case '#7c3aed': // Violet Lumineux
+      return {
+        bg: 'linear-gradient(135deg, #f5f3ff 0%, #ede9fe 55%, #fae8ff 100%)',
+        border: '#8b5cf6',
+        shadow: '0 0 0 2px rgba(167, 139, 250, 0.65), 0 0 18px 4px rgba(139, 92, 246, 0.6), 0 0 32px 0px rgba(167, 139, 250, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+        aura: 'radial-gradient(circle, rgba(167, 139, 250, 0.72) 0%, transparent 72%)',
+        dot: '#8b5cf6',
+        dotShadow: '0 0 10px 2px rgba(139, 92, 246, 0.95)',
+        text: '#4c1d95',
+        badgeBg: 'rgba(139, 92, 246, 0.14)',
+        badgeText: '#6d28d9',
+        badgeBorder: 'rgba(139, 92, 246, 0.55)',
+      };
+    case '#d97706': // Or / Safran
+      return {
+        bg: 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 55%, #ffedd5 100%)',
+        border: '#f59e0b',
+        shadow: '0 0 0 2px rgba(251, 191, 36, 0.65), 0 0 18px 4px rgba(245, 158, 11, 0.6), 0 0 32px 0px rgba(251, 191, 36, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+        aura: 'radial-gradient(circle, rgba(251, 191, 36, 0.72) 0%, transparent 72%)',
+        dot: '#f59e0b',
+        dotShadow: '0 0 10px 2px rgba(245, 158, 11, 0.95)',
+        text: '#78350f',
+        badgeBg: 'rgba(245, 158, 11, 0.16)',
+        badgeText: '#b45309',
+        badgeBorder: 'rgba(245, 158, 11, 0.55)',
+      };
+    case '#dc2626': // Rouge Écarlate
+      return {
+        bg: 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 55%, #ffedd5 100%)',
+        border: '#ef4444',
+        shadow: '0 0 0 2px rgba(248, 113, 113, 0.65), 0 0 18px 4px rgba(239, 68, 68, 0.6), 0 0 32px 0px rgba(248, 113, 113, 0.45), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+        aura: 'radial-gradient(circle, rgba(248, 113, 113, 0.72) 0%, transparent 72%)',
+        dot: '#ef4444',
+        dotShadow: '0 0 10px 2px rgba(239, 68, 68, 0.95)',
+        text: '#7f1d1d',
+        badgeBg: 'rgba(239, 68, 68, 0.14)',
+        badgeText: '#b91c1c',
+        badgeBorder: 'rgba(239, 68, 68, 0.55)',
+      };
+    default: // Cyan Électrique / Bleu Ciel Lumineux (par défaut)
+      return {
+        bg: 'linear-gradient(135deg, #ecfeff 0%, #cffafe 55%, #e0f2fe 100%)',
+        border: '#06b6d4',
+        shadow: '0 0 0 2px rgba(34, 211, 238, 0.65), 0 0 20px 4px rgba(6, 182, 212, 0.62), 0 0 34px 0px rgba(56, 189, 248, 0.48), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+        aura: 'radial-gradient(circle, rgba(34, 211, 238, 0.75) 0%, transparent 72%)',
+        dot: '#06b6d4',
+        dotShadow: '0 0 10px 2px rgba(6, 182, 212, 0.98)',
+        text: '#083344',
+        badgeBg: 'rgba(6, 182, 212, 0.16)',
+        badgeText: '#0e7490',
+        badgeBorder: 'rgba(6, 182, 212, 0.6)',
+      };
+  }
+};
+
 // Couleurs proposées pour les classes (Orange Ambré comme sur l'image par défaut)
 const CLASS_COLOR_OPTIONS = [
   { id: 'amber', label: 'Orange Ambré (Style Référence)', bg: '#ea580c', text: '#ffffff', border: '#c2410c', borderDark: '#9a3412', iconGradient: 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' },
@@ -1341,227 +1464,216 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       {/* ========================================================================= */}
       {/* 2. ESPACE PRINCIPAL DE TRAVAIL (Plein écran Edge-to-Edge & Défilement fluide) */}
       {/* ========================================================================= */}
-      <main className="flex-1 flex flex-col h-full min-h-dvh overflow-y-auto overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-2 sm:pt-2.5 pb-24 md:pb-8 space-y-3 md:space-y-4">
+      <main className="flex-1 flex flex-col h-full min-h-dvh overflow-y-auto overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-1.5 sm:pt-2 pb-24 md:pb-8 space-y-1.5">
         
         {/* ----------------------------------------------------------------------- */}
-        {/* EN-TÊTE STRUCTURÉ EN 2 NIVEAUX PRO :                                    */}
-        {/* Ligne 1 (Tout en haut) : Retour (gauche) | Titre bien centré (milieu) | */}
-        {/*                          Utilitaires/Profil + Agrandissement (droite)   */}
-        {/* Ligne 2 (Dessous)      : Bouton principal (+ Créer un niveau / rentrée) */}
+        {/* EN-TÊTE COMPACT EN HAUT :                                               */}
+        {/* Retour (gauche) | Titre bien centré (milieu) | Utilitaires & Agrandissement (droite) */}
         {/* ----------------------------------------------------------------------- */}
-        <header className="flex flex-col gap-1.5">
-          {/* LIGNE 1 : BARRE SUPÉRIEURE (Retour à gauche | Titre centré | Utilitaires & Agrandissement à droite) */}
-          <div className="relative flex items-center justify-between gap-2 flex-wrap">
-            {/* Bouton Retour placé tout en haut à gauche */}
-            <button
-              type="button"
-              onClick={() => {
-                if (selectedSchoolInside) {
-                  setSelectedSchoolInside(null);
-                } else {
-                  setIsViewerMaximized(false);
-                  resetViewerExpand();
-                  onBack();
-                }
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/85 hover:bg-white text-slate-700 hover:text-[#00313d] border border-white/95 shadow-xs transition active:scale-95 font-bold text-xs cursor-pointer shrink-0 z-10"
-              title={selectedSchoolInside ? "Retour à la liste des écoles" : "Retour à l'accueil"}
-            >
-              <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
-              <span>Retour</span>
-            </button>
+        <header className="relative flex items-center justify-between gap-2 flex-wrap">
+          {/* Bouton Retour placé tout en haut à gauche */}
+          <button
+            type="button"
+            onClick={() => {
+              if (selectedSchoolInside) {
+                setSelectedSchoolInside(null);
+              } else {
+                setIsViewerMaximized(false);
+                resetViewerExpand();
+                onBack();
+              }
+            }}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/85 hover:bg-white text-slate-700 hover:text-[#00313d] border border-white/95 shadow-xs transition active:scale-95 font-bold text-xs cursor-pointer shrink-0 z-10"
+            title={selectedSchoolInside ? "Retour à la liste des écoles" : "Retour à l'accueil"}
+          >
+            <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>Retour</span>
+          </button>
 
-            {/* Titre principal bien centré en haut (Tableau de bord OU Nom de l'école active) */}
-            <div
-              className={`flex items-center justify-center min-w-0 ${
-                !isSearchOpen
-                  ? 'xl:absolute xl:left-1/2 xl:-translate-x-1/2 flex-1 xl:flex-initial'
-                  : 'flex-1'
-              }`}
-            >
-              {selectedSchoolInside ? (
-                <div className="flex items-center gap-2 min-w-0">
-                  <div className="w-7 h-7 rounded-full overflow-hidden border-2 border-white shadow-xs shrink-0 flex items-center justify-center bg-white/70">
-                    {selectedSchoolInside.logoUrl ? (
-                      <img src={selectedSchoolInside.logoUrl} alt={selectedSchoolInside.name} className="w-full h-full object-cover" />
-                    ) : (
-                      <span className="font-black text-[11px] text-[#00313d]">
-                        {selectedSchoolInside.name.slice(0, 2).toUpperCase()}
-                      </span>
-                    )}
-                  </div>
-                  <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-[#0f2430] tracking-tight leading-none truncate">
-                    {selectedSchoolInside.name}
-                  </h1>
-                  <span className="text-[10px] font-extrabold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200/60 hidden sm:inline-block shrink-0">
-                    {currentSelectedYear?.label}
-                  </span>
+          {/* Titre principal bien centré en haut (Tableau de bord OU Nom de l'école active) */}
+          <div
+            className={`flex items-center justify-center min-w-0 ${
+              !isSearchOpen
+                ? 'xl:absolute xl:left-1/2 xl:-translate-x-1/2 flex-1 xl:flex-initial'
+                : 'flex-1'
+            }`}
+          >
+            {selectedSchoolInside ? (
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-7 h-7 rounded-full overflow-hidden border-2 border-white shadow-xs shrink-0 flex items-center justify-center bg-white/70">
+                  {selectedSchoolInside.logoUrl ? (
+                    <img src={selectedSchoolInside.logoUrl} alt={selectedSchoolInside.name} className="w-full h-full object-cover" />
+                  ) : (
+                    <span className="font-black text-[11px] text-[#00313d]">
+                      {selectedSchoolInside.name.slice(0, 2).toUpperCase()}
+                    </span>
+                  )}
                 </div>
-              ) : (
-                <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-[#0f2430] tracking-tight leading-none text-center truncate">
-                  Tableau de bord
+                <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-[#0f2430] tracking-tight leading-none truncate">
+                  {selectedSchoolInside.name}
                 </h1>
-              )}
-            </div>
-
-            {/* Zone haute droite : Utilitaires + Profil (au-dessus du bouton Créer) puis Agrandissement dans le creux tout à droite */}
-            <div className="flex items-center gap-2 ml-auto flex-wrap justify-end z-10">
-              {/* Groupe utilitaires + profil enseignant */}
-              <div className="flex items-center gap-1.5 bg-white/55 backdrop-blur-md px-1.5 py-1 rounded-2xl border border-white/80 shadow-2xs">
-                {/* Barre de recherche dynamique */}
-                <div className="relative flex items-center">
-                  {isSearchOpen ? (
-                    <div className="flex items-center bg-white rounded-xl px-2.5 py-1 shadow-2xs border border-slate-200/80 transition-all w-40 sm:w-52">
-                      <Search className="w-3.5 h-3.5 text-slate-400 shrink-0 mr-1.5" />
-                      <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                        placeholder="Recherche..."
-                        className="w-full bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none"
-                        autoFocus
-                      />
-                      {searchQuery && (
-                        <button type="button" onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 cursor-pointer">
-                          <X className="w-3 h-3" />
-                        </button>
-                      )}
-                      <button type="button" onClick={() => setIsSearchOpen(false)} className="ml-1 text-slate-400 hover:text-slate-600 cursor-pointer">
-                        <X className="w-3 h-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => setIsSearchOpen(true)}
-                      className="w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
-                      title="Rechercher"
-                    >
-                      <Search className="w-3.5 h-3.5" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Notification Bell */}
-                <button
-                  type="button"
-                  className="relative w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
-                  title="Notifications"
-                >
-                  <Bell className="w-3.5 h-3.5" />
-                  <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500 ring-2 ring-white"></span>
-                </button>
-
-                {/* Settings Gear */}
-                <button
-                  type="button"
-                  className="w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
-                  title="Paramètres"
-                >
-                  <Settings className="w-3.5 h-3.5" />
-                </button>
-
-                {/* Séparateur discret */}
-                <div className="w-px h-5 bg-slate-300/60 mx-0.5 hidden sm:block" />
-
-                {/* Profil Enseignant */}
-                <div className="flex items-center gap-1.5 pl-0.5 pr-2.5 py-0.5 bg-white/90 rounded-xl shadow-2xs border border-white">
-                  <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-cyan-600 to-teal-400 text-white font-bold text-[10px] flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
-                    {user?.avatar_url ? (
-                      <img src={user.avatar_url} alt="Profile" className="w-full h-full object-cover" />
-                    ) : (
-                      (user?.name ? user.name.charAt(0).toUpperCase() : 'DKD')
-                    )}
-                  </div>
-                  <div className="flex flex-col text-left">
-                    <span className="text-[11px] font-bold text-slate-800 leading-none">
-                      {user?.name || 'Professeur'}
-                    </span>
-                    <span className="text-[8.5px] text-slate-400 font-medium leading-tight">
-                      Enseignant Pro
-                    </span>
-                  </div>
-                </div>
+                <span className="text-[10px] font-extrabold text-cyan-800 bg-cyan-50 px-2 py-0.5 rounded-lg border border-cyan-200/60 hidden sm:inline-block shrink-0">
+                  {currentSelectedYear?.label}
+                </span>
               </div>
-
-              {/* Boutons Super Agrandissement & Plein écran déplacés dans le creux tout en haut à droite (Desktop) */}
-              <div className="hidden md:flex items-center gap-1.5 shrink-0 pl-1 border-l border-cyan-900/15">
-                <ViewerSuperExpandButton
-                  expandLevel={viewerExpandLevel}
-                  onExpandChange={(lvl) => {
-                    if (lvl >= 1) {
-                      setIsViewerMaximized(true);
-                    } else {
-                      setIsViewerMaximized(false);
-                    }
-                    setViewerExpandLevel(lvl);
-                  }}
-                />
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (viewerExpandLevel >= 1 || isViewerMaximized) {
-                      setIsViewerMaximized(false);
-                      resetViewerExpand();
-                    } else {
-                      setIsViewerMaximized(true);
-                      setViewerExpandLevel(1);
-                    }
-                  }}
-                  className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 ${
-                    viewerExpandLevel >= 1 || isViewerMaximized
-                      ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
-                      : 'bg-[#101827] hover:bg-[#1a2538] text-white border-white/20'
-                  }`}
-                  title={viewerExpandLevel >= 1 || isViewerMaximized ? 'Réduire la vue' : "Agrandir l'espace"}
-                >
-                  {viewerExpandLevel >= 1 || isViewerMaximized ? (
-                    <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                  ) : (
-                    <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                  )}
-                </button>
-              </div>
-            </div>
+            ) : (
+              <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-[#0f2430] tracking-tight leading-none text-center truncate">
+                Tableau de bord
+              </h1>
+            )}
           </div>
 
-          {/* LIGNE 2 : BOUTON PRINCIPAL (+ Créer un niveau / + Créer une rentrée) ALIGNÉ À DROITE */}
-          <div className="flex items-center justify-end gap-2">
-            {/* ------------------------------------------------------------------- */}
-            {/* BOUTON D'ACTION PRINCIPAL : Créer un niveau (si dans l'école) OU Créer une rentrée */}
-            {/* ------------------------------------------------------------------- */}
-            <div className="flex items-center justify-end shrink-0">
-              {selectedSchoolInside ? (
+          {/* Zone haute droite : Utilitaires + Profil puis Agrandissement dans le creux tout à droite */}
+          <div className="flex items-center gap-2 ml-auto flex-wrap justify-end z-10">
+            {/* Groupe utilitaires + profil enseignant */}
+            <div className="flex items-center gap-1.5 bg-white/55 backdrop-blur-md px-1.5 py-1 rounded-2xl border border-white/80 shadow-2xs">
+              {/* Barre de recherche dynamique */}
+              <div className="relative flex items-center">
+                {isSearchOpen ? (
+                  <div className="flex items-center bg-white rounded-xl px-2.5 py-1 shadow-2xs border border-slate-200/80 transition-all w-40 sm:w-52">
+                    <Search className="w-3.5 h-3.5 text-slate-400 shrink-0 mr-1.5" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Recherche..."
+                      className="w-full bg-transparent text-xs text-slate-800 placeholder-slate-400 focus:outline-none"
+                      autoFocus
+                    />
+                    {searchQuery && (
+                      <button type="button" onClick={() => setSearchQuery('')} className="text-slate-400 hover:text-slate-600 cursor-pointer">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                    <button type="button" onClick={() => setIsSearchOpen(false)} className="ml-1 text-slate-400 hover:text-slate-600 cursor-pointer">
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsSearchOpen(true)}
+                    className="w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
+                    title="Rechercher"
+                  >
+                    <Search className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Notification Bell */}
+              <button
+                type="button"
+                className="relative w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
+                title="Notifications"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500 ring-2 ring-white"></span>
+              </button>
+
+              {/* Settings Gear */}
+              <button
+                type="button"
+                className="w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
+                title="Paramètres"
+              >
+                <Settings className="w-3.5 h-3.5" />
+              </button>
+
+              {/* Séparateur discret */}
+              <div className="w-px h-5 bg-slate-300/60 mx-0.5 hidden sm:block" />
+
+              {/* Profil Enseignant */}
+              <div className="flex items-center gap-1.5 pl-0.5 pr-2.5 py-0.5 bg-white/90 rounded-xl shadow-2xs border border-white">
+                <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-cyan-600 to-teal-400 text-white font-bold text-[10px] flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+                  {user?.avatar_url ? (
+                    <img src={user.avatar_url} alt="Profile" className="w-full h-full object-cover" />
+                  ) : (
+                    (user?.name ? user.name.charAt(0).toUpperCase() : 'DKD')
+                  )}
+                </div>
+                <div className="flex flex-col text-left">
+                  <span className="text-[11px] font-bold text-slate-800 leading-none">
+                    {user?.name || 'Professeur'}
+                  </span>
+                  <span className="text-[8.5px] text-slate-400 font-medium leading-tight">
+                    Enseignant Pro
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Boutons Super Agrandissement & Plein écran déplacés dans le creux tout en haut à droite (Desktop) */}
+            <div className="hidden md:flex items-center gap-1.5 shrink-0 pl-1 border-l border-cyan-900/15">
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => {
+                  if (lvl >= 1) {
+                    setIsViewerMaximized(true);
+                  } else {
+                    setIsViewerMaximized(false);
+                  }
+                  setViewerExpandLevel(lvl);
+                }}
+              />
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (viewerExpandLevel >= 1 || isViewerMaximized) {
+                    setIsViewerMaximized(false);
+                    resetViewerExpand();
+                  } else {
+                    setIsViewerMaximized(true);
+                    setViewerExpandLevel(1);
+                  }
+                }}
+                className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 shrink-0 ${
+                  viewerExpandLevel >= 1 || isViewerMaximized
+                    ? 'bg-blue-600 hover:bg-blue-500 text-white border-blue-400 ring-2 ring-blue-400/40'
+                    : 'bg-[#101827] hover:bg-[#1a2538] text-white border-white/20'
+                }`}
+                title={viewerExpandLevel >= 1 || isViewerMaximized ? 'Réduire la vue' : "Agrandir l'espace"}
+              >
+                {viewerExpandLevel >= 1 || isViewerMaximized ? (
+                  <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                )}
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* ----------------------------------------------------------------------- */}
+        {/* RENTRÉES SCOLAIRES ENREGISTRÉES + BOUTON CRÉER UNE RENTRÉE SUR LA MÊME  */}
+        {/* LIGNE POUR COMBLER L'ESPACE (MASQUÉ SI DANS UNE ÉCOLE)                  */}
+        {/* ----------------------------------------------------------------------- */}
+        {!selectedSchoolInside && (
+          <section className="space-y-1.5 pt-0.5 animate-fade-in">
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
+                  Rentrées scolaires enregistrées :
+                </span>
+                <span className="text-[11px] font-extrabold text-[#00313d]">
+                  ({schoolYears.length})
+                </span>
+              </div>
+
+              <div className="relative" ref={dropdownRef}>
                 <button
                   type="button"
-                  onClick={() => {
-                    resetLevelForm();
-                    setIsAddLevelModalOpen(true);
-                  }}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 hover:bg-[#00252e] cursor-pointer"
+                  onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
+                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
                   style={{ backgroundColor: '#00313d' }}
-                  title="Créer un niveau d'étude"
+                  title="Créer une rentrée scolaire"
                 >
                   <Plus className="w-4 h-4 stroke-[3]" />
                   <span className="tracking-wide text-[11px] sm:text-xs">
-                    Créer un niveau
+                    Créer une rentrée scolaire
                   </span>
                 </button>
-              ) : (
-                <div className="relative" ref={dropdownRef}>
-                  <button
-                    type="button"
-                    onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
-                    className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
-                    style={{ backgroundColor: '#00313d' }}
-                    title="Créer une rentrée scolaire"
-                  >
-                    <Plus className="w-4 h-4 stroke-[3]" />
-                    <span className="tracking-wide text-[11px] sm:text-xs">
-                      Créer une rentrée scolaire
-                    </span>
-                  </button>
 
                 {/* Petit menu déroulant bien rectangle qui descend vers le bas */}
                 {isCreateMenuOpen && (
@@ -1678,25 +1790,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     </div>
                   </div>
                 )}
-                </div>
-              )}
-            </div>
-          </div>
-        </header>
-
-        {/* ----------------------------------------------------------------------- */}
-        {/* EMPLACEMENT DE L'IMAGE 3 : AFFICHAGE DES ANNÉES CRÉÉES SOUS FORME */}
-        {/* DE PETITS RECTANGLES SUCCESSIFS (MASQUÉ SI DANS UNE ÉCOLE)           */}
-        {/* ----------------------------------------------------------------------- */}
-        {!selectedSchoolInside && (
-          <section className="space-y-2 pt-1 animate-fade-in">
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
-                Rentrées scolaires enregistrées :
-              </span>
-              <span className="text-[11px] font-extrabold text-[#00313d]">
-                ({schoolYears.length})
-              </span>
+              </div>
             </div>
 
             {/* Ligne des boutons d'années successifs (Emplacement entouré en rouge sur l'image 3) */}
@@ -1748,49 +1842,68 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* ----------------------------------------------------------------------- */}
         {/* ESPACE DE TRAVAIL PRINCIPAL (ÉCOLES OU CLASSES SELON LA NAVIGATION)    */}
         {/* ----------------------------------------------------------------------- */}
-        <section className="flex-1 flex flex-col justify-start pt-2">
+        <section className="flex-1 flex flex-col justify-start pt-0.5">
           {selectedSchoolInside ? (
             // =====================================================================
             // CAS 1 : ON EST "À L'INTÉRIEUR" D'UNE ÉCOLE -> NIVEAUX D'ÉTUDE -> CLASSES -> MATIÈRES
             // =====================================================================
             currentSchoolLevels.length === 0 ? (
               // AUCUN NIVEAU D'ÉTUDE : L'utilisateur commence d'abord par créer un niveau d'étude (CP1, Terminale, Licence...)
-              <div className="flex-1 flex flex-col items-center justify-center py-12 px-4 animate-fade-in">
-                <button
-                  type="button"
-                  onClick={() => {
-                    resetLevelForm();
-                    setIsAddLevelModalOpen(true);
-                  }}
-                  className="group relative w-64 h-64 sm:w-72 sm:h-72 border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/50 hover:bg-white/85 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
-                  title="Créer un niveau d'étude"
-                >
-                  <div className="w-16 h-16 rounded-2xl bg-[#00313d] text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-[#00242e] transition-all duration-300 mb-4 border border-cyan-300/30">
-                    <Plus className="w-8 h-8 stroke-[3]" />
-                  </div>
-                  <span className="text-base font-black text-slate-800 group-hover:text-[#00313d] transition-colors">
-                    Créer un niveau d'étude
-                  </span>
-                  <p className="text-xs text-slate-500 max-w-[225px] mt-2 leading-relaxed">
-                    Commencez par créer un niveau (CP1, 6ème, 2nde, Terminale, Licence...) dans <span className="font-bold text-[#00313d]">{selectedSchoolInside.name}</span>
-                  </p>
-                  <div className="mt-4 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200/60 text-[10px] font-extrabold text-cyan-800">
-                    Nouveau niveau +
-                  </div>
-                </button>
+              <div className="flex-1 flex flex-col">
+                <div className="flex items-center justify-end mb-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetLevelForm();
+                      setIsAddLevelModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 hover:bg-[#00252e] cursor-pointer"
+                    style={{ backgroundColor: '#00313d' }}
+                    title="Créer un niveau d'étude"
+                  >
+                    <Plus className="w-4 h-4 stroke-[3]" />
+                    <span className="tracking-wide text-[11px] sm:text-xs">
+                      Créer un niveau
+                    </span>
+                  </button>
+                </div>
+                <div className="flex-1 flex flex-col items-center justify-center py-8 px-4 animate-fade-in">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      resetLevelForm();
+                      setIsAddLevelModalOpen(true);
+                    }}
+                    className="group relative w-64 h-64 sm:w-72 sm:h-72 border-2 border-dashed border-cyan-800/40 hover:border-cyan-600 bg-white/50 hover:bg-white/85 backdrop-blur-md rounded-3xl flex flex-col items-center justify-center p-6 text-center cursor-pointer transition-all duration-300 shadow-sm hover:shadow-xl hover:-translate-y-1 active:translate-y-0"
+                    title="Créer un niveau d'étude"
+                  >
+                    <div className="w-16 h-16 rounded-2xl bg-[#00313d] text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-[#00242e] transition-all duration-300 mb-4 border border-cyan-300/30">
+                      <Plus className="w-8 h-8 stroke-[3]" />
+                    </div>
+                    <span className="text-base font-black text-slate-800 group-hover:text-[#00313d] transition-colors">
+                      Créer un niveau d'étude
+                    </span>
+                    <p className="text-xs text-slate-500 max-w-[225px] mt-2 leading-relaxed">
+                      Commencez par créer un niveau (CP1, 6ème, 2nde, Terminale, Licence...) dans <span className="font-bold text-[#00313d]">{selectedSchoolInside.name}</span>
+                    </p>
+                    <div className="mt-4 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200/60 text-[10px] font-extrabold text-cyan-800">
+                      Nouveau niveau +
+                    </div>
+                  </button>
+                </div>
               </div>
             ) : (
               // NIVEAUX D'ÉTUDE CRÉÉS : Barre mince rectangulaire des niveaux + Classes 3D compactes + Trimestres + Matières compactes
-              <div className="space-y-4 pt-0.5 animate-fade-in">
+              <div className="space-y-3 animate-fade-in">
                 
                 {/* ------------------------------------------------------------- */}
                 {/* ZONE NIVEAUX D'ÉTUDE + CLASSES : STICKY TOP AU DÉFILEMENT     */}
                 {/* ------------------------------------------------------------- */}
-                <div className="sticky top-0 z-20 -mx-3.5 sm:-mx-6 lg:-mx-8 px-3.5 sm:px-6 lg:px-8 pt-1 pb-2.5 backdrop-blur-md bg-[#dcf0fa]/95 border-b border-cyan-900/10 space-y-2.5">
+                <div className="sticky top-0 z-20 -mx-3.5 sm:-mx-6 lg:-mx-8 px-3.5 sm:px-6 lg:px-8 pt-0.5 pb-2 backdrop-blur-md bg-[#dcf0fa]/95 border-b border-cyan-900/10 space-y-2">
                   
-                  {/* 1. BANDEAU DES NIVEAUX D'ÉTUDE (Boutons minces rectangulaires plats NON 3D, bouton + devant, flèches < > au bord) */}
-                  <div className="space-y-1.5">
-                    <div className="flex items-center justify-between gap-2">
+                  {/* 1. BANDEAU DES NIVEAUX D'ÉTUDE (Boutons minces rectangulaires plats NON 3D, bouton + devant, Créer un niveau + flèches < > à droite) */}
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 shrink-0">
                           Niveaux d'étude ({currentSchoolLevels.length})
@@ -1799,29 +1912,45 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         <span className="text-[11px] font-bold text-cyan-800 bg-white/90 px-2 py-0.5 rounded-md border border-cyan-200/60 shadow-2xs truncate">
                           {selectedSchoolInside.name}
                         </span>
-                        <span className="text-[10px] text-slate-400 hidden md:inline-block font-medium truncate">
+                        <span className="text-[10px] text-slate-400 hidden lg:inline-block font-medium truncate">
                           (Sélectionnez un niveau pour afficher et créer ses classes)
                         </span>
                       </div>
 
-                      {/* Flèches de défilement horizontal gauche et droite au bord */}
-                      <div className="flex items-center gap-1 shrink-0">
+                      {/* Bouton Créer un niveau + Flèches de défilement horizontal gauche et droite au bord */}
+                      <div className="flex items-center gap-2 shrink-0 ml-auto">
                         <button
                           type="button"
-                          onClick={() => scrollLevels('left')}
-                          className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200 shadow-2xs flex items-center justify-center transition active:scale-95 cursor-pointer"
-                          title="Défiler les niveaux vers la gauche"
+                          onClick={() => {
+                            resetLevelForm();
+                            setIsAddLevelModalOpen(true);
+                          }}
+                          className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-black text-white shadow-sm transition-all active:scale-95 shrink-0 hover:bg-[#00252e] cursor-pointer"
+                          style={{ backgroundColor: '#00313d' }}
+                          title="Créer un niveau d'étude"
                         >
-                          <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                          <span className="tracking-wide">Créer un niveau</span>
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => scrollLevels('right')}
-                          className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200 shadow-2xs flex items-center justify-center transition active:scale-95 cursor-pointer"
-                          title="Défiler les niveaux vers la droite"
-                        >
-                          <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
-                        </button>
+
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => scrollLevels('left')}
+                            className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200 shadow-2xs flex items-center justify-center transition active:scale-95 cursor-pointer"
+                            title="Défiler les niveaux vers la gauche"
+                          >
+                            <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => scrollLevels('right')}
+                            className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200 shadow-2xs flex items-center justify-center transition active:scale-95 cursor-pointer"
+                            title="Défiler les niveaux vers la droite"
+                          >
+                            <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                          </button>
+                        </div>
                       </div>
                     </div>
 
@@ -1834,17 +1963,17 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           resetLevelForm();
                           setIsAddLevelModalOpen(true);
                         }}
-                        className="h-8 px-2.5 rounded-lg border border-dashed border-cyan-800/50 hover:border-[#00313d] bg-white/85 hover:bg-[#00313d] text-[#00313d] hover:text-white flex items-center gap-1 text-[11px] font-black transition-colors shrink-0 cursor-pointer"
+                        className="h-8 px-2.5 rounded-lg border border-dashed border-cyan-800/50 hover:border-cyan-500 bg-white/85 hover:bg-cyan-50 text-[#00313d] hover:text-cyan-800 flex items-center gap-1 text-[11px] font-black transition-colors shrink-0 cursor-pointer"
                         title="Ajouter un nouveau niveau d'étude (CP1, 6ème, 2nde, Terminale, Licence...)"
                       >
                         <Plus className="w-3.5 h-3.5 stroke-[3]" />
                         <span className="hidden sm:inline">Niveau</span>
                       </button>
 
-                      {/* Liste horizontale des niveaux en boutons minces rectangulaires plats (pas de 3D) */}
+                      {/* Liste horizontale des niveaux en boutons minces rectangulaires plats avec halo lumineux éclatant à la sélection */}
                       <div
                         ref={levelsScrollRef}
-                        className="flex items-center gap-1.5 overflow-x-auto flex-nowrap scrollbar-none scroll-smooth py-0.5 flex-1 min-w-0"
+                        className="flex items-center gap-2 overflow-x-auto flex-nowrap scrollbar-none scroll-smooth py-2 px-1.5 -my-1 flex-1 min-w-0"
                         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                       >
                         {currentSchoolLevels.map((lvl) => {
@@ -1853,6 +1982,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             c => c.schoolId === selectedSchoolInside.id && c.levelId === lvl.id
                           ).length;
                           const hasCustomColor = Boolean(lvl.color && lvl.color !== '#ffffff' && lvl.color !== 'white');
+                          const glowTheme = getLuminousLevelTheme(lvl.color);
 
                           return (
                             <div
@@ -1861,9 +1991,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               style={
                                 isSelected
                                   ? {
-                                      backgroundColor: hasCustomColor ? lvl.color : '#00313d',
-                                      color: '#ffffff',
-                                      borderColor: hasCustomColor ? (lvl.borderColor || lvl.color) : '#00242e',
+                                      background: glowTheme.bg,
+                                      color: glowTheme.text,
+                                      borderColor: glowTheme.border,
+                                      boxShadow: glowTheme.shadow,
                                     }
                                   : {
                                       backgroundColor: '#ffffff',
@@ -1871,39 +2002,56 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                       borderColor: '#cbd5e1',
                                     }
                               }
-                              className={`group h-8 px-2.5 rounded-lg border text-xs font-extrabold flex items-center gap-1.5 shrink-0 cursor-pointer transition-colors select-none ${
+                              className={`group relative overflow-hidden h-8 px-3 rounded-lg text-xs font-extrabold flex items-center gap-1.5 shrink-0 cursor-pointer transition-all duration-200 select-none ${
                                 isSelected
-                                  ? 'shadow-xs'
-                                  : 'hover:border-cyan-500 hover:bg-cyan-50/40'
+                                  ? 'border-2 scale-[1.03]'
+                                  : 'border hover:border-cyan-400 hover:bg-cyan-50/40'
                               }`}
                               title={`Niveau ${lvl.name} (${levelClassesCount} classe${levelClassesCount > 1 ? 's' : ''})`}
                             >
+                              {/* Halo lumineux d'ambiance à l'intérieur quand sélectionné */}
+                              {isSelected && (
+                                <div
+                                  className="absolute inset-0 pointer-events-none opacity-45 blur-md"
+                                  style={{ background: glowTheme.aura }}
+                                />
+                              )}
                               <span
-                                className="w-2 h-2 rounded-full shrink-0"
+                                className="relative z-10 w-2 h-2 rounded-full shrink-0 transition-transform"
                                 style={{
                                   backgroundColor: isSelected
-                                    ? '#67e8f9'
+                                    ? glowTheme.dot
                                     : (hasCustomColor ? lvl.color : '#0891b2'),
+                                  boxShadow: isSelected ? glowTheme.dotShadow : undefined,
                                 }}
                               />
-                              <span className="tracking-tight whitespace-nowrap text-[11.5px] font-black">
+                              <span className="relative z-10 tracking-tight whitespace-nowrap text-[11.5px] font-black">
                                 {lvl.name}
                               </span>
                               <span
-                                className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded ${
+                                className="relative z-10 text-[9.5px] font-extrabold px-1.5 py-0.2 rounded border"
+                                style={
                                   isSelected
-                                    ? 'bg-white/20 text-cyan-100'
-                                    : 'bg-slate-100 text-slate-500'
-                                }`}
+                                    ? {
+                                        backgroundColor: glowTheme.badgeBg,
+                                        color: glowTheme.badgeText,
+                                        borderColor: glowTheme.badgeBorder,
+                                      }
+                                    : {
+                                        backgroundColor: '#f1f5f9',
+                                        color: '#64748b',
+                                        borderColor: '#e2e8f0',
+                                      }
+                                }
                               >
                                 {levelClassesCount} cl.
                               </span>
                               <button
                                 type="button"
                                 onClick={(e) => handleOpenMenu(e, 'level', lvl)}
-                                className={`card-menu-trigger w-4 h-4 rounded flex items-center justify-center transition shrink-0 ${
+                                className={`relative z-10 card-menu-trigger w-4 h-4 rounded flex items-center justify-center transition shrink-0 ${
                                   isSelected
-                                    ? 'text-white/75 hover:text-white hover:bg-white/15'
+                                    ? 'opacity-75 hover:opacity-100 hover:bg-black/10'
                                     : 'text-slate-400 hover:text-slate-800 hover:bg-slate-100'
                                 }`}
                                 title={`Options du niveau ${lvl.name}`}
@@ -1921,7 +2069,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     </div>
                   </div>
 
-                  {/* 2. BANDEAU DES CLASSES DU NIVEAU ACTIF (Cartes 3D de taille réduite + flèches < >) */}
+                  {/* 2. BANDEAU DES CLASSES DU NIVEAU ACTIF (Cartes 3D de taille réduite + halo lumineux à la sélection) */}
                   {activeLevel && (
                     <div className="pt-1 border-t border-cyan-900/10">
                       <div className="flex items-center justify-between mb-1">
@@ -1930,7 +2078,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             Classes ({currentLevelClasses.length})
                           </span>
                           <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                          <span className="text-[11px] font-black text-white bg-[#00313d] px-2 py-0.5 rounded-md shadow-2xs shrink-0">
+                          <span
+                            className="text-[11px] font-black px-2 py-0.5 rounded-md border shrink-0"
+                            style={{
+                              background: getLuminousLevelTheme(activeLevel.color).bg,
+                              color: getLuminousLevelTheme(activeLevel.color).text,
+                              borderColor: getLuminousLevelTheme(activeLevel.color).border,
+                              boxShadow: '0 0 10px rgba(6, 182, 212, 0.35)',
+                            }}
+                          >
                             {activeLevel.name}
                           </span>
                           <span className="text-[10px] text-slate-400 hidden sm:inline-block font-medium truncate">
@@ -1960,7 +2116,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </div>
 
                       {currentLevelClasses.length === 0 ? (
-                        <div className="py-2">
+                        <div className="py-1.5">
                           <button
                             type="button"
                             onClick={() => {
@@ -1984,10 +2140,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           </button>
                         </div>
                       ) : (
-                        /* Rangée horizontale unique de cartes 3D compactes */
+                        /* Rangée horizontale unique de cartes 3D compactes avec halo lumineux bien visible */
                         <div 
                           ref={classesScrollRef}
-                          className="flex items-stretch gap-2.5 overflow-x-auto pt-2.5 pb-1.5 scrollbar-none scroll-smooth flex-nowrap"
+                          className="flex items-stretch gap-3 overflow-x-auto pt-3.5 pb-2.5 px-2 -mx-2 scrollbar-none scroll-smooth flex-nowrap"
                           style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                         >
                           {currentLevelClasses.map((cls) => {
@@ -1999,19 +2155,32 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               <div
                                 key={cls.id}
                                 onClick={() => setSelectedClassId(cls.id)}
-                                style={{
-                                  borderColor: isSelected ? '#0891b2' : (cls.borderColor || '#ea580c'),
-                                  borderBottomColor: isSelected ? '#00313d' : (cls.borderDarkColor || '#9a3412'),
-                                }}
-                                className={`group relative w-44 sm:w-48 shrink-0 rounded-xl border-2 border-b-[4px] bg-white px-2.5 py-2 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
+                                style={
                                   isSelected
-                                    ? 'ring-2 ring-offset-1 ring-cyan-500 border-cyan-500 shadow-md scale-[1.01]'
+                                    ? {
+                                        background: 'linear-gradient(180deg, #ffffff 0%, #ecfeff 100%)',
+                                        borderColor: '#06b6d4',
+                                        borderBottomColor: '#0284c7',
+                                        boxShadow: '0 0 0 2.5px rgba(34, 211, 238, 0.7), 0 0 22px 4px rgba(6, 182, 212, 0.65), 0 0 38px 0px rgba(56, 189, 248, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+                                      }
+                                    : {
+                                        backgroundColor: '#ffffff',
+                                        borderColor: cls.borderColor || '#ea580c',
+                                        borderBottomColor: cls.borderDarkColor || '#9a3412',
+                                      }
+                                }
+                                className={`group relative w-44 sm:w-48 shrink-0 rounded-xl border-2 border-b-[4px] px-2.5 py-2 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
+                                  isSelected
+                                    ? 'scale-[1.02]'
                                     : 'shadow-xs hover:shadow-md hover:-translate-y-0.5'
                                 } active:translate-y-0.5 active:border-b-2`}
                               >
-                                {/* Badge compact "Active" surélevé sans coupure */}
+                                {/* Badge lumineux "Classe active" (jamais noir) */}
                                 {isSelected && (
-                                  <div className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2 py-0.2 rounded-full bg-[#00313d] text-cyan-300 text-[8px] font-black shadow-sm tracking-wider uppercase border border-cyan-400 whitespace-nowrap z-20">
+                                  <div
+                                    className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.2 rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500 text-white text-[8px] font-black tracking-wider uppercase border border-white whitespace-nowrap z-20"
+                                    style={{ boxShadow: '0 0 14px 2px rgba(6, 182, 212, 0.85)' }}
+                                  >
                                     ★ Classe active
                                   </div>
                                 )}
@@ -2093,10 +2262,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 </div>
 
                 {/* ------------------------------------------------------------- */}
-                {/* ZONE DES TRIMESTRES : HORIZONTALE AVEC FLÈCHES & AJOUT (+)   */}
+                {/* ZONE DES TRIMESTRES : HORIZONTALE AVEC HALO LUMINEUX          */}
                 {/* ------------------------------------------------------------- */}
                 {activeClass && (
-                  <div className="space-y-1.5 pt-1 animate-fade-in">
+                  <div className="space-y-1 animate-fade-in">
                     {/* En-tête de la section trimestres avec flèches */}
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
@@ -2104,7 +2273,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           Trimestres ({currentClassTerms.length})
                         </span>
                         <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                        <span className="text-[11px] font-bold text-[#00313d] bg-white/80 px-2 py-0.5 rounded-md border border-cyan-200/60 shadow-2xs">
+                        <span className="text-[11px] font-bold text-cyan-900 bg-cyan-50/90 px-2 py-0.5 rounded-md border border-cyan-300/80 shadow-2xs">
                           {getClassFullLabel(activeClass)}
                         </span>
                       </div>
@@ -2129,10 +2298,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </div>
                     </div>
 
-                    {/* Rangée horizontale des trimestres avec overflow-x-auto */}
+                    {/* Rangée horizontale des trimestres avec sélection lumineuse émeraude (jamais noire) */}
                     <div 
                       ref={termsScrollRef}
-                      className="flex items-center gap-2 overflow-x-auto pb-1.5 scrollbar-none scroll-smooth select-none pt-0.5"
+                      className="flex items-center gap-2.5 overflow-x-auto py-2 px-1.5 -mx-1.5 scrollbar-none scroll-smooth select-none"
                     >
                       {currentClassTerms.map((term) => {
                         const isSelected = activeTerm?.id === term.id;
@@ -2147,21 +2316,44 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             key={term.id}
                             type="button"
                             onClick={() => setSelectedTermId(term.id)}
-                            className={`group shrink-0 px-3 py-1.5 rounded-lg border-2 transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+                            style={
                               isSelected
-                                ? 'bg-[#00313d] text-white border-[#002028] border-b-[3px] shadow-sm'
-                                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300 border-b-[2px] shadow-2xs hover:-translate-y-0.5'
+                                ? {
+                                    background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 55%, #ccfbf1 100%)',
+                                    borderColor: '#10b981',
+                                    borderBottomColor: '#059669',
+                                    boxShadow: '0 0 0 2px rgba(52, 211, 153, 0.65), 0 0 20px 4px rgba(16, 185, 129, 0.62), 0 0 34px 0px rgba(52, 211, 153, 0.48), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+                                  }
+                                : undefined
+                            }
+                            className={`group relative overflow-hidden shrink-0 px-3 py-1.5 rounded-lg border-2 transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+                              isSelected
+                                ? 'text-emerald-950 border-b-[3px] scale-[1.03]'
+                                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-emerald-300 border-b-[2px] shadow-2xs hover:-translate-y-0.5'
                             } active:translate-y-0.5`}
                           >
-                            <div className={`w-1.5 h-1.5 rounded-full ${isSelected ? 'bg-cyan-400 ring-2 ring-cyan-200/50' : 'bg-slate-300 group-hover:bg-cyan-500'}`} />
-                            <span className="text-xs font-black tracking-tight">
+                            {isSelected && (
+                              <div
+                                className="absolute inset-0 pointer-events-none opacity-45 blur-md"
+                                style={{ background: 'radial-gradient(circle, rgba(52, 211, 153, 0.72) 0%, transparent 72%)' }}
+                              />
+                            )}
+                            <div
+                              className={`relative z-10 w-2 h-2 rounded-full transition-all ${
+                                isSelected ? 'bg-emerald-400' : 'bg-slate-300 group-hover:bg-emerald-400'
+                              }`}
+                              style={isSelected ? { boxShadow: '0 0 10px 2px rgba(16, 185, 129, 0.95)' } : undefined}
+                            />
+                            <span className="relative z-10 text-xs font-black tracking-tight">
                               {term.name}
                             </span>
-                            <span className={`text-[9.5px] font-bold px-1.5 py-0.2 rounded border ${
-                              isSelected 
-                                ? 'bg-white/20 text-cyan-200 border-white/20' 
-                                : 'bg-slate-100 text-slate-500 border-slate-200'
-                            }`}>
+                            <span
+                              className={`relative z-10 text-[9.5px] font-extrabold px-1.5 py-0.2 rounded border ${
+                                isSelected
+                                  ? 'bg-emerald-500/15 text-emerald-800 border-emerald-400/80'
+                                  : 'bg-slate-100 text-slate-500 border-slate-200'
+                              }`}
+                            >
                               {termSubjCount} mat.
                             </span>
                           </button>
@@ -2190,7 +2382,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 {/* ZONE DES MATIÈRES : CARTES COMPACTES (3 LIGNES x 6 COLONNES = 18/ESPACE) */}
                 {/* ------------------------------------------------------------------------- */}
                 {activeClass && (
-                  <div className="space-y-2 pt-1 animate-fade-in">
+                  <div className="space-y-2 pt-0.5 animate-fade-in">
                     {/* En-tête de la section matières avec navigation par espace */}
                     <div className="flex items-center justify-between gap-2">
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -2198,13 +2390,16 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           Matières ({currentClassSubjects.length})
                         </span>
                         <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                        <span className="text-[11px] font-bold text-cyan-900 bg-white/80 px-2 py-0.5 rounded-md border border-cyan-200/60 shadow-2xs">
+                        <span className="text-[11px] font-bold text-cyan-900 bg-cyan-50/90 px-2 py-0.5 rounded-md border border-cyan-300/80 shadow-2xs">
                           {getClassFullLabel(activeClass)}
                         </span>
                         {activeTerm && (
                           <>
                             <span className="text-xs text-slate-400 font-bold">&bull;</span>
-                            <span className="text-[11px] font-black text-white bg-[#00313d] px-2 py-0.5 rounded-md shadow-2xs">
+                            <span
+                              className="text-[11px] font-black text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-400"
+                              style={{ boxShadow: '0 0 10px rgba(16, 185, 129, 0.35)' }}
+                            >
                               {activeTerm.name}
                             </span>
                           </>
@@ -2905,23 +3100,43 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
                         Aperçu dans la barre des niveaux :
                       </span>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <div
-                          style={{
-                            backgroundColor: selectedStudyLevelColor.id === 'white' ? '#00313d' : selectedStudyLevelColor.bg,
-                            color: '#ffffff',
-                            borderColor: selectedStudyLevelColor.id === 'white' ? '#00242e' : selectedStudyLevelColor.border,
-                          }}
-                          className="h-8 px-3 rounded-lg border text-xs font-black flex items-center gap-1.5 select-none"
-                        >
-                          <span className="w-2 h-2 rounded-full bg-cyan-300 shrink-0" />
-                          <span>{studyLevelName.trim() || 'Ex: Terminale'}</span>
-                          <span className="text-[9.5px] font-bold px-1.5 py-0.2 rounded bg-white/20 text-cyan-100">
-                            0 cl.
-                          </span>
-                        </div>
+                      <div className="flex items-center gap-2 flex-wrap py-1">
+                        {(() => {
+                          const previewGlow = getLuminousLevelTheme(selectedStudyLevelColor.bg);
+                          return (
+                            <div
+                              style={{
+                                background: previewGlow.bg,
+                                color: previewGlow.text,
+                                borderColor: previewGlow.border,
+                                boxShadow: previewGlow.shadow,
+                              }}
+                              className="relative overflow-hidden h-8 px-3 rounded-lg border-2 text-xs font-black flex items-center gap-1.5 select-none"
+                            >
+                              <div
+                                className="absolute inset-0 pointer-events-none opacity-45 blur-md"
+                                style={{ background: previewGlow.aura }}
+                              />
+                              <span
+                                className="relative z-10 w-2 h-2 rounded-full shrink-0"
+                                style={{ backgroundColor: previewGlow.dot, boxShadow: previewGlow.dotShadow }}
+                              />
+                              <span className="relative z-10">{studyLevelName.trim() || 'Ex: Terminale'}</span>
+                              <span
+                                className="relative z-10 text-[9.5px] font-extrabold px-1.5 py-0.2 rounded border"
+                                style={{
+                                  backgroundColor: previewGlow.badgeBg,
+                                  color: previewGlow.badgeText,
+                                  borderColor: previewGlow.badgeBorder,
+                                }}
+                              >
+                                0 cl.
+                              </span>
+                            </div>
+                          );
+                        })()}
                         <span className="text-[10px] text-slate-400 font-medium">
-                          (Actif)
+                          (Sélection lumineuse)
                         </span>
                       </div>
                     </div>
