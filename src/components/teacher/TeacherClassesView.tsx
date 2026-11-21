@@ -8,6 +8,7 @@ import {
   Layers,
   ArrowLeft,
   ArrowRight,
+  ArrowLeftRight,
   Search,
   Bell,
   Settings,
@@ -35,6 +36,7 @@ import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import { DnaLogo } from '../DnaLogo';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
 import { SubjectGradebookView } from './SubjectGradebookView';
+import { TeacherTransferView } from './TeacherTransferView';
 
 export interface SchoolYearItem {
   id: string;
@@ -412,6 +414,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [classSearchQuery, setClassSearchQuery] = useState('');
   const [isSubjectSearchOpen, setIsSubjectSearchOpen] = useState(false);
   const [subjectSearchQuery, setSubjectSearchQuery] = useState('');
+
+  // Vue dédiée de transfert / duplication (s'ouvre "à l'intérieur" comme les cartes)
+  const [isTransferViewOpen, setIsTransferViewOpen] = useState(false);
 
   // Agrandissement progressif et plein écran (Image 2 & 3 - Desktop uniquement)
   const viewerExpandLevel = useViewerExpandLevel();
@@ -1422,6 +1427,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setIsClassSearchOpen(false);
     setSubjectSearchQuery('');
     setIsSubjectSearchOpen(false);
+    setIsTransferViewOpen(false);
   }, [selectedSchoolInside]);
 
   useEffect(() => {
@@ -1600,7 +1606,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           <button
             type="button"
             onClick={() => {
-              if (selectedSchoolInside) {
+              if (isTransferViewOpen) {
+                setIsTransferViewOpen(false);
+              } else if (selectedSchoolInside) {
                 setSelectedSchoolInside(null);
               } else {
                 setIsViewerMaximized(false);
@@ -1609,7 +1617,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               }
             }}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/85 hover:bg-white text-slate-700 hover:text-[#00313d] border border-white/95 shadow-xs transition active:scale-95 font-bold text-xs cursor-pointer shrink-0 z-10"
-            title={selectedSchoolInside ? "Retour à la liste des écoles" : "Retour à l'accueil"}
+            title={
+              isTransferViewOpen
+                ? "Retour à l'établissement"
+                : selectedSchoolInside
+                ? "Retour à la liste des écoles"
+                : "Retour à l'accueil"
+            }
           >
             <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5]" />
             <span>Retour</span>
@@ -1949,9 +1963,30 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         <section className="flex-1 flex flex-col justify-start">
           {selectedSchoolInside ? (
             // =====================================================================
-            // CAS 1 : ON EST "À L'INTÉRIEUR" D'UNE ÉCOLE -> NIVEAUX D'ÉTUDE -> CLASSES -> MATIÈRES
+            // CAS 1 : ON EST "À L'INTÉRIEUR" D'UNE ÉCOLE
             // =====================================================================
-            currentSchoolLevels.length === 0 ? (
+            isTransferViewOpen ? (
+              <TeacherTransferView
+                currentSchool={selectedSchoolInside}
+                currentYear={currentSelectedYear}
+                activeLevel={activeLevel}
+                activeClass={activeClass}
+                activeTerm={activeTerm}
+                schoolYears={schoolYears}
+                schools={schools}
+                studyLevels={studyLevels}
+                classes={classes}
+                terms={terms}
+                subjects={subjects}
+                onApplyTransfer={(next) => {
+                  setStudyLevels(next.studyLevels);
+                  setClasses(next.classes);
+                  setTerms(next.terms);
+                  setSubjects(next.subjects);
+                }}
+                onClose={() => setIsTransferViewOpen(false)}
+              />
+            ) : currentSchoolLevels.length === 0 ? (
               // AUCUN NIVEAU D'ÉTUDE : L'utilisateur commence d'abord par créer un niveau d'étude (CP1, Terminale, Licence...)
               <div className="flex-1 flex flex-col">
                 <div className="flex items-center justify-end mb-2">
@@ -2039,8 +2074,18 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         />
                       </div>
 
-                      {/* Bouton Créer un niveau + Flèches de défilement horizontal gauche et droite au bord */}
+                      {/* Bouton sobre Transférer (à gauche de Créer un niveau) + Bouton Créer un niveau + Flèches < > */}
                       <div className="flex items-center gap-2 shrink-0 ml-auto">
+                        <button
+                          type="button"
+                          onClick={() => setIsTransferViewOpen(true)}
+                          className="flex items-center gap-1.5 px-3 py-1 rounded-xl text-[11px] font-bold bg-white hover:bg-slate-50 text-slate-800 border border-slate-300 shadow-2xs transition active:scale-95 shrink-0 cursor-pointer"
+                          title="Transférer ou dupliquer des niveaux, classes, trimestres, matières ou listes d'élèves"
+                        >
+                          <ArrowLeftRight className="w-3.5 h-3.5 stroke-[2.2] text-slate-600" />
+                          <span className="tracking-wide">Transférer</span>
+                        </button>
+
                         <button
                           type="button"
                           onClick={() => {
