@@ -1035,9 +1035,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         createdAt: Date.now()
       };
       setSubjects(prev => [...prev, newSubject]);
-      // Si l'espace de 3 lignes (18 matières) vient d'être totalement rempli, on bascule vers le nouvel espace vide
-      if ((currentClassSubjects.length + 1) % 18 === 0) {
-        setSubjectPageIndex(Math.floor((currentClassSubjects.length + 1) / 18));
+      // Si le nombre de matières ouvre un nouvel espace (17 matières + 1 bouton fixe "+ Matière" = 18 emplacements par espace), basculer dessus
+      const nextCount = currentClassSubjects.length + 1;
+      const targetPage = Math.floor((nextCount - 1) / 17);
+      if (targetPage !== subjectPageIndex) {
+        setSubjectPageIndex(targetPage);
       }
       setIsAddSubjectModalOpen(false);
       resetSubjectForm();
@@ -1335,12 +1337,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     });
   }, [subjects, activeClass, activeTerm, currentClassTerms]);
 
-  // --- GESTION PAR ESPACE / PAGE DE 3 LIGNES (18 EMPLACEMENTS PAR ESPACE) SANS DÉFILEMENT VERTICAL ---
-  const SUBJECTS_PER_PAGE = 18; // 3 lignes de 6 colonnes (cartes compactes)
+  // --- GESTION PAR ESPACE / PAGE DE 3 LIGNES (1 BOUTON FIXE "+ MATIÈRE" + 17 MATIÈRES = 18 EMPLACEMENTS) ---
+  const SUBJECTS_PER_PAGE = 17; // 1 bouton fixe devant + 17 matières = 3 lignes de 6 colonnes
   const [subjectPageIndex, setSubjectPageIndex] = useState<number>(0);
 
   const totalSubjectPages = useMemo(() => {
-    return Math.floor(currentClassSubjects.length / SUBJECTS_PER_PAGE) + 1;
+    return Math.max(1, Math.ceil(currentClassSubjects.length / SUBJECTS_PER_PAGE));
   }, [currentClassSubjects.length]);
 
   // Réinitialiser la page quand on change de niveau, de classe ou de trimestre
@@ -1360,8 +1362,6 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     const start = subjectPageIndex * SUBJECTS_PER_PAGE;
     return currentClassSubjects.slice(start, start + SUBJECTS_PER_PAGE);
   }, [currentClassSubjects, subjectPageIndex]);
-
-  const isLastSubjectPage = subjectPageIndex === totalSubjectPages - 1;
 
   // Si le professeur clique et rentre à l'intérieur d'une matière créée :
   // Affichage du tableur de notes et moyennes plein écran (identique à WPS/Excel)
@@ -2159,121 +2159,125 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           </button>
                         </div>
                       ) : (
-                        /* Rangée horizontale unique de cartes 3D compactes avec halo lumineux bien visible */
-                        <div 
-                          ref={classesScrollRef}
-                          className="flex items-stretch gap-3 overflow-x-auto pt-3.5 pb-2.5 px-2 -mx-2 scrollbar-none scroll-smooth flex-nowrap"
-                          style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
-                        >
-                          {currentLevelClasses.map((cls) => {
-                            const isSelected = activeClass?.id === cls.id;
-                            const classSubjCount = subjects.filter(s => s.classId === cls.id).length;
-                            const displayClassName = getClassDisplayName(cls);
-
-                            return (
-                              <div
-                                key={cls.id}
-                                onClick={() => setSelectedClassId(cls.id)}
-                                style={
-                                  isSelected
-                                    ? {
-                                        background: 'linear-gradient(180deg, #ffffff 0%, #ecfeff 100%)',
-                                        borderColor: '#06b6d4',
-                                        borderBottomColor: '#0284c7',
-                                        boxShadow: '0 0 0 2.5px rgba(34, 211, 238, 0.7), 0 0 22px 4px rgba(6, 182, 212, 0.65), 0 0 38px 0px rgba(56, 189, 248, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
-                                      }
-                                    : {
-                                        backgroundColor: '#ffffff',
-                                        borderColor: cls.borderColor || '#ea580c',
-                                        borderBottomColor: cls.borderDarkColor || '#9a3412',
-                                      }
-                                }
-                                className={`group relative w-44 sm:w-48 shrink-0 rounded-xl border-2 border-b-[4px] px-2.5 py-2 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
-                                  isSelected
-                                    ? 'scale-[1.02]'
-                                    : 'shadow-xs hover:shadow-md hover:-translate-y-0.5'
-                                } active:translate-y-0.5 active:border-b-2`}
-                              >
-                                {/* Badge lumineux "Classe active" (jamais noir) */}
-                                {isSelected && (
-                                  <div
-                                    className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.2 rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500 text-white text-[8px] font-black tracking-wider uppercase border border-white whitespace-nowrap z-20"
-                                    style={{ boxShadow: '0 0 14px 2px rgba(6, 182, 212, 0.85)' }}
-                                  >
-                                    ★ Classe active
-                                  </div>
-                                )}
-
-                                {/* Ligne Supérieure : Petite icône + Nom de la classe + Menu */}
-                                <div className="flex items-start justify-between gap-1.5">
-                                  <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                                    <div 
-                                      className="w-6 h-6 rounded-md flex items-center justify-center shadow-2xs shrink-0"
-                                      style={{ background: cls.iconGradient || 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' }}
-                                    >
-                                      <BookOpen className="w-3.5 h-3.5 text-white stroke-[2.2]" />
-                                    </div>
-
-                                    <div className="min-w-0 flex-1">
-                                      <span className="text-[8.5px] font-bold uppercase tracking-wide text-slate-400 block truncate leading-none">
-                                        {cls.slogan || activeLevel.name}
-                                      </span>
-                                      <h4 className="text-xs font-black text-slate-900 tracking-tight leading-snug truncate mt-0.5" title={displayClassName}>
-                                        {displayClassName}
-                                      </h4>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex items-center gap-0.5 shrink-0">
-                                    <span 
-                                      className="w-2 h-2 rounded-full ring-1 ring-white shadow-2xs"
-                                      style={{ backgroundColor: cls.color || '#ea580c' }}
-                                    />
-                                    <button
-                                      type="button"
-                                      onClick={(e) => handleOpenMenu(e, 'class', cls)}
-                                      className="card-menu-trigger w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition z-10"
-                                      title="Options de la classe"
-                                    >
-                                      <div className="w-3 h-2 flex flex-col justify-between items-center pointer-events-none">
-                                        <span className="w-full h-[1.5px] bg-current rounded-full"></span>
-                                        <span className="w-full h-[1.5px] bg-current rounded-full"></span>
-                                        <span className="w-full h-[1.5px] bg-current rounded-full"></span>
-                                      </div>
-                                    </button>
-                                  </div>
-                                </div>
-
-                                {/* Ligne Inférieure compacte : Professeur & Matières */}
-                                <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-center justify-between gap-1.5">
-                                  <span className="text-[9.5px] font-bold text-slate-600 truncate" title={`Professeur : ${cls.teacherName}`}>
-                                    {cls.teacherName}
-                                  </span>
-                                  <span className="text-[8.5px] font-black text-cyan-800 bg-cyan-50 px-1.5 py-0.2 rounded border border-cyan-200/50 shrink-0">
-                                    {classSubjCount} mat.
-                                  </span>
-                                </div>
+                        /* Bouton "+ Classe" fixe devant + Rangée horizontale défilable de cartes 3D compactes */
+                        <div className="flex items-stretch gap-2.5">
+                          {/* Bouton fixe devant pour ajouter une classe (ne se déplace jamais) */}
+                          <div className="pt-3.5 pb-2.5 flex items-stretch shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                resetClassForm();
+                                setIsAddClassModalOpen(true);
+                              }}
+                              className="w-28 sm:w-32 shrink-0 border-2 border-dashed border-cyan-800/35 hover:border-cyan-500 bg-white/65 hover:bg-white backdrop-blur-md rounded-xl px-2.5 py-2 flex flex-col items-center justify-center gap-1 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs"
+                              title={`Ajouter une classe dans ${activeLevel.name}`}
+                            >
+                              <div className="w-6 h-6 rounded-md bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-2xs transition shrink-0">
+                                <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                               </div>
-                            );
-                          })}
+                              <span className="text-[11px] font-black text-slate-700 group-hover:text-[#00313d] transition-colors leading-tight">
+                                + Classe
+                              </span>
+                            </button>
+                          </div>
 
-                          {/* Bouton compact pour ajouter une autre classe dans le niveau actif */}
-                          <button
-                            type="button"
-                            onClick={() => {
-                              resetClassForm();
-                              setIsAddClassModalOpen(true);
-                            }}
-                            className="w-36 sm:w-40 shrink-0 border-2 border-dashed border-cyan-800/30 hover:border-cyan-600 bg-white/40 hover:bg-white/80 backdrop-blur-md rounded-xl px-2.5 py-2 flex items-center justify-center gap-1.5 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs"
-                            title={`Ajouter une classe dans ${activeLevel.name}`}
+                          <div 
+                            ref={classesScrollRef}
+                            className="flex items-stretch gap-3 overflow-x-auto pt-3.5 pb-2.5 px-2 scrollbar-none scroll-smooth flex-nowrap flex-1 min-w-0"
+                            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                           >
-                            <div className="w-6 h-6 rounded-md bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-2xs transition shrink-0">
-                              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                            </div>
-                            <span className="text-[11px] font-black text-slate-700 group-hover:text-[#00313d] transition-colors">
-                              + Classe
-                            </span>
-                          </button>
+                            {currentLevelClasses.map((cls) => {
+                              const isSelected = activeClass?.id === cls.id;
+                              const classSubjCount = subjects.filter(s => s.classId === cls.id).length;
+                              const displayClassName = getClassDisplayName(cls);
+
+                              return (
+                                <div
+                                  key={cls.id}
+                                  onClick={() => setSelectedClassId(cls.id)}
+                                  style={
+                                    isSelected
+                                      ? {
+                                          background: 'linear-gradient(180deg, #ffffff 0%, #ecfeff 100%)',
+                                          borderColor: '#06b6d4',
+                                          borderBottomColor: '#0284c7',
+                                          boxShadow: '0 0 0 2.5px rgba(34, 211, 238, 0.7), 0 0 22px 4px rgba(6, 182, 212, 0.65), 0 0 38px 0px rgba(56, 189, 248, 0.5), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+                                        }
+                                      : {
+                                          backgroundColor: '#ffffff',
+                                          borderColor: cls.borderColor || '#ea580c',
+                                          borderBottomColor: cls.borderDarkColor || '#9a3412',
+                                        }
+                                  }
+                                  className={`group relative w-44 sm:w-48 shrink-0 rounded-xl border-2 border-b-[4px] px-2.5 py-2 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
+                                    isSelected
+                                      ? 'scale-[1.02]'
+                                      : 'shadow-xs hover:shadow-md hover:-translate-y-0.5'
+                                  } active:translate-y-0.5 active:border-b-2`}
+                                >
+                                  {/* Badge lumineux "Classe active" (jamais noir) */}
+                                  {isSelected && (
+                                    <div
+                                      className="absolute -top-2.5 left-1/2 -translate-x-1/2 px-2.5 py-0.2 rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-blue-500 text-white text-[8px] font-black tracking-wider uppercase border border-white whitespace-nowrap z-20"
+                                      style={{ boxShadow: '0 0 14px 2px rgba(6, 182, 212, 0.85)' }}
+                                    >
+                                      ★ Classe active
+                                    </div>
+                                  )}
+
+                                  {/* Ligne Supérieure : Petite icône + Nom de la classe + Menu */}
+                                  <div className="flex items-start justify-between gap-1.5">
+                                    <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                                      <div 
+                                        className="w-6 h-6 rounded-md flex items-center justify-center shadow-2xs shrink-0"
+                                        style={{ background: cls.iconGradient || 'linear-gradient(135deg, #f97316 0%, #ea580c 100%)' }}
+                                      >
+                                        <BookOpen className="w-3.5 h-3.5 text-white stroke-[2.2]" />
+                                      </div>
+
+                                      <div className="min-w-0 flex-1">
+                                        <span className="text-[8.5px] font-bold uppercase tracking-wide text-slate-400 block truncate leading-none">
+                                          {cls.slogan || activeLevel.name}
+                                        </span>
+                                        <h4 className="text-xs font-black text-slate-900 tracking-tight leading-snug truncate mt-0.5" title={displayClassName}>
+                                          {displayClassName}
+                                        </h4>
+                                      </div>
+                                    </div>
+
+                                    <div className="flex items-center gap-0.5 shrink-0">
+                                      <span 
+                                        className="w-2 h-2 rounded-full ring-1 ring-white shadow-2xs"
+                                        style={{ backgroundColor: cls.color || '#ea580c' }}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleOpenMenu(e, 'class', cls)}
+                                        className="card-menu-trigger w-5 h-5 rounded flex items-center justify-center text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition z-10"
+                                        title="Options de la classe"
+                                      >
+                                        <div className="w-3 h-2 flex flex-col justify-between items-center pointer-events-none">
+                                          <span className="w-full h-[1.5px] bg-current rounded-full"></span>
+                                          <span className="w-full h-[1.5px] bg-current rounded-full"></span>
+                                          <span className="w-full h-[1.5px] bg-current rounded-full"></span>
+                                        </div>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Ligne Inférieure compacte : Professeur & Matières */}
+                                  <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-center justify-between gap-1.5">
+                                    <span className="text-[9.5px] font-bold text-slate-600 truncate" title={`Professeur : ${cls.teacherName}`}>
+                                      {cls.teacherName}
+                                    </span>
+                                    <span className="text-[8.5px] font-black text-cyan-800 bg-cyan-50 px-1.5 py-0.2 rounded border border-cyan-200/50 shrink-0">
+                                      {classSubjCount} mat.
+                                    </span>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -2471,12 +2475,35 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </div>
                     </div>
 
-                    {/* Grille compacte : 3 lignes fixes de 6 colonnes par espace (cartes réduites) */}
+                    {/* Grille compacte : Bouton fixe "+ Matière" toujours devant (case 1) + matières (ne se déplace jamais) */}
                     <div 
                       key={subjectPageIndex}
                       className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-2.5 items-stretch animate-in fade-in duration-200"
                     >
-                      {/* 1. Matières de cet espace (format réduit) */}
+                      {/* 1. BOUTON FIXE « + MATIÈRE » : toujours en première position, ne se déplace jamais */}
+                      <button
+                        type="button"
+                        onClick={() => {
+                          resetSubjectForm();
+                          setIsAddSubjectModalOpen(true);
+                        }}
+                        className="rounded-lg border-2 border-dashed border-red-500/75 hover:border-red-600 bg-white/70 hover:bg-white/95 backdrop-blur-md px-2 py-1.5 min-h-[50px] sm:min-h-[54px] flex items-center justify-center gap-1.5 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs hover:shadow-sm active:translate-y-0"
+                        title="Créer une nouvelle matière pour cette classe"
+                      >
+                        <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-red-600 to-orange-500 text-white flex items-center justify-center group-hover:scale-110 shadow-2xs transition-transform shrink-0">
+                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                        </div>
+                        <div className="flex flex-col text-left min-w-0">
+                          <span className="text-[11px] font-black text-slate-800 group-hover:text-red-600 transition-colors leading-tight truncate">
+                            + Matière
+                          </span>
+                          <span className="text-[8.5px] text-slate-400 leading-tight truncate">
+                            {getClassDisplayName(activeClass)} &bull; {activeTerm?.name || 'T1'}
+                          </span>
+                        </div>
+                      </button>
+
+                      {/* 2. Matières de cet espace (format réduit) */}
                       {pagedSubjects.map((subj) => {
                         const isWhite = !subj.color || subj.color === '#ffffff' || subj.color === 'white';
 
@@ -2541,31 +2568,6 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         );
                       })}
 
-                      {/* 2. LE BOUTON « CRÉER UNE MATIÈRE » : format compact harmonisé */}
-                      {isLastSubjectPage && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            resetSubjectForm();
-                            setIsAddSubjectModalOpen(true);
-                          }}
-                          className="rounded-lg border-2 border-dashed border-red-500/75 hover:border-red-600 bg-white/60 hover:bg-white/95 backdrop-blur-md px-2 py-1.5 min-h-[50px] sm:min-h-[54px] flex items-center justify-center gap-1.5 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-2xs hover:shadow-sm active:translate-y-0"
-                          title="Créer une nouvelle matière pour cette classe"
-                        >
-                          <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-red-600 to-orange-500 text-white flex items-center justify-center group-hover:scale-110 shadow-2xs transition-transform shrink-0">
-                            <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                          </div>
-                          <div className="flex flex-col text-left min-w-0">
-                            <span className="text-[11px] font-black text-slate-800 group-hover:text-red-600 transition-colors leading-tight truncate">
-                              + Matière
-                            </span>
-                            <span className="text-[8.5px] text-slate-400 leading-tight truncate">
-                              {getClassDisplayName(activeClass)} &bull; {activeTerm?.name || 'T1'}
-                            </span>
-                          </div>
-                        </button>
-                      )}
-
                     </div>
                   </div>
                 )}
@@ -2626,6 +2628,29 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   </div>
 
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 items-stretch">
+                    {/* Bouton carré pointillé fixe devant (position 1) pour ajouter une autre école */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingSchool(null);
+                        setSchoolName('');
+                        setSchoolLogo(null);
+                        setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
+                        setIsAddSchoolModalOpen(true);
+                      }}
+                      className="min-h-[170px] border-2 border-dashed border-cyan-800/35 hover:border-cyan-600 bg-white/55 hover:bg-white/85 backdrop-blur-md rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group hover:-translate-y-1 shadow-xs hover:shadow-md"
+                    >
+                      <div className="w-12 h-12 rounded-xl bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-sm transition mb-2.5">
+                        <Plus className="w-6 h-6 stroke-[2.5]" />
+                      </div>
+                      <span className="text-xs font-black text-slate-700 group-hover:text-[#00313d] transition-colors">
+                        Ajouter une autre école
+                      </span>
+                      <span className="text-[10px] text-slate-400 mt-0.5">
+                        Pour {currentSelectedYear.label}
+                      </span>
+                    </button>
+
                     {currentYearSchools.map((school) => {
                       const isSelected = selectedSchoolId === school.id;
                       const isWhite = !school.color || school.color === '#ffffff' || school.color === 'white';
@@ -2736,29 +2761,6 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         </div>
                       );
                     })}
-
-                    {/* Bouton carré pointillé pour ajouter une autre école */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditingSchool(null);
-                        setSchoolName('');
-                        setSchoolLogo(null);
-                        setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
-                        setIsAddSchoolModalOpen(true);
-                      }}
-                      className="min-h-[170px] border-2 border-dashed border-cyan-800/30 hover:border-cyan-600 bg-white/40 hover:bg-white/70 backdrop-blur-md rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group hover:-translate-y-1 shadow-xs hover:shadow-md"
-                    >
-                      <div className="w-12 h-12 rounded-xl bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-sm transition mb-2.5">
-                        <Plus className="w-6 h-6 stroke-[2.5]" />
-                      </div>
-                      <span className="text-xs font-black text-slate-700 group-hover:text-[#00313d] transition-colors">
-                        Ajouter une autre école
-                      </span>
-                      <span className="text-[10px] text-slate-400 mt-0.5">
-                        Pour {currentSelectedYear.label}
-                      </span>
-                    </button>
                   </div>
                 </div>
               )
