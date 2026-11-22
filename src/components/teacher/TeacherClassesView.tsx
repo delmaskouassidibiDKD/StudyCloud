@@ -43,6 +43,7 @@ import { DnaLogo } from '../DnaLogo';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
 import { SubjectGradebookView } from './SubjectGradebookView';
 import { TeacherTransferView } from './TeacherTransferView';
+import { TeacherAnimatedBackground } from './TeacherAnimatedBackground';
 import { useAuth } from '../../context/AuthContext';
 import {
   TeacherGradebookAPI,
@@ -528,23 +529,6 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // Vue dédiée de transfert / duplication (s'ouvre "à l'intérieur" comme les cartes)
   const [isTransferViewOpen, setIsTransferViewOpen] = useState(false);
 
-  // Vidéo d'animation continue plein écran en arrière-plan (accélérée pour un mouvement dynamique bien visible)
-  const bgVideoRef = useRef<HTMLVideoElement>(null);
-  const BG_VIDEO_PLAYBACK_RATE = 2.15;
-
-  const ensureBackgroundVideoPlaying = useCallback(() => {
-    const vid = bgVideoRef.current;
-    if (!vid) return;
-    vid.muted = true;
-    vid.defaultPlaybackRate = BG_VIDEO_PLAYBACK_RATE;
-    if (vid.playbackRate !== BG_VIDEO_PLAYBACK_RATE) {
-      vid.playbackRate = BG_VIDEO_PLAYBACK_RATE;
-    }
-    if (vid.paused) {
-      vid.play().catch(() => {});
-    }
-  }, []);
-
   // Agrandissement progressif et plein écran (Image 2 & 3 - Desktop uniquement)
   const viewerExpandLevel = useViewerExpandLevel();
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
@@ -639,20 +623,6 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   // Matière sélectionnée dans laquelle on est "rentré" à l'intérieur pour afficher le tableur de notes & moyennes
   const [selectedSubjectInside, setSelectedSubjectInside] = useState<SubjectItem | null>(null);
-
-  // Relancer automatiquement la vidéo de fond accélérée au retour d'une matière ou d'un autre onglet
-  useEffect(() => {
-    ensureBackgroundVideoPlaying();
-    const onVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        ensureBackgroundVideoPlaying();
-      }
-    };
-    document.addEventListener('visibilitychange', onVisibility);
-    return () => {
-      document.removeEventListener('visibilitychange', onVisibility);
-    };
-  }, [ensureBackgroundVideoPlaying, selectedSubjectInside]);
 
   // Chargement complet & isolation stricte par compte depuis Cloudflare D1 (démarrage vierge à ZÉRO — aucune année pré-créée)
   const loadFromCloudD1 = useCallback(async () => {
@@ -2011,30 +1981,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       </aside>
 
       {/* ========================================================================= */}
-      {/* 2. ESPACE PRINCIPAL DE TRAVAIL AVEC VIDÉO ANIMÉE CONTINUE PLEIN ÉCRAN     */}
+      {/* 2. ESPACE PRINCIPAL DE TRAVAIL AVEC FOND ANIMÉ DOUX ET CONTINU            */}
       {/* ========================================================================= */}
-      <main className="relative flex-1 flex flex-col h-full min-h-dvh overflow-hidden bg-[#091226]">
-        {/* Vidéo animée continue plein écran en fond (toujours présente, nette et rapide) */}
-        <video
-          ref={bgVideoRef}
-          src="/assets/teacher-bg-animation.mp4"
-          autoPlay
-          loop
-          muted
-          playsInline
-          preload="auto"
-          onLoadedMetadata={ensureBackgroundVideoPlaying}
-          onCanPlay={ensureBackgroundVideoPlaying}
-          onPlay={ensureBackgroundVideoPlaying}
-          className="absolute inset-0 w-full h-full object-cover object-center pointer-events-none select-none z-0"
-          style={{ filter: 'brightness(1.14) contrast(1.06) saturate(1.12)' }}
-        />
-
-        {/* Voile ultra-léger uniquement sur les bords haut/bas pour garder la scène centrale 100 % nette */}
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 pointer-events-none z-[1] bg-gradient-to-b from-[#070f20]/45 via-transparent to-[#070f20]/30"
-        />
+      <main className="relative flex-1 flex flex-col h-full min-h-dvh overflow-hidden bg-[#051220]">
+        {/* Fond animé continu, lent et cohérent (100 % vectoriel & Canvas 60 FPS) */}
+        <TeacherAnimatedBackground />
 
         {/* Contenu défilable au-dessus de l'animation continue */}
         <div className="relative z-10 flex-1 flex flex-col h-full overflow-y-auto overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-1.5 sm:pt-2 pb-24 md:pb-8 space-y-1.5">
@@ -2131,8 +2082,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 </>
               ) : (
                 <>
-                  <Cloud className="w-3.5 h-3.5 text-cyan-700 shrink-0" />
-                  <span>Base connectée</span>
+                  <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Synchronisé au cloud</span>
                 </>
               )}
             </div>
