@@ -1603,7 +1603,7 @@ export async function handleTeacherGradebookRoutes(
     const now = Date.now();
     const id = await resolveSafeNewId(db, 'teacher_subjects', body.id, 'subject');
     const coeffRaw = body.coefficient !== undefined && body.coefficient !== null && body.coefficient !== '' ? Number(body.coefficient) : null;
-    const coefficient = coeffRaw !== null && Number.isFinite(coeffRaw) ? coeffRaw : null;
+    const coefficient = coeffRaw !== null && Number.isFinite(coeffRaw) && coeffRaw > 0 ? coeffRaw : null;
     const color = String(body.color || '#ffffff').slice(0, 32);
     const textColor = String(body.textColor || '#0f172a').slice(0, 32);
     const borderColor = String(body.borderColor || '#e2e8f0').slice(0, 32);
@@ -1650,12 +1650,13 @@ export async function handleTeacherGradebookRoutes(
     const name = String(body.name ?? existing.name).trim().slice(0, 100);
     if (!name) return errorResponse('Nom de matière requis.', 400, origin);
 
-    let coefficient: number | null = existing.coefficient;
+    let coefficient: number | null =
+      existing.coefficient !== null && existing.coefficient !== undefined ? Number(existing.coefficient) : null;
     if (body.coefficient !== undefined) {
       if (body.coefficient === null || body.coefficient === '') coefficient = null;
       else {
         const parsed = Number(body.coefficient);
-        coefficient = Number.isFinite(parsed) ? parsed : existing.coefficient;
+        coefficient = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
       }
     }
 

@@ -829,3 +829,84 @@ test('Trimestres : création avec coefficient facultatif, modification (PUT), An
   assert.equal(afterDel.terms.some((t: any) => t.id === t4.id), false);
   assert.equal(afterDel.subjects.some((s: any) => s.termId === t4.id), false);
 });
+
+test('Matières : création avec coefficient facultatif, modification (PUT), retrait (null) et isolation par compte', async () => {
+  const { callApi } = createHarness();
+
+  const { year } = await (await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027' },
+  })).json();
+  const { school } = await (await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'CME' },
+  })).json();
+  const { level } = await (await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'BTS 2' },
+  })).json();
+  const { classItem, terms } = await (await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { levelId: level.id, name: 'Groupe 2', teacherName: 'DKD' },
+  })).json();
+
+  const t1 = terms[0];
+
+  // 1. Créer une matière AVEC coefficient = 4
+  const s1Res = await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Mathématiques', coefficient: 4 },
+  });
+  assert.equal(s1Res.status, 201);
+  const { subject: s1 } = await s1Res.json();
+  assert.equal(s1.coefficient, 4);
+
+  // 2. Créer une matière SANS coefficient (facultatif)
+  const s2Res = await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Anglais', coefficient: null },
+  });
+  assert.equal(s2Res.status, 201);
+  const { subject: s2 } = await s2Res.json();
+  assert.equal(s2.coefficient, undefined);
+
+  // 3. Modifier le coefficient (4 -> 2.5) et vérifier dans bootstrap
+  const updRes = await callApi(`/api/teacher/subjects/${s1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { name: 'Mathématiques', coefficient: 2.5 },
+  });
+  assert.equal(updRes.status, 200);
+  const { subject: s1Upd } = await updRes.json();
+  assert.equal(s1Upd.coefficient, 2.5);
+
+  const bootAlice = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  assert.equal(bootAlice.subjects.find((s: any) => s.id === s1.id)?.coefficient, 2.5);
+  assert.equal(bootAlice.subjects.find((s: any) => s.id === s2.id)?.coefficient, undefined);
+
+  // 4. Anti-IDOR : Bob ne peut pas voir ni modifier la matière d'Alice
+  const bootBob = await (await callApi('/api/teacher/bootstrap', { token: 'token-bob' })).json();
+  assert.equal(bootBob.subjects.length, 0);
+  const bobPut = await callApi(`/api/teacher/subjects/${s1.id}`, {
+    method: 'PUT',
+    token: 'token-bob',
+    body: { name: 'Hack', coefficient: 99 },
+  });
+  assert.equal(bobPut.status, 404);
+
+  // 5. Retirer le coefficient (null)
+  const clearRes = await callApi(`/api/teacher/subjects/${s1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { name: 'Mathématiques', coefficient: null },
+  });
+  assert.equal(clearRes.status, 200);
+  const { subject: s1Cleared } = await clearRes.json();
+  assert.equal(s1Cleared.coefficient, undefined);
+});

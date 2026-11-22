@@ -1391,8 +1391,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     if (e) e.preventDefault();
     if (!subjectName.trim()) return;
 
-    const coeffNum = subjectCoefficient.trim() ? parseFloat(subjectCoefficient.trim()) : undefined;
-    const parsedCoeff = (coeffNum !== undefined && !isNaN(coeffNum)) ? coeffNum : undefined;
+    const cleanedCoeff = subjectCoefficient.trim().replace(',', '.');
+    const coeffNum = cleanedCoeff ? parseFloat(cleanedCoeff) : undefined;
+    const parsedCoeff =
+      coeffNum !== undefined && Number.isFinite(coeffNum) && coeffNum > 0
+        ? Math.round(coeffNum * 100) / 100
+        : undefined;
 
     if (editingSubject) {
       if (!isSubjectDirty) return;
@@ -1454,7 +1458,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             classId: newSubject.classId,
             termId: targetTermId,
             name: newSubject.name,
-            coefficient: parsedCoeff,
+            coefficient: parsedCoeff ?? null,
             color: newSubject.color,
             textColor: newSubject.textColor,
             borderColor: newSubject.borderColor,
@@ -1462,7 +1466,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           }),
         'Erreur de création de la matière.'
       ).then((res) => {
-        if (res?.subject && res.subject.id !== newSubject.id) {
+        if (res?.subject) {
           setSubjects(prev => prev.map(s => s.id === newSubject.id ? res.subject : s));
         }
       });
@@ -4420,23 +4424,42 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   </div>
                 </div>
 
-                {/* 2. Coefficient (facultatif) */}
-                <div className="space-y-1">
+                {/* 2. Coefficient de la matière (facultatif — enregistré en base lié au compte et à la matière) */}
+                <div className="space-y-1.5">
                   <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
-                    Coefficient <span className="text-[10px] font-normal text-slate-400 lowercase">(facultatif)</span>
+                    Coefficient de la matière <span className="text-[10px] font-normal text-slate-400 lowercase">(facultatif)</span>
                   </label>
                   <input
                     type="number"
                     step="0.5"
-                    min="0"
-                    max="20"
+                    min="0.5"
+                    max="100"
                     value={subjectCoefficient}
                     onChange={(e) => setSubjectCoefficient(e.target.value)}
-                    placeholder="Ex: 1, 2, 3, 4..."
-                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                    placeholder="Ex : 1, 2, 3, 4..."
+                    className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
                   />
+                  <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                    {['', '1', '2', '3', '4', '5'].map((val) => {
+                      const isSelected = subjectCoefficient.trim() === val;
+                      return (
+                        <button
+                          key={val || 'none'}
+                          type="button"
+                          onClick={() => setSubjectCoefficient(val)}
+                          className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold transition cursor-pointer border ${
+                            isSelected
+                              ? 'bg-[#00313d] text-white border-[#00313d] shadow-2xs'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                          }`}
+                        >
+                          {val === '' ? 'Aucun' : `Coeff ${val}`}
+                        </button>
+                      );
+                    })}
+                  </div>
                   <span className="text-[10px] text-slate-400 block">
-                    Utilisé pour le calcul de la moyenne générale de l'élève.
+                    Enregistré sur votre compte et utilisé pour le calcul de la moyenne générale.
                   </span>
                 </div>
 

@@ -626,7 +626,7 @@ export const TeacherGradebookAPI = {
     classId: string;
     termId: string;
     name: string;
-    coefficient?: number;
+    coefficient?: number | null;
     color: string;
     textColor: string;
     borderColor: string;

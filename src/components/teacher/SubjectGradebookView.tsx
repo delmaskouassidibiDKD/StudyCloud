@@ -2602,6 +2602,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             />
             <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 truncate">
               <span className="truncate">{subject.name}</span>
+              {subject.coefficient !== undefined && subject.coefficient !== null && (
+                <span className="text-slate-700 font-extrabold bg-slate-100 px-1.5 py-0.5 rounded text-[10px] border border-slate-300/80 shrink-0">
+                  Coeff {subject.coefficient}
+                </span>
+              )}
               <span className="text-slate-400 font-normal hidden sm:inline">•</span>
               <span className="text-slate-600 font-semibold truncate hidden sm:inline">
                 {schoolClass.name?.trim()
@@ -2611,8 +2616,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   : schoolClass.level}
               </span>
               <span className="text-slate-400 font-normal hidden md:inline">•</span>
-              <span className="text-cyan-800 font-bold bg-cyan-50 px-2 py-0.5 rounded text-[10px] border border-cyan-200/80 hidden md:inline-block">
+              <span className="text-cyan-800 font-bold bg-cyan-50 px-2 py-0.5 rounded text-[10px] border border-cyan-200/80 hidden md:inline-block shrink-0">
                 {term?.name || 'Trimestre 1'}
+                {term?.coefficient !== undefined && term?.coefficient !== null ? ` · Coeff ${term.coefficient}` : ''}
               </span>
             </div>
           </div>
