@@ -747,3 +747,85 @@ test('Persistance du zoom, dimensions et remappage des couleurs/styles par élè
   // L'ancien ID ne pollue pas le tableur cible
   assert.equal(loadedT2.styles.rowColors['std-orig-1'], undefined);
 });
+
+test('Trimestres : création avec coefficient facultatif, modification (PUT), Anti-IDOR et suppression en cascade', async () => {
+  const { callApi } = createHarness();
+
+  const { year } = await (await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027' },
+  })).json();
+  const { school } = await (await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'CME' },
+  })).json();
+  const { level } = await (await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'BTS 2' },
+  })).json();
+  const { classItem } = await (await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { levelId: level.id, name: 'Groupe 2', teacherName: 'DKD' },
+  })).json();
+
+  // 1. Créer Trimestre 4 avec coefficient = 2
+  const t4Res = await callApi('/api/teacher/terms', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, number: 4, name: 'Trimestre 4', coefficient: 2 },
+  });
+  assert.equal(t4Res.status, 201);
+  const { term: t4 } = await t4Res.json();
+  assert.equal(t4.coefficient, 2);
+
+  // 2. Modifier le coefficient du trimestre (2 -> 1.5), puis vérifier dans bootstrap
+  const updRes = await callApi(`/api/teacher/terms/${t4.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { coefficient: 1.5 },
+  });
+  assert.equal(updRes.status, 200);
+  const { term: t4Updated } = await updRes.json();
+  assert.equal(t4Updated.coefficient, 1.5);
+
+  const boot = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  const bootT4 = boot.terms.find((t: any) => t.id === t4.id);
+  assert.equal(bootT4?.coefficient, 1.5);
+
+  // 3. Anti-IDOR : Bob ne peut pas modifier ni supprimer le trimestre d'Alice
+  const bobPut = await callApi(`/api/teacher/terms/${t4.id}`, {
+    method: 'PUT',
+    token: 'token-bob',
+    body: { coefficient: 99 },
+  });
+  assert.equal(bobPut.status, 404);
+
+  // 4. Retirer le coefficient (null)
+  const clearRes = await callApi(`/api/teacher/terms/${t4.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { coefficient: null },
+  });
+  assert.equal(clearRes.status, 200);
+  const { term: t4Cleared } = await clearRes.json();
+  assert.equal(t4Cleared.coefficient, undefined);
+
+  // 5. Ajouter une matière dans T4 puis supprimer T4 -> cascade vérifiée
+  await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t4.id, name: 'Électrotechnique' },
+  });
+  const delRes = await callApi(`/api/teacher/terms/${t4.id}`, {
+    method: 'DELETE',
+    token: 'token-alice',
+  });
+  assert.equal(delRes.status, 200);
+  const afterDel = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  assert.equal(afterDel.terms.some((t: any) => t.id === t4.id), false);
+  assert.equal(afterDel.subjects.some((s: any) => s.termId === t4.id), false);
+});

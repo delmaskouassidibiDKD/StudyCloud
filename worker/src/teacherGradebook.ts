@@ -114,6 +114,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       year_id TEXT NOT NULL,
       number INTEGER NOT NULL DEFAULT 1,
       name TEXT NOT NULL,
+      coefficient REAL DEFAULT NULL,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -192,6 +193,18 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
   ];
 
   await db.batch(statements.map((sql) => db.prepare(sql)));
+
+  // Migration idempotente : s'assurer que teacher_terms possède la colonne coefficient
+  try {
+    const info = await db.prepare('PRAGMA table_info(teacher_terms)').all();
+    const hasCoeff = (info.results || []).some((c: any) => String(c.name) === 'coefficient');
+    if (!hasCoeff) {
+      await db.prepare('ALTER TABLE teacher_terms ADD COLUMN coefficient REAL DEFAULT NULL').run();
+    }
+  } catch {
+    // Ignorer si déjà migré par une requête concurrente
+  }
+
   initializedTeacherDbs.add(db);
 }
 
@@ -728,6 +741,7 @@ async function buildBootstrapPayload(db: any, userId: string, origin: string, jw
     yearId: r.year_id,
     number: Number(r.number) || 1,
     name: r.name,
+    coefficient: r.coefficient !== null && r.coefficient !== undefined ? Number(r.coefficient) : undefined,
     createdAt: Number(r.created_at) || Date.now(),
   }));
 
@@ -1450,7 +1464,7 @@ export async function handleTeacherGradebookRoutes(
   }
 
   // --------------------------------------------------------------------------
-  // 6. TRIMESTRES (POST, DELETE)
+  // 6. TRIMESTRES (POST, PUT, DELETE)
   // --------------------------------------------------------------------------
   if (path === '/api/teacher/terms' && method === 'POST') {
     const body: any = await request.json().catch(() => ({}));
@@ -1465,15 +1479,18 @@ export async function handleTeacherGradebookRoutes(
       .first();
     if (!ownClass) return errorResponse('Classe introuvable ou non autorisée.', 404, origin);
 
+    const coeffRaw = body.coefficient !== undefined && body.coefficient !== null && body.coefficient !== '' ? Number(body.coefficient) : null;
+    const coefficient = coeffRaw !== null && Number.isFinite(coeffRaw) && coeffRaw > 0 ? coeffRaw : null;
+
     const now = Date.now();
     const id = await resolveSafeNewId(db, 'teacher_terms', body.id, 'term');
 
     await db
       .prepare(
-        `INSERT INTO teacher_terms (id, user_id, class_id, school_id, year_id, number, name, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO teacher_terms (id, user_id, class_id, school_id, year_id, number, name, coefficient, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .bind(id, userId, classId, ownClass.school_id, ownClass.year_id, number, name, now, now)
+      .bind(id, userId, classId, ownClass.school_id, ownClass.year_id, number, name, coefficient, now, now)
       .run();
 
     return jsonResponse({
@@ -1485,14 +1502,63 @@ export async function handleTeacherGradebookRoutes(
         yearId: ownClass.year_id,
         number,
         name,
+        coefficient: coefficient ?? undefined,
         createdAt: now,
       },
     }, 201, origin);
   }
 
-  const termDeleteMatch = path.match(/^\/api\/teacher\/terms\/([^/]+)$/);
-  if (termDeleteMatch && method === 'DELETE') {
-    const termId = decodeURIComponent(termDeleteMatch[1]);
+  const termItemMatch = path.match(/^\/api\/teacher\/terms\/([^/]+)$/);
+  if (termItemMatch && method === 'PUT') {
+    const termId = decodeURIComponent(termItemMatch[1]);
+    const existing: any = await db
+      .prepare('SELECT * FROM teacher_terms WHERE id = ? AND user_id = ? LIMIT 1')
+      .bind(termId, userId)
+      .first();
+    if (!existing) return errorResponse('Trimestre introuvable.', 404, origin);
+
+    const body: any = await request.json().catch(() => ({}));
+    const name = body.name !== undefined ? String(body.name || '').trim().slice(0, 50) : String(existing.name);
+    if (!name) return errorResponse('Nom du trimestre requis.', 400, origin);
+
+    let coefficient: number | null =
+      existing.coefficient !== null && existing.coefficient !== undefined ? Number(existing.coefficient) : null;
+    if (body.coefficient !== undefined) {
+      if (body.coefficient === null || body.coefficient === '') {
+        coefficient = null;
+      } else {
+        const parsed = Number(body.coefficient);
+        coefficient = Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+      }
+    }
+
+    const now = Date.now();
+    await db
+      .prepare(
+        `UPDATE teacher_terms
+         SET name = ?, coefficient = ?, updated_at = ?
+         WHERE id = ? AND user_id = ?`
+      )
+      .bind(name, coefficient, now, termId, userId)
+      .run();
+
+    return jsonResponse({
+      success: true,
+      term: {
+        id: termId,
+        classId: existing.class_id,
+        schoolId: existing.school_id,
+        yearId: existing.year_id,
+        number: Number(existing.number) || 1,
+        name,
+        coefficient: coefficient ?? undefined,
+        createdAt: Number(existing.created_at),
+      },
+    }, 200, origin);
+  }
+
+  if (termItemMatch && method === 'DELETE') {
+    const termId = decodeURIComponent(termItemMatch[1]);
     const ownTerm: any = await db
       .prepare('SELECT id FROM teacher_terms WHERE id = ? AND user_id = ? LIMIT 1')
       .bind(termId, userId)
@@ -2139,12 +2205,15 @@ export async function handleTeacherGradebookRoutes(
       if (!ownedClassIds.has(tClassId)) continue;
       const termId = String(term.id).slice(0, 80);
       ownedTermIds.add(termId);
+      const termCoeff = term.coefficient !== undefined && term.coefficient !== null && Number.isFinite(Number(term.coefficient)) && Number(term.coefficient) > 0
+        ? Number(term.coefficient)
+        : null;
       structStmts.push(
         db
           .prepare(
             `INSERT OR IGNORE INTO teacher_terms
-              (id, user_id, class_id, school_id, year_id, number, name, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              (id, user_id, class_id, school_id, year_id, number, name, coefficient, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .bind(
             termId,
@@ -2154,6 +2223,7 @@ export async function handleTeacherGradebookRoutes(
             ownedSchoolYearMap.get(term.schoolId),
             Math.max(1, Number(term.number) || 1),
             String(term.name || 'Trimestre 1').trim().slice(0, 50),
+            termCoeff,
             Number(term.createdAt) || now,
             now
           )
@@ -2733,12 +2803,15 @@ export async function handleTeacherGradebookRoutes(
       const newId = mapId(t.id, 'term');
       termIdMap.set(t.id, newId);
 
+      const tCoeff = t.coefficient !== undefined && t.coefficient !== null && Number.isFinite(Number(t.coefficient)) && Number(t.coefficient) > 0
+        ? Number(t.coefficient)
+        : null;
       stmts.push(
         db
           .prepare(
             `INSERT OR IGNORE INTO teacher_terms
-              (id, user_id, class_id, school_id, year_id, number, name, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              (id, user_id, class_id, school_id, year_id, number, name, coefficient, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .bind(
             newId,
@@ -2748,6 +2821,7 @@ export async function handleTeacherGradebookRoutes(
             mappedYearId,
             Math.max(1, Number(t.number) || 1),
             String(t.name || 'Trimestre 1').trim().slice(0, 50),
+            tCoeff,
             Number(t.createdAt) || now,
             now
           )
@@ -3070,18 +3144,21 @@ export async function handleTeacherGradebookRoutes(
     for (const t of terms) {
       if (!t?.id || !t?.classId || !t?.schoolId || !t?.yearId || !ownedClasses.has(String(t.classId))) continue;
       const tId = String(t.id).slice(0, 80);
+      const tCoeff = t.coefficient !== undefined && t.coefficient !== null && Number.isFinite(Number(t.coefficient)) && Number(t.coefficient) > 0
+        ? Number(t.coefficient)
+        : null;
       if (ownedTerms.has(tId)) {
         stmts.push(
-          db.prepare('UPDATE teacher_terms SET number = ?, name = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-            .bind(Math.max(1, Number(t.number) || 1), String(t.name || 'Trimestre 1').trim().slice(0, 50), now, tId, userId)
+          db.prepare('UPDATE teacher_terms SET number = ?, name = ?, coefficient = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+            .bind(Math.max(1, Number(t.number) || 1), String(t.name || 'Trimestre 1').trim().slice(0, 50), tCoeff, now, tId, userId)
         );
       } else {
         stmts.push(
           db.prepare(
             `INSERT OR IGNORE INTO teacher_terms
-              (id, user_id, class_id, school_id, year_id, number, name, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
-          ).bind(tId, userId, String(t.classId).slice(0, 80), String(t.schoolId).slice(0, 80), String(t.yearId).slice(0, 80), Math.max(1, Number(t.number) || 1), String(t.name || 'Trimestre 1').trim().slice(0, 50), Number(t.createdAt) || now, now)
+              (id, user_id, class_id, school_id, year_id, number, name, coefficient, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          ).bind(tId, userId, String(t.classId).slice(0, 80), String(t.schoolId).slice(0, 80), String(t.yearId).slice(0, 80), Math.max(1, Number(t.number) || 1), String(t.name || 'Trimestre 1').trim().slice(0, 50), tCoeff, Number(t.createdAt) || now, now)
         );
         ownedTerms.add(tId);
       }

@@ -1074,6 +1074,7 @@ CREATE TABLE IF NOT EXISTS teacher_terms (
     year_id TEXT NOT NULL,
     number INTEGER NOT NULL DEFAULT 1,
     name TEXT NOT NULL,
+    coefficient REAL DEFAULT NULL,
     created_at INTEGER NOT NULL,
     updated_at INTEGER NOT NULL,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,

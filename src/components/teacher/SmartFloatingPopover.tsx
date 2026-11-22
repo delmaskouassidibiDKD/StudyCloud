@@ -22,8 +22,8 @@ export interface SmartFloatingPopoverProps {
   boundaryEl?: HTMLElement | null;
   /** Optional compact pill/header obstacle to keep clear of (auto-detected via [data-popover-avoid] if omitted) */
   avoidEl?: HTMLElement | null;
-  /** Preferred vertical opening direction */
-  preferredSide?: 'bottom' | 'top';
+  /** Preferred opening direction (auto-flips when blocked by edges or obstacles) */
+  preferredSide?: 'bottom' | 'top' | 'right' | 'left';
   /** Preferred horizontal alignment relative to trigger */
   preferredAlign?: 'start' | 'end' | 'center';
   /** Gap in pixels between trigger/pill and popover */
@@ -108,7 +108,7 @@ export function computeSmartPopoverPosition(params: {
   safe: RectBox;
   popW: number;
   popH: number;
-  preferredSide: 'bottom' | 'top';
+  preferredSide: 'bottom' | 'top' | 'right' | 'left';
   preferredAlign: 'start' | 'end' | 'center';
   gap: number;
   extraObstacles?: RectBox[];
@@ -198,9 +198,21 @@ export function computeSmartPopoverPosition(params: {
     let prefPenalty = 0;
     const isTop = cand.placement.startsWith('top');
     const isBottom = cand.placement.startsWith('bottom');
-    const isSide = cand.placement.startsWith('left') || cand.placement.startsWith('right');
+    const isRight = cand.placement.startsWith('right');
+    const isLeft = cand.placement.startsWith('left');
+    const isSide = isRight || isLeft;
 
-    if (isSide) {
+    if (preferredSide === 'right') {
+      if (isRight) prefPenalty += 0;
+      else if (isBottom) prefPenalty += 16;
+      else if (isTop) prefPenalty += 24;
+      else if (isLeft) prefPenalty += 32;
+    } else if (preferredSide === 'left') {
+      if (isLeft) prefPenalty += 0;
+      else if (isBottom) prefPenalty += 16;
+      else if (isTop) prefPenalty += 24;
+      else if (isRight) prefPenalty += 32;
+    } else if (isSide) {
       prefPenalty += 45;
     } else if ((preferredSide === 'bottom' && isTop) || (preferredSide === 'top' && isBottom)) {
       prefPenalty += 18;

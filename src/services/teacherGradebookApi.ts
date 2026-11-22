@@ -604,9 +604,15 @@ export const TeacherGradebookAPI = {
       method: 'DELETE',
     }),
 
-  createTerm: (input: { id?: string; classId: string; number: number; name: string }) =>
+  createTerm: (input: { id?: string; classId: string; number: number; name: string; coefficient?: number | null }) =>
     teacherFetchJson<{ success: boolean; term: TermItem }>('/api/teacher/terms', {
       method: 'POST',
+      body: input,
+    }),
+
+  updateTerm: (id: string, input: { name?: string; coefficient?: number | null }) =>
+    teacherFetchJson<{ success: boolean; term: TermItem }>(`/api/teacher/terms/${encodeURIComponent(id)}`, {
+      method: 'PUT',
       body: input,
     }),
 

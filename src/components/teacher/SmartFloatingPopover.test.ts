@@ -133,3 +133,23 @@ test('Create-year top-right dropdown stays inside safe bounds even on narrow scr
   assert.ok(pos.left + 320 <= safe.right, 'Must never clip off right edge on mobile');
   assert.ok(pos.top >= trigger.bottom + 10);
 });
+
+test('Add-term side popover opens cleanly to the right of + Trimestre when space allows', () => {
+  const safe = { left: 222, top: 76, right: 1268, bottom: 788, width: 1046, height: 712 };
+  const trigger = { left: 234, top: 420, right: 350, bottom: 456, width: 116, height: 36 };
+
+  const pos = computeSmartPopoverPosition({
+    anchor: trigger,
+    avoid: null,
+    safe,
+    popW: 280,
+    popH: 210,
+    preferredSide: 'right',
+    preferredAlign: 'start',
+    gap: 10,
+  });
+
+  assert.equal(pos.placement, 'right-start');
+  assert.ok(pos.left >= trigger.right + 10);
+  assert.equal(pos.caretSide, 'left');
+});

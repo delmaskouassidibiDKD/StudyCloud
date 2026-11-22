@@ -126,6 +126,7 @@ export interface TermItem {
   yearId: string;
   number: number; // 1, 2, 3, 4...
   name: string; // ex: "Trimestre 1", "Trimestre 2"...
+  coefficient?: number; // Coefficient du trimestre (facultatif, ex: 1, 2, 3)
   createdAt: number;
 }
 
@@ -784,8 +785,18 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     }
   };
 
-  // État du modal d'ajout d'un nouveau trimestre
-  const [isAddTermModalOpen, setIsAddTermModalOpen] = useState(false);
+  // État du petit menu latéral d'ajout d'un trimestre (+ coefficient facultatif)
+  const [isAddTermPopoverOpen, setIsAddTermPopoverOpen] = useState(false);
+  const [newTermCoeffInput, setNewTermCoeffInput] = useState('');
+  const addTermBtnRef = useRef<HTMLButtonElement | null>(null);
+
+  // État du petit menu d'ajout / modification du coefficient d'un trimestre existant
+  const [editingTermCoeff, setEditingTermCoeff] = useState<{
+    term: TermItem;
+    anchorEl: HTMLElement | null;
+    fallbackRect: DOMRect | null;
+  } | null>(null);
+  const [editTermCoeffInput, setEditTermCoeffInput] = useState('');
 
   // État pour le bouton de copie rapide du nom dans la modale de suppression
   const [isCopiedDeleteName, setIsCopiedDeleteName] = useState(false);
@@ -798,33 +809,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setTimeout(() => setIsCopiedDeleteName(false), 2000);
   };
 
-  // Les 3 trimestres par défaut sont créés atomiquement avec chaque classe dans D1.
-  // Filet de sécurité si une classe importée ancienne n'avait pas encore de trimestre.
-  useEffect(() => {
-    if (!isCloudHydratedRef.current || classes.length === 0) return;
-    const missingClasses = classes.filter(c => !terms.some(t => t.classId === c.id));
-    if (missingClasses.length === 0) return;
-    missingClasses.forEach((c) => {
-      [1, 2, 3].forEach((num) => {
-        const newTerm: TermItem = {
-          id: generateTeacherEntityId(`term-${num}`),
-          classId: c.id,
-          schoolId: c.schoolId,
-          yearId: c.yearId,
-          number: num,
-          name: `Trimestre ${num}`,
-          createdAt: Date.now() + num,
-        };
-        setTerms(prev => (prev.some(t => t.classId === c.id && t.number === num) ? prev : [...prev, newTerm]));
-        if (getTeacherAuthToken()) {
-          TeacherGradebookAPI.createTerm({ id: newTerm.id, classId: c.id, number: num, name: newTerm.name }).catch(() => {});
-        }
-      });
-    });
-  }, [classes, terms]);
-
   // --- ÉTATS POUR LES MENUS CONTEXTUELS "3 TRAITS", ÉDITION ET SUPPRESSION SÉCURISÉE ---
-  type ManagedEntityType = 'year' | 'school' | 'level' | 'class' | 'subject';
+  type ManagedEntityType = 'year' | 'school' | 'level' | 'class' | 'term' | 'subject';
 
   interface ActiveMenuState {
     type: ManagedEntityType;
@@ -880,6 +866,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   };
 
   const handleTriggerEdit = (type: ManagedEntityType, item: any) => {
+    const prevAnchorEl = activeMenu?.anchorEl ?? null;
+    const prevFallbackRect = activeMenu?.fallbackRect ?? null;
     setActiveMenu(null);
     if (type === 'year') {
       const yr = item as SchoolYearItem;
@@ -919,6 +907,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         CLASS_COLOR_OPTIONS[0]
       );
       setIsAddClassModalOpen(true);
+    } else if (type === 'term') {
+      const trm = item as TermItem;
+      setIsAddTermPopoverOpen(false);
+      setEditTermCoeffInput(trm.coefficient !== undefined && trm.coefficient !== null ? String(trm.coefficient) : '');
+      setEditingTermCoeff({
+        term: trm,
+        anchorEl: prevAnchorEl,
+        fallbackRect: prevFallbackRect,
+      });
     } else if (type === 'subject') {
       const subj = item as SubjectItem;
       setEditingSubject(subj);
@@ -930,6 +927,37 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       );
       setIsAddSubjectModalOpen(true);
     }
+  };
+
+  const handleSaveTermCoefficient = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!editingTermCoeff) return;
+    const targetTerm = editingTermCoeff.term;
+    const cleaned = editTermCoeffInput.trim().replace(',', '.');
+    let parsedCoeff: number | null = null;
+    if (cleaned !== '') {
+      const n = Number(cleaned);
+      if (!Number.isFinite(n) || n <= 0) return;
+      parsedCoeff = Math.round(n * 100) / 100;
+    }
+
+    setTerms(prev =>
+      prev.map(t =>
+        t.id === targetTerm.id
+          ? { ...t, coefficient: parsedCoeff !== null ? parsedCoeff : undefined }
+          : t
+      )
+    );
+    setEditingTermCoeff(null);
+    setEditTermCoeffInput('');
+
+    runCloudMutation(
+      () =>
+        TeacherGradebookAPI.updateTerm(targetTerm.id, {
+          coefficient: parsedCoeff,
+        }),
+      'Erreur lors de la mise à jour du coefficient du trimestre.'
+    );
   };
 
   const handleTriggerDelete = (type: ManagedEntityType, item: any) => {
@@ -980,6 +1008,21 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         name: fullName,
         displayName: `la classe "${fullName}"`,
         warningMessage: `Tout ce qui est lié à cette classe (${linkedSubjects} matière(s), trimestres, élèves enregistrés, photos et notes) sera définitivement supprimé de votre compte.`
+      });
+    } else if (type === 'term') {
+      const trm = item as TermItem;
+      const classTerms = terms.filter(t => t.classId === trm.classId).sort((a, b) => a.number - b.number);
+      const linkedSubjects = subjects.filter(s => {
+        if (s.classId !== trm.classId) return false;
+        const effectiveTermId = s.termId || classTerms[0]?.id;
+        return effectiveTermId === trm.id;
+      }).length;
+      setDeleteTarget({
+        type: 'term',
+        id: trm.id,
+        name: trm.name,
+        displayName: `le trimestre "${trm.name}"`,
+        warningMessage: `Tout ce qui est lié à ce trimestre (${linkedSubjects} matière(s), ainsi que tous les élèves, photos de profil et notes) sera définitivement supprimé de votre compte.`
       });
     } else if (type === 'subject') {
       const subj = item as SubjectItem;
@@ -1087,6 +1130,24 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         setSubjects(prev => prev.filter(s => s.classId !== id));
         setTerms(prev => prev.filter(t => t.classId !== id));
         if (selectedClassId === id) setSelectedClassId(null);
+        clearUserGradebookCaches(authUserId, deletedSubjectIds);
+      }
+    } else if (targetType === 'term') {
+      const deletedTerm = terms.find(t => t.id === id);
+      const deletedSubjectIds = subjects
+        .filter(s => s.termId === id || (deletedTerm && s.classId === deletedTerm.classId && !s.termId))
+        .map(s => s.id);
+      const ok = await runCloudMutation(
+        () => TeacherGradebookAPI.deleteTerm(id),
+        'Erreur lors de la suppression du trimestre.'
+      );
+      if (ok) {
+        setTerms(prev => prev.filter(t => t.id !== id));
+        setSubjects(prev => prev.filter(s => !deletedSubjectIds.includes(s.id)));
+        if (selectedTermId === id) setSelectedTermId(null);
+        if (selectedSubjectInside && deletedSubjectIds.includes(selectedSubjectInside.id)) {
+          setSelectedSubjectInside(null);
+        }
         clearUserGradebookCaches(authUserId, deletedSubjectIds);
       }
     } else if (targetType === 'subject') {
@@ -1728,9 +1789,18 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     return Math.max(...currentClassTerms.map(t => t.number)) + 1;
   }, [currentClassTerms]);
 
-  // Confirmation de l'ajout d'un nouveau trimestre pour la classe active (D1)
-  const handleConfirmAddTerm = () => {
+  // Confirmation de l'ajout d'un nouveau trimestre (+ coefficient facultatif) pour la classe active
+  const handleConfirmAddTerm = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     if (!activeClass || !selectedSchoolInside) return;
+    const cleanedCoeff = newTermCoeffInput.trim().replace(',', '.');
+    let parsedCoeff: number | undefined = undefined;
+    if (cleanedCoeff !== '') {
+      const n = Number(cleanedCoeff);
+      if (!Number.isFinite(n) || n <= 0) return;
+      parsedCoeff = Math.round(n * 100) / 100;
+    }
+
     const newTerm: TermItem = {
       id: generateTeacherEntityId('term'),
       classId: activeClass.id,
@@ -1738,11 +1808,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       yearId: selectedSchoolInside.yearId,
       number: nextTermNumber,
       name: `Trimestre ${nextTermNumber}`,
+      coefficient: parsedCoeff,
       createdAt: Date.now()
     };
     setTerms(prev => [...prev, newTerm]);
     setSelectedTermId(newTerm.id);
-    setIsAddTermModalOpen(false);
+    setIsAddTermPopoverOpen(false);
+    setNewTermCoeffInput('');
     runCloudMutation(
       () =>
         TeacherGradebookAPI.createTerm({
@@ -1750,12 +1822,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           classId: newTerm.classId,
           number: newTerm.number,
           name: newTerm.name,
+          coefficient: parsedCoeff ?? null,
         }),
       'Erreur de création du trimestre.'
     ).then((res) => {
-      if (res?.term && res.term.id !== newTerm.id) {
+      if (res?.term) {
         setTerms(prev => prev.map(t => t.id === newTerm.id ? res.term : t));
-        setSelectedTermId(res.term.id);
+        if (res.term.id !== newTerm.id) {
+          setSelectedTermId(res.term.id);
+        }
       }
     });
   };
@@ -2593,26 +2668,26 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </div>
                     </div>
 
-                    {/* Ligne des boutons minces rectangulaires : bouton (+) devant + niveaux successifs défilables */}
-                    <div className="flex items-center gap-1.5">
-                      {/* Bouton Plus (+) devant pour ajouter d'autres niveaux d'étude */}
+                    {/* Ligne des boutons minces rectangulaires : bouton (+) devant aligné verticalement + niveaux successifs défilables */}
+                    <div className="flex items-center gap-2.5">
+                      {/* Bouton Plus (+) devant (largeur alignée avec Classe, Trimestre, Matière) */}
                       <button
                         type="button"
                         onClick={() => {
                           resetLevelForm();
                           setIsAddLevelModalOpen(true);
                         }}
-                        className="h-8 px-2.5 rounded-lg border border-dashed border-cyan-800/50 hover:border-cyan-500 bg-white/85 hover:bg-cyan-50 text-[#00313d] hover:text-cyan-800 flex items-center gap-1 text-[11px] font-black transition-colors shrink-0 cursor-pointer"
+                        className="w-[108px] sm:w-[116px] shrink-0 h-8 rounded-lg border-2 border-dashed border-cyan-300/80 hover:border-cyan-200 bg-white/90 hover:bg-white text-[#00313d] hover:text-cyan-800 flex items-center justify-center gap-1.5 text-[11px] font-black transition-all shadow-xs cursor-pointer"
                         title="Ajouter un nouveau niveau d'étude (CP1, 6ème, 2nde, Terminale, Licence...)"
                       >
-                        <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                        <span className="hidden sm:inline">Niveau</span>
+                        <Plus className="w-3.5 h-3.5 stroke-[3] shrink-0" />
+                        <span>Niveau</span>
                       </button>
 
                       {/* Liste horizontale des niveaux en boutons minces rectangulaires plats avec halo lumineux éclatant à la sélection */}
                       <div
                         ref={levelsScrollRef}
-                        className="flex items-center gap-2 overflow-x-auto flex-nowrap scrollbar-none scroll-smooth py-2 px-1.5 -my-1 flex-1 min-w-0"
+                        className="flex items-center gap-2 overflow-x-auto flex-nowrap scrollbar-none scroll-smooth py-2 pl-0.5 pr-2 -my-1 flex-1 min-w-0"
                         style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                       >
                         {filteredSchoolLevels.length === 0 && levelSearchQuery.trim() ? (
@@ -2804,9 +2879,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           </button>
                         </div>
                       ) : (
-                        /* Bouton "+ Classe" fixe devant + Rangée horizontale défilable de cartes 3D compactes */
+                        /* Bouton "+ Classe" fixe devant (aligné verticalement) + Rangée horizontale défilable de cartes 3D compactes */
                         <div className="flex items-stretch gap-2.5">
-                          {/* Bouton fixe devant pour ajouter une classe (ne se déplace jamais) */}
+                          {/* Bouton fixe devant pour ajouter une classe (aligné avec Niveau, Trimestre, Matière) */}
                           <div className="pt-3.5 pb-2.5 flex items-stretch shrink-0">
                             <button
                               type="button"
@@ -2814,7 +2889,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                 resetClassForm();
                                 setIsAddClassModalOpen(true);
                               }}
-                              className="w-28 sm:w-32 shrink-0 border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white backdrop-blur-md rounded-xl px-2.5 py-2 flex flex-col items-center justify-center gap-1 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-sm"
+                              className="w-[108px] sm:w-[116px] shrink-0 border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white backdrop-blur-md rounded-xl px-2 py-2 flex flex-col items-center justify-center gap-1 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-sm"
                               title={`Ajouter une classe dans ${activeLevel.name}`}
                             >
                               <div className="w-6 h-6 rounded-md bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-2xs transition shrink-0">
@@ -2828,7 +2903,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                           <div 
                             ref={classesScrollRef}
-                            className="flex items-stretch gap-3 overflow-x-auto pt-3.5 pb-2.5 px-2 scrollbar-none scroll-smooth flex-nowrap flex-1 min-w-0"
+                            className="flex items-stretch gap-3 overflow-x-auto pt-3.5 pb-2.5 pl-0.5 pr-2 scrollbar-none scroll-smooth flex-nowrap flex-1 min-w-0"
                             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
                           >
                             {filteredLevelClasses.length === 0 && classSearchQuery.trim() ? (
@@ -2972,82 +3047,108 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </div>
                     </div>
 
-                    {/* Rangée horizontale des trimestres avec sélection lumineuse émeraude (jamais noire) */}
-                    <div 
-                      ref={termsScrollRef}
-                      className="flex items-center gap-2.5 overflow-x-auto py-2 px-1.5 -mx-1.5 scrollbar-none scroll-smooth select-none"
-                    >
-                      {currentClassTerms.map((term) => {
-                        const isSelected = activeTerm?.id === term.id;
-                        const termSubjCount = subjects.filter(s => {
-                          if (s.classId !== activeClass.id) return false;
-                          const effectiveTermId = s.termId || currentClassTerms[0]?.id;
-                          return effectiveTermId === term.id;
-                        }).length;
-
-                        return (
-                          <button
-                            key={term.id}
-                            type="button"
-                            onClick={() => setSelectedTermId(term.id)}
-                            style={
-                              isSelected
-                                ? {
-                                    background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 55%, #ccfbf1 100%)',
-                                    borderColor: '#10b981',
-                                    borderBottomColor: '#059669',
-                                    boxShadow: '0 0 0 2px rgba(52, 211, 153, 0.65), 0 0 20px 4px rgba(16, 185, 129, 0.62), 0 0 34px 0px rgba(52, 211, 153, 0.48), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
-                                  }
-                                : undefined
-                            }
-                            className={`group relative overflow-hidden shrink-0 px-3 py-1.5 rounded-lg border-2 transition-all duration-200 flex items-center gap-2 cursor-pointer ${
-                              isSelected
-                                ? 'text-emerald-950 border-b-[3px] scale-[1.03]'
-                                : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-emerald-300 border-b-[2px] shadow-2xs hover:-translate-y-0.5'
-                            } active:translate-y-0.5`}
-                          >
-                            {isSelected && (
-                              <div
-                                className="absolute inset-0 pointer-events-none opacity-45 blur-md"
-                                style={{ background: 'radial-gradient(circle, rgba(52, 211, 153, 0.72) 0%, transparent 72%)' }}
-                              />
-                            )}
-                            <div
-                              className={`relative z-10 w-2 h-2 rounded-full transition-all ${
-                                isSelected ? 'bg-emerald-400' : 'bg-slate-300 group-hover:bg-emerald-400'
-                              }`}
-                              style={isSelected ? { boxShadow: '0 0 10px 2px rgba(16, 185, 129, 0.95)' } : undefined}
-                            />
-                            <span className="relative z-10 text-xs font-black tracking-tight">
-                              {term.name}
-                            </span>
-                            <span
-                              className={`relative z-10 text-[9.5px] font-extrabold px-1.5 py-0.2 rounded border ${
-                                isSelected
-                                  ? 'bg-emerald-500/15 text-emerald-800 border-emerald-400/80'
-                                  : 'bg-slate-100 text-slate-500 border-slate-200'
-                              }`}
-                            >
-                              {termSubjCount} mat.
-                            </span>
-                          </button>
-                        );
-                      })}
-
-                      {/* Bouton Plus derrière le dernier trimestre pour ajouter un nouveau trimestre */}
+                    {/* Bouton "+ Trimestre" fixe devant (aligné verticalement) + Rangée horizontale des trimestres */}
+                    <div className="flex items-center gap-2.5">
+                      {/* Bouton Plus (+) devant pour ajouter un trimestre (aligné avec Niveau, Classe, Matière) */}
                       <button
+                        ref={addTermBtnRef}
                         type="button"
-                        onClick={() => setIsAddTermModalOpen(true)}
-                        className="shrink-0 px-3 py-1.5 rounded-lg border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white text-slate-800 hover:text-[#00313d] flex items-center gap-1.5 transition-all duration-200 shadow-sm group hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
+                        onClick={() => {
+                          setEditingTermCoeff(null);
+                          setActiveMenu(null);
+                          setNewTermCoeffInput('');
+                          setIsAddTermPopoverOpen(prev => !prev);
+                        }}
+                        className="add-term-trigger w-[108px] sm:w-[116px] shrink-0 h-9 rounded-lg border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white text-slate-800 hover:text-[#00313d] flex items-center justify-center gap-1.5 transition-all duration-200 shadow-sm group hover:-translate-y-0.5 active:translate-y-0 cursor-pointer"
                         title={`Ajouter le Trimestre ${nextTermNumber}`}
                       >
-                        <div className="w-4 h-4 rounded bg-[#00313d] text-white flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <div className="w-4 h-4 rounded bg-[#00313d] text-white flex items-center justify-center group-hover:scale-110 transition-transform shrink-0">
                           <Plus className="w-3 h-3 stroke-[3]" />
                         </div>
-                        <span className="text-[11px] font-black">
-                          + Trimestre {nextTermNumber}
+                        <span className="text-[11px] font-black truncate">
+                          Trimestre
                         </span>
                       </button>
+
+                      {/* Rangée horizontale des trimestres avec sélection lumineuse émeraude, coefficient facultatif & menu 3 traits */}
+                      <div 
+                        ref={termsScrollRef}
+                        className="flex items-center gap-2.5 overflow-x-auto flex-nowrap py-2 pl-0.5 pr-2 -my-1 flex-1 min-w-0 scrollbar-none scroll-smooth select-none"
+                        style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                      >
+                        {currentClassTerms.map((term) => {
+                          const isSelected = activeTerm?.id === term.id;
+                          const hasTermCoeff = term.coefficient !== undefined && term.coefficient !== null;
+
+                          return (
+                            <div
+                              key={term.id}
+                              data-popover-avoid="true"
+                              onClick={() => setSelectedTermId(term.id)}
+                              style={
+                                isSelected
+                                  ? {
+                                      background: 'linear-gradient(135deg, #ecfdf5 0%, #d1fae5 55%, #ccfbf1 100%)',
+                                      borderColor: '#10b981',
+                                      borderBottomColor: '#059669',
+                                      boxShadow: '0 0 0 2px rgba(52, 211, 153, 0.65), 0 0 20px 4px rgba(16, 185, 129, 0.62), 0 0 34px 0px rgba(52, 211, 153, 0.48), inset 0 1px 2px rgba(255, 255, 255, 0.95)',
+                                    }
+                                  : undefined
+                              }
+                              className={`group relative overflow-hidden shrink-0 px-3 py-1.5 rounded-lg border-2 transition-all duration-200 flex items-center gap-2 cursor-pointer ${
+                                isSelected
+                                  ? 'text-emerald-950 border-b-[3px] scale-[1.03]'
+                                  : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-emerald-300 border-b-[2px] shadow-2xs hover:-translate-y-0.5'
+                              } active:translate-y-0.5`}
+                            >
+                              {isSelected && (
+                                <div
+                                  className="absolute inset-0 pointer-events-none opacity-45 blur-md"
+                                  style={{ background: 'radial-gradient(circle, rgba(52, 211, 153, 0.72) 0%, transparent 72%)' }}
+                                />
+                              )}
+                              <div
+                                className={`relative z-10 w-2 h-2 rounded-full transition-all shrink-0 ${
+                                  isSelected ? 'bg-emerald-400' : 'bg-slate-300 group-hover:bg-emerald-400'
+                                }`}
+                                style={isSelected ? { boxShadow: '0 0 10px 2px rgba(16, 185, 129, 0.95)' } : undefined}
+                              />
+                              <span className="relative z-10 text-xs font-black tracking-tight whitespace-nowrap">
+                                {term.name}
+                              </span>
+                              {hasTermCoeff && (
+                                <span
+                                  className={`relative z-10 text-[9.5px] font-extrabold px-1.5 py-0.2 rounded border whitespace-nowrap ${
+                                    isSelected
+                                      ? 'bg-emerald-600/15 text-emerald-900 border-emerald-500/70'
+                                      : 'bg-cyan-50 text-cyan-900 border-cyan-200'
+                                  }`}
+                                >
+                                  Coeff {term.coefficient}
+                                </span>
+                              )}
+
+                              {/* Bouton 3 traits (≡) pour Ajouter/Modifier le coefficient ou Supprimer le trimestre */}
+                              <button
+                                type="button"
+                                onClick={(e) => handleOpenMenu(e, 'term', term)}
+                                className={`relative z-10 card-menu-trigger w-5 h-5 rounded flex items-center justify-center transition shrink-0 cursor-pointer ${
+                                  isSelected
+                                    ? 'text-emerald-900/75 hover:text-emerald-950 hover:bg-emerald-900/10'
+                                    : 'text-slate-400 hover:text-slate-800 hover:bg-slate-100'
+                                }`}
+                                title={`Options du ${term.name}`}
+                              >
+                                <div className="w-2.5 h-2 flex flex-col justify-between items-center pointer-events-none">
+                                  <span className="w-full h-[1.4px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.4px] bg-current rounded-full"></span>
+                                  <span className="w-full h-[1.4px] bg-current rounded-full"></span>
+                                </div>
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
                     </div>
                   </div>
                 )}
@@ -3055,7 +3156,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 {/* ------------------------------------------------------------------------- */}
                 {/* ZONE DES MATIÈRES : CARTES COMPACTES (3 LIGNES x 6 COLONNES = 18/ESPACE) */}
                 {/* ------------------------------------------------------------------------- */}
-                {activeClass && (
+                {activeClass && activeTerm && (
                   <div className="space-y-2 pt-0.5 animate-fade-in">
                     {/* En-tête de la section matières avec navigation par espace */}
                     <div className="flex items-center justify-between gap-2">
@@ -3075,6 +3176,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               style={{ boxShadow: '0 0 10px rgba(16, 185, 129, 0.35)' }}
                             >
                               {activeTerm.name}
+                              {activeTerm.coefficient !== undefined && activeTerm.coefficient !== null ? ` · Coeff ${activeTerm.coefficient}` : ''}
                             </span>
                           </>
                         )}
@@ -3144,35 +3246,32 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </div>
                     </div>
 
-                    {/* Grille compacte : Bouton fixe "+ Matière" toujours devant (case 1) + matières (ne se déplace jamais) */}
+                    {/* Bouton fixe "+ Matière" devant (aligné verticalement) + Grille des cartes 3D matières intactes */}
                     <div 
                       key={subjectPageIndex}
-                      className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 gap-2 sm:gap-2.5 items-stretch animate-in fade-in duration-200"
+                      className="flex items-start gap-2.5 animate-in fade-in duration-200"
                     >
-                      {/* 1. BOUTON FIXE « + MATIÈRE » : toujours en première position, ne se déplace jamais */}
+                      {/* 1. BOUTON FIXE « + MATIÈRE » : même largeur alignée verticalement avec Niveau, Classe et Trimestre */}
                       <button
                         type="button"
                         onClick={() => {
                           resetSubjectForm();
                           setIsAddSubjectModalOpen(true);
                         }}
-                        className="rounded-lg border-2 border-dashed border-red-400/90 hover:border-red-500 bg-white/92 hover:bg-white backdrop-blur-md px-2 py-1.5 min-h-[50px] sm:min-h-[54px] flex items-center justify-center gap-1.5 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-sm hover:shadow-md active:translate-y-0"
-                        title="Créer une nouvelle matière pour cette classe"
+                        className="w-[108px] sm:w-[116px] shrink-0 rounded-lg border-2 border-dashed border-red-400/90 hover:border-red-500 bg-white/92 hover:bg-white backdrop-blur-md px-2 py-1.5 min-h-[50px] sm:min-h-[54px] flex items-center justify-center gap-1.5 text-center cursor-pointer transition-all duration-200 group hover:-translate-y-0.5 shadow-sm hover:shadow-md active:translate-y-0"
+                        title={`Créer une nouvelle matière pour ${getClassDisplayName(activeClass)} (${activeTerm?.name || 'Trimestre 1'})`}
                       >
                         <div className="w-5 h-5 rounded-md bg-gradient-to-tr from-red-600 to-orange-500 text-white flex items-center justify-center group-hover:scale-110 shadow-2xs transition-transform shrink-0">
                           <Plus className="w-3.5 h-3.5 stroke-[3]" />
                         </div>
-                        <div className="flex flex-col text-left min-w-0">
-                          <span className="text-[11px] font-black text-slate-800 group-hover:text-red-600 transition-colors leading-tight truncate">
-                            + Matière
-                          </span>
-                          <span className="text-[8.5px] text-slate-400 leading-tight truncate">
-                            {getClassDisplayName(activeClass)} &bull; {activeTerm?.name || 'T1'}
-                          </span>
-                        </div>
+                        <span className="text-[11px] font-black text-slate-800 group-hover:text-red-600 transition-colors leading-tight truncate">
+                          Matière
+                        </span>
                       </button>
 
-                      {/* 2. Matières de cet espace (format réduit) ou "Non trouvé" si recherche sans résultat */}
+                      {/* 2. Grille des cartes 3D matières (départ parfaitement aligné sur la même verticale) */}
+                      <div className="flex-1 min-w-0 pl-0.5 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-2.5 items-stretch">
+                      {/* Matières de cet espace (cartes 3D intactes) ou "Non trouvé" si recherche sans résultat */}
                       {pagedSubjects.length === 0 && subjectSearchQuery.trim() ? (
                         <div className="rounded-lg border border-slate-200/80 bg-white/75 px-3 py-2 min-h-[50px] sm:min-h-[54px] flex items-center justify-center text-xs font-bold text-slate-500 select-none">
                           Non trouvé
@@ -3243,7 +3342,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         );
                       })
                       )}
-
+                      </div>
                     </div>
                   </div>
                 )}
@@ -4473,6 +4572,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     ? `Niveau · ${activeMenu.item.name}`
                     : activeMenu.type === 'class'
                     ? `Classe · ${getClassFullLabel(activeMenu.item)}`
+                    : activeMenu.type === 'term'
+                    ? `${activeMenu.item.name}${activeMenu.item.coefficient !== undefined && activeMenu.item.coefficient !== null ? ` · Coeff ${activeMenu.item.coefficient}` : ''}`
                     : `Matière · ${activeMenu.item.name}`}
                 </span>
               </div>
@@ -4482,7 +4583,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 className="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 hover:text-slate-950 hover:bg-slate-100 flex items-center gap-2.5 transition-colors cursor-pointer"
               >
                 <Pencil className="w-3.5 h-3.5 text-cyan-700 stroke-[2.2] shrink-0" />
-                <span>Modifier les informations</span>
+                <span>
+                  {activeMenu.type === 'term'
+                    ? activeMenu.item.coefficient !== undefined && activeMenu.item.coefficient !== null
+                      ? 'Modifier le coefficient'
+                      : 'Ajouter un coefficient'
+                    : 'Modifier les informations'}
+                </span>
               </button>
               <div className="my-1 border-t border-slate-100" />
               <button
@@ -4632,70 +4739,194 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         )}
 
         {/* ========================================================================= */}
-        {/* MODAL DE CONFIRMATION D'AJOUT D'UN TRIMESTRE                             */}
+        {/* PETIT MENU FLOTTANT SUR LE CÔTÉ : AJOUTER UN TRIMESTRE (+ COEFF FACULT.)  */}
         {/* ========================================================================= */}
-        {isAddTermModalOpen && activeClass && (
-          <div className="fixed inset-0 z-[99990] bg-[#001820]/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
-            <div 
-              className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-150"
-              style={{
-                boxShadow: '0 25px 50px -12px rgba(0, 49, 61, 0.35)'
-              }}
-              onClick={(e) => e.stopPropagation()}
-            >
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-xl bg-[#00313d] text-white flex items-center justify-center shadow-md">
-                    <Plus className="w-5 h-5 stroke-[2.5]" />
-                  </div>
-                  <div>
-                    <h3 className="text-base font-black text-[#00313d] leading-tight">
-                      Ajouter un trimestre
-                    </h3>
-                    <span className="text-[11px] font-semibold text-slate-400 mt-0.5 inline-block">
-                      Classe : {getClassFullLabel(activeClass)}
-                    </span>
-                  </div>
+        <SmartFloatingPopover
+          open={Boolean(isAddTermPopoverOpen && activeClass)}
+          anchorEl={addTermBtnRef.current}
+          boundaryEl={mainContainerRef.current}
+          preferredSide="right"
+          preferredAlign="start"
+          gap={10}
+          onClose={() => {
+            setIsAddTermPopoverOpen(false);
+            setNewTermCoeffInput('');
+          }}
+          ignoreOutsideSelector=".add-term-trigger"
+          dataPopoverId="add-term-side-popover"
+          className="w-64 sm:w-72 rounded-2xl"
+        >
+          {activeClass && (
+            <form onSubmit={handleConfirmAddTerm} className="p-3.5 space-y-3 text-slate-800">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="min-w-0">
+                  <h3 className="text-xs font-black text-[#00313d] leading-tight truncate">
+                    Trimestre {nextTermNumber}
+                  </h3>
+                  <span className="text-[10px] font-semibold text-slate-400 block truncate">
+                    {getClassFullLabel(activeClass)}
+                  </span>
                 </div>
-
                 <button
                   type="button"
-                  onClick={() => setIsAddTermModalOpen(false)}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition"
+                  onClick={() => {
+                    setIsAddTermPopoverOpen(false);
+                    setNewTermCoeffInput('');
+                  }}
+                  className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer shrink-0"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
 
-              <div className="p-5 sm:p-6 space-y-4">
-                <div className="p-4 rounded-xl bg-cyan-50/70 border border-cyan-200/80 text-xs sm:text-sm text-cyan-950 leading-relaxed font-semibold">
-                  Voulez-vous ajouter le <span className="font-black text-[#00313d]">Trimestre {nextTermNumber}</span> pour la classe <span className="font-black">{getClassFullLabel(activeClass)}</span> ?
-                </div>
-                <p className="text-xs text-slate-500 leading-relaxed">
-                  Ce nouveau trimestre vous permettra d'enregistrer et de gérer des matières, notes et évaluations indépendantes des autres trimestres.
-                </p>
-
-                <div className="pt-2 border-t border-slate-100 flex items-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setIsAddTermModalOpen(false)}
-                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition cursor-pointer"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmAddTerm}
-                    className="flex-1 py-2.5 rounded-xl bg-[#00313d] hover:bg-[#00242e] text-white text-xs font-black shadow-md transition active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>Oui, ajouter Trimestre {nextTermNumber}</span>
-                  </button>
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600">
+                  Coefficient <span className="font-semibold text-slate-400 normal-case">(facultatif)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max="100"
+                  value={newTermCoeffInput}
+                  onChange={(e) => setNewTermCoeffInput(e.target.value)}
+                  placeholder="Ex : 1, 2, 3..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                  autoFocus
+                />
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  {['', '1', '2', '3'].map((val) => {
+                    const isSelected = newTermCoeffInput.trim() === val;
+                    return (
+                      <button
+                        key={val || 'none'}
+                        type="button"
+                        onClick={() => setNewTermCoeffInput(val)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer border ${
+                          isSelected
+                            ? 'bg-[#00313d] text-white border-[#00313d]'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        {val === '' ? 'Aucun' : `Coeff ${val}`}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-            </div>
-          </div>
-        )}
+
+              <div className="pt-2 border-t border-slate-100">
+                <button
+                  type="submit"
+                  className="w-full py-2 rounded-xl bg-[#00313d] hover:bg-[#00242e] text-white text-xs font-black shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Créer</span>
+                </button>
+              </div>
+            </form>
+          )}
+        </SmartFloatingPopover>
+
+        {/* ========================================================================= */}
+        {/* PETIT MENU FLOTTANT : AJOUTER / MODIFIER LE COEFFICIENT D'UN TRIMESTRE    */}
+        {/* ========================================================================= */}
+        <SmartFloatingPopover
+          open={Boolean(editingTermCoeff)}
+          anchorEl={editingTermCoeff?.anchorEl ?? null}
+          fallbackRect={editingTermCoeff?.fallbackRect ?? null}
+          boundaryEl={mainContainerRef.current}
+          preferredSide="bottom"
+          preferredAlign="start"
+          gap={8}
+          onClose={() => {
+            setEditingTermCoeff(null);
+            setEditTermCoeffInput('');
+          }}
+          dataPopoverId="edit-term-coeff-popover"
+          className="w-64 sm:w-72 rounded-2xl"
+        >
+          {editingTermCoeff && (
+            <form onSubmit={handleSaveTermCoefficient} className="p-3.5 space-y-3 text-slate-800">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                <div className="min-w-0">
+                  <h3 className="text-xs font-black text-[#00313d] leading-tight truncate">
+                    Coefficient · {editingTermCoeff.term.name}
+                  </h3>
+                  <span className="text-[10px] font-semibold text-slate-400 block truncate">
+                    Laissez vide pour retirer le coefficient
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTermCoeff(null);
+                    setEditTermCoeffInput('');
+                  }}
+                  className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600">
+                  Coefficient <span className="font-semibold text-slate-400 normal-case">(facultatif)</span>
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0.5"
+                  max="100"
+                  value={editTermCoeffInput}
+                  onChange={(e) => setEditTermCoeffInput(e.target.value)}
+                  placeholder="Ex : 1, 2, 3..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                  autoFocus
+                />
+                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                  {['', '1', '2', '3'].map((val) => {
+                    const isSelected = editTermCoeffInput.trim() === val;
+                    return (
+                      <button
+                        key={val || 'none'}
+                        type="button"
+                        onClick={() => setEditTermCoeffInput(val)}
+                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer border ${
+                          isSelected
+                            ? 'bg-[#00313d] text-white border-[#00313d]'
+                            : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                        }`}
+                      >
+                        {val === '' ? 'Aucun' : `Coeff ${val}`}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-100 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingTermCoeff(null);
+                    setEditTermCoeffInput('');
+                  }}
+                  className="flex-1 py-2 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition cursor-pointer"
+                >
+                  Annuler
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2 rounded-xl bg-[#00313d] hover:bg-[#00242e] text-white text-xs font-black shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5 stroke-[3]" />
+                  <span>Enregistrer</span>
+                </button>
+              </div>
+            </form>
+          )}
+        </SmartFloatingPopover>
           </>,
           document.body
         )}
