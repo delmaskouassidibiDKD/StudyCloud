@@ -712,10 +712,30 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     }
   }, [authUserId, schoolYears, schools, studyLevels, classes, terms, subjects, runCloudMutation]);
 
+  const prevAuthUserIdRef = useRef<string>(authUserId);
   useEffect(() => {
+    // Si l'utilisateur change de compte sur le même appareil, réinitialiser immédiatement l'état mémoire avant de charger le nouveau compte depuis D1
+    if (prevAuthUserIdRef.current !== authUserId) {
+      prevAuthUserIdRef.current = authUserId;
+      const nextCache = authUserId ? readUserBootstrapCache(authUserId) : null;
+      setSchoolYears(nextCache?.schoolYears || []);
+      setSchools(nextCache?.schools || []);
+      setStudyLevels(nextCache?.studyLevels || []);
+      setClasses(nextCache?.classes || []);
+      setTerms(nextCache?.terms || []);
+      setSubjects(nextCache?.subjects || []);
+      setServerGradebookStats(nextCache?.gradebookStats || {});
+      setSelectedYearId(nextCache?.schoolYears?.[0]?.id || '');
+      setSelectedSchoolInside(null);
+      setSelectedSubjectInside(null);
+      setSelectedLevelId(null);
+      setSelectedClassId(null);
+      setSelectedTermId(null);
+      setIsTransferViewOpen(false);
+    }
     isCloudHydratedRef.current = false;
     loadFromCloudD1();
-  }, [loadFromCloudD1]);
+  }, [authUserId, loadFromCloudD1]);
 
   // Maintenir le cache isolé par user_id synchronisé (jamais de clés partagées entre comptes)
   useEffect(() => {

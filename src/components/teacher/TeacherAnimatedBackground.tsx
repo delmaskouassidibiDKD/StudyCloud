@@ -144,87 +144,69 @@ export const TeacherAnimatedBackground: React.FC = () => {
       className="absolute inset-0 overflow-hidden pointer-events-none select-none z-0"
       style={{
         background:
-          'radial-gradient(ellipse 85% 75% at 50% 55%, #091833 0%, #061024 55%, #040b18 100%)',
+          'radial-gradient(ellipse 85% 80% at 50% 50%, #071329 0%, #040c1d 55%, #020712 100%)',
       }}
     >
       <style>{`
         @keyframes sc3dSceneGentleBreath {
           0%, 100% {
-            transform: scale(0.96) translate3d(0px, 0px, 0);
+            transform: scale(0.90) translate3d(0px, 0px, 0);
           }
           33% {
-            transform: scale(0.99) translate3d(-5px, -4px, 0);
+            transform: scale(0.93) translate3d(-6px, -4px, 0);
           }
           66% {
-            transform: scale(0.978) translate3d(5px, 3px, 0);
+            transform: scale(0.918) translate3d(6px, 4px, 0);
           }
         }
         @keyframes sc3dHaloPulse {
-          0%, 100% { opacity: 0.22; transform: scale(0.97); }
-          50% { opacity: 0.42; transform: scale(1.03); }
-        }
-        @keyframes sc3dAccentGlow {
-          0%, 100% { opacity: 0.14; }
-          50% { opacity: 0.30; }
+          0%, 100% { opacity: 0.20; transform: translate(-50%, -50%) scale(0.96); }
+          50% { opacity: 0.36; transform: translate(-50%, -50%) scale(1.04); }
         }
         @media (prefers-reduced-motion: reduce) {
           .sc-3d-gentle-motion { animation: none !important; }
         }
       `}</style>
 
-      {/* Scène 3D isométrique bien proportionnée (dézoomée, entièrement visible, fondue sans bordure dans le fond nuit) */}
-      <div className="absolute inset-0 flex items-center justify-center pt-6 pb-2 px-4 sm:px-8">
-        <img
-          src="/assets/teacher-bg-3d-scene.jpg"
-          alt=""
-          decoding="async"
-          className="sc-3d-gentle-motion w-full h-full max-w-[960px] max-h-[82vh] object-contain object-center will-change-transform"
+      {/* Halo ambiant doux parfaitement centré qui relie la scène à tout l'écran sans aucune bordure */}
+      <div
+        className="sc-3d-gentle-motion absolute left-1/2 top-1/2 w-[78%] h-[68%] rounded-full blur-3xl mix-blend-screen"
+        style={{
+          background:
+            'radial-gradient(ellipse at center, rgba(56, 189, 248, 0.22) 0%, rgba(99, 102, 241, 0.12) 45%, transparent 72%)',
+          animation: 'sc3dHaloPulse 11s ease-in-out infinite',
+        }}
+      />
+
+      {/* Scène 3D parfaitement centrée au milieu avec fondu radial 4 côtés (atteint 0 % avant les bords -> ZÉRO cadre visible) */}
+      <div className="absolute inset-0 flex items-center justify-center">
+        <div
+          className="sc-3d-gentle-motion relative w-full max-w-[1140px] max-h-[92%] aspect-[16/9] flex items-center justify-center will-change-transform"
           style={{
             animation: 'sc3dSceneGentleBreath 26s ease-in-out infinite',
-            filter: 'brightness(1.05) contrast(1.04) saturate(1.08)',
             maskImage:
-              'radial-gradient(ellipse 90% 88% at 50% 52%, rgba(0,0,0,1) 64%, rgba(0,0,0,0) 100%)',
+              'radial-gradient(ellipse 48% 46% at 50% 50%, rgba(0,0,0,1) 46%, rgba(0,0,0,0.88) 66%, rgba(0,0,0,0.32) 84%, rgba(0,0,0,0) 98%)',
             WebkitMaskImage:
-              'radial-gradient(ellipse 90% 88% at 50% 52%, rgba(0,0,0,1) 64%, rgba(0,0,0,0) 100%)',
+              'radial-gradient(ellipse 48% 46% at 50% 50%, rgba(0,0,0,1) 46%, rgba(0,0,0,0.88) 66%, rgba(0,0,0,0.32) 84%, rgba(0,0,0,0) 98%)',
           }}
-        />
+        >
+          <img
+            src="/assets/teacher-bg-3d-scene.jpg"
+            alt=""
+            decoding="async"
+            className="w-full h-full object-contain object-center"
+            style={{
+              filter: 'brightness(1.04) contrast(1.05) saturate(1.08)',
+            }}
+          />
+        </div>
       </div>
 
-      {/* Respiration lumineuse douce du socle néon central */}
-      <div
-        className="sc-3d-gentle-motion absolute left-1/2 bottom-[6%] -translate-x-1/2 w-[56%] h-[36%] rounded-full blur-3xl mix-blend-screen"
-        style={{
-          background:
-            'radial-gradient(ellipse at center, rgba(56, 189, 248, 0.45) 0%, rgba(129, 140, 248, 0.28) 45%, transparent 75%)',
-          animation: 'sc3dHaloPulse 9s ease-in-out infinite',
-        }}
-      />
-
-      {/* Lueur douce sur le coin gauche (20/20 & calculatrice) */}
-      <div
-        className="sc-3d-gentle-motion absolute left-[6%] top-[36%] w-[26%] h-[34%] rounded-full blur-3xl mix-blend-screen"
-        style={{
-          background:
-            'radial-gradient(circle, rgba(251, 191, 36, 0.36) 0%, rgba(56, 189, 248, 0.18) 55%, transparent 78%)',
-          animation: 'sc3dAccentGlow 11s ease-in-out infinite 1.5s',
-        }}
-      />
-
-      {/* Lueur douce sur le coin droit (chapeau & graphique) */}
-      <div
-        className="sc-3d-gentle-motion absolute right-[5%] top-[34%] w-[28%] h-[38%] rounded-full blur-3xl mix-blend-screen"
-        style={{
-          background:
-            'radial-gradient(circle, rgba(45, 212, 191, 0.36) 0%, rgba(251, 146, 60, 0.22) 52%, transparent 78%)',
-          animation: 'sc3dAccentGlow 12s ease-in-out infinite 3.5s',
-        }}
-      />
-
-      {/* Poussières lumineuses bokeh montant lentement en 60 FPS */}
+      {/* Poussières lumineuses bokeh montant lentement sur tout l'écran en 60 FPS */}
       <canvas ref={canvasRef} className="absolute inset-0 w-full h-full" />
 
-      {/* Léger voile uniquement tout en haut pour une lisibilité parfaite du bandeau */}
-      <div className="absolute inset-x-0 top-0 h-24 bg-gradient-to-b from-[#060f22]/55 to-transparent" />
+      {/* Léger fondu supérieur très doux pour garantir la lisibilité du bandeau */}
+      <div className="absolute inset-x-0 top-0 h-20 bg-gradient-to-b from-[#020712]/50 to-transparent" />
     </div>
   );
 };
