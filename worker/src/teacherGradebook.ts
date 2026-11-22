@@ -2393,6 +2393,180 @@ export async function handleTeacherGradebookRoutes(
       updatedAt: Number(cardRow.updated_at) || Date.now(),
     };
 
+    if (card.kind === 'annual') {
+      const [termsRes, termAvgCardsRes, subjectsRes, gradebooksRes, studentsRes] = await Promise.all([
+        db
+          .prepare(
+            `SELECT * FROM teacher_terms
+             WHERE user_id = ? AND class_id = ?
+             ORDER BY number ASC, created_at ASC`
+          )
+          .bind(userId, cardRow.class_id)
+          .all(),
+        db
+          .prepare(
+            `SELECT id, term_id, overrides_json
+             FROM teacher_class_averages
+             WHERE user_id = ? AND class_id = ? AND kind = 'term'`
+          )
+          .bind(userId, cardRow.class_id)
+          .all(),
+        db
+          .prepare(
+            `SELECT * FROM teacher_subjects
+             WHERE user_id = ? AND class_id = ?
+             ORDER BY created_at ASC`
+          )
+          .bind(userId, cardRow.class_id)
+          .all(),
+        db
+          .prepare(
+            `SELECT id, subject_id, term_id, col_metas_json
+             FROM teacher_gradebooks
+             WHERE user_id = ? AND class_id = ?`
+          )
+          .bind(userId, cardRow.class_id)
+          .all(),
+        db
+          .prepare(
+            `SELECT id, gradebook_id, subject_id, term_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20
+             FROM teacher_gradebook_students
+             WHERE user_id = ? AND class_id = ?
+             ORDER BY row_order ASC, created_at ASC`
+          )
+          .bind(userId, cardRow.class_id)
+          .all(),
+      ]);
+
+      const colMetasByGbId = new Map<string, Record<string, any>>();
+      for (const gb of gradebooksRes.results || []) {
+        colMetasByGbId.set(gb.id, safeParseJson<Record<string, any>>(gb.col_metas_json, {}));
+      }
+
+      const termAvgCardByTermId = new Map<string, { id: string; overrides: any }>();
+      for (const row of termAvgCardsRes.results || []) {
+        if (row.term_id) {
+          termAvgCardByTermId.set(String(row.term_id), {
+            id: String(row.id),
+            overrides: safeParseJson(row.overrides_json, {}),
+          });
+        }
+      }
+
+      // Signer une seule fois chaque photo R2 unique pour éviter des signatures redondantes sur plusieurs trimestres
+      const uniquePhotoKeys = Array.from(
+        new Set(
+          (studentsRes.results || [])
+            .map((r: any) => (typeof r.photo_r2_key === 'string' && r.photo_r2_key ? r.photo_r2_key : ''))
+            .filter(Boolean)
+        )
+      );
+      const signedPhotoMap = new Map<string, string>();
+      await Promise.all(
+        uniquePhotoKeys.map(async (key) => {
+          const signedUrl = await signTeacherMediaUrl(apiOrigin, key, jwtSecret);
+          if (signedUrl) signedPhotoMap.set(key, signedUrl);
+        })
+      );
+
+      const allTermsRows = termsRes.results || [];
+      const firstTermId = allTermsRows[0]?.id ? String(allTermsRows[0].id) : '';
+
+      const subjectsByTermId = new Map<string, any[]>();
+      const gradebooksByTermId = new Map<string, Record<string, any[]>>();
+      const subjectTermMap = new Map<string, string>();
+      for (const t of allTermsRows) {
+        subjectsByTermId.set(String(t.id), []);
+        gradebooksByTermId.set(String(t.id), {});
+      }
+
+      for (const s of subjectsRes.results || []) {
+        const effTermId = s.term_id ? String(s.term_id) : firstTermId;
+        if (!effTermId || !subjectsByTermId.has(effTermId)) continue;
+        subjectTermMap.set(String(s.id), effTermId);
+        const coeff =
+          s.coefficient !== null && s.coefficient !== undefined && Number(s.coefficient) > 0
+            ? Number(s.coefficient)
+            : null;
+        subjectsByTermId.get(effTermId)!.push({
+          id: s.id,
+          classId: s.class_id,
+          termId: effTermId,
+          schoolId: s.school_id,
+          yearId: s.year_id,
+          name: s.name,
+          coefficient: coeff,
+          effectiveCoeff: coeff ?? 1,
+          color: s.color || '#ffffff',
+          textColor: s.text_color || '#0f172a',
+          borderColor: s.border_color || '#e2e8f0',
+          borderDarkColor: s.border_dark_color || '#cbd5e1',
+          createdAt: Number(s.created_at) || Date.now(),
+        });
+        const gbMap = gradebooksByTermId.get(effTermId)!;
+        if (!gbMap[s.id]) gbMap[s.id] = [];
+      }
+
+      for (const row of studentsRes.results || []) {
+        const effTermId =
+          subjectTermMap.get(String(row.subject_id)) ||
+          (row.term_id ? String(row.term_id) : firstTermId);
+        const gbMap = effTermId ? gradebooksByTermId.get(effTermId) : undefined;
+        if (!gbMap) continue;
+        const notes = safeParseJson<string[]>(row.notes_json, []);
+        const colMetas = colMetasByGbId.get(row.gradebook_id) || {};
+        const computed = computeAverage20Exact(notes, colMetas);
+        const fallbackAvg =
+          row.average_20 !== null &&
+          row.average_20 !== undefined &&
+          Number.isFinite(Number(row.average_20))
+            ? Number(row.average_20)
+            : null;
+        const photoUrl = row.photo_r2_key ? signedPhotoMap.get(row.photo_r2_key) : undefined;
+        if (!gbMap[row.subject_id]) gbMap[row.subject_id] = [];
+        gbMap[row.subject_id].push({
+          id: row.id,
+          studentUid: row.student_uid || row.id,
+          name: row.full_name || '',
+          photoR2Key: row.photo_r2_key || undefined,
+          photoUrl,
+          average20: computed.average !== null ? computed.average : fallbackAvg,
+          notesCount: computed.validNotesCount,
+        });
+      }
+
+      const annualTerms = allTermsRows.map((t: any) => {
+        const tid = String(t.id);
+        const coeff =
+          t.coefficient !== null && t.coefficient !== undefined && Number(t.coefficient) > 0
+            ? Number(t.coefficient)
+            : null;
+        const linkedAvgCard = termAvgCardByTermId.get(tid);
+        return {
+          id: tid,
+          averageCardId: linkedAvgCard?.id,
+          number: Number(t.number) || 1,
+          name: String(t.name || `Trimestre ${Number(t.number) || 1}`),
+          coefficient: coeff,
+          effectiveCoeff: coeff ?? 1,
+          overrides: linkedAvgCard?.overrides || {},
+          subjects: subjectsByTermId.get(tid) || [],
+          subjectGradebooks: gradebooksByTermId.get(tid) || {},
+        };
+      });
+
+      return jsonResponse({
+        success: true,
+        card,
+        term: null,
+        subjects: [],
+        subjectGradebooks: {},
+        annualData: {
+          terms: annualTerms,
+        },
+      }, 200, origin);
+    }
+
     if (card.kind !== 'term' || !cardRow.term_id) {
       return jsonResponse({
         success: true,

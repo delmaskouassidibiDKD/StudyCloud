@@ -33,6 +33,7 @@ import type {
   TermAverageStylesState,
   TermAverageSubject,
 } from '../utils/termGeneralAverage';
+import type { AnnualTermData } from '../utils/annualGeneralAverage';
 
 export interface ClassAverageSheetCardPayload extends ClassAverageCardItem {
   layout: TermAverageLayoutState;
@@ -49,6 +50,9 @@ export interface ClassAverageSheetResponse {
   term: TermItem | null;
   subjects: TermAverageSubject[];
   subjectGradebooks: Record<string, GradebookStudentSnapshot[]>;
+  annualData?: {
+    terms: AnnualTermData[];
+  };
 }
 
 export interface ClassAverageSheetSavePayload {

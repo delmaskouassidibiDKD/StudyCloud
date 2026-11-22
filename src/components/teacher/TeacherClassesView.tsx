@@ -2792,6 +2792,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         term={linkedTerm}
         userId={authUserId}
         initialSubjects={linkedTermSubjects}
+        initialTerms={currentClassTerms}
         onOpenSubject={(subjectId) => {
           const targetSubject = subjects.find(s => s.id === subjectId);
           if (targetSubject) {
@@ -2810,6 +2811,24 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               s.id === subjectId
                 ? { ...s, coefficient: coeff !== null ? coeff : undefined }
                 : s
+            )
+          );
+        }}
+        onOpenTermAverageCard={(termId) => {
+          const targetCard = currentClassAverageCards.find(
+            ca => ca.kind === 'term' && ca.termId === termId
+          );
+          if (targetCard) {
+            setSelectedTermId(termId);
+            setSelectedAverageCardInside(targetCard);
+          }
+        }}
+        onTermCoefficientUpdated={(termId, coeff) => {
+          setTerms(prev =>
+            prev.map(t =>
+              t.id === termId
+                ? { ...t, coefficient: coeff !== null ? coeff : undefined }
+                : t
             )
           );
         }}

@@ -1502,3 +1502,226 @@ test('Création en lot atomique (POST /api/teacher/batch-create) : rentrées, é
   });
   assert.equal(bobSubjects.status, 404);
 });
+
+test('Feuille Moyenne générale annuelle (GET & PUT /api/teacher/class-average-sheet/:annualId) : agrégation multi-trimestres, coefficients, overrides trimestriels et Anti-IDOR', async () => {
+  const { callApi, r2Images } = createHarness();
+
+  const { year } = await (await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027' },
+  })).json();
+  const { school } = await (await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'Lycée Technique' },
+  })).json();
+  const { level } = await (await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'Terminale' },
+  })).json();
+  const { classItem, terms, classAverages } = await (await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { levelId: level.id, name: 'Terminale C', teacherName: 'Prof. Koné' },
+  })).json();
+
+  const [t1, t2, t3] = terms;
+  const annualCard = classAverages.find((c: any) => c.kind === 'annual');
+  const t1AvgCard = classAverages.find((c: any) => c.kind === 'term' && c.termId === t1.id);
+  assert.ok(annualCard, 'Carte annuelle créée automatiquement');
+  assert.ok(t1AvgCard, 'Carte Trimestre 1 créée automatiquement');
+
+  // Définir les coefficients de T1 (=1) et T2 (=2), laisser T3 non défini (null)
+  assert.equal(
+    (await callApi(`/api/teacher/terms/${t1.id}`, {
+      method: 'PUT',
+      token: 'token-alice',
+      body: { name: t1.name, coefficient: 1 },
+    })).status,
+    200
+  );
+  assert.equal(
+    (await callApi(`/api/teacher/terms/${t2.id}`, {
+      method: 'PUT',
+      token: 'token-alice',
+      body: { name: t2.name, coefficient: 2 },
+    })).status,
+    200
+  );
+
+  // Créer des matières dans T1 (Maths coeff 4, Français coeff 2) et T2 (Maths coeff 4)
+  const { subject: sMathT1 } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Mathématiques', coefficient: 4 },
+  })).json();
+  const { subject: sFrT1 } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Français', coefficient: 2 },
+  })).json();
+  const { subject: sMathT2 } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t2.id, name: 'Mathématiques', coefficient: 4 },
+  })).json();
+
+  // Upload réel d'une photo R2 partagée pour Jean
+  const tinyPngBase64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const photoRes = await callApi('/api/teacher/photos/student', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      subjectId: sMathT1.id,
+      termId: t1.id,
+      studentId: 't1-m-1',
+      dataUrl: `data:image/png;base64,${tinyPngBase64}`,
+    },
+  });
+  assert.equal(photoRes.status, 200);
+  const { photoR2Key: photoKey } = await photoRes.json();
+  assert.ok(r2Images.store.has(photoKey));
+
+  // Saisir les notes de T1 et T2
+  await callApi(`/api/teacher/gradebook/${sMathT1.id}/${t1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 2,
+      columnMetas: { 0: { maxScore: 20, coeffEval: 1 }, 1: { maxScore: 20, coeffEval: 1 } },
+      layout: {},
+      styles: {},
+      students: [
+        { id: 't1-m-1', studentUid: 'stu-jean', name: 'KOUASSI Jean', photoR2Key: photoKey, notes: ['12/20', '14/20'] },
+      ],
+    },
+  });
+  await callApi(`/api/teacher/gradebook/${sFrT1.id}/${t1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 1,
+      columnMetas: { 0: { maxScore: 20, coeffEval: 1 } },
+      layout: {},
+      styles: {},
+      students: [
+        { id: 't1-f-1', studentUid: 'stu-jean', name: 'KOUASSI Jean', photoR2Key: photoKey, notes: ['10/20'] },
+      ],
+    },
+  });
+  await callApi(`/api/teacher/gradebook/${sMathT2.id}/${t2.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 1,
+      columnMetas: { 0: { maxScore: 20, coeffEval: 1 } },
+      layout: {},
+      styles: {},
+      students: [
+        { id: 't2-m-1', studentUid: 'stu-jean', name: 'KOUASSI Jean', photoR2Key: photoKey, notes: ['16/20'] },
+      ],
+    },
+  });
+
+  // Sauvegarder une fusion confirmée sur le Trimestre 1 pour vérifier sa propagation dans le bilan annuel
+  assert.equal(
+    (await callApi(`/api/teacher/class-average-sheet/${t1AvgCard.id}`, {
+      method: 'PUT',
+      token: 'token-alice',
+      body: {
+        layout: {},
+        styles: {},
+        overrides: {
+          mergedLinks: [{ primaryKey: 'uid:stu-jean', mergedKeys: ['name:kouasi jean'] }],
+        },
+        sortMode: 'merit',
+      },
+    })).status,
+    200
+  );
+
+  // 1. GET annuel agrège tous les trimestres, coefficients, matières, notes, overrides trimestriels et photo signée
+  const annualRes = await callApi(`/api/teacher/class-average-sheet/${annualCard.id}`, {
+    token: 'token-alice',
+  });
+  assert.equal(annualRes.status, 200);
+  const annualJson = await annualRes.json();
+  assert.equal(annualJson.card.kind, 'annual');
+  assert.ok(annualJson.annualData, 'annualData présent');
+  assert.equal(annualJson.annualData.terms.length, 3);
+
+  const [retT1, retT2, retT3] = annualJson.annualData.terms;
+  assert.equal(retT1.id, t1.id);
+  assert.equal(retT1.averageCardId, t1AvgCard.id);
+  assert.equal(retT1.coefficient, 1);
+  assert.equal(retT1.effectiveCoeff, 1);
+  assert.equal(retT1.subjects.length, 2);
+  assert.equal(retT1.subjectGradebooks[sMathT1.id][0].average20, 13);
+  assert.equal(retT1.subjectGradebooks[sFrT1.id][0].average20, 10);
+  assert.ok(
+    typeof retT1.subjectGradebooks[sMathT1.id][0].photoUrl === 'string' &&
+      retT1.subjectGradebooks[sMathT1.id][0].photoUrl.includes('/api/teacher/media?key='),
+    'Photo R2 signée présente dans annualData'
+  );
+  assert.deepEqual(retT1.overrides.mergedLinks, [
+    { primaryKey: 'uid:stu-jean', mergedKeys: ['name:kouasi jean'] },
+  ]);
+
+  assert.equal(retT2.id, t2.id);
+  assert.equal(retT2.coefficient, 2);
+  assert.equal(retT2.effectiveCoeff, 2);
+  assert.equal(retT2.subjects.length, 1);
+  assert.equal(retT2.subjectGradebooks[sMathT2.id][0].average20, 16);
+
+  assert.equal(retT3.id, t3.id);
+  assert.equal(retT3.coefficient, null);
+  assert.equal(retT3.effectiveCoeff, 1);
+  assert.equal(retT3.subjects.length, 0);
+
+  // 2. PUT annuel persiste layout, styles, rapprochements annuels (mergedLinks/distinctPairs) et sortMode
+  const saveAnnualRes = await callApi(`/api/teacher/class-average-sheet/${annualCard.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      layout: { zoomPercent: 85, colWidthName: 240 },
+      styles: { rowColors: { 'uid:stu-jean': '#ecfdf5' } },
+      overrides: {
+        mergedLinks: [{ primaryKey: 'uid:stu-jean', mergedKeys: ['name:kouassi j'] }],
+        distinctPairs: [['uid:stu-a', 'uid:stu-b']],
+        subjectOverrides: { 'uid:stu-jean': { [t3.id]: 15.5 } },
+      },
+      sortMode: 'alpha',
+    },
+  });
+  assert.equal(saveAnnualRes.status, 200);
+
+  const reloadedAnnual = await (await callApi(`/api/teacher/class-average-sheet/${annualCard.id}`, {
+    token: 'token-alice',
+  })).json();
+  assert.equal(reloadedAnnual.card.layout.zoomPercent, 85);
+  assert.equal(reloadedAnnual.card.layout.colWidthName, 240);
+  assert.equal(reloadedAnnual.card.styles.rowColors['uid:stu-jean'], '#ecfdf5');
+  assert.equal(reloadedAnnual.card.sortMode, 'alpha');
+  assert.deepEqual(reloadedAnnual.card.overrides.mergedLinks, [
+    { primaryKey: 'uid:stu-jean', mergedKeys: ['name:kouassi j'] },
+  ]);
+  assert.deepEqual(reloadedAnnual.card.overrides.distinctPairs, [['uid:stu-a', 'uid:stu-b']]);
+  assert.equal(reloadedAnnual.card.overrides.subjectOverrides['uid:stu-jean'][t3.id], 15.5);
+
+  // 3. Anti-IDOR : Bob ne peut ni lire ni modifier le bilan annuel d'Alice
+  assert.equal(
+    (await callApi(`/api/teacher/class-average-sheet/${annualCard.id}`, { token: 'token-bob' })).status,
+    404
+  );
+  assert.equal(
+    (await callApi(`/api/teacher/class-average-sheet/${annualCard.id}`, {
+      method: 'PUT',
+      token: 'token-bob',
+      body: { sortMode: 'alpha' },
+    })).status,
+    404
+  );
+});

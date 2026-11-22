@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
-import { SubjectGradebookView } from './SubjectGradebookView';
+import React from 'react';
 import { TermGeneralAverageView } from './TermGeneralAverageView';
+import { AnnualGeneralAverageView } from './AnnualGeneralAverageView';
 import type {
   ClassAverageCardItem,
   ClassItem,
@@ -18,18 +18,22 @@ export interface ClassAverageSheetViewProps {
   term?: TermItem | null;
   userId?: string;
   initialSubjects?: SubjectItem[];
+  initialTerms?: TermItem[];
   onOpenSubject?: (subjectId: string) => void;
   onSubjectCoefficientUpdated?: (subjectId: string, coefficient: number | null) => void;
+  onOpenTermAverageCard?: (termId: string) => void;
+  onTermCoefficientUpdated?: (termId: string, coefficient: number | null) => void;
   onBack: () => void;
 }
 
 /**
  * Point d'entrée des tableaux de Moyenne Générale d'une classe :
- * - Pour un trimestre (`kind === 'term'`) : ouvre le tableau dédié connecté à la base de données
+ * - Pour un trimestre (`kind === 'term'`) : ouvre le tableau dédié connecté à la base
  *   avec toutes les matières du trimestre (Moy. /20 + Moy. × Coeff), Total Général, Moyenne Générale,
  *   Mention, Rang et Moyenne de la classe.
- * - Pour la Moyenne générale de l'année (`kind === 'annual'`) : conserve le modèle détaché
- *   en attendant l'étape suivante d'adaptation annuelle.
+ * - Pour la Moyenne générale de l'année (`kind === 'annual'`) : ouvre le tableau annuel dédié
+ *   connecté à la base avec tous les trimestres de la classe (Moy. /20 + Moy. × Coeff),
+ *   Total Annuel, Moyenne Annuelle, Mention, Rang annuel et Moyenne de la classe.
  */
 export const ClassAverageSheetView: React.FC<ClassAverageSheetViewProps> = ({
   averageCard,
@@ -39,30 +43,17 @@ export const ClassAverageSheetView: React.FC<ClassAverageSheetViewProps> = ({
   term,
   userId,
   initialSubjects = [],
+  initialTerms = [],
   onOpenSubject,
   onSubjectCoefficientUpdated,
+  onOpenTermAverageCard,
+  onTermCoefficientUpdated,
   onBack,
 }) => {
-  const syntheticSubject = useMemo<SubjectItem>(
-    () => ({
-      id: `preview-avg-${averageCard.id}`,
-      classId: schoolClass.id,
-      termId: averageCard.termId || 'annual',
-      schoolId: averageCard.schoolId,
-      yearId: averageCard.yearId,
-      name: averageCard.title,
-      color: averageCard.color || '#ffffff',
-      textColor: averageCard.textColor || '#0f172a',
-      borderColor: averageCard.borderColor || '#e2e8f0',
-      borderDarkColor: averageCard.borderDarkColor || '#cbd5e1',
-      createdAt: averageCard.createdAt,
-    }),
-    [averageCard, schoolClass.id]
-  );
-
   if (averageCard.kind === 'term') {
     return (
       <TermGeneralAverageView
+        key={averageCard.id}
         averageCard={averageCard}
         schoolClass={schoolClass}
         schoolYear={schoolYear}
@@ -77,18 +68,17 @@ export const ClassAverageSheetView: React.FC<ClassAverageSheetViewProps> = ({
     );
   }
 
-  const periodBadge = `Année ${schoolYear?.label || ''}`.trim();
-
   return (
-    <SubjectGradebookView
-      subject={syntheticSubject}
+    <AnnualGeneralAverageView
+      key={averageCard.id}
+      averageCard={averageCard}
       schoolClass={schoolClass}
       schoolYear={schoolYear}
       school={school}
-      term={term || null}
-      disableCloudPersistence={true}
-      customSheetLabel={averageCard.title}
-      customPeriodBadge={periodBadge}
+      userId={userId}
+      initialTerms={initialTerms}
+      onOpenTermAverageCard={onOpenTermAverageCard}
+      onTermCoefficientUpdated={onTermCoefficientUpdated}
       onBack={onBack}
     />
   );
