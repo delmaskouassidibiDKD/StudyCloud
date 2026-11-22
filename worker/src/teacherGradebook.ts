@@ -776,7 +776,7 @@ export async function handleTeacherGradebookRoutes(
   const { db, rawEnv, origin, jwtSecret, getAuthUser, corsHeaders, jsonResponse, errorResponse } = deps;
 
   if (!db) {
-    return errorResponse('Base de données D1 non disponible.', 503, origin);
+    return errorResponse('Service de stockage temporairement indisponible.', 503, origin);
   }
 
   // --------------------------------------------------------------------------
@@ -1974,7 +1974,7 @@ export async function handleTeacherGradebookRoutes(
       studentId: sanitizeSegment(studentId),
     });
     if (!uploaded) {
-      return errorResponse('Stockage R2 indisponible pour enregistrer la photo.', 503, origin);
+      return errorResponse('Stockage des photos temporairement indisponible.', 503, origin);
     }
 
     // Si la ligne élève existe déjà en D1, mettre à jour photo_r2_key immédiatement et nettoyer l'ancienne photo R2

@@ -661,10 +661,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       setIsSaved(false);
       if (isOfflineOrNetworkError(err)) {
         setCloudSaveStatus('offline');
-        setCloudSaveError("Hors ligne — Échec de l'enregistrement : impossible de joindre Cloudflare D1.");
+        setCloudSaveError("Hors ligne — Échec de l'enregistrement. Vérifiez votre connexion Internet.");
       } else {
         setCloudSaveStatus('error');
-        setCloudSaveError(err?.message || "Échec de l'enregistrement dans la base de données.");
+        setCloudSaveError(err?.message || "Échec de l'enregistrement de vos données.");
       }
     } finally {
       isCloudSavingRef.current = false;
@@ -1618,7 +1618,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       }
     } catch (err: any) {
       setCloudSaveStatus('error');
-      setCloudSaveError(err?.message || "Échec de l'envoi de la photo élève vers R2");
+      setCloudSaveError(err?.message || "Échec de l'envoi de la photo élève.");
     } finally {
       setIsUploadingPhoto(false);
     }
@@ -2538,7 +2538,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-wait'
                 : 'bg-white hover:bg-slate-50 text-[#00313d] border-slate-300'
             }`}
-            title="Enregistrer manuellement le tableur dans Cloudflare D1"
+            title="Enregistrer manuellement le tableur"
           >
             {cloudSaveStatus === 'saving' || isUploadingPhoto ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-600" />
@@ -2556,7 +2556,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 ? 'bg-amber-50 text-amber-800 border-amber-200'
                 : 'bg-emerald-50 text-emerald-700 border-emerald-200'
             }`}
-            title={cloudSaveError || 'Enregistrement automatique dans Cloudflare D1 & R2'}
+            title={cloudSaveError || 'Enregistrement automatique dans le cloud StudyCloud'}
           >
             {cloudSaveStatus === 'offline' ? (
               <>
@@ -2573,7 +2573,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 <Loader2 className="w-3 h-3 animate-spin text-amber-700 shrink-0" />
                 <span>
                   {cloudSaveStatus === 'loading'
-                    ? 'Chargement...'
+                    ? 'Chargement de vos données...'
                     : isUploadingPhoto
                     ? 'Envoi photo...'
                     : 'Enregistrement en cours...'}

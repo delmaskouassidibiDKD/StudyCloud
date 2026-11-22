@@ -475,7 +475,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   ): Promise<T | null> => {
     if (!getTeacherAuthToken()) {
       setSaveUiState('error');
-      setSaveFeedbackMessage('Session non connectée. Veuillez vous reconnecter pour enregistrer dans la base de données.');
+      setSaveFeedbackMessage('Session non connectée. Veuillez vous reconnecter pour enregistrer vos données.');
       return null;
     }
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -503,7 +503,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       if (isOfflineOrNetworkError(err)) {
         setIsOnline(false);
         setSaveUiState('offline');
-        setSaveFeedbackMessage("Hors ligne — Échec de l'enregistrement : impossible de joindre Cloudflare D1.");
+        setSaveFeedbackMessage("Hors ligne — Échec de l'enregistrement. Vérifiez votre connexion Internet.");
       } else {
         setSaveUiState('error');
         setSaveFeedbackMessage(err?.message || errorFallback);
@@ -668,10 +668,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       if (isOfflineOrNetworkError(err)) {
         setIsOnline(false);
         setSaveUiState('offline');
-        setSaveFeedbackMessage("Hors ligne — Impossible de joindre Cloudflare D1.");
+        setSaveFeedbackMessage("Hors ligne — Impossible de charger vos données. Vérifiez votre connexion Internet.");
       } else {
         setCloudStatus('error');
-        setCloudError(err?.message || 'Impossible de charger vos données depuis Cloudflare D1.');
+        setCloudError(err?.message || 'Impossible de charger vos données pour le moment.');
       }
     }
   }, [authUserId]);
@@ -694,7 +694,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           terms,
           subjects,
         }),
-      "Échec de l'enregistrement manuel dans la base de données."
+      "Échec de l'enregistrement de vos données."
     );
     if (synced && authUserId) {
       setSchoolYears(synced.schoolYears);
@@ -945,7 +945,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         id: yr.id,
         name: yr.label,
         displayName: `la rentrée scolaire "${yr.label}"`,
-        warningMessage: `Tout ce qui est lié à cette année (${linkedSchools} établissement(s), ${linkedLevels} niveau(x), ${linkedClasses} classe(s), ${linkedSubjects} matière(s), ainsi que tous les trimestres, élèves, photos de profil et notes) sera définitivement supprimé de la base de données.`
+        warningMessage: `Tout ce qui est lié à cette année (${linkedSchools} établissement(s), ${linkedLevels} niveau(x), ${linkedClasses} classe(s), ${linkedSubjects} matière(s), ainsi que tous les trimestres, élèves, photos de profil et notes) sera définitivement supprimé de votre compte.`
       });
     } else if (type === 'school') {
       const school = item as SchoolItem;
@@ -957,7 +957,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         id: school.id,
         name: school.name,
         displayName: `l'établissement "${school.name}"`,
-        warningMessage: `Tout ce qui est lié à cet établissement (${linkedLevels} niveau(x), ${linkedClasses} classe(s), ${linkedSubjects} matière(s), élèves, photos et notes) sera définitivement supprimé de la base de données.`
+        warningMessage: `Tout ce qui est lié à cet établissement (${linkedLevels} niveau(x), ${linkedClasses} classe(s), ${linkedSubjects} matière(s), élèves, photos et notes) sera définitivement supprimé de votre compte.`
       });
     } else if (type === 'level') {
       const lvl = item as StudyLevelItem;
@@ -968,7 +968,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         id: lvl.id,
         name: lvl.name,
         displayName: `le niveau d'étude "${lvl.name}"`,
-        warningMessage: `Tout ce qui est lié à ce niveau (${linkedClassIds.size} classe(s), ${linkedSubjects} matière(s), trimestres, élèves, photos et notes) sera définitivement supprimé de la base de données.`
+        warningMessage: `Tout ce qui est lié à ce niveau (${linkedClassIds.size} classe(s), ${linkedSubjects} matière(s), trimestres, élèves, photos et notes) sera définitivement supprimé de votre compte.`
       });
     } else if (type === 'class') {
       const cls = item as ClassItem;
@@ -979,7 +979,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         id: cls.id,
         name: fullName,
         displayName: `la classe "${fullName}"`,
-        warningMessage: `Tout ce qui est lié à cette classe (${linkedSubjects} matière(s), trimestres, élèves enregistrés, photos et notes) sera définitivement supprimé de la base de données.`
+        warningMessage: `Tout ce qui est lié à cette classe (${linkedSubjects} matière(s), trimestres, élèves enregistrés, photos et notes) sera définitivement supprimé de votre compte.`
       });
     } else if (type === 'subject') {
       const subj = item as SubjectItem;
@@ -988,7 +988,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         id: subj.id,
         name: subj.name,
         displayName: `la matière "${subj.name}"`,
-        warningMessage: "Toutes les évaluations, notes, photos d'élèves et coefficients associés à cette matière seront définitivement supprimés de la base de données."
+        warningMessage: "Toutes les évaluations, notes, photos d'élèves et coefficients associés à cette matière seront définitivement supprimés de votre compte."
       });
     }
     setDeleteConfirmInput('');
@@ -1996,16 +1996,16 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               <span>Retour</span>
             </button>
 
-            {/* Statut d'enregistrement automatique en direct */}
+            {/* Statut de chargement et d'enregistrement automatique en direct */}
             <div
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all select-none ${
-                saveUiState === 'saving'
+                saveUiState === 'saving' || cloudStatus === 'loading'
                   ? 'bg-amber-50/90 text-amber-800 border-amber-200/80'
                   : saveUiState === 'saved'
                   ? 'bg-emerald-50/95 text-emerald-700 border-emerald-200/90'
                   : saveUiState === 'offline' || !isOnline
                   ? 'bg-red-50 text-red-700 border-red-200'
-                  : saveUiState === 'error'
+                  : saveUiState === 'error' || cloudStatus === 'error'
                   ? 'bg-red-50 text-red-700 border-red-200'
                   : 'bg-white/90 text-slate-700 border-white shadow-xs'
               }`}
@@ -2015,6 +2015,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 <>
                   <Loader2 className="w-3 h-3 animate-spin text-amber-700 shrink-0" />
                   <span>Enregistrement en cours...</span>
+                </>
+              ) : cloudStatus === 'loading' ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin text-amber-700 shrink-0" />
+                  <span>Chargement de vos données...</span>
                 </>
               ) : saveUiState === 'saved' ? (
                 <>
@@ -2026,7 +2031,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   <WifiOff className="w-3.5 h-3.5 text-red-600 shrink-0" />
                   <span>Hors ligne — Échec</span>
                 </>
-              ) : saveUiState === 'error' ? (
+              ) : saveUiState === 'error' || cloudStatus === 'error' ? (
                 <>
                   <CloudOff className="w-3.5 h-3.5 text-red-600 shrink-0" />
                   <span>Échec de l&apos;enregistrement</span>
@@ -2384,9 +2389,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           </section>
         )}
 
-        {/* Bannière d'alerte Hors-ligne / Échec de synchronisation Cloudflare D1 */}
+        {/* Alerte compacte Hors-ligne / Échec de synchronisation */}
         {(saveUiState === 'offline' || saveUiState === 'error' || cloudStatus === 'error') && (
-          <div className="mb-2.5 px-3.5 py-2.5 rounded-xl bg-red-50 border border-red-200 flex items-center justify-between gap-2 text-xs text-red-800 shadow-2xs">
+          <div className="mb-2 w-fit max-w-full px-3.5 py-2 rounded-xl bg-red-50/95 border border-red-200 flex items-center gap-3 text-xs text-red-800 shadow-sm">
             <div className="flex items-center gap-2 min-w-0">
               {saveUiState === 'offline' || !isOnline ? (
                 <WifiOff className="w-4 h-4 shrink-0 text-red-600" />
@@ -2394,7 +2399,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 <CloudOff className="w-4 h-4 shrink-0 text-red-600" />
               )}
               <span className="font-semibold">
-                {saveFeedbackMessage || cloudError || 'Hors ligne — Échec de la connexion à la base de données.'}
+                {saveFeedbackMessage || cloudError || 'Hors ligne — Vérifiez votre connexion Internet.'}
               </span>
             </div>
             <button
@@ -2404,13 +2409,6 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             >
               Réessayer
             </button>
-          </div>
-        )}
-
-        {cloudStatus === 'loading' && schoolYears.length === 0 && (
-          <div className="mb-2.5 px-3 py-2 rounded-xl bg-white/80 border border-slate-200 flex items-center gap-2 text-xs text-slate-600">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-500" />
-            <span className="font-medium">Chargement sécurisé de votre espace depuis Cloudflare D1...</span>
           </div>
         )}
 
@@ -2451,7 +2449,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         updatedSubjects: next.updatedSubjects,
                         gradebookCopies: next.gradebookCopyOps,
                       }),
-                    'Erreur lors du transfert sur Cloudflare D1.'
+                    'Erreur lors du transfert de vos données.'
                   );
                   if (res?.gradebookStats) {
                     setServerGradebookStats(res.gradebookStats);

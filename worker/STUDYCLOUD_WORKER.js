@@ -592,7 +592,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
   if (!path.startsWith("/api/teacher/")) return null;
   const { db, rawEnv, origin, jwtSecret, getAuthUser, corsHeaders: corsHeaders2, jsonResponse: jsonResponse2, errorResponse: errorResponse2 } = deps;
   if (!db) {
-    return errorResponse2("Base de donn\xE9es D1 non disponible.", 503, origin);
+    return errorResponse2("Service de stockage temporairement indisponible.", 503, origin);
   }
   if (path === "/api/teacher/media" && method === "GET") {
     const key = url.searchParams.get("key") || "";
@@ -1491,7 +1491,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       studentId: sanitizeSegment(studentId)
     });
     if (!uploaded) {
-      return errorResponse2("Stockage R2 indisponible pour enregistrer la photo.", 503, origin);
+      return errorResponse2("Stockage des photos temporairement indisponible.", 503, origin);
     }
     if (termId) {
       const existingRow = await db.prepare(
