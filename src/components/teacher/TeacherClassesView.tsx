@@ -264,6 +264,83 @@ const ColorStyleSelector: React.FC<{
   );
 };
 
+/**
+ * Sélecteur compact "Un seul" vs "Créer plusieurs" présent dans chaque menu de création.
+ */
+const CreationModeToggle: React.FC<{
+  mode: 'single' | 'batch';
+  onChange: (next: 'single' | 'batch') => void;
+  singleLabel: string;
+  batchLabel: string;
+  batchCount?: number;
+}> = ({ mode, onChange, singleLabel, batchLabel, batchCount }) => (
+  <div className="inline-flex w-full p-1 rounded-xl bg-slate-100 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 gap-1 select-none">
+    <button
+      type="button"
+      onClick={() => onChange('single')}
+      className={`flex-1 py-1.5 px-2.5 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+        mode === 'single'
+          ? 'bg-white dark:bg-[#1e293b] text-slate-900 dark:text-white shadow-xs border border-slate-200/90 dark:border-slate-600'
+          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+      }`}
+    >
+      <span>{singleLabel}</span>
+    </button>
+    <button
+      type="button"
+      onClick={() => onChange('batch')}
+      className={`flex-1 py-1.5 px-2.5 rounded-lg text-[11px] font-bold transition cursor-pointer flex items-center justify-center gap-1.5 ${
+        mode === 'batch'
+          ? 'bg-[#00313d] dark:bg-blue-600 text-white shadow-xs border border-[#00313d] dark:border-blue-500'
+          : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 border border-transparent'
+      }`}
+    >
+      <Layers className="w-3.5 h-3.5 shrink-0" />
+      <span>{batchLabel}</span>
+      {mode === 'batch' && typeof batchCount === 'number' && batchCount > 0 && (
+        <span className="px-1.5 py-0.2 rounded-full bg-white/20 text-white text-[10px] font-black">
+          {batchCount}
+        </span>
+      )}
+    </button>
+  </div>
+);
+
+const compressLogoFileToDataUrl = (file: File): Promise<string | null> =>
+  new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onerror = () => resolve(null);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onerror = () => resolve(null);
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_SIZE = 256;
+        let width = img.width;
+        let height = img.height;
+        if (width > height) {
+          if (width > MAX_SIZE) {
+            height = Math.round((height * MAX_SIZE) / width);
+            width = MAX_SIZE;
+          }
+        } else if (height > MAX_SIZE) {
+          width = Math.round((width * MAX_SIZE) / height);
+          height = MAX_SIZE;
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return resolve(null);
+        ctx.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/png', 0.85));
+      };
+      img.src = String(event.target?.result || '');
+    };
+    reader.readAsDataURL(file);
+  });
+
+const makeBatchRowUid = () => `row_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
 export interface ClassAverageCardItem {
   id: string;
   classId: string;
@@ -1040,6 +1117,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setActiveMenu(null);
     if (type === 'year') {
       const yr = item as SchoolYearItem;
+      setBatchError(null);
       setEditingYear(yr);
       setEditYearLabel(yr.label);
       setEditYearColorObj(
@@ -1049,6 +1127,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setEditYearColorStyle(yr.colorStyle === 'accent' ? 'accent' : 'full');
     } else if (type === 'school') {
       const school = item as SchoolItem;
+      setBatchError(null);
+      setSchoolCreationMode('single');
       setEditingSchool(school);
       setSchoolName(school.name);
       setSchoolLogo(school.logoUrl || null);
@@ -1060,6 +1140,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setIsAddSchoolModalOpen(true);
     } else if (type === 'level') {
       const lvl = item as StudyLevelItem;
+      setBatchError(null);
+      setLevelCreationMode('single');
       setEditingLevel(lvl);
       setStudyLevelName(lvl.name);
       setSelectedStudyLevelColor(
@@ -1070,6 +1152,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setIsAddLevelModalOpen(true);
     } else if (type === 'class') {
       const cls = item as ClassItem;
+      setBatchError(null);
+      setClassCreationMode('single');
       setEditingClass(cls);
       setClassName(cls.name?.trim() || cls.level);
       setClassSlogan(cls.slogan || '');
@@ -1082,6 +1166,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setIsAddClassModalOpen(true);
     } else if (type === 'term') {
       const trm = item as TermItem;
+      setBatchError(null);
       setIsAddTermPopoverOpen(false);
       setEditTermCoeffInput(trm.coefficient !== undefined && trm.coefficient !== null ? String(trm.coefficient) : '');
       setEditingTermCoeff({
@@ -1091,6 +1176,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       });
     } else if (type === 'subject') {
       const subj = item as SubjectItem;
+      setBatchError(null);
+      setSubjectCreationMode('single');
       setEditingSubject(subj);
       setSubjectName(subj.name);
       setSubjectCoefficient(subj.coefficient !== undefined ? String(subj.coefficient) : '');
@@ -1354,17 +1441,53 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     }
   };
 
+  // État partagé de sauvegarde en lot (création multiple atomique connectée à la base)
+  const [isBatchSaving, setIsBatchSaving] = useState(false);
+  const [batchError, setBatchError] = useState<string | null>(null);
+
   // État du modal "Créer / Modifier un niveau d'étude" (ex-menu de niveau CP1, Terminale, Licence...)
   const [isAddLevelModalOpen, setIsAddLevelModalOpen] = useState(false);
   const [studyLevelName, setStudyLevelName] = useState('');
   const [selectedStudyLevelColor, setSelectedStudyLevelColor] = useState(YEAR_COLOR_OPTIONS[0]);
   const [levelColorStyle, setLevelColorStyle] = useState<CardColorStyle>('accent');
+  const [levelCreationMode, setLevelCreationMode] = useState<'single' | 'batch'>('single');
+  const [batchLevelRows, setBatchLevelRows] = useState<Array<{ uid: string; name: string }>>(() => [
+    { uid: makeBatchRowUid(), name: '' },
+    { uid: makeBatchRowUid(), name: '' },
+  ]);
 
   const resetLevelForm = () => {
     setStudyLevelName('');
     setSelectedStudyLevelColor(YEAR_COLOR_OPTIONS[0]);
     setLevelColorStyle('accent');
+    setLevelCreationMode('single');
+    setBatchLevelRows([
+      { uid: makeBatchRowUid(), name: '' },
+      { uid: makeBatchRowUid(), name: '' },
+    ]);
+    setBatchError(null);
     setEditingLevel(null);
+  };
+
+  const validBatchLevelNames = useMemo(
+    () => batchLevelRows.map((r) => r.name.trim()).filter(Boolean),
+    [batchLevelRows]
+  );
+
+  const handleToggleLevelBatchSuggestion = (sug: string) => {
+    setBatchError(null);
+    setBatchLevelRows((prev) => {
+      const idx = prev.findIndex((r) => r.name.trim().toLowerCase() === sug.toLowerCase());
+      if (idx >= 0) {
+        const next = prev.filter((_, i) => i !== idx);
+        return next.length > 0 ? next : [{ uid: makeBatchRowUid(), name: '' }];
+      }
+      const emptyIdx = prev.findIndex((r) => !r.name.trim());
+      if (emptyIdx >= 0) {
+        return prev.map((r, i) => (i === emptyIdx ? { ...r, name: sug } : r));
+      }
+      return [...prev, { uid: makeBatchRowUid(), name: sug }];
+    });
   };
 
   const isLevelDirty = editingLevel
@@ -1373,10 +1496,52 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         selectedStudyLevelColor.bg !== (editingLevel.color || '#ffffff') ||
         levelColorStyle !== (editingLevel.colorStyle === 'full' ? 'full' : 'accent')
       )
+    : levelCreationMode === 'batch'
+    ? validBatchLevelNames.length > 0
     : studyLevelName.trim().length > 0;
 
-  const handleCreateStudyLevel = (e?: React.FormEvent) => {
+  const handleCreateStudyLevel = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isBatchSaving) return;
+
+    if (!editingLevel && levelCreationMode === 'batch') {
+      if (!selectedSchoolInside || validBatchLevelNames.length === 0) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setBatchError('Hors ligne — Vérifiez votre connexion Internet pour enregistrer.');
+        return;
+      }
+      setIsBatchSaving(true);
+      setBatchError(null);
+      try {
+        const res = await runCloudMutation(
+          () =>
+            TeacherGradebookAPI.batchCreateLevels(
+              selectedSchoolInside.id,
+              validBatchLevelNames.map((name) => ({
+                id: generateTeacherEntityId('level'),
+                name,
+                color: selectedStudyLevelColor.bg,
+                textColor: selectedStudyLevelColor.text,
+                borderColor: selectedStudyLevelColor.border,
+                colorStyle: levelColorStyle,
+              }))
+            ),
+          'Erreur lors de la création des niveaux.'
+        );
+        if (res?.levels && res.levels.length > 0) {
+          setStudyLevels((prev) => [...prev, ...res.levels]);
+          setSelectedLevelId(res.levels[0].id);
+          setIsAddLevelModalOpen(false);
+          resetLevelForm();
+        } else {
+          setBatchError('Impossible d’enregistrer les niveaux. Veuillez réessayer.');
+        }
+      } finally {
+        setIsBatchSaving(false);
+      }
+      return;
+    }
+
     const cleanName = studyLevelName.trim();
     if (!cleanName) return;
 
@@ -1450,6 +1615,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [classTeacherName, setClassTeacherName] = useState(user?.name || '');
   const [selectedClassColor, setSelectedClassColor] = useState(CLASS_COLOR_OPTIONS[0]); // Orange ambré style image
   const [classColorStyle, setClassColorStyle] = useState<CardColorStyle>('accent');
+  const [classCreationMode, setClassCreationMode] = useState<'single' | 'batch'>('single');
+  const [batchClassRows, setBatchClassRows] = useState<Array<{ uid: string; name: string; slogan: string }>>(() => [
+    { uid: makeBatchRowUid(), name: '', slogan: '' },
+    { uid: makeBatchRowUid(), name: '', slogan: '' },
+  ]);
 
   const resetClassForm = () => {
     setClassName('');
@@ -1457,7 +1627,34 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setClassTeacherName(user?.name || 'Professeur');
     setSelectedClassColor(CLASS_COLOR_OPTIONS[0]);
     setClassColorStyle('accent');
+    setClassCreationMode('single');
+    setBatchClassRows([
+      { uid: makeBatchRowUid(), name: '', slogan: '' },
+      { uid: makeBatchRowUid(), name: '', slogan: '' },
+    ]);
+    setBatchError(null);
     setEditingClass(null);
+  };
+
+  const validBatchClassRows = useMemo(
+    () => batchClassRows.filter((r) => r.name.trim().length > 0),
+    [batchClassRows]
+  );
+
+  const handleToggleClassBatchSuggestion = (sug: string) => {
+    setBatchError(null);
+    setBatchClassRows((prev) => {
+      const idx = prev.findIndex((r) => r.name.trim().toLowerCase() === sug.toLowerCase());
+      if (idx >= 0) {
+        const next = prev.filter((_, i) => i !== idx);
+        return next.length > 0 ? next : [{ uid: makeBatchRowUid(), name: '', slogan: '' }];
+      }
+      const emptyIdx = prev.findIndex((r) => !r.name.trim());
+      if (emptyIdx >= 0) {
+        return prev.map((r, i) => (i === emptyIdx ? { ...r, name: sug } : r));
+      }
+      return [...prev, { uid: makeBatchRowUid(), name: sug, slogan: '' }];
+    });
   };
 
   // Vérification de modification (Dirty) pour la classe
@@ -1469,10 +1666,64 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         selectedClassColor.bg !== editingClass.color ||
         classColorStyle !== (editingClass.colorStyle === 'full' ? 'full' : 'accent')
       )
+    : classCreationMode === 'batch'
+    ? (validBatchClassRows.length > 0 && classTeacherName.trim().length > 0)
     : (className.trim().length > 0 && classTeacherName.trim().length > 0);
 
-  const handleCreateClass = (e?: React.FormEvent) => {
+  const handleCreateClass = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isBatchSaving) return;
+
+    if (!editingClass && classCreationMode === 'batch') {
+      if (!selectedSchoolInside || !activeLevel || !classTeacherName.trim() || validBatchClassRows.length === 0) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setBatchError('Hors ligne — Vérifiez votre connexion Internet pour enregistrer.');
+        return;
+      }
+      setIsBatchSaving(true);
+      setBatchError(null);
+      try {
+        const res = await runCloudMutation(
+          () =>
+            TeacherGradebookAPI.batchCreateClasses(
+              activeLevel.id,
+              validBatchClassRows.map((row) => ({
+                id: generateTeacherEntityId('class'),
+                name: row.name.trim(),
+                slogan: row.slogan.trim() || undefined,
+                teacherName: classTeacherName.trim(),
+                color: selectedClassColor.bg,
+                textColor: selectedClassColor.text,
+                borderColor: selectedClassColor.border,
+                borderDarkColor: selectedClassColor.borderDark,
+                colorStyle: classColorStyle,
+                iconGradient: selectedClassColor.iconGradient,
+              }))
+            ),
+          'Erreur lors de la création des classes.'
+        );
+        if (res?.classes && res.classes.length > 0) {
+          setClasses((prev) => [...prev, ...res.classes]);
+          if (Array.isArray(res.terms) && res.terms.length > 0) {
+            setTerms((prev) => [...prev, ...res.terms]);
+          }
+          if (Array.isArray(res.classAverages) && res.classAverages.length > 0) {
+            setClassAverages((prev) => [...prev, ...res.classAverages]);
+          }
+          setSelectedClassId(res.classes[0].id);
+          const firstClassTerm = res.terms?.find((t) => t.classId === res.classes[0].id);
+          if (firstClassTerm) setSelectedTermId(firstClassTerm.id);
+          setIsAddClassModalOpen(false);
+          resetClassForm();
+        } else {
+          setBatchError('Impossible d’enregistrer les classes. Veuillez réessayer.');
+        }
+      } finally {
+        setIsBatchSaving(false);
+      }
+      return;
+    }
+
     if (!className.trim() || !classTeacherName.trim()) return;
 
     if (editingClass) {
@@ -1613,13 +1864,45 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [subjectCoefficient, setSubjectCoefficient] = useState<string>('');
   const [selectedSubjectColor, setSelectedSubjectColor] = useState(SUBJECT_COLOR_OPTIONS[0]); // Blanc par défaut
   const [subjectColorStyle, setSubjectColorStyle] = useState<CardColorStyle>('accent');
+  const [subjectCreationMode, setSubjectCreationMode] = useState<'single' | 'batch'>('single');
+  const [batchSubjectRows, setBatchSubjectRows] = useState<Array<{ uid: string; name: string; coeff: string }>>(() => [
+    { uid: makeBatchRowUid(), name: '', coeff: '' },
+    { uid: makeBatchRowUid(), name: '', coeff: '' },
+  ]);
 
   const resetSubjectForm = () => {
     setSubjectName('');
     setSubjectCoefficient('');
     setSelectedSubjectColor(SUBJECT_COLOR_OPTIONS[0]);
     setSubjectColorStyle('accent');
+    setSubjectCreationMode('single');
+    setBatchSubjectRows([
+      { uid: makeBatchRowUid(), name: '', coeff: '' },
+      { uid: makeBatchRowUid(), name: '', coeff: '' },
+    ]);
+    setBatchError(null);
     setEditingSubject(null);
+  };
+
+  const validBatchSubjectRows = useMemo(
+    () => batchSubjectRows.filter((r) => r.name.trim().length > 0),
+    [batchSubjectRows]
+  );
+
+  const handleToggleSubjectBatchSuggestion = (sug: string) => {
+    setBatchError(null);
+    setBatchSubjectRows((prev) => {
+      const idx = prev.findIndex((r) => r.name.trim().toLowerCase() === sug.toLowerCase());
+      if (idx >= 0) {
+        const next = prev.filter((_, i) => i !== idx);
+        return next.length > 0 ? next : [{ uid: makeBatchRowUid(), name: '', coeff: '' }];
+      }
+      const emptyIdx = prev.findIndex((r) => !r.name.trim());
+      if (emptyIdx >= 0) {
+        return prev.map((r, i) => (i === emptyIdx ? { ...r, name: sug } : r));
+      }
+      return [...prev, { uid: makeBatchRowUid(), name: sug, coeff: '' }];
+    });
   };
 
   // Vérification de modification (Dirty) pour la matière
@@ -1633,10 +1916,57 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         selectedSubjectColor.bg !== editingSubject.color ||
         subjectColorStyle !== (editingSubject.colorStyle === 'full' ? 'full' : 'accent')
       )
+    : subjectCreationMode === 'batch'
+    ? validBatchSubjectRows.length > 0
     : subjectName.trim().length > 0;
 
-  const handleCreateSubject = (e?: React.FormEvent) => {
+  const handleCreateSubject = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isBatchSaving) return;
+
+    if (!editingSubject && subjectCreationMode === 'batch') {
+      if (!activeClass || !selectedSchoolInside || validBatchSubjectRows.length === 0) return;
+      const targetTermId = activeTerm?.id || currentClassTerms[0]?.id;
+      if (!targetTermId) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setBatchError('Hors ligne — Vérifiez votre connexion Internet pour enregistrer.');
+        return;
+      }
+      setIsBatchSaving(true);
+      setBatchError(null);
+      try {
+        const payloadItems = validBatchSubjectRows.map((row) => {
+          const cleaned = row.coeff.trim().replace(',', '.');
+          const parsed = cleaned ? parseFloat(cleaned) : NaN;
+          const coeff = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : null;
+          return {
+            id: generateTeacherEntityId('subject'),
+            name: row.name.trim(),
+            coefficient: coeff,
+            color: selectedSubjectColor.bg,
+            textColor: selectedSubjectColor.text,
+            borderColor: selectedSubjectColor.border,
+            borderDarkColor: selectedSubjectColor.borderDark,
+            colorStyle: subjectColorStyle,
+          };
+        });
+        const res = await runCloudMutation(
+          () => TeacherGradebookAPI.batchCreateSubjects(activeClass.id, targetTermId, payloadItems),
+          'Erreur lors de la création des matières.'
+        );
+        if (res?.subjects && res.subjects.length > 0) {
+          setSubjects((prev) => [...prev, ...res.subjects]);
+          setIsAddSubjectModalOpen(false);
+          resetSubjectForm();
+        } else {
+          setBatchError('Impossible d’enregistrer les matières. Veuillez réessayer.');
+        }
+      } finally {
+        setIsBatchSaving(false);
+      }
+      return;
+    }
+
     if (!subjectName.trim()) return;
 
     const cleanedCoeff = subjectCoefficient.trim().replace(',', '.');
@@ -1731,46 +2061,50 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
   const [selectedSchoolColor, setSelectedSchoolColor] = useState(SCHOOL_COLOR_OPTIONS[0]); // Blanc par défaut
   const [schoolColorStyle, setSchoolColorStyle] = useState<CardColorStyle>('full');
+  const [schoolCreationMode, setSchoolCreationMode] = useState<'single' | 'batch'>('single');
+  const [batchSchoolRows, setBatchSchoolRows] = useState<Array<{ uid: string; name: string; logoDataUrl: string | null }>>(() => [
+    { uid: makeBatchRowUid(), name: '', logoDataUrl: null },
+    { uid: makeBatchRowUid(), name: '', logoDataUrl: null },
+  ]);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const resetSchoolForm = () => {
+    setSchoolName('');
+    setSchoolLogo(null);
+    setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
+    setSchoolColorStyle('full');
+    setSchoolCreationMode('single');
+    setBatchSchoolRows([
+      { uid: makeBatchRowUid(), name: '', logoDataUrl: null },
+      { uid: makeBatchRowUid(), name: '', logoDataUrl: null },
+    ]);
+    setBatchError(null);
+    setEditingSchool(null);
+  };
+
+  const validBatchSchoolRows = useMemo(
+    () => batchSchoolRows.filter((r) => r.name.trim().length > 0),
+    [batchSchoolRows]
+  );
+
   // Compression & chargement du logo de l'école (format rond max 256x256 px pour préserver le stockage)
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const dataUrl = await compressLogoFileToDataUrl(file);
+    if (dataUrl) setSchoolLogo(dataUrl);
+  };
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        const MAX_SIZE = 256;
-        let width = img.width;
-        let height = img.height;
-
-        if (width > height) {
-          if (width > MAX_SIZE) {
-            height = Math.round((height * MAX_SIZE) / width);
-            width = MAX_SIZE;
-          }
-        } else {
-          if (height > MAX_SIZE) {
-            width = Math.round((width * MAX_SIZE) / height);
-            height = MAX_SIZE;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = canvas.toDataURL('image/png', 0.85);
-          setSchoolLogo(dataUrl);
-        }
-      };
-      img.src = event.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+  const handleBatchSchoolLogoUpload = async (rowUid: string, e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const dataUrl = await compressLogoFileToDataUrl(file);
+    if (dataUrl) {
+      setBatchSchoolRows((prev) =>
+        prev.map((r) => (r.uid === rowUid ? { ...r, logoDataUrl: dataUrl } : r))
+      );
+    }
+    e.target.value = '';
   };
 
   // Vérification de modification (Dirty) pour l'école
@@ -1781,11 +2115,55 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         selectedSchoolColor.bg !== editingSchool.color ||
         schoolColorStyle !== (editingSchool.colorStyle === 'accent' ? 'accent' : 'full')
       )
+    : schoolCreationMode === 'batch'
+    ? validBatchSchoolRows.length > 0
     : schoolName.trim().length > 0;
 
   // Création ou modification d'une école (D1 + logo privé R2)
-  const handleCreateSchool = (e?: React.FormEvent) => {
+  const handleCreateSchool = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isBatchSaving) return;
+
+    if (!editingSchool && schoolCreationMode === 'batch') {
+      if (!selectedYearId || validBatchSchoolRows.length === 0) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setBatchError('Hors ligne — Vérifiez votre connexion Internet pour enregistrer.');
+        return;
+      }
+      setIsBatchSaving(true);
+      setBatchError(null);
+      try {
+        const res = await runCloudMutation(
+          () =>
+            TeacherGradebookAPI.batchCreateSchools(
+              selectedYearId,
+              validBatchSchoolRows.map((row) => ({
+                id: generateTeacherEntityId('school'),
+                name: row.name.trim(),
+                logoDataUrl: row.logoDataUrl,
+                color: selectedSchoolColor.bg,
+                textColor: selectedSchoolColor.text,
+                borderColor: selectedSchoolColor.border,
+                borderDarkColor: selectedSchoolColor.borderDark,
+                colorStyle: schoolColorStyle,
+              }))
+            ),
+          'Erreur lors de la création des établissements.'
+        );
+        if (res?.schools && res.schools.length > 0) {
+          setSchools((prev) => [...prev, ...res.schools]);
+          setSelectedSchoolId(res.schools[0].id);
+          setIsAddSchoolModalOpen(false);
+          resetSchoolForm();
+        } else {
+          setBatchError('Impossible d’enregistrer les établissements. Veuillez réessayer.');
+        }
+      } finally {
+        setIsBatchSaving(false);
+      }
+      return;
+    }
+
     const cleanName = schoolName.trim();
     if (!cleanName) return;
 
@@ -1882,7 +2260,43 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [inputYearValue, setInputYearValue] = useState(`${CURRENT_YEAR} - ${CURRENT_YEAR + 1}`);
   const [selectedColorObj, setSelectedColorObj] = useState(YEAR_COLOR_OPTIONS[0]); // Par défaut blanc / aucune couleur
   const [selectedYearColorStyle, setSelectedYearColorStyle] = useState<CardColorStyle>('full');
+  const [yearCreationMode, setYearCreationMode] = useState<'single' | 'batch'>('single');
+  const [batchYearRows, setBatchYearRows] = useState<Array<{ uid: string; label: string }>>(() => [
+    { uid: makeBatchRowUid(), label: `${CURRENT_YEAR} - ${CURRENT_YEAR + 1}` },
+    { uid: makeBatchRowUid(), label: `${CURRENT_YEAR + 1} - ${CURRENT_YEAR + 2}` },
+  ]);
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const validBatchYearLabels = useMemo(() => {
+    const existingSet = new Set(schoolYears.map((y) => y.label.trim().toLowerCase()));
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const row of batchYearRows) {
+      const clean = row.label.trim();
+      if (!clean) continue;
+      const low = clean.toLowerCase();
+      if (existingSet.has(low) || seen.has(low)) continue;
+      seen.add(low);
+      out.push(clean);
+    }
+    return out;
+  }, [batchYearRows, schoolYears]);
+
+  const handleToggleYearBatchSuggestion = (sug: string) => {
+    setBatchError(null);
+    setBatchYearRows((prev) => {
+      const idx = prev.findIndex((r) => r.label.trim().toLowerCase() === sug.toLowerCase());
+      if (idx >= 0) {
+        const next = prev.filter((_, i) => i !== idx);
+        return next.length > 0 ? next : [{ uid: makeBatchRowUid(), label: '' }];
+      }
+      const emptyIdx = prev.findIndex((r) => !r.label.trim());
+      if (emptyIdx >= 0) {
+        return prev.map((r, i) => (i === emptyIdx ? { ...r, label: sug } : r));
+      }
+      return [...prev, { uid: makeBatchRowUid(), label: sug }];
+    });
+  };
 
   // Gestion de la saisie manuelle : Uniquement chiffres et tiret/espace, max 12 caractères
   const handleYearInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1893,8 +2307,47 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   };
 
   // Création / Application de l'année scolaire (D1)
-  const handleApplyYear = (e?: React.FormEvent) => {
+  const handleApplyYear = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (isBatchSaving) return;
+
+    if (yearCreationMode === 'batch') {
+      if (validBatchYearLabels.length === 0) return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setBatchError('Hors ligne — Vérifiez votre connexion Internet pour enregistrer.');
+        return;
+      }
+      setIsBatchSaving(true);
+      setBatchError(null);
+      try {
+        const res = await runCloudMutation(
+          () =>
+            TeacherGradebookAPI.batchCreateYears(
+              validBatchYearLabels.map((label) => ({
+                id: generateTeacherEntityId('year'),
+                label,
+                color: selectedColorObj.bg,
+                textColor: selectedColorObj.text,
+                colorStyle: selectedYearColorStyle,
+              }))
+            ),
+          'Erreur lors de la création des rentrées scolaires.'
+        );
+        if (res?.years && res.years.length > 0) {
+          setSchoolYears((prev) => [...prev, ...res.years]);
+          setSelectedYearId(res.years[0].id);
+          setIsCreateMenuOpen(false);
+          setYearCreationMode('single');
+          setBatchError(null);
+        } else {
+          setBatchError('Aucune nouvelle rentrée créée (peut-être déjà existante).');
+        }
+      } finally {
+        setIsBatchSaving(false);
+      }
+      return;
+    }
+
     const cleanLabel = inputYearValue.trim();
     if (!cleanLabel) return;
 
@@ -2058,10 +2511,66 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     return Math.max(...currentClassTerms.map(t => t.number)) + 1;
   }, [currentClassTerms]);
 
-  // Confirmation de l'ajout d'un nouveau trimestre (+ coefficient facultatif) pour la classe active
-  const handleConfirmAddTerm = (e?: React.FormEvent) => {
+  // Nombre de trimestres à créer d'un coup (1 par défaut, jusqu'à 4 d'un coup)
+  const [termBatchCount, setTermBatchCount] = useState<number>(1);
+  const [batchTermCoeffs, setBatchTermCoeffs] = useState<string[]>(['', '', '', '']);
+
+  // Confirmation de l'ajout d'un ou plusieurs trimestres (+ coefficients facultatifs) pour la classe active
+  const handleConfirmAddTerm = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (!activeClass || !selectedSchoolInside) return;
+    if (!activeClass || !selectedSchoolInside || isBatchSaving) return;
+
+    if (termBatchCount > 1) {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        setBatchError('Hors ligne — Vérifiez votre connexion Internet pour enregistrer.');
+        return;
+      }
+      const itemsToCreate: Array<{ id: string; number: number; name: string; coefficient: number | null }> = [];
+      for (let i = 0; i < termBatchCount; i++) {
+        const num = nextTermNumber + i;
+        const rawC = (batchTermCoeffs[i] || '').trim().replace(',', '.');
+        let parsedC: number | null = null;
+        if (rawC !== '') {
+          const n = Number(rawC);
+          if (!Number.isFinite(n) || n <= 0) {
+            setBatchError(`Coefficient invalide pour Trimestre ${num}.`);
+            return;
+          }
+          parsedC = Math.round(n * 100) / 100;
+        }
+        itemsToCreate.push({
+          id: generateTeacherEntityId('term'),
+          number: num,
+          name: `Trimestre ${num}`,
+          coefficient: parsedC,
+        });
+      }
+      setIsBatchSaving(true);
+      setBatchError(null);
+      try {
+        const res = await runCloudMutation(
+          () => TeacherGradebookAPI.batchCreateTerms(activeClass.id, itemsToCreate),
+          'Erreur lors de la création des trimestres.'
+        );
+        if (res?.terms && res.terms.length > 0) {
+          setTerms((prev) => [...prev, ...res.terms]);
+          if (Array.isArray(res.classAverages) && res.classAverages.length > 0) {
+            setClassAverages((prev) => [...prev, ...res.classAverages]);
+          }
+          setSelectedTermId(res.terms[0].id);
+          setIsAddTermPopoverOpen(false);
+          setNewTermCoeffInput('');
+          setTermBatchCount(1);
+          setBatchTermCoeffs(['', '', '', '']);
+        } else {
+          setBatchError('Impossible d’enregistrer les trimestres.');
+        }
+      } finally {
+        setIsBatchSaving(false);
+      }
+      return;
+    }
+
     const cleanedCoeff = newTermCoeffInput.trim().replace(',', '.');
     let parsedCoeff: number | undefined = undefined;
     if (cleanedCoeff !== '') {
@@ -2776,50 +3285,151 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                       <span className="text-xs font-extrabold text-[#00313d] flex items-center gap-1.5">
                         <Calendar className="w-4 h-4 text-cyan-600" />
-                        <span>Nouvelle rentrée scolaire</span>
+                        <span>
+                          {yearCreationMode === 'batch'
+                            ? 'Créer plusieurs rentrées'
+                            : 'Nouvelle rentrée scolaire'}
+                        </span>
                       </span>
                       <button 
                         type="button" 
-                        onClick={() => setIsCreateMenuOpen(false)}
+                        onClick={() => {
+                          setIsCreateMenuOpen(false);
+                          setBatchError(null);
+                        }}
                         className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
                     </div>
 
-                    {/* 1. Champ en haut bien rectangle avec bouton Créer / Appliquer à côté */}
-                    <form onSubmit={handleApplyYear} className="space-y-1.5">
-                      <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        Année scolaire (max 12 chiffres)
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          value={inputYearValue}
-                          onChange={handleYearInputChange}
-                          maxLength={12}
-                          placeholder="ex: 2026 - 2027"
-                          className="flex-1 px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono font-bold text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
-                          autoFocus
-                        />
-                        <button
-                          type="submit"
-                          disabled={!inputYearValue.trim()}
-                          className="px-3.5 py-2 rounded-xl text-xs font-black text-white shadow-sm transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 cursor-pointer"
-                          style={{ backgroundColor: '#00313d' }}
-                        >
-                          Créer
-                        </button>
+                    <CreationModeToggle
+                      mode={yearCreationMode}
+                      onChange={(next) => {
+                        setBatchError(null);
+                        if (next === 'batch' && inputYearValue.trim()) {
+                          setBatchYearRows((prev) => {
+                            const hasAny = prev.some((r) => r.label.trim());
+                            if (!hasAny) {
+                              return [
+                                { uid: makeBatchRowUid(), label: inputYearValue.trim() },
+                                { uid: makeBatchRowUid(), label: '' },
+                              ];
+                            }
+                            return prev;
+                          });
+                        }
+                        setYearCreationMode(next);
+                      }}
+                      singleLabel="Une rentrée"
+                      batchLabel="Créer plusieurs"
+                      batchCount={validBatchYearLabels.length}
+                    />
+
+                    {yearCreationMode === 'single' ? (
+                      <>
+                        {/* 1. Champ en haut bien rectangle avec bouton Créer / Appliquer à côté */}
+                        <form onSubmit={handleApplyYear} className="space-y-1.5">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Année scolaire (max 12 chiffres)
+                          </label>
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="text"
+                              value={inputYearValue}
+                              onChange={handleYearInputChange}
+                              maxLength={12}
+                              placeholder="ex: 2026 - 2027"
+                              className="flex-1 px-3 py-2 rounded-xl border border-slate-300 bg-white font-mono font-bold text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                              autoFocus
+                            />
+                            <button
+                              type="submit"
+                              disabled={!inputYearValue.trim()}
+                              className="px-3.5 py-2 rounded-xl text-xs font-black text-white shadow-sm transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 cursor-pointer"
+                              style={{ backgroundColor: '#00313d' }}
+                            >
+                              Créer
+                            </button>
+                          </div>
+                          <span className="text-[9px] text-slate-400 block">
+                            {inputYearValue.length}/12 caractères &bull; Chiffres autorisés
+                          </span>
+                        </form>
+                      </>
+                    ) : (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Liste des rentrées à créer
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setBatchYearRows((prev) => [
+                                ...prev,
+                                { uid: makeBatchRowUid(), label: '' },
+                              ])
+                            }
+                            className="inline-flex items-center gap-1 text-[10.5px] font-bold text-cyan-700 hover:text-cyan-900 cursor-pointer"
+                          >
+                            <Plus className="w-3 h-3 stroke-[2.5]" />
+                            <span>Ajouter ligne</span>
+                          </button>
+                        </div>
+
+                        <div className="max-h-36 overflow-y-auto space-y-1.5 pr-0.5">
+                          {batchYearRows.map((row, idx) => (
+                            <div key={row.uid} className="flex items-center gap-1.5">
+                              <span className="w-5 text-[10px] font-bold text-slate-400 text-center shrink-0">
+                                {idx + 1}.
+                              </span>
+                              <input
+                                type="text"
+                                value={row.label}
+                                maxLength={12}
+                                onChange={(e) => {
+                                  const filtered = e.target.value.replace(/[^0-9\s-]/g, '').slice(0, 12);
+                                  setBatchError(null);
+                                  setBatchYearRows((prev) =>
+                                    prev.map((r) => (r.uid === row.uid ? { ...r, label: filtered } : r))
+                                  );
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    setBatchYearRows((prev) => [
+                                      ...prev,
+                                      { uid: makeBatchRowUid(), label: '' },
+                                    ]);
+                                  }
+                                }}
+                                placeholder="ex: 2027 - 2028"
+                                className="flex-1 h-8 px-2.5 rounded-lg border border-slate-300 bg-white font-mono font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                              <button
+                                type="button"
+                                disabled={batchYearRows.length <= 1}
+                                onClick={() =>
+                                  setBatchYearRows((prev) =>
+                                    prev.length > 1 ? prev.filter((r) => r.uid !== row.uid) : prev
+                                  )
+                                }
+                                className="w-7 h-7 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 disabled:opacity-30 flex items-center justify-center cursor-pointer shrink-0"
+                                title="Retirer cette ligne"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
                       </div>
-                      <span className="text-[9px] text-slate-400 block">
-                        {inputYearValue.length}/12 caractères &bull; Chiffres autorisés
-                      </span>
-                    </form>
+                    )}
 
                     {/* 2. Palette de couleurs à appliquer */}
                     <div>
                       <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                        Couleur du bouton de l&apos;année
+                        Couleur {yearCreationMode === 'batch' ? 'des boutons' : "du bouton de l'année"}
                       </label>
                       <div className="grid grid-cols-5 gap-2">
                         {YEAR_COLOR_OPTIONS.map((col) => {
@@ -2853,38 +3463,78 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       compact
                     />
 
-                    {/* 3. Propositions d'années qui commencent cette année (2026 - 2027...) */}
+                    {/* 3. Propositions rapides */}
                     <div>
                       <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                        Propositions rapides
+                        {yearCreationMode === 'batch'
+                          ? 'Cliquez pour ajouter / retirer :'
+                          : 'Propositions rapides'}
                       </label>
                       <div className="flex flex-wrap gap-1.5">
-                        {SUGGESTED_YEARS.map((sug) => (
-                          <button
-                            key={sug}
-                            type="button"
-                            onClick={() => setInputYearValue(sug)}
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition-all cursor-pointer ${
-                              inputYearValue === sug
-                                ? 'bg-cyan-500 text-white shadow-sm'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {sug}
-                          </button>
-                        ))}
+                        {SUGGESTED_YEARS.map((sug) => {
+                          const alreadyExists = schoolYears.some(
+                            (y) => y.label.trim().toLowerCase() === sug.toLowerCase()
+                          );
+                          const isPicked =
+                            yearCreationMode === 'batch'
+                              ? batchYearRows.some((r) => r.label.trim().toLowerCase() === sug.toLowerCase())
+                              : inputYearValue === sug;
+                          return (
+                            <button
+                              key={sug}
+                              type="button"
+                              disabled={yearCreationMode === 'batch' && alreadyExists}
+                              onClick={() =>
+                                yearCreationMode === 'batch'
+                                  ? handleToggleYearBatchSuggestion(sug)
+                                  : setInputYearValue(sug)
+                              }
+                              className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition-all cursor-pointer inline-flex items-center gap-1 disabled:opacity-45 disabled:cursor-not-allowed ${
+                                isPicked
+                                  ? 'bg-cyan-600 text-white shadow-sm'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {yearCreationMode === 'batch' && isPicked && (
+                                <Check className="w-2.5 h-2.5 stroke-[3]" />
+                              )}
+                              <span>{sug}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
+
+                    {batchError && yearCreationMode === 'batch' && (
+                      <div className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">
+                        {batchError}
+                      </div>
+                    )}
 
                     {/* Bouton Appliquer bas du menu */}
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-end">
                       <button
                         type="button"
+                        disabled={
+                          isBatchSaving ||
+                          (yearCreationMode === 'batch'
+                            ? validBatchYearLabels.length === 0
+                            : !inputYearValue.trim())
+                        }
                         onClick={() => handleApplyYear()}
-                        className="w-full py-2 rounded-xl text-xs font-black text-white shadow-sm transition active:scale-95 cursor-pointer"
+                        className="w-full py-2 rounded-xl text-xs font-black text-white shadow-sm transition active:scale-95 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
                         style={{ backgroundColor: '#00313d' }}
                       >
-                        Appliquer cette rentrée scolaire
+                        {isBatchSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                        <span>
+                          {yearCreationMode === 'batch'
+                            ? validBatchYearLabels.length > 1
+                              ? `Créer ${validBatchYearLabels.length} rentrées scolaires`
+                              : validBatchYearLabels.length === 1
+                              ? 'Créer 1 rentrée scolaire'
+                              : 'Ajoutez au moins une nouvelle rentrée'
+                            : 'Appliquer cette rentrée scolaire'}
+                        </span>
                       </button>
                     </div>
                   </div>
@@ -3008,11 +3658,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   <button
                     type="button"
                     onClick={() => {
-                      setEditingSchool(null);
-                      setSchoolName('');
-                      setSchoolLogo(null);
-                      setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
-                      setSchoolColorStyle('full');
+                      resetSchoolForm();
                       setIsAddSchoolModalOpen(true);
                     }}
                     className="group relative w-60 h-56 sm:w-64 sm:h-60 border-2 border-dashed border-cyan-300/70 hover:border-cyan-200 bg-[#081329]/45 hover:bg-[#081329]/65 backdrop-blur-[4px] rounded-3xl flex flex-col items-center justify-center p-5 text-center cursor-pointer transition-all duration-300 shadow-[0_12px_36px_rgba(0,0,0,0.45)] hover:shadow-[0_16px_42px_rgba(6,182,212,0.28)] hover:-translate-y-1 active:translate-y-0"
@@ -3075,11 +3721,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     <button
                       type="button"
                       onClick={() => {
-                        setEditingSchool(null);
-                        setSchoolName('');
-                        setSchoolLogo(null);
-                        setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
-                        setSchoolColorStyle('full');
+                        resetSchoolForm();
                         setIsAddSchoolModalOpen(true);
                       }}
                       className="min-h-[170px] border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white backdrop-blur-md rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group hover:-translate-y-1 shadow-md hover:shadow-lg"
@@ -3495,8 +4137,123 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               </div>
 
               {/* Formulaire intérieur */}
-              <form onSubmit={handleCreateSchool} className="p-6 space-y-5">
-                
+              <form onSubmit={handleCreateSchool} className="p-6 space-y-5 max-h-[78vh] overflow-y-auto">
+                {!editingSchool && (
+                  <CreationModeToggle
+                    mode={schoolCreationMode}
+                    onChange={(next) => {
+                      setBatchError(null);
+                      if (next === 'batch' && schoolName.trim()) {
+                        setBatchSchoolRows((prev) => {
+                          const hasAny = prev.some((r) => r.name.trim());
+                          if (!hasAny) {
+                            return [
+                              { uid: makeBatchRowUid(), name: schoolName.trim(), logoDataUrl: schoolLogo },
+                              { uid: makeBatchRowUid(), name: '', logoDataUrl: null },
+                            ];
+                          }
+                          return prev;
+                        });
+                      }
+                      setSchoolCreationMode(next);
+                    }}
+                    singleLabel="Une école"
+                    batchLabel="Créer plusieurs écoles"
+                    batchCount={validBatchSchoolRows.length}
+                  />
+                )}
+
+                {!editingSchool && schoolCreationMode === 'batch' ? (
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                        Liste des établissements à créer <span className="text-red-500">*</span>
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setBatchSchoolRows((prev) => [
+                            ...prev,
+                            { uid: makeBatchRowUid(), name: '', logoDataUrl: null },
+                          ])
+                        }
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-50 hover:bg-cyan-100 border border-cyan-200 text-[11px] font-bold text-cyan-900 transition cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                        <span>Ajouter une école</span>
+                      </button>
+                    </div>
+
+                    <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
+                      {batchSchoolRows.map((row, idx) => (
+                        <div
+                          key={row.uid}
+                          className="flex items-center gap-2 p-2 rounded-xl border border-slate-200 bg-slate-50/70"
+                        >
+                          <span className="w-5 text-[11px] font-bold text-slate-400 text-center shrink-0">
+                            {idx + 1}.
+                          </span>
+                          <label
+                            className="w-9 h-9 rounded-full overflow-hidden border border-slate-300 bg-white hover:border-cyan-500 flex items-center justify-center cursor-pointer shrink-0 transition"
+                            title="Importer un logo (facultatif)"
+                          >
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => handleBatchSchoolLogoUpload(row.uid, e)}
+                            />
+                            {row.logoDataUrl ? (
+                              <img src={row.logoDataUrl} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <Upload className="w-3.5 h-3.5 text-slate-400" />
+                            )}
+                          </label>
+                          <input
+                            type="text"
+                            value={row.name}
+                            autoFocus={idx === 0}
+                            onChange={(e) => {
+                              setBatchError(null);
+                              const val = e.target.value;
+                              setBatchSchoolRows((prev) =>
+                                prev.map((r) => (r.uid === row.uid ? { ...r, name: val } : r))
+                              );
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                setBatchSchoolRows((prev) => [
+                                  ...prev,
+                                  { uid: makeBatchRowUid(), name: '', logoDataUrl: null },
+                                ]);
+                              }
+                            }}
+                            placeholder={`Nom de l'école ${idx + 1} (ex: Lycée Moderne...)`}
+                            className="flex-1 h-9 px-3 rounded-lg border border-slate-300 bg-white font-semibold text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                          <button
+                            type="button"
+                            disabled={batchSchoolRows.length <= 1}
+                            onClick={() =>
+                              setBatchSchoolRows((prev) =>
+                                prev.length > 1 ? prev.filter((r) => r.uid !== row.uid) : prev
+                              )
+                            }
+                            className="w-8 h-8 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 disabled:opacity-30 flex items-center justify-center cursor-pointer shrink-0"
+                            title="Retirer cette ligne"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <span className="text-[10px] text-slate-400 block">
+                      Astuce : appuyez sur Entrée pour ajouter une nouvelle ligne rapidement. La couleur et le style ci-dessous s&apos;appliquent à toutes les écoles créées.
+                    </span>
+                  </div>
+                ) : (
+                  <>
                 {/* 1. Nom de l'école (Requis) */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
@@ -3567,6 +4324,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     </div>
                   </div>
                 </div>
+                  </>
+                )}
 
                 {/* 3. Choisir une couleur (Blanc par défaut si non choisi) */}
                 <div className="space-y-2">
@@ -3639,7 +4398,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           </div>
                           <div className="flex-1 min-w-0">
                             <span className="font-black text-sm block truncate">
-                              {schoolName.trim() || "Nom de l'école"}
+                              {(!editingSchool && schoolCreationMode === 'batch'
+                                ? validBatchSchoolRows[0]?.name
+                                : schoolName.trim()) || "Nom de l'école"}
                             </span>
                             <span className="text-[10px] font-semibold opacity-75 block truncate">
                               Établissement &bull; {currentSelectedYear?.label}
@@ -3658,36 +4419,56 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   />
                 </div>
 
+                {batchError && !editingSchool && schoolCreationMode === 'batch' && (
+                  <div className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                    {batchError}
+                  </div>
+                )}
+
                 {/* 4. Bouton Créer / Enregistrer accessible */}
                 <div className="pt-3 border-t border-slate-100 flex items-center gap-3">
                   <button
                     type="button"
+                    disabled={isBatchSaving}
                     onClick={() => {
                       setIsAddSchoolModalOpen(false);
-                      setEditingSchool(null);
+                      resetSchoolForm();
                     }}
-                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"
+                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition cursor-pointer"
                   >
                     Annuler
                   </button>
 
-                  <button
-                    type="submit"
-                    disabled={editingSchool ? (!schoolName.trim() || !isSchoolDirty) : !schoolName.trim()}
-                    style={{ 
-                      backgroundColor: (editingSchool ? (schoolName.trim() && isSchoolDirty) : schoolName.trim()) 
-                        ? '#00313d' 
-                        : undefined 
-                    }}
-                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
-                      (editingSchool ? (schoolName.trim() && isSchoolDirty) : schoolName.trim())
-                        ? 'text-white hover:bg-[#00242e] cursor-pointer' 
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{editingSchool ? 'Enregistrer' : "Créer l'école"}</span>
-                  </button>
+                  {(() => {
+                    const canSubmitSchool = !isBatchSaving && (editingSchool
+                      ? (schoolName.trim().length > 0 && isSchoolDirty)
+                      : schoolCreationMode === 'batch'
+                      ? validBatchSchoolRows.length > 0
+                      : schoolName.trim().length > 0);
+                    return (
+                      <button
+                        type="submit"
+                        disabled={!canSubmitSchool}
+                        style={{ backgroundColor: canSubmitSchool ? '#00313d' : undefined }}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
+                          canSubmitSchool
+                            ? 'text-white hover:bg-[#00242e] cursor-pointer'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        {isBatchSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        <span>
+                          {editingSchool
+                            ? 'Enregistrer'
+                            : schoolCreationMode === 'batch'
+                            ? validBatchSchoolRows.length > 1
+                              ? `Créer ${validBatchSchoolRows.length} écoles`
+                              : 'Créer 1 école'
+                            : "Créer l'école"}
+                        </span>
+                      </button>
+                    );
+                  })()}
                 </div>
               </form>
             </div>
@@ -3738,45 +4519,160 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5 p-6 overflow-y-auto flex-1">
                   {/* COLONNE GAUCHE : Saisie du niveau d'étude + Suggestions rapides */}
                   <div className="space-y-3">
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
-                        Niveau d'étude <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={studyLevelName}
-                        onChange={(e) => setStudyLevelName(e.target.value)}
-                        placeholder="Ex: CP1, CE1, 6ème, 2nde, Terminale, Licence 1..."
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
-                        autoFocus
+                    {!editingLevel && (
+                      <CreationModeToggle
+                        mode={levelCreationMode}
+                        onChange={(next) => {
+                          setBatchError(null);
+                          if (next === 'batch' && studyLevelName.trim()) {
+                            setBatchLevelRows((prev) => {
+                              const hasAny = prev.some((r) => r.name.trim());
+                              if (!hasAny) {
+                                return [
+                                  { uid: makeBatchRowUid(), name: studyLevelName.trim() },
+                                  { uid: makeBatchRowUid(), name: '' },
+                                ];
+                              }
+                              return prev;
+                            });
+                          }
+                          setLevelCreationMode(next);
+                        }}
+                        singleLabel="Un niveau"
+                        batchLabel="Créer plusieurs"
+                        batchCount={validBatchLevelNames.length}
                       />
-                      <span className="text-[10px] text-slate-400 block">
-                        Choisissez une proposition rapide ou saisissez votre propre niveau d'étude. Vous créerez ensuite vos classes à l'intérieur.
-                      </span>
-                    </div>
+                    )}
+
+                    {!editingLevel && levelCreationMode === 'batch' ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                            Niveaux à créer ({validBatchLevelNames.length})
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setBatchLevelRows((prev) => [
+                                ...prev,
+                                { uid: makeBatchRowUid(), name: '' },
+                              ])
+                            }
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan-800 hover:text-cyan-950 cursor-pointer"
+                          >
+                            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                            <span>Ajouter ligne</span>
+                          </button>
+                        </div>
+
+                        <div className="max-h-40 overflow-y-auto space-y-1.5 pr-1">
+                          {batchLevelRows.map((row, idx) => (
+                            <div key={row.uid} className="flex items-center gap-1.5">
+                              <span className="w-5 text-[10px] font-bold text-slate-400 text-center shrink-0">
+                                {idx + 1}.
+                              </span>
+                              <input
+                                type="text"
+                                value={row.name}
+                                autoFocus={idx === 0}
+                                onChange={(e) => {
+                                  setBatchError(null);
+                                  const val = e.target.value;
+                                  setBatchLevelRows((prev) =>
+                                    prev.map((r) => (r.uid === row.uid ? { ...r, name: val } : r))
+                                  );
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    setBatchLevelRows((prev) => [
+                                      ...prev,
+                                      { uid: makeBatchRowUid(), name: '' },
+                                    ]);
+                                  }
+                                }}
+                                placeholder={`Niveau ${idx + 1} (ex: 6ème, 5ème, BTS 2...)`}
+                                className="flex-1 h-9 px-3 rounded-lg border border-slate-300 bg-white font-bold text-xs sm:text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                              <button
+                                type="button"
+                                disabled={batchLevelRows.length <= 1}
+                                onClick={() =>
+                                  setBatchLevelRows((prev) =>
+                                    prev.length > 1 ? prev.filter((r) => r.uid !== row.uid) : prev
+                                  )
+                                }
+                                className="w-7 h-7 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 disabled:opacity-30 flex items-center justify-center cursor-pointer shrink-0"
+                                title="Retirer cette ligne"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5">
+                        <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                          Niveau d'étude <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={studyLevelName}
+                          onChange={(e) => setStudyLevelName(e.target.value)}
+                          placeholder="Ex: CP1, CE1, 6ème, 2nde, Terminale, Licence 1..."
+                          className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 bg-white font-bold text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                          autoFocus
+                        />
+                        <span className="text-[10px] text-slate-400 block">
+                          Choisissez une proposition rapide ou saisissez votre propre niveau d'étude. Vous créerez ensuite vos classes à l'intérieur.
+                        </span>
+                      </div>
+                    )}
 
                     {/* Suggestions rapides de niveaux */}
                     <div className="space-y-1.5">
                       <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
-                        Niveaux suggérés :
+                        {!editingLevel && levelCreationMode === 'batch'
+                          ? 'Cliquez pour sélectionner plusieurs niveaux :'
+                          : 'Niveaux suggérés :'}
                       </span>
                       <div className="flex flex-wrap gap-1.5">
-                        {CLASS_LEVEL_SUGGESTIONS.map((sug) => (
-                          <button
-                            key={sug}
-                            type="button"
-                            onClick={() => setStudyLevelName(sug)}
-                            className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
-                              studyLevelName === sug
-                                ? 'bg-[#00313d] text-white shadow-2xs'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {sug}
-                          </button>
-                        ))}
+                        {CLASS_LEVEL_SUGGESTIONS.map((sug) => {
+                          const isPicked =
+                            !editingLevel && levelCreationMode === 'batch'
+                              ? batchLevelRows.some((r) => r.name.trim().toLowerCase() === sug.toLowerCase())
+                              : studyLevelName === sug;
+                          return (
+                            <button
+                              key={sug}
+                              type="button"
+                              onClick={() =>
+                                !editingLevel && levelCreationMode === 'batch'
+                                  ? handleToggleLevelBatchSuggestion(sug)
+                                  : setStudyLevelName(sug)
+                              }
+                              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 ${
+                                isPicked
+                                  ? 'bg-[#00313d] text-white shadow-2xs'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {!editingLevel && levelCreationMode === 'batch' && isPicked && (
+                                <Check className="w-3 h-3 stroke-[3]" />
+                              )}
+                              <span>{sug}</span>
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
+
+                    {batchError && !editingLevel && levelCreationMode === 'batch' && (
+                      <div className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                        {batchError}
+                      </div>
+                    )}
                   </div>
 
                   {/* COLONNE DROITE : Couleur d'accent + Aperçu du bouton mince rectangulaire (NON 3D) */}
@@ -3857,7 +4753,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               )}
                               <div className={`flex items-center gap-2 min-w-0 ${!isFull ? 'pl-1' : ''}`}>
                                 <Layers className={`w-3.5 h-3.5 shrink-0 ${isFull ? 'text-white/90' : 'text-slate-500 dark:text-slate-400'}`} />
-                                <span className="truncate">{studyLevelName.trim() || 'Ex: Terminale'}</span>
+                                <span className="truncate">
+                                  {(!editingLevel && levelCreationMode === 'batch'
+                                    ? validBatchLevelNames[0]
+                                    : studyLevelName.trim()) || 'Ex: Terminale'}
+                                </span>
                               </div>
                               <span
                                 className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold shrink-0 ${
@@ -3880,6 +4780,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 <div className="p-4 px-6 border-t border-slate-100 flex items-center gap-3 bg-slate-50/50 shrink-0">
                   <button
                     type="button"
+                    disabled={isBatchSaving}
                     onClick={() => {
                       setIsAddLevelModalOpen(false);
                       resetLevelForm();
@@ -3889,23 +4790,36 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     Annuler
                   </button>
 
-                  <button
-                    type="submit"
-                    disabled={editingLevel ? (!studyLevelName.trim() || !isLevelDirty) : !studyLevelName.trim()}
-                    style={{
-                      backgroundColor: (editingLevel ? (studyLevelName.trim() && isLevelDirty) : studyLevelName.trim())
-                        ? '#00313d'
-                        : undefined
-                    }}
-                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
-                      (editingLevel ? (studyLevelName.trim() && isLevelDirty) : studyLevelName.trim())
-                        ? 'text-white hover:bg-[#00242e] cursor-pointer'
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{editingLevel ? 'Enregistrer' : "Créer le niveau"}</span>
-                  </button>
+                  {(() => {
+                    const canSubmitLevel = !isBatchSaving && (editingLevel
+                      ? (studyLevelName.trim().length > 0 && isLevelDirty)
+                      : levelCreationMode === 'batch'
+                      ? validBatchLevelNames.length > 0
+                      : studyLevelName.trim().length > 0);
+                    return (
+                      <button
+                        type="submit"
+                        disabled={!canSubmitLevel}
+                        style={{ backgroundColor: canSubmitLevel ? '#00313d' : undefined }}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
+                          canSubmitLevel
+                            ? 'text-white hover:bg-[#00242e] cursor-pointer'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        {isBatchSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        <span>
+                          {editingLevel
+                            ? 'Enregistrer'
+                            : levelCreationMode === 'batch'
+                            ? validBatchLevelNames.length > 1
+                              ? `Créer ${validBatchLevelNames.length} niveaux`
+                              : 'Créer 1 niveau'
+                            : 'Créer le niveau'}
+                        </span>
+                      </button>
+                    );
+                  })()}
                 </div>
               </form>
             </div>
@@ -3962,6 +4876,172 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   
                   {/* COLONNE GAUCHE : Nom libre de la classe, Slogan et Professeur */}
                   <div className="space-y-4">
+                    {!editingClass && (
+                      <CreationModeToggle
+                        mode={classCreationMode}
+                        onChange={(next) => {
+                          setBatchError(null);
+                          if (next === 'batch' && className.trim()) {
+                            setBatchClassRows((prev) => {
+                              const hasAny = prev.some((r) => r.name.trim());
+                              if (!hasAny) {
+                                return [
+                                  { uid: makeBatchRowUid(), name: className.trim(), slogan: classSlogan.trim() },
+                                  { uid: makeBatchRowUid(), name: '', slogan: '' },
+                                ];
+                              }
+                              return prev;
+                            });
+                          }
+                          setClassCreationMode(next);
+                        }}
+                        singleLabel="Une classe"
+                        batchLabel="Créer plusieurs"
+                        batchCount={validBatchClassRows.length}
+                      />
+                    )}
+
+                    {!editingClass && classCreationMode === 'batch' ? (
+                      <>
+                        {/* Raccourcis intelligents basés sur le niveau actif */}
+                        <div className="space-y-1.5">
+                          <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                            Ajout rapide (cliquez pour ajouter / retirer) :
+                          </span>
+                          <div className="flex flex-wrap gap-1.5">
+                            {[
+                              `${activeLevel?.name || 'Classe'} A`,
+                              `${activeLevel?.name || 'Classe'} B`,
+                              `${activeLevel?.name || 'Classe'} C`,
+                              `${activeLevel?.name || 'Classe'} D`,
+                              'Groupe 1',
+                              'Groupe 2',
+                              'Groupe 3',
+                            ].map((sug) => {
+                              const isPicked = batchClassRows.some(
+                                (r) => r.name.trim().toLowerCase() === sug.toLowerCase()
+                              );
+                              return (
+                                <button
+                                  key={sug}
+                                  type="button"
+                                  onClick={() => handleToggleClassBatchSuggestion(sug)}
+                                  className={`px-2 py-1 rounded-lg text-[10.5px] font-bold transition cursor-pointer inline-flex items-center gap-1 ${
+                                    isPicked
+                                      ? 'bg-[#00313d] text-white shadow-2xs'
+                                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                                  }`}
+                                >
+                                  {isPicked && <Check className="w-3 h-3 stroke-[3]" />}
+                                  <span>{sug}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Liste éditable des classes à créer */}
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between">
+                            <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                              Classes à créer ({validBatchClassRows.length})
+                            </label>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setBatchClassRows((prev) => [
+                                  ...prev,
+                                  { uid: makeBatchRowUid(), name: '', slogan: '' },
+                                ])
+                              }
+                              className="inline-flex items-center gap-1 text-[11px] font-bold text-cyan-800 hover:text-cyan-950 cursor-pointer"
+                            >
+                              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                              <span>Ajouter ligne</span>
+                            </button>
+                          </div>
+
+                          <div className="max-h-36 overflow-y-auto space-y-1.5 pr-1">
+                            {batchClassRows.map((row, idx) => (
+                              <div key={row.uid} className="flex items-center gap-1.5">
+                                <span className="w-5 text-[10px] font-bold text-slate-400 text-center shrink-0">
+                                  {idx + 1}.
+                                </span>
+                                <input
+                                  type="text"
+                                  value={row.name}
+                                  autoFocus={idx === 0}
+                                  onChange={(e) => {
+                                    setBatchError(null);
+                                    const val = e.target.value;
+                                    setBatchClassRows((prev) =>
+                                      prev.map((r) => (r.uid === row.uid ? { ...r, name: val } : r))
+                                    );
+                                  }}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                      e.preventDefault();
+                                      setBatchClassRows((prev) => [
+                                        ...prev,
+                                        { uid: makeBatchRowUid(), name: '', slogan: '' },
+                                      ]);
+                                    }
+                                  }}
+                                  placeholder={`Ex: ${activeLevel?.name || 'Classe'} ${String.fromCharCode(65 + (idx % 26))}`}
+                                  className="flex-1 h-9 px-2.5 rounded-lg border border-slate-300 bg-white font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                />
+                                <input
+                                  type="text"
+                                  value={row.slogan}
+                                  onChange={(e) => {
+                                    const val = e.target.value;
+                                    setBatchClassRows((prev) =>
+                                      prev.map((r) => (r.uid === row.uid ? { ...r, slogan: val } : r))
+                                    );
+                                  }}
+                                  placeholder="Slogan (opt.)"
+                                  className="w-28 h-9 px-2 rounded-lg border border-slate-300 bg-white text-[11px] font-medium text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={batchClassRows.length <= 1}
+                                  onClick={() =>
+                                    setBatchClassRows((prev) =>
+                                      prev.length > 1 ? prev.filter((r) => r.uid !== row.uid) : prev
+                                    )
+                                  }
+                                  className="w-7 h-7 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 disabled:opacity-30 flex items-center justify-center cursor-pointer shrink-0"
+                                  title="Retirer cette ligne"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Nom du professeur commun pour toutes les classes créées */}
+                        <div className="space-y-1">
+                          <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                            Nom du Professeur / Maître <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={classTeacherName}
+                            onChange={(e) => setClassTeacherName(e.target.value)}
+                            placeholder="Ex: M. Delmas Kouassi, Mme Koffi..."
+                            className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                          />
+                        </div>
+
+                        {batchError && (
+                          <div className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                            {batchError}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      <>
                     {/* 1. Nom de la classe donné librement par l'utilisateur (Requis) */}
                     <div className="space-y-1.5">
                       <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
@@ -4007,6 +5087,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         className="w-full px-3.5 py-2 rounded-xl border border-slate-300 bg-white text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
                       />
                     </div>
+                      </>
+                    )}
                   </div>
 
                   {/* COLONNE DROITE : Couleur de la classe & Aperçu 3D compact */}
@@ -4092,7 +5174,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                 {classSlogan.trim() || (editingClass ? editingClass.level : activeLevel?.name) || 'Niveau'}
                               </span>
                               <h4 className="text-xs font-bold leading-snug truncate mt-0.5">
-                                {className.trim() || 'Nom de la classe'}
+                                {(!editingClass && classCreationMode === 'batch'
+                                  ? validBatchClassRows[0]?.name
+                                  : className.trim()) || 'Nom de la classe'}
                               </h4>
                               <span className={`text-[10px] block truncate mt-0.5 ${
                                 isFull ? 'text-white/85' : 'text-slate-600 dark:text-slate-400'
@@ -4122,6 +5206,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 <div className="p-4 px-6 border-t border-slate-100 flex items-center gap-3 bg-slate-50/50 shrink-0">
                   <button
                     type="button"
+                    disabled={isBatchSaving}
                     onClick={() => {
                       setIsAddClassModalOpen(false);
                       resetClassForm();
@@ -4131,23 +5216,36 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     Annuler
                   </button>
 
-                  <button
-                    type="submit"
-                    disabled={editingClass ? (!className.trim() || !classTeacherName.trim() || !isClassDirty) : (!className.trim() || !classTeacherName.trim())}
-                    style={{ 
-                      backgroundColor: (editingClass ? (className.trim() && classTeacherName.trim() && isClassDirty) : (className.trim() && classTeacherName.trim())) 
-                        ? '#00313d' 
-                        : undefined 
-                    }}
-                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
-                      (editingClass ? (className.trim() && classTeacherName.trim() && isClassDirty) : (className.trim() && classTeacherName.trim()))
-                        ? 'text-white hover:bg-[#00242e] cursor-pointer' 
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{editingClass ? 'Enregistrer' : "Créer la classe"}</span>
-                  </button>
+                  {(() => {
+                    const canSubmitClass = !isBatchSaving && (editingClass
+                      ? (className.trim().length > 0 && classTeacherName.trim().length > 0 && isClassDirty)
+                      : classCreationMode === 'batch'
+                      ? (validBatchClassRows.length > 0 && classTeacherName.trim().length > 0)
+                      : (className.trim().length > 0 && classTeacherName.trim().length > 0));
+                    return (
+                      <button
+                        type="submit"
+                        disabled={!canSubmitClass}
+                        style={{ backgroundColor: canSubmitClass ? '#00313d' : undefined }}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
+                          canSubmitClass
+                            ? 'text-white hover:bg-[#00242e] cursor-pointer'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        {isBatchSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        <span>
+                          {editingClass
+                            ? 'Enregistrer'
+                            : classCreationMode === 'batch'
+                            ? validBatchClassRows.length > 1
+                              ? `Créer ${validBatchClassRows.length} classes`
+                              : 'Créer 1 classe'
+                            : 'Créer la classe'}
+                        </span>
+                      </button>
+                    );
+                  })()}
                 </div>
               </form>
             </div>
@@ -4195,7 +5293,157 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
               {/* Formulaire intérieur */}
               <form onSubmit={handleCreateSubject} className="p-6 space-y-4 overflow-y-auto flex-1">
-                
+                {!editingSubject && (
+                  <CreationModeToggle
+                    mode={subjectCreationMode}
+                    onChange={(next) => {
+                      setBatchError(null);
+                      if (next === 'batch' && subjectName.trim()) {
+                        setBatchSubjectRows((prev) => {
+                          const hasAny = prev.some((r) => r.name.trim());
+                          if (!hasAny) {
+                            return [
+                              { uid: makeBatchRowUid(), name: subjectName.trim(), coeff: subjectCoefficient.trim() },
+                              { uid: makeBatchRowUid(), name: '', coeff: '' },
+                            ];
+                          }
+                          return prev;
+                        });
+                      }
+                      setSubjectCreationMode(next);
+                    }}
+                    singleLabel="Une matière"
+                    batchLabel="Créer plusieurs matières"
+                    batchCount={validBatchSubjectRows.length}
+                  />
+                )}
+
+                {!editingSubject && subjectCreationMode === 'batch' ? (
+                  <div className="space-y-3">
+                    {/* Suggestions rapides cliquables pour cocher plusieurs matières en 2 secondes */}
+                    <div className="space-y-1.5">
+                      <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                        Cliquez pour ajouter / retirer rapidement :
+                      </span>
+                      <div className="flex flex-wrap gap-1.5">
+                        {CLASS_SUBJECT_SUGGESTIONS.map((sug) => {
+                          const isPicked = batchSubjectRows.some(
+                            (r) => r.name.trim().toLowerCase() === sug.toLowerCase()
+                          );
+                          return (
+                            <button
+                              key={sug}
+                              type="button"
+                              onClick={() => handleToggleSubjectBatchSuggestion(sug)}
+                              className={`px-2.5 py-1 rounded-lg text-[10.5px] font-bold transition-all cursor-pointer inline-flex items-center gap-1 ${
+                                isPicked
+                                  ? 'bg-red-600 text-white shadow-2xs'
+                                  : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                              }`}
+                            >
+                              {isPicked && <Check className="w-3 h-3 stroke-[3]" />}
+                              <span>{sug}</span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Liste éditable : Nom de la matière + Coefficient facultatif par ligne */}
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
+                          Matières à créer ({validBatchSubjectRows.length})
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setBatchSubjectRows((prev) => [
+                              ...prev,
+                              { uid: makeBatchRowUid(), name: '', coeff: '' },
+                            ])
+                          }
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-red-50 hover:bg-red-100 border border-red-200 text-[11px] font-bold text-red-700 cursor-pointer"
+                        >
+                          <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                          <span>Ajouter une ligne</span>
+                        </button>
+                      </div>
+
+                      <div className="max-h-48 overflow-y-auto space-y-1.5 pr-1">
+                        {batchSubjectRows.map((row, idx) => (
+                          <div key={row.uid} className="flex items-center gap-1.5">
+                            <span className="w-5 text-[10px] font-bold text-slate-400 text-center shrink-0">
+                              {idx + 1}.
+                            </span>
+                            <input
+                              type="text"
+                              value={row.name}
+                              autoFocus={idx === 0}
+                              onChange={(e) => {
+                                setBatchError(null);
+                                const val = e.target.value;
+                                setBatchSubjectRows((prev) =>
+                                  prev.map((r) => (r.uid === row.uid ? { ...r, name: val } : r))
+                                );
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  e.preventDefault();
+                                  setBatchSubjectRows((prev) => [
+                                    ...prev,
+                                    { uid: makeBatchRowUid(), name: '', coeff: '' },
+                                  ]);
+                                }
+                              }}
+                              placeholder={`Matière ${idx + 1} (ex: Mathématiques)`}
+                              className="flex-1 h-9 px-2.5 rounded-lg border border-slate-300 bg-white font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                            <input
+                              type="number"
+                              step="0.5"
+                              min="0.5"
+                              max="100"
+                              value={row.coeff}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                setBatchSubjectRows((prev) =>
+                                  prev.map((r) => (r.uid === row.uid ? { ...r, coeff: val } : r))
+                                );
+                              }}
+                              placeholder="Coeff"
+                              title="Coefficient facultatif pour cette matière"
+                              className="w-20 h-9 px-2 text-center rounded-lg border border-slate-300 bg-white font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shrink-0"
+                            />
+                            <button
+                              type="button"
+                              disabled={batchSubjectRows.length <= 1}
+                              onClick={() =>
+                                setBatchSubjectRows((prev) =>
+                                  prev.length > 1 ? prev.filter((r) => r.uid !== row.uid) : prev
+                                )
+                              }
+                              className="w-7 h-7 rounded-lg hover:bg-red-50 text-slate-400 hover:text-red-600 disabled:opacity-30 flex items-center justify-center cursor-pointer shrink-0"
+                              title="Retirer cette ligne"
+                            >
+                              <X className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                      <span className="text-[10px] text-slate-400 block">
+                        Le coefficient est facultatif et peut être personnalisé pour chaque matière. Toutes les matières sont enregistrées d&apos;un coup sur votre compte.
+                      </span>
+                    </div>
+
+                    {batchError && (
+                      <div className="text-xs font-semibold text-red-600 bg-red-50 border border-red-200 rounded-xl px-3 py-2">
+                        {batchError}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <>
                 {/* 1. Nom de la matière (Requis) + Suggestions rapides */}
                 <div className="space-y-1.5">
                   <label className="block text-xs font-extrabold uppercase tracking-wider text-slate-700">
@@ -4266,6 +5514,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     Enregistré sur votre compte et utilisé pour le calcul de la moyenne générale.
                   </span>
                 </div>
+                  </>
+                )}
 
                 {/* 3. Couleur de la carte de matière (Blanc par défaut) */}
                 <div className="space-y-1.5">
@@ -4336,10 +5586,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           )}
                           <div className={!isFull ? 'pl-1.5' : ''}>
                             <div className="font-bold text-xs leading-snug line-clamp-2 break-words">
-                              {subjectName.trim() || 'Nom matière'}
+                              {(!editingSubject && subjectCreationMode === 'batch'
+                                ? validBatchSubjectRows[0]?.name
+                                : subjectName.trim()) || 'Nom matière'}
                             </div>
                             <div className="mt-1">
-                              {subjectCoefficient.trim() ? (
+                              {((!editingSubject && subjectCreationMode === 'batch'
+                                ? validBatchSubjectRows[0]?.coeff?.trim()
+                                : subjectCoefficient.trim())) ? (
                                 <span
                                   className={`inline-block text-[9.5px] font-semibold px-1.5 py-0.2 rounded border ${
                                     isFull
@@ -4347,7 +5601,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                       : 'bg-slate-100 dark:bg-[#1e293b] text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600'
                                   }`}
                                 >
-                                  Coeff {subjectCoefficient.trim()}
+                                  Coeff{' '}
+                                  {!editingSubject && subjectCreationMode === 'batch'
+                                    ? validBatchSubjectRows[0]?.coeff?.trim()
+                                    : subjectCoefficient.trim()}
                                 </span>
                               ) : (
                                 <span
@@ -4389,32 +5646,46 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 <div className="pt-3 border-t border-slate-100 flex items-center gap-3">
                   <button
                     type="button"
+                    disabled={isBatchSaving}
                     onClick={() => {
                       setIsAddSubjectModalOpen(false);
                       resetSubjectForm();
                     }}
-                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition"
+                    className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-xs font-bold text-slate-700 transition cursor-pointer"
                   >
                     Annuler
                   </button>
 
-                  <button
-                    type="submit"
-                    disabled={editingSubject ? (!subjectName.trim() || !isSubjectDirty) : !subjectName.trim()}
-                    style={{ 
-                      backgroundColor: (editingSubject ? (subjectName.trim() && isSubjectDirty) : subjectName.trim()) 
-                        ? '#dc2626' 
-                        : undefined 
-                    }}
-                    className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
-                      (editingSubject ? (subjectName.trim() && isSubjectDirty) : subjectName.trim())
-                        ? 'text-white hover:bg-red-700 cursor-pointer' 
-                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                    }`}
-                  >
-                    <Check className="w-4 h-4" />
-                    <span>{editingSubject ? 'Enregistrer' : "Créer la matière"}</span>
-                  </button>
+                  {(() => {
+                    const canSubmitSubject = !isBatchSaving && (editingSubject
+                      ? (subjectName.trim().length > 0 && isSubjectDirty)
+                      : subjectCreationMode === 'batch'
+                      ? validBatchSubjectRows.length > 0
+                      : subjectName.trim().length > 0);
+                    return (
+                      <button
+                        type="submit"
+                        disabled={!canSubmitSubject}
+                        style={{ backgroundColor: canSubmitSubject ? '#dc2626' : undefined }}
+                        className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all shadow-md active:scale-95 flex items-center justify-center gap-2 ${
+                          canSubmitSubject
+                            ? 'text-white hover:bg-red-700 cursor-pointer'
+                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        }`}
+                      >
+                        {isBatchSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                        <span>
+                          {editingSubject
+                            ? 'Enregistrer'
+                            : subjectCreationMode === 'batch'
+                            ? validBatchSubjectRows.length > 1
+                              ? `Créer ${validBatchSubjectRows.length} matières`
+                              : 'Créer 1 matière'
+                            : 'Créer la matière'}
+                        </span>
+                      </button>
+                    );
+                  })()}
                 </div>
               </form>
             </div>
@@ -4616,7 +5887,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         )}
 
         {/* ========================================================================= */}
-        {/* PETIT MENU FLOTTANT SUR LE CÔTÉ : AJOUTER UN TRIMESTRE (+ COEFF FACULT.)  */}
+        {/* PETIT MENU FLOTTANT SUR LE CÔTÉ : AJOUTER UN OU PLUSIEURS TRIMESTRES      */}
         {/* ========================================================================= */}
         <SmartFloatingPopover
           open={Boolean(isAddTermPopoverOpen && activeClass)}
@@ -4628,17 +5899,22 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           onClose={() => {
             setIsAddTermPopoverOpen(false);
             setNewTermCoeffInput('');
+            setTermBatchCount(1);
+            setBatchTermCoeffs(['', '', '', '']);
+            setBatchError(null);
           }}
           ignoreOutsideSelector=".add-term-trigger"
           dataPopoverId="add-term-side-popover"
-          className="w-64 sm:w-72 rounded-2xl"
+          className="w-68 sm:w-76 rounded-2xl"
         >
           {activeClass && (
             <form onSubmit={handleConfirmAddTerm} className="p-3.5 space-y-3 text-slate-800">
               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                 <div className="min-w-0">
                   <h3 className="text-xs font-black text-[#00313d] leading-tight truncate">
-                    Trimestre {nextTermNumber}
+                    {termBatchCount > 1
+                      ? `Trimestres ${nextTermNumber} à ${nextTermNumber + termBatchCount - 1}`
+                      : `Trimestre ${nextTermNumber}`}
                   </h3>
                   <span className="text-[10px] font-semibold text-slate-400 block truncate">
                     {getClassFullLabel(activeClass)}
@@ -4649,6 +5925,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   onClick={() => {
                     setIsAddTermPopoverOpen(false);
                     setNewTermCoeffInput('');
+                    setTermBatchCount(1);
+                    setBatchTermCoeffs(['', '', '', '']);
+                    setBatchError(null);
                   }}
                   className="w-6 h-6 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer shrink-0"
                 >
@@ -4656,49 +5935,119 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 </button>
               </div>
 
-              <div className="space-y-1.5">
+              {/* Nombre de trimestres à créer d'un coup */}
+              <div className="space-y-1">
                 <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600">
-                  Coefficient <span className="font-semibold text-slate-400 normal-case">(facultatif)</span>
+                  Nombre à créer
                 </label>
-                <input
-                  type="number"
-                  step="0.5"
-                  min="0.5"
-                  max="100"
-                  value={newTermCoeffInput}
-                  onChange={(e) => setNewTermCoeffInput(e.target.value)}
-                  placeholder="Ex : 1, 2, 3..."
-                  className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
-                  autoFocus
-                />
-                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                  {['', '1', '2', '3'].map((val) => {
-                    const isSelected = newTermCoeffInput.trim() === val;
-                    return (
-                      <button
-                        key={val || 'none'}
-                        type="button"
-                        onClick={() => setNewTermCoeffInput(val)}
-                        className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer border ${
-                          isSelected
-                            ? 'bg-[#00313d] text-white border-[#00313d]'
-                            : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
-                        }`}
-                      >
-                        {val === '' ? 'Aucun' : `Coeff ${val}`}
-                      </button>
-                    );
-                  })}
+                <div className="grid grid-cols-4 gap-1.5">
+                  {[1, 2, 3, 4].map((cnt) => (
+                    <button
+                      key={cnt}
+                      type="button"
+                      onClick={() => {
+                        setTermBatchCount(cnt);
+                        setBatchError(null);
+                      }}
+                      className={`py-1 rounded-lg text-[11px] font-bold border transition cursor-pointer ${
+                        termBatchCount === cnt
+                          ? 'bg-[#00313d] text-white border-[#00313d]'
+                          : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                      }`}
+                    >
+                      {cnt === 1 ? '1' : `${cnt} d'un coup`}
+                    </button>
+                  ))}
                 </div>
               </div>
+
+              {termBatchCount === 1 ? (
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600">
+                    Coefficient <span className="font-semibold text-slate-400 normal-case">(facultatif)</span>
+                  </label>
+                  <input
+                    type="number"
+                    step="0.5"
+                    min="0.5"
+                    max="100"
+                    value={newTermCoeffInput}
+                    onChange={(e) => setNewTermCoeffInput(e.target.value)}
+                    placeholder="Ex : 1, 2, 3..."
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500 shadow-inner"
+                    autoFocus
+                  />
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    {['', '1', '2', '3'].map((val) => {
+                      const isSelected = newTermCoeffInput.trim() === val;
+                      return (
+                        <button
+                          key={val || 'none'}
+                          type="button"
+                          onClick={() => setNewTermCoeffInput(val)}
+                          className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer border ${
+                            isSelected
+                              ? 'bg-[#00313d] text-white border-[#00313d]'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {val === '' ? 'Aucun' : `Coeff ${val}`}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  <label className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600">
+                    Coefficients <span className="font-semibold text-slate-400 normal-case">(facultatif)</span>
+                  </label>
+                  <div className="space-y-1.5">
+                    {Array.from({ length: termBatchCount }).map((_, idx) => (
+                      <div key={idx} className="flex items-center justify-between gap-2">
+                        <span className="text-xs font-bold text-slate-700">
+                          Trimestre {nextTermNumber + idx}
+                        </span>
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0.5"
+                          max="100"
+                          value={batchTermCoeffs[idx] ?? ''}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setBatchError(null);
+                            setBatchTermCoeffs((prev) => prev.map((c, i) => (i === idx ? val : c)));
+                          }}
+                          placeholder="Coeff"
+                          className="w-20 h-8 px-2 text-center rounded-lg border border-slate-300 bg-white font-bold text-xs text-slate-900 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {batchError && termBatchCount > 1 && (
+                <div className="text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 rounded-lg px-2.5 py-1.5">
+                  {batchError}
+                </div>
+              )}
 
               <div className="pt-2 border-t border-slate-100">
                 <button
                   type="submit"
-                  className="w-full py-2 rounded-xl bg-[#00313d] hover:bg-[#00242e] text-white text-xs font-black shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                  disabled={isBatchSaving}
+                  className="w-full py-2 rounded-xl bg-[#00313d] hover:bg-[#00242e] disabled:opacity-50 text-white text-xs font-black shadow-sm transition active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                  <span>Créer</span>
+                  {isBatchSaving ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                  )}
+                  <span>
+                    {termBatchCount > 1 ? `Créer ${termBatchCount} trimestres` : 'Créer'}
+                  </span>
                 </button>
               </div>
             </form>

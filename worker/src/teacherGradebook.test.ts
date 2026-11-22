@@ -1349,3 +1349,156 @@ test('Style de couleur (accent vs full) persisté sur les 5 entités + mise à j
   assert.equal(sheetSubj?.coefficient, 3.5);
   assert.equal(sheetSubj?.effectiveCoeff, 3.5);
 });
+
+test('Création en lot atomique (POST /api/teacher/batch-create) : rentrées, écoles, niveaux, classes, trimestres, matières + Anti-IDOR', async () => {
+  const { callApi } = createHarness();
+
+  // 1. Créer 2 rentrées d'un coup (+ doublon ignoré proprement)
+  const yearsRes = await callApi('/api/teacher/batch-create', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      entity: 'years',
+      items: [
+        { label: '2026 - 2027', color: '#2563eb', textColor: '#ffffff', colorStyle: 'full' },
+        { label: '2027 - 2028', color: '#2563eb', textColor: '#ffffff', colorStyle: 'accent' },
+        { label: '2026 - 2027', color: '#dc2626', textColor: '#ffffff', colorStyle: 'full' },
+      ],
+    },
+  });
+  assert.equal(yearsRes.status, 201);
+  const yearsJson = await yearsRes.json();
+  assert.equal(yearsJson.years.length, 2);
+  assert.deepEqual(yearsJson.skippedLabels, ['2026 - 2027']);
+  const y1 = yearsJson.years[0];
+
+  // 2. Créer 2 écoles d'un coup (dont une avec logo PNG valide)
+  const tinyPngDataUrl =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const schoolsRes = await callApi('/api/teacher/batch-create', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      entity: 'schools',
+      yearId: y1.id,
+      items: [
+        { name: 'Lycée Moderne', logoDataUrl: tinyPngDataUrl, color: '#059669', textColor: '#ffffff', colorStyle: 'full' },
+        { name: 'Collège Saint-Paul', color: '#059669', textColor: '#ffffff', colorStyle: 'accent' },
+      ],
+    },
+  });
+  assert.equal(schoolsRes.status, 201);
+  const schoolsJson = await schoolsRes.json();
+  assert.equal(schoolsJson.schools.length, 2);
+  assert.ok(schoolsJson.schools[0].logoUrl, 'Le logo de la 1ère école doit être signé');
+  assert.equal(schoolsJson.schools[1].colorStyle, 'accent');
+  const sch1 = schoolsJson.schools[0];
+
+  // 3. Créer 3 niveaux d'un coup
+  const levelsRes = await callApi('/api/teacher/batch-create', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      entity: 'levels',
+      schoolId: sch1.id,
+      items: [
+        { name: '2nde', color: '#7c3aed', textColor: '#ffffff', colorStyle: 'full' },
+        { name: '1ère', color: '#7c3aed', textColor: '#ffffff', colorStyle: 'full' },
+        { name: 'Terminale', color: '#7c3aed', textColor: '#ffffff', colorStyle: 'full' },
+      ],
+    },
+  });
+  assert.equal(levelsRes.status, 201);
+  const levelsJson = await levelsRes.json();
+  assert.equal(levelsJson.levels.length, 3);
+  const lvl1 = levelsJson.levels[0];
+
+  // 4. Créer 2 classes d'un coup -> vérifie 6 trimestres (3 chacun) et 8 cartes moyenne générale (4 chacune) !
+  const classesRes = await callApi('/api/teacher/batch-create', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      entity: 'classes',
+      levelId: lvl1.id,
+      items: [
+        { name: '2nde A', teacherName: 'M. Kouassi', color: '#ea580c', textColor: '#ffffff', colorStyle: 'full' },
+        { name: '2nde B', teacherName: 'M. Kouassi', slogan: 'Série C', color: '#ea580c', textColor: '#ffffff', colorStyle: 'accent' },
+      ],
+    },
+  });
+  assert.equal(classesRes.status, 201);
+  const classesJson = await classesRes.json();
+  assert.equal(classesJson.classes.length, 2);
+  assert.equal(classesJson.terms.length, 6);
+  assert.equal(classesJson.classAverages.length, 8);
+  const cls1 = classesJson.classes[0];
+  const cls1T1 = classesJson.terms.find((t: any) => t.classId === cls1.id && t.number === 1);
+  assert.ok(cls1T1);
+
+  // 5. Créer 2 trimestres supplémentaires d'un coup (T4, T5) -> 2 cartes moyenne générale créées
+  const termsRes = await callApi('/api/teacher/batch-create', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      entity: 'terms',
+      classId: cls1.id,
+      items: [
+        { number: 4, name: 'Trimestre 4', coefficient: 2 },
+        { number: 5, name: 'Trimestre 5', coefficient: null },
+      ],
+    },
+  });
+  assert.equal(termsRes.status, 201);
+  const termsJson = await termsRes.json();
+  assert.equal(termsJson.terms.length, 2);
+  assert.equal(termsJson.classAverages.length, 2);
+  assert.equal(termsJson.terms[0].coefficient, 2);
+  assert.equal(termsJson.terms[1].coefficient, undefined);
+
+  // 6. Créer 4 matières d'un coup avec coefficients mixtes (dont un facultatif null)
+  const subjectsRes = await callApi('/api/teacher/batch-create', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      entity: 'subjects',
+      classId: cls1.id,
+      termId: cls1T1.id,
+      items: [
+        { name: 'Mathématiques', coefficient: 4, color: '#dc2626', textColor: '#ffffff', colorStyle: 'full' },
+        { name: 'Français', coefficient: 3, color: '#dc2626', textColor: '#ffffff', colorStyle: 'full' },
+        { name: 'Anglais', coefficient: 2, color: '#dc2626', textColor: '#ffffff', colorStyle: 'full' },
+        { name: 'EPS', coefficient: null, color: '#dc2626', textColor: '#ffffff', colorStyle: 'accent' },
+      ],
+    },
+  });
+  assert.equal(subjectsRes.status, 201);
+  const subjectsJson = await subjectsRes.json();
+  assert.equal(subjectsJson.subjects.length, 4);
+  assert.equal(subjectsJson.subjects[0].coefficient, 4);
+  assert.equal(subjectsJson.subjects[3].coefficient, undefined);
+
+  // 7. Vérifier la persistance complète via /api/teacher/bootstrap
+  const boot = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  assert.equal(boot.schoolYears.length, 2);
+  assert.equal(boot.schools.length, 2);
+  assert.equal(boot.studyLevels.length, 3);
+  assert.equal(boot.classes.length, 2);
+  assert.equal(boot.terms.length, 8);
+  assert.equal(boot.subjects.length, 4);
+  assert.equal(boot.classAverages.length, 10);
+
+  // 8. Anti-IDOR : Bob ne peut créer en lot sous aucun parent appartenant à Alice
+  const bobSchools = await callApi('/api/teacher/batch-create', {
+    method: 'POST',
+    token: 'token-bob',
+    body: { entity: 'schools', yearId: y1.id, items: [{ name: 'Hack' }] },
+  });
+  assert.equal(bobSchools.status, 404);
+
+  const bobSubjects = await callApi('/api/teacher/batch-create', {
+    method: 'POST',
+    token: 'token-bob',
+    body: { entity: 'subjects', classId: cls1.id, termId: cls1T1.id, items: [{ name: 'Hack' }] },
+  });
+  assert.equal(bobSubjects.status, 404);
+});

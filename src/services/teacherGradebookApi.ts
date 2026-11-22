@@ -841,4 +841,114 @@ export const TeacherGradebookAPI = {
       method: 'POST',
       body: payload,
     }),
+
+  batchCreateYears: (
+    items: Array<{
+      id?: string;
+      label: string;
+      color?: string;
+      textColor?: string;
+      colorStyle?: 'accent' | 'full';
+    }>
+  ) =>
+    teacherFetchJson<{ success: boolean; years: SchoolYearItem[]; skippedLabels?: string[] }>(
+      '/api/teacher/batch-create',
+      { method: 'POST', body: { entity: 'years', items } }
+    ),
+
+  batchCreateSchools: (
+    yearId: string,
+    items: Array<{
+      id?: string;
+      name: string;
+      logoDataUrl?: string | null;
+      color?: string;
+      textColor?: string;
+      borderColor?: string;
+      borderDarkColor?: string;
+      colorStyle?: 'accent' | 'full';
+    }>
+  ) =>
+    teacherFetchJson<{ success: boolean; schools: SchoolItem[] }>(
+      '/api/teacher/batch-create',
+      { method: 'POST', body: { entity: 'schools', yearId, items } }
+    ),
+
+  batchCreateLevels: (
+    schoolId: string,
+    items: Array<{
+      id?: string;
+      name: string;
+      color?: string;
+      textColor?: string;
+      borderColor?: string;
+      colorStyle?: 'accent' | 'full';
+    }>
+  ) =>
+    teacherFetchJson<{ success: boolean; levels: StudyLevelItem[] }>(
+      '/api/teacher/batch-create',
+      { method: 'POST', body: { entity: 'levels', schoolId, items } }
+    ),
+
+  batchCreateClasses: (
+    levelId: string,
+    items: Array<{
+      id?: string;
+      name: string;
+      slogan?: string;
+      teacherName: string;
+      color?: string;
+      textColor?: string;
+      borderColor?: string;
+      borderDarkColor?: string;
+      colorStyle?: 'accent' | 'full';
+      iconGradient?: string;
+    }>
+  ) =>
+    teacherFetchJson<{
+      success: boolean;
+      classes: ClassItem[];
+      terms: TermItem[];
+      classAverages: ClassAverageCardItem[];
+    }>('/api/teacher/batch-create', {
+      method: 'POST',
+      body: { entity: 'classes', levelId, items },
+    }),
+
+  batchCreateTerms: (
+    classId: string,
+    items: Array<{
+      id?: string;
+      number: number;
+      name: string;
+      coefficient?: number | null;
+    }>
+  ) =>
+    teacherFetchJson<{
+      success: boolean;
+      terms: TermItem[];
+      classAverages: ClassAverageCardItem[];
+    }>('/api/teacher/batch-create', {
+      method: 'POST',
+      body: { entity: 'terms', classId, items },
+    }),
+
+  batchCreateSubjects: (
+    classId: string,
+    termId: string,
+    items: Array<{
+      id?: string;
+      name: string;
+      coefficient?: number | null;
+      color?: string;
+      textColor?: string;
+      borderColor?: string;
+      borderDarkColor?: string;
+      colorStyle?: 'accent' | 'full';
+    }>
+  ) =>
+    teacherFetchJson<{ success: boolean; subjects: SubjectItem[] }>(
+      '/api/teacher/batch-create',
+      { method: 'POST', body: { entity: 'subjects', classId, termId, items } }
+    ),
 };

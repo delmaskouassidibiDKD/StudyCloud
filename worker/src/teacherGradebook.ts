@@ -2864,6 +2864,468 @@ export async function handleTeacherGradebookRoutes(
   }
 
   // --------------------------------------------------------------------------
+  // 9B. CRÉATION EN LOT ATOMIQUE (PLUSIEURS ENTITÉS D'UN COUP EN BASE D1)
+  // POST /api/teacher/batch-create
+  // --------------------------------------------------------------------------
+  if (path === '/api/teacher/batch-create' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const entity = String(body.entity || '').trim();
+    const rawItems: any[] = Array.isArray(body.items) ? body.items.slice(0, 50) : [];
+    if (rawItems.length === 0) {
+      return errorResponse('Aucun élément à créer.', 400, origin);
+    }
+
+    const baseNow = Date.now();
+
+    if (entity === 'years') {
+      const existingYearsRes = await db
+        .prepare('SELECT label FROM teacher_school_years WHERE user_id = ?')
+        .bind(userId)
+        .all();
+      const existingLabels = new Set(
+        (existingYearsRes.results || []).map((r: any) => String(r.label || '').trim().toLowerCase())
+      );
+
+      const stmts: any[] = [];
+      const createdYears: any[] = [];
+      const skippedLabels: string[] = [];
+
+      for (let i = 0; i < rawItems.length; i++) {
+        const it = rawItems[i] || {};
+        const label = String(it.label || '').trim().slice(0, 30);
+        if (!label) continue;
+        const low = label.toLowerCase();
+        if (existingLabels.has(low)) {
+          skippedLabels.push(label);
+          continue;
+        }
+        existingLabels.add(low);
+        const now = baseNow + i;
+        const id = await resolveSafeNewId(db, 'teacher_school_years', it.id, 'year');
+        const color = String(it.color || '#ffffff').slice(0, 32);
+        const textColor = String(it.textColor || '#0f172a').slice(0, 32);
+        const colorStyle = it.colorStyle === 'accent' ? 'accent' : 'full';
+        stmts.push(
+          db
+            .prepare(
+              `INSERT INTO teacher_school_years (id, user_id, label, color, text_color, color_style, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+            .bind(id, userId, label, color, textColor, colorStyle, now, now)
+        );
+        createdYears.push({ id, label, color, textColor, colorStyle, createdAt: now });
+      }
+
+      if (stmts.length > 0) {
+        await runBatchChunked(db, stmts, 80);
+      }
+      return jsonResponse({ success: true, years: createdYears, skippedLabels }, 201, origin);
+    }
+
+    if (entity === 'schools') {
+      const yearId = String(body.yearId || '').trim();
+      if (!yearId) return errorResponse('Année scolaire requise.', 400, origin);
+      const ownYear = await db
+        .prepare('SELECT id FROM teacher_school_years WHERE id = ? AND user_id = ? LIMIT 1')
+        .bind(yearId, userId)
+        .first();
+      if (!ownYear) return errorResponse('Année scolaire introuvable ou non autorisée.', 404, origin);
+
+      const stmts: any[] = [];
+      const createdSchools: any[] = [];
+
+      for (let i = 0; i < rawItems.length; i++) {
+        const it = rawItems[i] || {};
+        const name = String(it.name || '').trim().slice(0, 120);
+        if (!name) continue;
+        const now = baseNow + i;
+        const id = await resolveSafeNewId(db, 'teacher_schools', it.id, 'school');
+        let logoR2Key: string | null = null;
+
+        if (typeof it.logoDataUrl === 'string' && it.logoDataUrl.startsWith('data:image/')) {
+          const bytes = decodeBase64DataUrl(it.logoDataUrl);
+          const fmt = bytes ? detectValidatedImageFormat(bytes) : null;
+          if (!bytes || !fmt) {
+            return errorResponse(`Format de logo invalide pour "${name}" (PNG/JPEG/WebP, max 600 Ko).`, 400, origin);
+          }
+          const rand = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+          logoR2Key = `teacher-school-logos/${sanitizeSegment(userId)}/${sanitizeSegment(id)}_${now}_${rand}.${fmt.ext}`;
+          await uploadImageBytesToR2(rawEnv, logoR2Key, bytes, fmt.contentType, {
+            userId: sanitizeSegment(userId),
+            kind: 'school_logo',
+            schoolId: sanitizeSegment(id),
+          });
+        }
+
+        const color = String(it.color || '#ffffff').slice(0, 32);
+        const textColor = String(it.textColor || '#0f172a').slice(0, 32);
+        const borderColor = String(it.borderColor || '#e2e8f0').slice(0, 32);
+        const borderDarkColor = String(it.borderDarkColor || '#cbd5e1').slice(0, 32);
+        const colorStyle = it.colorStyle === 'accent' ? 'accent' : 'full';
+
+        stmts.push(
+          db
+            .prepare(
+              `INSERT INTO teacher_schools
+                (id, user_id, year_id, name, logo_r2_key, color, text_color, border_color, border_dark_color, color_style, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+            .bind(id, userId, yearId, name, logoR2Key, color, textColor, borderColor, borderDarkColor, colorStyle, now, now)
+        );
+        const logoUrl = logoR2Key ? await signTeacherMediaUrl(apiOrigin, logoR2Key, jwtSecret) : undefined;
+        createdSchools.push({
+          id,
+          yearId,
+          name,
+          logoR2Key: logoR2Key || undefined,
+          logoUrl,
+          color,
+          textColor,
+          borderColor,
+          borderDarkColor,
+          colorStyle,
+          createdAt: now,
+        });
+      }
+
+      if (stmts.length === 0) return errorResponse('Aucun nom d’école valide.', 400, origin);
+      await runBatchChunked(db, stmts, 80);
+      return jsonResponse({ success: true, schools: createdSchools }, 201, origin);
+    }
+
+    if (entity === 'levels') {
+      const schoolId = String(body.schoolId || '').trim();
+      if (!schoolId) return errorResponse('Établissement requis.', 400, origin);
+      const ownSchool: any = await db
+        .prepare('SELECT id, year_id FROM teacher_schools WHERE id = ? AND user_id = ? LIMIT 1')
+        .bind(schoolId, userId)
+        .first();
+      if (!ownSchool) return errorResponse('Établissement introuvable ou non autorisé.', 404, origin);
+
+      const stmts: any[] = [];
+      const createdLevels: any[] = [];
+
+      for (let i = 0; i < rawItems.length; i++) {
+        const it = rawItems[i] || {};
+        const name = String(it.name || '').trim().slice(0, 80);
+        if (!name) continue;
+        const now = baseNow + i;
+        const id = await resolveSafeNewId(db, 'teacher_study_levels', it.id, 'level');
+        const color = String(it.color || '#ffffff').slice(0, 32);
+        const textColor = String(it.textColor || '#0f172a').slice(0, 32);
+        const borderColor = String(it.borderColor || '#cbd5e1').slice(0, 32);
+        const colorStyle = it.colorStyle === 'full' ? 'full' : 'accent';
+
+        stmts.push(
+          db
+            .prepare(
+              `INSERT INTO teacher_study_levels
+                (id, user_id, school_id, year_id, name, color, text_color, border_color, color_style, sort_order, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+            .bind(id, userId, schoolId, ownSchool.year_id, name, color, textColor, borderColor, colorStyle, i, now, now)
+        );
+        createdLevels.push({
+          id,
+          schoolId,
+          yearId: ownSchool.year_id,
+          name,
+          color,
+          textColor,
+          borderColor,
+          colorStyle,
+          createdAt: now,
+        });
+      }
+
+      if (stmts.length === 0) return errorResponse('Aucun nom de niveau valide.', 400, origin);
+      await runBatchChunked(db, stmts, 80);
+      return jsonResponse({ success: true, levels: createdLevels }, 201, origin);
+    }
+
+    if (entity === 'classes') {
+      const levelId = String(body.levelId || '').trim();
+      if (!levelId) return errorResponse('Niveau d’étude requis.', 400, origin);
+      const ownLevel: any = await db
+        .prepare('SELECT id, school_id, year_id, name FROM teacher_study_levels WHERE id = ? AND user_id = ? LIMIT 1')
+        .bind(levelId, userId)
+        .first();
+      if (!ownLevel) return errorResponse('Niveau d’étude introuvable ou non autorisé.', 404, origin);
+
+      const stmts: any[] = [];
+      const createdClasses: any[] = [];
+      const createdTerms: any[] = [];
+      const createdAverages: any[] = [];
+
+      for (let i = 0; i < rawItems.length; i++) {
+        const it = rawItems[i] || {};
+        const name = String(it.name || '').trim().slice(0, 80);
+        const teacherName = String(it.teacherName || '').trim().slice(0, 100);
+        if (!name || !teacherName) continue;
+
+        const now = baseNow + i * 10;
+        const classId = await resolveSafeNewId(db, 'teacher_classes', it.id, 'class');
+        const slogan = it.slogan ? String(it.slogan).trim().slice(0, 140) : null;
+        const color = String(it.color || '#ffffff').slice(0, 32);
+        const textColor = String(it.textColor || '#0f172a').slice(0, 32);
+        const borderColor = String(it.borderColor || '#e2e8f0').slice(0, 32);
+        const borderDarkColor = String(it.borderDarkColor || '#cbd5e1').slice(0, 32);
+        const colorStyle = it.colorStyle === 'full' ? 'full' : 'accent';
+        const iconGradient = String(it.iconGradient || 'from-amber-500 to-orange-600').slice(0, 80);
+
+        const defaultTerms = [
+          { id: makeId('term'), number: 1, name: 'Trimestre 1', createdAt: now },
+          { id: makeId('term'), number: 2, name: 'Trimestre 2', createdAt: now + 1 },
+          { id: makeId('term'), number: 3, name: 'Trimestre 3', createdAt: now + 2 },
+        ];
+
+        const annualAvg = {
+          id: makeId('cavg'),
+          classId,
+          termId: undefined as string | undefined,
+          schoolId: ownLevel.school_id,
+          yearId: ownLevel.year_id,
+          kind: 'annual' as const,
+          title: "Moyenne générale de l'année",
+          sortOrder: 0,
+          color: '#ffffff',
+          textColor: '#0f172a',
+          borderColor: '#e2e8f0',
+          borderDarkColor: '#cbd5e1',
+          createdAt: now,
+        };
+        const termAvgs = defaultTerms.map((t) => ({
+          id: makeId('cavg'),
+          classId,
+          termId: t.id,
+          schoolId: ownLevel.school_id,
+          yearId: ownLevel.year_id,
+          kind: 'term' as const,
+          title: `Moyenne générale · ${t.name}`,
+          sortOrder: t.number,
+          color: '#ffffff',
+          textColor: '#0f172a',
+          borderColor: '#e2e8f0',
+          borderDarkColor: '#cbd5e1',
+          createdAt: t.createdAt,
+        }));
+
+        stmts.push(
+          db
+            .prepare(
+              `INSERT INTO teacher_classes
+                (id, user_id, level_id, school_id, year_id, level_name, name, slogan, teacher_name, subject_label, color, text_color, border_color, border_dark_color, color_style, icon_gradient, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+            .bind(
+              classId, userId, levelId, ownLevel.school_id, ownLevel.year_id,
+              ownLevel.name, name, slogan, teacherName,
+              color, textColor, borderColor, borderDarkColor, colorStyle, iconGradient,
+              now, now
+            )
+        );
+        for (const t of defaultTerms) {
+          stmts.push(
+            db
+              .prepare(
+                `INSERT INTO teacher_terms (id, user_id, class_id, school_id, year_id, number, name, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              )
+              .bind(t.id, userId, classId, ownLevel.school_id, ownLevel.year_id, t.number, t.name, t.createdAt, now)
+          );
+          createdTerms.push({
+            id: t.id,
+            classId,
+            schoolId: ownLevel.school_id,
+            yearId: ownLevel.year_id,
+            number: t.number,
+            name: t.name,
+            createdAt: t.createdAt,
+          });
+        }
+        for (const ca of [annualAvg, ...termAvgs]) {
+          stmts.push(
+            db
+              .prepare(
+                `INSERT INTO teacher_class_averages
+                  (id, user_id, class_id, term_id, school_id, year_id, kind, title, sort_order, color, text_color, border_color, border_dark_color, created_at, updated_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              )
+              .bind(
+                ca.id, userId, ca.classId, ca.termId ?? null, ca.schoolId, ca.yearId,
+                ca.kind, ca.title, ca.sortOrder, ca.color, ca.textColor, ca.borderColor, ca.borderDarkColor,
+                ca.createdAt, now
+              )
+          );
+          createdAverages.push(ca);
+        }
+
+        createdClasses.push({
+          id: classId,
+          levelId,
+          schoolId: ownLevel.school_id,
+          yearId: ownLevel.year_id,
+          level: ownLevel.name,
+          name,
+          slogan: slogan || undefined,
+          teacherName,
+          color,
+          textColor,
+          borderColor,
+          borderDarkColor,
+          colorStyle,
+          iconGradient,
+          createdAt: now,
+        });
+      }
+
+      if (createdClasses.length === 0) {
+        return errorResponse('Aucune classe valide à créer (nom et professeur requis).', 400, origin);
+      }
+      await runBatchChunked(db, stmts, 80);
+      return jsonResponse({
+        success: true,
+        classes: createdClasses,
+        terms: createdTerms,
+        classAverages: createdAverages,
+      }, 201, origin);
+    }
+
+    if (entity === 'terms') {
+      const classId = String(body.classId || '').trim();
+      if (!classId) return errorResponse('Classe requise.', 400, origin);
+      const ownClass: any = await db
+        .prepare('SELECT id, school_id, year_id FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
+        .bind(classId, userId)
+        .first();
+      if (!ownClass) return errorResponse('Classe introuvable ou non autorisée.', 404, origin);
+
+      const stmts: any[] = [];
+      const createdTerms: any[] = [];
+      const createdAverages: any[] = [];
+
+      for (let i = 0; i < rawItems.length; i++) {
+        const it = rawItems[i] || {};
+        const number = Math.max(1, parseInt(String(it.number || i + 1), 10) || i + 1);
+        const name = String(it.name || `Trimestre ${number}`).trim().slice(0, 50);
+        if (!name) continue;
+        const coeffRaw = it.coefficient !== undefined && it.coefficient !== null && it.coefficient !== '' ? Number(it.coefficient) : null;
+        const coefficient = coeffRaw !== null && Number.isFinite(coeffRaw) && coeffRaw > 0 ? coeffRaw : null;
+
+        const now = baseNow + i;
+        const id = await resolveSafeNewId(db, 'teacher_terms', it.id, 'term');
+        const ca = {
+          id: makeId('cavg'),
+          classId,
+          termId: id,
+          schoolId: ownClass.school_id,
+          yearId: ownClass.year_id,
+          kind: 'term' as const,
+          title: `Moyenne générale · ${name}`,
+          sortOrder: number,
+          color: '#ffffff',
+          textColor: '#0f172a',
+          borderColor: '#e2e8f0',
+          borderDarkColor: '#cbd5e1',
+          createdAt: now,
+        };
+
+        stmts.push(
+          db
+            .prepare(
+              `INSERT INTO teacher_terms (id, user_id, class_id, school_id, year_id, number, name, coefficient, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+            .bind(id, userId, classId, ownClass.school_id, ownClass.year_id, number, name, coefficient, now, now),
+          db
+            .prepare(
+              `INSERT INTO teacher_class_averages
+                (id, user_id, class_id, term_id, school_id, year_id, kind, title, sort_order, color, text_color, border_color, border_dark_color, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, 'term', ?, ?, '#ffffff', '#0f172a', '#e2e8f0', '#cbd5e1', ?, ?)`
+            )
+            .bind(ca.id, userId, classId, id, ownClass.school_id, ownClass.year_id, ca.title, number, now, now)
+        );
+        createdTerms.push({
+          id,
+          classId,
+          schoolId: ownClass.school_id,
+          yearId: ownClass.year_id,
+          number,
+          name,
+          coefficient: coefficient ?? undefined,
+          createdAt: now,
+        });
+        createdAverages.push(ca);
+      }
+
+      if (createdTerms.length === 0) return errorResponse('Aucun trimestre valide.', 400, origin);
+      await runBatchChunked(db, stmts, 80);
+      return jsonResponse({ success: true, terms: createdTerms, classAverages: createdAverages }, 201, origin);
+    }
+
+    if (entity === 'subjects') {
+      const classId = String(body.classId || '').trim();
+      const termId = String(body.termId || '').trim();
+      if (!classId || !termId) return errorResponse('Classe et trimestre requis.', 400, origin);
+      const ownTerm: any = await db
+        .prepare('SELECT id, school_id, year_id FROM teacher_terms WHERE id = ? AND class_id = ? AND user_id = ? LIMIT 1')
+        .bind(termId, classId, userId)
+        .first();
+      if (!ownTerm) return errorResponse('Trimestre ou classe introuvable.', 404, origin);
+
+      const stmts: any[] = [];
+      const createdSubjects: any[] = [];
+
+      for (let i = 0; i < rawItems.length; i++) {
+        const it = rawItems[i] || {};
+        const name = String(it.name || '').trim().slice(0, 100);
+        if (!name) continue;
+        const coeffRaw = it.coefficient !== undefined && it.coefficient !== null && it.coefficient !== '' ? Number(it.coefficient) : null;
+        const coefficient = coeffRaw !== null && Number.isFinite(coeffRaw) && coeffRaw > 0 ? coeffRaw : null;
+
+        const now = baseNow + i;
+        const id = await resolveSafeNewId(db, 'teacher_subjects', it.id, 'subject');
+        const color = String(it.color || '#ffffff').slice(0, 32);
+        const textColor = String(it.textColor || '#0f172a').slice(0, 32);
+        const borderColor = String(it.borderColor || '#e2e8f0').slice(0, 32);
+        const borderDarkColor = String(it.borderDarkColor || '#cbd5e1').slice(0, 32);
+        const colorStyle = it.colorStyle === 'full' ? 'full' : 'accent';
+
+        stmts.push(
+          db
+            .prepare(
+              `INSERT INTO teacher_subjects
+                (id, user_id, class_id, term_id, school_id, year_id, name, coefficient, color, text_color, border_color, border_dark_color, color_style, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+            )
+            .bind(id, userId, classId, termId, ownTerm.school_id, ownTerm.year_id, name, coefficient, color, textColor, borderColor, borderDarkColor, colorStyle, now, now)
+        );
+        createdSubjects.push({
+          id,
+          classId,
+          termId,
+          schoolId: ownTerm.school_id,
+          yearId: ownTerm.year_id,
+          name,
+          coefficient: coefficient ?? undefined,
+          color,
+          textColor,
+          borderColor,
+          borderDarkColor,
+          colorStyle,
+          createdAt: now,
+        });
+      }
+
+      if (createdSubjects.length === 0) return errorResponse('Aucune matière valide.', 400, origin);
+      await runBatchChunked(db, stmts, 80);
+      return jsonResponse({ success: true, subjects: createdSubjects }, 201, origin);
+    }
+
+    return errorResponse(`Type d'entité non pris en charge : ${entity}`, 400, origin);
+  }
+
+  // --------------------------------------------------------------------------
   // 10. TRANSFERT ATOMIQUE CÔTÉ SERVEUR (D1 + COPIE PHOTOS R2)
   // POST /api/teacher/transfer
   // --------------------------------------------------------------------------
