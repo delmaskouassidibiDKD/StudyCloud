@@ -141,44 +141,54 @@ export const TeacherAnimatedBackground: React.FC = () => {
   return (
     <div
       aria-hidden="true"
-      className="absolute inset-0 overflow-hidden pointer-events-none select-none z-0 bg-[#071124]"
+      className="absolute inset-0 overflow-hidden pointer-events-none select-none z-0"
+      style={{
+        background:
+          'radial-gradient(ellipse 85% 75% at 50% 55%, #091833 0%, #061024 55%, #040b18 100%)',
+      }}
     >
       <style>{`
         @keyframes sc3dSceneGentleBreath {
           0%, 100% {
-            transform: scale(1.03) translate3d(0px, 0px, 0);
+            transform: scale(0.96) translate3d(0px, 0px, 0);
           }
           33% {
-            transform: scale(1.068) translate3d(-10px, -6px, 0);
+            transform: scale(0.99) translate3d(-5px, -4px, 0);
           }
           66% {
-            transform: scale(1.055) translate3d(10px, 5px, 0);
+            transform: scale(0.978) translate3d(5px, 3px, 0);
           }
         }
         @keyframes sc3dHaloPulse {
-          0%, 100% { opacity: 0.24; transform: scale(0.97); }
-          50% { opacity: 0.46; transform: scale(1.04); }
+          0%, 100% { opacity: 0.22; transform: scale(0.97); }
+          50% { opacity: 0.42; transform: scale(1.03); }
         }
         @keyframes sc3dAccentGlow {
-          0%, 100% { opacity: 0.16; }
-          50% { opacity: 0.34; }
+          0%, 100% { opacity: 0.14; }
+          50% { opacity: 0.30; }
         }
         @media (prefers-reduced-motion: reduce) {
           .sc-3d-gentle-motion { animation: none !important; }
         }
       `}</style>
 
-      {/* Scène 3D isométrique nette en mouvement lent et continu (aucune coupure ni saccade) */}
-      <img
-        src="/assets/teacher-bg-3d-scene.jpg"
-        alt=""
-        decoding="async"
-        className="sc-3d-gentle-motion absolute inset-0 w-full h-full object-cover object-center will-change-transform"
-        style={{
-          animation: 'sc3dSceneGentleBreath 26s ease-in-out infinite',
-          filter: 'brightness(1.06) contrast(1.04) saturate(1.08)',
-        }}
-      />
+      {/* Scène 3D isométrique bien proportionnée (dézoomée, entièrement visible, fondue sans bordure dans le fond nuit) */}
+      <div className="absolute inset-0 flex items-center justify-center pt-6 pb-2 px-4 sm:px-8">
+        <img
+          src="/assets/teacher-bg-3d-scene.jpg"
+          alt=""
+          decoding="async"
+          className="sc-3d-gentle-motion w-full h-full max-w-[960px] max-h-[82vh] object-contain object-center will-change-transform"
+          style={{
+            animation: 'sc3dSceneGentleBreath 26s ease-in-out infinite',
+            filter: 'brightness(1.05) contrast(1.04) saturate(1.08)',
+            maskImage:
+              'radial-gradient(ellipse 90% 88% at 50% 52%, rgba(0,0,0,1) 64%, rgba(0,0,0,0) 100%)',
+            WebkitMaskImage:
+              'radial-gradient(ellipse 90% 88% at 50% 52%, rgba(0,0,0,1) 64%, rgba(0,0,0,0) 100%)',
+          }}
+        />
+      </div>
 
       {/* Respiration lumineuse douce du socle néon central */}
       <div
