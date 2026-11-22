@@ -34,7 +34,6 @@ import {
   Cloud,
   CloudOff,
   Loader2,
-  Save,
   WifiOff,
   CheckCircle2
 } from 'lucide-react';
@@ -1995,7 +1994,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* Retour (gauche) | Titre bien centré (milieu) | Utilitaires & Agrandissement (droite) */}
         {/* ----------------------------------------------------------------------- */}
         <header className="relative flex items-center justify-between gap-2 flex-wrap">
-          {/* Groupe haut gauche : Bouton Retour + Bouton manuel Enregistrer + Statut d'enregistrement automatique */}
+          {/* Groupe haut gauche : Bouton Retour + Statut de synchronisation cloud (le bouton manuel Enregistrer est réservé au tableur de notes) */}
           <div className="flex items-center gap-2 flex-wrap z-10 shrink-0">
             <button
               type="button"
@@ -2023,29 +2022,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               <span>Retour</span>
             </button>
 
-            {/* Bouton Enregistrer manuel (zone entourée en vert) */}
-            <button
-              type="button"
-              onClick={() => handleManualSave()}
-              disabled={saveUiState === 'saving'}
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold border shadow-xs transition active:scale-95 shrink-0 cursor-pointer ${
-                saveUiState === 'offline' || saveUiState === 'error'
-                  ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-200'
-                  : saveUiState === 'saving'
-                  ? 'bg-slate-100 text-slate-500 border-slate-200 cursor-wait'
-                  : 'bg-white/90 hover:bg-white text-[#00313d] border-white/95'
-              }`}
-              title="Enregistrer manuellement et vérifier la synchronisation avec la base de données"
-            >
-              {saveUiState === 'saving' ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-slate-600" />
-              ) : (
-                <Save className="w-3.5 h-3.5 stroke-[2.2]" />
-              )}
-              <span>Enregistrer</span>
-            </button>
-
-            {/* Statut d'enregistrement automatique en direct juste à côté du bouton manuel */}
+            {/* Statut d'enregistrement automatique en direct */}
             <div
               className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all select-none ${
                 saveUiState === 'saving'
@@ -2058,7 +2035,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   ? 'bg-red-50 text-red-700 border-red-200'
                   : 'bg-white/90 text-slate-700 border-white shadow-xs'
               }`}
-              title={saveFeedbackMessage || 'Synchronisation automatique avec la base de données Cloudflare D1'}
+              title={saveFeedbackMessage || 'Synchronisation automatique avec le cloud StudyCloud'}
             >
               {saveUiState === 'saving' ? (
                 <>

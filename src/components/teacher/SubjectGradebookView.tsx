@@ -537,6 +537,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   );
   const [cloudSaveError, setCloudSaveError] = useState<string | null>(null);
   const [isUploadingPhoto, setIsUploadingPhoto] = useState<boolean>(false);
+  const [hasSavedAtLeastOnce, setHasSavedAtLeastOnce] = useState<boolean>(false);
 
   // Refs pour auto-sauvegarde sérialisée (anti-conflit, zéro perte de frappe)
   const hasHydratedRef = useRef<boolean>(false);
@@ -643,6 +644,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         return;
       }
       setIsSaved(true);
+      setHasSavedAtLeastOnce(true);
       setCloudSaveStatus('saved');
       onGradebookSynced?.();
     } catch (err: any) {
@@ -2566,10 +2568,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     : 'Enregistrement en cours...'}
                 </span>
               </>
-            ) : (
+            ) : hasSavedAtLeastOnce ? (
               <>
                 <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
                 <span>Enregistré avec succès</span>
+              </>
+            ) : (
+              <>
+                <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                <span>Synchronisé au cloud</span>
               </>
             )}
           </div>
