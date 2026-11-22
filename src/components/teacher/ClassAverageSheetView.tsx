@@ -19,6 +19,7 @@ export interface ClassAverageSheetViewProps {
   userId?: string;
   initialSubjects?: SubjectItem[];
   onOpenSubject?: (subjectId: string) => void;
+  onSubjectCoefficientUpdated?: (subjectId: string, coefficient: number | null) => void;
   onBack: () => void;
 }
 
@@ -39,6 +40,7 @@ export const ClassAverageSheetView: React.FC<ClassAverageSheetViewProps> = ({
   userId,
   initialSubjects = [],
   onOpenSubject,
+  onSubjectCoefficientUpdated,
   onBack,
 }) => {
   const syntheticSubject = useMemo<SubjectItem>(
@@ -69,6 +71,7 @@ export const ClassAverageSheetView: React.FC<ClassAverageSheetViewProps> = ({
         userId={userId}
         initialSubjects={initialSubjects}
         onOpenSubject={onOpenSubject}
+        onSubjectCoefficientUpdated={onSubjectCoefficientUpdated}
         onBack={onBack}
       />
     );

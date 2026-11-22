@@ -40,6 +40,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       label TEXT NOT NULL,
       color TEXT NOT NULL DEFAULT '#00313d',
       text_color TEXT DEFAULT '#ffffff',
+      color_style TEXT NOT NULL DEFAULT 'full',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -56,6 +57,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       text_color TEXT NOT NULL DEFAULT '#0f172a',
       border_color TEXT NOT NULL DEFAULT '#e2e8f0',
       border_dark_color TEXT NOT NULL DEFAULT '#cbd5e1',
+      color_style TEXT NOT NULL DEFAULT 'full',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -72,6 +74,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       color TEXT DEFAULT '#ffffff',
       text_color TEXT DEFAULT '#0f172a',
       border_color TEXT DEFAULT '#cbd5e1',
+      color_style TEXT NOT NULL DEFAULT 'accent',
       sort_order INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
@@ -96,6 +99,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       text_color TEXT NOT NULL DEFAULT '#0f172a',
       border_color TEXT NOT NULL DEFAULT '#e2e8f0',
       border_dark_color TEXT NOT NULL DEFAULT '#cbd5e1',
+      color_style TEXT NOT NULL DEFAULT 'accent',
       icon_gradient TEXT NOT NULL DEFAULT 'from-amber-500 to-orange-600',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
@@ -137,6 +141,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       text_color TEXT NOT NULL DEFAULT '#0f172a',
       border_color TEXT NOT NULL DEFAULT '#e2e8f0',
       border_dark_color TEXT NOT NULL DEFAULT '#cbd5e1',
+      color_style TEXT NOT NULL DEFAULT 'accent',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -249,6 +254,26 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
     }
   } catch {
     // Ignorer si déjà migré par une requête concurrente
+  }
+
+  // Migration idempotente : s'assurer que les tables d'entités possèdent la colonne color_style ('accent' | 'full')
+  const colorStyleTargets: Array<[string, 'accent' | 'full']> = [
+    ['teacher_school_years', 'full'],
+    ['teacher_schools', 'full'],
+    ['teacher_study_levels', 'accent'],
+    ['teacher_classes', 'accent'],
+    ['teacher_subjects', 'accent'],
+  ];
+  for (const [tbl, defVal] of colorStyleTargets) {
+    try {
+      const tInfo = await db.prepare(`PRAGMA table_info(${tbl})`).all();
+      const hasCol = (tInfo.results || []).some((c: any) => String(c.name) === 'color_style');
+      if (!hasCol) {
+        await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN color_style TEXT NOT NULL DEFAULT '${defVal}'`).run();
+      }
+    } catch {
+      // Ignorer si déjà migré
+    }
   }
 
   initializedTeacherDbs.add(db);
@@ -880,6 +905,7 @@ async function buildBootstrapPayload(db: any, userId: string, origin: string, jw
     label: r.label,
     color: r.color || '#00313d',
     textColor: r.text_color || '#ffffff',
+    colorStyle: (r.color_style === 'accent' ? 'accent' : 'full') as 'accent' | 'full',
     createdAt: Number(r.created_at) || Date.now(),
   }));
 
@@ -894,6 +920,7 @@ async function buildBootstrapPayload(db: any, userId: string, origin: string, jw
       textColor: r.text_color || '#0f172a',
       borderColor: r.border_color || '#e2e8f0',
       borderDarkColor: r.border_dark_color || '#cbd5e1',
+      colorStyle: (r.color_style === 'accent' ? 'accent' : 'full') as 'accent' | 'full',
       createdAt: Number(r.created_at) || Date.now(),
     }))
   );
@@ -906,6 +933,7 @@ async function buildBootstrapPayload(db: any, userId: string, origin: string, jw
     color: r.color || '#ffffff',
     textColor: r.text_color || '#0f172a',
     borderColor: r.border_color || '#cbd5e1',
+    colorStyle: (r.color_style === 'full' ? 'full' : 'accent') as 'accent' | 'full',
     createdAt: Number(r.created_at) || Date.now(),
   }));
 
@@ -923,6 +951,7 @@ async function buildBootstrapPayload(db: any, userId: string, origin: string, jw
     textColor: r.text_color || '#0f172a',
     borderColor: r.border_color || '#e2e8f0',
     borderDarkColor: r.border_dark_color || '#cbd5e1',
+    colorStyle: (r.color_style === 'full' ? 'full' : 'accent') as 'accent' | 'full',
     iconGradient: r.icon_gradient || 'from-amber-500 to-orange-600',
     createdAt: Number(r.created_at) || Date.now(),
   }));
@@ -950,6 +979,7 @@ async function buildBootstrapPayload(db: any, userId: string, origin: string, jw
     textColor: r.text_color || '#0f172a',
     borderColor: r.border_color || '#e2e8f0',
     borderDarkColor: r.border_dark_color || '#cbd5e1',
+    colorStyle: (r.color_style === 'full' ? 'full' : 'accent') as 'accent' | 'full',
     createdAt: Number(r.created_at) || Date.now(),
   }));
 
@@ -1103,18 +1133,19 @@ export async function handleTeacherGradebookRoutes(
     const id = await resolveSafeNewId(db, 'teacher_school_years', body.id, 'year');
     const color = String(body.color || '#00313d').slice(0, 32);
     const textColor = String(body.textColor || '#ffffff').slice(0, 32);
+    const colorStyle = body.colorStyle === 'accent' ? 'accent' : 'full';
 
     await db
       .prepare(
-        `INSERT INTO teacher_school_years (id, user_id, label, color, text_color, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO teacher_school_years (id, user_id, label, color, text_color, color_style, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .bind(id, userId, label, color, textColor, now, now)
+      .bind(id, userId, label, color, textColor, colorStyle, now, now)
       .run();
 
     return jsonResponse({
       success: true,
-      year: { id, label, color, textColor, createdAt: now },
+      year: { id, label, color, textColor, colorStyle, createdAt: now },
     }, 201, origin);
   }
 
@@ -1141,15 +1172,21 @@ export async function handleTeacherGradebookRoutes(
 
     const color = String(body.color || existing.color || '#00313d').slice(0, 32);
     const textColor = String(body.textColor || existing.text_color || '#ffffff').slice(0, 32);
+    const colorStyle =
+      body.colorStyle === 'accent' || body.colorStyle === 'full'
+        ? body.colorStyle
+        : existing.color_style === 'accent'
+        ? 'accent'
+        : 'full';
     const now = Date.now();
 
     await db
       .prepare(
         `UPDATE teacher_school_years
-         SET label = ?, color = ?, text_color = ?, updated_at = ?
+         SET label = ?, color = ?, text_color = ?, color_style = ?, updated_at = ?
          WHERE id = ? AND user_id = ?`
       )
-      .bind(label, color, textColor, now, yearId, userId)
+      .bind(label, color, textColor, colorStyle, now, yearId, userId)
       .run();
 
     return jsonResponse({
@@ -1159,6 +1196,7 @@ export async function handleTeacherGradebookRoutes(
         label,
         color,
         textColor,
+        colorStyle,
         createdAt: Number(existing.created_at),
       },
     }, 200, origin);
@@ -1240,14 +1278,15 @@ export async function handleTeacherGradebookRoutes(
     const textColor = String(body.textColor || '#0f172a').slice(0, 32);
     const borderColor = String(body.borderColor || '#e2e8f0').slice(0, 32);
     const borderDarkColor = String(body.borderDarkColor || '#cbd5e1').slice(0, 32);
+    const colorStyle = body.colorStyle === 'accent' ? 'accent' : 'full';
 
     await db
       .prepare(
         `INSERT INTO teacher_schools
-          (id, user_id, year_id, name, logo_r2_key, color, text_color, border_color, border_dark_color, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          (id, user_id, year_id, name, logo_r2_key, color, text_color, border_color, border_dark_color, color_style, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .bind(id, userId, yearId, name, logoR2Key, color, textColor, borderColor, borderDarkColor, now, now)
+      .bind(id, userId, yearId, name, logoR2Key, color, textColor, borderColor, borderDarkColor, colorStyle, now, now)
       .run();
 
     const logoUrl = logoR2Key ? await signTeacherMediaUrl(apiOrigin, logoR2Key, jwtSecret) : undefined;
@@ -1263,6 +1302,7 @@ export async function handleTeacherGradebookRoutes(
         textColor,
         borderColor,
         borderDarkColor,
+        colorStyle,
         createdAt: now,
       },
     }, 201, origin);
@@ -1307,14 +1347,20 @@ export async function handleTeacherGradebookRoutes(
     const textColor = String(body.textColor || existing.text_color).slice(0, 32);
     const borderColor = String(body.borderColor || existing.border_color).slice(0, 32);
     const borderDarkColor = String(body.borderDarkColor || existing.border_dark_color).slice(0, 32);
+    const colorStyle =
+      body.colorStyle === 'accent' || body.colorStyle === 'full'
+        ? body.colorStyle
+        : existing.color_style === 'accent'
+        ? 'accent'
+        : 'full';
 
     await db
       .prepare(
         `UPDATE teacher_schools
-         SET name = ?, logo_r2_key = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, updated_at = ?
+         SET name = ?, logo_r2_key = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, color_style = ?, updated_at = ?
          WHERE id = ? AND user_id = ?`
       )
-      .bind(name, logoR2Key, color, textColor, borderColor, borderDarkColor, now, schoolId, userId)
+      .bind(name, logoR2Key, color, textColor, borderColor, borderDarkColor, colorStyle, now, schoolId, userId)
       .run();
 
     if (oldKeyToDelete && oldKeyToDelete !== logoR2Key) {
@@ -1334,6 +1380,7 @@ export async function handleTeacherGradebookRoutes(
         textColor,
         borderColor,
         borderDarkColor,
+        colorStyle,
         createdAt: Number(existing.created_at),
       },
     }, 200, origin);
@@ -1397,13 +1444,14 @@ export async function handleTeacherGradebookRoutes(
     const color = String(body.color || '#ffffff').slice(0, 32);
     const textColor = String(body.textColor || '#0f172a').slice(0, 32);
     const borderColor = String(body.borderColor || '#cbd5e1').slice(0, 32);
+    const colorStyle = body.colorStyle === 'full' ? 'full' : 'accent';
 
     await db
       .prepare(
-        `INSERT INTO teacher_study_levels (id, user_id, school_id, year_id, name, color, text_color, border_color, sort_order, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO teacher_study_levels (id, user_id, school_id, year_id, name, color, text_color, border_color, color_style, sort_order, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .bind(id, userId, schoolId, ownSchool.year_id, name, color, textColor, borderColor, Number(body.sortOrder) || 0, now, now)
+      .bind(id, userId, schoolId, ownSchool.year_id, name, color, textColor, borderColor, colorStyle, Number(body.sortOrder) || 0, now, now)
       .run();
 
     return jsonResponse({
@@ -1416,6 +1464,7 @@ export async function handleTeacherGradebookRoutes(
         color,
         textColor,
         borderColor,
+        colorStyle,
         createdAt: now,
       },
     }, 201, origin);
@@ -1438,15 +1487,21 @@ export async function handleTeacherGradebookRoutes(
     const color = String(body.color || existing.color || '#ffffff').slice(0, 32);
     const textColor = String(body.textColor || existing.text_color || '#0f172a').slice(0, 32);
     const borderColor = String(body.borderColor || existing.border_color || '#cbd5e1').slice(0, 32);
+    const colorStyle =
+      body.colorStyle === 'accent' || body.colorStyle === 'full'
+        ? body.colorStyle
+        : existing.color_style === 'full'
+        ? 'full'
+        : 'accent';
 
     await db.batch([
       db
         .prepare(
           `UPDATE teacher_study_levels
-           SET name = ?, color = ?, text_color = ?, border_color = ?, updated_at = ?
+           SET name = ?, color = ?, text_color = ?, border_color = ?, color_style = ?, updated_at = ?
            WHERE id = ? AND user_id = ?`
         )
-        .bind(name, color, textColor, borderColor, now, levelId, userId),
+        .bind(name, color, textColor, borderColor, colorStyle, now, levelId, userId),
       db
         .prepare(
           `UPDATE teacher_classes
@@ -1466,6 +1521,7 @@ export async function handleTeacherGradebookRoutes(
         color,
         textColor,
         borderColor,
+        colorStyle,
         createdAt: Number(existing.created_at),
       },
     }, 200, origin);
@@ -1530,6 +1586,7 @@ export async function handleTeacherGradebookRoutes(
     const textColor = String(body.textColor || '#0f172a').slice(0, 32);
     const borderColor = String(body.borderColor || '#e2e8f0').slice(0, 32);
     const borderDarkColor = String(body.borderDarkColor || '#cbd5e1').slice(0, 32);
+    const colorStyle = body.colorStyle === 'full' ? 'full' : 'accent';
     const iconGradient = String(body.iconGradient || 'from-amber-500 to-orange-600').slice(0, 80);
 
     const defaultTerms = Array.isArray(body.defaultTerms) && body.defaultTerms.length > 0
@@ -1583,13 +1640,13 @@ export async function handleTeacherGradebookRoutes(
       db
         .prepare(
           `INSERT INTO teacher_classes
-            (id, user_id, level_id, school_id, year_id, level_name, name, slogan, teacher_name, subject_label, color, text_color, border_color, border_dark_color, icon_gradient, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+            (id, user_id, level_id, school_id, year_id, level_name, name, slogan, teacher_name, subject_label, color, text_color, border_color, border_dark_color, color_style, icon_gradient, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`
         )
         .bind(
           classId, userId, levelId, ownLevel.school_id, ownLevel.year_id,
           ownLevel.name, name, slogan, teacherName,
-          color, textColor, borderColor, borderDarkColor, iconGradient,
+          color, textColor, borderColor, borderDarkColor, colorStyle, iconGradient,
           now, now
         ),
       ...defaultTerms.map((t: any) =>
@@ -1632,6 +1689,7 @@ export async function handleTeacherGradebookRoutes(
         textColor,
         borderColor,
         borderDarkColor,
+        colorStyle,
         iconGradient,
         createdAt: now,
       },
@@ -1665,16 +1723,22 @@ export async function handleTeacherGradebookRoutes(
     const textColor = String(body.textColor || existing.text_color).slice(0, 32);
     const borderColor = String(body.borderColor || existing.border_color).slice(0, 32);
     const borderDarkColor = String(body.borderDarkColor || existing.border_dark_color).slice(0, 32);
+    const colorStyle =
+      body.colorStyle === 'accent' || body.colorStyle === 'full'
+        ? body.colorStyle
+        : existing.color_style === 'full'
+        ? 'full'
+        : 'accent';
     const iconGradient = String(body.iconGradient || existing.icon_gradient).slice(0, 80);
     const now = Date.now();
 
     await db
       .prepare(
         `UPDATE teacher_classes
-         SET name = ?, slogan = ?, teacher_name = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, icon_gradient = ?, updated_at = ?
+         SET name = ?, slogan = ?, teacher_name = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, color_style = ?, icon_gradient = ?, updated_at = ?
          WHERE id = ? AND user_id = ?`
       )
-      .bind(name, slogan, teacherName, color, textColor, borderColor, borderDarkColor, iconGradient, now, classId, userId)
+      .bind(name, slogan, teacherName, color, textColor, borderColor, borderDarkColor, colorStyle, iconGradient, now, classId, userId)
       .run();
 
     return jsonResponse({
@@ -1692,6 +1756,7 @@ export async function handleTeacherGradebookRoutes(
         textColor,
         borderColor,
         borderDarkColor,
+        colorStyle,
         iconGradient,
         createdAt: Number(existing.created_at),
       },
@@ -1903,14 +1968,15 @@ export async function handleTeacherGradebookRoutes(
     const textColor = String(body.textColor || '#0f172a').slice(0, 32);
     const borderColor = String(body.borderColor || '#e2e8f0').slice(0, 32);
     const borderDarkColor = String(body.borderDarkColor || '#cbd5e1').slice(0, 32);
+    const colorStyle = body.colorStyle === 'full' ? 'full' : 'accent';
 
     await db
       .prepare(
         `INSERT INTO teacher_subjects
-          (id, user_id, class_id, term_id, school_id, year_id, name, coefficient, color, text_color, border_color, border_dark_color, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          (id, user_id, class_id, term_id, school_id, year_id, name, coefficient, color, text_color, border_color, border_dark_color, color_style, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .bind(id, userId, classId, termId, ownClass.school_id, ownClass.year_id, name, coefficient, color, textColor, borderColor, borderDarkColor, now, now)
+      .bind(id, userId, classId, termId, ownClass.school_id, ownClass.year_id, name, coefficient, color, textColor, borderColor, borderDarkColor, colorStyle, now, now)
       .run();
 
     return jsonResponse({
@@ -1927,6 +1993,7 @@ export async function handleTeacherGradebookRoutes(
         textColor,
         borderColor,
         borderDarkColor,
+        colorStyle,
         createdAt: now,
       },
     }, 201, origin);
@@ -1959,15 +2026,21 @@ export async function handleTeacherGradebookRoutes(
     const textColor = String(body.textColor || existing.text_color).slice(0, 32);
     const borderColor = String(body.borderColor || existing.border_color).slice(0, 32);
     const borderDarkColor = String(body.borderDarkColor || existing.border_dark_color).slice(0, 32);
+    const colorStyle =
+      body.colorStyle === 'accent' || body.colorStyle === 'full'
+        ? body.colorStyle
+        : existing.color_style === 'full'
+        ? 'full'
+        : 'accent';
     const now = Date.now();
 
     await db
       .prepare(
         `UPDATE teacher_subjects
-         SET name = ?, coefficient = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, updated_at = ?
+         SET name = ?, coefficient = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, color_style = ?, updated_at = ?
          WHERE id = ? AND user_id = ?`
       )
-      .bind(name, coefficient, color, textColor, borderColor, borderDarkColor, now, subjectId, userId)
+      .bind(name, coefficient, color, textColor, borderColor, borderDarkColor, colorStyle, now, subjectId, userId)
       .run();
 
     return jsonResponse({
@@ -1984,6 +2057,7 @@ export async function handleTeacherGradebookRoutes(
         textColor,
         borderColor,
         borderDarkColor,
+        colorStyle,
         createdAt: Number(existing.created_at),
       },
     }, 200, origin);
@@ -2826,8 +2900,8 @@ export async function handleTeacherGradebookRoutes(
         db
           .prepare(
             `INSERT OR IGNORE INTO teacher_study_levels
-              (id, user_id, school_id, year_id, name, color, text_color, border_color, sort_order, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+              (id, user_id, school_id, year_id, name, color, text_color, border_color, color_style, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
           )
           .bind(
             lvId,
@@ -2838,6 +2912,7 @@ export async function handleTeacherGradebookRoutes(
             String(lv.color || '#ffffff').slice(0, 32),
             String(lv.textColor || '#0f172a').slice(0, 32),
             String(lv.borderColor || '#cbd5e1').slice(0, 32),
+            lv.colorStyle === 'full' ? 'full' : 'accent',
             Number(lv.createdAt) || now,
             now
           )
@@ -2854,8 +2929,8 @@ export async function handleTeacherGradebookRoutes(
         db
           .prepare(
             `INSERT OR IGNORE INTO teacher_classes
-              (id, user_id, level_id, school_id, year_id, level_name, name, slogan, teacher_name, subject_label, color, text_color, border_color, border_dark_color, icon_gradient, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+              (id, user_id, level_id, school_id, year_id, level_name, name, slogan, teacher_name, subject_label, color, text_color, border_color, border_dark_color, color_style, icon_gradient, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .bind(
             clsId,
@@ -2871,6 +2946,7 @@ export async function handleTeacherGradebookRoutes(
             String(cls.textColor || '#0f172a').slice(0, 32),
             String(cls.borderColor || '#e2e8f0').slice(0, 32),
             String(cls.borderDarkColor || '#cbd5e1').slice(0, 32),
+            cls.colorStyle === 'full' ? 'full' : 'accent',
             String(cls.iconGradient || 'from-amber-500 to-orange-600').slice(0, 80),
             Number(cls.createdAt) || now,
             now
@@ -2921,8 +2997,8 @@ export async function handleTeacherGradebookRoutes(
         db
           .prepare(
             `INSERT OR IGNORE INTO teacher_subjects
-              (id, user_id, class_id, term_id, school_id, year_id, name, coefficient, color, text_color, border_color, border_dark_color, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              (id, user_id, class_id, term_id, school_id, year_id, name, coefficient, color, text_color, border_color, border_dark_color, color_style, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .bind(
             String(subj.id).slice(0, 80),
@@ -2937,6 +3013,7 @@ export async function handleTeacherGradebookRoutes(
             String(subj.textColor || '#0f172a').slice(0, 32),
             String(subj.borderColor || '#e2e8f0').slice(0, 32),
             String(subj.borderDarkColor || '#cbd5e1').slice(0, 32),
+            subj.colorStyle === 'full' ? 'full' : 'accent',
             Number(subj.createdAt) || now,
             now
           )
@@ -2952,7 +3029,7 @@ export async function handleTeacherGradebookRoutes(
         db
           .prepare(
             `UPDATE teacher_subjects
-             SET coefficient = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, updated_at = ?
+             SET coefficient = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, color_style = ?, updated_at = ?
              WHERE id = ? AND user_id = ?`
           )
           .bind(
@@ -2961,6 +3038,7 @@ export async function handleTeacherGradebookRoutes(
             String(subj.textColor || '#0f172a').slice(0, 32),
             String(subj.borderColor || '#e2e8f0').slice(0, 32),
             String(subj.borderDarkColor || '#cbd5e1').slice(0, 32),
+            subj.colorStyle === 'full' ? 'full' : 'accent',
             now,
             String(subj.id),
             userId
@@ -3710,15 +3788,16 @@ export async function handleTeacherGradebookRoutes(
       const yId = String(y.id).slice(0, 80);
       const label = String(y.label).trim().slice(0, 30);
       if (!label) continue;
+      const yStyle = y.colorStyle === 'accent' ? 'accent' : 'full';
       if (ownedYears.has(yId)) {
         stmts.push(
-          db.prepare('UPDATE teacher_school_years SET label = ?, color = ?, text_color = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-            .bind(label, String(y.color || '#00313d').slice(0, 32), String(y.textColor || '#ffffff').slice(0, 32), now, yId, userId)
+          db.prepare('UPDATE teacher_school_years SET label = ?, color = ?, text_color = ?, color_style = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+            .bind(label, String(y.color || '#00313d').slice(0, 32), String(y.textColor || '#ffffff').slice(0, 32), yStyle, now, yId, userId)
         );
       } else {
         stmts.push(
-          db.prepare('INSERT OR IGNORE INTO teacher_school_years (id, user_id, label, color, text_color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-            .bind(yId, userId, label, String(y.color || '#00313d').slice(0, 32), String(y.textColor || '#ffffff').slice(0, 32), Number(y.createdAt) || now, now)
+          db.prepare('INSERT OR IGNORE INTO teacher_school_years (id, user_id, label, color, text_color, color_style, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+            .bind(yId, userId, label, String(y.color || '#00313d').slice(0, 32), String(y.textColor || '#ffffff').slice(0, 32), yStyle, Number(y.createdAt) || now, now)
         );
         ownedYears.add(yId);
       }
@@ -3729,6 +3808,7 @@ export async function handleTeacherGradebookRoutes(
       const sId = String(s.id).slice(0, 80);
       const name = String(s.name).trim().slice(0, 120);
       if (!name) continue;
+      const sStyle = s.colorStyle === 'accent' ? 'accent' : 'full';
 
       let logoR2Key: string | null = ownedSchoolsMap.get(sId) ?? (s.logoR2Key && isOwnedR2Key(s.logoR2Key, userId) ? s.logoR2Key : null);
       if (typeof s.logoUrl === 'string' && s.logoUrl.startsWith('data:image/')) {
@@ -3749,7 +3829,7 @@ export async function handleTeacherGradebookRoutes(
         stmts.push(
           db.prepare(
             `UPDATE teacher_schools
-             SET name = ?, logo_r2_key = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, updated_at = ?
+             SET name = ?, logo_r2_key = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, color_style = ?, updated_at = ?
              WHERE id = ? AND user_id = ?`
           ).bind(
             name, logoR2Key,
@@ -3757,6 +3837,7 @@ export async function handleTeacherGradebookRoutes(
             String(s.textColor || '#0f172a').slice(0, 32),
             String(s.borderColor || '#e2e8f0').slice(0, 32),
             String(s.borderDarkColor || '#cbd5e1').slice(0, 32),
+            sStyle,
             now, sId, userId
           )
         );
@@ -3764,14 +3845,15 @@ export async function handleTeacherGradebookRoutes(
         stmts.push(
           db.prepare(
             `INSERT OR IGNORE INTO teacher_schools
-              (id, user_id, year_id, name, logo_r2_key, color, text_color, border_color, border_dark_color, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              (id, user_id, year_id, name, logo_r2_key, color, text_color, border_color, border_dark_color, color_style, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           ).bind(
             sId, userId, String(s.yearId).slice(0, 80), name, logoR2Key,
             String(s.color || '#ffffff').slice(0, 32),
             String(s.textColor || '#0f172a').slice(0, 32),
             String(s.borderColor || '#e2e8f0').slice(0, 32),
             String(s.borderDarkColor || '#cbd5e1').slice(0, 32),
+            sStyle,
             Number(s.createdAt) || now, now
           )
         );
@@ -3784,18 +3866,19 @@ export async function handleTeacherGradebookRoutes(
       const lId = String(l.id).slice(0, 80);
       const name = String(l.name).trim().slice(0, 80);
       if (!name) continue;
+      const lStyle = l.colorStyle === 'full' ? 'full' : 'accent';
       if (ownedLevels.has(lId)) {
         stmts.push(
-          db.prepare('UPDATE teacher_study_levels SET name = ?, color = ?, text_color = ?, border_color = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-            .bind(name, String(l.color || '#ffffff').slice(0, 32), String(l.textColor || '#0f172a').slice(0, 32), String(l.borderColor || '#cbd5e1').slice(0, 32), now, lId, userId)
+          db.prepare('UPDATE teacher_study_levels SET name = ?, color = ?, text_color = ?, border_color = ?, color_style = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+            .bind(name, String(l.color || '#ffffff').slice(0, 32), String(l.textColor || '#0f172a').slice(0, 32), String(l.borderColor || '#cbd5e1').slice(0, 32), lStyle, now, lId, userId)
         );
       } else {
         stmts.push(
           db.prepare(
             `INSERT OR IGNORE INTO teacher_study_levels
-              (id, user_id, school_id, year_id, name, color, text_color, border_color, sort_order, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
-          ).bind(lId, userId, String(l.schoolId).slice(0, 80), String(l.yearId).slice(0, 80), name, String(l.color || '#ffffff').slice(0, 32), String(l.textColor || '#0f172a').slice(0, 32), String(l.borderColor || '#cbd5e1').slice(0, 32), Number(l.createdAt) || now, now)
+              (id, user_id, school_id, year_id, name, color, text_color, border_color, color_style, sort_order, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`
+          ).bind(lId, userId, String(l.schoolId).slice(0, 80), String(l.yearId).slice(0, 80), name, String(l.color || '#ffffff').slice(0, 32), String(l.textColor || '#0f172a').slice(0, 32), String(l.borderColor || '#cbd5e1').slice(0, 32), lStyle, Number(l.createdAt) || now, now)
         );
         ownedLevels.add(lId);
       }
@@ -3804,11 +3887,12 @@ export async function handleTeacherGradebookRoutes(
     for (const c of classes) {
       if (!c?.id || !c?.levelId || !c?.schoolId || !c?.yearId || !ownedLevels.has(String(c.levelId))) continue;
       const cId = String(c.id).slice(0, 80);
+      const cStyle = c.colorStyle === 'full' ? 'full' : 'accent';
       if (ownedClasses.has(cId)) {
         stmts.push(
           db.prepare(
             `UPDATE teacher_classes
-             SET level_name = ?, name = ?, slogan = ?, teacher_name = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, icon_gradient = ?, updated_at = ?
+             SET level_name = ?, name = ?, slogan = ?, teacher_name = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, color_style = ?, icon_gradient = ?, updated_at = ?
              WHERE id = ? AND user_id = ?`
           ).bind(
             String(c.level || '').trim().slice(0, 80),
@@ -3819,6 +3903,7 @@ export async function handleTeacherGradebookRoutes(
             String(c.textColor || '#0f172a').slice(0, 32),
             String(c.borderColor || '#e2e8f0').slice(0, 32),
             String(c.borderDarkColor || '#cbd5e1').slice(0, 32),
+            cStyle,
             String(c.iconGradient || 'from-amber-500 to-orange-600').slice(0, 80),
             now, cId, userId
           )
@@ -3827,8 +3912,8 @@ export async function handleTeacherGradebookRoutes(
         stmts.push(
           db.prepare(
             `INSERT OR IGNORE INTO teacher_classes
-              (id, user_id, level_id, school_id, year_id, level_name, name, slogan, teacher_name, subject_label, color, text_color, border_color, border_dark_color, icon_gradient, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`
+              (id, user_id, level_id, school_id, year_id, level_name, name, slogan, teacher_name, subject_label, color, text_color, border_color, border_dark_color, color_style, icon_gradient, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`
           ).bind(
             cId, userId, String(c.levelId).slice(0, 80), String(c.schoolId).slice(0, 80), String(c.yearId).slice(0, 80),
             String(c.level || '').trim().slice(0, 80),
@@ -3839,6 +3924,7 @@ export async function handleTeacherGradebookRoutes(
             String(c.textColor || '#0f172a').slice(0, 32),
             String(c.borderColor || '#e2e8f0').slice(0, 32),
             String(c.borderDarkColor || '#cbd5e1').slice(0, 32),
+            cStyle,
             String(c.iconGradient || 'from-amber-500 to-orange-600').slice(0, 80),
             Number(c.createdAt) || now, now
           )
@@ -3875,11 +3961,12 @@ export async function handleTeacherGradebookRoutes(
       if (!ownedClasses.has(String(s.classId)) || !ownedTerms.has(String(s.termId))) continue;
       const sId = String(s.id).slice(0, 80);
       const coeff = s.coefficient !== undefined && s.coefficient !== null && Number.isFinite(Number(s.coefficient)) ? Number(s.coefficient) : null;
+      const sStyle = s.colorStyle === 'full' ? 'full' : 'accent';
       if (ownedSubjects.has(sId)) {
         stmts.push(
           db.prepare(
             `UPDATE teacher_subjects
-             SET name = ?, coefficient = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, updated_at = ?
+             SET name = ?, coefficient = ?, color = ?, text_color = ?, border_color = ?, border_dark_color = ?, color_style = ?, updated_at = ?
              WHERE id = ? AND user_id = ?`
           ).bind(
             String(s.name).trim().slice(0, 100), coeff,
@@ -3887,6 +3974,7 @@ export async function handleTeacherGradebookRoutes(
             String(s.textColor || '#0f172a').slice(0, 32),
             String(s.borderColor || '#e2e8f0').slice(0, 32),
             String(s.borderDarkColor || '#cbd5e1').slice(0, 32),
+            sStyle,
             now, sId, userId
           )
         );
@@ -3894,8 +3982,8 @@ export async function handleTeacherGradebookRoutes(
         stmts.push(
           db.prepare(
             `INSERT OR IGNORE INTO teacher_subjects
-              (id, user_id, class_id, term_id, school_id, year_id, name, coefficient, color, text_color, border_color, border_dark_color, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              (id, user_id, class_id, term_id, school_id, year_id, name, coefficient, color, text_color, border_color, border_dark_color, color_style, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           ).bind(
             sId, userId, String(s.classId).slice(0, 80), String(s.termId).slice(0, 80), String(s.schoolId).slice(0, 80), String(s.yearId).slice(0, 80),
             String(s.name).trim().slice(0, 100), coeff,
@@ -3903,6 +3991,7 @@ export async function handleTeacherGradebookRoutes(
             String(s.textColor || '#0f172a').slice(0, 32),
             String(s.borderColor || '#e2e8f0').slice(0, 32),
             String(s.borderDarkColor || '#cbd5e1').slice(0, 32),
+            sStyle,
             Number(s.createdAt) || now, now
           )
         );

@@ -620,6 +620,7 @@ const copySubjectIntoTarget = (
       existing.textColor = srcSubject.textColor;
       existing.borderColor = srcSubject.borderColor;
       existing.borderDarkColor = srcSubject.borderDarkColor;
+      existing.colorStyle = srcSubject.colorStyle;
     } else if (existing.coefficient === undefined && srcSubject.coefficient !== undefined) {
       existing.coefficient = srcSubject.coefficient;
     }
@@ -664,6 +665,7 @@ const copySubjectIntoTarget = (
     textColor: srcSubject.textColor,
     borderColor: srcSubject.borderColor,
     borderDarkColor: srcSubject.borderDarkColor,
+    colorStyle: srcSubject.colorStyle,
     createdAt: Date.now() + state.uidCounter,
   };
   state.subjects.push(newSubject);
@@ -726,6 +728,7 @@ const ensureClassInLevel = (
     existing.textColor = srcClass.textColor;
     existing.borderColor = srcClass.borderColor;
     existing.borderDarkColor = srcClass.borderDarkColor;
+    existing.colorStyle = srcClass.colorStyle;
     existing.iconGradient = srcClass.iconGradient;
     return { targetClass: existing, created: false };
   }
@@ -745,6 +748,7 @@ const ensureClassInLevel = (
     textColor: srcClass.textColor,
     borderColor: srcClass.borderColor,
     borderDarkColor: srcClass.borderDarkColor,
+    colorStyle: srcClass.colorStyle,
     iconGradient: srcClass.iconGradient,
     createdAt: Date.now() + state.uidCounter,
   };
@@ -1064,6 +1068,7 @@ export const executeTransfer = (
             color: srcLevel.color,
             textColor: srcLevel.textColor,
             borderColor: srcLevel.borderColor,
+            colorStyle: srcLevel.colorStyle,
             createdAt: Date.now() + state.uidCounter,
           };
           state.studyLevels.push(targetLevel);

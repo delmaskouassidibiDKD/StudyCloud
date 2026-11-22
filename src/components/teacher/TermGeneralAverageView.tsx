@@ -59,7 +59,6 @@ import {
 } from '../../utils/viewerExpandManager';
 import {
   TeacherGradebookAPI,
-  generateTeacherEntityId,
   getTeacherAuthToken,
   isOfflineOrNetworkError,
   readUserClassAverageCache,
@@ -93,6 +92,8 @@ export interface TermGeneralAverageViewProps {
   initialSubjects?: SubjectItem[];
   /** Permet de sauter directement vers le tableur d'une matière en cliquant sur son en-tête */
   onOpenSubject?: (subjectId: string) => void;
+  /** Notifie la vue parente dès qu'un coefficient de matière est enregistré depuis ce tableau */
+  onSubjectCoefficientUpdated?: (subjectId: string, coefficient: number | null) => void;
   onBack: () => void;
 }
 
@@ -184,6 +185,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
   userId,
   initialSubjects = [],
   onOpenSubject,
+  onSubjectCoefficientUpdated,
   onBack,
 }) => {
   const viewerExpandLevel = useViewerExpandLevel();
@@ -264,6 +266,27 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
   const textBtnRef = useRef<HTMLButtonElement>(null);
   const rowBtnRef = useRef<HTMLButtonElement>(null);
   const sortBtnRef = useRef<HTMLButtonElement>(null);
+  const bulkCoeffBtnRef = useRef<HTMLButtonElement>(null);
+
+  // Petit menu flottant d'ajout / modification rapide de coefficient de matière
+  const [coeffPopover, setCoeffPopover] = useState<
+    | {
+        mode: 'single';
+        subjectId: string;
+        subjectName: string;
+        anchorEl: HTMLElement;
+        draft: string;
+        error: string | null;
+      }
+    | {
+        mode: 'bulk';
+        anchorEl: HTMLElement;
+        drafts: Record<string, string>;
+        error: string | null;
+      }
+    | null
+  >(null);
+  const [isSavingCoeff, setIsSavingCoeff] = useState(false);
 
   // Largeurs effectives des colonnes (avec valeurs par défaut harmonieuses)
   const colWidthRank = layout.colWidthRank ?? 68;
@@ -452,6 +475,216 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     [subjects, subjectGradebooks, overrides, sortMode]
   );
 
+  // Matières dont le coefficient n'a pas encore été enregistré en base
+  const subjectsWithoutCoeff = useMemo(
+    () =>
+      computed.subjects.filter(
+        (s) => s.coefficient === null || s.coefficient === undefined || s.coefficient <= 0
+      ),
+    [computed.subjects]
+  );
+
+  const parseSubjectCoeffInput = (
+    raw: string
+  ): { valid: boolean; value: number | null; error?: string } => {
+    const trimmed = raw.trim().replace(',', '.');
+    if (!trimmed) {
+      return { valid: false, value: null, error: 'Veuillez saisir un coefficient (ex: 2).' };
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > 100) {
+      return {
+        valid: false,
+        value: null,
+        error: 'Entrez un nombre positif compris entre 0,25 et 100.',
+      };
+    }
+    return { valid: true, value: Math.round(parsed * 100) / 100 };
+  };
+
+  const applySavedCoefficientsLocally = useCallback(
+    (updates: Array<{ subjectId: string; coefficient: number }>) => {
+      if (updates.length === 0) return;
+      const map = new Map(updates.map((u) => [u.subjectId, u.coefficient]));
+      setSubjects((prev) =>
+        prev.map((s) => {
+          const nextCoeff = map.get(s.id);
+          if (nextCoeff === undefined) return s;
+          return {
+            ...s,
+            coefficient: nextCoeff,
+            effectiveCoeff: nextCoeff,
+          };
+        })
+      );
+      if (userId) {
+        const cached = readUserClassAverageCache(userId, averageCard.id);
+        if (cached && Array.isArray(cached.subjects)) {
+          writeUserClassAverageCache(userId, averageCard.id, {
+            ...cached,
+            subjects: cached.subjects.map((s) => {
+              const nextCoeff = map.get(s.id);
+              if (nextCoeff === undefined) return s;
+              return { ...s, coefficient: nextCoeff, effectiveCoeff: nextCoeff };
+            }),
+          });
+        }
+      }
+      for (const u of updates) {
+        onSubjectCoefficientUpdated?.(u.subjectId, u.coefficient);
+      }
+    },
+    [averageCard.id, onSubjectCoefficientUpdated, userId]
+  );
+
+  const openSingleCoeffPopover = (
+    subject: TermAverageSubject,
+    anchorEl: HTMLElement
+  ) => {
+    setOpenMenu(null);
+    setCoeffPopover({
+      mode: 'single',
+      subjectId: subject.id,
+      subjectName: subject.name,
+      anchorEl,
+      draft:
+        subject.coefficient !== null && subject.coefficient !== undefined && subject.coefficient > 0
+          ? String(subject.coefficient).replace('.', ',')
+          : '',
+      error: null,
+    });
+  };
+
+  const openBulkCoeffPopover = (anchorEl: HTMLElement) => {
+    setOpenMenu(null);
+    const initialDrafts: Record<string, string> = {};
+    for (const s of subjectsWithoutCoeff) {
+      initialDrafts[s.id] = '';
+    }
+    setCoeffPopover({
+      mode: 'bulk',
+      anchorEl,
+      drafts: initialDrafts,
+      error: null,
+    });
+  };
+
+  const handleApplySingleCoeff = async () => {
+    if (!coeffPopover || coeffPopover.mode !== 'single' || isSavingCoeff) return;
+    const parsed = parseSubjectCoeffInput(coeffPopover.draft);
+    if (!parsed.valid || parsed.value === null) {
+      setCoeffPopover((prev) =>
+        prev && prev.mode === 'single'
+          ? { ...prev, error: parsed.error || 'Coefficient invalide.' }
+          : prev
+      );
+      return;
+    }
+
+    const token = getTeacherAuthToken();
+    if (!token) {
+      setCoeffPopover((prev) =>
+        prev && prev.mode === 'single'
+          ? { ...prev, error: 'Session non connectée. Impossible d’enregistrer.' }
+          : prev
+      );
+      return;
+    }
+
+    setIsSavingCoeff(true);
+    try {
+      await TeacherGradebookAPI.updateSubject(coeffPopover.subjectId, {
+        coefficient: parsed.value,
+      });
+      applySavedCoefficientsLocally([
+        { subjectId: coeffPopover.subjectId, coefficient: parsed.value },
+      ]);
+      setCoeffPopover(null);
+      setCloudStatus('saved');
+    } catch (err: any) {
+      setCoeffPopover((prev) =>
+        prev && prev.mode === 'single'
+          ? {
+              ...prev,
+              error: isOfflineOrNetworkError(err)
+                ? 'Hors ligne — Impossible d’enregistrer le coefficient.'
+                : err?.message || 'Erreur lors de l’enregistrement.',
+            }
+          : prev
+      );
+    } finally {
+      setIsSavingCoeff(false);
+    }
+  };
+
+  const handleApplyBulkCoeffs = async () => {
+    if (!coeffPopover || coeffPopover.mode !== 'bulk' || isSavingCoeff) return;
+    const toSave: Array<{ subjectId: string; coefficient: number }> = [];
+    for (const subj of subjectsWithoutCoeff) {
+      const raw = (coeffPopover.drafts[subj.id] || '').trim();
+      if (!raw) continue;
+      const parsed = parseSubjectCoeffInput(raw);
+      if (!parsed.valid || parsed.value === null) {
+        setCoeffPopover((prev) =>
+          prev && prev.mode === 'bulk'
+            ? {
+                ...prev,
+                error: `Coefficient invalide pour ${subj.name} : entrez un nombre entre 0,25 et 100.`,
+              }
+            : prev
+        );
+        return;
+      }
+      toSave.push({ subjectId: subj.id, coefficient: parsed.value });
+    }
+
+    if (toSave.length === 0) {
+      setCoeffPopover((prev) =>
+        prev && prev.mode === 'bulk'
+          ? { ...prev, error: 'Saisissez au moins un coefficient avant d’appliquer.' }
+          : prev
+      );
+      return;
+    }
+
+    const token = getTeacherAuthToken();
+    if (!token) {
+      setCoeffPopover((prev) =>
+        prev && prev.mode === 'bulk'
+          ? { ...prev, error: 'Session non connectée. Impossible d’enregistrer.' }
+          : prev
+      );
+      return;
+    }
+
+    setIsSavingCoeff(true);
+    try {
+      await Promise.all(
+        toSave.map((item) =>
+          TeacherGradebookAPI.updateSubject(item.subjectId, {
+            coefficient: item.coefficient,
+          })
+        )
+      );
+      applySavedCoefficientsLocally(toSave);
+      setCoeffPopover(null);
+      setCloudStatus('saved');
+    } catch (err: any) {
+      setCoeffPopover((prev) =>
+        prev && prev.mode === 'bulk'
+          ? {
+              ...prev,
+              error: isOfflineOrNetworkError(err)
+                ? 'Hors ligne — Impossible d’enregistrer les coefficients.'
+                : err?.message || 'Erreur lors de l’enregistrement.',
+            }
+          : prev
+      );
+    } finally {
+      setIsSavingCoeff(false);
+    }
+  };
+
   // Utilitaires Historique (Annuler / Rétablir)
   const pushUndoState = useCallback(() => {
     setUndoStack((prev) => [
@@ -541,20 +774,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     };
   };
 
-  // Actions mode hybride (ajouter un élève, renommer un élève manuel, supprimer un élève manuel, saisir une moyenne directe)
-  const handleAddManualStudent = () => {
-    pushUndoState();
-    const newKey = generateTeacherEntityId('avgstd');
-    setOverrides((prev) => ({
-      ...prev,
-      manualStudents: [
-        ...(prev.manualStudents || []),
-        { key: newKey, name: '', createdAt: Date.now() },
-      ],
-    }));
-    setIsDirty(true);
-  };
-
+  // Gestion d'éventuels anciens élèves manuels existants (ajout manuel désactivé dans ce tableau)
   const handleRenameManualStudent = (studentKey: string, newName: string) => {
     setOverrides((prev) => ({
       ...prev,
@@ -1552,6 +1772,67 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       </section>
 
       {/* ========================================================================= */}
+      {/* 3B. BANDEAU D'ALERTE COEFFICIENTS MANQUANTS + AJOUT RAPIDE                */}
+      {/* ========================================================================= */}
+      {subjectsWithoutCoeff.length > 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/60 border-b border-amber-300 dark:border-amber-700/80 px-3 py-1.5 flex flex-wrap items-center justify-between gap-2 text-xs shrink-0 select-none z-20">
+          <div className="flex items-center gap-2 min-w-0">
+            <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <span className="text-amber-950 dark:text-amber-100 font-semibold leading-snug">
+              {subjectsWithoutCoeff.length === 1 ? (
+                <>
+                  Aucun coefficient enregistré pour{' '}
+                  <strong className="font-extrabold">{subjectsWithoutCoeff[0].name}</strong>{' '}
+                  <span className="text-amber-800/90 dark:text-amber-300/90 font-normal">
+                    (calculé provisoirement avec Coeff 1).
+                  </span>
+                </>
+              ) : (
+                <>
+                  Aucun coefficient enregistré pour{' '}
+                  <strong className="font-extrabold">
+                    {subjectsWithoutCoeff.length} matières
+                  </strong>{' '}
+                  <span className="text-amber-800/90 dark:text-amber-300/90 font-normal">
+                    (
+                    {subjectsWithoutCoeff
+                      .slice(0, 3)
+                      .map((s) => s.name)
+                      .join(', ')}
+                    {subjectsWithoutCoeff.length > 3
+                      ? ` +${subjectsWithoutCoeff.length - 3}`
+                      : ''}
+                    ) — calculées provisoirement avec Coeff 1.
+                  </span>
+                </>
+              )}
+            </span>
+          </div>
+
+          <button
+            ref={bulkCoeffBtnRef}
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (subjectsWithoutCoeff.length === 1) {
+                openSingleCoeffPopover(subjectsWithoutCoeff[0], e.currentTarget);
+              } else {
+                openBulkCoeffPopover(e.currentTarget);
+              }
+            }}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white text-[11px] font-bold border border-amber-700 shadow-2xs transition active:scale-95 cursor-pointer shrink-0"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+            <span>
+              {subjectsWithoutCoeff.length === 1
+                ? 'Ajouter le coefficient'
+                : 'Ajouter les coefficients'}
+            </span>
+          </button>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* 4. GRILLE DE TABLEUR EXCEL AVEC LE TABLEAU DE MOYENNE GÉNÉRALE            */}
       {/* ========================================================================= */}
       <div
@@ -1714,10 +1995,15 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
                           {/* EN-TÊTES GROUPÉS DES MATIÈRES (COLSPAN = 2 : MOY. /20 | MOY. × COEFF) */}
                           {computed.subjects.map((subject) => {
-                            const accentColor =
-                              subject.color && subject.color.toLowerCase() !== '#ffffff'
-                                ? subject.color
-                                : '#0ea5e9';
+                            const hasMissingCoeff =
+                              subject.coefficient === null ||
+                              subject.coefficient === undefined ||
+                              subject.coefficient <= 0;
+                            const accentColor = hasMissingCoeff
+                              ? '#d97706'
+                              : subject.color && subject.color.toLowerCase() !== '#ffffff'
+                              ? subject.color
+                              : '#0ea5e9';
                             return (
                               <th
                                 key={`grp-${subject.id}`}
@@ -1736,7 +2022,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                 />
                                 <div className="flex items-center justify-center gap-1 pt-0.5">
                                   <span
-                                    className="font-black text-[11px] text-slate-900 uppercase leading-tight line-clamp-2"
+                                    className="font-black text-[11px] text-slate-900 dark:text-slate-100 uppercase leading-tight line-clamp-2"
                                     title={subject.name}
                                   >
                                     {subject.name}
@@ -1748,18 +2034,41 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                         e.stopPropagation();
                                         onOpenSubject(subject.id);
                                       }}
-                                      className="opacity-40 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200 text-slate-600 hover:text-blue-700 transition cursor-pointer shrink-0"
+                                      className="opacity-40 group-hover:opacity-100 p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 hover:text-blue-700 transition cursor-pointer shrink-0"
                                       title={`Ouvrir le tableau de notes : ${subject.name}`}
                                     >
                                       <ExternalLink className="w-3 h-3" />
                                     </button>
                                   )}
                                 </div>
-                                <div className="mt-0.5 inline-flex items-center gap-1 px-1.5 py-0.2 rounded-full bg-slate-100 border border-slate-300/80 text-[10px] font-extrabold text-slate-700">
-                                  <span>
-                                    Coeff {formatCoeffDisplay(subject.effectiveCoeff)}
-                                  </span>
-                                </div>
+                                {hasMissingCoeff ? (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openSingleCoeffPopover(subject, e.currentTarget);
+                                    }}
+                                    className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/60 hover:bg-amber-200 dark:hover:bg-amber-800/80 border border-amber-400 dark:border-amber-600 text-[10px] font-extrabold text-amber-900 dark:text-amber-200 transition cursor-pointer"
+                                    title={`Coefficient non enregistré pour ${subject.name} — cliquer pour l'ajouter`}
+                                  >
+                                    <AlertTriangle className="w-2.5 h-2.5 text-amber-700 dark:text-amber-300 shrink-0" />
+                                    <span>Coeff manquant · + Ajouter</span>
+                                  </button>
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      openSingleCoeffPopover(subject, e.currentTarget);
+                                    }}
+                                    className="mt-0.5 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-slate-700 border border-slate-300/90 dark:border-slate-600 hover:border-blue-400 text-[10px] font-extrabold text-slate-700 dark:text-slate-200 transition cursor-pointer"
+                                    title={`Cliquer pour modifier le coefficient de ${subject.name}`}
+                                  >
+                                    <span>
+                                      Coeff {formatCoeffDisplay(subject.effectiveCoeff)}
+                                    </span>
+                                  </button>
+                                )}
                               </th>
                             );
                           })}
@@ -1922,8 +2231,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                               <p className="font-bold text-slate-700 mb-1">
                                 Aucun élève enregistré pour ce trimestre pour le moment.
                               </p>
-                              <p className="text-[11px] text-slate-500">
-                                Saisissez vos élèves et notes dans vos matières (ils remonteront automatiquement ici), ou cliquez sur <strong>« + Ajouter un élève »</strong> ci-dessous pour une saisie directe.
+                              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                Saisissez vos élèves et leurs notes dans les tableaux de chaque matière du trimestre : ils apparaîtront automatiquement ici avec leur moyenne générale.
                               </p>
                             </td>
                           </tr>
@@ -2460,18 +2769,12 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                     </table>
                   )}
 
-                  {/* BANDEAU INFÉRIEUR DU TABLEAU : + AJOUTER UN ÉLÈVE & BILAN CLASSE */}
+                  {/* BANDEAU INFÉRIEUR DU TABLEAU : BILAN CLASSE (SYNCHRONISÉ AUTOMATIQUEMENT) */}
                   {computed.subjects.length > 0 && (
                     <div className="term-avg-bottom-bar bg-[#f8fafc] border-t border-slate-300 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
-                      <button
-                        type="button"
-                        onClick={handleAddManualStudent}
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white hover:bg-blue-50 text-slate-800 hover:text-blue-700 font-bold border border-slate-300 shadow-2xs transition active:scale-95 cursor-pointer"
-                        title="Ajouter un élève directement dans ce tableau de moyenne générale"
-                      >
-                        <Plus className="w-3.5 h-3.5 text-blue-600 stroke-[2.5]" />
-                        <span>Ajouter un élève</span>
-                      </button>
+                      <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                        Les élèves sont synchronisés automatiquement depuis les tableaux de chaque matière.
+                      </div>
 
                       <div className="flex flex-wrap items-center gap-2 text-slate-700 font-semibold">
                         <span className="px-2 py-0.5 rounded-md bg-white border border-slate-200">
@@ -2682,6 +2985,212 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
             </button>
           ))}
         </div>
+      </SmartFloatingPopover>
+
+      {/* POPOVER AJOUT / MODIFICATION RAPIDE DE COEFFICIENT */}
+      <SmartFloatingPopover
+        open={coeffPopover !== null}
+        anchorEl={coeffPopover?.anchorEl ?? null}
+        onClose={() => {
+          if (!isSavingCoeff) setCoeffPopover(null);
+        }}
+        preferredSide="bottom"
+        preferredAlign="center"
+      >
+        {coeffPopover?.mode === 'single' ? (
+          <div className="w-64 bg-white dark:bg-[#111827] rounded-xl shadow-2xl border border-slate-300 dark:border-slate-600 p-3 space-y-2.5 select-none">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-[11px] font-black uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Coefficient
+                </div>
+                <div className="text-xs font-extrabold text-slate-900 dark:text-white truncate">
+                  {coeffPopover.subjectName}
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isSavingCoeff}
+                onClick={() => setCoeffPopover(null)}
+                className="w-6 h-6 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400 cursor-pointer shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div>
+              <input
+                type="text"
+                inputMode="decimal"
+                autoFocus
+                value={coeffPopover.draft}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  setCoeffPopover((prev) =>
+                    prev && prev.mode === 'single'
+                      ? { ...prev, draft: val, error: null }
+                      : prev
+                  );
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleApplySingleCoeff();
+                  } else if (e.key === 'Escape' && !isSavingCoeff) {
+                    setCoeffPopover(null);
+                  }
+                }}
+                placeholder="Ex : 2 ou 1,5"
+                className="w-full h-9 px-2.5 rounded-lg bg-white dark:bg-[#0f172a] border border-slate-300 dark:border-slate-600 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 text-sm font-bold text-slate-900 dark:text-white outline-none"
+              />
+              <div className="mt-1.5 flex items-center gap-1">
+                {['1', '2', '3', '4', '5'].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() =>
+                      setCoeffPopover((prev) =>
+                        prev && prev.mode === 'single'
+                          ? { ...prev, draft: preset, error: null }
+                          : prev
+                      )
+                    }
+                    className={`flex-1 py-1 rounded-md border text-[11px] font-bold transition cursor-pointer ${
+                      coeffPopover.draft.trim() === preset
+                        ? 'bg-blue-600 border-blue-600 text-white'
+                        : 'bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200'
+                    }`}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {coeffPopover.error && (
+              <div className="text-[11px] font-semibold text-red-600 dark:text-red-400 leading-snug">
+                {coeffPopover.error}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                disabled={isSavingCoeff}
+                onClick={() => setCoeffPopover(null)}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600 text-xs font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={isSavingCoeff}
+                onClick={handleApplySingleCoeff}
+                className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold transition cursor-pointer inline-flex items-center gap-1.5 shadow-2xs"
+              >
+                {isSavingCoeff ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                )}
+                <span>Appliquer</span>
+              </button>
+            </div>
+          </div>
+        ) : coeffPopover?.mode === 'bulk' ? (
+          <div className="w-80 bg-white dark:bg-[#111827] rounded-xl shadow-2xl border border-slate-300 dark:border-slate-600 p-3 space-y-2.5 select-none">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="text-xs font-extrabold text-slate-900 dark:text-white">
+                  Coefficients manquants ({subjectsWithoutCoeff.length})
+                </div>
+                <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                  Enregistrés immédiatement sur votre compte
+                </div>
+              </div>
+              <button
+                type="button"
+                disabled={isSavingCoeff}
+                onClick={() => setCoeffPopover(null)}
+                className="w-6 h-6 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-500 dark:text-slate-400 cursor-pointer shrink-0"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+
+            <div className="max-h-56 overflow-y-auto space-y-2 pr-0.5">
+              {subjectsWithoutCoeff.map((subj, idx) => (
+                <div
+                  key={subj.id}
+                  className="flex items-center justify-between gap-2 p-2 rounded-lg bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700"
+                >
+                  <span
+                    className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate flex-1"
+                    title={subj.name}
+                  >
+                    {subj.name}
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    autoFocus={idx === 0}
+                    value={coeffPopover.drafts[subj.id] ?? ''}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setCoeffPopover((prev) =>
+                        prev && prev.mode === 'bulk'
+                          ? {
+                              ...prev,
+                              drafts: { ...prev.drafts, [subj.id]: val },
+                              error: null,
+                            }
+                          : prev
+                      );
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handleApplyBulkCoeffs();
+                      }
+                    }}
+                    placeholder="Coeff"
+                    className="w-20 h-8 px-2 text-center rounded-md bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-600 focus:border-blue-500 text-xs font-bold text-slate-900 dark:text-white outline-none shrink-0"
+                  />
+                </div>
+              ))}
+            </div>
+
+            {coeffPopover.error && (
+              <div className="text-[11px] font-semibold text-red-600 dark:text-red-400 leading-snug">
+                {coeffPopover.error}
+              </div>
+            )}
+
+            <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                disabled={isSavingCoeff}
+                onClick={() => setCoeffPopover(null)}
+                className="px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-600 text-xs font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={isSavingCoeff}
+                onClick={handleApplyBulkCoeffs}
+                className="px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-xs font-bold transition cursor-pointer inline-flex items-center gap-1.5 shadow-2xs"
+              >
+                {isSavingCoeff ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                )}
+                <span>Appliquer</span>
+              </button>
+            </div>
+          </div>
+        ) : null}
       </SmartFloatingPopover>
 
       {/* ========================================================================= */}

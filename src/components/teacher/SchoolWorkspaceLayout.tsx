@@ -91,13 +91,15 @@ export interface SchoolWorkspaceLayoutProps {
   boundaryRef: React.RefObject<HTMLElement | null>;
 }
 
-const getSafeAccentColor = (rawColor?: string): string => {
-  if (!rawColor) return '#0051c3';
+const isCustomCardColor = (rawColor?: string): boolean => {
+  if (!rawColor) return false;
   const low = rawColor.trim().toLowerCase();
-  if (low === '#ffffff' || low === 'white' || low === '#f8fafc' || low === '#f1f5f9') {
-    return '#64748b';
-  }
-  return rawColor;
+  return low !== '#ffffff' && low !== 'white' && low !== '#f8fafc' && low !== '#f1f5f9';
+};
+
+const getSafeAccentColor = (rawColor?: string): string => {
+  if (!isCustomCardColor(rawColor)) return '#64748b';
+  return rawColor!;
 };
 
 const formatClassDisplayTitle = (cls: ClassItem): string => {
@@ -323,6 +325,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
               levels.map((lvl) => {
                 const isSelected = activeLevel?.id === lvl.id && !isTransferViewOpen;
                 const count = allSchoolClasses.filter((c) => c.levelId === lvl.id).length;
+                const hasColor = isCustomCardColor(lvl.color);
+                const isFull = hasColor && lvl.colorStyle === 'full';
                 return (
                   <div
                     key={lvl.id}
@@ -332,19 +336,39 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                       onSelectLevel(lvl.id);
                       setIsMobileSidebarOpen(false);
                     }}
-                    className={`group relative flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
-                      isSelected
+                    style={
+                      isFull
+                        ? {
+                            backgroundColor: lvl.color,
+                            color: lvl.textColor || '#ffffff',
+                            borderColor: lvl.borderColor || lvl.color,
+                          }
+                        : undefined
+                    }
+                    className={`group relative overflow-hidden flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
+                      isFull
+                        ? isSelected
+                          ? 'font-semibold ring-2 ring-[#0051c3] dark:ring-blue-400 ring-offset-1 ring-offset-white dark:ring-offset-[#111827]'
+                          : 'font-medium opacity-95 hover:opacity-100'
+                        : isSelected
                         ? 'bg-[#eff6ff] dark:bg-blue-500/20 border-[#0051c3]/70 dark:border-blue-400/70 text-[#0051c3] dark:text-blue-200 font-semibold'
                         : 'bg-white dark:bg-[#161f33]/70 border-slate-200 dark:border-slate-700/90 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'
                     }`}
                   >
-                    {isSelected && (
-                      <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r bg-[#0051c3] dark:bg-blue-400" />
+                    {!isFull && (isSelected || hasColor) && (
+                      <span
+                        className="absolute left-0 top-0 bottom-0 w-[3.5px]"
+                        style={{
+                          backgroundColor: hasColor ? lvl.color : '#0051c3',
+                        }}
+                      />
                     )}
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className={`flex items-center gap-2 min-w-0 flex-1 ${!isFull && (isSelected || hasColor) ? 'pl-1' : ''}`}>
                       <Layers
                         className={`w-3.5 h-3.5 shrink-0 ${
-                          isSelected
+                          isFull
+                            ? 'text-white/90'
+                            : isSelected
                             ? 'text-[#0051c3] dark:text-blue-300'
                             : 'text-slate-500 dark:text-slate-400'
                         }`}
@@ -354,7 +378,9 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                     <div className="flex items-center gap-1 shrink-0">
                       <span
                         className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold ${
-                          isSelected
+                          isFull
+                            ? 'bg-black/20 border-white/25 text-white'
+                            : isSelected
                             ? 'bg-white/90 dark:bg-blue-950/60 border-blue-300 dark:border-blue-500/50 text-[#0051c3] dark:text-blue-200'
                             : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300'
                         }`}
@@ -365,7 +391,9 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                         type="button"
                         onClick={(e) => onOpenMenu(e, 'level', lvl)}
                         className={`card-menu-trigger w-5 h-5 rounded flex items-center justify-center transition cursor-pointer ${
-                          isSelected
+                          isFull
+                            ? 'text-white/80 hover:text-white hover:bg-black/20'
+                            : isSelected
                             ? 'text-[#0051c3] dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/50'
                             : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'
                         }`}
@@ -401,6 +429,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
             {levelClasses.map((cls) => {
               const isSelected = enteredClass.id === cls.id && !isTransferViewOpen;
               const subjCount = allSubjects.filter((s) => s.classId === cls.id).length;
+              const hasColor = isCustomCardColor(cls.color);
+              const isFull = hasColor && cls.colorStyle === 'full';
               return (
                 <div
                   key={cls.id}
@@ -410,19 +440,39 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                     onEnterClass(cls);
                     setIsMobileSidebarOpen(false);
                   }}
-                  className={`group relative flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
-                    isSelected
+                  style={
+                    isFull
+                      ? {
+                          backgroundColor: cls.color,
+                          color: cls.textColor || '#ffffff',
+                          borderColor: cls.borderDarkColor || cls.borderColor || cls.color,
+                        }
+                      : undefined
+                  }
+                  className={`group relative overflow-hidden flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
+                    isFull
+                      ? isSelected
+                        ? 'font-semibold ring-2 ring-[#0051c3] dark:ring-blue-400 ring-offset-1 ring-offset-white dark:ring-offset-[#111827]'
+                        : 'font-medium opacity-95 hover:opacity-100'
+                      : isSelected
                       ? 'bg-[#eff6ff] dark:bg-blue-500/20 border-[#0051c3]/70 dark:border-blue-400/70 text-[#0051c3] dark:text-blue-200 font-semibold'
                       : 'bg-white dark:bg-[#161f33]/70 border-slate-200 dark:border-slate-700/90 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'
                   }`}
                 >
-                  {isSelected && (
-                    <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r bg-[#0051c3] dark:bg-blue-400" />
+                  {!isFull && (isSelected || hasColor) && (
+                    <span
+                      className="absolute left-0 top-0 bottom-0 w-[3.5px]"
+                      style={{
+                        backgroundColor: hasColor ? cls.color : '#0051c3',
+                      }}
+                    />
                   )}
-                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <div className={`flex items-center gap-2 min-w-0 flex-1 ${!isFull && (isSelected || hasColor) ? 'pl-1' : ''}`}>
                     <GraduationCap
                       className={`w-3.5 h-3.5 shrink-0 ${
-                        isSelected
+                        isFull
+                          ? 'text-white/90'
+                          : isSelected
                           ? 'text-[#0051c3] dark:text-blue-300'
                           : 'text-slate-500 dark:text-slate-400'
                       }`}
@@ -432,7 +482,9 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                   <div className="flex items-center gap-1 shrink-0">
                     <span
                       className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold ${
-                        isSelected
+                        isFull
+                          ? 'bg-black/20 border-white/25 text-white'
+                          : isSelected
                           ? 'bg-white/90 dark:bg-blue-950/60 border-blue-300 dark:border-blue-500/50 text-[#0051c3] dark:text-blue-200'
                           : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300'
                       }`}
@@ -443,7 +495,9 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                       type="button"
                       onClick={(e) => onOpenMenu(e, 'class', cls)}
                       className={`card-menu-trigger w-5 h-5 rounded flex items-center justify-center transition cursor-pointer ${
-                        isSelected
+                        isFull
+                          ? 'text-white/80 hover:text-white hover:bg-black/20'
+                          : isSelected
                           ? 'text-[#0051c3] dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/50'
                           : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'
                       }`}
@@ -867,29 +921,63 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                             (t) => t.classId === cls.id
                           ).length;
                           const accent = getSafeAccentColor(cls.color);
+                          const isFull = isCustomCardColor(cls.color) && cls.colorStyle === 'full';
 
                           return (
                             <div
                               key={cls.id}
                               data-popover-avoid="true"
                               onClick={() => onEnterClass(cls)}
-                              className="group relative bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-600 hover:border-slate-500 dark:hover:border-blue-400 rounded-xl p-4 flex flex-col justify-between min-h-[126px] transition cursor-pointer overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.05)] hover:shadow-sm"
+                              style={
+                                isFull
+                                  ? {
+                                      backgroundColor: cls.color,
+                                      color: cls.textColor || '#ffffff',
+                                      borderColor: cls.borderDarkColor || cls.borderColor || cls.color,
+                                    }
+                                  : undefined
+                              }
+                              className={`group relative rounded-xl p-4 flex flex-col justify-between min-h-[126px] transition cursor-pointer overflow-hidden border shadow-[0_1px_2px_rgba(15,23,42,0.05)] hover:shadow-md ${
+                                isFull
+                                  ? 'hover:brightness-[1.04]'
+                                  : 'bg-white dark:bg-[#131c2e] border-slate-300 dark:border-slate-600 hover:border-slate-500 dark:hover:border-blue-400'
+                              }`}
                             >
-                              <div
-                                className="absolute left-0 top-0 bottom-0 w-[3.5px]"
-                                style={{ backgroundColor: accent }}
-                              />
+                              {!isFull && (
+                                <div
+                                  className="absolute left-0 top-0 bottom-0 w-[3.5px]"
+                                  style={{ backgroundColor: accent }}
+                                />
+                              )}
 
-                              <div className="flex items-start justify-between gap-2 pl-1.5">
+                              <div className={`flex items-start justify-between gap-2 ${!isFull ? 'pl-1.5' : ''}`}>
                                 <div className="min-w-0">
-                                  <div className="text-[10.5px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide truncate">
+                                  <div
+                                    className={`text-[10.5px] font-semibold uppercase tracking-wide truncate ${
+                                      isFull
+                                        ? 'text-white/80'
+                                        : 'text-slate-500 dark:text-slate-400'
+                                    }`}
+                                  >
                                     {cls.level}
                                   </div>
-                                  <h3 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-[#0051c3] dark:group-hover:text-blue-300 transition truncate mt-0.5">
+                                  <h3
+                                    className={`text-sm font-bold transition truncate mt-0.5 ${
+                                      isFull
+                                        ? 'text-white'
+                                        : 'text-slate-900 dark:text-white group-hover:text-[#0051c3] dark:group-hover:text-blue-300'
+                                    }`}
+                                  >
                                     {formatClassDisplayTitle(cls)}
                                   </h3>
                                   {cls.teacherName?.trim() && (
-                                    <div className="text-[11px] text-slate-600 dark:text-slate-400 truncate mt-0.5">
+                                    <div
+                                      className={`text-[11px] truncate mt-0.5 ${
+                                        isFull
+                                          ? 'text-white/85'
+                                          : 'text-slate-600 dark:text-slate-400'
+                                      }`}
+                                    >
                                       {cls.teacherName.trim()}
                                     </div>
                                   )}
@@ -898,20 +986,44 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                                 <button
                                   type="button"
                                   onClick={(e) => onOpenMenu(e, 'class', cls)}
-                                  className="card-menu-trigger w-7 h-7 rounded-md border border-transparent hover:border-slate-300 dark:hover:border-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition cursor-pointer shrink-0"
+                                  className={`card-menu-trigger w-7 h-7 rounded-md border border-transparent flex items-center justify-center transition cursor-pointer shrink-0 ${
+                                    isFull
+                                      ? 'hover:border-white/30 hover:bg-black/20 text-white/80 hover:text-white'
+                                      : 'hover:border-slate-300 dark:hover:border-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                  }`}
                                   title={`Options de ${formatClassDisplayTitle(cls)}`}
                                 >
                                   <MoreHorizontal className="w-4 h-4" />
                                 </button>
                               </div>
 
-                              <div className="mt-4 pt-2.5 border-t border-slate-200 dark:border-slate-700 pl-1.5 flex items-center justify-between text-[11px]">
-                                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 font-medium">
+                              <div
+                                className={`mt-4 pt-2.5 border-t flex items-center justify-between text-[11px] ${
+                                  !isFull ? 'pl-1.5 ' : ''
+                                }${
+                                  isFull
+                                    ? 'border-white/25'
+                                    : 'border-slate-200 dark:border-slate-700'
+                                }`}
+                              >
+                                <div
+                                  className={`flex items-center gap-2 font-medium ${
+                                    isFull
+                                      ? 'text-white/90'
+                                      : 'text-slate-600 dark:text-slate-300'
+                                  }`}
+                                >
                                   <span>{termCount} trim.</span>
-                                  <span className="text-slate-400 dark:text-slate-600">•</span>
+                                  <span className={isFull ? 'text-white/60' : 'text-slate-400 dark:text-slate-600'}>•</span>
                                   <span>{subjCount} mat.</span>
                                 </div>
-                                <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200 group-hover:text-[#0051c3] dark:group-hover:text-blue-300 transition">
+                                <span
+                                  className={`inline-flex items-center gap-1 font-semibold transition ${
+                                    isFull
+                                      ? 'text-white'
+                                      : 'text-slate-700 dark:text-slate-200 group-hover:text-[#0051c3] dark:group-hover:text-blue-300'
+                                  }`}
+                                >
                                   <span>Ouvrir</span>
                                   <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                                 </span>
@@ -1097,6 +1209,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
                       {filteredSubjects.map((subject) => {
                         const accent = getSafeAccentColor(subject.color);
+                        const isFull = isCustomCardColor(subject.color) && subject.colorStyle === 'full';
                         const statKey = `${subject.id}__${activeTerm.id || 't1'}`;
                         const gbStat = serverGradebookStats?.[statKey];
                         const hasCoeff =
@@ -1108,25 +1221,58 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                             key={subject.id}
                             data-popover-avoid="true"
                             onClick={() => onOpenSubject(subject)}
-                            className="group relative bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-600 hover:border-slate-500 dark:hover:border-blue-400 rounded-xl p-4 flex flex-col justify-between min-h-[116px] transition cursor-pointer overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.05)] hover:shadow-sm"
+                            style={
+                              isFull
+                                ? {
+                                    backgroundColor: subject.color,
+                                    color: subject.textColor || '#ffffff',
+                                    borderColor: subject.borderDarkColor || subject.borderColor || subject.color,
+                                  }
+                                : undefined
+                            }
+                            className={`group relative rounded-xl p-4 flex flex-col justify-between min-h-[116px] transition cursor-pointer overflow-hidden border shadow-[0_1px_2px_rgba(15,23,42,0.05)] hover:shadow-md ${
+                              isFull
+                                ? 'hover:brightness-[1.04]'
+                                : 'bg-white dark:bg-[#131c2e] border-slate-300 dark:border-slate-600 hover:border-slate-500 dark:hover:border-blue-400'
+                            }`}
                           >
-                            <div
-                              className="absolute left-0 top-0 bottom-0 w-[3.5px]"
-                              style={{ backgroundColor: accent }}
-                            />
+                            {!isFull && (
+                              <div
+                                className="absolute left-0 top-0 bottom-0 w-[3.5px]"
+                                style={{ backgroundColor: accent }}
+                              />
+                            )}
 
-                            <div className="flex items-start justify-between gap-2 pl-1.5">
+                            <div className={`flex items-start justify-between gap-2 ${!isFull ? 'pl-1.5' : ''}`}>
                               <div className="min-w-0">
-                                <h3 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-[#0051c3] dark:group-hover:text-blue-300 transition line-clamp-2 leading-snug">
+                                <h3
+                                  className={`text-sm font-bold transition line-clamp-2 leading-snug ${
+                                    isFull
+                                      ? 'text-white'
+                                      : 'text-slate-900 dark:text-white group-hover:text-[#0051c3] dark:group-hover:text-blue-300'
+                                  }`}
+                                >
                                   {subject.name}
                                 </h3>
                                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                                   {hasCoeff ? (
-                                    <span className="text-[10.5px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-[#1e293b] text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600">
+                                    <span
+                                      className={`text-[10.5px] font-semibold px-1.5 py-0.2 rounded border ${
+                                        isFull
+                                          ? 'bg-black/25 text-white border-white/25'
+                                          : 'bg-slate-100 dark:bg-[#1e293b] text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600'
+                                      }`}
+                                    >
                                       Coeff {subject.coefficient}
                                     </span>
                                   ) : (
-                                    <span className="text-[10.5px] font-medium text-slate-500 dark:text-slate-400">
+                                    <span
+                                      className={`text-[10.5px] font-medium ${
+                                        isFull
+                                          ? 'text-white/80'
+                                          : 'text-slate-500 dark:text-slate-400'
+                                      }`}
+                                    >
                                       Sans coefficient
                                     </span>
                                   )}
@@ -1136,22 +1282,46 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                               <button
                                 type="button"
                                 onClick={(e) => onOpenMenu(e, 'subject', subject)}
-                                className="card-menu-trigger w-7 h-7 rounded-md border border-transparent hover:border-slate-300 dark:hover:border-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition cursor-pointer shrink-0"
+                                className={`card-menu-trigger w-7 h-7 rounded-md border border-transparent flex items-center justify-center transition cursor-pointer shrink-0 ${
+                                  isFull
+                                    ? 'hover:border-white/30 hover:bg-black/20 text-white/80 hover:text-white'
+                                    : 'hover:border-slate-300 dark:hover:border-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                                }`}
                                 title={`Options de ${subject.name}`}
                               >
                                 <MoreHorizontal className="w-4 h-4" />
                               </button>
                             </div>
 
-                            <div className="mt-3.5 pt-2.5 border-t border-slate-200 dark:border-slate-700 pl-1.5 flex items-center justify-between text-[11px]">
-                              <span className="text-slate-600 dark:text-slate-300 font-medium truncate">
+                            <div
+                              className={`mt-3.5 pt-2.5 border-t flex items-center justify-between text-[11px] ${
+                                !isFull ? 'pl-1.5 ' : ''
+                              }${
+                                isFull
+                                  ? 'border-white/25'
+                                  : 'border-slate-200 dark:border-slate-700'
+                              }`}
+                            >
+                              <span
+                                className={`font-medium truncate ${
+                                  isFull
+                                    ? 'text-white/90'
+                                    : 'text-slate-600 dark:text-slate-300'
+                                }`}
+                              >
                                 {gbStat && gbStat.namedStudentsCount > 0
                                   ? `${gbStat.namedStudentsCount} élève${
                                       gbStat.namedStudentsCount > 1 ? 's' : ''
                                     }`
                                   : 'Tableur de notes'}
                               </span>
-                              <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200 group-hover:text-[#0051c3] dark:group-hover:text-blue-300 transition shrink-0">
+                              <span
+                                className={`inline-flex items-center gap-1 font-semibold transition shrink-0 ${
+                                  isFull
+                                    ? 'text-white'
+                                    : 'text-slate-700 dark:text-slate-200 group-hover:text-[#0051c3] dark:group-hover:text-blue-300'
+                                }`}
+                              >
                                 <span>Notes</span>
                                 <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                               </span>

@@ -60,11 +60,14 @@ import {
 } from '../../services/teacherGradebookApi';
 import type { GradebookInspection } from '../../utils/teacherTransferEngine';
 
+export type CardColorStyle = 'accent' | 'full';
+
 export interface SchoolYearItem {
   id: string;
   label: string; // ex: "2026 - 2027"
   color: string; // hex ou 'white'
   textColor?: string;
+  colorStyle?: CardColorStyle;
   createdAt: number;
 }
 
@@ -78,6 +81,7 @@ export interface SchoolItem {
   textColor: string;
   borderColor: string;
   borderDarkColor: string; // pour l'effet 3D en bas
+  colorStyle?: CardColorStyle;
   createdAt: number;
 }
 
@@ -89,6 +93,7 @@ export interface StudyLevelItem {
   color?: string; // Couleur d'accent du bouton mince rectangulaire
   textColor?: string;
   borderColor?: string;
+  colorStyle?: CardColorStyle;
   createdAt: number;
 }
 
@@ -106,6 +111,7 @@ export interface ClassItem {
   textColor: string;
   borderColor: string;
   borderDarkColor: string;
+  colorStyle?: CardColorStyle;
   iconGradient: string;
   createdAt: number;
 }
@@ -144,8 +150,119 @@ export interface SubjectItem {
   textColor: string;
   borderColor: string;
   borderDarkColor: string;
+  colorStyle?: CardColorStyle;
   createdAt: number;
 }
+
+/**
+ * Sélecteur visuel du mode d'application de la couleur (Bande latérale vs Carte complète).
+ * Proposé dans chaque menu/modale disposant d'une palette de couleurs.
+ */
+const ColorStyleSelector: React.FC<{
+  value: CardColorStyle;
+  onChange: (next: CardColorStyle) => void;
+  accentHex: string;
+  isWhiteColor: boolean;
+  compact?: boolean;
+}> = ({ value, onChange, accentHex, isWhiteColor, compact = false }) => {
+  const visualHex = isWhiteColor ? '#2563eb' : accentHex;
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+          Style de couleur
+        </span>
+        {isWhiteColor && (
+          <span className="text-[9.5px] font-medium text-slate-400 dark:text-slate-400">
+            Actif dès qu&apos;une couleur est choisie
+          </span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-2 gap-2">
+        {/* Option 1 : Version actuelle (Bande latérale colorée) */}
+        <button
+          type="button"
+          onClick={() => onChange('accent')}
+          className={`group relative rounded-xl border text-left transition cursor-pointer ${
+            compact ? 'p-2' : 'p-2.5'
+          } ${
+            value === 'accent'
+              ? 'border-[#0051c3] dark:border-blue-400 bg-blue-50/70 dark:bg-blue-950/40 ring-1 ring-[#0051c3]/40'
+              : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-[#0f172a] hover:border-slate-400 dark:hover:border-slate-500'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {/* Miniature visuelle : carte blanche avec barre latérale colorée */}
+            <div className="relative w-9 h-7 rounded-md bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-500 overflow-hidden shrink-0 flex flex-col justify-center gap-1 pl-2 pr-1.5">
+              <span
+                className="absolute left-0 top-0 bottom-0 w-[3.5px]"
+                style={{ backgroundColor: visualHex }}
+              />
+              <span className="w-full h-1 rounded-full bg-slate-400/80 dark:bg-slate-400/70" />
+              <span className="w-2/3 h-1 rounded-full bg-slate-300 dark:bg-slate-600" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-bold text-slate-900 dark:text-white leading-tight truncate">
+                Bande latérale
+              </div>
+              {!compact && (
+                <div className="text-[9.5px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5 truncate">
+                  Style actuel
+                </div>
+              )}
+            </div>
+          </div>
+          {value === 'accent' && (
+            <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-[#0051c3] dark:bg-blue-500 text-white flex items-center justify-center">
+              <Check className="w-2.5 h-2.5 stroke-[3]" />
+            </span>
+          )}
+        </button>
+
+        {/* Option 2 : Ancienne version (Toute la carte colorée) */}
+        <button
+          type="button"
+          onClick={() => onChange('full')}
+          className={`group relative rounded-xl border text-left transition cursor-pointer ${
+            compact ? 'p-2' : 'p-2.5'
+          } ${
+            value === 'full'
+              ? 'border-[#0051c3] dark:border-blue-400 bg-blue-50/70 dark:bg-blue-950/40 ring-1 ring-[#0051c3]/40'
+              : 'border-slate-300 dark:border-slate-600 bg-white dark:bg-[#0f172a] hover:border-slate-400 dark:hover:border-slate-500'
+          }`}
+        >
+          <div className="flex items-center gap-2">
+            {/* Miniature visuelle : carte entièrement remplie de couleur */}
+            <div
+              className="w-9 h-7 rounded-md border border-black/15 overflow-hidden shrink-0 flex flex-col justify-center gap-1 px-1.5"
+              style={{ backgroundColor: visualHex }}
+            >
+              <span className="w-full h-1 rounded-full bg-white/90" />
+              <span className="w-2/3 h-1 rounded-full bg-white/60" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-[11px] font-bold text-slate-900 dark:text-white leading-tight truncate">
+                Carte complète
+              </div>
+              {!compact && (
+                <div className="text-[9.5px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5 truncate">
+                  Tout coloré
+                </div>
+              )}
+            </div>
+          </div>
+          {value === 'full' && (
+            <span className="absolute top-1.5 right-1.5 w-4 h-4 rounded-full bg-[#0051c3] dark:bg-blue-500 text-white flex items-center justify-center">
+              <Check className="w-2.5 h-2.5 stroke-[3]" />
+            </span>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export interface ClassAverageCardItem {
   id: string;
@@ -889,6 +1006,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [editingYear, setEditingYear] = useState<SchoolYearItem | null>(null);
   const [editYearLabel, setEditYearLabel] = useState('');
   const [editYearColorObj, setEditYearColorObj] = useState(YEAR_COLOR_OPTIONS[0]);
+  const [editYearColorStyle, setEditYearColorStyle] = useState<CardColorStyle>('full');
   const [editingSchool, setEditingSchool] = useState<SchoolItem | null>(null);
   const [editingLevel, setEditingLevel] = useState<StudyLevelItem | null>(null);
   const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
@@ -928,6 +1046,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         YEAR_COLOR_OPTIONS.find(c => c.bg === yr.color) ||
         YEAR_COLOR_OPTIONS[0]
       );
+      setEditYearColorStyle(yr.colorStyle === 'accent' ? 'accent' : 'full');
     } else if (type === 'school') {
       const school = item as SchoolItem;
       setEditingSchool(school);
@@ -937,6 +1056,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         SCHOOL_COLOR_OPTIONS.find(c => c.bg === school.color) ||
         SCHOOL_COLOR_OPTIONS[0]
       );
+      setSchoolColorStyle(school.colorStyle === 'accent' ? 'accent' : 'full');
       setIsAddSchoolModalOpen(true);
     } else if (type === 'level') {
       const lvl = item as StudyLevelItem;
@@ -946,6 +1066,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         YEAR_COLOR_OPTIONS.find(c => c.bg === lvl.color) ||
         YEAR_COLOR_OPTIONS[0]
       );
+      setLevelColorStyle(lvl.colorStyle === 'full' ? 'full' : 'accent');
       setIsAddLevelModalOpen(true);
     } else if (type === 'class') {
       const cls = item as ClassItem;
@@ -957,6 +1078,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         CLASS_COLOR_OPTIONS.find(c => c.bg === cls.color) ||
         CLASS_COLOR_OPTIONS[0]
       );
+      setClassColorStyle(cls.colorStyle === 'full' ? 'full' : 'accent');
       setIsAddClassModalOpen(true);
     } else if (type === 'term') {
       const trm = item as TermItem;
@@ -976,6 +1098,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         SUBJECT_COLOR_OPTIONS.find(c => c.bg === subj.color) ||
         SUBJECT_COLOR_OPTIONS[0]
       );
+      setSubjectColorStyle(subj.colorStyle === 'full' ? 'full' : 'accent');
       setIsAddSubjectModalOpen(true);
     }
   };
@@ -1235,17 +1358,20 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [isAddLevelModalOpen, setIsAddLevelModalOpen] = useState(false);
   const [studyLevelName, setStudyLevelName] = useState('');
   const [selectedStudyLevelColor, setSelectedStudyLevelColor] = useState(YEAR_COLOR_OPTIONS[0]);
+  const [levelColorStyle, setLevelColorStyle] = useState<CardColorStyle>('accent');
 
   const resetLevelForm = () => {
     setStudyLevelName('');
     setSelectedStudyLevelColor(YEAR_COLOR_OPTIONS[0]);
+    setLevelColorStyle('accent');
     setEditingLevel(null);
   };
 
   const isLevelDirty = editingLevel
     ? (
         studyLevelName.trim() !== editingLevel.name ||
-        selectedStudyLevelColor.bg !== (editingLevel.color || '#ffffff')
+        selectedStudyLevelColor.bg !== (editingLevel.color || '#ffffff') ||
+        levelColorStyle !== (editingLevel.colorStyle === 'full' ? 'full' : 'accent')
       )
     : studyLevelName.trim().length > 0;
 
@@ -1262,6 +1388,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         color: selectedStudyLevelColor.bg,
         textColor: selectedStudyLevelColor.text,
         borderColor: selectedStudyLevelColor.border,
+        colorStyle: levelColorStyle,
       };
       setStudyLevels(prev => prev.map(l => l.id === editingLevel.id ? updatedLevel : l));
       setClasses(prev => prev.map(c => c.levelId === editingLevel.id ? { ...c, level: cleanName } : c));
@@ -1274,6 +1401,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             color: updatedLevel.color,
             textColor: updatedLevel.textColor,
             borderColor: updatedLevel.borderColor,
+            colorStyle: updatedLevel.colorStyle,
           }),
         'Erreur de mise à jour du niveau.'
       );
@@ -1287,6 +1415,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         color: selectedStudyLevelColor.bg,
         textColor: selectedStudyLevelColor.text,
         borderColor: selectedStudyLevelColor.border,
+        colorStyle: levelColorStyle,
         createdAt: Date.now(),
       };
       setStudyLevels(prev => [...prev, newLevel]);
@@ -1302,6 +1431,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             color: newLevel.color,
             textColor: newLevel.textColor,
             borderColor: newLevel.borderColor,
+            colorStyle: newLevel.colorStyle,
           }),
         'Erreur de création du niveau.'
       ).then((res) => {
@@ -1319,12 +1449,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [classSlogan, setClassSlogan] = useState('');
   const [classTeacherName, setClassTeacherName] = useState(user?.name || '');
   const [selectedClassColor, setSelectedClassColor] = useState(CLASS_COLOR_OPTIONS[0]); // Orange ambré style image
+  const [classColorStyle, setClassColorStyle] = useState<CardColorStyle>('accent');
 
   const resetClassForm = () => {
     setClassName('');
     setClassSlogan('');
     setClassTeacherName(user?.name || 'Professeur');
     setSelectedClassColor(CLASS_COLOR_OPTIONS[0]);
+    setClassColorStyle('accent');
     setEditingClass(null);
   };
 
@@ -1334,7 +1466,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         className.trim() !== (editingClass.name?.trim() || editingClass.level) ||
         classTeacherName.trim() !== editingClass.teacherName ||
         (classSlogan.trim() || '') !== (editingClass.slogan || '') ||
-        selectedClassColor.bg !== editingClass.color
+        selectedClassColor.bg !== editingClass.color ||
+        classColorStyle !== (editingClass.colorStyle === 'full' ? 'full' : 'accent')
       )
     : (className.trim().length > 0 && classTeacherName.trim().length > 0);
 
@@ -1353,6 +1486,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         textColor: selectedClassColor.text,
         borderColor: selectedClassColor.border,
         borderDarkColor: selectedClassColor.borderDark,
+        colorStyle: classColorStyle,
         iconGradient: selectedClassColor.iconGradient,
       };
       setClasses(prev => prev.map(c => c.id === editingClass.id ? updated : c));
@@ -1368,6 +1502,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             textColor: updated.textColor,
             borderColor: updated.borderColor,
             borderDarkColor: updated.borderDarkColor,
+            colorStyle: updated.colorStyle,
             iconGradient: updated.iconGradient,
           }),
         'Erreur de mise à jour de la classe.'
@@ -1389,6 +1524,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         textColor: selectedClassColor.text,
         borderColor: selectedClassColor.border,
         borderDarkColor: selectedClassColor.borderDark,
+        colorStyle: classColorStyle,
         iconGradient: selectedClassColor.iconGradient,
         createdAt: now
       };
@@ -1447,6 +1583,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             textColor: newClass.textColor,
             borderColor: newClass.borderColor,
             borderDarkColor: newClass.borderDarkColor,
+            colorStyle: newClass.colorStyle,
             iconGradient: newClass.iconGradient,
             defaultTerms: defaultTerms.map(t => ({ id: t.id, number: t.number, name: t.name })),
           }),
@@ -1475,11 +1612,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [subjectName, setSubjectName] = useState('');
   const [subjectCoefficient, setSubjectCoefficient] = useState<string>('');
   const [selectedSubjectColor, setSelectedSubjectColor] = useState(SUBJECT_COLOR_OPTIONS[0]); // Blanc par défaut
+  const [subjectColorStyle, setSubjectColorStyle] = useState<CardColorStyle>('accent');
 
   const resetSubjectForm = () => {
     setSubjectName('');
     setSubjectCoefficient('');
     setSelectedSubjectColor(SUBJECT_COLOR_OPTIONS[0]);
+    setSubjectColorStyle('accent');
     setEditingSubject(null);
   };
 
@@ -1491,7 +1630,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     ? (
         subjectName.trim() !== editingSubject.name ||
         subjectCoefficient.trim() !== origSubjectCoeff ||
-        selectedSubjectColor.bg !== editingSubject.color
+        selectedSubjectColor.bg !== editingSubject.color ||
+        subjectColorStyle !== (editingSubject.colorStyle === 'full' ? 'full' : 'accent')
       )
     : subjectName.trim().length > 0;
 
@@ -1517,6 +1657,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         textColor: selectedSubjectColor.text,
         borderColor: selectedSubjectColor.border,
         borderDarkColor: selectedSubjectColor.borderDark,
+        colorStyle: subjectColorStyle,
       };
       setSubjects(prev => prev.map(s => s.id === editingSubject.id ? updated : s));
       setIsAddSubjectModalOpen(false);
@@ -1530,6 +1671,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             textColor: updated.textColor,
             borderColor: updated.borderColor,
             borderDarkColor: updated.borderDarkColor,
+            colorStyle: updated.colorStyle,
           }),
         'Erreur de mise à jour de la matière.'
       );
@@ -1549,6 +1691,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         textColor: selectedSubjectColor.text,
         borderColor: selectedSubjectColor.border,
         borderDarkColor: selectedSubjectColor.borderDark,
+        colorStyle: subjectColorStyle,
         createdAt: Date.now()
       };
       setSubjects(prev => [...prev, newSubject]);
@@ -1571,6 +1714,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             textColor: newSubject.textColor,
             borderColor: newSubject.borderColor,
             borderDarkColor: newSubject.borderDarkColor,
+            colorStyle: newSubject.colorStyle,
           }),
         'Erreur de création de la matière.'
       ).then((res) => {
@@ -1586,6 +1730,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [schoolName, setSchoolName] = useState('');
   const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
   const [selectedSchoolColor, setSelectedSchoolColor] = useState(SCHOOL_COLOR_OPTIONS[0]); // Blanc par défaut
+  const [schoolColorStyle, setSchoolColorStyle] = useState<CardColorStyle>('full');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Compression & chargement du logo de l'école (format rond max 256x256 px pour préserver le stockage)
@@ -1633,7 +1778,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     ? (
         schoolName.trim() !== editingSchool.name ||
         (schoolLogo || null) !== (editingSchool.logoUrl || null) ||
-        selectedSchoolColor.bg !== editingSchool.color
+        selectedSchoolColor.bg !== editingSchool.color ||
+        schoolColorStyle !== (editingSchool.colorStyle === 'accent' ? 'accent' : 'full')
       )
     : schoolName.trim().length > 0;
 
@@ -1656,6 +1802,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         textColor: selectedSchoolColor.text,
         borderColor: selectedSchoolColor.border,
         borderDarkColor: selectedSchoolColor.borderDark,
+        colorStyle: schoolColorStyle,
       };
       setSchools(prev => prev.map(s => s.id === editingSchool.id ? updated : s));
       if (selectedSchoolInside?.id === editingSchool.id) {
@@ -1674,6 +1821,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             textColor: updated.textColor,
             borderColor: updated.borderColor,
             borderDarkColor: updated.borderDarkColor,
+            colorStyle: updated.colorStyle,
           }),
         "Erreur de mise à jour de l'établissement."
       ).then((res) => {
@@ -1694,6 +1842,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         textColor: selectedSchoolColor.text,
         borderColor: selectedSchoolColor.border,
         borderDarkColor: selectedSchoolColor.borderDark,
+        colorStyle: schoolColorStyle,
         createdAt: Date.now(),
       };
 
@@ -1711,6 +1860,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             textColor: newSchool.textColor,
             borderColor: newSchool.borderColor,
             borderDarkColor: newSchool.borderDarkColor,
+            colorStyle: newSchool.colorStyle,
           }),
         "Erreur de création de l'établissement."
       ).then((res) => {
@@ -1724,12 +1874,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setSchoolName('');
     setSchoolLogo(null);
     setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
+    setSchoolColorStyle('full');
   };
 
   // État du menu déroulant "Créer une rentrée scolaire"
   const [isCreateMenuOpen, setIsCreateMenuOpen] = useState(false);
   const [inputYearValue, setInputYearValue] = useState(`${CURRENT_YEAR} - ${CURRENT_YEAR + 1}`);
   const [selectedColorObj, setSelectedColorObj] = useState(YEAR_COLOR_OPTIONS[0]); // Par défaut blanc / aucune couleur
+  const [selectedYearColorStyle, setSelectedYearColorStyle] = useState<CardColorStyle>('full');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   // Gestion de la saisie manuelle : Uniquement chiffres et tiret/espace, max 12 caractères
@@ -1758,6 +1910,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       label: cleanLabel,
       color: selectedColorObj.bg,
       textColor: selectedColorObj.text,
+      colorStyle: selectedYearColorStyle,
       createdAt: Date.now()
     };
 
@@ -1771,6 +1924,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           label: newYearItem.label,
           color: newYearItem.color,
           textColor: newYearItem.textColor,
+          colorStyle: newYearItem.colorStyle,
         }),
       "Erreur de création de l'année scolaire."
     ).then((res) => {
@@ -1785,7 +1939,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const isEditYearDirty = editingYear
     ? (
         editYearLabel.trim() !== editingYear.label ||
-        editYearColorObj.bg !== editingYear.color
+        editYearColorObj.bg !== editingYear.color ||
+        editYearColorStyle !== (editingYear.colorStyle === 'accent' ? 'accent' : 'full')
       )
     : false;
 
@@ -1800,6 +1955,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       label: cleanLabel,
       color: editYearColorObj.bg,
       textColor: editYearColorObj.text,
+      colorStyle: editYearColorStyle,
     };
     const targetId = editingYear.id;
     setSchoolYears(prev => prev.map(y => y.id === targetId ? updatedYear : y));
@@ -1810,6 +1966,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           label: updatedYear.label,
           color: updatedYear.color,
           textColor: updatedYear.textColor,
+          colorStyle: updatedYear.colorStyle,
         }),
       "Erreur de mise à jour de l'année scolaire."
     );
@@ -2137,6 +2294,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             setSelectedAverageCardInside(null);
             setSelectedSubjectInside(targetSubject);
           }
+        }}
+        onSubjectCoefficientUpdated={(subjectId, coeff) => {
+          setSubjects(prev =>
+            prev.map(s =>
+              s.id === subjectId
+                ? { ...s, coefficient: coeff !== null ? coeff : undefined }
+                : s
+            )
+          );
         }}
         onBack={() => setSelectedAverageCardInside(null)}
       />
@@ -2678,6 +2844,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </div>
                     </div>
 
+                    {/* 2B. Style d'application de la couleur */}
+                    <ColorStyleSelector
+                      value={selectedYearColorStyle}
+                      onChange={setSelectedYearColorStyle}
+                      accentHex={selectedColorObj.bg}
+                      isWhiteColor={selectedColorObj.id === 'white'}
+                      compact
+                    />
+
                     {/* 3. Propositions d'années qui commencent cette année (2026 - 2027...) */}
                     <div>
                       <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
@@ -2722,6 +2897,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               {schoolYears.map((year) => {
                 const isSelected = selectedYearId === year.id;
                 const isWhite = !year.color || year.color === '#ffffff' || year.color === 'white';
+                const isAccentStyle = !isWhite && year.colorStyle === 'accent';
+                const useLightSurface = isWhite || isAccentStyle;
                 const glowTheme = getLuminousLevelTheme(year.color);
 
                 return (
@@ -2738,9 +2915,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             boxShadow: glowTheme.shadow,
                           }
                         : {
-                            backgroundColor: isWhite ? '#ffffff' : year.color,
-                            color: year.textColor || (isWhite ? '#0f172a' : '#ffffff'),
-                            borderColor: isWhite ? '#cbd5e1' : year.color,
+                            backgroundColor: useLightSurface ? '#ffffff' : year.color,
+                            color: useLightSurface ? '#0f172a' : (year.textColor || '#ffffff'),
+                            borderColor: useLightSurface ? '#cbd5e1' : year.color,
                           }
                     }
                     className={`group relative overflow-hidden flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-extrabold tracking-wide cursor-pointer transition-all select-none ${
@@ -2750,13 +2927,19 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     }`}
                     title={`Sélectionner l'année scolaire ${year.label}`}
                   >
+                    {!isSelected && isAccentStyle && (
+                      <span
+                        className="absolute left-0 top-0 bottom-0 w-[4px]"
+                        style={{ backgroundColor: year.color }}
+                      />
+                    )}
                     {isSelected && (
                       <div
                         className="absolute inset-0 pointer-events-none opacity-45 blur-md"
                         style={{ background: glowTheme.aura }}
                       />
                     )}
-                    <Calendar className="relative z-10 w-3.5 h-3.5 opacity-85" />
+                    <Calendar className={`relative z-10 w-3.5 h-3.5 opacity-85 ${!isSelected && isAccentStyle ? 'ml-0.5' : ''}`} />
                     <span className="relative z-10 font-mono">{year.label}</span>
                     {isSelected && (
                       <span
@@ -2772,7 +2955,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       className={`card-menu-trigger relative z-10 ml-1 w-6 h-6 rounded-lg flex items-center justify-center transition cursor-pointer ${
                         isSelected
                           ? 'hover:bg-black/10 text-current opacity-85 hover:opacity-100'
-                          : isWhite
+                          : useLightSurface
                           ? 'text-slate-400 hover:text-slate-800 hover:bg-slate-100'
                           : 'text-white/75 hover:text-white hover:bg-black/20'
                       }`}
@@ -2829,6 +3012,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       setSchoolName('');
                       setSchoolLogo(null);
                       setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
+                      setSchoolColorStyle('full');
                       setIsAddSchoolModalOpen(true);
                     }}
                     className="group relative w-60 h-56 sm:w-64 sm:h-60 border-2 border-dashed border-cyan-300/70 hover:border-cyan-200 bg-[#081329]/45 hover:bg-[#081329]/65 backdrop-blur-[4px] rounded-3xl flex flex-col items-center justify-center p-5 text-center cursor-pointer transition-all duration-300 shadow-[0_12px_36px_rgba(0,0,0,0.45)] hover:shadow-[0_16px_42px_rgba(6,182,212,0.28)] hover:-translate-y-1 active:translate-y-0"
@@ -2895,6 +3079,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         setSchoolName('');
                         setSchoolLogo(null);
                         setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
+                        setSchoolColorStyle('full');
                         setIsAddSchoolModalOpen(true);
                       }}
                       className="min-h-[170px] border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white backdrop-blur-md rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group hover:-translate-y-1 shadow-md hover:shadow-lg"
@@ -2918,6 +3103,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     filteredYearSchools.map((school) => {
                       const isSelected = selectedSchoolId === school.id;
                       const isWhite = !school.color || school.color === '#ffffff' || school.color === 'white';
+                      const isAccentStyle = !isWhite && school.colorStyle === 'accent';
+                      const useLightSurface = isWhite || isAccentStyle;
                       const schoolLevelsCount = studyLevels.filter(l => l.schoolId === school.id).length;
                       const schoolClassesCount = classes.filter(c => c.schoolId === school.id).length;
 
@@ -2929,13 +3116,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             setSelectedSchoolInside(school); // Rentrer à l'intérieur de l'école !
                           }}
                           style={{
-                            backgroundColor: school.color || '#ffffff',
-                            color: school.textColor || (isWhite ? '#0f172a' : '#ffffff'),
-                            borderColor: isWhite ? '#e2e8f0' : (school.borderColor || school.color),
-                            borderBottomColor: isWhite ? '#94a3b8' : (school.borderDarkColor || '#00141a'),
+                            backgroundColor: useLightSurface ? '#ffffff' : school.color,
+                            color: useLightSurface ? '#0f172a' : (school.textColor || '#ffffff'),
+                            borderColor: useLightSurface ? '#cbd5e1' : (school.borderColor || school.color),
+                            borderBottomColor: useLightSurface ? '#94a3b8' : (school.borderDarkColor || '#00141a'),
                           }}
-                          className={`group relative rounded-2xl border-2 border-b-[6px] p-4 sm:p-5 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
-                            isWhite 
+                          className={`group relative overflow-hidden rounded-2xl border-2 border-b-[6px] p-4 sm:p-5 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
+                            useLightSurface 
                               ? 'shadow-[0_10px_25px_-5px_rgba(0,40,60,0.1),0_4px_6px_-2px_rgba(0,0,0,0.05)] hover:border-b-cyan-600' 
                               : 'shadow-[0_12px_24px_-6px_rgba(0,0,0,0.3)]'
                           } ${
@@ -2944,8 +3131,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               : 'hover:-translate-y-1'
                           } active:translate-y-1 active:border-b-2`}
                         >
+                          {isAccentStyle && (
+                            <span
+                              className="absolute left-0 top-0 bottom-0 w-[5px]"
+                              style={{ backgroundColor: school.color }}
+                            />
+                          )}
                           {/* Haut de la carte : Logo ROND à gauche & Badge année / Menu à droite */}
-                          <div className="flex items-start justify-between gap-3">
+                          <div className={`flex items-start justify-between gap-3 ${isAccentStyle ? 'pl-1.5' : ''}`}>
                             {/* Logo de l'école (ROND comme demandé explicitement) */}
                             <div className="w-14 h-14 rounded-full overflow-hidden shadow-md border-2 border-white/90 shrink-0 flex items-center justify-center bg-white/20 backdrop-blur-xs">
                               {school.logoUrl ? (
@@ -2957,7 +3150,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               ) : (
                                 <div 
                                   className="w-full h-full flex items-center justify-center font-black text-lg tracking-wider"
-                                  style={{ color: isWhite ? '#00313d' : '#ffffff' }}
+                                  style={{ color: useLightSurface ? '#00313d' : '#ffffff' }}
                                 >
                                   {school.name.slice(0, 2).toUpperCase()}
                                 </div>
@@ -2967,7 +3160,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             {/* Badge année et menu 3 traits */}
                             <div className="flex items-center gap-1.5">
                               <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
-                                isWhite 
+                                useLightSurface 
                                    ? 'bg-slate-100 text-slate-700 border-slate-200' 
                                    : 'bg-black/20 text-white/90 border-white/20'
                               }`}>
@@ -2978,7 +3171,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                 type="button"
                                 onClick={(e) => handleOpenMenu(e, 'school', school)}
                                 className={`card-menu-trigger w-7 h-7 rounded-lg flex items-center justify-center transition z-10 ${
-                                  isWhite 
+                                  useLightSurface 
                                     ? 'hover:bg-slate-100 text-slate-400 hover:text-slate-800' 
                                     : 'hover:bg-black/30 text-white/70 hover:text-white'
                                 }`}
@@ -2994,19 +3187,19 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           </div>
 
                           {/* Milieu de la carte : Nom de l'école & Type */}
-                          <div className="mt-3.5 space-y-0.5">
+                          <div className={`mt-3.5 space-y-0.5 ${isAccentStyle ? 'pl-1.5' : ''}`}>
                             <h3 className="font-black text-base sm:text-lg tracking-tight leading-snug line-clamp-2">
                               {school.name}
                             </h3>
                             <div className="flex items-center gap-2 flex-wrap">
                               <span className={`text-[10px] font-bold ${
-                                isWhite ? 'text-slate-600' : 'text-white/85'
+                                useLightSurface ? 'text-slate-600' : 'text-white/85'
                               }`}>
                                 {schoolLevelsCount} niveau{schoolLevelsCount > 1 ? 'x' : ''}
                               </span>
                               <span className="text-[10px] opacity-60">&bull;</span>
                               <span className={`text-[10px] font-bold ${
-                                isWhite ? 'text-cyan-800' : 'text-cyan-200'
+                                useLightSurface ? 'text-cyan-800' : 'text-cyan-200'
                               }`}>
                                 {schoolClassesCount} classe{schoolClassesCount > 1 ? 's' : ''}
                               </span>
@@ -3015,7 +3208,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
                           {/* Bas de la carte : Bouton d'accès 3D intégré */}
                           <div className={`mt-4 pt-3 border-t flex items-center justify-between text-xs font-black ${
-                            isWhite 
+                            isAccentStyle ? 'pl-1.5 ' : ''
+                          }${
+                            useLightSurface 
                               ? 'border-slate-100 text-[#00313d] group-hover:text-cyan-600' 
                               : 'border-white/20 text-white group-hover:text-cyan-200'
                           } transition-colors`}>
@@ -3194,6 +3389,45 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   </div>
                 </div>
 
+                {/* Style d'affichage + aperçu en direct du bouton rentrée */}
+                <div className="space-y-3">
+                  <ColorStyleSelector
+                    value={editYearColorStyle}
+                    onChange={setEditYearColorStyle}
+                    accentHex={editYearColorObj.bg}
+                    isWhiteColor={editYearColorObj.id === 'white'}
+                  />
+                  <div className="flex items-center gap-3 p-2.5 rounded-xl bg-slate-50 dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+                      Aperçu :
+                    </span>
+                    {(() => {
+                      const isWhite = editYearColorObj.id === 'white';
+                      const isAccent = !isWhite && editYearColorStyle === 'accent';
+                      const useLight = isWhite || isAccent;
+                      return (
+                        <div
+                          style={{
+                            backgroundColor: useLight ? '#ffffff' : editYearColorObj.bg,
+                            color: useLight ? '#0f172a' : editYearColorObj.text,
+                            borderColor: useLight ? '#cbd5e1' : editYearColorObj.border,
+                          }}
+                          className="relative overflow-hidden inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-extrabold shadow-xs select-none"
+                        >
+                          {isAccent && (
+                            <span
+                              className="absolute left-0 top-0 bottom-0 w-[4px]"
+                              style={{ backgroundColor: editYearColorObj.bg }}
+                            />
+                          )}
+                          <Calendar className={`w-3.5 h-3.5 opacity-85 ${isAccent ? 'ml-0.5' : ''}`} />
+                          <span className="font-mono">{editYearLabel.trim() || '2026 - 2027'}</span>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                </div>
+
                 <div className="pt-2 border-t border-slate-100 flex items-center gap-3">
                   <button
                     type="button"
@@ -3368,38 +3602,60 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   </div>
                 </div>
 
-                {/* Aperçu en direct de la carte 3D */}
-                <div className="space-y-1.5 pt-1">
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Aperçu en direct :
-                  </span>
-                  <div 
-                    style={{
-                      backgroundColor: selectedSchoolColor.bg,
-                      color: selectedSchoolColor.text,
-                      borderColor: selectedSchoolColor.id === 'white' ? '#e2e8f0' : selectedSchoolColor.border,
-                      borderBottomColor: selectedSchoolColor.id === 'white' ? '#94a3b8' : selectedSchoolColor.borderDark,
-                    }}
-                    className="rounded-xl border-2 border-b-[5px] p-3.5 flex items-center gap-3 shadow-md max-w-sm transition-all"
-                  >
-                    <div className="w-12 h-12 rounded-full overflow-hidden border-2 border-white/90 shadow-md shrink-0 flex items-center justify-center bg-white/20">
-                      {schoolLogo ? (
-                        <img src={schoolLogo} alt="Aperçu" className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="font-black text-sm" style={{ color: selectedSchoolColor.id === 'white' ? '#00313d' : '#ffffff' }}>
-                          {schoolName.trim() ? schoolName.trim().slice(0, 2).toUpperCase() : 'EC'}
-                        </span>
-                      )}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <span className="font-black text-sm block truncate">
-                        {schoolName.trim() || "Nom de l'école"}
-                      </span>
-                      <span className="text-[10px] font-semibold opacity-75 block">
-                        Établissement &bull; {currentSelectedYear?.label}
-                      </span>
-                    </div>
+                {/* Aperçu en direct + choix du style d'affichage de la couleur */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-start pt-1">
+                  <div className="space-y-1.5">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Aperçu en direct :
+                    </span>
+                    {(() => {
+                      const isWhite = selectedSchoolColor.id === 'white';
+                      const isAccent = !isWhite && schoolColorStyle === 'accent';
+                      const useLight = isWhite || isAccent;
+                      return (
+                        <div 
+                          style={{
+                            backgroundColor: useLight ? '#ffffff' : selectedSchoolColor.bg,
+                            color: useLight ? '#0f172a' : selectedSchoolColor.text,
+                            borderColor: useLight ? '#cbd5e1' : selectedSchoolColor.border,
+                            borderBottomColor: useLight ? '#94a3b8' : selectedSchoolColor.borderDark,
+                          }}
+                          className="relative overflow-hidden rounded-xl border-2 border-b-[5px] p-3 flex items-center gap-3 shadow-md transition-all"
+                        >
+                          {isAccent && (
+                            <span
+                              className="absolute left-0 top-0 bottom-0 w-[4.5px]"
+                              style={{ backgroundColor: selectedSchoolColor.bg }}
+                            />
+                          )}
+                          <div className={`w-11 h-11 rounded-full overflow-hidden border-2 border-white/90 shadow-md shrink-0 flex items-center justify-center bg-white/20 ${isAccent ? 'ml-1' : ''}`}>
+                            {schoolLogo ? (
+                              <img src={schoolLogo} alt="Aperçu" className="w-full h-full object-cover" />
+                            ) : (
+                              <span className="font-black text-sm" style={{ color: useLight ? '#00313d' : '#ffffff' }}>
+                                {schoolName.trim() ? schoolName.trim().slice(0, 2).toUpperCase() : 'EC'}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <span className="font-black text-sm block truncate">
+                              {schoolName.trim() || "Nom de l'école"}
+                            </span>
+                            <span className="text-[10px] font-semibold opacity-75 block truncate">
+                              Établissement &bull; {currentSelectedYear?.label}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
+
+                  <ColorStyleSelector
+                    value={schoolColorStyle}
+                    onChange={setSchoolColorStyle}
+                    accentHex={selectedSchoolColor.bg}
+                    isWhiteColor={selectedSchoolColor.id === 'white'}
+                  />
                 </div>
 
                 {/* 4. Bouton Créer / Enregistrer accessible */}
@@ -3557,49 +3813,64 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </div>
                     </div>
 
-                    {/* Aperçu du bouton mince rectangulaire plat */}
-                    <div className="space-y-2 p-3.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                    {/* Choix du style d'application de la couleur */}
+                    <ColorStyleSelector
+                      value={levelColorStyle}
+                      onChange={setLevelColorStyle}
+                      accentHex={selectedStudyLevelColor.bg}
+                      isWhiteColor={selectedStudyLevelColor.id === 'white'}
+                    />
+
+                    {/* Aperçu du niveau dans la barre latérale */}
+                    <div className="space-y-2 p-3.5 rounded-xl bg-slate-50 dark:bg-[#0f172a] border border-slate-200/80 dark:border-slate-700">
                       <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        Aperçu dans la barre des niveaux :
+                        Aperçu dans le menu des niveaux :
                       </span>
-                      <div className="flex items-center gap-2 flex-wrap py-1">
+                      <div className="py-1 max-w-[230px]">
                         {(() => {
-                          const previewGlow = getLuminousLevelTheme(selectedStudyLevelColor.bg);
+                          const isWhite = selectedStudyLevelColor.id === 'white';
+                          const isFull = !isWhite && levelColorStyle === 'full';
                           return (
                             <div
-                              style={{
-                                background: previewGlow.bg,
-                                color: previewGlow.text,
-                                borderColor: previewGlow.border,
-                                boxShadow: previewGlow.shadow,
-                              }}
-                              className="relative overflow-hidden h-8 px-3 rounded-lg border-2 text-xs font-black flex items-center gap-1.5 select-none"
+                              style={
+                                isFull
+                                  ? {
+                                      backgroundColor: selectedStudyLevelColor.bg,
+                                      color: selectedStudyLevelColor.text,
+                                      borderColor: selectedStudyLevelColor.border,
+                                    }
+                                  : undefined
+                              }
+                              className={`relative overflow-hidden h-8 px-2.5 rounded-md border text-xs font-semibold flex items-center justify-between gap-2 select-none transition-all ${
+                                isFull
+                                  ? ''
+                                  : 'bg-white dark:bg-[#161f33] border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100'
+                              }`}
                             >
-                              <div
-                                className="absolute inset-0 pointer-events-none opacity-45 blur-md"
-                                style={{ background: previewGlow.aura }}
-                              />
+                              {!isFull && (
+                                <span
+                                  className="absolute left-0 top-0 bottom-0 w-[3.5px]"
+                                  style={{
+                                    backgroundColor: isWhite ? '#0051c3' : selectedStudyLevelColor.bg,
+                                  }}
+                                />
+                              )}
+                              <div className={`flex items-center gap-2 min-w-0 ${!isFull ? 'pl-1' : ''}`}>
+                                <Layers className={`w-3.5 h-3.5 shrink-0 ${isFull ? 'text-white/90' : 'text-slate-500 dark:text-slate-400'}`} />
+                                <span className="truncate">{studyLevelName.trim() || 'Ex: Terminale'}</span>
+                              </div>
                               <span
-                                className="relative z-10 w-2 h-2 rounded-full shrink-0"
-                                style={{ backgroundColor: previewGlow.dot, boxShadow: previewGlow.dotShadow }}
-                              />
-                              <span className="relative z-10">{studyLevelName.trim() || 'Ex: Terminale'}</span>
-                              <span
-                                className="relative z-10 text-[9.5px] font-extrabold px-1.5 py-0.2 rounded border"
-                                style={{
-                                  backgroundColor: previewGlow.badgeBg,
-                                  color: previewGlow.badgeText,
-                                  borderColor: previewGlow.badgeBorder,
-                                }}
+                                className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold shrink-0 ${
+                                  isFull
+                                    ? 'bg-black/20 border-white/25 text-white'
+                                    : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300'
+                                }`}
                               >
-                                0 cl.
+                                0
                               </span>
                             </div>
                           );
                         })()}
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          (Sélection lumineuse)
-                        </span>
                       </div>
                     </div>
                   </div>
@@ -3773,47 +4044,76 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       </div>
                     </div>
 
-                    {/* Aperçu en direct de la carte 3D compacte */}
+                    {/* Choix du style d'application de la couleur */}
+                    <ColorStyleSelector
+                      value={classColorStyle}
+                      onChange={setClassColorStyle}
+                      accentHex={selectedClassColor.bg}
+                      isWhiteColor={selectedClassColor.id === 'white'}
+                    />
+
+                    {/* Aperçu en direct de la carte classe */}
                     <div className="space-y-1.5 pt-1">
                       <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                        Aperçu de la carte 3D (format compact) :
+                        Aperçu de la carte classe :
                       </span>
-                      <div 
-                        style={{
-                          borderColor: selectedClassColor.border,
-                          borderBottomColor: selectedClassColor.borderDark,
-                        }}
-                        className="w-52 rounded-xl border-2 border-b-[4px] bg-white px-2.5 py-2 flex flex-col justify-between shadow-sm transition-all select-none"
-                      >
-                        <div className="flex items-start justify-between gap-1.5">
-                          <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                            <div 
-                              className="w-6 h-6 rounded-md flex items-center justify-center shadow-2xs shrink-0"
-                              style={{ background: selectedClassColor.iconGradient }}
-                            >
-                              <BookOpen className="w-3.5 h-3.5 text-white stroke-[2.2]" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <span className="text-[8.5px] font-bold uppercase tracking-wide text-slate-400 block truncate leading-none">
+                      {(() => {
+                        const isWhite = selectedClassColor.id === 'white';
+                        const isFull = !isWhite && classColorStyle === 'full';
+                        return (
+                          <div
+                            style={
+                              isFull
+                                ? {
+                                    backgroundColor: selectedClassColor.bg,
+                                    color: selectedClassColor.text,
+                                    borderColor: selectedClassColor.borderDark || selectedClassColor.border,
+                                  }
+                                : undefined
+                            }
+                            className={`relative overflow-hidden w-56 rounded-xl border px-3 py-2.5 flex flex-col justify-between shadow-xs transition-all select-none ${
+                              isFull
+                                ? ''
+                                : 'bg-white dark:bg-[#131c2e] border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white'
+                            }`}
+                          >
+                            {!isFull && (
+                              <span
+                                className="absolute left-0 top-0 bottom-0 w-[3.5px]"
+                                style={{
+                                  backgroundColor: isWhite ? '#64748b' : selectedClassColor.bg,
+                                }}
+                              />
+                            )}
+                            <div className={!isFull ? 'pl-1.5' : ''}>
+                              <span className={`text-[9.5px] font-semibold uppercase tracking-wide block truncate ${
+                                isFull ? 'text-white/80' : 'text-slate-500 dark:text-slate-400'
+                              }`}>
                                 {classSlogan.trim() || (editingClass ? editingClass.level : activeLevel?.name) || 'Niveau'}
                               </span>
-                              <h4 className="text-xs font-black text-slate-900 tracking-tight leading-snug truncate mt-0.5">
+                              <h4 className="text-xs font-bold leading-snug truncate mt-0.5">
                                 {className.trim() || 'Nom de la classe'}
                               </h4>
+                              <span className={`text-[10px] block truncate mt-0.5 ${
+                                isFull ? 'text-white/85' : 'text-slate-600 dark:text-slate-400'
+                              }`}>
+                                {classTeacherName.trim() || 'Nom du professeur'}
+                              </span>
+                            </div>
+
+                            <div className={`mt-2.5 pt-1.5 border-t flex items-center justify-between text-[10px] ${
+                              !isFull ? 'pl-1.5 ' : ''
+                            }${
+                              isFull
+                                ? 'border-white/25 text-white/90'
+                                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                            }`}>
+                              <span>3 trim. • 0 mat.</span>
+                              <span className="font-semibold">Ouvrir →</span>
                             </div>
                           </div>
-                          <span className="w-2 h-2 rounded-full shadow-2xs shrink-0 mt-0.5" style={{ backgroundColor: selectedClassColor.bg }} />
-                        </div>
-
-                        <div className="mt-1.5 pt-1 border-t border-slate-100 flex items-center justify-between gap-1.5">
-                          <span className="font-bold text-slate-600 truncate text-[9.5px]">
-                            {classTeacherName.trim() || 'Nom du maître'}
-                          </span>
-                          <span className="text-[8.5px] font-black text-cyan-800 bg-cyan-50 px-1.5 py-0.2 rounded border border-cyan-200/50 shrink-0">
-                            0 mat.
-                          </span>
-                        </div>
-                      </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -4000,39 +4300,89 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   </div>
                 </div>
 
-                {/* Aperçu en direct de la carte matière 3D rectangulaire */}
-                <div className="space-y-1.5 pt-1">
-                  <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
-                    Aperçu de la carte matière (format rectangle compact) :
-                  </span>
-                  <div 
-                    style={{
-                      backgroundColor: selectedSubjectColor.bg,
-                      color: selectedSubjectColor.text,
-                      borderColor: selectedSubjectColor.id === 'white' ? '#e2e8f0' : selectedSubjectColor.border,
-                      borderBottomColor: selectedSubjectColor.id === 'white' ? '#cbd5e1' : selectedSubjectColor.borderDark,
-                    }}
-                    className="w-40 sm:w-44 rounded-lg border-2 border-b-[3px] px-2 py-1.5 min-h-[52px] flex flex-col justify-between shadow-sm transition-all select-none"
-                  >
-                    <div className="flex items-center justify-between w-full">
-                      {subjectCoefficient.trim() ? (
-                        <span className={`text-[8px] font-black px-1 py-0 rounded border ${
-                          selectedSubjectColor.id === 'white'
-                            ? 'bg-slate-100 text-slate-700 border-slate-200'
-                            : 'bg-black/25 text-white/95 border-white/20'
-                        }`}>
-                          Coeff {subjectCoefficient.trim()}
-                        </span>
-                      ) : (
-                        <span className="text-[7.5px] font-bold opacity-60">Matière</span>
-                      )}
-                    </div>
-                    <div className="flex-1 flex items-center justify-center my-auto px-0.5 pt-0.5">
-                      <span className="text-center font-black text-[11px] sm:text-xs leading-tight line-clamp-2 break-words">
-                        {subjectName.trim() || 'Nom matière'}
-                      </span>
-                    </div>
+                {/* Aperçu en direct + choix du style d'affichage de la couleur (placé côte à côte) */}
+                <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-4 items-center pt-1">
+                  <div className="space-y-1.5">
+                    <span className="block text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                      Aperçu de la carte matière :
+                    </span>
+                    {(() => {
+                      const isWhite = selectedSubjectColor.id === 'white';
+                      const isFull = !isWhite && subjectColorStyle === 'full';
+                      return (
+                        <div
+                          style={
+                            isFull
+                              ? {
+                                  backgroundColor: selectedSubjectColor.bg,
+                                  color: selectedSubjectColor.text,
+                                  borderColor: selectedSubjectColor.borderDark || selectedSubjectColor.border,
+                                }
+                              : undefined
+                          }
+                          className={`relative overflow-hidden w-44 sm:w-48 rounded-xl border px-3 py-2.5 min-h-[76px] flex flex-col justify-between shadow-xs transition-all select-none ${
+                            isFull
+                              ? ''
+                              : 'bg-white dark:bg-[#131c2e] border-slate-300 dark:border-slate-600 text-slate-900 dark:text-white'
+                          }`}
+                        >
+                          {!isFull && (
+                            <span
+                              className="absolute left-0 top-0 bottom-0 w-[3.5px]"
+                              style={{
+                                backgroundColor: isWhite ? '#64748b' : selectedSubjectColor.bg,
+                              }}
+                            />
+                          )}
+                          <div className={!isFull ? 'pl-1.5' : ''}>
+                            <div className="font-bold text-xs leading-snug line-clamp-2 break-words">
+                              {subjectName.trim() || 'Nom matière'}
+                            </div>
+                            <div className="mt-1">
+                              {subjectCoefficient.trim() ? (
+                                <span
+                                  className={`inline-block text-[9.5px] font-semibold px-1.5 py-0.2 rounded border ${
+                                    isFull
+                                      ? 'bg-black/25 text-white border-white/25'
+                                      : 'bg-slate-100 dark:bg-[#1e293b] text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600'
+                                  }`}
+                                >
+                                  Coeff {subjectCoefficient.trim()}
+                                </span>
+                              ) : (
+                                <span
+                                  className={`text-[9.5px] font-medium ${
+                                    isFull ? 'text-white/80' : 'text-slate-500 dark:text-slate-400'
+                                  }`}
+                                >
+                                  Sans coefficient
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <div
+                            className={`mt-2 pt-1.5 border-t flex items-center justify-between text-[10px] ${
+                              !isFull ? 'pl-1.5 ' : ''
+                            }${
+                              isFull
+                                ? 'border-white/25 text-white/90'
+                                : 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
+                            }`}
+                          >
+                            <span>Tableur</span>
+                            <span className="font-semibold">Notes →</span>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
+
+                  <ColorStyleSelector
+                    value={subjectColorStyle}
+                    onChange={setSubjectColorStyle}
+                    accentHex={selectedSubjectColor.bg}
+                    isWhiteColor={selectedSubjectColor.id === 'white'}
+                  />
                 </div>
 
                 {/* Boutons actions */}

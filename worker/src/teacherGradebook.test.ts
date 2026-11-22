@@ -1250,3 +1250,102 @@ test('Répertoire classe (GET /api/teacher/class-roster/:id), persistance merged
   });
   assert.equal(r2Images.store.has(photoR2Key), false, 'La photo R2 orpheline doit être nettoyée une fois la dernière référence supprimée');
 });
+
+test('Style de couleur (accent vs full) persisté sur les 5 entités + mise à jour rapide du coefficient matière', async () => {
+  const { callApi } = createHarness();
+
+  // 1. Créer les 5 entités avec des styles explicites (accent / full)
+  const { year } = await (await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027', color: '#2563eb', textColor: '#ffffff', colorStyle: 'accent' },
+  })).json();
+  assert.equal(year.colorStyle, 'accent');
+
+  const { school } = await (await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'CME', color: '#059669', textColor: '#ffffff', colorStyle: 'accent' },
+  })).json();
+  assert.equal(school.colorStyle, 'accent');
+
+  const { level } = await (await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'BTS 2', color: '#7c3aed', textColor: '#ffffff', colorStyle: 'full' },
+  })).json();
+  assert.equal(level.colorStyle, 'full');
+
+  const { classItem, terms, classAverages } = await (await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      levelId: level.id,
+      name: 'Groupe 2 ELT',
+      teacherName: 'DKD',
+      color: '#ea580c',
+      textColor: '#ffffff',
+      colorStyle: 'full',
+    },
+  })).json();
+  assert.equal(classItem.colorStyle, 'full');
+
+  const t1 = terms[0];
+  const t1Avg = classAverages.find((c: any) => c.kind === 'term' && c.termId === t1.id);
+  assert.ok(t1Avg);
+
+  // Créer une matière SANS coefficient avec style 'full'
+  const { subject } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      classId: classItem.id,
+      termId: t1.id,
+      name: 'Mathématiques',
+      coefficient: null,
+      color: '#dc2626',
+      textColor: '#ffffff',
+      colorStyle: 'full',
+    },
+  })).json();
+  assert.equal(subject.colorStyle, 'full');
+  assert.equal(subject.coefficient, undefined);
+
+  // 2. Mise à jour rapide uniquement du coefficient (comme le bouton "Appliquer" du tableau de moyenne générale)
+  const quickCoeffRes = await callApi(`/api/teacher/subjects/${subject.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { coefficient: 3.5 },
+  });
+  assert.equal(quickCoeffRes.status, 200);
+  const { subject: updatedSubject } = await quickCoeffRes.json();
+  assert.equal(updatedSubject.coefficient, 3.5);
+  assert.equal(updatedSubject.name, 'Mathématiques');
+  assert.equal(updatedSubject.color, '#dc2626');
+  assert.equal(updatedSubject.colorStyle, 'full');
+
+  // 3. Basculer le style de l'école vers 'full' et vérifier que bootstrap retourne tous les colorStyle exacts
+  const updSchoolRes = await callApi(`/api/teacher/schools/${school.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { colorStyle: 'full' },
+  });
+  assert.equal(updSchoolRes.status, 200);
+  assert.equal((await updSchoolRes.json()).school.colorStyle, 'full');
+
+  const boot = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  assert.equal(boot.schoolYears.find((y: any) => y.id === year.id)?.colorStyle, 'accent');
+  assert.equal(boot.schools.find((s: any) => s.id === school.id)?.colorStyle, 'full');
+  assert.equal(boot.studyLevels.find((l: any) => l.id === level.id)?.colorStyle, 'full');
+  assert.equal(boot.classes.find((c: any) => c.id === classItem.id)?.colorStyle, 'full');
+  assert.equal(boot.subjects.find((s: any) => s.id === subject.id)?.colorStyle, 'full');
+  assert.equal(boot.subjects.find((s: any) => s.id === subject.id)?.coefficient, 3.5);
+
+  // 4. Vérifier que le tableau de moyenne générale reflète immédiatement le nouveau coefficient enregistré
+  const avgSheet = await (await callApi(`/api/teacher/class-average-sheet/${t1Avg.id}`, {
+    token: 'token-alice',
+  })).json();
+  const sheetSubj = avgSheet.subjects.find((s: any) => s.id === subject.id);
+  assert.equal(sheetSubj?.coefficient, 3.5);
+  assert.equal(sheetSubj?.effectiveCoeff, 3.5);
+});

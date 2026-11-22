@@ -553,7 +553,7 @@ export const TeacherGradebookAPI = {
       body: input,
     }),
 
-  updateYear: (id: string, input: { label: string; color: string; textColor?: string }) =>
+  updateYear: (id: string, input: { label: string; color: string; textColor?: string; colorStyle?: 'accent' | 'full' }) =>
     teacherFetchJson<{ success: boolean; year: SchoolYearItem }>(`/api/teacher/years/${encodeURIComponent(id)}`, {
       method: 'PUT',
       body: input,
@@ -586,6 +586,7 @@ export const TeacherGradebookAPI = {
     textColor: string;
     borderColor: string;
     borderDarkColor: string;
+    colorStyle?: 'accent' | 'full';
   }) =>
     teacherFetchJson<{ success: boolean; school: SchoolItem }>('/api/teacher/schools', {
       method: 'POST',
@@ -602,6 +603,7 @@ export const TeacherGradebookAPI = {
       textColor: string;
       borderColor: string;
       borderDarkColor: string;
+      colorStyle?: 'accent' | 'full';
     }
   ) =>
     teacherFetchJson<{ success: boolean; school: SchoolItem }>(`/api/teacher/schools/${encodeURIComponent(id)}`, {
@@ -621,6 +623,7 @@ export const TeacherGradebookAPI = {
     color?: string;
     textColor?: string;
     borderColor?: string;
+    colorStyle?: 'accent' | 'full';
   }) =>
     teacherFetchJson<{ success: boolean; level: StudyLevelItem }>('/api/teacher/levels', {
       method: 'POST',
@@ -629,7 +632,7 @@ export const TeacherGradebookAPI = {
 
   updateLevel: (
     id: string,
-    input: { name: string; color?: string; textColor?: string; borderColor?: string }
+    input: { name: string; color?: string; textColor?: string; borderColor?: string; colorStyle?: 'accent' | 'full' }
   ) =>
     teacherFetchJson<{ success: boolean; level: StudyLevelItem }>(`/api/teacher/levels/${encodeURIComponent(id)}`, {
       method: 'PUT',
@@ -651,6 +654,7 @@ export const TeacherGradebookAPI = {
     textColor: string;
     borderColor: string;
     borderDarkColor: string;
+    colorStyle?: 'accent' | 'full';
     iconGradient: string;
     defaultTerms?: Array<{ id?: string; number: number; name: string }>;
   }) =>
@@ -669,6 +673,7 @@ export const TeacherGradebookAPI = {
       textColor: string;
       borderColor: string;
       borderDarkColor: string;
+      colorStyle?: 'accent' | 'full';
       iconGradient: string;
     }
   ) =>
@@ -709,6 +714,7 @@ export const TeacherGradebookAPI = {
     textColor: string;
     borderColor: string;
     borderDarkColor: string;
+    colorStyle?: 'accent' | 'full';
   }) =>
     teacherFetchJson<{ success: boolean; subject: SubjectItem }>('/api/teacher/subjects', {
       method: 'POST',
@@ -718,12 +724,13 @@ export const TeacherGradebookAPI = {
   updateSubject: (
     id: string,
     input: {
-      name: string;
+      name?: string;
       coefficient?: number | null;
-      color: string;
-      textColor: string;
-      borderColor: string;
-      borderDarkColor: string;
+      color?: string;
+      textColor?: string;
+      borderColor?: string;
+      borderDarkColor?: string;
+      colorStyle?: 'accent' | 'full';
     }
   ) =>
     teacherFetchJson<{ success: boolean; subject: SubjectItem }>(`/api/teacher/subjects/${encodeURIComponent(id)}`, {
