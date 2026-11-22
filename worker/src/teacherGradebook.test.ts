@@ -984,3 +984,123 @@ test('Moyenne générale par classe : auto-création (annuelle + trimestres), aj
   const bootAfterClassDel = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
   assert.equal(bootAfterClassDel.classAverages.length, 0);
 });
+
+test('Feuille Moyenne générale de trimestre (GET & PUT /api/teacher/class-average-sheet/:id) : agrégation live, persistance et Anti-IDOR', async () => {
+  const { callApi } = createHarness();
+
+  const { year } = await (await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027' },
+  })).json();
+  const { school } = await (await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'CME' },
+  })).json();
+  const { level } = await (await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'BTS 2' },
+  })).json();
+  const { classItem, terms, classAverages } = await (await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { levelId: level.id, name: 'Électrotechnique', teacherName: 'DKD' },
+  })).json();
+
+  const t1 = terms[0];
+  const t1AvgCard = classAverages.find((c: any) => c.kind === 'term' && c.termId === t1.id);
+  assert.ok(t1AvgCard);
+
+  // Créer 2 matières dans Trimestre 1 avec coefficients
+  const { subject: sMath } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Mathématiques', coefficient: 4 },
+  })).json();
+  const { subject: sElec } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Électrotechnique', coefficient: 5 },
+  })).json();
+
+  // Remplir les notes dans les deux matières
+  await callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 2,
+      columnMetas: { 0: { maxScore: 20, coeffEval: 1 }, 1: { maxScore: 20, coeffEval: 1 } },
+      layout: {},
+      styles: {},
+      students: [
+        { id: 'm-1', studentUid: 'stu-jean', name: 'KOUASSI Jean', notes: ['15/20', '16/20'] },
+      ],
+    },
+  });
+  await callApi(`/api/teacher/gradebook/${sElec.id}/${t1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 2,
+      columnMetas: { 0: { maxScore: 20, coeffEval: 1 }, 1: { maxScore: 40, coeffEval: 1 } },
+      layout: {},
+      styles: {},
+      students: [
+        { id: 'e-1', studentUid: 'stu-jean', name: 'KOUASSI Jean', notes: ['16/20', '32/40'] },
+      ],
+    },
+  });
+
+  // 1. GET agrège les 2 matières + leurs moyennes exactes
+  const sheetRes = await callApi(`/api/teacher/class-average-sheet/${t1AvgCard.id}`, {
+    token: 'token-alice',
+  });
+  assert.equal(sheetRes.status, 200);
+  const sheet = await sheetRes.json();
+  assert.equal(sheet.subjects.length, 2);
+  assert.equal(sheet.subjects[0].effectiveCoeff, 4);
+  assert.equal(sheet.subjects[1].effectiveCoeff, 5);
+  assert.equal(sheet.subjectGradebooks[sMath.id][0].average20, 15.5);
+  assert.equal(sheet.subjectGradebooks[sElec.id][0].average20, 16);
+
+  // 2. PUT persiste layout (zoom, largeurs), styles, overrides manuels et sortMode
+  const saveRes = await callApi(`/api/teacher/class-average-sheet/${t1AvgCard.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      layout: { zoomPercent: 90, colWidthName: 250 },
+      styles: { rowColors: { 'name:kouassi jean': '#eff6ff' } },
+      overrides: {
+        manualStudents: [{ key: 'man-awa', name: 'TRAORÉ Awa' }],
+        subjectOverrides: { 'man-awa': { [sMath.id]: 14, [sElec.id]: 25 } }, // 25 invalide -> ignoré
+      },
+      sortMode: 'alpha',
+    },
+  });
+  assert.equal(saveRes.status, 200);
+
+  const reloaded = await (await callApi(`/api/teacher/class-average-sheet/${t1AvgCard.id}`, {
+    token: 'token-alice',
+  })).json();
+  assert.equal(reloaded.card.layout.zoomPercent, 90);
+  assert.equal(reloaded.card.layout.colWidthName, 250);
+  assert.equal(reloaded.card.styles.rowColors['name:kouassi jean'], '#eff6ff');
+  assert.equal(reloaded.card.sortMode, 'alpha');
+  assert.equal(reloaded.card.overrides.manualStudents.length, 1);
+  assert.equal(reloaded.card.overrides.subjectOverrides['man-awa'][sMath.id], 14);
+  assert.equal(reloaded.card.overrides.subjectOverrides['man-awa'][sElec.id], undefined);
+
+  // 3. Anti-IDOR : Bob ne peut ni lire ni modifier la feuille de moyenne d'Alice
+  const bobGet = await callApi(`/api/teacher/class-average-sheet/${t1AvgCard.id}`, {
+    token: 'token-bob',
+  });
+  assert.equal(bobGet.status, 404);
+  const bobPut = await callApi(`/api/teacher/class-average-sheet/${t1AvgCard.id}`, {
+    method: 'PUT',
+    token: 'token-bob',
+    body: { sortMode: 'alpha' },
+  });
+  assert.equal(bobPut.status, 404);
+});

@@ -2095,11 +2095,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   }, [activeClass, classAverages, currentClassTerms]);
 
   // Si le professeur clique sur une carte "Moyenne générale" (annuelle ou trimestrielle) :
-  // Ouvre le tableur dédié identique à celui des matières (non connecté à la base pour l'instant, prêt pour adaptation)
   if (selectedAverageCardInside && activeClass) {
     const linkedTerm = selectedAverageCardInside.termId
       ? currentClassTerms.find(t => t.id === selectedAverageCardInside.termId) || null
       : null;
+    const linkedTermSubjects = selectedAverageCardInside.termId
+      ? subjects.filter(
+          s => s.classId === activeClass.id && s.termId === selectedAverageCardInside.termId
+        )
+      : [];
     return (
       <ClassAverageSheetView
         averageCard={selectedAverageCardInside}
@@ -2107,6 +2111,18 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         schoolYear={currentSelectedYear}
         school={selectedSchoolInside}
         term={linkedTerm}
+        userId={authUserId}
+        initialSubjects={linkedTermSubjects}
+        onOpenSubject={(subjectId) => {
+          const targetSubject = subjects.find(s => s.id === subjectId);
+          if (targetSubject) {
+            if (selectedAverageCardInside.termId) {
+              setSelectedTermId(selectedAverageCardInside.termId);
+            }
+            setSelectedAverageCardInside(null);
+            setSelectedSubjectInside(targetSubject);
+          }
+        }}
         onBack={() => setSelectedAverageCardInside(null)}
       />
     );

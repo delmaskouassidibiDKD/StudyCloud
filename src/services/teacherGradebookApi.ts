@@ -25,6 +25,38 @@ import type {
   GradebookInspection,
   GradebookCopyOptions,
 } from '../utils/teacherTransferEngine';
+import type {
+  GradebookStudentSnapshot,
+  TermAverageLayoutState,
+  TermAverageOverrides,
+  TermAverageSortMode,
+  TermAverageStylesState,
+  TermAverageSubject,
+} from '../utils/termGeneralAverage';
+
+export interface ClassAverageSheetCardPayload extends ClassAverageCardItem {
+  layout: TermAverageLayoutState;
+  styles: TermAverageStylesState;
+  overrides: TermAverageOverrides;
+  sortMode: TermAverageSortMode;
+  version: number;
+  updatedAt: number;
+}
+
+export interface ClassAverageSheetResponse {
+  success: boolean;
+  card: ClassAverageSheetCardPayload;
+  term: TermItem | null;
+  subjects: TermAverageSubject[];
+  subjectGradebooks: Record<string, GradebookStudentSnapshot[]>;
+}
+
+export interface ClassAverageSheetSavePayload {
+  layout: TermAverageLayoutState;
+  styles: TermAverageStylesState;
+  overrides: TermAverageOverrides;
+  sortMode: TermAverageSortMode;
+}
 
 export interface GradebookLayoutState {
   noteColWidth: number;
@@ -236,6 +268,35 @@ export function getUserBootstrapCacheKey(userId: string): string {
 
 export function getUserGradebookCacheKey(userId: string, subjectId: string, termId: string): string {
   return `studycloud_teacher_u_${safeUserSegment(userId)}_gb_${subjectId}_${termId || 't1'}`;
+}
+
+export function getUserClassAverageCacheKey(userId: string, averageId: string): string {
+  return `studycloud_teacher_u_${safeUserSegment(userId)}_avg_${averageId}`;
+}
+
+export function readUserClassAverageCache(
+  userId: string,
+  averageId: string
+): ClassAverageSheetResponse | null {
+  if (!userId || !averageId) return null;
+  try {
+    const raw = localStorage.getItem(getUserClassAverageCacheKey(userId, averageId));
+    if (!raw) return null;
+    return JSON.parse(raw) as ClassAverageSheetResponse;
+  } catch {
+    return null;
+  }
+}
+
+export function writeUserClassAverageCache(
+  userId: string,
+  averageId: string,
+  data: ClassAverageSheetResponse
+): void {
+  if (!userId || !averageId) return;
+  try {
+    localStorage.setItem(getUserClassAverageCacheKey(userId, averageId), JSON.stringify(data));
+  } catch {}
 }
 
 export function isOfflineOrNetworkError(err: any): boolean {
@@ -674,6 +735,26 @@ export const TeacherGradebookAPI = {
   ) =>
     teacherFetchJson<{ success: boolean; gradebookId: string; version: number; updatedAt: number }>(
       `/api/teacher/gradebook/${encodeURIComponent(subjectId)}/${encodeURIComponent(termId)}`,
+      {
+        method: 'PUT',
+        body: payload,
+        keepalive: opts.keepalive,
+      }
+    ),
+
+  getClassAverageSheet: (averageId: string, signal?: AbortSignal) =>
+    teacherFetchJson<ClassAverageSheetResponse>(
+      `/api/teacher/class-average-sheet/${encodeURIComponent(averageId)}`,
+      { method: 'GET', signal }
+    ),
+
+  saveClassAverageSheet: (
+    averageId: string,
+    payload: ClassAverageSheetSavePayload,
+    opts: { keepalive?: boolean } = {}
+  ) =>
+    teacherFetchJson<{ success: boolean; averageId: string; version: number; updatedAt: number }>(
+      `/api/teacher/class-average-sheet/${encodeURIComponent(averageId)}`,
       {
         method: 'PUT',
         body: payload,

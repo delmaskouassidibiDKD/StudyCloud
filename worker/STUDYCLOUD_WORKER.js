@@ -185,6 +185,11 @@ async function ensureTeacherGradebookTables(db) {
       text_color TEXT NOT NULL DEFAULT '#0f172a',
       border_color TEXT NOT NULL DEFAULT '#e2e8f0',
       border_dark_color TEXT NOT NULL DEFAULT '#cbd5e1',
+      layout_json TEXT NOT NULL DEFAULT '{}',
+      styles_json TEXT NOT NULL DEFAULT '{}',
+      overrides_json TEXT NOT NULL DEFAULT '{}',
+      sort_mode TEXT NOT NULL DEFAULT 'merit',
+      version INTEGER NOT NULL DEFAULT 1,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -201,6 +206,20 @@ async function ensureTeacherGradebookTables(db) {
     const hasCoeff = (info.results || []).some((c) => String(c.name) === "coefficient");
     if (!hasCoeff) {
       await db.prepare("ALTER TABLE teacher_terms ADD COLUMN coefficient REAL DEFAULT NULL").run();
+    }
+  } catch {
+  }
+  try {
+    const avgInfo = await db.prepare("PRAGMA table_info(teacher_class_averages)").all();
+    const avgCols = new Set((avgInfo.results || []).map((c) => String(c.name)));
+    const pendingAlters = [];
+    if (!avgCols.has("layout_json")) pendingAlters.push("ALTER TABLE teacher_class_averages ADD COLUMN layout_json TEXT NOT NULL DEFAULT '{}'");
+    if (!avgCols.has("styles_json")) pendingAlters.push("ALTER TABLE teacher_class_averages ADD COLUMN styles_json TEXT NOT NULL DEFAULT '{}'");
+    if (!avgCols.has("overrides_json")) pendingAlters.push("ALTER TABLE teacher_class_averages ADD COLUMN overrides_json TEXT NOT NULL DEFAULT '{}'");
+    if (!avgCols.has("sort_mode")) pendingAlters.push("ALTER TABLE teacher_class_averages ADD COLUMN sort_mode TEXT NOT NULL DEFAULT 'merit'");
+    if (!avgCols.has("version")) pendingAlters.push("ALTER TABLE teacher_class_averages ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+    for (const sql of pendingAlters) {
+      await db.prepare(sql).run();
     }
   } catch {
   }
@@ -443,10 +462,13 @@ function remapGradebookStylesForTransfer(srcStyles, studentIdMap, dstStyles, mod
     cellCustomStyles: outCellCustomStyles
   };
 }
-function computeAverage20(notes, colMetas) {
-  if (!Array.isArray(notes) || notes.length === 0) return null;
+function computeAverage20Exact(notes, colMetas) {
+  if (!Array.isArray(notes) || notes.length === 0) {
+    return { average: null, validNotesCount: 0 };
+  }
   let weightedSum = 0;
   let totalWeight = 0;
+  let validNotesCount = 0;
   for (let i = 0; i < notes.length; i++) {
     const raw = String(notes[i] || "").trim();
     if (!raw) continue;
@@ -467,9 +489,15 @@ function computeAverage20(notes, colMetas) {
     const scoreOn20 = score / maxScore * 20;
     weightedSum += scoreOn20 * coeffEval;
     totalWeight += coeffEval;
+    validNotesCount += 1;
   }
-  if (totalWeight <= 0) return null;
-  return Math.round(weightedSum / totalWeight * 100) / 100;
+  if (totalWeight <= 0) return { average: null, validNotesCount: 0 };
+  return { average: weightedSum / totalWeight, validNotesCount };
+}
+function computeAverage20(notes, colMetas) {
+  const { average } = computeAverage20Exact(notes, colMetas);
+  if (average === null) return null;
+  return Math.round(average * 100) / 100;
 }
 async function computeGradebookStatsMap(db, userId) {
   const [gbRes, stRes] = await Promise.all([
@@ -1689,6 +1717,197 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       version: nextVersion,
       updatedAt: now,
       savedStudentsCount: preparedRows.length
+    }, 200, origin);
+  }
+  const avgSheetMatch = path.match(/^\/api\/teacher\/class-average-sheet\/([^/]+)$/);
+  if (avgSheetMatch && method === "GET") {
+    const averageId = decodeURIComponent(avgSheetMatch[1]);
+    const cardRow = await db.prepare("SELECT * FROM teacher_class_averages WHERE id = ? AND user_id = ? LIMIT 1").bind(averageId, userId).first();
+    if (!cardRow) {
+      return errorResponse2("Carte de moyenne g\xE9n\xE9rale introuvable ou non autoris\xE9e.", 404, origin);
+    }
+    const sortModeRaw = String(cardRow.sort_mode || "merit");
+    const sortMode = sortModeRaw === "alpha" || sortModeRaw === "order" ? sortModeRaw : "merit";
+    const card = {
+      id: cardRow.id,
+      classId: cardRow.class_id,
+      termId: cardRow.term_id || void 0,
+      schoolId: cardRow.school_id,
+      yearId: cardRow.year_id,
+      kind: cardRow.kind === "annual" ? "annual" : "term",
+      title: cardRow.title,
+      sortOrder: Number(cardRow.sort_order) || 0,
+      color: cardRow.color || "#ffffff",
+      textColor: cardRow.text_color || "#0f172a",
+      borderColor: cardRow.border_color || "#e2e8f0",
+      borderDarkColor: cardRow.border_dark_color || "#cbd5e1",
+      layout: safeParseJson(cardRow.layout_json, {}),
+      styles: safeParseJson(cardRow.styles_json, {}),
+      overrides: safeParseJson(cardRow.overrides_json, {}),
+      sortMode,
+      version: Number(cardRow.version) || 1,
+      createdAt: Number(cardRow.created_at) || Date.now(),
+      updatedAt: Number(cardRow.updated_at) || Date.now()
+    };
+    if (card.kind !== "term" || !cardRow.term_id) {
+      return jsonResponse2({
+        success: true,
+        card,
+        term: null,
+        subjects: [],
+        subjectGradebooks: {}
+      }, 200, origin);
+    }
+    const [termRow, subjectsRes, gradebooksRes, studentsRes] = await Promise.all([
+      db.prepare("SELECT * FROM teacher_terms WHERE id = ? AND user_id = ? LIMIT 1").bind(cardRow.term_id, userId).first(),
+      db.prepare(
+        `SELECT * FROM teacher_subjects
+           WHERE user_id = ? AND class_id = ? AND term_id = ?
+           ORDER BY created_at ASC`
+      ).bind(userId, cardRow.class_id, cardRow.term_id).all(),
+      db.prepare(
+        `SELECT id, subject_id, col_metas_json
+           FROM teacher_gradebooks
+           WHERE user_id = ? AND class_id = ? AND term_id = ?`
+      ).bind(userId, cardRow.class_id, cardRow.term_id).all(),
+      db.prepare(
+        `SELECT id, gradebook_id, subject_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20
+           FROM teacher_gradebook_students
+           WHERE user_id = ? AND class_id = ? AND term_id = ?
+           ORDER BY row_order ASC, created_at ASC`
+      ).bind(userId, cardRow.class_id, cardRow.term_id).all()
+    ]);
+    const colMetasByGbId = /* @__PURE__ */ new Map();
+    for (const gb of gradebooksRes.results || []) {
+      colMetasByGbId.set(gb.id, safeParseJson(gb.col_metas_json, {}));
+    }
+    const subjects = (subjectsRes.results || []).map((s) => {
+      const coeff = s.coefficient !== null && s.coefficient !== void 0 && Number(s.coefficient) > 0 ? Number(s.coefficient) : null;
+      return {
+        id: s.id,
+        classId: s.class_id,
+        termId: s.term_id,
+        schoolId: s.school_id,
+        yearId: s.year_id,
+        name: s.name,
+        coefficient: coeff,
+        effectiveCoeff: coeff ?? 1,
+        color: s.color || "#ffffff",
+        textColor: s.text_color || "#0f172a",
+        borderColor: s.border_color || "#e2e8f0",
+        borderDarkColor: s.border_dark_color || "#cbd5e1",
+        createdAt: Number(s.created_at) || Date.now()
+      };
+    });
+    const subjectGradebooks = {};
+    for (const s of subjects) {
+      subjectGradebooks[s.id] = [];
+    }
+    const studentRows = studentsRes.results || [];
+    const signedRows = await Promise.all(
+      studentRows.map(async (row) => {
+        const notes = safeParseJson(row.notes_json, []);
+        const colMetas = colMetasByGbId.get(row.gradebook_id) || {};
+        const computed = computeAverage20Exact(notes, colMetas);
+        const fallbackAvg = row.average_20 !== null && row.average_20 !== void 0 && Number.isFinite(Number(row.average_20)) ? Number(row.average_20) : null;
+        const photoUrl = row.photo_r2_key ? await signTeacherMediaUrl(apiOrigin, row.photo_r2_key, jwtSecret) : void 0;
+        return {
+          subjectId: row.subject_id,
+          snapshot: {
+            id: row.id,
+            studentUid: row.student_uid || row.id,
+            name: row.full_name || "",
+            photoR2Key: row.photo_r2_key || void 0,
+            photoUrl,
+            average20: computed.average !== null ? computed.average : fallbackAvg,
+            notesCount: computed.validNotesCount
+          }
+        };
+      })
+    );
+    for (const item of signedRows) {
+      if (!subjectGradebooks[item.subjectId]) {
+        subjectGradebooks[item.subjectId] = [];
+      }
+      subjectGradebooks[item.subjectId].push(item.snapshot);
+    }
+    const term = termRow ? {
+      id: termRow.id,
+      classId: termRow.class_id,
+      schoolId: termRow.school_id,
+      yearId: termRow.year_id,
+      number: Number(termRow.number) || 1,
+      name: termRow.name,
+      coefficient: termRow.coefficient !== null && termRow.coefficient !== void 0 ? Number(termRow.coefficient) : void 0,
+      createdAt: Number(termRow.created_at) || Date.now()
+    } : null;
+    return jsonResponse2({
+      success: true,
+      card,
+      term,
+      subjects,
+      subjectGradebooks
+    }, 200, origin);
+  }
+  if (avgSheetMatch && method === "PUT") {
+    const averageId = decodeURIComponent(avgSheetMatch[1]);
+    const existingCard = await db.prepare("SELECT id, version FROM teacher_class_averages WHERE id = ? AND user_id = ? LIMIT 1").bind(averageId, userId).first();
+    if (!existingCard) {
+      return errorResponse2("Carte de moyenne g\xE9n\xE9rale introuvable ou non autoris\xE9e.", 404, origin);
+    }
+    const body = await request.json().catch(() => ({}));
+    const layout = typeof body.layout === "object" && body.layout !== null ? body.layout : {};
+    const styles = typeof body.styles === "object" && body.styles !== null ? body.styles : {};
+    const rawOverrides = typeof body.overrides === "object" && body.overrides !== null ? body.overrides : {};
+    const cleanManualStudents = Array.isArray(rawOverrides.manualStudents) ? rawOverrides.manualStudents.slice(0, 600).filter((ms) => ms && typeof ms.key === "string" && ms.key.trim().length > 0).map((ms) => ({
+      key: String(ms.key).trim().slice(0, 120),
+      name: String(ms.name || "").slice(0, 160),
+      createdAt: Number(ms.createdAt) || Date.now()
+    })) : [];
+    const cleanSubjectOverrides = {};
+    if (rawOverrides.subjectOverrides && typeof rawOverrides.subjectOverrides === "object") {
+      for (const [stKey, subjMap] of Object.entries(rawOverrides.subjectOverrides)) {
+        if (!stKey || !subjMap || typeof subjMap !== "object") continue;
+        const safeMap = {};
+        for (const [subId, val] of Object.entries(subjMap)) {
+          if (val === null || val === void 0 || val === "") continue;
+          const num = Number(val);
+          if (Number.isFinite(num) && num >= 0 && num <= 20) {
+            safeMap[String(subId).slice(0, 120)] = num;
+          }
+        }
+        if (Object.keys(safeMap).length > 0) {
+          cleanSubjectOverrides[String(stKey).slice(0, 160)] = safeMap;
+        }
+      }
+    }
+    const cleanOverrides = {
+      manualStudents: cleanManualStudents,
+      subjectOverrides: cleanSubjectOverrides
+    };
+    const rawSort = String(body.sortMode || "merit");
+    const sortMode = rawSort === "alpha" || rawSort === "order" ? rawSort : "merit";
+    const nextVersion = (Number(existingCard.version) || 1) + 1;
+    const now = Date.now();
+    await db.prepare(
+      `UPDATE teacher_class_averages
+         SET layout_json = ?, styles_json = ?, overrides_json = ?, sort_mode = ?, version = ?, updated_at = ?
+         WHERE id = ? AND user_id = ?`
+    ).bind(
+      JSON.stringify(layout),
+      JSON.stringify(styles),
+      JSON.stringify(cleanOverrides),
+      sortMode,
+      nextVersion,
+      now,
+      averageId,
+      userId
+    ).run();
+    return jsonResponse2({
+      success: true,
+      averageId,
+      version: nextVersion,
+      updatedAt: now
     }, 200, origin);
   }
   if (path === "/api/teacher/photos/student" && method === "POST") {

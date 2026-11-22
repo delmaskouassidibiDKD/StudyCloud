@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { SubjectGradebookView } from './SubjectGradebookView';
+import { TermGeneralAverageView } from './TermGeneralAverageView';
 import type {
   ClassAverageCardItem,
   ClassItem,
@@ -15,13 +16,19 @@ export interface ClassAverageSheetViewProps {
   schoolYear?: SchoolYearItem | null;
   school?: SchoolItem | null;
   term?: TermItem | null;
+  userId?: string;
+  initialSubjects?: SubjectItem[];
+  onOpenSubject?: (subjectId: string) => void;
   onBack: () => void;
 }
 
 /**
- * Vue dédiée au tableau de Moyenne Générale d'une classe (annuelle ou trimestrielle).
- * Reprend exactement l'interface du tableur des matières, volontairement NON connectée
- * à la base de données pour le moment afin de pouvoir l'adapter sur mesure dans la prochaine étape.
+ * Point d'entrée des tableaux de Moyenne Générale d'une classe :
+ * - Pour un trimestre (`kind === 'term'`) : ouvre le tableau dédié connecté à la base de données
+ *   avec toutes les matières du trimestre (Moy. /20 + Moy. × Coeff), Total Général, Moyenne Générale,
+ *   Mention, Rang et Moyenne de la classe.
+ * - Pour la Moyenne générale de l'année (`kind === 'annual'`) : conserve le modèle détaché
+ *   en attendant l'étape suivante d'adaptation annuelle.
  */
 export const ClassAverageSheetView: React.FC<ClassAverageSheetViewProps> = ({
   averageCard,
@@ -29,6 +36,9 @@ export const ClassAverageSheetView: React.FC<ClassAverageSheetViewProps> = ({
   schoolYear,
   school,
   term,
+  userId,
+  initialSubjects = [],
+  onOpenSubject,
   onBack,
 }) => {
   const syntheticSubject = useMemo<SubjectItem>(
@@ -48,12 +58,23 @@ export const ClassAverageSheetView: React.FC<ClassAverageSheetViewProps> = ({
     [averageCard, schoolClass.id]
   );
 
-  const periodBadge =
-    averageCard.kind === 'annual'
-      ? `Année ${schoolYear?.label || ''}`.trim()
-      : `${term?.name || averageCard.title.replace(/^Moyenne générale · /i, '')}${
-          term?.coefficient !== undefined && term?.coefficient !== null ? ` · Coeff ${term.coefficient}` : ''
-        }`;
+  if (averageCard.kind === 'term') {
+    return (
+      <TermGeneralAverageView
+        averageCard={averageCard}
+        schoolClass={schoolClass}
+        schoolYear={schoolYear}
+        school={school}
+        term={term || null}
+        userId={userId}
+        initialSubjects={initialSubjects}
+        onOpenSubject={onOpenSubject}
+        onBack={onBack}
+      />
+    );
+  }
+
+  const periodBadge = `Année ${schoolYear?.label || ''}`.trim();
 
   return (
     <SubjectGradebookView
