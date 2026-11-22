@@ -34,6 +34,7 @@ export interface GradebookLayoutState {
   colWidthMention: number;
   customNoteWidths: { [index: number]: number };
   customRowHeights: { [index: number]: number };
+  zoomPercent?: number;
 }
 
 export interface GradebookStylesState {

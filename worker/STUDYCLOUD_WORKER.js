@@ -353,6 +353,64 @@ function safeParseJson(raw, fallback) {
 function normalizeNameForMatch(val) {
   return String(val || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
 }
+function remapGradebookStylesForTransfer(srcStyles, studentIdMap, dstStyles, mode) {
+  const safeSrc = srcStyles && typeof srcStyles === "object" ? srcStyles : {};
+  const safeDst = dstStyles && typeof dstStyles === "object" ? dstStyles : {};
+  const outRowColors = mode === "merge" && safeDst.rowColors && typeof safeDst.rowColors === "object" ? { ...safeDst.rowColors } : {};
+  const outCellColors = mode === "merge" && safeDst.cellColors && typeof safeDst.cellColors === "object" ? { ...safeDst.cellColors } : {};
+  const outCellCustomStyles = mode === "merge" && safeDst.cellCustomStyles && typeof safeDst.cellCustomStyles === "object" ? { ...safeDst.cellCustomStyles } : {};
+  if (studentIdMap.size === 0) {
+    return {
+      rowColors: outRowColors,
+      cellColors: outCellColors,
+      cellCustomStyles: outCellCustomStyles
+    };
+  }
+  if (safeSrc.rowColors && typeof safeSrc.rowColors === "object") {
+    for (const [oldId, color] of Object.entries(safeSrc.rowColors)) {
+      const mappedId = studentIdMap.get(oldId);
+      if (mappedId && typeof color === "string" && color) {
+        if (mode !== "merge" || !outRowColors[mappedId]) {
+          outRowColors[mappedId] = color;
+        }
+      }
+    }
+  }
+  const remapPrefixedKey = (rawKey) => {
+    for (const [oldId, newId] of studentIdMap.entries()) {
+      const prefix = `${oldId}_`;
+      if (rawKey.startsWith(prefix)) {
+        return `${newId}_${rawKey.slice(prefix.length)}`;
+      }
+    }
+    return null;
+  };
+  if (safeSrc.cellColors && typeof safeSrc.cellColors === "object") {
+    for (const [rawKey, color] of Object.entries(safeSrc.cellColors)) {
+      const mappedKey = remapPrefixedKey(rawKey);
+      if (mappedKey && typeof color === "string" && color) {
+        if (mode !== "merge" || !outCellColors[mappedKey]) {
+          outCellColors[mappedKey] = color;
+        }
+      }
+    }
+  }
+  if (safeSrc.cellCustomStyles && typeof safeSrc.cellCustomStyles === "object") {
+    for (const [rawKey, styleObj] of Object.entries(safeSrc.cellCustomStyles)) {
+      const mappedKey = remapPrefixedKey(rawKey);
+      if (mappedKey && styleObj && typeof styleObj === "object") {
+        if (mode !== "merge" || !outCellCustomStyles[mappedKey]) {
+          outCellCustomStyles[mappedKey] = styleObj;
+        }
+      }
+    }
+  }
+  return {
+    rowColors: outRowColors,
+    cellColors: outCellColors,
+    cellCustomStyles: outCellCustomStyles
+  };
+}
 function computeAverage20(notes, colMetas) {
   if (!Array.isArray(notes) || notes.length === 0) return null;
   let weightedSum = 0;
@@ -1678,7 +1736,9 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         }
       }
       const finalLayout = opts.includeFormatting ? safeParseJson(srcGb.layout_json, {}) : existingDstGb ? safeParseJson(existingDstGb.layout_json, {}) : {};
-      const finalStyles = opts.includeFormatting ? safeParseJson(srcGb.styles_json, {}) : existingDstGb ? safeParseJson(existingDstGb.styles_json, {}) : {};
+      const srcStylesParsed = safeParseJson(srcGb.styles_json, {});
+      const dstStylesParsed = existingDstGb ? safeParseJson(existingDstGb.styles_json, {}) : {};
+      const studentIdMap = /* @__PURE__ */ new Map();
       const dstGradebookId = existingDstGb ? existingDstGb.id : makeId("gb");
       const nextVer = existingDstGb ? (Number(existingDstGb.version) || 1) + 1 : 1;
       const finalRows = [];
@@ -1739,6 +1799,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
           if (mode === "merge" && norm && existingByName.has(norm)) {
             const targetIdx = existingByName.get(norm);
             const targetRow = finalRows[targetIdx];
+            studentIdMap.set(srcSt.id, targetRow.id);
             if (opts.contentMode === "students_and_notes") {
               targetRow.notes = targetRow.notes.map(
                 (existingVal, idx) => existingVal.trim() ? existingVal : copiedNotes[idx] || ""
@@ -1754,6 +1815,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
             continue;
           }
           const newRowId = makeId("std");
+          studentIdMap.set(srcSt.id, newRowId);
           let newPhotoKey = null;
           if (opts.includePhotos && srcSt.photo_r2_key) {
             newPhotoKey = await copyOwnedR2Photo(rawEnv, userId, srcSt.photo_r2_key, dstSubj.school_id, dstSubj.class_id, newRowId);
@@ -1779,6 +1841,12 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
           });
         }
       }
+      const finalStyles = opts.includeFormatting ? remapGradebookStylesForTransfer(
+        srcStylesParsed,
+        studentIdMap,
+        dstStylesParsed,
+        mode === "merge" ? "merge" : "replace"
+      ) : dstStylesParsed;
       const gbStmts = [];
       if (existingDstGb) {
         gbStmts.push(

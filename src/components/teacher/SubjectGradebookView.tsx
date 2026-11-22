@@ -524,12 +524,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     isFontFamilyMenuOpenRef.current = isFontFamilyMenuOpen;
   }, [isFontFamilyMenuOpen]);
 
-  // Zoom : 70% par défaut
-  const [zoomPercent, setZoomPercent] = useState<number>(70);
+  // Zoom synchronisé avec Cloudflare D1 (70% par défaut)
+  const [zoomPercent, setZoomPercent] = useState<number>(() => {
+    const z = initialCachedSheet?.layout?.zoomPercent;
+    return typeof z === 'number' && z >= 30 && z <= 200 ? Math.round(z) : 70;
+  });
 
-  // Onglets feuilles
-  const [sheetTabs, setSheetTabs] = useState<string[]>(['Feuille1']);
-  const [activeSheetTab, setActiveSheetTab] = useState<string>('Feuille1');
+  // Nom de la feuille active (1 tableur complet par matière & trimestre)
+  const activeSheetLabel = `${term?.name || 'Trimestre 1'} · ${subject.name}`;
 
   // État de sauvegarde cloud D1 + R2 (automatique + bouton manuel "Enregistrer")
   const [isSaved, setIsSaved] = useState<boolean>(true);
@@ -575,6 +577,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       colWidthMention,
       customNoteWidths,
       customRowHeights,
+      zoomPercent,
     },
     styles: {
       cellColors,
@@ -593,6 +596,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     colWidthMention,
     customNoteWidths,
     customRowHeights,
+    zoomPercent,
     cellColors,
     rowColors,
     cellCustomStyles,
@@ -751,6 +755,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           if (typeof res.layout?.colWidthMention === 'number') setColWidthMention(Math.max(80, res.layout.colWidthMention));
           if (res.layout?.customNoteWidths) setCustomNoteWidths(res.layout.customNoteWidths);
           if (res.layout?.customRowHeights) setCustomRowHeights(res.layout.customRowHeights);
+          if (typeof res.layout?.zoomPercent === 'number' && res.layout.zoomPercent >= 30 && res.layout.zoomPercent <= 200) {
+            setZoomPercent(Math.round(res.layout.zoomPercent));
+          }
           setCellColors(res.styles?.cellColors || {});
           setRowColors(res.styles?.rowColors || {});
           setCellCustomStyles(res.styles?.cellCustomStyles || {});
@@ -769,6 +776,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 colWidthMention: res.layout?.colWidthMention ?? 108,
                 customNoteWidths: res.layout?.customNoteWidths || {},
                 customRowHeights: res.layout?.customRowHeights || {},
+                zoomPercent:
+                  typeof res.layout?.zoomPercent === 'number' && res.layout.zoomPercent >= 30 && res.layout.zoomPercent <= 200
+                    ? Math.round(res.layout.zoomPercent)
+                    : 70,
               },
               styles: {
                 cellColors: res.styles?.cellColors || {},
@@ -2454,7 +2465,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
       const ws = XLSX.utils.aoa_to_sheet([headers, ...dataRows]);
       const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, ws, activeSheetTab);
+      const excelSheetName = activeSheetLabel.replace(/[:\\/?*[\]]/g, ' ').trim().slice(0, 31) || 'Releve';
+      XLSX.utils.book_append_sheet(wb, ws, excelSheetName);
 
       const classLabel = schoolClass.name?.trim()
         ? (schoolClass.name.toLowerCase().includes(schoolClass.level.toLowerCase()) ? schoolClass.name.trim() : `${schoolClass.level}_${schoolClass.name.trim()}`)
@@ -2464,13 +2476,6 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     } catch (err) {
       console.error('Erreur export Excel:', err);
     }
-  };
-
-  // Nouvelle feuille
-  const handleAddSheet = () => {
-    const newName = `Feuille${sheetTabs.length + 1}`;
-    setSheetTabs(prev => [...prev, newName]);
-    setActiveSheetTab(newName);
   };
 
   // Nombre total de colonnes et lignes d'arrière-plan
@@ -5194,36 +5199,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* 5. BARRE INFÉRIEURE : ONGLETS FEUILLES & CURSEUR ZOOM                     */}
+      {/* 5. BARRE INFÉRIEURE : FEUILLE ACTIVE & CURSEUR ZOOM                       */}
       {/* ========================================================================= */}
       <footer className="h-7 bg-[#f3f4f6] border-t border-slate-300 px-3 flex items-center justify-between text-xs text-slate-600 shrink-0 select-none">
-        <div className="flex items-center gap-1">
-          {sheetTabs.map((sTab) => {
-            const isActive = activeSheetTab === sTab;
-            return (
-              <button
-                key={sTab}
-                type="button"
-                onClick={() => setActiveSheetTab(sTab)}
-                className={`px-3 py-1 text-[11px] font-bold rounded-t border-t border-x transition cursor-pointer ${
-                  isActive
-                    ? 'bg-white text-emerald-800 border-slate-300 border-b-white -mb-[1px] shadow-2xs'
-                    : 'text-slate-600 hover:bg-slate-200 border-transparent'
-                }`}
-              >
-                {sTab}
-              </button>
-            );
-          })}
-
-          <button
-            type="button"
-            onClick={handleAddSheet}
-            className="w-5 h-5 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-600 ml-1 cursor-pointer transition active:scale-95"
-            title="Ajouter une nouvelle feuille"
+        <div className="flex items-center gap-1 min-w-0">
+          <div
+            className="px-3 py-1 text-[11px] font-bold rounded-t border-t border-x bg-white text-emerald-800 border-slate-300 border-b-white -mb-[1px] shadow-2xs truncate max-w-[240px] sm:max-w-[340px]"
+            title={`Feuille de notes active : ${activeSheetLabel}`}
           >
-            <Plus className="w-3.5 h-3.5" />
-          </button>
+            {activeSheetLabel}
+          </div>
         </div>
 
         <div className="hidden lg:flex items-center gap-3 text-[10.5px] text-slate-500 font-medium">

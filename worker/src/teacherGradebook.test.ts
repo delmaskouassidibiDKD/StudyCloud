@@ -619,3 +619,131 @@ test('Modification (PUT), synchronisation manuelle (POST /sync) et suppression e
   assert.equal(afterDel.terms.length, 0);
   assert.equal(afterDel.subjects.length, 0);
 });
+
+test('Persistance du zoom, dimensions et remappage des couleurs/styles par élève lors d’un transfert D1', async () => {
+  const { callApi } = createHarness();
+
+  const { year } = await (await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027', color: '#0284c7', textColor: '#ffffff' },
+  })).json();
+
+  const { school } = await (await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'Lycée Style', color: '#0f172a', textColor: '#ffffff' },
+  })).json();
+
+  const { level } = await (await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'Terminale', color: '#7c3aed', textColor: '#ffffff' },
+  })).json();
+
+  const { classItem, terms } = await (await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { levelId: level.id, name: 'Tle D', teacherName: 'Prof Alice', color: '#059669', textColor: '#ffffff' },
+  })).json();
+
+  const term1 = terms[0];
+  const term2 = terms[1];
+
+  const { subject: subjT1 } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: term1.id, name: 'Maths', coefficient: 4, color: '#dc2626', textColor: '#ffffff' },
+  })).json();
+
+  const { subject: subjT2 } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: term2.id, name: 'Maths', coefficient: 4, color: '#dc2626', textColor: '#ffffff' },
+  })).json();
+
+  // Enregistrer le tableur T1 avec zoom=115, largeurs/hauteurs personnalisées et couleurs par élève
+  const saveRes = await callApi(`/api/teacher/gradebook/${subjT1.id}/${term1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 3,
+      columnMetas: { 0: { title: 'DEVOIR', maxScore: 20, coeffEval: 2, headerBgColor: '#bae6fd', columnBgColor: '#e0f2fe' } },
+      layout: {
+        noteColWidth: 120,
+        colWidthRank: 72,
+        colWidthPhoto: 88,
+        colWidthName: 310,
+        colWidthAverage: 112,
+        colWidthMention: 125,
+        customNoteWidths: { 0: 145 },
+        customRowHeights: { 0: 64 },
+        zoomPercent: 115,
+      },
+      styles: {
+        rowColors: { 'std-orig-1': '#fef08a' },
+        cellColors: { 'std-orig-1_0': '#bbf7d0', 'std-orig-1_-1': '#e9d5ff' },
+        cellCustomStyles: { 'std-orig-1_name': { bold: true, color: '#1e3a8a', fontFamily: 'Georgia', fontSize: 14 } },
+      },
+      students: [
+        { id: 'std-orig-1', name: 'Kouassi Yao', notes: ['17/20', '15/20', ''] },
+      ],
+    },
+  });
+  assert.equal(saveRes.status, 200);
+
+  // Recharger (comme sur un autre appareil) et vérifier 100 % des dimensions, zoom et couleurs
+  const reloadedT1 = await (await callApi(`/api/teacher/gradebook/${subjT1.id}/${term1.id}`, { token: 'token-alice' })).json();
+  assert.equal(reloadedT1.layout.zoomPercent, 115);
+  assert.equal(reloadedT1.layout.customNoteWidths['0'], 145);
+  assert.equal(reloadedT1.layout.customRowHeights['0'], 64);
+  assert.equal(reloadedT1.styles.rowColors['std-orig-1'], '#fef08a');
+  assert.equal(reloadedT1.styles.cellColors['std-orig-1_0'], '#bbf7d0');
+  assert.equal(reloadedT1.styles.cellCustomStyles['std-orig-1_name'].fontFamily, 'Georgia');
+
+  // Transférer T1 -> T2 avec mise en forme et vérifier que les styles suivent le NOUVEL ID d'élève !
+  const transferRes = await callApi('/api/teacher/transfer', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      createdLevels: [],
+      createdClasses: [],
+      createdTerms: [],
+      createdSubjects: [],
+      updatedSubjects: [],
+      gradebookCopies: [
+        {
+          sourceSubjectId: subjT1.id,
+          sourceTermId: term1.id,
+          targetSubjectId: subjT2.id,
+          targetTermId: term2.id,
+          conflictStrategy: 'replace',
+          options: {
+            contentMode: 'students_only',
+            includePhotos: false,
+            includeMetas: true,
+            includeFormatting: true,
+          },
+        },
+      ],
+    },
+  });
+  assert.equal(transferRes.status, 200);
+
+  const loadedT2 = await (await callApi(`/api/teacher/gradebook/${subjT2.id}/${term2.id}`, { token: 'token-alice' })).json();
+  const transferredStudent = loadedT2.students.find((s: any) => s.name === 'Kouassi Yao');
+  assert.ok(transferredStudent, 'Élève transféré introuvable dans T2');
+  assert.notEqual(transferredStudent.id, 'std-orig-1');
+
+  // Zoom, dimensions ET couleurs/styles remappés sur le nouvel ID d'élève !
+  assert.equal(loadedT2.layout.zoomPercent, 115);
+  assert.equal(loadedT2.layout.customNoteWidths['0'], 145);
+  assert.equal(loadedT2.layout.customRowHeights['0'], 64);
+  assert.equal(loadedT2.styles.rowColors[transferredStudent.id], '#fef08a');
+  assert.equal(loadedT2.styles.cellColors[`${transferredStudent.id}_0`], '#bbf7d0');
+  assert.equal(loadedT2.styles.cellColors[`${transferredStudent.id}_-1`], '#e9d5ff');
+  assert.equal(loadedT2.styles.cellCustomStyles[`${transferredStudent.id}_name`].bold, true);
+  assert.equal(loadedT2.styles.cellCustomStyles[`${transferredStudent.id}_name`].fontFamily, 'Georgia');
+  // L'ancien ID ne pollue pas le tableur cible
+  assert.equal(loadedT2.styles.rowColors['std-orig-1'], undefined);
+});
