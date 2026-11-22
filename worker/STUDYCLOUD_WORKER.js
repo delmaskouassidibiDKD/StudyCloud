@@ -358,6 +358,31 @@ async function deleteOwnedR2Keys(rawEnv, userId, keys) {
     }
   }
 }
+async function deleteUnreferencedStudentR2Keys(db, rawEnv, userId, keys) {
+  const uniqueKeys = Array.from(new Set(keys.filter((k) => isOwnedR2Key(k, userId))));
+  if (uniqueKeys.length === 0) return;
+  const stillUsed = /* @__PURE__ */ new Set();
+  for (let i = 0; i < uniqueKeys.length; i += 40) {
+    const chunk = uniqueKeys.slice(i, i + 40);
+    const placeholders = chunk.map(() => "?").join(", ");
+    try {
+      const res = await db.prepare(
+        `SELECT DISTINCT photo_r2_key
+           FROM teacher_gradebook_students
+           WHERE user_id = ? AND photo_r2_key IN (${placeholders})`
+      ).bind(userId, ...chunk).all();
+      for (const r of res.results || []) {
+        if (r.photo_r2_key) stillUsed.add(String(r.photo_r2_key));
+      }
+    } catch {
+      for (const k of chunk) stillUsed.add(k);
+    }
+  }
+  const trulyOrphan = uniqueKeys.filter((k) => !stillUsed.has(k));
+  if (trulyOrphan.length > 0) {
+    await deleteOwnedR2Keys(rawEnv, userId, trulyOrphan);
+  }
+}
 async function copyOwnedR2Photo(rawEnv, userId, sourceKey, targetSchoolId, targetClassId, targetStudentId) {
   if (!isOwnedR2Key(sourceKey, userId)) return null;
   const bucket = getTeacherPhotosBucket(rawEnv);
@@ -1416,7 +1441,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       db.prepare("DELETE FROM teacher_subjects WHERE term_id = ? AND user_id = ?").bind(termId, userId),
       db.prepare("DELETE FROM teacher_terms WHERE id = ? AND user_id = ?").bind(termId, userId)
     ]);
-    await deleteOwnedR2Keys(rawEnv, userId, r2Keys);
+    await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, r2Keys);
     return jsonResponse2({ success: true, deletedId: termId }, 200, origin);
   }
   if (path === "/api/teacher/subjects" && method === "POST") {
@@ -1518,7 +1543,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       db.prepare("DELETE FROM teacher_gradebooks WHERE subject_id = ? AND user_id = ?").bind(subjectId, userId),
       db.prepare("DELETE FROM teacher_subjects WHERE id = ? AND user_id = ?").bind(subjectId, userId)
     ]);
-    await deleteOwnedR2Keys(rawEnv, userId, r2Keys);
+    await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, r2Keys);
     return jsonResponse2({ success: true, deletedId: subjectId }, 200, origin);
   }
   const gradebookMatch = path.match(/^\/api\/teacher\/gradebook\/([^/]+)\/([^/]+)$/);
@@ -1709,7 +1734,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       if (!keptR2Keys.has(prevKey)) orphanKeys.push(prevKey);
     }
     if (orphanKeys.length > 0) {
-      await deleteOwnedR2Keys(rawEnv, userId, orphanKeys);
+      await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, orphanKeys);
     }
     return jsonResponse2({
       success: true,
@@ -1881,9 +1906,24 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         }
       }
     }
+    const cleanMergedLinks = Array.isArray(rawOverrides.mergedLinks) ? rawOverrides.mergedLinks.slice(0, 300).filter(
+      (ml) => ml && typeof ml.primaryKey === "string" && ml.primaryKey.trim().length > 0 && Array.isArray(ml.mergedKeys)
+    ).map((ml) => ({
+      primaryKey: String(ml.primaryKey).trim().slice(0, 160),
+      mergedKeys: Array.from(
+        new Set(
+          ml.mergedKeys.filter((k) => typeof k === "string" && k.trim().length > 0).map((k) => k.trim().slice(0, 160)).filter((k) => k !== String(ml.primaryKey).trim().slice(0, 160))
+        )
+      ).slice(0, 50)
+    })).filter((ml) => ml.mergedKeys.length > 0) : [];
+    const cleanDistinctPairs = Array.isArray(rawOverrides.distinctPairs) ? rawOverrides.distinctPairs.slice(0, 500).filter(
+      (p) => Array.isArray(p) && p.length === 2 && typeof p[0] === "string" && typeof p[1] === "string" && p[0].trim().length > 0 && p[1].trim().length > 0 && p[0].trim() !== p[1].trim()
+    ).map((p) => [p[0].trim().slice(0, 160), p[1].trim().slice(0, 160)]) : [];
     const cleanOverrides = {
       manualStudents: cleanManualStudents,
-      subjectOverrides: cleanSubjectOverrides
+      subjectOverrides: cleanSubjectOverrides,
+      mergedLinks: cleanMergedLinks,
+      distinctPairs: cleanDistinctPairs
     };
     const rawSort = String(body.sortMode || "merit");
     const sortMode = rawSort === "alpha" || rawSort === "order" ? rawSort : "merit";
@@ -1909,6 +1949,60 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       version: nextVersion,
       updatedAt: now
     }, 200, origin);
+  }
+  const classRosterMatch = path.match(/^\/api\/teacher\/class-roster\/([^/]+)$/);
+  if (classRosterMatch && method === "GET") {
+    const classId = decodeURIComponent(classRosterMatch[1]);
+    const ownClass = await db.prepare("SELECT id FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(classId, userId).first();
+    if (!ownClass) {
+      return errorResponse2("Classe introuvable ou non autoris\xE9e.", 404, origin);
+    }
+    const rosterRes = await db.prepare(
+      `SELECT s.student_uid, s.id, s.full_name, s.photo_r2_key, s.subject_id, subj.name AS subject_name
+         FROM teacher_gradebook_students s
+         LEFT JOIN teacher_subjects subj ON subj.id = s.subject_id AND subj.user_id = s.user_id
+         WHERE s.user_id = ? AND s.class_id = ? AND TRIM(COALESCE(s.full_name, '')) != ''
+         ORDER BY s.created_at ASC, s.row_order ASC`
+    ).bind(userId, classId).all();
+    const byUid = /* @__PURE__ */ new Map();
+    for (const r of rosterRes.results || []) {
+      const name = String(r.full_name || "").trim();
+      if (!name) continue;
+      const uid = String(r.student_uid || r.id || "").trim();
+      if (!uid) continue;
+      let entry = byUid.get(uid);
+      if (!entry) {
+        entry = {
+          studentUid: uid,
+          name,
+          photoR2Key: r.photo_r2_key || void 0,
+          subjectIds: [],
+          subjectNames: []
+        };
+        byUid.set(uid, entry);
+      } else {
+        if (!entry.photoR2Key && r.photo_r2_key) {
+          entry.photoR2Key = r.photo_r2_key;
+        }
+      }
+      if (r.subject_id && !entry.subjectIds.includes(r.subject_id)) {
+        entry.subjectIds.push(r.subject_id);
+      }
+      if (r.subject_name && !entry.subjectNames.includes(r.subject_name)) {
+        entry.subjectNames.push(r.subject_name);
+      }
+    }
+    const students = await Promise.all(
+      Array.from(byUid.values()).map(async (item) => ({
+        studentUid: item.studentUid,
+        name: item.name,
+        photoR2Key: item.photoR2Key,
+        photoUrl: item.photoR2Key ? await signTeacherMediaUrl(apiOrigin, item.photoR2Key, jwtSecret) : void 0,
+        subjectIds: item.subjectIds,
+        subjectNames: item.subjectNames
+      }))
+    );
+    return jsonResponse2({ success: true, classId, students }, 200, origin);
   }
   if (path === "/api/teacher/photos/student" && method === "POST") {
     const contentTypeHeader = request.headers.get("content-type") || "";
@@ -1965,7 +2059,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       if (existingRow) {
         await db.prepare("UPDATE teacher_gradebook_students SET photo_r2_key = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(photoR2Key, now, studentId, userId).run();
         if (existingRow.photo_r2_key && existingRow.photo_r2_key !== photoR2Key) {
-          await deleteOwnedR2Keys(rawEnv, userId, [existingRow.photo_r2_key]);
+          await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, [existingRow.photo_r2_key]);
         }
       }
     }
@@ -2001,7 +2095,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       ).bind(Date.now(), studentId, userId, subjectId, termId).run();
     }
     if (keyToDelete) {
-      await deleteOwnedR2Keys(rawEnv, userId, [keyToDelete]);
+      await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, [keyToDelete]);
     }
     return jsonResponse2({ success: true }, 200, origin);
   }

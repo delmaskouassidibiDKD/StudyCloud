@@ -58,6 +58,21 @@ export interface ClassAverageSheetSavePayload {
   sortMode: TermAverageSortMode;
 }
 
+export interface TeacherClassRosterStudent {
+  studentUid: string;
+  name: string;
+  photoUrl?: string;
+  photoR2Key?: string;
+  subjectIds: string[];
+  subjectNames: string[];
+}
+
+export interface TeacherClassRosterResponse {
+  success: boolean;
+  classId: string;
+  students: TeacherClassRosterStudent[];
+}
+
 export interface GradebookLayoutState {
   noteColWidth: number;
   colWidthRank: number;
@@ -760,6 +775,12 @@ export const TeacherGradebookAPI = {
         body: payload,
         keepalive: opts.keepalive,
       }
+    ),
+
+  getClassRoster: (classId: string, signal?: AbortSignal) =>
+    teacherFetchJson<TeacherClassRosterResponse>(
+      `/api/teacher/class-roster/${encodeURIComponent(classId)}`,
+      { method: 'GET', signal }
     ),
 
   uploadStudentPhoto: async (params: {

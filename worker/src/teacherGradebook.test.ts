@@ -1104,3 +1104,149 @@ test('Feuille Moyenne générale de trimestre (GET & PUT /api/teacher/class-aver
   });
   assert.equal(bobPut.status, 404);
 });
+
+test('Répertoire classe (GET /api/teacher/class-roster/:id), persistance mergedLinks/distinctPairs et protection photo R2 partagée', async () => {
+  const { callApi, r2Images } = createHarness();
+
+  const { year } = await (await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027' },
+  })).json();
+  const { school } = await (await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'CME' },
+  })).json();
+  const { level } = await (await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'BTS 2' },
+  })).json();
+  const { classItem, terms, classAverages } = await (await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { levelId: level.id, name: 'Groupe 2', teacherName: 'DKD' },
+  })).json();
+  const t1 = terms[0];
+  const t1Avg = classAverages.find((c: any) => c.kind === 'term' && c.termId === t1.id);
+
+  const { subject: sMath } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Mathématiques', coefficient: 4 },
+  })).json();
+  const { subject: sAng } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Anglais', coefficient: 2 },
+  })).json();
+
+  // Upload d'une photo élève dans Mathématiques
+  const tinyPngBase64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const photoRes = await callApi('/api/teacher/photos/student', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      subjectId: sMath.id,
+      termId: t1.id,
+      studentId: 'm-1',
+      dataUrl: `data:image/png;base64,${tinyPngBase64}`,
+    },
+  });
+  assert.equal(photoRes.status, 200);
+  const { photoR2Key } = await photoRes.json();
+  assert.ok(r2Images.store.has(photoR2Key));
+
+  // Enregistrer KOUASSI Jean (avec photo) + 2 homonymes KONÉ Mamadou dans Mathématiques
+  await callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 1,
+      columnMetas: { 0: { maxScore: 20 } },
+      layout: {},
+      styles: {},
+      students: [
+        { id: 'm-1', studentUid: 'uid-jean', name: 'KOUASSI Jean', photoR2Key, notes: ['15/20'] },
+        { id: 'm-2', studentUid: 'uid-kone-1', name: 'KONÉ Mamadou', notes: ['16/20'] },
+        { id: 'm-3', studentUid: 'uid-kone-2', name: 'KONÉ Mamadou', notes: ['10/20'] },
+      ],
+    },
+  });
+
+  // Auto-complétion en Anglais : même studentUid et même photoR2Key partagée pour KOUASSI Jean
+  await callApi(`/api/teacher/gradebook/${sAng.id}/${t1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 1,
+      columnMetas: { 0: { maxScore: 20 } },
+      layout: {},
+      styles: {},
+      students: [
+        { id: 'a-1', studentUid: 'uid-jean', name: 'KOUASSI Jean', photoR2Key, notes: ['17/20'] },
+      ],
+    },
+  });
+
+  // 1. GET /api/teacher/class-roster/:classId déduplique par studentUid et préserve les 2 homonymes
+  const rosterRes = await callApi(`/api/teacher/class-roster/${classItem.id}`, {
+    token: 'token-alice',
+  });
+  assert.equal(rosterRes.status, 200);
+  const roster = await rosterRes.json();
+  assert.equal(roster.students.length, 3);
+  const jeanRoster = roster.students.find((s: any) => s.studentUid === 'uid-jean');
+  assert.ok(jeanRoster);
+  assert.equal(jeanRoster.subjectNames.length, 2);
+  assert.ok(jeanRoster.photoUrl);
+
+  // Anti-IDOR : Bob ne peut pas lire le répertoire de classe d'Alice
+  const bobRoster = await callApi(`/api/teacher/class-roster/${classItem.id}`, {
+    token: 'token-bob',
+  });
+  assert.equal(bobRoster.status, 404);
+
+  // 2. Persistance de mergedLinks et distinctPairs dans teacher_class_averages
+  const saveLinks = await callApi(`/api/teacher/class-average-sheet/${t1Avg.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      layout: {},
+      styles: {},
+      overrides: {
+        manualStudents: [],
+        subjectOverrides: {},
+        mergedLinks: [{ primaryKey: 'name:kouassi jean', mergedKeys: ['name:kouasi jean'] }],
+        distinctPairs: [['uid:uid-kone-1', 'uid:uid-kone-2']],
+      },
+      sortMode: 'merit',
+    },
+  });
+  assert.equal(saveLinks.status, 200);
+  const loadedSheet = await (await callApi(`/api/teacher/class-average-sheet/${t1Avg.id}`, {
+    token: 'token-alice',
+  })).json();
+  assert.deepEqual(loadedSheet.card.overrides.mergedLinks, [
+    { primaryKey: 'name:kouassi jean', mergedKeys: ['name:kouasi jean'] },
+  ]);
+  assert.deepEqual(loadedSheet.card.overrides.distinctPairs, [
+    ['uid:uid-kone-1', 'uid:uid-kone-2'],
+  ]);
+
+  // 3. Protection photo R2 partagée : supprimer Anglais NE doit PAS supprimer la photo encore utilisée en Maths !
+  await callApi(`/api/teacher/subjects/${sAng.id}`, {
+    method: 'DELETE',
+    token: 'token-alice',
+  });
+  assert.equal(r2Images.store.has(photoR2Key), true, 'La photo partagée doit rester intacte tant que Maths la référence');
+
+  // Puis supprimer Mathématiques (dernière référence) -> la photo R2 est bien nettoyée
+  await callApi(`/api/teacher/subjects/${sMath.id}`, {
+    method: 'DELETE',
+    token: 'token-alice',
+  });
+  assert.equal(r2Images.store.has(photoR2Key), false, 'La photo R2 orpheline doit être nettoyée une fois la dernière référence supprimée');
+});

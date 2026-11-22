@@ -154,3 +154,162 @@ test('préserve deux homonymes distincts dans une même matière et helpers de f
   assert.deepEqual(parseManualAverageInput('21'), { valid: false, value: null });
   assert.deepEqual(parseManualAverageInput('-2'), { valid: false, value: null });
 });
+
+test('Couche 2 : fusion automatique sûre pour inversion Nom/Prénom, apostrophes, tirets, numérotation et civilités', () => {
+  const result = computeTermGeneralAverageTable({
+    subjects: [
+      { id: 'math', name: 'Mathématiques', coefficient: 4 },
+      { id: 'ang', name: 'Anglais', coefficient: 2 },
+      { id: 'fr', name: 'Français', coefficient: 2 },
+    ],
+    subjectGradebooks: {
+      math: [
+        { id: 'm1', studentUid: 'u1', name: 'KOUASSI Jean', average20: 14, notesCount: 2 },
+        { id: 'm2', studentUid: 'u2', name: "1. N'GUESSAN Jean-Luc", average20: 16, notesCount: 2 },
+      ],
+      ang: [
+        // Nom/Prénom inversé !
+        { id: 'a1', studentUid: 'other-a1', name: 'Jean KOUASSI', average20: 16, notesCount: 2 },
+        // Apostrophe typographique + sans tiret + civilité
+        { id: 'a2', studentUid: 'other-a2', name: 'M. N’GUESSAN Jean Luc', average20: 12, notesCount: 2 },
+      ],
+      fr: [
+        { id: 'f1', studentUid: 'other-f1', name: 'kouassi jean', average20: 12, notesCount: 1 },
+        { id: 'f2', studentUid: 'other-f2', name: 'NGUESSAN JEAN-LUC', average20: 14, notesCount: 1 },
+      ],
+    },
+  });
+
+  assert.equal(result.students.length, 2);
+  assert.equal(result.potentialDuplicates.length, 0);
+
+  const jean = result.students.find((s) => s.name.includes('KOUASSI'))!;
+  assert.equal(jean.cellsBySubject.math.effectiveAverage, 14);
+  assert.equal(jean.cellsBySubject.ang.effectiveAverage, 16);
+  assert.equal(jean.cellsBySubject.fr.effectiveAverage, 12);
+  // (14*4 + 16*2 + 12*2) / 8 = (56 + 32 + 24) / 8 = 112 / 8 = 14
+  assert.equal(jean.totalGeneral, 112);
+  assert.equal(jean.generalAverage, 14);
+
+  const nguessan = result.students.find((s) => s.name.includes('GUESSAN'))!;
+  assert.equal(nguessan.cellsBySubject.math.effectiveAverage, 16);
+  assert.equal(nguessan.cellsBySubject.ang.effectiveAverage, 12);
+  assert.equal(nguessan.cellsBySubject.fr.effectiveAverage, 14);
+});
+
+test('Couche 3 : faute de frappe détectée sans fusion silencieuse, jumeaux protégés, homonymes sécurisés, fusion & séparation', () => {
+  const baseInput = {
+    subjects: [
+      { id: 'math', name: 'Mathématiques', coefficient: 4 },
+      { id: 'ang', name: 'Anglais', coefficient: 2 },
+    ],
+    subjectGradebooks: {
+      math: [
+        { id: 'm1', studentUid: 'u-jean', name: 'KOUASSI Jean', average20: 15, notesCount: 2 },
+        // Jumeaux présents tous deux en Maths -> JAMAIS mélangés ni signalés !
+        { id: 'm2', studentUid: 'u-aya', name: 'TRAORÉ Aya', average20: 17, notesCount: 2 },
+        { id: 'm3', studentUid: 'u-awa', name: 'TRAORÉ Awa', average20: 13, notesCount: 2 },
+        // Prénom complet en Maths
+        { id: 'm4', studentUid: 'u-marc', name: 'DIBI Yao Jean-Marc', average20: 14, notesCount: 2 },
+      ],
+      ang: [
+        // Faute de frappe ("KOUASI" au lieu de "KOUASSI") -> doit être proposé à validation !
+        { id: 'a1', studentUid: 'other-jean', name: 'KOUASI Jean', average20: 12, notesCount: 2 },
+        // Les jumeaux en Anglais
+        { id: 'a2', studentUid: 'u-aya', name: 'TRAORÉ Aya', average20: 18, notesCount: 2 },
+        { id: 'a3', studentUid: 'u-awa', name: 'TRAORÉ Awa', average20: 11, notesCount: 2 },
+        // Second prénom oublié en Anglais -> doit être proposé à validation !
+        { id: 'a4', studentUid: 'other-marc', name: 'DIBI Jean-Marc', average20: 16, notesCount: 2 },
+      ],
+    },
+  };
+
+  // Étape 1 : avant confirmation, aucune fusion silencieuse sur KOUASI ni DIBI, et les jumeaux NE sont PAS signalés
+  const before = computeTermGeneralAverageTable(baseInput);
+  assert.equal(before.students.length, 6);
+  assert.equal(
+    before.potentialDuplicates.some(
+      (d) =>
+        (d.studentA.name.includes('Aya') && d.studentB.name.includes('Awa')) ||
+        (d.studentA.name.includes('Awa') && d.studentB.name.includes('Aya'))
+    ),
+    false,
+    'Les jumeaux qui coexistent dans une même matière ne doivent jamais être signalés comme doublon'
+  );
+
+  const typoCand = before.potentialDuplicates.find((d) => d.reason === 'typo_close');
+  assert.ok(typoCand, 'La faute de frappe KOUASSI/KOUASI doit être détectée');
+  const partialCand = before.potentialDuplicates.find((d) => d.reason === 'partial_name');
+  assert.ok(partialCand, 'Le prénom abrégé/manquant DIBI Yao Jean-Marc / DIBI Jean-Marc doit être détecté');
+
+  // Étape 2 : le prof confirme que KOUASSI = KOUASI (mergedLinks) et que les 2 DIBI sont différents (distinctPairs)
+  const after = computeTermGeneralAverageTable({
+    ...baseInput,
+    overrides: {
+      mergedLinks: [
+        { primaryKey: typoCand!.studentA.key, mergedKeys: [typoCand!.studentB.key] },
+      ],
+      distinctPairs: [[partialCand!.studentA.key, partialCand!.studentB.key]],
+    },
+  });
+
+  assert.equal(after.students.length, 5);
+  assert.equal(after.potentialDuplicates.length, 0);
+
+  const mergedJean = after.students.find((s) => s.key === typoCand!.studentA.key)!;
+  assert.equal(mergedJean.cellsBySubject.math.effectiveAverage, 15);
+  assert.equal(mergedJean.cellsBySubject.ang.effectiveAverage, 12);
+  // (15*4 + 12*2) / 6 = 84 / 6 = 14
+  assert.equal(mergedJean.generalAverage, 14);
+  assert.deepEqual(mergedJean.mergedSourceKeys, [typoCand!.studentB.key]);
+});
+
+test('Homonymes : jamais mélangés automatiquement si ambigus, mais liés à 100 % si même studentUid', () => {
+  // Cas A : 2 homonymes KONÉ Mamadou en Maths + 1 saisi à la main en Anglais sans studentUid commun
+  const ambiguous = computeTermGeneralAverageTable({
+    subjects: [
+      { id: 'math', name: 'Mathématiques', coefficient: 4 },
+      { id: 'ang', name: 'Anglais', coefficient: 2 },
+    ],
+    subjectGradebooks: {
+      math: [
+        { id: 'm1', studentUid: 'kone-1', name: 'KONÉ Mamadou', average20: 16, notesCount: 2 },
+        { id: 'm2', studentUid: 'kone-2', name: 'KONÉ Mamadou', average20: 9, notesCount: 2 },
+      ],
+      ang: [
+        { id: 'a1', studentUid: 'manual-other', name: 'KONÉ Mamadou', average20: 14, notesCount: 2 },
+      ],
+    },
+  });
+
+  // Doit garder 3 lignes (NE PAS deviner silencieusement) et signaler les candidats au prof !
+  assert.equal(ambiguous.students.length, 3);
+  assert.equal(ambiguous.potentialDuplicates.filter((d) => d.reason === 'same_name').length, 2);
+
+  // Cas B : 2 homonymes KONÉ Mamadou liés par leurs studentUid respectifs (auto-complétion ou transfert)
+  const linked = computeTermGeneralAverageTable({
+    subjects: [
+      { id: 'math', name: 'Mathématiques', coefficient: 4 },
+      { id: 'ang', name: 'Anglais', coefficient: 2 },
+    ],
+    subjectGradebooks: {
+      math: [
+        { id: 'm1', studentUid: 'kone-1', name: 'KONÉ Mamadou', average20: 16, notesCount: 2 },
+        { id: 'm2', studentUid: 'kone-2', name: 'KONÉ Mamadou', average20: 9, notesCount: 2 },
+      ],
+      ang: [
+        { id: 'a1', studentUid: 'kone-1', name: 'KONÉ Mamadou', average20: 18, notesCount: 2 },
+        { id: 'a2', studentUid: 'kone-2', name: 'KONÉ Mamadou', average20: 11, notesCount: 2 },
+      ],
+    },
+  });
+
+  assert.equal(linked.students.length, 2);
+  assert.equal(linked.potentialDuplicates.length, 0);
+  const k1 = linked.students.find((s) => s.studentUid === 'kone-1')!;
+  const k2 = linked.students.find((s) => s.studentUid === 'kone-2')!;
+  assert.equal(k1.cellsBySubject.math.effectiveAverage, 16);
+  assert.equal(k1.cellsBySubject.ang.effectiveAverage, 18);
+  assert.equal(k2.cellsBySubject.math.effectiveAverage, 9);
+  assert.equal(k2.cellsBySubject.ang.effectiveAverage, 11);
+});

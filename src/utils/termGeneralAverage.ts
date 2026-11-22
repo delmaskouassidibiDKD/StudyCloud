@@ -34,10 +34,19 @@ export interface ManualAverageStudent {
   createdAt?: number;
 }
 
+export interface StudentMergeLink {
+  primaryKey: string;
+  mergedKeys: string[];
+}
+
 export interface TermAverageOverrides {
   manualStudents?: ManualAverageStudent[];
   /** Moyennes saisies directement dans ce tableau (mode hybride), indexées par [studentKey][subjectId] */
   subjectOverrides?: Record<string, Record<string, number | null>>;
+  /** Fusions validées par le professeur ("C'est le même élève") */
+  mergedLinks?: StudentMergeLink[];
+  /** Paires confirmées distinctes par le professeur ("Ce sont 2 élèves différents") */
+  distinctPairs?: Array<[string, string]>;
 }
 
 export interface TermAverageLayoutState {
@@ -80,6 +89,10 @@ export interface ComputedTermAverageStudent {
   name: string;
   photoUrl?: string;
   photoR2Key?: string;
+  /** Matières dans lesquelles cet élève existe dans les tableurs */
+  presentSubjectIds: string[];
+  /** Clés fusionnées manuellement dans cette ligne (pour permettre de les séparer si besoin) */
+  mergedSourceKeys: string[];
   cellsBySubject: Record<string, ComputedSubjectCell>;
   /** Somme des (Moyenne × Coeff) pour toutes les matières notées de l'élève */
   totalGeneral: number | null;
@@ -93,6 +106,25 @@ export interface ComputedTermAverageStudent {
   rankNumber: number | null;
   rankLabel: string;
   isExAequo: boolean;
+}
+
+export interface PotentialDuplicateCandidate {
+  id: string;
+  studentA: {
+    key: string;
+    name: string;
+    photoUrl?: string;
+    subjectNames: string[];
+  };
+  studentB: {
+    key: string;
+    name: string;
+    photoUrl?: string;
+    subjectNames: string[];
+  };
+  reason: 'same_name' | 'typo_close' | 'partial_name';
+  reasonLabel: string;
+  confidence: 'high' | 'medium';
 }
 
 export interface ComputedSubjectClassStats {
@@ -120,19 +152,88 @@ export interface ComputedTermAverageTable {
   subjects: TermAverageSubject[];
   students: ComputedTermAverageStudent[];
   classSummary: ComputedTermClassSummary;
+  /** Doublons potentiels (noms très proches / homonymes ambigus) soumis à validation humaine */
+  potentialDuplicates: PotentialDuplicateCandidate[];
 }
 
 /**
- * Normalise un nom complet pour faire correspondre le même élève entre plusieurs matières
- * (insensible aux majuscules, accents et espaces multiples).
+ * Nettoyage intelligent et 100 % sûr d'un nom d'élève :
+ * - Supprime les numéros de liste collés devant ("1. KOUASSI Jean", "02 - KOUASSI")
+ * - Supprime les civilités ("M.", "Mme", "Mlle", "Mr")
+ * - Supprime les accents ("TRAORÉ" = "TRAORE")
+ * - Fusionne les apostrophes ("N'GUESSAN" = "N’GUESSAN" = "NGUESSAN")
+ * - Remplace tirets/ponctuation par espace ("JEAN-LUC" = "JEAN LUC")
+ * - Insensible aux majuscules et espaces multiples
  */
 export function normalizeStudentNameKey(name: string | null | undefined): string {
   return String(name || '')
+    .trim()
+    .replace(/^(?:\d{1,3}\s*[.)\-–—:]+\s*)+/, '')
+    .replace(/^(?:m\.|mr\.?|mme\.?|mlle\.?|dr\.?)\s+/i, '')
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .replace(/['’`ʼ]/g, '')
+    .replace(/[-–—_.,;/\\()]+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+}
+
+/**
+ * Clé insensible à l'ordre des mots ("KOUASSI Jean" === "Jean KOUASSI").
+ * Retourne '' s'il y a moins de 2 mots significatifs.
+ */
+export function canonicalWordBagKey(normalizedName: string): string {
+  const tokens = normalizedName
+    .split(' ')
+    .map((t) => t.trim())
+    .filter(Boolean);
+  if (tokens.length < 2) return '';
+  return [...tokens].sort().join(' ');
+}
+
+export function makeSortedPairKey(keyA: string, keyB: string): string {
+  return keyA < keyB ? `${keyA}||${keyB}` : `${keyB}||${keyA}`;
+}
+
+/**
+ * Distance de Damerau-Levenshtein (gère insertion, suppression, substitution
+ * et transposition de 2 lettres adjacentes comme "KOUASIS" <-> "KOUASSI").
+ */
+export function damerauLevenshtein(a: string, b: string): number {
+  const m = a.length;
+  const n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  if (a === b) return 0;
+
+  const dp: number[][] = Array.from({ length: m + 1 }, () =>
+    new Array<number>(n + 1).fill(0)
+  );
+
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      let best = Math.min(
+        dp[i - 1][j] + 1, // suppression
+        dp[i][j - 1] + 1, // insertion
+        dp[i - 1][j - 1] + cost // substitution
+      );
+      if (
+        i > 1 &&
+        j > 1 &&
+        a[i - 1] === b[j - 2] &&
+        a[i - 2] === b[j - 1]
+      ) {
+        best = Math.min(best, dp[i - 2][j - 2] + 1); // transposition
+      }
+      dp[i][j] = best;
+    }
+  }
+  return dp[m][n];
 }
 
 export function getEffectiveSubjectCoeff(coefficient?: number | null): number {
@@ -190,6 +291,182 @@ interface InternalStudentBucket {
   photoR2Key?: string;
   autoBySubject: Record<string, number | null>;
   aliasKeys: string[];
+  mergedSourceKeys: string[];
+}
+
+/**
+ * Vérifie si un nom court est inclus dans un nom plus long (prénom supplémentaire ou initiale abrégée).
+ * Ex: "KOUASSI Jean-Marc" <-> "KOUASSI Yao Jean-Marc" ou "KOUASSI Y. Jean" <-> "KOUASSI Yao Jean".
+ */
+function isPartialOrInitialMatch(normA: string, normB: string): boolean {
+  const tokensA = normA.split(' ').filter(Boolean);
+  const tokensB = normB.split(' ').filter(Boolean);
+  if (tokensA.length < 2 || tokensB.length < 2) return false;
+
+  const [shorter, longer] =
+    tokensA.length <= tokensB.length
+      ? [tokensA, tokensB]
+      : [tokensB, tokensA];
+
+  const used = new Set<number>();
+  let exactLongWords = 0;
+
+  for (const st of shorter) {
+    let matchedIdx = -1;
+    // 1. Correspondance exacte de mot
+    for (let j = 0; j < longer.length; j++) {
+      if (used.has(j)) continue;
+      if (longer[j] === st) {
+        matchedIdx = j;
+        if (st.length >= 3) exactLongWords += 1;
+        break;
+      }
+    }
+    // 2. Sinon initiale (1 lettre) correspondant au début d'un mot plus long
+    if (matchedIdx === -1 && st.length === 1) {
+      for (let j = 0; j < longer.length; j++) {
+        if (used.has(j)) continue;
+        if (longer[j].startsWith(st)) {
+          matchedIdx = j;
+          break;
+        }
+      }
+    }
+    // 3. Ou mot long correspondant à une initiale dans longer
+    if (matchedIdx === -1 && st.length > 1) {
+      for (let j = 0; j < longer.length; j++) {
+        if (used.has(j)) continue;
+        if (longer[j].length === 1 && st.startsWith(longer[j])) {
+          matchedIdx = j;
+          break;
+        }
+      }
+    }
+    if (matchedIdx === -1) return false;
+    used.add(matchedIdx);
+  }
+
+  return exactLongWords >= 1 && (exactLongWords >= 2 || shorter.length >= 2);
+}
+
+/**
+ * Détecte les paires d'élèves potentiellement identiques (faute de frappe, prénom abrégé, homonyme ambigu)
+ * pour validation humaine.
+ * Règle de sécurité absolue : 2 élèves présents dans UNE MÊME matière ne sont JAMAIS proposés à la fusion
+ * (empêche de mélanger jumeaux/frères comme TRAORÉ Aya et TRAORÉ Awa).
+ */
+export function detectPotentialDuplicateStudents(
+  students: readonly ComputedTermAverageStudent[],
+  subjectsById: Map<string, TermAverageSubject>,
+  distinctPairSet: Set<string>
+): PotentialDuplicateCandidate[] {
+  const candidates: PotentialDuplicateCandidate[] = [];
+
+  for (let i = 0; i < students.length; i++) {
+    const a = students[i];
+    const normA = normalizeStudentNameKey(a.name);
+    if (!normA || normA.length < 3) continue;
+    const bagA = canonicalWordBagKey(normA);
+    const subjSetA = new Set(a.presentSubjectIds);
+
+    for (let j = i + 1; j < students.length; j++) {
+      const b = students[j];
+      const normB = normalizeStudentNameKey(b.name);
+      if (!normB || normB.length < 3) continue;
+
+      const pairId = makeSortedPairKey(a.key, b.key);
+      if (distinctPairSet.has(pairId)) continue;
+
+      // Invariant de sécurité : s'ils coexistent dans une même matière, ce sont forcément 2 élèves distincts !
+      const hasSharedSubject = b.presentSubjectIds.some((sid) =>
+        subjSetA.has(sid)
+      );
+      if (hasSharedSubject) continue;
+
+      // Ignorer si l'un n'est présent dans aucune matière ET n'a aucune note (ligne vide manuelle)
+      if (
+        a.presentSubjectIds.length === 0 &&
+        a.gradedSubjectsCount === 0 &&
+        b.presentSubjectIds.length === 0 &&
+        b.gradedSubjectsCount === 0
+      ) {
+        continue;
+      }
+
+      const bagB = canonicalWordBagKey(normB);
+      let reason: PotentialDuplicateCandidate['reason'] | null = null;
+      let reasonLabel = '';
+      let confidence: 'high' | 'medium' = 'medium';
+
+      if (normA === normB || (bagA && bagB && bagA === bagB)) {
+        reason = 'same_name';
+        reasonLabel = 'Même nom détecté dans des matières différentes';
+        confidence = 'high';
+      } else {
+        // Vérification faute de frappe (Damerau-Levenshtein sur ordre normal ou ordre inversé)
+        const maxLen = Math.max(normA.length, normB.length);
+        const distNormal = damerauLevenshtein(normA, normB);
+        const distBag =
+          bagA && bagB ? damerauLevenshtein(bagA, bagB) : distNormal;
+        const bestDist = Math.min(distNormal, distBag);
+        const similarity = maxLen > 0 ? 1 - bestDist / maxLen : 0;
+
+        const isTypoClose =
+          (maxLen >= 5 && bestDist === 1 && similarity >= 0.8) ||
+          (maxLen >= 11 && bestDist <= 2 && similarity >= 0.82);
+
+        if (isTypoClose) {
+          reason = 'typo_close';
+          reasonLabel = 'Orthographe très proche (faute de frappe possible)';
+          confidence = bestDist === 1 ? 'high' : 'medium';
+        } else if (isPartialOrInitialMatch(normA, normB)) {
+          reason = 'partial_name';
+          reasonLabel = 'Prénom supplémentaire ou abrégé';
+          confidence = 'medium';
+        }
+      }
+
+      if (reason) {
+        const formatSubjNames = (s: ComputedTermAverageStudent) => {
+          const names = s.presentSubjectIds
+            .map((id) => subjectsById.get(id)?.name)
+            .filter((n): n is string => Boolean(n));
+          if (names.length === 0 && s.isManualOnly) {
+            return ['Ajout manuel'];
+          }
+          return names;
+        };
+
+        candidates.push({
+          id: pairId,
+          studentA: {
+            key: a.key,
+            name: a.name,
+            photoUrl: a.photoUrl,
+            subjectNames: formatSubjNames(a),
+          },
+          studentB: {
+            key: b.key,
+            name: b.name,
+            photoUrl: b.photoUrl,
+            subjectNames: formatSubjNames(b),
+          },
+          reason,
+          reasonLabel,
+          confidence,
+        });
+      }
+    }
+  }
+
+  return candidates
+    .sort((x, y) => {
+      if (x.confidence !== y.confidence) {
+        return x.confidence === 'high' ? -1 : 1;
+      }
+      return x.studentA.name.localeCompare(y.studentA.name, 'fr');
+    })
+    .slice(0, 50);
 }
 
 export interface ComputeTermAverageInput {
@@ -208,32 +485,78 @@ export interface ComputeTermAverageInput {
 }
 
 /**
- * Unifie automatiquement les élèves de toutes les matières d'un trimestre, calcule pour chacun :
- * - Moyenne /20 par matière (automatique depuis la matière, ou saisie manuelle hybride si vide)
- * - Moyenne × Coeff par matière
- * - Total Général (somme des Moyenne × Coeff)
- * - Moyenne Générale /20 (Total Général / Total Coeff des matières notées)
- * - Mention & Rang (avec gestion ex æquo)
- * - Moyenne de la classe (par matière et globale)
+ * Unifie automatiquement les élèves de toutes les matières d'un trimestre en 3 couches sûres :
+ * - Priorité 1 : identifiant interne unique (`studentUid`)
+ * - Priorité 2 : nom normalisé exact (accents, casse, tirets, apostrophes, numéros) sans ambiguïté d'homonyme
+ * - Priorité 3 : inversion exacte Nom <-> Prénom ("KOUASSI Jean" <-> "Jean KOUASSI") sans ambiguïté
+ * - Fusions manuelles confirmées (`mergedLinks`) et exclusions (`distinctPairs`) persistées
+ * - Détection sans fusion silencieuse des noms proches / fautes de frappe (`potentialDuplicates`)
  */
 export function computeTermGeneralAverageTable(
   input: ComputeTermAverageInput
 ): ComputedTermAverageTable {
-  const normalizedSubjects: TermAverageSubject[] = (input.subjects || []).map((s) => ({
-    ...s,
-    effectiveCoeff: getEffectiveSubjectCoeff(s.coefficient),
-  }));
+  const normalizedSubjects: TermAverageSubject[] = (input.subjects || []).map(
+    (s) => ({
+      ...s,
+      effectiveCoeff: getEffectiveSubjectCoeff(s.coefficient),
+    })
+  );
+  const subjectsById = new Map<string, TermAverageSubject>(
+    normalizedSubjects.map((s) => [s.id, s])
+  );
 
   const overrides = input.overrides || {};
   const subjectOverrides = overrides.subjectOverrides || {};
   const manualStudents = Array.isArray(overrides.manualStudents)
     ? overrides.manualStudents
     : [];
+  const mergedLinks = Array.isArray(overrides.mergedLinks)
+    ? overrides.mergedLinks
+    : [];
+  const distinctPairs = Array.isArray(overrides.distinctPairs)
+    ? overrides.distinctPairs
+    : [];
   const sortMode: TermAverageSortMode = input.sortMode || 'merit';
+
+  const distinctPairSet = new Set<string>();
+  for (const pair of distinctPairs) {
+    if (Array.isArray(pair) && pair.length === 2 && pair[0] && pair[1]) {
+      distinctPairSet.add(makeSortedPairKey(String(pair[0]), String(pair[1])));
+    }
+  }
+
+  // Pré-détecter les noms en homonymie (plusieurs élèves portant le même nom dans UNE MÊME matière)
+  // afin de ne JAMAIS fusionner silencieusement un homonyme ambigu !
+  const ambiguousNormNames = new Set<string>();
+  const ambiguousWordBags = new Set<string>();
+
+  for (const subject of normalizedSubjects) {
+    const seenNormInSubject = new Set<string>();
+    const seenBagInSubject = new Set<string>();
+    const rows = input.subjectGradebooks?.[subject.id] || [];
+    for (const row of rows) {
+      const norm = normalizeStudentNameKey(row.name);
+      if (!norm) continue;
+      if (seenNormInSubject.has(norm)) {
+        ambiguousNormNames.add(norm);
+      } else {
+        seenNormInSubject.add(norm);
+      }
+      const bag = canonicalWordBagKey(norm);
+      if (bag) {
+        if (seenBagInSubject.has(bag)) {
+          ambiguousWordBags.add(bag);
+        } else {
+          seenBagInSubject.add(bag);
+        }
+      }
+    }
+  }
 
   const buckets: InternalStudentBucket[] = [];
   const bucketByUid = new Map<string, InternalStudentBucket>();
   const bucketsByNormName = new Map<string, InternalStudentBucket[]>();
+  const bucketsByWordBag = new Map<string, InternalStudentBucket[]>();
   const bucketByKey = new Map<string, InternalStudentBucket>();
 
   let orderCounter = 0;
@@ -249,6 +572,13 @@ export function computeTermGeneralAverageTable(
       const list = bucketsByNormName.get(norm) || [];
       list.push(bucket);
       bucketsByNormName.set(norm, list);
+
+      const bag = canonicalWordBagKey(norm);
+      if (bag) {
+        const bagList = bucketsByWordBag.get(bag) || [];
+        bagList.push(bucket);
+        bucketsByWordBag.set(bag, bagList);
+      }
     }
   };
 
@@ -269,11 +599,12 @@ export function computeTermGeneralAverageTable(
       }
 
       const normName = normalizeStudentNameKey(trimmedName);
+      const wordBag = canonicalWordBagKey(normName);
       const uid = String(row.studentUid || '').trim();
 
       let target: InternalStudentBucket | undefined;
 
-      // Correspondance prioritaire par studentUid stable (s'il n'a pas déjà une entrée dans cette matière)
+      // Priorité 1 : identifiant interne unique (gère même les vrais homonymes à 100 %)
       if (uid && bucketByUid.has(uid)) {
         const candidate = bucketByUid.get(uid)!;
         if (!(subject.id in candidate.autoBySubject)) {
@@ -281,18 +612,45 @@ export function computeTermGeneralAverageTable(
         }
       }
 
-      // Sinon correspondance par nom normalisé (sans collision intra-matière pour préserver les homonymes)
-      if (!target && normName && bucketsByNormName.has(normName)) {
-        const candidates = bucketsByNormName.get(normName)!;
-        target = candidates.find((c) => !(subject.id in c.autoBySubject));
+      // Priorité 2 : nom normalisé exact (UNIQUEMENT s'il n'y a aucune ambiguïté d'homonyme !)
+      if (
+        !target &&
+        normName &&
+        !ambiguousNormNames.has(normName) &&
+        bucketsByNormName.has(normName)
+      ) {
+        const candidates = bucketsByNormName
+          .get(normName)!
+          .filter((c) => !(subject.id in c.autoBySubject));
+        if (candidates.length === 1) {
+          target = candidates[0];
+        }
+      }
+
+      // Priorité 3 : inversion exacte Nom <-> Prénom ("KOUASSI Jean" <-> "Jean KOUASSI") sans ambiguïté
+      if (
+        !target &&
+        wordBag &&
+        !ambiguousWordBags.has(wordBag) &&
+        bucketsByWordBag.has(wordBag)
+      ) {
+        const candidates = bucketsByWordBag
+          .get(wordBag)!
+          .filter((c) => !(subject.id in c.autoBySubject));
+        if (candidates.length === 1) {
+          target = candidates[0];
+        }
       }
 
       if (!target) {
-        const baseKey = normName
-          ? `name:${normName}`
-          : uid
-          ? `uid:${uid}`
-          : `row:${row.id}`;
+        const baseKey =
+          normName && !ambiguousNormNames.has(normName)
+            ? `name:${normName}`
+            : uid
+            ? `uid:${uid}`
+            : normName
+            ? `name:${normName}`
+            : `row:${row.id}`;
         let uniqueKey = baseKey;
         let suffix = 2;
         while (bucketByKey.has(uniqueKey)) {
@@ -310,6 +668,7 @@ export function computeTermGeneralAverageTable(
           photoR2Key: row.photoR2Key || undefined,
           autoBySubject: {},
           aliasKeys: [],
+          mergedSourceKeys: [],
         };
         registerBucket(target);
       } else {
@@ -319,6 +678,13 @@ export function computeTermGeneralAverageTable(
           if (!list.includes(target)) {
             list.push(target);
             bucketsByNormName.set(normName, list);
+          }
+          if (wordBag) {
+            const bagList = bucketsByWordBag.get(wordBag) || [];
+            if (!bagList.includes(target)) {
+              bagList.push(target);
+              bucketsByWordBag.set(wordBag, bagList);
+            }
           }
         }
         if (!target.photoUrl && row.photoUrl) {
@@ -333,20 +699,27 @@ export function computeTermGeneralAverageTable(
         }
       }
 
-      target.autoBySubject[subject.id] = hasValidAvg ? Number(row.average20) : null;
+      target.autoBySubject[subject.id] = hasValidAvg
+        ? Number(row.average20)
+        : null;
     }
   }
 
-  // 2. Intégrer les élèves ajoutés manuellement dans le tableau de Moyenne générale (mode hybride)
+  // 2. Intégrer les élèves ajoutés manuellement dans le tableau de Moyenne générale
   for (const ms of manualStudents) {
     if (!ms || !ms.key) continue;
     const trimmedName = String(ms.name || '').trim();
     const normName = normalizeStudentNameKey(trimmedName);
 
-    // Si l'élève existe déjà via les matières (même clé ou même nom), fusionner son alias pour conserver ses saisies manuelles
     let existing = bucketByKey.get(ms.key);
-    if (!existing && normName && bucketsByNormName.has(normName)) {
-      existing = bucketsByNormName.get(normName)![0];
+    if (
+      !existing &&
+      normName &&
+      !ambiguousNormNames.has(normName) &&
+      bucketsByNormName.has(normName)
+    ) {
+      const cands = bucketsByNormName.get(normName)!;
+      if (cands.length === 1) existing = cands[0];
     }
 
     if (existing) {
@@ -363,20 +736,71 @@ export function computeTermGeneralAverageTable(
       name: trimmedName,
       autoBySubject: {},
       aliasKeys: [],
+      mergedSourceKeys: [],
     };
     registerBucket(manualBucket);
   }
 
-  // 3. Calculer pour chaque élève : Moy./20, Moy.×Coeff, Total Général, Moyenne Générale & Mention
-  const computedDraft = buckets.map((bucket) => {
+  // 3. Appliquer les fusions validées par le professeur ("C'est le même élève")
+  const absorbedKeys = new Set<string>();
+  for (const link of mergedLinks) {
+    if (!link?.primaryKey || !Array.isArray(link.mergedKeys)) continue;
+    const primary = bucketByKey.get(link.primaryKey);
+    if (!primary || absorbedKeys.has(primary.key)) continue;
+
+    for (const secKey of link.mergedKeys) {
+      if (!secKey || secKey === primary.key || absorbedKeys.has(secKey)) {
+        continue;
+      }
+      const secondary = bucketByKey.get(secKey);
+      if (!secondary) continue;
+
+      // Fusionner les notes des matières (priorité au primary si jamais la même matière existe des 2 côtés)
+      for (const [subjId, val] of Object.entries(secondary.autoBySubject)) {
+        if (!(subjId in primary.autoBySubject)) {
+          primary.autoBySubject[subjId] = val;
+        } else if (primary.autoBySubject[subjId] === null && val !== null) {
+          primary.autoBySubject[subjId] = val;
+        }
+      }
+
+      if (!primary.name && secondary.name) primary.name = secondary.name;
+      if (!primary.photoUrl && secondary.photoUrl) {
+        primary.photoUrl = secondary.photoUrl;
+      }
+      if (!primary.photoR2Key && secondary.photoR2Key) {
+        primary.photoR2Key = secondary.photoR2Key;
+      }
+      if (primary.isManualOnly && !secondary.isManualOnly) {
+        primary.isManualOnly = false;
+      }
+
+      if (!primary.aliasKeys.includes(secondary.key)) {
+        primary.aliasKeys.push(secondary.key);
+      }
+      for (const al of secondary.aliasKeys) {
+        if (!primary.aliasKeys.includes(al)) primary.aliasKeys.push(al);
+      }
+      if (!primary.mergedSourceKeys.includes(secondary.key)) {
+        primary.mergedSourceKeys.push(secondary.key);
+      }
+      absorbedKeys.add(secondary.key);
+    }
+  }
+
+  const finalBuckets = buckets.filter((b) => !absorbedKeys.has(b.key));
+
+  // 4. Calculer pour chaque élève : Moy./20, Moy.×Coeff, Total Général, Moyenne Générale & Mention
+  const computedDraft = finalBuckets.map((bucket) => {
     const cellsBySubject: Record<string, ComputedSubjectCell> = {};
     const subjectsForAvg: SubjectForGeneralAverage[] = [];
 
     for (const subject of normalizedSubjects) {
       const autoAvg =
-        subject.id in bucket.autoBySubject ? bucket.autoBySubject[subject.id] : null;
+        subject.id in bucket.autoBySubject
+          ? bucket.autoBySubject[subject.id]
+          : null;
 
-      // Chercher une éventuelle saisie manuelle (clé principale ou alias fusionné)
       let manualAvg: number | null = null;
       const directMap = subjectOverrides[bucket.key];
       if (
@@ -413,7 +837,9 @@ export function computeTermGeneralAverageTable(
       }
 
       const weightedValue =
-        effectiveAverage !== null ? effectiveAverage * subject.effectiveCoeff : null;
+        effectiveAverage !== null
+          ? effectiveAverage * subject.effectiveCoeff
+          : null;
 
       cellsBySubject[subject.id] = {
         subjectId: subject.id,
@@ -432,6 +858,7 @@ export function computeTermGeneralAverageTable(
     }
 
     const genRes = calculateGeneralAverage(subjectsForAvg);
+    const presentSubjectIds = Object.keys(bucket.autoBySubject);
 
     return {
       key: bucket.key,
@@ -441,6 +868,8 @@ export function computeTermGeneralAverageTable(
       name: bucket.name,
       photoUrl: bucket.photoUrl,
       photoR2Key: bucket.photoR2Key,
+      presentSubjectIds,
+      mergedSourceKeys: bucket.mergedSourceKeys,
       cellsBySubject,
       totalGeneral: genRes.matieresComptees > 0 ? genRes.pointsTotaux : null,
       totalCoeffCounted: genRes.sommeCoeffsMatiere,
@@ -450,7 +879,7 @@ export function computeTermGeneralAverageTable(
     };
   });
 
-  // 4. Rangs avec gestion des ex æquo (tolérance 1e-6 cohérente avec le tableur des matières)
+  // 5. Rangs avec gestion des ex æquo (tolérance 1e-6)
   const rankMap = calculateClassRanks(
     computedDraft.map((s) => ({
       id: s.key,
@@ -459,17 +888,22 @@ export function computeTermGeneralAverageTable(
     { tolerance: 1e-6 }
   );
 
-  const studentsWithRanks: ComputedTermAverageStudent[] = computedDraft.map((s) => {
-    const rankEntry = rankMap.get(s.key);
-    return {
-      ...s,
-      rankNumber: rankEntry ? rankEntry.rankNumber : null,
-      rankLabel: rankEntry && rankEntry.rankNumber !== null ? rankEntry.rankLabel : '—',
-      isExAequo: rankEntry ? rankEntry.isExAequo : false,
-    };
-  });
+  const studentsWithRanks: ComputedTermAverageStudent[] = computedDraft.map(
+    (s) => {
+      const rankEntry = rankMap.get(s.key);
+      return {
+        ...s,
+        rankNumber: rankEntry ? rankEntry.rankNumber : null,
+        rankLabel:
+          rankEntry && rankEntry.rankNumber !== null
+            ? rankEntry.rankLabel
+            : '—',
+        isExAequo: rankEntry ? rankEntry.isExAequo : false,
+      };
+    }
+  );
 
-  // 5. Tri d'affichage
+  // 6. Tri d'affichage
   const sortedStudents = [...studentsWithRanks].sort((a, b) => {
     if (sortMode === 'alpha') {
       const aName = a.name.trim();
@@ -482,7 +916,6 @@ export function computeTermGeneralAverageTable(
     if (sortMode === 'order') {
       return a.originalOrder - b.originalOrder;
     }
-    // Par défaut : ordre de mérite (1er → dernier, puis non classés par nom / ordre initial)
     if (a.rankNumber !== null && b.rankNumber !== null) {
       if (a.rankNumber !== b.rankNumber) return a.rankNumber - b.rankNumber;
       return a.name.localeCompare(b.name, 'fr', { sensitivity: 'base' });
@@ -496,7 +929,7 @@ export function computeTermGeneralAverageTable(
     return a.originalOrder - b.originalOrder;
   });
 
-  // 6. Bilan automatique de la classe (pied de tableau)
+  // 7. Bilan automatique de la classe (pied de tableau)
   const bySubject: Record<string, ComputedSubjectClassStats> = {};
   let totalClassCoeff = 0;
 
@@ -562,9 +995,17 @@ export function computeTermGeneralAverageTable(
       gradedStudentCount > 0 ? (passCount / gradedStudentCount) * 100 : null,
   };
 
+  // 8. Couche 3 : Détection des doublons potentiels pour validation humaine
+  const potentialDuplicates = detectPotentialDuplicateStudents(
+    sortedStudents,
+    subjectsById,
+    distinctPairSet
+  );
+
   return {
     subjects: normalizedSubjects,
     students: sortedStudents,
     classSummary,
+    potentialDuplicates,
   };
 }

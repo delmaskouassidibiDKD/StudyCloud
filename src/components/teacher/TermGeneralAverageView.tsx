@@ -35,6 +35,10 @@ import {
   RotateCcw,
   ChevronDown,
   Award,
+  AlertTriangle,
+  Link2,
+  Unlink,
+  Users,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type {
@@ -67,6 +71,7 @@ import {
   computeTermGeneralAverageTable,
   formatCoeffDisplay,
   formatFrenchNumber,
+  makeSortedPairKey,
   parseManualAverageInput,
   type ComputedTermAverageStudent,
   type GradebookStudentSnapshot,
@@ -215,7 +220,12 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
   const [overrides, setOverrides] = useState<TermAverageOverrides>({
     manualStudents: [],
     subjectOverrides: {},
+    mergedLinks: [],
+    distinctPairs: [],
   });
+  const [isDuplicatesModalOpen, setIsDuplicatesModalOpen] = useState(false);
+  const [manualMergePrimaryKey, setManualMergePrimaryKey] = useState('');
+  const [manualMergeSecondaryKey, setManualMergeSecondaryKey] = useState('');
   const [sortMode, setSortMode] = useState<TermAverageSortMode>('merit');
   const [zoomPercent, setZoomPercent] = useState<number>(80);
 
@@ -316,6 +326,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
           setOverrides({
             manualStudents: res.card?.overrides?.manualStudents || [],
             subjectOverrides: res.card?.overrides?.subjectOverrides || {},
+            mergedLinks: res.card?.overrides?.mergedLinks || [],
+            distinctPairs: res.card?.overrides?.distinctPairs || [],
           });
           setSortMode(res.card?.sortMode || 'merit');
           setIsDirty(false);
@@ -559,10 +571,107 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       const nextSubj = { ...(prev.subjectOverrides || {}) };
       delete nextSubj[studentKey];
       return {
+        ...prev,
         manualStudents: (prev.manualStudents || []).filter(
           (ms) => ms.key !== studentKey
         ),
         subjectOverrides: nextSubj,
+      };
+    });
+    setIsDirty(true);
+  };
+
+  // Couche 3 : Fusionner deux lignes confirmées comme étant le même élève
+  const handleMergeStudents = (primaryKey: string, secondaryKey: string) => {
+    if (!primaryKey || !secondaryKey || primaryKey === secondaryKey) return;
+    pushUndoState();
+    setOverrides((prev) => {
+      const prevLinks = Array.isArray(prev.mergedLinks) ? prev.mergedLinks : [];
+      // Récupérer les éventuelles clés déjà fusionnées sous secondaryKey afin de tout regrouper sous primaryKey
+      const secondaryOwnLink = prevLinks.find((l) => l.primaryKey === secondaryKey);
+      const keysToAbsorb = [
+        secondaryKey,
+        ...(secondaryOwnLink ? secondaryOwnLink.mergedKeys : []),
+      ];
+
+      const filteredLinks = prevLinks
+        .filter((l) => l.primaryKey !== secondaryKey)
+        .map((l) =>
+          l.primaryKey === primaryKey
+            ? {
+                primaryKey,
+                mergedKeys: Array.from(new Set([...l.mergedKeys, ...keysToAbsorb])).filter(
+                  (k) => k !== primaryKey
+                ),
+              }
+            : l
+        );
+
+      const hasPrimary = filteredLinks.some((l) => l.primaryKey === primaryKey);
+      const nextLinks = hasPrimary
+        ? filteredLinks
+        : [
+            ...filteredLinks,
+            {
+              primaryKey,
+              mergedKeys: Array.from(new Set(keysToAbsorb)).filter(
+                (k) => k !== primaryKey
+              ),
+            },
+          ];
+
+      // Retirer la paire de distinctPairs si elle y était auparavant
+      const targetPair = makeSortedPairKey(primaryKey, secondaryKey);
+      const nextDistinct = (prev.distinctPairs || []).filter(
+        (p) => makeSortedPairKey(p[0], p[1]) !== targetPair
+      );
+
+      return {
+        ...prev,
+        mergedLinks: nextLinks,
+        distinctPairs: nextDistinct,
+      };
+    });
+    setManualMergePrimaryKey('');
+    setManualMergeSecondaryKey('');
+    setIsDirty(true);
+  };
+
+  // Couche 3 : Confirmer que deux noms proches sont bien 2 élèves différents
+  const handleMarkDistinctStudents = (keyA: string, keyB: string) => {
+    if (!keyA || !keyB || keyA === keyB) return;
+    pushUndoState();
+    setOverrides((prev) => {
+      const targetPair = makeSortedPairKey(keyA, keyB);
+      const existing = prev.distinctPairs || [];
+      if (existing.some((p) => makeSortedPairKey(p[0], p[1]) === targetPair)) {
+        return prev;
+      }
+      return {
+        ...prev,
+        distinctPairs: [...existing, [keyA, keyB]],
+      };
+    });
+    setIsDirty(true);
+  };
+
+  // Couche 3 : Séparer (annuler) une fusion confirmée par erreur
+  const handleUnmergeStudent = (primaryKey: string, mergedKey: string) => {
+    pushUndoState();
+    setOverrides((prev) => {
+      const nextLinks = (prev.mergedLinks || [])
+        .map((l) =>
+          l.primaryKey === primaryKey
+            ? {
+                ...l,
+                mergedKeys: l.mergedKeys.filter((k) => k !== mergedKey),
+              }
+            : l
+        )
+        .filter((l) => l.mergedKeys.length > 0);
+      return {
+        ...prev,
+        mergedLinks: nextLinks,
       };
     });
     setIsDirty(true);
@@ -1316,9 +1425,40 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
               <RotateCcw className="w-3 h-3" />
               <span className="hidden lg:inline">Largeurs</span>
             </button>
+
+            <button
+              type="button"
+              onClick={() => setIsDuplicatesModalOpen(true)}
+              className={`h-6 px-2 flex items-center gap-1.5 rounded border text-[11px] font-extrabold transition cursor-pointer ${
+                computed.potentialDuplicates.length > 0
+                  ? 'bg-amber-50 hover:bg-amber-100 border-amber-400 text-amber-900 shadow-2xs'
+                  : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-700'
+              }`}
+              title="Vérifier les noms proches entre matières, fusionner ou séparer des élèves"
+            >
+              {computed.potentialDuplicates.length > 0 ? (
+                <>
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  <span>
+                    {computed.potentialDuplicates.length} rapprochement
+                    {computed.potentialDuplicates.length > 1 ? 's' : ''} à vérifier
+                  </span>
+                </>
+              ) : (
+                <>
+                  <Users className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <span>Rapprochements</span>
+                  {(overrides.mergedLinks?.length || 0) > 0 && (
+                    <span className="px-1 rounded bg-blue-100 text-blue-800 text-[9.5px] font-black">
+                      {overrides.mergedLinks?.length}
+                    </span>
+                  )}
+                </>
+              )}
+            </button>
           </div>
           <span className="text-[9px] text-slate-400 font-semibold mt-0.5">
-            Classement & Affichage
+            Classement & Rapprochements
           </span>
         </div>
       </section>
@@ -2616,6 +2756,264 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                     {previewStudent.mention}
                   </span>
                 </div>
+              </div>
+            </div>
+          </div>,
+          document.body
+        )}
+
+      {/* ========================================================================= */}
+      {/* MODALE PORTAL : VÉRIFICATION DES NOMS PROCHES, FUSIONS & SÉPARATIONS      */}
+      {/* ========================================================================= */}
+      {isDuplicatesModalOpen &&
+        createPortal(
+          <div
+            className="fixed inset-0 z-[99990] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs select-none"
+            onClick={() => setIsDuplicatesModalOpen(false)}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh]"
+            >
+              <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div
+                    className={`w-9 h-9 rounded-xl flex items-center justify-center border shrink-0 ${
+                      computed.potentialDuplicates.length > 0
+                        ? 'bg-amber-50 border-amber-300 text-amber-700'
+                        : 'bg-blue-50 border-blue-200 text-blue-700'
+                    }`}
+                  >
+                    {computed.potentialDuplicates.length > 0 ? (
+                      <AlertTriangle className="w-5 h-5" />
+                    ) : (
+                      <Link2 className="w-5 h-5" />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-black text-slate-900">
+                      Rapprochement des élèves entre matières
+                    </h4>
+                    <p className="text-[11px] text-slate-500">
+                      Aucune fusion douteuse n'est faite sans votre accord. Vos choix sont enregistrés sur votre compte.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDuplicatesModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-white hover:bg-slate-200 border border-slate-200 flex items-center justify-center text-slate-600 cursor-pointer shrink-0"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="p-4 overflow-y-auto space-y-5">
+                {/* 1. Doublons potentiels détectés */}
+                <div>
+                  <div className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-2">
+                    Noms proches détectés ({computed.potentialDuplicates.length})
+                  </div>
+
+                  {computed.potentialDuplicates.length === 0 ? (
+                    <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                      <span>
+                        Aucun doublon suspect détecté entre les matières de ce trimestre.
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {computed.potentialDuplicates.map((cand) => (
+                        <div
+                          key={cand.id}
+                          className="p-3 rounded-xl bg-amber-50/50 border border-amber-200 space-y-2.5"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-[10.5px] font-extrabold text-amber-800 bg-amber-100 px-2 py-0.5 rounded-full border border-amber-200">
+                              {cand.reasonLabel}
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                            {[cand.studentA, cand.studentB].map((st) => (
+                              <div
+                                key={st.key}
+                                className="p-2 rounded-lg bg-white border border-slate-200 flex items-center gap-2 min-w-0"
+                              >
+                                <div className="w-8 h-8 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center shrink-0">
+                                  {st.photoUrl ? (
+                                    <img
+                                      src={st.photoUrl}
+                                      alt={st.name}
+                                      className="w-full h-full object-cover"
+                                    />
+                                  ) : (
+                                    <User className="w-4 h-4 text-slate-400" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-black text-slate-900 truncate">
+                                    {st.name}
+                                  </div>
+                                  <div className="text-[10px] text-slate-500 truncate">
+                                    {st.subjectNames.join(', ') || 'Tableau moyenne'}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleMarkDistinctStudents(
+                                  cand.studentA.key,
+                                  cand.studentB.key
+                                )
+                              }
+                              className="px-3 py-1.5 rounded-lg bg-white hover:bg-slate-100 border border-slate-300 text-[11px] font-bold text-slate-700 transition cursor-pointer"
+                            >
+                              ✕ Ce sont 2 élèves différents
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleMergeStudents(
+                                  cand.studentA.key,
+                                  cand.studentB.key
+                                )
+                              }
+                              className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-extrabold shadow-xs transition active:scale-95 cursor-pointer flex items-center gap-1.5"
+                            >
+                              <Link2 className="w-3.5 h-3.5" />
+                              <span>✓ C'est le même élève (Fusionner)</span>
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* 2. Fusions actives (réversibles en 1 clic) */}
+                {(overrides.mergedLinks?.length || 0) > 0 && (
+                  <div>
+                    <div className="text-[11px] font-black uppercase tracking-wider text-slate-500 mb-2">
+                      Fusions confirmées ({overrides.mergedLinks?.length})
+                    </div>
+                    <div className="space-y-1.5">
+                      {(overrides.mergedLinks || []).map((link) => {
+                        const primaryStudent = computed.students.find(
+                          (s) => s.key === link.primaryKey
+                        );
+                        return link.mergedKeys.map((mk) => (
+                          <div
+                            key={`${link.primaryKey}-${mk}`}
+                            className="px-3 py-2 rounded-xl bg-blue-50/60 border border-blue-200 flex items-center justify-between gap-2 text-xs"
+                          >
+                            <div className="min-w-0">
+                              <span className="font-black text-slate-900">
+                                {primaryStudent?.name || link.primaryKey}
+                              </span>
+                              <span className="text-slate-500 text-[11px] ml-1.5">
+                                (réuni avec {mk.replace(/^(name:|uid:)/, '')})
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                handleUnmergeStudent(link.primaryKey, mk)
+                              }
+                              className="px-2.5 py-1 rounded-lg bg-white hover:bg-red-50 border border-slate-300 hover:border-red-300 text-[11px] font-bold text-slate-700 hover:text-red-700 transition cursor-pointer flex items-center gap-1 shrink-0"
+                            >
+                              <Unlink className="w-3 h-3" />
+                              <span>Séparer</span>
+                            </button>
+                          </div>
+                        ));
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. Fusion manuelle sécurisée (uniquement entre élèves sans matière commune) */}
+                {computed.students.length >= 2 && (
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                    <div className="text-[11px] font-black uppercase tracking-wider text-slate-600">
+                      Associer manuellement 2 lignes (même élève)
+                    </div>
+                    <p className="text-[11px] text-slate-500">
+                      Utile si un élève a été saisi sous un surnom ou un nom très différent dans une autre matière. Seuls les élèves sans matière commune peuvent être réunis.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      <select
+                        value={manualMergePrimaryKey}
+                        onChange={(e) => {
+                          setManualMergePrimaryKey(e.target.value);
+                          setManualMergeSecondaryKey('');
+                        }}
+                        className="h-9 px-2.5 rounded-lg bg-white border border-slate-300 text-xs font-bold text-slate-800 outline-none"
+                      >
+                        <option value="">1. Choisir l'élève à conserver…</option>
+                        {computed.students.map((st) => (
+                          <option key={st.key} value={st.key}>
+                            {st.name || 'Élève sans nom'}
+                          </option>
+                        ))}
+                      </select>
+
+                      <select
+                        value={manualMergeSecondaryKey}
+                        onChange={(e) => setManualMergeSecondaryKey(e.target.value)}
+                        disabled={!manualMergePrimaryKey}
+                        className="h-9 px-2.5 rounded-lg bg-white border border-slate-300 text-xs font-bold text-slate-800 outline-none disabled:opacity-50"
+                      >
+                        <option value="">2. Choisir la ligne à réunir…</option>
+                        {(() => {
+                          const primary = computed.students.find(
+                            (s) => s.key === manualMergePrimaryKey
+                          );
+                          const primarySubjs = new Set(
+                            primary?.presentSubjectIds || []
+                          );
+                          return computed.students
+                            .filter((st) => {
+                              if (st.key === manualMergePrimaryKey) return false;
+                              // Interdire de fusionner 2 élèves qui coexistent dans une même matière
+                              return !st.presentSubjectIds.some((sid) =>
+                                primarySubjs.has(sid)
+                              );
+                            })
+                            .map((st) => (
+                              <option key={st.key} value={st.key}>
+                                {st.name || 'Élève sans nom'}
+                              </option>
+                            ));
+                        })()}
+                      </select>
+                    </div>
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        disabled={
+                          !manualMergePrimaryKey || !manualMergeSecondaryKey
+                        }
+                        onClick={() =>
+                          handleMergeStudents(
+                            manualMergePrimaryKey,
+                            manualMergeSecondaryKey
+                          )
+                        }
+                        className="px-3.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 disabled:opacity-40 text-white text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Link2 className="w-3.5 h-3.5" />
+                        <span>Réunir ces 2 lignes</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>,

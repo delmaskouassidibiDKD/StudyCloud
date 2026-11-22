@@ -453,6 +453,48 @@ async function deleteOwnedR2Keys(rawEnv: any, userId: string, keys: Array<string
   }
 }
 
+/**
+ * Supprime dans R2 uniquement les clés photo élèves qui ne sont plus référencées
+ * par AUCUN autre tableur de l'utilisateur en base de données (protège les photos
+ * partagées entre matières via l'auto-complétion de classe).
+ */
+async function deleteUnreferencedStudentR2Keys(
+  db: any,
+  rawEnv: any,
+  userId: string,
+  keys: Array<string | null | undefined>
+): Promise<void> {
+  const uniqueKeys = Array.from(new Set(keys.filter((k): k is string => isOwnedR2Key(k, userId))));
+  if (uniqueKeys.length === 0) return;
+
+  const stillUsed = new Set<string>();
+  for (let i = 0; i < uniqueKeys.length; i += 40) {
+    const chunk = uniqueKeys.slice(i, i + 40);
+    const placeholders = chunk.map(() => '?').join(', ');
+    try {
+      const res = await db
+        .prepare(
+          `SELECT DISTINCT photo_r2_key
+           FROM teacher_gradebook_students
+           WHERE user_id = ? AND photo_r2_key IN (${placeholders})`
+        )
+        .bind(userId, ...chunk)
+        .all();
+      for (const r of res.results || []) {
+        if (r.photo_r2_key) stillUsed.add(String(r.photo_r2_key));
+      }
+    } catch {
+      // En cas de doute, ne pas supprimer prématurément une photo potentiellement utilisée
+      for (const k of chunk) stillUsed.add(k);
+    }
+  }
+
+  const trulyOrphan = uniqueKeys.filter((k) => !stillUsed.has(k));
+  if (trulyOrphan.length > 0) {
+    await deleteOwnedR2Keys(rawEnv, userId, trulyOrphan);
+  }
+}
+
 async function copyOwnedR2Photo(
   rawEnv: any,
   userId: string,
@@ -1831,7 +1873,7 @@ export async function handleTeacherGradebookRoutes(
       db.prepare('DELETE FROM teacher_terms WHERE id = ? AND user_id = ?').bind(termId, userId),
     ]);
 
-    await deleteOwnedR2Keys(rawEnv, userId, r2Keys);
+    await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, r2Keys);
     return jsonResponse({ success: true, deletedId: termId }, 200, origin);
   }
 
@@ -1967,7 +2009,7 @@ export async function handleTeacherGradebookRoutes(
       db.prepare('DELETE FROM teacher_subjects WHERE id = ? AND user_id = ?').bind(subjectId, userId),
     ]);
 
-    await deleteOwnedR2Keys(rawEnv, userId, r2Keys);
+    await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, r2Keys);
     return jsonResponse({ success: true, deletedId: subjectId }, 200, origin);
   }
 
@@ -2225,7 +2267,7 @@ export async function handleTeacherGradebookRoutes(
       if (!keptR2Keys.has(prevKey)) orphanKeys.push(prevKey);
     }
     if (orphanKeys.length > 0) {
-      await deleteOwnedR2Keys(rawEnv, userId, orphanKeys);
+      await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, orphanKeys);
     }
 
     return jsonResponse({
@@ -2459,9 +2501,51 @@ export async function handleTeacherGradebookRoutes(
       }
     }
 
+    const cleanMergedLinks = Array.isArray(rawOverrides.mergedLinks)
+      ? rawOverrides.mergedLinks
+          .slice(0, 300)
+          .filter(
+            (ml: any) =>
+              ml &&
+              typeof ml.primaryKey === 'string' &&
+              ml.primaryKey.trim().length > 0 &&
+              Array.isArray(ml.mergedKeys)
+          )
+          .map((ml: any) => ({
+            primaryKey: String(ml.primaryKey).trim().slice(0, 160),
+            mergedKeys: Array.from(
+              new Set(
+                ml.mergedKeys
+                  .filter((k: any) => typeof k === 'string' && k.trim().length > 0)
+                  .map((k: string) => k.trim().slice(0, 160))
+                  .filter((k: string) => k !== String(ml.primaryKey).trim().slice(0, 160))
+              )
+            ).slice(0, 50),
+          }))
+          .filter((ml: any) => ml.mergedKeys.length > 0)
+      : [];
+
+    const cleanDistinctPairs: Array<[string, string]> = Array.isArray(rawOverrides.distinctPairs)
+      ? rawOverrides.distinctPairs
+          .slice(0, 500)
+          .filter(
+            (p: any) =>
+              Array.isArray(p) &&
+              p.length === 2 &&
+              typeof p[0] === 'string' &&
+              typeof p[1] === 'string' &&
+              p[0].trim().length > 0 &&
+              p[1].trim().length > 0 &&
+              p[0].trim() !== p[1].trim()
+          )
+          .map((p: any) => [p[0].trim().slice(0, 160), p[1].trim().slice(0, 160)] as [string, string])
+      : [];
+
     const cleanOverrides = {
       manualStudents: cleanManualStudents,
       subjectOverrides: cleanSubjectOverrides,
+      mergedLinks: cleanMergedLinks,
+      distinctPairs: cleanDistinctPairs,
     };
 
     const rawSort = String(body.sortMode || 'merit');
@@ -2493,6 +2577,89 @@ export async function handleTeacherGradebookRoutes(
       version: nextVersion,
       updatedAt: now,
     }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 8C. RÉPERTOIRE PARTAGÉ DES ÉLÈVES D'UNE CLASSE (GET /api/teacher/class-roster/:classId)
+  // Utilisé pour l'auto-complétion intelligente dans les autres matières (liaison par studentUid)
+  // --------------------------------------------------------------------------
+  const classRosterMatch = path.match(/^\/api\/teacher\/class-roster\/([^/]+)$/);
+  if (classRosterMatch && method === 'GET') {
+    const classId = decodeURIComponent(classRosterMatch[1]);
+    const ownClass: any = await db
+      .prepare('SELECT id FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
+      .bind(classId, userId)
+      .first();
+    if (!ownClass) {
+      return errorResponse('Classe introuvable ou non autorisée.', 404, origin);
+    }
+
+    const rosterRes = await db
+      .prepare(
+        `SELECT s.student_uid, s.id, s.full_name, s.photo_r2_key, s.subject_id, subj.name AS subject_name
+         FROM teacher_gradebook_students s
+         LEFT JOIN teacher_subjects subj ON subj.id = s.subject_id AND subj.user_id = s.user_id
+         WHERE s.user_id = ? AND s.class_id = ? AND TRIM(COALESCE(s.full_name, '')) != ''
+         ORDER BY s.created_at ASC, s.row_order ASC`
+      )
+      .bind(userId, classId)
+      .all();
+
+    const byUid = new Map<
+      string,
+      {
+        studentUid: string;
+        name: string;
+        photoR2Key?: string;
+        subjectIds: string[];
+        subjectNames: string[];
+      }
+    >();
+
+    for (const r of rosterRes.results || []) {
+      const name = String(r.full_name || '').trim();
+      if (!name) continue;
+      const uid = String(r.student_uid || r.id || '').trim();
+      if (!uid) continue;
+
+      let entry = byUid.get(uid);
+      if (!entry) {
+        entry = {
+          studentUid: uid,
+          name,
+          photoR2Key: r.photo_r2_key || undefined,
+          subjectIds: [],
+          subjectNames: [],
+        };
+        byUid.set(uid, entry);
+      } else {
+        if (!entry.photoR2Key && r.photo_r2_key) {
+          entry.photoR2Key = r.photo_r2_key;
+        }
+      }
+
+      if (r.subject_id && !entry.subjectIds.includes(r.subject_id)) {
+        entry.subjectIds.push(r.subject_id);
+      }
+      if (r.subject_name && !entry.subjectNames.includes(r.subject_name)) {
+        entry.subjectNames.push(r.subject_name);
+      }
+    }
+
+    const students = await Promise.all(
+      Array.from(byUid.values()).map(async (item) => ({
+        studentUid: item.studentUid,
+        name: item.name,
+        photoR2Key: item.photoR2Key,
+        photoUrl: item.photoR2Key
+          ? await signTeacherMediaUrl(apiOrigin, item.photoR2Key, jwtSecret)
+          : undefined,
+        subjectIds: item.subjectIds,
+        subjectNames: item.subjectNames,
+      }))
+    );
+
+    return jsonResponse({ success: true, classId, students }, 200, origin);
   }
 
   // --------------------------------------------------------------------------
@@ -2570,7 +2737,7 @@ export async function handleTeacherGradebookRoutes(
           .bind(photoR2Key, now, studentId, userId)
           .run();
         if (existingRow.photo_r2_key && existingRow.photo_r2_key !== photoR2Key) {
-          await deleteOwnedR2Keys(rawEnv, userId, [existingRow.photo_r2_key]);
+          await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, [existingRow.photo_r2_key]);
         }
       }
     }
@@ -2617,7 +2784,7 @@ export async function handleTeacherGradebookRoutes(
     }
 
     if (keyToDelete) {
-      await deleteOwnedR2Keys(rawEnv, userId, [keyToDelete]);
+      await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, [keyToDelete]);
     }
     return jsonResponse({ success: true }, 200, origin);
   }

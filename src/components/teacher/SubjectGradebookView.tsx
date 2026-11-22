@@ -43,7 +43,9 @@ import {
   Loader2,
   Save,
   WifiOff,
-  CheckCircle2
+  CheckCircle2,
+  User,
+  Link2
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SubjectItem, ClassItem, SchoolItem, SchoolYearItem, TermItem } from './TeacherClassesView';
@@ -58,6 +60,10 @@ import {
   type EvaluationInput
 } from '../../utils/gradebookCalculations';
 import {
+  normalizeStudentNameKey,
+  canonicalWordBagKey,
+} from '../../utils/termGeneralAverage';
+import {
   TeacherGradebookAPI,
   compressImageToUpload,
   generateTeacherEntityId,
@@ -66,6 +72,7 @@ import {
   writeUserGradebookCache,
   isOfflineOrNetworkError,
   type TeacherGradebookPayload,
+  type TeacherClassRosterStudent,
 } from '../../services/teacherGradebookApi';
 
 interface SubjectGradebookViewProps {
@@ -1410,6 +1417,146 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       };
     });
   }, [students, noteColumnCount, columnMetas]);
+
+  // Répertoire partagé des élèves de la classe (auto-complétion inter-matières + liaison studentUid sûre)
+  const [classRoster, setClassRoster] = useState<TeacherClassRosterStudent[]>([]);
+  const [rosterSuggestState, setRosterSuggestState] = useState<{
+    studentId: string;
+    anchorEl: HTMLElement | null;
+    highlightIdx: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (disableCloudPersistence || !schoolClass?.id || !getTeacherAuthToken()) return;
+    let cancelled = false;
+    const ctrl = new AbortController();
+    TeacherGradebookAPI.getClassRoster(schoolClass.id, ctrl.signal)
+      .then((res) => {
+        if (!cancelled && Array.isArray(res?.students)) {
+          setClassRoster(res.students);
+        }
+      })
+      .catch(() => {
+        // Silencieux si hors ligne ou annulé
+      });
+    return () => {
+      cancelled = true;
+      ctrl.abort();
+    };
+  }, [disableCloudPersistence, schoolClass?.id, subject.id]);
+
+  const activeRosterSuggestions = useMemo(() => {
+    if (!rosterSuggestState || classRoster.length === 0) return [];
+    const targetRow = students.find((s) => s.id === rosterSuggestState.studentId);
+    if (!targetRow) return [];
+
+    const queryNorm = normalizeStudentNameKey(targetRow.name);
+    const queryTokens = queryNorm ? queryNorm.split(' ').filter(Boolean) : [];
+    const usedUids = new Set(
+      students
+        .filter((s) => s.id !== targetRow.id && (s.name || '').trim().length > 0)
+        .map((s) => s.studentUid || s.id)
+    );
+
+    const matches = classRoster.filter((item) => {
+      if (usedUids.has(item.studentUid)) return false;
+      // Ne pas reproposer exactement l'élève déjà lié à cette même ligne si le nom est déjà identique
+      if (
+        targetRow.studentUid === item.studentUid &&
+        normalizeStudentNameKey(item.name) === queryNorm &&
+        queryNorm.length > 0
+      ) {
+        return false;
+      }
+      if (!queryNorm) {
+        // Sur case vide, proposer les élèves des autres matières non encore dans cette matière
+        return !item.subjectIds.includes(subject.id);
+      }
+      const itemNorm = normalizeStudentNameKey(item.name);
+      if (itemNorm.includes(queryNorm)) return true;
+      // Correspondance par mots quelle que soit l'inversion Nom/Prénom ("Jean KOU" -> "KOUASSI Jean")
+      return queryTokens.length > 0 && queryTokens.every((t) => itemNorm.includes(t));
+    });
+
+    return matches.slice(0, 6);
+  }, [rosterSuggestState, classRoster, students, subject.id]);
+
+  const handleApplyRosterSuggestion = useCallback(
+    (studentId: string, rosterItem: TeacherClassRosterStudent) => {
+      setStudents((prev) =>
+        prev.map((s) =>
+          s.id === studentId
+            ? {
+                ...s,
+                name: rosterItem.name,
+                studentUid: rosterItem.studentUid,
+                photoUrl: s.photoUrl || rosterItem.photoUrl,
+                photoR2Key: s.photoR2Key || rosterItem.photoR2Key,
+              }
+            : s
+        )
+      );
+      setActiveCellInfo((prev) =>
+        prev.type === 'name' ? { ...prev, value: rosterItem.name } : prev
+      );
+      if (blockedNoteTarget?.studentId === studentId) {
+        setBlockedNoteTarget(null);
+      }
+      setRosterSuggestState(null);
+      setIsSaved(false);
+    },
+    [blockedNoteTarget]
+  );
+
+  // Liaison silencieuse ultra-sûre au blur UNIQUEMENT s'il existe un unique élève correspondant sans homonyme
+  const handleAutoLinkUniqueRosterStudentOnBlur = useCallback(
+    (studentId: string, typedName: string) => {
+      const norm = normalizeStudentNameKey(typedName);
+      if (!norm || classRoster.length === 0) return;
+      const bag = canonicalWordBagKey(norm);
+
+      const usedUids = new Set(
+        students
+          .filter((s) => s.id !== studentId && (s.name || '').trim().length > 0)
+          .map((s) => s.studentUid || s.id)
+      );
+
+      const exactMatches = classRoster.filter((item) => {
+        const itemNorm = normalizeStudentNameKey(item.name);
+        if (itemNorm === norm) return true;
+        if (bag && canonicalWordBagKey(itemNorm) === bag) return true;
+        return false;
+      });
+
+      // Règle de sécurité : uniquement si 1 seul élève correspond (jamais en cas d'homonymes !)
+      if (exactMatches.length !== 1) return;
+      const matched = exactMatches[0];
+      if (usedUids.has(matched.studentUid)) return;
+
+      setStudents((prev) => {
+        let changed = false;
+        const next = prev.map((s) => {
+          if (s.id !== studentId) return s;
+          if (
+            s.studentUid === matched.studentUid &&
+            (s.photoUrl || !matched.photoUrl)
+          ) {
+            return s;
+          }
+          changed = true;
+          return {
+            ...s,
+            studentUid: matched.studentUid,
+            photoUrl: s.photoUrl || matched.photoUrl,
+            photoR2Key: s.photoR2Key || matched.photoR2Key,
+          };
+        });
+        if (changed) setIsSaved(false);
+        return changed ? next : prev;
+      });
+    },
+    [classRoster, students]
+  );
 
   // Modification du nom d'un élève
   const handleNameChange = (studentId: string, newName: string) => {
@@ -4488,6 +4635,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 if (blockedNoteTarget?.studentId === std.id && e.target.value.trim()) {
                                   setBlockedNoteTarget(null);
                                 }
+                                if (!disableCloudPersistence && classRoster.length > 0) {
+                                  setRosterSuggestState({
+                                    studentId: std.id,
+                                    anchorEl: e.currentTarget,
+                                    highlightIdx: 0,
+                                  });
+                                }
                               }}
                               onFocus={(e) => {
                                 setActiveCellInfo({
@@ -4498,15 +4652,74 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   value: std.name
                                 });
                                 syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name');
+                                if (!disableCloudPersistence && classRoster.length > 0) {
+                                  setRosterSuggestState({
+                                    studentId: std.id,
+                                    anchorEl: e.currentTarget,
+                                    highlightIdx: 0,
+                                  });
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (
+                                  rosterSuggestState?.studentId === std.id &&
+                                  activeRosterSuggestions.length > 0
+                                ) {
+                                  if (e.key === 'ArrowDown') {
+                                    e.preventDefault();
+                                    setRosterSuggestState((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            highlightIdx:
+                                              (prev.highlightIdx + 1) %
+                                              activeRosterSuggestions.length,
+                                          }
+                                        : null
+                                    );
+                                  } else if (e.key === 'ArrowUp') {
+                                    e.preventDefault();
+                                    setRosterSuggestState((prev) =>
+                                      prev
+                                        ? {
+                                            ...prev,
+                                            highlightIdx:
+                                              (prev.highlightIdx -
+                                                1 +
+                                                activeRosterSuggestions.length) %
+                                              activeRosterSuggestions.length,
+                                          }
+                                        : null
+                                    );
+                                  } else if (e.key === 'Enter') {
+                                    e.preventDefault();
+                                    const picked =
+                                      activeRosterSuggestions[
+                                        rosterSuggestState.highlightIdx
+                                      ] || activeRosterSuggestions[0];
+                                    if (picked) {
+                                      handleApplyRosterSuggestion(std.id, picked);
+                                    }
+                                  } else if (e.key === 'Escape') {
+                                    e.preventDefault();
+                                    setRosterSuggestState(null);
+                                  }
+                                }
                               }}
                               onSelect={(e) => syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name')}
                               onMouseUp={(e) => syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name')}
                               onKeyUp={(e) => syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name')}
                               onClick={(e) => syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name')}
-                              onBlur={() => {
+                              onBlur={(e) => {
                                 if (!isFontFamilyMenuOpenRef.current) {
                                   setHighlightedTarget(prev => prev?.elementId === `input-name-${std.id}` ? null : prev);
                                 }
+                                handleAutoLinkUniqueRosterStudentOnBlur(std.id, e.currentTarget.value);
+                                window.setTimeout(() => {
+                                  setRosterSuggestState((prev) =>
+                                    prev?.studentId === std.id ? null : prev
+                                  );
+                                }, 140);
                               }}
                               placeholder={`Nom et prénom élève ${rIdx + 1}...`}
                               className={`w-full h-full text-center px-2 text-xs sm:text-sm text-slate-950 placeholder:text-slate-400 placeholder:font-medium placeholder:not-italic placeholder:no-underline bg-transparent outline-none border border-transparent focus:border-blue-500 ${nameCellBg ? 'focus:bg-transparent' : 'focus:bg-white/70'} rounded transition pr-5`}
@@ -5417,6 +5630,79 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* POPOVER AUTO-COMPLÉTION INTER-MATIÈRES (ÉLÈVES DÉJÀ CONNUS DANS LA CLASSE) */}
+      <SmartFloatingPopover
+        open={Boolean(rosterSuggestState && activeRosterSuggestions.length > 0)}
+        anchorEl={rosterSuggestState?.anchorEl || null}
+        boundaryEl={gradebookContainerRef.current}
+        preferredSide="bottom"
+        preferredAlign="start"
+        gap={4}
+        onClose={() => setRosterSuggestState(null)}
+        dataPopoverId="gb-roster-autocomplete"
+        className="w-72 rounded-xl"
+      >
+        <div className="bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden select-none">
+          <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-200 flex items-center justify-between gap-2">
+            <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 flex items-center gap-1">
+              <Link2 className="w-3 h-3 text-blue-600" />
+              Élèves déjà dans cette classe
+            </span>
+            <span className="text-[9.5px] font-bold text-blue-700 bg-blue-50 px-1.5 py-0.2 rounded">
+              Liaison auto
+            </span>
+          </div>
+          <div className="py-1 max-h-60 overflow-y-auto">
+            {activeRosterSuggestions.map((item, idx) => {
+              const isHi = (rosterSuggestState?.highlightIdx ?? 0) === idx;
+              return (
+                <button
+                  key={`${item.studentUid}-${idx}`}
+                  type="button"
+                  onMouseDown={(e) => {
+                    e.preventDefault();
+                    if (rosterSuggestState) {
+                      handleApplyRosterSuggestion(rosterSuggestState.studentId, item);
+                    }
+                  }}
+                  onMouseEnter={() =>
+                    setRosterSuggestState((prev) =>
+                      prev ? { ...prev, highlightIdx: idx } : null
+                    )
+                  }
+                  className={`w-full px-2.5 py-1.5 flex items-center gap-2.5 text-left transition cursor-pointer ${
+                    isHi ? 'bg-blue-50 text-blue-950' : 'hover:bg-slate-50 text-slate-800'
+                  }`}
+                >
+                  <div className="w-7 h-7 rounded-lg overflow-hidden border border-slate-200 bg-slate-100 flex items-center justify-center shrink-0">
+                    {item.photoUrl ? (
+                      <img
+                        src={item.photoUrl}
+                        alt={item.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <User className="w-3.5 h-3.5 text-slate-400" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs font-extrabold truncate">
+                      {item.name}
+                    </div>
+                    {item.subjectNames.length > 0 && (
+                      <div className="text-[10px] text-slate-500 truncate">
+                        Déjà en : {item.subjectNames.slice(0, 3).join(', ')}
+                        {item.subjectNames.length > 3 ? '…' : ''}
+                      </div>
+                    )}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </SmartFloatingPopover>
 
       {/* MODALE POPUP CARTE AU MILIEU : APERÇU PHOTO, NOM & MOYENNE */}
       {previewPhotoStudent && (
