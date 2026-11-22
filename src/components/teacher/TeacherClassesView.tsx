@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
   Users,
@@ -43,6 +44,7 @@ import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '.
 import { SubjectGradebookView } from './SubjectGradebookView';
 import { TeacherTransferView } from './TeacherTransferView';
 import { TeacherAnimatedBackground } from './TeacherAnimatedBackground';
+import { SmartFloatingPopover } from './SmartFloatingPopover';
 import { useAuth } from '../../context/AuthContext';
 import {
   TeacherGradebookAPI,
@@ -828,9 +830,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     type: ManagedEntityType;
     id: string;
     item: any;
-    position: { top: number; left: number };
+    anchorEl: HTMLElement;
+    fallbackRect: DOMRect;
   }
   const [activeMenu, setActiveMenu] = useState<ActiveMenuState | null>(null);
+  const mainContainerRef = useRef<HTMLElement | null>(null);
+  const createYearBtnRef = useRef<HTMLButtonElement | null>(null);
 
   // Cible de suppression sécurisée (nécessite la saisie / copie exacte du nom)
   interface DeleteTargetState {
@@ -852,28 +857,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [editingClass, setEditingClass] = useState<ClassItem | null>(null);
   const [editingSubject, setEditingSubject] = useState<SubjectItem | null>(null);
 
-  // Fermer le menu contextuel lors d'un clic extérieur ou du défilement
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target.closest('.card-dropdown-menu') && !target.closest('.card-menu-trigger')) {
-        setActiveMenu(null);
-      }
-    };
-    const handleScroll = () => {
-      setActiveMenu(null);
-    };
-    if (activeMenu) {
-      document.addEventListener('mousedown', handleOutsideClick);
-      window.addEventListener('scroll', handleScroll, true);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-      window.removeEventListener('scroll', handleScroll, true);
-    };
-  }, [activeMenu]);
-
-  // Positionnement intelligent du menu 3 traits (ne se coupe jamais dans le creux, ne déborde pas)
+  // Positionnement intelligent du menu 3 traits (portail document.body, évite les obstacles et la barre latérale)
   const handleOpenMenu = (
     e: React.MouseEvent<HTMLButtonElement>,
     type: ManagedEntityType,
@@ -885,28 +869,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       return;
     }
 
-    const rect = e.currentTarget.getBoundingClientRect();
-    const menuWidth = 195;
-    const menuHeight = 90;
-
-    let left = rect.right - menuWidth;
-    if (left < 10) {
-      left = rect.left;
-    }
-    if (left + menuWidth > window.innerWidth - 10) {
-      left = window.innerWidth - menuWidth - 10;
-    }
-
-    let top = rect.bottom + 4;
-    if (top + menuHeight > window.innerHeight - 10) {
-      top = rect.top - menuHeight - 4;
-    }
-
+    const triggerEl = e.currentTarget;
     setActiveMenu({
       type,
       id: item.id,
       item,
-      position: { top, left }
+      anchorEl: triggerEl,
+      fallbackRect: triggerEl.getBoundingClientRect(),
     });
   };
 
@@ -1590,21 +1559,6 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [selectedColorObj, setSelectedColorObj] = useState(YEAR_COLOR_OPTIONS[0]); // Par défaut blanc / aucune couleur
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fermer le menu déroulant lors d'un clic en dehors
-  useEffect(() => {
-    const handleOutsideClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
-        setIsCreateMenuOpen(false);
-      }
-    };
-    if (isCreateMenuOpen) {
-      document.addEventListener('mousedown', handleOutsideClick);
-    }
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-    };
-  }, [isCreateMenuOpen]);
-
   // Gestion de la saisie manuelle : Uniquement chiffres et tiret/espace, max 12 caractères
   const handleYearInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value;
@@ -2002,7 +1956,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       {/* ========================================================================= */}
       {/* 2. ESPACE PRINCIPAL DE TRAVAIL AVEC FOND ANIMÉ DOUX ET CONTINU            */}
       {/* ========================================================================= */}
-      <main className="relative flex-1 flex flex-col h-full min-h-dvh overflow-hidden bg-[#051220]">
+      <main ref={mainContainerRef} className="relative flex-1 flex flex-col h-full min-h-dvh overflow-hidden bg-[#051220]">
         {/* Fond animé continu, lent et cohérent (100 % vectoriel & Canvas 60 FPS) */}
         <TeacherAnimatedBackground />
 
@@ -2219,9 +2173,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
               <div className="relative" ref={dropdownRef}>
                 <button
+                  ref={createYearBtnRef}
                   type="button"
-                  onClick={() => setIsCreateMenuOpen(!isCreateMenuOpen)}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
+                  onClick={() => setIsCreateMenuOpen(prev => !prev)}
+                  className="create-year-trigger flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
                   style={{ backgroundColor: '#00313d' }}
                   title="Créer une rentrée scolaire"
                 >
@@ -2231,14 +2186,20 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   </span>
                 </button>
 
-                {/* Petit menu déroulant bien rectangle qui descend vers le bas */}
-                {isCreateMenuOpen && (
-                  <div 
-                    className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-white/95 backdrop-blur-2xl rounded-2xl p-4 shadow-2xl border border-white/90 z-50 text-slate-800 space-y-3 animate-fade-in"
-                    style={{
-                      boxShadow: '0 20px 40px -10px rgba(0, 49, 61, 0.25)'
-                    }}
-                  >
+                {/* Menu déroulant flottant intelligent (portail au-dessus de tous les éléments) */}
+                <SmartFloatingPopover
+                  open={isCreateMenuOpen}
+                  anchorEl={createYearBtnRef.current}
+                  boundaryEl={mainContainerRef.current}
+                  preferredSide="bottom"
+                  preferredAlign="end"
+                  gap={10}
+                  onClose={() => setIsCreateMenuOpen(false)}
+                  ignoreOutsideSelector=".create-year-trigger"
+                  dataPopoverId="create-school-year-menu"
+                  className="w-72 sm:w-80 rounded-2xl"
+                >
+                  <div className="p-4 text-slate-800 space-y-3">
                     <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                       <span className="text-xs font-extrabold text-[#00313d] flex items-center gap-1.5">
                         <Calendar className="w-4 h-4 text-cyan-600" />
@@ -2247,7 +2208,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       <button 
                         type="button" 
                         onClick={() => setIsCreateMenuOpen(false)}
-                        className="text-slate-400 hover:text-slate-600 p-0.5"
+                        className="text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5" />
                       </button>
@@ -2271,7 +2232,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         <button
                           type="submit"
                           disabled={!inputYearValue.trim()}
-                          className="px-3.5 py-2 rounded-xl text-xs font-black text-white shadow-sm transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                          className="px-3.5 py-2 rounded-xl text-xs font-black text-white shadow-sm transition active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed shrink-0 cursor-pointer"
                           style={{ backgroundColor: '#00313d' }}
                         >
                           Créer
@@ -2285,7 +2246,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     {/* 2. Palette de couleurs à appliquer */}
                     <div>
                       <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">
-                        Couleur du bouton de l'année
+                        Couleur du bouton de l&apos;année
                       </label>
                       <div className="grid grid-cols-5 gap-2">
                         {YEAR_COLOR_OPTIONS.map((col) => {
@@ -2296,7 +2257,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               type="button"
                               onClick={() => setSelectedColorObj(col)}
                               style={{ backgroundColor: col.bg, borderColor: col.border }}
-                              className={`w-full h-7 rounded-lg border flex items-center justify-center transition-all ${
+                              className={`w-full h-7 rounded-lg border flex items-center justify-center transition-all cursor-pointer ${
                                 isSelected ? 'scale-110 shadow-md ring-2 ring-offset-1 ring-cyan-500' : 'hover:scale-105'
                               }`}
                               title={col.label}
@@ -2321,7 +2282,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             key={sug}
                             type="button"
                             onClick={() => setInputYearValue(sug)}
-                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition-all ${
+                            className={`px-2.5 py-1 rounded-lg text-[10px] font-bold font-mono transition-all cursor-pointer ${
                               inputYearValue === sug
                                 ? 'bg-cyan-500 text-white shadow-sm'
                                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -2338,14 +2299,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       <button
                         type="button"
                         onClick={() => handleApplyYear()}
-                        className="w-full py-2 rounded-xl text-xs font-black text-white shadow-sm transition active:scale-95"
+                        className="w-full py-2 rounded-xl text-xs font-black text-white shadow-sm transition active:scale-95 cursor-pointer"
                         style={{ backgroundColor: '#00313d' }}
                       >
                         Appliquer cette rentrée scolaire
                       </button>
                     </div>
                   </div>
-                )}
+                </SmartFloatingPopover>
               </div>
             </div>
 
@@ -2359,6 +2320,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 return (
                   <div
                     key={year.id}
+                    data-popover-avoid="true"
                     onClick={() => setSelectedYearId(year.id)}
                     style={
                       isSelected
@@ -2671,6 +2633,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                           return (
                             <div
                               key={lvl.id}
+                              data-popover-avoid="true"
                               onClick={() => setSelectedLevelId(lvl.id)}
                               style={
                                 isSelected
@@ -3223,6 +3186,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         return (
                           <div
                             key={subj.id}
+                            data-popover-avoid="true"
                             onClick={() => setSelectedSubjectInside(subj)}
                             style={{
                               backgroundColor: subj.color || '#ffffff',
@@ -3507,7 +3471,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 <button
                   type="button"
                   onClick={() => setIsCreateMenuOpen(true)}
-                  className="group relative w-60 h-56 sm:w-64 sm:h-60 border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-[#081329]/42 hover:bg-[#081329]/62 backdrop-blur-[4px] rounded-3xl flex flex-col items-center justify-center p-5 text-center cursor-pointer transition-all duration-300 shadow-[0_12px_36px_rgba(0,0,0,0.45)] hover:shadow-[0_16px_42px_rgba(6,182,212,0.3)] hover:-translate-y-1 active:translate-y-0"
+                  className="create-year-trigger group relative w-60 h-56 sm:w-64 sm:h-60 border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-[#081329]/42 hover:bg-[#081329]/62 backdrop-blur-[4px] rounded-3xl flex flex-col items-center justify-center p-5 text-center cursor-pointer transition-all duration-300 shadow-[0_12px_36px_rgba(0,0,0,0.45)] hover:shadow-[0_16px_42px_rgba(6,182,212,0.3)] hover:-translate-y-1 active:translate-y-0"
                   title="Créer votre première rentrée scolaire"
                 >
                   <div className="w-14 h-14 rounded-2xl bg-cyan-500/90 text-white flex items-center justify-center shadow-lg group-hover:scale-110 group-hover:bg-cyan-400 transition-all duration-300 mb-3 border border-cyan-200/50">
@@ -3529,10 +3493,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         </section>
 
         {/* ========================================================================= */}
+        {/* PORTAILS MODALES (RENDUS DANS document.body AU-DESSUS DE TOUS LES CALQUES) */}
+        {/* ========================================================================= */}
+        {typeof document !== 'undefined' && createPortal(
+          <>
+        {/* ========================================================================= */}
         {/* MODAL DE MODIFICATION D'UNE RENTRÉE SCOLAIRE (MENU 3 TRAITS -> MODIFIER) */}
         {/* ========================================================================= */}
         {editingYear && (
-          <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
+          <div className="fixed inset-0 z-[99990] bg-[#001820]/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
             <div
               className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-150"
               style={{ boxShadow: '0 25px 50px -12px rgba(0, 49, 61, 0.35)' }}
@@ -3651,7 +3620,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* MODAL PROFESSIONNEL POUR AJOUTER / MODIFIER UNE ÉCOLE                      */}
         {/* ========================================================================= */}
         {isAddSchoolModalOpen && (
-          <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
+          <div className="fixed inset-0 z-[99990] bg-[#001820]/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto">
             <div 
               className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 animate-fade-in my-auto"
               style={{
@@ -3869,7 +3838,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* CP1, CE1, 6ème, 2nde, Terminale, Licence...)                              */}
         {/* ========================================================================= */}
         {isAddLevelModalOpen && selectedSchoolInside && (
-          <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-start justify-center pt-14 sm:pt-16 pb-8 p-3 sm:p-5 overflow-y-auto">
+          <div className="fixed inset-0 z-[99990] bg-[#001820]/60 backdrop-blur-md flex items-start justify-center pt-14 sm:pt-16 pb-8 p-3 sm:p-5 overflow-y-auto">
             <div 
               className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 animate-fade-in my-auto max-h-[88vh] flex flex-col"
               style={{
@@ -4072,7 +4041,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* L'utilisateur saisit lui-même le nom de la classe (ex: 2nde C1, Groupe A) */}
         {/* ========================================================================= */}
         {isAddClassModalOpen && selectedSchoolInside && (activeLevel || editingClass) && (
-          <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-start justify-center pt-14 sm:pt-16 pb-8 p-3 sm:p-5 overflow-y-auto">
+          <div className="fixed inset-0 z-[99990] bg-[#001820]/60 backdrop-blur-md flex items-start justify-center pt-14 sm:pt-16 pb-8 p-3 sm:p-5 overflow-y-auto">
             <div 
               className="relative w-full max-w-3xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 animate-fade-in my-auto max-h-[88vh] flex flex-col"
               style={{
@@ -4284,7 +4253,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* MODAL PROFESSIONNEL POUR CRÉER UNE MATIÈRE (DANS LA CLASSE SÉLECTIONNÉE)   */}
         {/* ========================================================================= */}
         {isAddSubjectModalOpen && activeClass && (
-          <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-start justify-center pt-14 sm:pt-16 pb-8 p-3 sm:p-5 overflow-y-auto">
+          <div className="fixed inset-0 z-[99990] bg-[#001820]/60 backdrop-blur-md flex items-start justify-center pt-14 sm:pt-16 pb-8 p-3 sm:p-5 overflow-y-auto">
             <div 
               className="relative w-full max-w-xl bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 animate-fade-in my-auto max-h-[88vh] flex flex-col"
               style={{
@@ -4479,43 +4448,62 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         )}
 
         {/* ========================================================================= */}
-        {/* MENU CONTEXTUEL FLOTTANT "3 TRAITS" INTELLIGENT (NE SE COUPE JAMAIS)      */}
+        {/* MENU CONTEXTUEL FLOTTANT "3 TRAITS" INTELLIGENT (PORTAIL + ANTI-OBSTACLE) */}
         {/* ========================================================================= */}
-        {activeMenu && (
-          <div
-            className="card-dropdown-menu fixed z-[9999] bg-white rounded-xl shadow-2xl border border-slate-200/90 py-1.5 w-48 text-slate-800 animate-in fade-in zoom-in-95 duration-150 select-none"
-            style={{
-              top: `${activeMenu.position.top}px`,
-              left: `${activeMenu.position.left}px`,
-              boxShadow: '0 16px 36px -6px rgba(0, 31, 39, 0.28), 0 4px 12px -2px rgba(0, 0, 0, 0.08)'
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <button
-              type="button"
-              onClick={() => handleTriggerEdit(activeMenu.type, activeMenu.item)}
-              className="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 hover:text-slate-950 hover:bg-slate-100 flex items-center gap-2.5 transition-colors cursor-pointer"
-            >
-              <Pencil className="w-3.5 h-3.5 text-cyan-700 stroke-[2.2]" />
-              <span>Modifier les informations</span>
-            </button>
-            <div className="my-1 border-t border-slate-100" />
-            <button
-              type="button"
-              onClick={() => handleTriggerDelete(activeMenu.type, activeMenu.item)}
-              className="w-full px-3.5 py-2 text-left text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 flex items-center gap-2.5 transition-colors cursor-pointer"
-            >
-              <Trash2 className="w-3.5 h-3.5 text-red-500 stroke-[2.2]" />
-              <span>Supprimer</span>
-            </button>
-          </div>
-        )}
+        <SmartFloatingPopover
+          open={Boolean(activeMenu)}
+          anchorEl={activeMenu?.anchorEl ?? null}
+          fallbackRect={activeMenu?.fallbackRect ?? null}
+          boundaryEl={mainContainerRef.current}
+          preferredSide="bottom"
+          preferredAlign="start"
+          gap={8}
+          onClose={() => setActiveMenu(null)}
+          ignoreOutsideSelector=".card-menu-trigger"
+          dataPopoverId="teacher-entity-context-menu"
+          className="card-dropdown-menu w-56"
+        >
+          {activeMenu && (
+            <div className="py-1.5">
+              <div className="px-3.5 py-1.5 mb-1 bg-slate-50/90 border-b border-slate-100 flex items-center justify-between gap-2">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 truncate">
+                  {activeMenu.type === 'year'
+                    ? `Rentrée · ${activeMenu.item.label}`
+                    : activeMenu.type === 'school'
+                    ? `École · ${activeMenu.item.name}`
+                    : activeMenu.type === 'level'
+                    ? `Niveau · ${activeMenu.item.name}`
+                    : activeMenu.type === 'class'
+                    ? `Classe · ${getClassFullLabel(activeMenu.item)}`
+                    : `Matière · ${activeMenu.item.name}`}
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => handleTriggerEdit(activeMenu.type, activeMenu.item)}
+                className="w-full px-3.5 py-2 text-left text-xs font-bold text-slate-700 hover:text-slate-950 hover:bg-slate-100 flex items-center gap-2.5 transition-colors cursor-pointer"
+              >
+                <Pencil className="w-3.5 h-3.5 text-cyan-700 stroke-[2.2] shrink-0" />
+                <span>Modifier les informations</span>
+              </button>
+              <div className="my-1 border-t border-slate-100" />
+              <button
+                type="button"
+                onClick={() => handleTriggerDelete(activeMenu.type, activeMenu.item)}
+                className="w-full px-3.5 py-2 text-left text-xs font-bold text-red-600 hover:text-red-700 hover:bg-red-50 flex items-center gap-2.5 transition-colors cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-500 stroke-[2.2] shrink-0" />
+                <span>Supprimer</span>
+              </button>
+            </div>
+          )}
+        </SmartFloatingPopover>
 
         {/* ========================================================================= */}
         {/* MODAL DE SUPPRESSION SÉCURISÉE AVEC SAISIE EXACTE DU NOM REQUIS          */}
         {/* ========================================================================= */}
         {deleteTarget && (
-          <div className="fixed inset-0 z-[10000] bg-[#001820]/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
+          <div className="fixed inset-0 z-[99995] bg-[#001820]/70 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
             <div 
               className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-red-200 overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-150"
               style={{
@@ -4649,7 +4637,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* MODAL DE CONFIRMATION D'AJOUT D'UN TRIMESTRE                             */}
         {/* ========================================================================= */}
         {isAddTermModalOpen && activeClass && (
-          <div className="fixed inset-0 z-50 bg-[#001820]/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
+          <div className="fixed inset-0 z-[99990] bg-[#001820]/60 backdrop-blur-md flex items-center justify-center p-3 sm:p-5 overflow-y-auto animate-in fade-in duration-150">
             <div 
               className="relative w-full max-w-md bg-white rounded-2xl shadow-2xl border border-slate-200 overflow-hidden text-slate-800 my-auto animate-in zoom-in-95 duration-150"
               style={{
@@ -4709,6 +4697,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               </div>
             </div>
           </div>
+        )}
+          </>,
+          document.body
         )}
         </div>
       </main>

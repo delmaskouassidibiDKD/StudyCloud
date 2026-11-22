@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Copy,
   Pen,
@@ -46,6 +47,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SubjectItem, ClassItem, SchoolItem, SchoolYearItem, TermItem } from './TeacherClassesView';
+import { SmartFloatingPopover } from './SmartFloatingPopover';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
 import {
@@ -344,6 +346,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const [activeMenuRow, setActiveMenuRow] = useState<string | null>(null);
   const [activeMenuNameCol, setActiveMenuNameCol] = useState<boolean>(false);
   const [activeMenuPhoto, setActiveMenuPhoto] = useState<string | null>(null);
+  const [menuAnchorEl, setMenuAnchorEl] = useState<HTMLElement | null>(null);
+  const gradebookContainerRef = useRef<HTMLDivElement | null>(null);
 
   // Prévisualisation centrée de photo d'élève (nom, photo, moyenne)
   const [previewPhotoStudent, setPreviewPhotoStudent] = useState<StudentGradeRow | null>(null);
@@ -383,6 +387,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     setIsTextColorMenuOpen(false);
     setIsBgColorMenuOpen(false);
     setIsGradeAdjustMenuOpen(false);
+    setMenuAnchorEl(null);
   };
 
   // Un seul petit menu peut être ouvert à la fois
@@ -2474,6 +2479,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   return (
     <div 
+      ref={gradebookContainerRef}
       className={`gradebook-gray-selection w-full flex flex-col bg-[#eef2f6] text-slate-800 font-sans select-none overflow-hidden transition-all duration-300 ${
         viewerExpandLevel >= 2
           ? 'fixed inset-0 z-50 w-screen h-screen min-h-screen'
@@ -2784,24 +2790,33 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsFontFamilyMenuOpen(prev => !prev);
-                  setIsFontSizeMenuOpen(false);
-                  setIsTextColorMenuOpen(false);
-                  setIsBgColorMenuOpen(false);
-                  setIsGradeAdjustMenuOpen(false);
+                  const next = !isFontFamilyMenuOpen;
+                  closeAllMenus();
+                  if (next) {
+                    setMenuAnchorEl(e.currentTarget);
+                    setIsFontFamilyMenuOpen(true);
+                  }
                 }}
-                className="flex items-center justify-between h-6 px-1.5 min-w-[90px] max-w-[120px] bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs outline-none focus:outline-none"
+                className="gb-menu-trigger flex items-center justify-between h-6 px-1.5 min-w-[90px] max-w-[120px] bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs outline-none focus:outline-none"
                 title="Changer la police"
               >
                 <span className="truncate" style={{ fontFamily: activeFontFamily }}>{activeFontFamily}</span>
                 <ChevronDown className="w-3 h-3 ml-1 text-slate-500 shrink-0" />
               </button>
 
-              {isFontFamilyMenuOpen && (
-                <div 
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute top-full left-0 mt-1 w-64 max-h-72 bg-white border border-slate-300 rounded-lg shadow-2xl z-[100] flex flex-col overflow-hidden text-xs select-none animate-in fade-in zoom-in-95"
-                >
+              <SmartFloatingPopover
+                open={isFontFamilyMenuOpen}
+                anchorEl={menuAnchorEl}
+                boundaryEl={gradebookContainerRef.current}
+                preferredSide="bottom"
+                preferredAlign="start"
+                gap={6}
+                onClose={closeAllMenus}
+                ignoreOutsideSelector=".gb-menu-trigger"
+                dataPopoverId="gb-font-family-menu"
+                className="w-64 rounded-lg"
+              >
+                <div className="flex flex-col text-xs select-none max-h-72">
                   {/* Champ de recherche de police (sans autoFocus pour ne pas effacer le surlignement dans le tableau) */}
                   <div className="p-2 border-b border-slate-200 bg-slate-50 flex items-center gap-1.5 sticky top-0 z-10">
                     <Search className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -2856,7 +2871,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     )}
                   </div>
                 </div>
-              )}
+              </SmartFloatingPopover>
             </div>
 
             {/* SÉLECTEUR DE TAILLE DE POLICE (MENU DÉROULANT VERTICAL) */}
@@ -2866,24 +2881,33 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsFontSizeMenuOpen(prev => !prev);
-                  setIsFontFamilyMenuOpen(false);
-                  setIsTextColorMenuOpen(false);
-                  setIsBgColorMenuOpen(false);
-                  setIsGradeAdjustMenuOpen(false);
+                  const next = !isFontSizeMenuOpen;
+                  closeAllMenus();
+                  if (next) {
+                    setMenuAnchorEl(e.currentTarget);
+                    setIsFontSizeMenuOpen(true);
+                  }
                 }}
-                className="flex items-center justify-between h-6 px-1.5 w-12 bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs outline-none focus:outline-none"
+                className="gb-menu-trigger flex items-center justify-between h-6 px-1.5 w-12 bg-white border border-slate-300 rounded text-[11px] font-medium text-slate-800 hover:border-blue-500 cursor-pointer shadow-2xs outline-none focus:outline-none"
                 title="Taille de police"
               >
                 <span>{activeFontSize}</span>
                 <ChevronDown className="w-3 h-3 text-slate-500 shrink-0" />
               </button>
 
-              {isFontSizeMenuOpen && (
-                <div 
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute top-full left-0 mt-1 w-20 max-h-60 bg-white border border-slate-300 rounded-lg shadow-2xl z-[100] overflow-y-auto py-1 text-xs select-none animate-in fade-in zoom-in-95"
-                >
+              <SmartFloatingPopover
+                open={isFontSizeMenuOpen}
+                anchorEl={menuAnchorEl}
+                boundaryEl={gradebookContainerRef.current}
+                preferredSide="bottom"
+                preferredAlign="start"
+                gap={6}
+                onClose={closeAllMenus}
+                ignoreOutsideSelector=".gb-menu-trigger"
+                dataPopoverId="gb-font-size-menu"
+                className="w-20 rounded-lg"
+              >
+                <div className="max-h-60 overflow-y-auto py-1 text-xs select-none">
                   {FONT_SIZES.map((sz) => (
                     <button
                       key={sz}
@@ -2903,7 +2927,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     </button>
                   ))}
                 </div>
-              )}
+              </SmartFloatingPopover>
             </div>
 
             {/* BOUTONS A⁺ ET A⁻ (AGRANDIR / DIMINUER LA TAILLE) */}
@@ -3014,13 +3038,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsTextColorMenuOpen(prev => !prev);
-                  setIsBgColorMenuOpen(false);
-                  setIsFontFamilyMenuOpen(false);
-                  setIsFontSizeMenuOpen(false);
-                  setIsGradeAdjustMenuOpen(false);
+                  const next = !isTextColorMenuOpen;
+                  closeAllMenus();
+                  if (next) {
+                    setMenuAnchorEl(e.currentTarget);
+                    setIsTextColorMenuOpen(true);
+                  }
                 }}
-                className={`p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 outline-none focus:outline-none ${
+                className={`gb-menu-trigger p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 outline-none focus:outline-none ${
                   isTextColorMenuOpen ? 'bg-slate-300' : 'hover:bg-slate-200'
                 }`}
                 title="Couleur de police (Stylo)"
@@ -3035,11 +3060,19 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 <ChevronDown className="w-2.5 h-2.5 text-slate-500" />
               </button>
 
-              {isTextColorMenuOpen && (
-                <div 
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute top-full left-0 mt-1 w-52 bg-white border border-slate-300 rounded-lg shadow-2xl p-2 z-[100] text-xs select-none animate-in fade-in zoom-in-95"
-                >
+              <SmartFloatingPopover
+                open={isTextColorMenuOpen}
+                anchorEl={menuAnchorEl}
+                boundaryEl={gradebookContainerRef.current}
+                preferredSide="bottom"
+                preferredAlign="start"
+                gap={6}
+                onClose={closeAllMenus}
+                ignoreOutsideSelector=".gb-menu-trigger"
+                dataPopoverId="gb-text-color-menu"
+                className="w-52 rounded-lg"
+              >
+                <div className="p-2 text-xs select-none">
                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 px-0.5">
                     Couleur de police
                   </div>
@@ -3065,7 +3098,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     ))}
                   </div>
                 </div>
-              )}
+              </SmartFloatingPopover>
             </div>
 
             {/* BOUTON REMPLISSAGE (POT DE PEINTURE : ENTOURE / REMPLIT LA CASE DE COULEUR) */}
@@ -3075,13 +3108,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={(e) => {
                   e.stopPropagation();
-                  setIsBgColorMenuOpen(prev => !prev);
-                  setIsTextColorMenuOpen(false);
-                  setIsFontFamilyMenuOpen(false);
-                  setIsFontSizeMenuOpen(false);
-                  setIsGradeAdjustMenuOpen(false);
+                  const next = !isBgColorMenuOpen;
+                  closeAllMenus();
+                  if (next) {
+                    setMenuAnchorEl(e.currentTarget);
+                    setIsBgColorMenuOpen(true);
+                  }
                 }}
-                className={`p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 outline-none focus:outline-none ${
+                className={`gb-menu-trigger p-1 rounded transition flex items-center gap-0.5 cursor-pointer active:scale-95 outline-none focus:outline-none ${
                   isBgColorMenuOpen ? 'bg-slate-300' : 'hover:bg-slate-200'
                 }`}
                 title="Couleur de remplissage (Fond de case)"
@@ -3096,11 +3130,19 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 <ChevronDown className="w-2.5 h-2.5 text-slate-500" />
               </button>
 
-              {isBgColorMenuOpen && (
-                <div 
-                  onClick={(e) => e.stopPropagation()}
-                  className="absolute top-full left-0 mt-1 w-52 bg-white border border-slate-300 rounded-lg shadow-2xl p-2 z-[100] text-xs select-none animate-in fade-in zoom-in-95"
-                >
+              <SmartFloatingPopover
+                open={isBgColorMenuOpen}
+                anchorEl={menuAnchorEl}
+                boundaryEl={gradebookContainerRef.current}
+                preferredSide="bottom"
+                preferredAlign="start"
+                gap={6}
+                onClose={closeAllMenus}
+                ignoreOutsideSelector=".gb-menu-trigger"
+                dataPopoverId="gb-bg-color-menu"
+                className="w-52 rounded-lg"
+              >
+                <div className="p-2 text-xs select-none">
                   <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1.5 px-0.5">
                     Couleur de fond
                   </div>
@@ -3139,7 +3181,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     ))}
                   </div>
                 </div>
-              )}
+              </SmartFloatingPopover>
             </div>
           </div>
         </div>
@@ -3237,16 +3279,17 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               onMouseDown={(e) => e.preventDefault()}
               onClick={(e) => {
                 e.stopPropagation();
-                setIsGradeAdjustMenuOpen(prev => !prev);
-                setIsFontFamilyMenuOpen(false);
-                setIsFontSizeMenuOpen(false);
-                setIsTextColorMenuOpen(false);
-                setIsBgColorMenuOpen(false);
+                const next = !isGradeAdjustMenuOpen;
+                closeAllMenus();
+                if (next) {
+                  setMenuAnchorEl(e.currentTarget);
+                  setIsGradeAdjustMenuOpen(true);
+                }
                 if (gradeAdjustColIndex >= noteColumnCount) {
                   setGradeAdjustColIndex(0);
                 }
               }}
-              className={`w-9 h-7 rounded-md border flex items-center justify-center gap-0.5 transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none ${
+              className={`gb-menu-trigger w-9 h-7 rounded-md border flex items-center justify-center gap-0.5 transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none ${
                 isGradeAdjustMenuOpen
                   ? 'bg-slate-900 text-white border-slate-900'
                   : 'bg-white text-slate-800 border-slate-300 hover:border-blue-500 hover:bg-slate-50'
@@ -3263,11 +3306,19 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               </div>
             )}
 
-            {isGradeAdjustMenuOpen && (
-              <div
-                onClick={(e) => e.stopPropagation()}
-                className="absolute top-full left-0 mt-1.5 w-72 bg-white border border-slate-300 rounded-xl shadow-2xl p-3 z-[100] text-xs select-none animate-in fade-in zoom-in-95 space-y-3"
-              >
+            <SmartFloatingPopover
+              open={isGradeAdjustMenuOpen}
+              anchorEl={menuAnchorEl}
+              boundaryEl={gradebookContainerRef.current}
+              preferredSide="bottom"
+              preferredAlign="end"
+              gap={8}
+              onClose={closeAllMenus}
+              ignoreOutsideSelector=".gb-menu-trigger"
+              dataPopoverId="gb-grade-adjust-menu"
+              className="w-72 rounded-xl"
+            >
+              <div className="p-3 text-xs select-none space-y-3">
                 {/* Titre du menu */}
                 <div className="flex items-center justify-between border-b border-slate-100 pb-2">
                   <span className="text-[11px] font-black text-slate-800 uppercase tracking-wide">
@@ -3452,7 +3503,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   </button>
                 </div>
               </div>
-            )}
+            </SmartFloatingPopover>
           </div>
           <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Ajuster</span>
         </div>
@@ -3701,13 +3752,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setActiveMenuNameCol(prev => !prev);
-                          setActiveMenuCol(null);
-                          setActiveMenuRow(null);
-                          setActiveMenuCell(null);
-                          setActiveColorPicker(null);
+                          const next = !activeMenuNameCol;
+                          closeAllMenus();
+                          if (next) {
+                            setMenuAnchorEl(e.currentTarget);
+                            setActiveMenuNameCol(true);
+                          }
                         }}
-                        className={`absolute top-1 right-1 p-0.5 rounded transition cursor-pointer z-10 border-0 shadow-none ${
+                        className={`gb-menu-trigger absolute top-1 right-1 p-0.5 rounded transition cursor-pointer z-10 border-0 shadow-none ${
                           activeMenuNameCol
                             ? 'text-sky-600 bg-sky-100/70'
                             : 'text-slate-800 hover:text-black hover:bg-slate-200/60'
@@ -3717,12 +3769,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         <MoreVertical className="w-3.5 h-3.5 stroke-[2.5]" />
                       </button>
 
-                      {/* MENU CONTEXTUEL POUR NOM & PRÉNOM */}
-                      {activeMenuNameCol && (
-                        <div 
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute top-full right-0 mt-1 w-56 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95"
-                        >
+                      {/* MENU CONTEXTUEL POUR NOM & PRÉNOM (PORTAIL ANTI-OBSTACLE) */}
+                      <SmartFloatingPopover
+                        open={activeMenuNameCol}
+                        anchorEl={menuAnchorEl}
+                        boundaryEl={gradebookContainerRef.current}
+                        preferredSide="bottom"
+                        preferredAlign="start"
+                        gap={6}
+                        onClose={closeAllMenus}
+                        ignoreOutsideSelector=".gb-menu-trigger"
+                        dataPopoverId="gb-name-col-menu"
+                        className="w-56 rounded-lg"
+                      >
+                        <div className="py-1.5 text-left text-xs select-none">
                           <div className="px-3 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                             Tri alphabétique
                           </div>
@@ -3816,7 +3876,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             <span>Largeur par défaut (190px)</span>
                           </button>
                         </div>
-                      )}
+                      </SmartFloatingPopover>
 
                       {renderColHandle('col-name')}
                     </div>
@@ -3920,13 +3980,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              setActiveMenuCol(prev => prev === i ? null : i);
-                              setActiveColorPicker(null);
-                              setActiveMenuNameCol(false);
-                              setActiveMenuRow(null);
-                              setActiveMenuCell(null);
+                              const next = activeMenuCol === i ? null : i;
+                              closeAllMenus();
+                              if (next !== null) {
+                                setMenuAnchorEl(e.currentTarget);
+                                setActiveMenuCol(next);
+                              }
                             }}
-                            className={`absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-20 border-0 shadow-none ${
+                            className={`gb-menu-trigger absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-20 border-0 shadow-none ${
                               isMenuOpen
                                 ? 'text-sky-600 bg-sky-100/70'
                                 : 'text-slate-900 hover:text-black hover:bg-slate-200/60'
@@ -3936,12 +3997,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             <MoreVertical className="w-3 h-3 text-slate-900 stroke-[2.5]" />
                           </button>
 
-                          {/* MENU CONTEXTUEL RECTANGULAIRE SOIGNÉ */}
-                          {isMenuOpen && (
-                            <div 
-                              onClick={(e) => e.stopPropagation()}
-                              className="absolute top-full right-0 mt-1 w-56 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95"
-                            >
+                          {/* MENU CONTEXTUEL RECTANGULAIRE SOIGNÉ (PORTAIL ANTI-OBSTACLE) */}
+                          <SmartFloatingPopover
+                            open={isMenuOpen}
+                            anchorEl={menuAnchorEl}
+                            boundaryEl={gradebookContainerRef.current}
+                            preferredSide="bottom"
+                            preferredAlign="start"
+                            gap={6}
+                            onClose={closeAllMenus}
+                            ignoreOutsideSelector=".gb-menu-trigger"
+                            dataPopoverId={`gb-note-col-menu-${i}`}
+                            className="w-56 rounded-lg"
+                          >
+                            <div className="py-1.5 text-left text-xs select-none">
                               {/* 1. Modifier */}
                               <button
                                 type="button"
@@ -4072,7 +4141,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 )
                               )}
                             </div>
-                          )}
+                          </SmartFloatingPopover>
 
                           {/* Poignée interactive de sélection & redimensionnement de colonne */}
                           {renderColHandle(`col-note-${i}`)}
@@ -4264,14 +4333,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setActiveMenuPhoto(prev => prev === std.id ? null : std.id);
-                                    setActiveMenuRow(null);
-                                    setActiveMenuCol(null);
-                                    setActiveMenuCell(null);
-                                    setActiveMenuNameCol(false);
-                                    setActiveColorPicker(null);
+                                    const next = activeMenuPhoto === std.id ? null : std.id;
+                                    closeAllMenus();
+                                    if (next !== null) {
+                                      setMenuAnchorEl(e.currentTarget);
+                                      setActiveMenuPhoto(next);
+                                    }
                                   }}
-                                  className={`absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-30 border-0 shadow-none ${
+                                  className={`gb-menu-trigger absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-30 border-0 shadow-none ${
                                     activeMenuPhoto === std.id
                                       ? 'text-white bg-black/70'
                                       : 'text-slate-900 hover:text-black bg-white/70 hover:bg-white/90 drop-shadow-xs'
@@ -4281,12 +4350,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   <MoreVertical className="w-3.5 h-3.5 stroke-[2.5]" />
                                 </button>
 
-                                {/* MENU CONTEXTUEL PHOTO - Hors d'overflow-hidden pour être 100% visible ! */}
-                                {activeMenuPhoto === std.id && (
-                                  <div
-                                    onClick={(e) => e.stopPropagation()}
-                                    className={`absolute ${rIdx >= students.length - 2 ? 'bottom-full mb-1' : 'top-full mt-1'} left-0 w-48 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95`}
-                                  >
+                                {/* MENU CONTEXTUEL PHOTO (PORTAIL ANTI-OBSTACLE) */}
+                                <SmartFloatingPopover
+                                  open={activeMenuPhoto === std.id}
+                                  anchorEl={menuAnchorEl}
+                                  boundaryEl={gradebookContainerRef.current}
+                                  preferredSide="bottom"
+                                  preferredAlign="start"
+                                  gap={6}
+                                  onClose={closeAllMenus}
+                                  ignoreOutsideSelector=".gb-menu-trigger"
+                                  dataPopoverId={`gb-photo-menu-${std.id}`}
+                                  className="w-48 rounded-lg"
+                                >
+                                  <div className="py-1.5 text-left text-xs select-none">
                                     <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate border-b border-slate-100 pb-1 mb-1">
                                       Photo : {std.name || `Élève ${rIdx + 1}`}
                                     </div>
@@ -4325,7 +4402,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       <span className="font-semibold">Supprimer la photo</span>
                                     </button>
                                   </div>
-                                )}
+                                </SmartFloatingPopover>
                               </div>
                             ) : (
                               <button
@@ -4414,14 +4491,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setActiveMenuRow(prev => prev === std.id ? null : std.id);
-                                setActiveMenuCol(null);
-                                setActiveMenuNameCol(false);
-                                setActiveMenuCell(null);
-                                setActiveMenuPhoto(null);
-                                setActiveColorPicker(null);
+                                const next = activeMenuRow === std.id ? null : std.id;
+                                closeAllMenus();
+                                if (next !== null) {
+                                  setMenuAnchorEl(e.currentTarget);
+                                  setActiveMenuRow(next);
+                                }
                               }}
-                              className={`absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-10 border-0 shadow-none ${
+                              className={`gb-menu-trigger absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-10 border-0 shadow-none ${
                                 activeMenuRow === std.id
                                   ? 'text-sky-600 bg-sky-100/70'
                                   : 'text-slate-700 hover:text-black hover:bg-slate-200/50'
@@ -4431,12 +4508,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               <MoreVertical className="w-3.5 h-3.5 stroke-[2.5]" />
                             </button>
 
-                            {/* MENU CONTEXTUEL POUR LA CASE NOM IDENTIQUE AU STYLE COLONNE */}
-                            {activeMenuRow === std.id && (
-                              <div
-                                onClick={(e) => e.stopPropagation()}
-                                className="absolute top-full right-0 mt-1 w-56 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95"
-                              >
+                            {/* MENU CONTEXTUEL POUR LA CASE NOM (PORTAIL ANTI-OBSTACLE) */}
+                            <SmartFloatingPopover
+                              open={activeMenuRow === std.id}
+                              anchorEl={menuAnchorEl}
+                              boundaryEl={gradebookContainerRef.current}
+                              preferredSide="bottom"
+                              preferredAlign="start"
+                              gap={6}
+                              onClose={closeAllMenus}
+                              ignoreOutsideSelector=".gb-menu-trigger"
+                              dataPopoverId={`gb-row-menu-${std.id}`}
+                              className="w-56 rounded-lg"
+                            >
+                              <div className="py-1.5 text-left text-xs select-none">
                                 <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider truncate border-b border-slate-100 pb-1 mb-1">
                                   {std.name || `Élève ${rIdx + 1}`}
                                 </div>
@@ -4526,7 +4611,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   <span>Supprimer cet élève</span>
                                 </button>
                               </div>
-                            )}
+                            </SmartFloatingPopover>
                             {renderColHandle('col-name')}
                           </div>
 
@@ -4587,14 +4672,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setActiveMenuCell(prev => (prev?.studentId === std.id && prev?.colIndex === cIdx) ? null : { studentId: std.id, colIndex: cIdx });
-                                    setActiveMenuCol(null);
-                                    setActiveMenuRow(null);
-                                    setActiveMenuPhoto(null);
-                                    setActiveMenuNameCol(false);
-                                    setActiveColorPicker(null);
+                                    const next = (activeMenuCell?.studentId === std.id && activeMenuCell?.colIndex === cIdx)
+                                      ? null
+                                      : { studentId: std.id, colIndex: cIdx };
+                                    closeAllMenus();
+                                    if (next !== null) {
+                                      setMenuAnchorEl(e.currentTarget);
+                                      setActiveMenuCell(next);
+                                    }
                                   }}
-                                  className={`absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-20 border-0 shadow-none ${
+                                  className={`gb-menu-trigger absolute top-0.5 right-0.5 p-0.5 rounded transition cursor-pointer z-20 border-0 shadow-none ${
                                     isNoteCellMenuOpen
                                       ? 'text-sky-600 bg-sky-100/70'
                                       : 'text-slate-900 hover:text-black hover:bg-slate-200/50'
@@ -4604,12 +4691,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   <MoreVertical className="w-3 h-3 text-slate-900 stroke-[2.5]" />
                                 </button>
 
-                                {/* MENU CONTEXTUEL POUR LA CASE DE NOTE */}
-                                {isNoteCellMenuOpen && (
-                                  <div
-                                    onClick={(e) => e.stopPropagation()}
-                                    className="absolute top-full right-0 mt-1 w-56 bg-white border border-slate-300 rounded-lg shadow-2xl py-1.5 z-50 text-left text-xs select-none animate-in fade-in zoom-in-95"
-                                  >
+                                {/* MENU CONTEXTUEL POUR LA CASE DE NOTE (PORTAIL ANTI-OBSTACLE) */}
+                                <SmartFloatingPopover
+                                  open={isNoteCellMenuOpen}
+                                  anchorEl={menuAnchorEl}
+                                  boundaryEl={gradebookContainerRef.current}
+                                  preferredSide="bottom"
+                                  preferredAlign="start"
+                                  gap={6}
+                                  onClose={closeAllMenus}
+                                  ignoreOutsideSelector=".gb-menu-trigger"
+                                  dataPopoverId={`gb-cell-menu-${std.id}-${cIdx}`}
+                                  className="w-56 rounded-lg"
+                                >
+                                  <div className="py-1.5 text-left text-xs select-none">
                                     <div className="px-3 py-1 text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between border-b border-slate-100 pb-1 mb-1">
                                       <span className="truncate">{std.name || `Élève ${rIdx + 1}`}</span>
                                       <span className="text-blue-600 font-extrabold shrink-0">Note {cIdx + 1}</span>
@@ -4697,7 +4792,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       <span>Vider cette note</span>
                                     </button>
                                   </div>
-                                )}
+                                </SmartFloatingPopover>
 
                                 {/* INFOBULLE FLOTTANTE SANS BLOQUER LA VUE SI NOTE > MAX OU BARÈME INVALIDE */}
                                 {isInvalid && (
@@ -5175,11 +5270,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       </footer>
 
       {/* ========================================================================= */}
-      {/* 6. MODALE DE MODIFICATION D'INTITULÉ & BARÈME DE COLONNE                   */}
+      {/* 6. MODALES EN PORTAIL (AU-DESSUS DE TOUS LES CALQUES & BARRES LATÉRALES)   */}
       {/* ========================================================================= */}
+      {typeof document !== 'undefined' && createPortal(
+        <>
       {editingColModal && (
         <div 
-          className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in"
+          className="fixed inset-0 bg-black/40 backdrop-blur-xs flex items-center justify-center z-[99990] p-4 animate-in fade-in"
           onClick={() => setEditingColModal(null)}
         >
           <div 
@@ -5308,21 +5405,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         </div>
       )}
 
-      {/* BACKDROP FERMETURE MENUS UNIVERSELLE */}
-      {isAnyMenuOpen && (
-        <div 
-          className="fixed inset-0 z-40 bg-transparent cursor-default"
-          onClick={(e) => {
-            e.stopPropagation();
-            closeAllMenus();
-          }}
-        />
-      )}
-
       {/* MODALE POPUP CARTE AU MILIEU : APERÇU PHOTO, NOM & MOYENNE */}
       {previewPhotoStudent && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs select-none animate-in fade-in duration-150"
+          className="fixed inset-0 z-[99990] flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs select-none animate-in fade-in duration-150"
           onClick={() => setPreviewPhotoStudent(null)}
         >
           {(() => {
@@ -5404,6 +5490,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             );
           })()}
         </div>
+      )}
+        </>,
+        document.body
       )}
     </div>
   );
