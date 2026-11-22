@@ -943,12 +943,82 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
   return (
     <div
-      className={`flex flex-col bg-[#f3f5f8] text-slate-800 select-none overflow-hidden transition-all duration-200 ${
-        viewerExpandLevel >= 1 || isViewerMaximized
-          ? 'fixed inset-0 z-[9990] h-screen w-screen'
-          : 'h-full w-full min-h-[75vh] rounded-xl border border-slate-300 shadow-lg'
+      className={`term-avg-sheet flex flex-col bg-[#f3f5f8] dark:bg-[#0b1120] text-slate-800 dark:text-slate-100 select-none overflow-hidden transition-all duration-200 ${
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-[60] w-screen h-screen'
+          : 'relative w-full h-full min-h-0 flex-1'
       }`}
     >
+      <style>{`
+        .dark .term-avg-sheet > header,
+        .dark .term-avg-sheet > section,
+        .dark .term-avg-sheet > footer {
+          background-color: #111827 !important;
+          border-color: #334155 !important;
+          color: #e2e8f0 !important;
+        }
+        .dark .term-avg-sheet > header button,
+        .dark .term-avg-sheet > section button,
+        .dark .term-avg-sheet > section select {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+          color: #e2e8f0 !important;
+        }
+        .dark .term-avg-sheet > header button:hover,
+        .dark .term-avg-sheet > section button:hover {
+          background-color: #334155 !important;
+        }
+        .dark .term-avg-sheet .term-avg-grid-canvas {
+          background-color: #0b1120 !important;
+        }
+        .dark .term-avg-sheet .term-avg-excel-hdr {
+          background-color: #111827 !important;
+          border-color: #334155 !important;
+          color: #94a3b8 !important;
+        }
+        .dark .term-avg-sheet .term-avg-excel-margin {
+          background-color: #0f172a !important;
+          border-color: #1e293b !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card {
+          background-color: #111827 !important;
+          border-color: #64748b !important;
+          color: #f1f5f9 !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card th {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+          color: #f1f5f9 !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td {
+          border-color: #334155 !important;
+          color: #e2e8f0 !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card tbody tr {
+          background-color: #111827 !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card tbody tr:hover {
+          background-color: #1e293b !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card td[data-default-tint="true"] {
+          background-color: #162033 !important;
+        }
+        .dark .term-avg-sheet .term-avg-table-card tr.term-avg-footer-row td {
+          background-color: #1e293b !important;
+          color: #f8fafc !important;
+          border-color: #475569 !important;
+        }
+        .dark .term-avg-sheet .term-avg-bottom-bar {
+          background-color: #0f172a !important;
+          border-color: #334155 !important;
+          color: #cbd5e1 !important;
+        }
+        .dark .term-avg-sheet .term-avg-bottom-bar button {
+          background-color: #1e293b !important;
+          border-color: #475569 !important;
+          color: #f1f5f9 !important;
+        }
+      `}</style>
       {/* ========================================================================= */}
       {/* 1. EN-TÊTE PRINCIPAL (RETOUR, ENREGISTRER, STATUT, TITRE, ZOOM, EXPORT)   */}
       {/* ========================================================================= */}
@@ -1485,7 +1555,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       {/* 4. GRILLE DE TABLEUR EXCEL AVEC LE TABLEAU DE MOYENNE GÉNÉRALE            */}
       {/* ========================================================================= */}
       <div
-        className="flex-1 overflow-auto bg-[#fafbfc] relative p-0 touch-pan-x touch-pan-y"
+        className="term-avg-grid-canvas flex-1 min-h-0 overflow-auto bg-[#fafbfc] relative p-0 touch-pan-x touch-pan-y"
         style={{ zoom: `${zoomPercent}%` }}
         onClick={(e) => {
           if (
@@ -1500,14 +1570,14 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       >
         <div className="inline-block min-w-full pb-24 pr-24">
           {/* En-têtes de colonnes Excel (A, B, C...) */}
-          <div className="flex items-center sticky top-0 z-20 bg-[#f8fafc] border-b border-slate-300 shadow-2xs">
-            <div className="w-9 h-6 bg-[#f1f5f9] border-r border-b border-slate-300 text-[10px] flex items-center justify-center font-mono text-slate-500 shrink-0 sticky left-0 z-30">
+          <div className="term-avg-excel-hdr flex items-center sticky top-0 z-20 bg-[#f8fafc] border-b border-slate-300 shadow-2xs">
+            <div className="term-avg-excel-hdr w-9 h-6 bg-[#f1f5f9] border-r border-b border-slate-300 text-[10px] flex items-center justify-center font-mono text-slate-500 shrink-0 sticky left-0 z-30">
               ◢
             </div>
             {Array.from({ length: backgroundColCount }).map((_, c) => (
               <div
                 key={`col-lbl-${c}`}
-                className="w-16 h-6 border-r border-b border-slate-300 bg-[#f8fafc] text-slate-500 font-mono text-[10.5px] font-semibold flex items-center justify-center shrink-0"
+                className="term-avg-excel-hdr w-16 h-6 border-r border-b border-slate-300 bg-[#f8fafc] text-slate-500 font-mono text-[10.5px] font-semibold flex items-center justify-center shrink-0"
               >
                 {getExcelColumnLabel(c)}
               </div>
@@ -1520,7 +1590,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
               {Array.from({ length: backgroundRowCount }).map((_, r) => (
                 <div
                   key={`row-num-${r}`}
-                  className="w-9 h-11 border-b border-r border-slate-300 bg-[#f8fafc] text-slate-500 font-mono text-[10px] font-semibold flex items-center justify-center shrink-0"
+                  className="term-avg-excel-hdr w-9 h-11 border-b border-r border-slate-300 bg-[#f8fafc] text-slate-500 font-mono text-[10px] font-semibold flex items-center justify-center shrink-0"
                 >
                   {r + 1}
                 </div>
@@ -1529,23 +1599,23 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
             {/* Zone principale contenant le tableau encadré sur la grille */}
             <div className="relative shrink-0">
-              {/* Ligne 1 de marge blanche Excel au-dessus */}
+              {/* Ligne 1 de marge Excel au-dessus */}
               <div className="flex">
                 {Array.from({ length: backgroundColCount }).map((_, c) => (
                   <div
                     key={`top-cell-${c}`}
-                    className="w-16 h-6 border-r border-b border-slate-300 bg-white"
+                    className="term-avg-excel-margin w-16 h-6 border-r border-b border-slate-300 bg-white"
                   />
                 ))}
               </div>
 
               <div className="flex items-start">
-                {/* Colonne A de marge blanche Excel à gauche */}
+                {/* Petite marge Excel à gauche (compacte pour ne jamais cacher le début du tableau) */}
                 <div className="flex flex-col shrink-0">
                   {Array.from({ length: backgroundRowCount - 1 }).map((_, r) => (
                     <div
                       key={`left-cell-${r}`}
-                      className="w-16 h-11 border-r border-b border-slate-300 bg-white"
+                      className="term-avg-excel-margin w-6 h-11 border-r border-b border-slate-300 bg-white"
                     />
                   ))}
                 </div>
@@ -1553,7 +1623,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                 {/* ========================================================= */}
                 {/* TABLEAU PRINCIPAL DE MOYENNE GÉNÉRALE DU TRIMESTRE        */}
                 {/* ========================================================= */}
-                <div className="bg-white border-2 border-slate-800 shadow-md relative z-10">
+                <div className="term-avg-table-card bg-white border-2 border-slate-800 shadow-md relative z-10">
                   {cloudStatus === 'loading' &&
                   computed.subjects.length === 0 &&
                   computed.students.length === 0 ? (
@@ -2176,21 +2246,18 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                                 : `${subject.name} : en attente d'une moyenne /20`,
                                           })
                                         }
-                                        style={{
-                                          backgroundColor: '#f8fafc',
-                                          ...getCellInlineStyle(
-                                            weightedKey,
-                                            rowKey
-                                          ),
-                                        }}
-                                        className={`h-11 border-r-2 border-b border-slate-300 border-r-slate-400 px-1.5 text-center align-middle text-xs font-semibold cursor-pointer ${
+                                        style={getCellInlineStyle(
+                                          weightedKey,
+                                          rowKey
+                                        )}
+                                        className={`h-11 border-r-2 border-b border-slate-300 border-r-slate-400 bg-slate-50 dark:bg-[#162033] px-1.5 text-center align-middle text-xs font-semibold cursor-pointer ${
                                           isWeightedSel
                                             ? 'ring-2 ring-inset ring-blue-500'
                                             : ''
                                         } ${
                                           cell?.weightedValue === null
-                                            ? 'text-slate-300'
-                                            : 'text-indigo-900'
+                                            ? 'text-slate-300 dark:text-slate-600'
+                                            : 'text-indigo-900 dark:text-indigo-200'
                                         }`}
                                       >
                                         {formatFrenchNumber(cell?.weightedValue)}
@@ -2241,21 +2308,18 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                               : 'Total Général : aucune matière notée',
                                         });
                                       }}
-                                      style={{
-                                        backgroundColor: '#eef2ff',
-                                        ...getCellInlineStyle(cellKey, rowKey),
-                                      }}
-                                      className={`h-11 border-r border-b border-slate-300 px-2 text-center align-middle cursor-pointer ${
+                                      style={getCellInlineStyle(cellKey, rowKey)}
+                                      className={`h-11 border-r border-b border-slate-300 bg-indigo-50/75 dark:bg-indigo-950/50 px-2 text-center align-middle cursor-pointer ${
                                         isSel
                                           ? 'ring-2 ring-inset ring-blue-500'
                                           : ''
                                       }`}
                                     >
-                                      <div className="text-xs font-black text-indigo-950 leading-tight">
+                                      <div className="text-xs font-black text-indigo-950 dark:text-indigo-200 leading-tight">
                                         {formatFrenchNumber(student.totalGeneral)}
                                       </div>
                                       {partialCoeff && (
-                                        <div className="text-[9px] font-bold text-indigo-600 leading-none mt-0.5">
+                                        <div className="text-[9px] font-bold text-indigo-600 dark:text-indigo-300 leading-none mt-0.5">
                                           Coeff{' '}
                                           {formatCoeffDisplay(
                                             student.totalCoeffCounted
@@ -2294,25 +2358,17 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                               : 'Moyenne Générale : aucune matière notée',
                                         })
                                       }
-                                      style={{
-                                        backgroundColor:
-                                          student.generalAverage === null
-                                            ? '#f8fafc'
-                                            : isPassing
-                                            ? '#ecfdf5'
-                                            : '#fef2f2',
-                                        ...getCellInlineStyle(cellKey, rowKey),
-                                      }}
+                                      style={getCellInlineStyle(cellKey, rowKey)}
                                       className={`h-11 border-r border-b border-slate-300 px-2 text-center align-middle text-[13px] font-black cursor-pointer ${
                                         isSel
                                           ? 'ring-2 ring-inset ring-blue-500'
                                           : ''
                                       } ${
                                         student.generalAverage === null
-                                          ? 'text-slate-400'
+                                          ? 'bg-slate-50 dark:bg-[#162033] text-slate-400 dark:text-slate-500'
                                           : isPassing
-                                          ? 'text-emerald-800'
-                                          : 'text-red-700'
+                                          ? 'bg-emerald-50 dark:bg-emerald-950/45 text-emerald-800 dark:text-emerald-300'
+                                          : 'bg-red-50 dark:bg-red-950/45 text-red-700 dark:text-red-300'
                                       }`}
                                     >
                                       {formatFrenchNumber(student.generalAverage)}
@@ -2358,7 +2414,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                         )}
 
                         {/* LIGNE DE SYNTHÈSE : MOYENNE DE LA CLASSE */}
-                        <tr className="bg-slate-100 border-t-2 border-slate-800 font-black text-slate-900">
+                        <tr className="term-avg-footer-row bg-slate-100 border-t-2 border-slate-800 font-black text-slate-900">
                           <td
                             colSpan={3}
                             className="h-11 border-r-2 border-b border-slate-800 px-3 text-right text-[11px] uppercase tracking-wide bg-slate-200/70"
@@ -2406,7 +2462,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
                   {/* BANDEAU INFÉRIEUR DU TABLEAU : + AJOUTER UN ÉLÈVE & BILAN CLASSE */}
                   {computed.subjects.length > 0 && (
-                    <div className="bg-[#f8fafc] border-t border-slate-300 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                    <div className="term-avg-bottom-bar bg-[#f8fafc] border-t border-slate-300 px-3 py-2 flex flex-wrap items-center justify-between gap-2 text-[11px]">
                       <button
                         type="button"
                         onClick={handleAddManualStudent}
@@ -2634,7 +2690,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       {previewStudent &&
         createPortal(
           <div
-            className="fixed inset-0 z-[99990] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs select-none"
+            className="teacher-dark-scope fixed inset-0 z-[99990] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs select-none"
             onClick={() => setPreviewStudent(null)}
           >
             <div
@@ -2768,7 +2824,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       {isDuplicatesModalOpen &&
         createPortal(
           <div
-            className="fixed inset-0 z-[99990] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs select-none"
+            className="teacher-dark-scope fixed inset-0 z-[99990] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs select-none"
             onClick={() => setIsDuplicatesModalOpen(false)}
           >
             <div

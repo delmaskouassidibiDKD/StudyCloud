@@ -1384,8 +1384,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [newGradeCoeff, setNewGradeCoeff] = useState('');
 
   const viewerExpandLevel = useViewerExpandLevel();
-  const isDedicatedView = viewMode === 'files-menu' || viewMode === 'page1-files-menu' || viewMode.startsWith('matiere-') || viewMode === 'red-robot-menu' || viewMode === 'dkd-store';
-  const isDarkHeader = isDarkMode || Boolean(dashboardWallpaper && viewMode === 'home') || (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
+  const isDedicatedView = viewMode === 'files-menu' || viewMode === 'page1-files-menu' || viewMode.startsWith('matiere-') || viewMode === 'red-robot-menu' || viewMode === 'dkd-store' || viewMode === 'teacher-classes-menu';
+  const isDarkHeader = isDarkMode || Boolean(dashboardWallpaper && viewMode === 'home');
 
   return (
     <div className={`flex flex-col ${isDedicatedView
@@ -2324,7 +2324,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'level-menu' && <LevelMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'teacher-classes-menu' && (
-        <div className={`absolute inset-x-0 ${viewerExpandLevel >= 2 ? 'md:left-0 md:w-full z-50' : 'md:left-64 md:w-[calc(100%-16rem)] z-30'} md:right-0 bottom-0 ${viewerExpandLevel >= 1 ? 'top-0' : 'top-[62px] md:top-[66px]'} w-full overflow-hidden transition-all duration-300`}>
+        <div className={`fixed inset-x-0 ${viewerExpandLevel >= 2 ? 'md:left-0 md:w-full z-50' : 'md:left-64 md:w-[calc(100%-16rem)] z-30'} md:right-0 bottom-0 ${viewerExpandLevel >= 1 ? 'top-0' : 'top-[64px] md:top-[68px]'} overflow-hidden transition-all duration-300`}>
           <TeacherClassesView
             onBack={() => {
               resetViewerExpand();

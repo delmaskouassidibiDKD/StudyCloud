@@ -2172,11 +2172,8 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       className={`w-full flex flex-col md:flex-row overflow-hidden font-sans select-none transition-all duration-300 ${
         viewerExpandLevel >= 2
           ? 'fixed inset-0 z-50 w-screen h-screen min-h-screen'
-          : 'relative w-full h-full min-h-dvh'
-      }`}
-      style={{
-        backgroundColor: selectedSchoolInside ? '#f8fafc' : '#091226'
-      }}
+          : 'relative w-full h-full min-h-0 flex-1'
+      } ${selectedSchoolInside ? 'bg-[#eef2f6] dark:bg-[#0b1120]' : 'bg-[#091226]'}`}
     >
       {selectedSchoolInside ? (
         <SchoolWorkspaceLayout
@@ -2381,7 +2378,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       {/* ========================================================================= */}
       {/* 2. ESPACE PRINCIPAL DE TRAVAIL AVEC FOND ANIMÉ DOUX ET CONTINU            */}
       {/* ========================================================================= */}
-      <main ref={mainContainerRef} className="relative flex-1 flex flex-col h-full min-h-dvh overflow-hidden bg-[#051220]">
+      <main ref={mainContainerRef} className="relative flex-1 flex flex-col h-full min-h-0 overflow-hidden bg-[#051220]">
         {/* Fond animé continu, lent et cohérent (100 % vectoriel & Canvas 60 FPS) */}
         <TeacherAnimatedBackground />
 
@@ -3104,7 +3101,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* PORTAILS MODALES (RENDUS DANS document.body AU-DESSUS DE TOUS LES CALQUES) */}
         {/* ========================================================================= */}
         {typeof document !== 'undefined' && createPortal(
-          <>
+          <div className="teacher-dark-scope contents">
         {/* ========================================================================= */}
         {/* MODAL DE MODIFICATION D'UNE RENTRÉE SCOLAIRE (MENU 3 TRAITS -> MODIFIER) */}
         {/* ========================================================================= */}
@@ -4457,7 +4454,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             </form>
           )}
         </SmartFloatingPopover>
-          </>,
+          </div>,
           document.body
         )}
     </div>

@@ -95,7 +95,7 @@ const getSafeAccentColor = (rawColor?: string): string => {
   if (!rawColor) return '#0051c3';
   const low = rawColor.trim().toLowerCase();
   if (low === '#ffffff' || low === 'white' || low === '#f8fafc' || low === '#f1f5f9') {
-    return '#94a3b8';
+    return '#64748b';
   }
   return rawColor;
 };
@@ -175,11 +175,9 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
       )
     : termSubjects;
 
-  // Cartes de moyenne générale pour la classe active (mode Classe)
   const annualAvgCard = currentClassAverageCards.find((c) => c.kind === 'annual') || null;
   const termAvgCards = currentClassAverageCards.filter((c) => c.kind === 'term');
 
-  // Helper pour construire les cartes d'une classe donnée (utilisé dans le menu rapide de l'École)
   const getAverageCardsForClass = (cls: ClassItem): ClassAverageCardItem[] => {
     const clsTerms = allTerms
       .filter((t) => t.classId === cls.id)
@@ -223,14 +221,12 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
   };
 
   // ============================================================================
-  // BARRE LATÉRALE GAUCHE (STYLE LOGICIEL PRO ÉPURÉ — IMAGE 2 CLOUDFLARE)
-  // - Mode École  : Liste verticale des Niveaux + Bas fixe (Moyenne générale + Transférer)
-  // - Mode Classe : Liste verticale des Classes + Bas fixe (Moyenne annuelle + T1..TN + Transférer)
+  // BARRE LATÉRALE GAUCHE (STYLE LOGICIEL PRO ÉPURÉ, LIGNES NETTES, JOUR & SOMBRE)
   // ============================================================================
   const renderSidebarContent = () => (
-    <div className="flex flex-col h-full bg-white text-slate-800 select-none">
+    <div className="flex flex-col h-full min-h-0 bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-100 select-none">
       {/* HAUT DE LA BARRE LATÉRALE (FIXE) */}
-      <div className="px-3 pt-3 pb-2.5 border-b border-slate-200 shrink-0 space-y-2">
+      <div className="px-3 pt-2.5 pb-2.5 border-b border-slate-300 dark:border-slate-700 shrink-0 space-y-2">
         <button
           type="button"
           onClick={() => {
@@ -243,7 +239,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
               onExitSchool();
             }
           }}
-          className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 hover:text-slate-900 transition cursor-pointer"
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer"
         >
           <ArrowLeft className="w-3.5 h-3.5" />
           <span className="truncate">
@@ -256,7 +252,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
         </button>
 
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-7 h-7 rounded-md border border-slate-200 bg-slate-50 overflow-hidden flex items-center justify-center shrink-0">
+          <div className="w-7 h-7 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-[#1e293b] overflow-hidden flex items-center justify-center shrink-0">
             {school.logoUrl ? (
               <img
                 src={school.logoUrl}
@@ -264,26 +260,25 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                 className="w-full h-full object-cover"
               />
             ) : (
-              <span className="text-[11px] font-bold text-slate-700">
+              <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200">
                 {school.name.slice(0, 2).toUpperCase()}
               </span>
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <div className="text-xs font-bold text-slate-900 truncate leading-tight">
+            <div className="text-xs font-bold text-slate-900 dark:text-white truncate leading-tight">
               {school.name}
             </div>
-            <div className="text-[10.5px] text-slate-500 truncate leading-tight mt-0.5">
+            <div className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate leading-tight mt-0.5">
               {enteredClass
                 ? `${activeLevel?.name || ''} · ${schoolYear?.label || ''}`
                 : schoolYear?.label || 'Année scolaire'}
             </div>
           </div>
-          {/* Bouton fermer sur mobile uniquement */}
           <button
             type="button"
             onClick={() => setIsMobileSidebarOpen(false)}
-            className="md:hidden w-7 h-7 rounded-md hover:bg-slate-100 flex items-center justify-center text-slate-500 cursor-pointer shrink-0"
+            className="md:hidden w-7 h-7 rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer shrink-0"
             aria-label="Fermer le menu"
           >
             <X className="w-4 h-4" />
@@ -292,11 +287,11 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
       </div>
 
       {/* MILIEU DÉFILABLE : NIVEAUX (EN MODE ÉCOLE) OU CLASSES (EN MODE CLASSE) */}
-      <div className="flex-1 overflow-y-auto px-2.5 py-3 space-y-1">
+      <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-2.5 space-y-1">
         {!enteredClass ? (
           <>
-            <div className="px-2 pb-1 flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+            <div className="px-1.5 pb-1 flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
                 Niveaux ({levels.length})
               </span>
               <button
@@ -305,7 +300,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                   setIsMobileSidebarOpen(false);
                   onAddLevel();
                 }}
-                className="w-5 h-5 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center transition cursor-pointer"
+                className="w-6 h-6 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center transition cursor-pointer"
                 title="Ajouter un niveau d'étude"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -319,9 +314,9 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                   setIsMobileSidebarOpen(false);
                   onAddLevel();
                 }}
-                className="w-full px-2.5 py-2 rounded-md border border-dashed border-slate-300 hover:border-slate-400 bg-slate-50/70 hover:bg-slate-100/70 text-[11.5px] font-medium text-slate-600 flex items-center gap-2 transition cursor-pointer"
+                className="w-full px-2.5 py-2 rounded-md border border-dashed border-slate-400 dark:border-slate-600 bg-slate-50 dark:bg-[#161f33] hover:bg-slate-100 dark:hover:bg-slate-800 text-[11.5px] font-semibold text-slate-700 dark:text-slate-200 flex items-center gap-2 transition cursor-pointer"
               >
-                <Plus className="w-3.5 h-3.5 text-slate-500" />
+                <Plus className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300" />
                 <span>Créer un niveau</span>
               </button>
             ) : (
@@ -337,29 +332,31 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                       onSelectLevel(lvl.id);
                       setIsMobileSidebarOpen(false);
                     }}
-                    className={`group relative flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md text-xs transition cursor-pointer ${
+                    className={`group relative flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
                       isSelected
-                        ? 'bg-[#eff6ff] text-[#0051c3] font-semibold'
-                        : 'text-slate-700 hover:bg-slate-100/90 hover:text-slate-900 font-medium'
+                        ? 'bg-[#eff6ff] dark:bg-blue-500/20 border-[#0051c3]/70 dark:border-blue-400/70 text-[#0051c3] dark:text-blue-200 font-semibold'
+                        : 'bg-white dark:bg-[#161f33]/70 border-slate-200 dark:border-slate-700/90 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'
                     }`}
                   >
                     {isSelected && (
-                      <span className="absolute left-0 top-1.5 bottom-1.5 w-[2.5px] rounded-r bg-[#0051c3]" />
+                      <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r bg-[#0051c3] dark:bg-blue-400" />
                     )}
                     <div className="flex items-center gap-2 min-w-0 flex-1">
                       <Layers
                         className={`w-3.5 h-3.5 shrink-0 ${
-                          isSelected ? 'text-[#0051c3]' : 'text-slate-400'
+                          isSelected
+                            ? 'text-[#0051c3] dark:text-blue-300'
+                            : 'text-slate-500 dark:text-slate-400'
                         }`}
                       />
                       <span className="truncate">{lvl.name}</span>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <span
-                        className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+                        className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold ${
                           isSelected
-                            ? 'bg-blue-100/90 text-[#0051c3]'
-                            : 'text-slate-400 group-hover:text-slate-600'
+                            ? 'bg-white/90 dark:bg-blue-950/60 border-blue-300 dark:border-blue-500/50 text-[#0051c3] dark:text-blue-200'
+                            : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300'
                         }`}
                       >
                         {count}
@@ -369,8 +366,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                         onClick={(e) => onOpenMenu(e, 'level', lvl)}
                         className={`card-menu-trigger w-5 h-5 rounded flex items-center justify-center transition cursor-pointer ${
                           isSelected
-                            ? 'text-[#0051c3]/70 hover:text-[#0051c3] hover:bg-blue-100'
-                            : 'opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-800 hover:bg-slate-200/70'
+                            ? 'text-[#0051c3] dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/50'
+                            : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'
                         }`}
                         title={`Options de ${lvl.name}`}
                       >
@@ -384,8 +381,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
           </>
         ) : (
           <>
-            <div className="px-2 pb-1 flex items-center justify-between">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 truncate">
+            <div className="px-1.5 pb-1 flex items-center justify-between">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 truncate">
                 Classes ({levelClasses.length})
               </span>
               <button
@@ -394,7 +391,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                   setIsMobileSidebarOpen(false);
                   onAddClass();
                 }}
-                className="w-5 h-5 rounded hover:bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center transition cursor-pointer"
+                className="w-6 h-6 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center transition cursor-pointer"
                 title="Ajouter une classe dans ce niveau"
               >
                 <Plus className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -413,29 +410,31 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                     onEnterClass(cls);
                     setIsMobileSidebarOpen(false);
                   }}
-                  className={`group relative flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md text-xs transition cursor-pointer ${
+                  className={`group relative flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
                     isSelected
-                      ? 'bg-[#eff6ff] text-[#0051c3] font-semibold'
-                      : 'text-slate-700 hover:bg-slate-100/90 hover:text-slate-900 font-medium'
+                      ? 'bg-[#eff6ff] dark:bg-blue-500/20 border-[#0051c3]/70 dark:border-blue-400/70 text-[#0051c3] dark:text-blue-200 font-semibold'
+                      : 'bg-white dark:bg-[#161f33]/70 border-slate-200 dark:border-slate-700/90 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'
                   }`}
                 >
                   {isSelected && (
-                    <span className="absolute left-0 top-1.5 bottom-1.5 w-[2.5px] rounded-r bg-[#0051c3]" />
+                    <span className="absolute left-0 top-1 bottom-1 w-[3px] rounded-r bg-[#0051c3] dark:bg-blue-400" />
                   )}
                   <div className="flex items-center gap-2 min-w-0 flex-1">
                     <GraduationCap
                       className={`w-3.5 h-3.5 shrink-0 ${
-                        isSelected ? 'text-[#0051c3]' : 'text-slate-400'
+                        isSelected
+                          ? 'text-[#0051c3] dark:text-blue-300'
+                          : 'text-slate-500 dark:text-slate-400'
                       }`}
                     />
                     <span className="truncate">{formatClassDisplayTitle(cls)}</span>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded font-semibold ${
+                      className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold ${
                         isSelected
-                          ? 'bg-blue-100/90 text-[#0051c3]'
-                          : 'text-slate-400 group-hover:text-slate-600'
+                          ? 'bg-white/90 dark:bg-blue-950/60 border-blue-300 dark:border-blue-500/50 text-[#0051c3] dark:text-blue-200'
+                          : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300'
                       }`}
                     >
                       {subjCount}
@@ -445,8 +444,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                       onClick={(e) => onOpenMenu(e, 'class', cls)}
                       className={`card-menu-trigger w-5 h-5 rounded flex items-center justify-center transition cursor-pointer ${
                         isSelected
-                          ? 'text-[#0051c3]/70 hover:text-[#0051c3] hover:bg-blue-100'
-                          : 'opacity-0 group-hover:opacity-100 text-slate-400 hover:text-slate-800 hover:bg-slate-200/70'
+                          ? 'text-[#0051c3] dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/50'
+                          : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'
                       }`}
                       title={`Options de ${formatClassDisplayTitle(cls)}`}
                     >
@@ -461,34 +460,31 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
       </div>
 
       {/* ===================================================================== */}
-      {/* BAS FIXE DE LA BARRE LATÉRALE (NE DÉFILE JAMAIS)                      */}
-      {/* Présent dans les DEUX menus (École & Classe) : Moyenne générale + Transférer */}
+      {/* BAS FIXE DE LA BARRE LATÉRALE (TOUJOURS VISIBLE, NE DÉFILE JAMAIS)    */}
       {/* ===================================================================== */}
-      <div className="shrink-0 border-t border-slate-200 bg-[#fbfcfd] px-2.5 py-2.5 space-y-2">
+      <div className="shrink-0 border-t border-slate-300 dark:border-slate-700 bg-[#f8fafc] dark:bg-[#0d1424] px-2.5 py-2.5 space-y-2">
         {!enteredClass ? (
-          /* Mode École : Bouton compact "Moyenne générale ▸" qui ouvre l'accès rapide aux classes */
           <button
             ref={schoolAvgBtnRef}
             type="button"
             onClick={() => setIsSchoolAvgMenuOpen((prev) => !prev)}
             disabled={levelClasses.length === 0}
-            className={`w-full h-8 px-2.5 rounded-md border text-xs font-medium flex items-center justify-between gap-2 transition cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
+            className={`w-full h-8 px-2.5 rounded-md border text-xs font-semibold flex items-center justify-between gap-2 transition cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed ${
               isSchoolAvgMenuOpen
-                ? 'bg-[#eff6ff] border-blue-300 text-[#0051c3] font-semibold'
-                : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
+                ? 'bg-[#eff6ff] dark:bg-blue-500/20 border-[#0051c3] dark:border-blue-400 text-[#0051c3] dark:text-blue-200'
+                : 'bg-white dark:bg-[#161f33] hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 text-slate-800 dark:text-slate-100'
             }`}
             title="Accéder directement à la moyenne générale d'une classe"
           >
             <span className="flex items-center gap-2 truncate">
-              <Award className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <Award className="w-3.5 h-3.5 text-[#0051c3] dark:text-blue-400 shrink-0" />
               <span className="truncate">Moyenne générale</span>
             </span>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <ChevronRight className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
           </button>
         ) : (
-          /* Mode Classe : Bloc fixe ultra-compact (Moyenne annuelle + grille compacte T1, T2, T3...) */
           <div className="space-y-1.5">
-            <div className="px-1 text-[9.5px] font-bold uppercase tracking-wider text-slate-400">
+            <div className="px-1 text-[9.5px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               Moyenne générale
             </div>
 
@@ -499,11 +495,11 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                   setIsMobileSidebarOpen(false);
                   onOpenAverageCard(annualAvgCard, enteredClass);
                 }}
-                className="w-full h-8 px-2.5 rounded-md border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-800 text-[11.5px] font-semibold flex items-center justify-between gap-1.5 transition cursor-pointer"
+                className="w-full h-8 px-2.5 rounded-md border border-slate-300 dark:border-slate-600 hover:border-[#0051c3] dark:hover:border-blue-400 bg-white dark:bg-[#161f33] hover:bg-[#eff6ff] dark:hover:bg-blue-500/20 text-slate-800 dark:text-slate-100 hover:text-[#0051c3] dark:hover:text-blue-200 text-[11.5px] font-semibold flex items-center justify-between gap-1.5 transition cursor-pointer"
                 title="Ouvrir la Moyenne générale de l'année"
               >
                 <span className="flex items-center gap-2 truncate">
-                  <Award className="w-3.5 h-3.5 text-[#0051c3] shrink-0" />
+                  <Award className="w-3.5 h-3.5 text-[#0051c3] dark:text-blue-400 shrink-0" />
                   <span className="truncate">Moyenne annuelle</span>
                 </span>
                 <ArrowRight className="w-3 h-3 text-slate-400 shrink-0" />
@@ -525,7 +521,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                         setIsMobileSidebarOpen(false);
                         onOpenAverageCard(card, enteredClass);
                       }}
-                      className="h-7 px-1.5 rounded-md border border-slate-200 hover:border-[#0051c3]/50 bg-white hover:bg-[#eff6ff] text-slate-700 hover:text-[#0051c3] text-[11px] font-semibold flex items-center justify-center transition cursor-pointer truncate"
+                      className="h-7 px-1.5 rounded-md border border-slate-300 dark:border-slate-600 hover:border-[#0051c3] dark:hover:border-blue-400 bg-white dark:bg-[#161f33] hover:bg-[#eff6ff] dark:hover:bg-blue-500/20 text-slate-800 dark:text-slate-200 hover:text-[#0051c3] dark:hover:text-blue-200 text-[11px] font-semibold flex items-center justify-center transition cursor-pointer truncate"
                       title={card.title}
                     >
                       {shortLabel}
@@ -537,27 +533,28 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
           </div>
         )}
 
-        {/* Bouton Transférer fixe tout en bas dans les deux menus */}
-        <button
-          type="button"
-          onClick={() => {
-            setIsMobileSidebarOpen(false);
-            if (isTransferViewOpen) onCloseTransfer();
-            else onOpenTransfer();
-          }}
-          className={`w-full h-8 px-2.5 rounded-md border text-xs font-medium flex items-center justify-between gap-2 transition cursor-pointer ${
-            isTransferViewOpen
-              ? 'bg-[#eff6ff] border-blue-300 text-[#0051c3] font-semibold'
-              : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700'
-          }`}
-          title="Transférer niveaux, classes, matières ou listes d'élèves"
-        >
-          <span className="flex items-center gap-2 truncate">
-            <ArrowLeftRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-            <span className="truncate">Transférer</span>
-          </span>
-          <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-        </button>
+        <div className="border-t border-slate-300/80 dark:border-slate-700/80 pt-2">
+          <button
+            type="button"
+            onClick={() => {
+              setIsMobileSidebarOpen(false);
+              if (isTransferViewOpen) onCloseTransfer();
+              else onOpenTransfer();
+            }}
+            className={`w-full h-8 px-2.5 rounded-md border text-xs font-semibold flex items-center justify-between gap-2 transition cursor-pointer ${
+              isTransferViewOpen
+                ? 'bg-[#eff6ff] dark:bg-blue-500/20 border-[#0051c3] dark:border-blue-400 text-[#0051c3] dark:text-blue-200'
+                : 'bg-white dark:bg-[#161f33] hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 text-slate-800 dark:text-slate-100'
+            }`}
+            title="Transférer niveaux, classes, matières ou listes d'élèves"
+          >
+            <span className="flex items-center gap-2 truncate">
+              <ArrowLeftRight className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300 shrink-0" />
+              <span className="truncate">Transférer</span>
+            </span>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -565,21 +562,21 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
   return (
     <main
       ref={boundaryRef}
-      className="flex flex-1 w-full h-full min-h-dvh bg-[#f8fafc] text-slate-900 overflow-hidden"
+      className="flex flex-1 w-full h-full min-h-0 bg-[#eef2f6] dark:bg-[#0b1120] text-slate-900 dark:text-slate-100 overflow-hidden"
     >
       {/* BARRE LATÉRALE DESKTOP (>= md) */}
-      <aside className="hidden md:flex w-[240px] lg:w-[252px] shrink-0 flex-col border-r border-slate-200 bg-white h-full z-20">
+      <aside className="hidden md:flex w-[228px] lg:w-[244px] shrink-0 flex-col border-r border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] h-full min-h-0 z-20">
         {renderSidebarContent()}
       </aside>
 
       {/* TIROIR LATÉRAL MOBILE (< md) */}
       {isMobileSidebarOpen && (
         <div
-          className="md:hidden fixed inset-0 z-50 flex bg-slate-900/40 backdrop-blur-[1px]"
+          className="md:hidden fixed inset-0 z-50 flex bg-slate-900/50 backdrop-blur-[1px]"
           onClick={() => setIsMobileSidebarOpen(false)}
         >
           <div
-            className="w-[264px] max-w-[82vw] h-full bg-white shadow-xl border-r border-slate-200"
+            className="w-[264px] max-w-[82vw] h-full bg-white dark:bg-[#111827] shadow-xl border-r border-slate-300 dark:border-slate-700"
             onClick={(e) => e.stopPropagation()}
           >
             {renderSidebarContent()}
@@ -588,22 +585,21 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
       )}
 
       {/* ===================================================================== */}
-      {/* ZONE PRINCIPALE À DROITE (FOND CLAIR NEUTRE, SANS ANIMATION 3D)       */}
+      {/* ZONE PRINCIPALE À DROITE (CLAIRE EN JOUR, SOMBRE EN NUIT, LIGNES NETTES) */}
       {/* ===================================================================== */}
-      <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-[#f8fafc]">
+      <div className="flex-1 flex flex-col min-w-0 h-full min-h-0 overflow-hidden bg-[#eef2f6] dark:bg-[#0b1120]">
         {/* BARRE SUPÉRIEURE UNIFIÉE : MENU MOBILE + FIL D'ARIANE + STATUT + EXPAND */}
-        <header className="h-12 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between gap-2 shrink-0 z-10">
+        <header className="h-12 bg-white dark:bg-[#111827] border-b border-slate-300 dark:border-slate-700 px-3 sm:px-6 flex items-center justify-between gap-2 shrink-0 z-10">
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"
               onClick={() => setIsMobileSidebarOpen(true)}
-              className="md:hidden w-8 h-8 rounded-md border border-slate-200 hover:bg-slate-50 flex items-center justify-center text-slate-700 cursor-pointer shrink-0"
+              className="md:hidden w-8 h-8 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1e293b] hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 cursor-pointer shrink-0"
               aria-label="Ouvrir le menu latéral"
             >
               <Menu className="w-4 h-4" />
             </button>
 
-            {/* Fil d'Ariane cliquable (style Cloudflare Dashboard) */}
             <nav
               className="flex items-center gap-1.5 text-xs min-w-0 overflow-hidden"
               aria-label="Fil d'Ariane"
@@ -611,11 +607,11 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
               <button
                 type="button"
                 onClick={onExitSchool}
-                className="text-slate-500 hover:text-slate-900 font-medium truncate max-w-[90px] sm:max-w-none cursor-pointer"
+                className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium truncate max-w-[90px] sm:max-w-none cursor-pointer"
               >
                 {schoolYear?.label || 'Rentrées'}
               </button>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600 shrink-0" />
               <button
                 type="button"
                 onClick={() => {
@@ -624,8 +620,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                 }}
                 className={`truncate max-w-[110px] sm:max-w-[160px] cursor-pointer ${
                   !enteredClass && !activeLevel
-                    ? 'text-slate-900 font-semibold'
-                    : 'text-slate-500 hover:text-slate-900 font-medium'
+                    ? 'text-slate-900 dark:text-white font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium'
                 }`}
               >
                 {school.name}
@@ -633,7 +629,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
 
               {activeLevel && (
                 <>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600 shrink-0" />
                   <button
                     type="button"
                     onClick={() => {
@@ -642,8 +638,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                     }}
                     className={`truncate max-w-[110px] sm:max-w-[150px] cursor-pointer ${
                       !enteredClass && !isTransferViewOpen
-                        ? 'text-slate-900 font-semibold'
-                        : 'text-slate-500 hover:text-slate-900 font-medium'
+                        ? 'text-slate-900 dark:text-white font-bold'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium'
                     }`}
                   >
                     {activeLevel.name}
@@ -653,8 +649,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
 
               {enteredClass && !isTransferViewOpen && (
                 <>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-                  <span className="text-slate-900 font-semibold truncate max-w-[140px] sm:max-w-[200px]">
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600 shrink-0" />
+                  <span className="text-slate-900 dark:text-white font-bold truncate max-w-[140px] sm:max-w-[200px]">
                     {formatClassDisplayTitle(enteredClass)}
                   </span>
                 </>
@@ -662,8 +658,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
 
               {isTransferViewOpen && (
                 <>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-300 shrink-0" />
-                  <span className="text-[#0051c3] font-semibold truncate">
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600 shrink-0" />
+                  <span className="text-[#0051c3] dark:text-blue-400 font-bold truncate">
                     Transférer
                   </span>
                 </>
@@ -671,63 +667,62 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
             </nav>
           </div>
 
-          {/* Contrôles droite : Statut synchronisation sobre + Profil + Agrandir */}
           <div className="flex items-center gap-2 shrink-0">
             <div
-              className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium border select-none ${
-                saveUiState === 'saving' || cloudStatus === 'loading'
-                  ? 'bg-amber-50 text-amber-800 border-amber-200'
+              className={`hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold border select-none ${
+                saveUiState === 'saving' || cloudStatus === 'loading' || cloudStatus === 'syncing'
+                  ? 'bg-amber-50 dark:bg-amber-500/15 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-500/40'
                   : saveUiState === 'saved'
-                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                  ? 'bg-emerald-50 dark:bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-500/40'
                   : saveUiState === 'offline' || !isOnline || saveUiState === 'error' || cloudStatus === 'error'
-                  ? 'bg-red-50 text-red-700 border-red-200'
-                  : 'bg-slate-50 text-slate-600 border-slate-200'
+                  ? 'bg-red-50 dark:bg-red-500/15 text-red-700 dark:text-red-300 border-red-300 dark:border-red-500/40'
+                  : 'bg-slate-50 dark:bg-[#1e293b] text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600'
               }`}
               title={saveFeedbackMessage || 'Synchronisé avec votre compte'}
             >
-              {saveUiState === 'saving' ? (
+              {saveUiState === 'saving' || cloudStatus === 'syncing' ? (
                 <>
-                  <Loader2 className="w-3 h-3 animate-spin text-amber-700" />
+                  <Loader2 className="w-3 h-3 animate-spin text-amber-700 dark:text-amber-300" />
                   <span>Enregistrement...</span>
                 </>
               ) : cloudStatus === 'loading' ? (
                 <>
-                  <Loader2 className="w-3 h-3 animate-spin text-amber-700" />
+                  <Loader2 className="w-3 h-3 animate-spin text-amber-700 dark:text-amber-300" />
                   <span>Chargement de vos données...</span>
                 </>
               ) : saveUiState === 'saved' ? (
                 <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span>Enregistré</span>
                 </>
               ) : saveUiState === 'offline' || !isOnline ? (
                 <>
-                  <WifiOff className="w-3 h-3 text-red-600" />
+                  <WifiOff className="w-3 h-3 text-red-600 dark:text-red-400" />
                   <span>Hors ligne</span>
                 </>
               ) : saveUiState === 'error' || cloudStatus === 'error' ? (
                 <>
-                  <CloudOff className="w-3 h-3 text-red-600" />
+                  <CloudOff className="w-3 h-3 text-red-600 dark:text-red-400" />
                   <span>Erreur</span>
                 </>
               ) : (
                 <>
-                  <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+                  <Cloud className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                   <span>Synchronisé</span>
                 </>
               )}
             </div>
 
-            <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-md border border-slate-200 bg-slate-50/70">
-              <div className="w-5 h-5 rounded-full bg-slate-800 text-white flex items-center justify-center font-bold text-[10px]">
+            <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-[#1e293b]">
+              <div className="w-5 h-5 rounded-full bg-slate-800 dark:bg-blue-600 text-white flex items-center justify-center font-bold text-[10px]">
                 {(userName || 'P').charAt(0).toUpperCase()}
               </div>
-              <span className="text-[11px] font-semibold text-slate-700 max-w-[100px] truncate">
+              <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 max-w-[100px] truncate">
                 {userName || 'Professeur'}
               </span>
             </div>
 
-            <div className="hidden md:flex items-center gap-1.5 pl-1 border-l border-slate-200">
+            <div className="hidden md:flex items-center gap-1.5 pl-1.5 border-l border-slate-300 dark:border-slate-700">
               <ViewerSuperExpandButton
                 expandLevel={viewerExpandLevel}
                 onExpandChange={onExpandChange}
@@ -738,7 +733,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                 className={`w-7 h-7 rounded-md flex items-center justify-center border transition cursor-pointer ${
                   viewerExpandLevel >= 1 || isViewerMaximized
                     ? 'bg-[#0051c3] text-white border-[#0051c3]'
-                    : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                    : 'bg-white dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600'
                 }`}
                 title={
                   viewerExpandLevel >= 1 || isViewerMaximized
@@ -758,8 +753,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
 
         {/* CONTENU PRINCIPAL SELON LE MODE */}
         {isTransferViewOpen ? (
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6">
-            <div className="max-w-5xl mx-auto">{renderTransferView()}</div>
+          <div className="flex-1 min-h-0 overflow-y-auto p-4 sm:p-6">
+            <div className="teacher-dark-scope max-w-5xl mx-auto">{renderTransferView()}</div>
           </div>
         ) : !enteredClass ? (
           /* ================================================================= */
@@ -768,21 +763,21 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
             {levels.length === 0 ? (
               <div className="flex-1 flex items-center justify-center p-6">
-                <div className="w-full max-w-md bg-white border border-slate-200 rounded-xl p-8 text-center space-y-3">
-                  <div className="w-11 h-11 mx-auto rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700">
+                <div className="w-full max-w-md bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-600 rounded-xl p-8 text-center space-y-3 shadow-xs">
+                  <div className="w-11 h-11 mx-auto rounded-lg bg-slate-100 dark:bg-[#1e293b] border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-700 dark:text-slate-200">
                     <Layers className="w-5 h-5" />
                   </div>
-                  <h2 className="text-base font-bold text-slate-900">
+                  <h2 className="text-base font-bold text-slate-900 dark:text-white">
                     Aucun niveau d'étude dans {school.name}
                   </h2>
-                  <p className="text-xs text-slate-500 leading-relaxed">
+                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                     Créez votre premier niveau d'étude (ex. 6ème, Terminale, BTS 2, Licence 2) dans la barre latérale pour organiser vos classes.
                   </p>
                   <div className="pt-1">
                     <button
                       type="button"
                       onClick={onAddLevel}
-                      className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer"
+                      className="inline-flex items-center gap-1.5 px-4 h-9 rounded-lg bg-[#0f172a] hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 border border-slate-900 dark:border-blue-400/60 text-white text-xs font-semibold transition cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                       <span>Créer un niveau</span>
@@ -792,33 +787,32 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
               </div>
             ) : (
               <>
-                {/* En-tête fixe de la page Classes (recherche + bouton Nouvelle classe) */}
-                <div className="shrink-0 bg-[#f8fafc] border-b border-slate-200/80 px-4 sm:px-8 py-4">
+                <div className="shrink-0 bg-white dark:bg-[#111827] border-b border-slate-300 dark:border-slate-700 px-4 sm:px-8 py-3.5">
                   <div className="max-w-6xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                     <div>
-                      <h1 className="text-lg font-bold text-slate-900 tracking-tight">
+                      <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight">
                         {activeLevel?.name}
                       </h1>
-                      <p className="text-xs text-slate-500 mt-0.5">
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                         {levelClasses.length} classe{levelClasses.length > 1 ? 's' : ''} enregistrée{levelClasses.length > 1 ? 's' : ''} — cliquez sur une classe pour ouvrir ses trimestres et matières.
                       </p>
                     </div>
 
                     <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                       <div className="relative flex-1 sm:w-60">
-                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <Search className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                         <input
                           type="text"
                           value={classSearch}
                           onChange={(e) => setClassSearch(e.target.value)}
                           placeholder="Rechercher une classe..."
-                          className="w-full h-8 pl-8 pr-7 rounded-lg bg-white border border-slate-200 focus:border-[#0051c3] text-xs text-slate-800 placeholder:text-slate-400 outline-none transition"
+                          className="w-full h-8 pl-8 pr-7 rounded-lg bg-slate-50 dark:bg-[#1e293b] focus:bg-white dark:focus:bg-[#161f33] border border-slate-300 dark:border-slate-600 focus:border-[#0051c3] dark:focus:border-blue-400 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 outline-none transition"
                         />
                         {classSearch && (
                           <button
                             type="button"
                             onClick={() => setClassSearch('')}
-                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer"
                           >
                             <X className="w-3 h-3" />
                           </button>
@@ -828,7 +822,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                       <button
                         type="button"
                         onClick={onAddClass}
-                        className="h-8 px-3 rounded-lg bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                        className="h-8 px-3 rounded-lg bg-[#0f172a] hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 border border-slate-900 dark:border-blue-400/60 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shrink-0"
                       >
                         <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                         <span>Nouvelle classe</span>
@@ -837,31 +831,30 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                   </div>
                 </div>
 
-                {/* Grille des classes : horizontale, retour automatique à la ligne, défilement vertical */}
-                <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
+                <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-6">
                   <div className="max-w-6xl mx-auto">
                     {levelClasses.length === 0 ? (
-                      <div className="bg-white border border-dashed border-slate-300 rounded-xl p-10 text-center space-y-2.5">
-                        <div className="w-10 h-10 mx-auto rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600">
+                      <div className="bg-white dark:bg-[#131c2e] border border-dashed border-slate-400 dark:border-slate-600 rounded-xl p-10 text-center space-y-2.5">
+                        <div className="w-10 h-10 mx-auto rounded-lg bg-slate-100 dark:bg-[#1e293b] border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300">
                           <GraduationCap className="w-5 h-5" />
                         </div>
-                        <h3 className="text-sm font-bold text-slate-900">
+                        <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                           Aucune classe dans {activeLevel?.name}
                         </h3>
-                        <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                        <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm mx-auto">
                           Créez votre première classe pour commencer à gérer ses trimestres, ses matières et ses moyennes générales.
                         </p>
                         <button
                           type="button"
                           onClick={onAddClass}
-                          className="mt-1 inline-flex items-center gap-1.5 px-3.5 h-8 rounded-lg bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer"
+                          className="mt-1 inline-flex items-center gap-1.5 px-3.5 h-8 rounded-lg bg-[#0f172a] hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-semibold transition cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                           <span>Créer une classe</span>
                         </button>
                       </div>
                     ) : filteredClasses.length === 0 ? (
-                      <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-xs font-medium text-slate-500">
+                      <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-600 rounded-xl p-8 text-center text-xs font-medium text-slate-600 dark:text-slate-400">
                         Aucune classe ne correspond à « {classSearch} ».
                       </div>
                     ) : (
@@ -880,24 +873,23 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                               key={cls.id}
                               data-popover-avoid="true"
                               onClick={() => onEnterClass(cls)}
-                              className="group relative bg-white hover:bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-4 flex flex-col justify-between min-h-[126px] transition cursor-pointer overflow-hidden hover:shadow-xs"
+                              className="group relative bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-600 hover:border-slate-500 dark:hover:border-blue-400 rounded-xl p-4 flex flex-col justify-between min-h-[126px] transition cursor-pointer overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.05)] hover:shadow-sm"
                             >
-                              {/* Fin repère de couleur discret (3px) — sans effet 3D ni surcharge */}
                               <div
-                                className="absolute left-0 top-0 bottom-0 w-[3px]"
+                                className="absolute left-0 top-0 bottom-0 w-[3.5px]"
                                 style={{ backgroundColor: accent }}
                               />
 
-                              <div className="flex items-start justify-between gap-2 pl-1">
+                              <div className="flex items-start justify-between gap-2 pl-1.5">
                                 <div className="min-w-0">
-                                  <div className="text-[10.5px] font-semibold text-slate-400 uppercase tracking-wide truncate">
+                                  <div className="text-[10.5px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide truncate">
                                     {cls.level}
                                   </div>
-                                  <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#0051c3] transition truncate mt-0.5">
+                                  <h3 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-[#0051c3] dark:group-hover:text-blue-300 transition truncate mt-0.5">
                                     {formatClassDisplayTitle(cls)}
                                   </h3>
                                   {cls.teacherName?.trim() && (
-                                    <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                                    <div className="text-[11px] text-slate-600 dark:text-slate-400 truncate mt-0.5">
                                       {cls.teacherName.trim()}
                                     </div>
                                   )}
@@ -906,24 +898,20 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                                 <button
                                   type="button"
                                   onClick={(e) => onOpenMenu(e, 'class', cls)}
-                                  className="card-menu-trigger w-7 h-7 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-800 flex items-center justify-center transition cursor-pointer shrink-0"
+                                  className="card-menu-trigger w-7 h-7 rounded-md border border-transparent hover:border-slate-300 dark:hover:border-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition cursor-pointer shrink-0"
                                   title={`Options de ${formatClassDisplayTitle(cls)}`}
                                 >
                                   <MoreHorizontal className="w-4 h-4" />
                                 </button>
                               </div>
 
-                              <div className="mt-4 pt-2.5 border-t border-slate-100 pl-1 flex items-center justify-between text-[11px]">
-                                <div className="flex items-center gap-2 text-slate-500 font-medium">
-                                  <span>
-                                    {termCount} trim.
-                                  </span>
-                                  <span className="text-slate-300">•</span>
-                                  <span>
-                                    {subjCount} mat.
-                                  </span>
+                              <div className="mt-4 pt-2.5 border-t border-slate-200 dark:border-slate-700 pl-1.5 flex items-center justify-between text-[11px]">
+                                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 font-medium">
+                                  <span>{termCount} trim.</span>
+                                  <span className="text-slate-400 dark:text-slate-600">•</span>
+                                  <span>{subjCount} mat.</span>
                                 </div>
-                                <span className="inline-flex items-center gap-1 font-semibold text-slate-600 group-hover:text-[#0051c3] transition">
+                                <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200 group-hover:text-[#0051c3] dark:group-hover:text-blue-300 transition">
                                   <span>Ouvrir</span>
                                   <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                                 </span>
@@ -944,21 +932,19 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
           /* Trimestres FIXES en haut | Matières défilent SOUS les trimestres  */
           /* ================================================================= */
           <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-            {/* BANDEAU FIXE EN HAUT : EN-TÊTE CLASSE + BARRE HORIZONTALE DES TRIMESTRES */}
-            <div className="shrink-0 bg-white border-b border-slate-200 px-4 sm:px-8 pt-4 pb-3 z-10 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+            <div className="shrink-0 bg-white dark:bg-[#111827] border-b border-slate-300 dark:border-slate-700 px-4 sm:px-8 pt-3.5 pb-3 z-10 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
               <div className="max-w-6xl mx-auto space-y-3">
-                {/* Ligne 1 : Titre de la classe + Recherche matière + Bouton + Matière */}
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h1 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight truncate">
+                      <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight truncate">
                         {formatClassDisplayTitle(enteredClass)}
                       </h1>
-                      <span className="text-[11px] font-medium text-slate-500 bg-slate-100 border border-slate-200 px-2 py-0.5 rounded-md">
+                      <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 bg-slate-100 dark:bg-[#1e293b] border border-slate-300 dark:border-slate-600 px-2 py-0.5 rounded-md">
                         {enteredClass.level}
                       </span>
                       {enteredClass.teacherName?.trim() && (
-                        <span className="text-xs text-slate-500 hidden sm:inline truncate">
+                        <span className="text-xs text-slate-600 dark:text-slate-400 hidden sm:inline truncate">
                           · {enteredClass.teacherName.trim()}
                         </span>
                       )}
@@ -967,19 +953,19 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
 
                   <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
                     <div className="relative flex-1 sm:w-56">
-                      <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                      <Search className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                       <input
                         type="text"
                         value={subjectSearch}
                         onChange={(e) => setSubjectSearch(e.target.value)}
                         placeholder="Rechercher une matière..."
-                        className="w-full h-8 pl-8 pr-7 rounded-lg bg-[#f8fafc] focus:bg-white border border-slate-200 focus:border-[#0051c3] text-xs text-slate-800 placeholder:text-slate-400 outline-none transition"
+                        className="w-full h-8 pl-8 pr-7 rounded-lg bg-slate-50 dark:bg-[#1e293b] focus:bg-white dark:focus:bg-[#161f33] border border-slate-300 dark:border-slate-600 focus:border-[#0051c3] dark:focus:border-blue-400 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 outline-none transition"
                       />
                       {subjectSearch && (
                         <button
                           type="button"
                           onClick={() => setSubjectSearch('')}
-                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 cursor-pointer"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer"
                         >
                           <X className="w-3 h-3" />
                         </button>
@@ -990,7 +976,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                       type="button"
                       onClick={onAddSubject}
                       disabled={!activeTerm}
-                      className="h-8 px-3 rounded-lg bg-[#0f172a] hover:bg-slate-800 disabled:opacity-45 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shrink-0"
+                      className="h-8 px-3 rounded-lg bg-[#0f172a] hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 border border-slate-900 dark:border-blue-400/60 disabled:opacity-45 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shrink-0"
                     >
                       <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                       <span>Nouvelle matière</span>
@@ -998,8 +984,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                   </div>
                 </div>
 
-                {/* Ligne 2 : Barre horizontale FIXE des Trimestres (ne bouge pas quand les matières défilent) */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                {/* Barre horizontale FIXE des Trimestres */}
+                <div className="flex items-center gap-2 overflow-x-auto pb-0.5 scrollbar-none">
                   {classTerms.map((term) => {
                     const isSelected = activeTerm?.id === term.id;
                     const hasCoeff =
@@ -1011,13 +997,15 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                         onClick={() => onSelectTerm(term.id)}
                         className={`group shrink-0 h-8 pl-3 pr-1.5 rounded-lg border text-xs flex items-center gap-1.5 transition cursor-pointer ${
                           isSelected
-                            ? 'bg-[#eff6ff] border-[#0051c3] text-[#0051c3] font-semibold'
-                            : 'bg-white hover:bg-slate-50 border-slate-200 hover:border-slate-300 text-slate-700 font-medium'
+                            ? 'bg-[#eff6ff] dark:bg-blue-500/20 border-[#0051c3] dark:border-blue-400 text-[#0051c3] dark:text-blue-200 font-semibold'
+                            : 'bg-white dark:bg-[#161f33] hover:bg-slate-50 dark:hover:bg-slate-800 border-slate-300 dark:border-slate-600 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 font-medium'
                         }`}
                       >
                         <span
                           className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                            isSelected ? 'bg-[#0051c3]' : 'bg-slate-300'
+                            isSelected
+                              ? 'bg-[#0051c3] dark:bg-blue-400'
+                              : 'bg-slate-400 dark:bg-slate-500'
                           }`}
                         />
                         <span className="whitespace-nowrap">{term.name}</span>
@@ -1025,8 +1013,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                           <span
                             className={`text-[10px] font-semibold px-1.5 py-0.2 rounded border whitespace-nowrap ${
                               isSelected
-                                ? 'bg-white/80 text-[#0051c3] border-blue-200'
-                                : 'bg-slate-50 text-slate-600 border-slate-200'
+                                ? 'bg-white/90 dark:bg-blue-950/60 text-[#0051c3] dark:text-blue-200 border-blue-300 dark:border-blue-500/60'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600'
                             }`}
                           >
                             Coeff {term.coefficient}
@@ -1037,8 +1025,8 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                           onClick={(e) => onOpenMenu(e, 'term', term)}
                           className={`card-menu-trigger w-5 h-5 rounded flex items-center justify-center transition cursor-pointer ${
                             isSelected
-                              ? 'text-[#0051c3]/70 hover:text-[#0051c3] hover:bg-blue-100'
-                              : 'text-slate-400 hover:text-slate-800 hover:bg-slate-100'
+                              ? 'text-[#0051c3] dark:text-blue-200 hover:bg-blue-100 dark:hover:bg-blue-900/50'
+                              : 'text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-slate-700'
                           }`}
                           title={`Options du ${term.name}`}
                         >
@@ -1048,12 +1036,11 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                     );
                   })}
 
-                  {/* Bouton plat "+ Trimestre" (connecté au popover existant avec coefficient facultatif) */}
                   <button
                     ref={addTermBtnRef}
                     type="button"
                     onClick={onToggleAddTermPopover}
-                    className="add-term-trigger shrink-0 h-8 px-2.5 rounded-lg border border-dashed border-slate-300 hover:border-slate-400 bg-white hover:bg-slate-50 text-slate-600 hover:text-slate-900 text-xs font-medium inline-flex items-center gap-1 transition cursor-pointer"
+                    className="add-term-trigger shrink-0 h-8 px-2.5 rounded-lg border border-dashed border-slate-400 dark:border-slate-500 hover:border-slate-600 dark:hover:border-slate-300 bg-white dark:bg-[#161f33] hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 text-xs font-semibold inline-flex items-center gap-1 transition cursor-pointer"
                     title={`Ajouter le Trimestre ${nextTermNumber}`}
                   >
                     <Plus className="w-3.5 h-3.5" />
@@ -1063,51 +1050,50 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
               </div>
             </div>
 
-            {/* ZONE DÉFILABLE DES MATIÈRES (PASSE SOUS LES TRIMESTRES QUI RESTENT FIXES) */}
-            <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-6">
+            {/* ZONE DÉFILABLE DES MATIÈRES */}
+            <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-6">
               <div className="max-w-6xl mx-auto">
                 {!activeTerm ? (
-                  <div className="bg-white border border-dashed border-slate-300 rounded-xl p-10 text-center space-y-2.5">
-                    <h3 className="text-sm font-bold text-slate-900">
+                  <div className="bg-white dark:bg-[#131c2e] border border-dashed border-slate-400 dark:border-slate-600 rounded-xl p-10 text-center space-y-2.5">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                       Aucun trimestre dans cette classe
                     </h3>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-xs text-slate-600 dark:text-slate-400">
                       Ajoutez un trimestre ci-dessus pour pouvoir créer vos matières.
                     </p>
                   </div>
                 ) : termSubjects.length === 0 ? (
-                  <div className="bg-white border border-dashed border-slate-300 rounded-xl p-10 text-center space-y-2.5">
-                    <div className="w-10 h-10 mx-auto rounded-lg bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600">
+                  <div className="bg-white dark:bg-[#131c2e] border border-dashed border-slate-400 dark:border-slate-600 rounded-xl p-10 text-center space-y-2.5">
+                    <div className="w-10 h-10 mx-auto rounded-lg bg-slate-100 dark:bg-[#1e293b] border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300">
                       <BookOpen className="w-5 h-5" />
                     </div>
-                    <h3 className="text-sm font-bold text-slate-900">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
                       Aucune matière dans {activeTerm.name}
                     </h3>
-                    <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm mx-auto">
                       Créez les matières de ce trimestre (avec leur coefficient facultatif) pour saisir vos notes et calculer automatiquement les moyennes.
                     </p>
                     <button
                       type="button"
                       onClick={onAddSubject}
-                      className="mt-1 inline-flex items-center gap-1.5 px-3.5 h-8 rounded-lg bg-[#0f172a] hover:bg-slate-800 text-white text-xs font-semibold transition cursor-pointer"
+                      className="mt-1 inline-flex items-center gap-1.5 px-3.5 h-8 rounded-lg bg-[#0f172a] hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-semibold transition cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
                       <span>Ajouter une matière</span>
                     </button>
                   </div>
                 ) : filteredSubjects.length === 0 ? (
-                  <div className="bg-white border border-slate-200 rounded-xl p-8 text-center text-xs font-medium text-slate-500">
+                  <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-600 rounded-xl p-8 text-center text-xs font-medium text-slate-600 dark:text-slate-400">
                     Aucune matière ne correspond à « {subjectSearch} ».
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-500">
+                    <div className="flex items-center justify-between text-[11px] font-semibold text-slate-600 dark:text-slate-400">
                       <span>
                         Matières · {activeTerm.name} ({filteredSubjects.length})
                       </span>
                     </div>
 
-                    {/* Grille horizontale avec retour automatique à la ligne & défilement vertical illimité */}
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
                       {filteredSubjects.map((subject) => {
                         const accent = getSafeAccentColor(subject.color);
@@ -1122,26 +1108,25 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                             key={subject.id}
                             data-popover-avoid="true"
                             onClick={() => onOpenSubject(subject)}
-                            className="group relative bg-white hover:bg-white border border-slate-200 hover:border-slate-300 rounded-xl p-4 flex flex-col justify-between min-h-[116px] transition cursor-pointer overflow-hidden hover:shadow-xs"
+                            className="group relative bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-600 hover:border-slate-500 dark:hover:border-blue-400 rounded-xl p-4 flex flex-col justify-between min-h-[116px] transition cursor-pointer overflow-hidden shadow-[0_1px_2px_rgba(15,23,42,0.05)] hover:shadow-sm"
                           >
-                            {/* Repère de couleur ultra-sobre de 3px (respecte les couleurs existantes sans surcharge) */}
                             <div
-                              className="absolute left-0 top-0 bottom-0 w-[3px]"
+                              className="absolute left-0 top-0 bottom-0 w-[3.5px]"
                               style={{ backgroundColor: accent }}
                             />
 
-                            <div className="flex items-start justify-between gap-2 pl-1">
+                            <div className="flex items-start justify-between gap-2 pl-1.5">
                               <div className="min-w-0">
-                                <h3 className="text-sm font-bold text-slate-900 group-hover:text-[#0051c3] transition line-clamp-2 leading-snug">
+                                <h3 className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-[#0051c3] dark:group-hover:text-blue-300 transition line-clamp-2 leading-snug">
                                   {subject.name}
                                 </h3>
                                 <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                                   {hasCoeff ? (
-                                    <span className="text-[10.5px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                                    <span className="text-[10.5px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 dark:bg-[#1e293b] text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-600">
                                       Coeff {subject.coefficient}
                                     </span>
                                   ) : (
-                                    <span className="text-[10.5px] font-medium text-slate-400">
+                                    <span className="text-[10.5px] font-medium text-slate-500 dark:text-slate-400">
                                       Sans coefficient
                                     </span>
                                   )}
@@ -1151,22 +1136,22 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                               <button
                                 type="button"
                                 onClick={(e) => onOpenMenu(e, 'subject', subject)}
-                                className="card-menu-trigger w-7 h-7 rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-800 flex items-center justify-center transition cursor-pointer shrink-0"
+                                className="card-menu-trigger w-7 h-7 rounded-md border border-transparent hover:border-slate-300 dark:hover:border-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white flex items-center justify-center transition cursor-pointer shrink-0"
                                 title={`Options de ${subject.name}`}
                               >
                                 <MoreHorizontal className="w-4 h-4" />
                               </button>
                             </div>
 
-                            <div className="mt-3.5 pt-2.5 border-t border-slate-100 pl-1 flex items-center justify-between text-[11px]">
-                              <span className="text-slate-500 font-medium truncate">
+                            <div className="mt-3.5 pt-2.5 border-t border-slate-200 dark:border-slate-700 pl-1.5 flex items-center justify-between text-[11px]">
+                              <span className="text-slate-600 dark:text-slate-300 font-medium truncate">
                                 {gbStat && gbStat.namedStudentsCount > 0
                                   ? `${gbStat.namedStudentsCount} élève${
                                       gbStat.namedStudentsCount > 1 ? 's' : ''
                                     }`
                                   : 'Tableur de notes'}
                               </span>
-                              <span className="inline-flex items-center gap-1 font-semibold text-slate-600 group-hover:text-[#0051c3] transition shrink-0">
+                              <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-200 group-hover:text-[#0051c3] dark:group-hover:text-blue-300 transition shrink-0">
                                 <span>Notes</span>
                                 <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
                               </span>
@@ -1183,9 +1168,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
         )}
       </div>
 
-      {/* ===================================================================== */}
       {/* POPOVER RAPIDE "MOYENNE GÉNÉRALE" DEPUIS LA BARRE LATÉRALE DE L'ÉCOLE */}
-      {/* ===================================================================== */}
       <SmartFloatingPopover
         open={isSchoolAvgMenuOpen && !enteredClass}
         anchorEl={schoolAvgBtnRef.current}
@@ -1197,24 +1180,24 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
         dataPopoverId="school-sidebar-averages-popover"
         className="w-72 rounded-xl"
       >
-        <div className="bg-white rounded-xl border border-slate-200 shadow-xl overflow-hidden text-slate-800 select-none">
-          <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-800">
-              <FolderKanban className="w-3.5 h-3.5 text-[#0051c3]" />
+        <div className="bg-white dark:bg-[#111827] rounded-xl border border-slate-300 dark:border-slate-600 shadow-xl overflow-hidden text-slate-800 dark:text-slate-100 select-none">
+          <div className="px-3 py-2 bg-slate-50 dark:bg-[#0d1424] border-b border-slate-300 dark:border-slate-700 flex items-center justify-between">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-900 dark:text-white">
+              <FolderKanban className="w-3.5 h-3.5 text-[#0051c3] dark:text-blue-400" />
               <span>Moyennes · {activeLevel?.name || 'Classes'}</span>
             </div>
             <button
               type="button"
               onClick={() => setIsSchoolAvgMenuOpen(false)}
-              className="w-5 h-5 rounded hover:bg-slate-200 flex items-center justify-center text-slate-500 cursor-pointer"
+              className="w-5 h-5 rounded hover:bg-slate-200 dark:hover:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-300 cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="max-h-72 overflow-y-auto divide-y divide-slate-100 p-1.5">
+          <div className="max-h-72 overflow-y-auto divide-y divide-slate-200 dark:divide-slate-700 p-1.5">
             {levelClasses.length === 0 ? (
-              <div className="p-4 text-center text-xs text-slate-500">
+              <div className="p-4 text-center text-xs text-slate-500 dark:text-slate-400">
                 Aucune classe dans ce niveau.
               </div>
             ) : (
@@ -1224,7 +1207,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                 const tCards = cards.filter((c) => c.kind === 'term');
                 return (
                   <div key={cls.id} className="py-2 px-1.5 space-y-1.5">
-                    <div className="text-xs font-bold text-slate-800 truncate">
+                    <div className="text-xs font-bold text-slate-900 dark:text-white truncate">
                       {formatClassDisplayTitle(cls)}
                     </div>
                     <div className="flex items-center gap-1 flex-wrap">
@@ -1235,7 +1218,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                             setIsSchoolAvgMenuOpen(false);
                             onOpenAverageCard(annual, cls);
                           }}
-                          className="px-2 py-1 rounded-md border border-slate-200 hover:border-[#0051c3] bg-slate-50 hover:bg-[#eff6ff] text-[11px] font-semibold text-slate-700 hover:text-[#0051c3] transition cursor-pointer"
+                          className="px-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 hover:border-[#0051c3] dark:hover:border-blue-400 bg-slate-50 dark:bg-[#1e293b] hover:bg-[#eff6ff] dark:hover:bg-blue-500/20 text-[11px] font-semibold text-slate-800 dark:text-slate-100 hover:text-[#0051c3] dark:hover:text-blue-200 transition cursor-pointer"
                         >
                           Annuelle
                         </button>
@@ -1250,7 +1233,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
                               setIsSchoolAvgMenuOpen(false);
                               onOpenAverageCard(tc, cls);
                             }}
-                            className="px-2 py-1 rounded-md border border-slate-200 hover:border-[#0051c3] bg-white hover:bg-[#eff6ff] text-[11px] font-semibold text-slate-700 hover:text-[#0051c3] transition cursor-pointer"
+                            className="px-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 hover:border-[#0051c3] dark:hover:border-blue-400 bg-white dark:bg-[#161f33] hover:bg-[#eff6ff] dark:hover:bg-blue-500/20 text-[11px] font-semibold text-slate-800 dark:text-slate-100 hover:text-[#0051c3] dark:hover:text-blue-200 transition cursor-pointer"
                             title={tc.title}
                           >
                             {lt ? `T${lt.number}` : `T${i + 1}`}

@@ -2650,10 +2650,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   return (
     <div 
       ref={gradebookContainerRef}
-      className={`gradebook-gray-selection w-full flex flex-col bg-[#eef2f6] text-slate-800 font-sans select-none overflow-hidden transition-all duration-300 ${
+      className={`gradebook-gray-selection w-full flex flex-col bg-[#eef2f6] dark:bg-[#0b1120] text-slate-800 dark:text-slate-100 font-sans select-none overflow-hidden transition-all duration-300 ${
         viewerExpandLevel >= 2
-          ? 'fixed inset-0 z-50 w-screen h-screen min-h-screen'
-          : 'relative w-full h-full min-h-dvh'
+          ? 'fixed inset-0 z-[60] w-screen h-screen min-h-screen'
+          : 'relative w-full h-full min-h-0 flex-1'
       }`}
     >
       <style>{`
@@ -2666,6 +2666,21 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         .gradebook-gray-selection input::-moz-selection {
           background-color: #c6cacf;
           color: inherit;
+        }
+        .dark .gradebook-gray-selection > header,
+        .dark .gradebook-gray-selection > section,
+        .dark .gradebook-gray-selection > footer {
+          background-color: #111827 !important;
+          border-color: #334155 !important;
+          color: #e2e8f0 !important;
+        }
+        .dark .gradebook-gray-selection > header button,
+        .dark .gradebook-gray-selection > section button,
+        .dark .gradebook-gray-selection > section select {
+          border-color: #475569 !important;
+        }
+        .dark .gradebook-gray-selection > div.flex-1.overflow-auto {
+          background-color: #0b1120 !important;
         }
       `}</style>
       <input

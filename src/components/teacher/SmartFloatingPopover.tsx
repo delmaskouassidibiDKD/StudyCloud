@@ -540,34 +540,34 @@ export const SmartFloatingPopover: React.FC<SmartFloatingPopoverProps> = ({
           '0 22px 50px -10px rgba(2, 12, 27, 0.50), 0 8px 20px -4px rgba(2, 12, 27, 0.24), 0 0 0 1px rgba(15, 23, 42, 0.14)',
         ...style,
       }}
-      className={`bg-white rounded-xl border border-slate-300/95 text-slate-800 select-none ${className}`}
+      className={`teacher-dark-scope bg-white dark:bg-[#111827] rounded-xl border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-100 select-none ${className}`}
     >
       {/* Subtle directional caret pointing back to the trigger */}
       {showCaret && pos.ready && pos.caretSide === 'top' && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -top-[6px] w-2.5 h-2.5 bg-white border-l border-t border-slate-300/95 rotate-45"
+          className="pointer-events-none absolute -top-[6px] w-2.5 h-2.5 bg-white dark:bg-[#111827] border-l border-t border-slate-300 dark:border-slate-600 rotate-45"
           style={{ left: `${pos.caretOffset - 5}px` }}
         />
       )}
       {showCaret && pos.ready && pos.caretSide === 'bottom' && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -bottom-[6px] w-2.5 h-2.5 bg-white border-r border-b border-slate-300/95 rotate-45"
+          className="pointer-events-none absolute -bottom-[6px] w-2.5 h-2.5 bg-white dark:bg-[#111827] border-r border-b border-slate-300 dark:border-slate-600 rotate-45"
           style={{ left: `${pos.caretOffset - 5}px` }}
         />
       )}
       {showCaret && pos.ready && pos.caretSide === 'left' && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -left-[6px] w-2.5 h-2.5 bg-white border-l border-b border-slate-300/95 rotate-45"
+          className="pointer-events-none absolute -left-[6px] w-2.5 h-2.5 bg-white dark:bg-[#111827] border-l border-b border-slate-300 dark:border-slate-600 rotate-45"
           style={{ top: `${pos.caretOffset - 5}px` }}
         />
       )}
       {showCaret && pos.ready && pos.caretSide === 'right' && (
         <span
           aria-hidden="true"
-          className="pointer-events-none absolute -right-[6px] w-2.5 h-2.5 bg-white border-r border-t border-slate-300/95 rotate-45"
+          className="pointer-events-none absolute -right-[6px] w-2.5 h-2.5 bg-white dark:bg-[#111827] border-r border-t border-slate-300 dark:border-slate-600 rotate-45"
           style={{ top: `${pos.caretOffset - 5}px` }}
         />
       )}

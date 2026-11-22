@@ -17,7 +17,7 @@ export const HeaderMelodyControl: React.FC<HeaderMelodyControlProps> = ({
   viewMode = 'home',
   compact = false
 }) => {
-  const isDark = isDarkMode || Boolean(dashboardWallpaper && viewMode === 'home') || (typeof document !== 'undefined' && document.documentElement.classList.contains('dark'));
+  const isDark = isDarkMode || Boolean(dashboardWallpaper && viewMode === 'home');
   const {
     currentTrack,
     isAudioPlaying,
