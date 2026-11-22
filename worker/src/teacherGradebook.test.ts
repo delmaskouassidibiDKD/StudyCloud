@@ -910,3 +910,77 @@ test('Matières : création avec coefficient facultatif, modification (PUT), ret
   const { subject: s1Cleared } = await clearRes.json();
   assert.equal(s1Cleared.coefficient, undefined);
 });
+
+test('Moyenne générale par classe : auto-création (annuelle + trimestres), ajout dynamique, suppression liée au trimestre et persistance annuelle', async () => {
+  const { callApi } = createHarness();
+
+  const { year } = await (await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027' },
+  })).json();
+  const { school } = await (await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'CME' },
+  })).json();
+  const { level } = await (await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'BTS 2' },
+  })).json();
+
+  // 1. Création de classe -> crée automatiquement 1 carte annuelle + 3 cartes trimestrielles blanches
+  const clsRes = await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { levelId: level.id, name: 'Groupe 2', teacherName: 'DKD' },
+  });
+  assert.equal(clsRes.status, 201);
+  const { classItem, terms, classAverages: createdAvgs } = await clsRes.json();
+  assert.equal(createdAvgs.length, 4);
+  assert.equal(createdAvgs[0].kind, 'annual');
+  assert.equal(createdAvgs[0].title, "Moyenne générale de l'année");
+  assert.equal(createdAvgs[0].color, '#ffffff');
+  assert.equal(createdAvgs[1].kind, 'term');
+  assert.equal(createdAvgs[1].termId, terms[0].id);
+
+  // 2. Ajout de Trimestre 4 -> une nouvelle carte Moyenne générale s'ajoute automatiquement
+  const t4Res = await callApi('/api/teacher/terms', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, number: 4, name: 'Trimestre 4', coefficient: 2 },
+  });
+  assert.equal(t4Res.status, 201);
+  const { term: t4, classAverage: t4Avg } = await t4Res.json();
+  assert.equal(t4Avg.kind, 'term');
+  assert.equal(t4Avg.termId, t4.id);
+
+  const bootWith4 = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  assert.equal(bootWith4.classAverages.length, 5);
+  assert.equal(bootWith4.classAverages[0].kind, 'annual');
+
+  // Isolation multi-comptes : Bob ne voit aucune carte moyenne d'Alice
+  const bootBob = await (await callApi('/api/teacher/bootstrap', { token: 'token-bob' })).json();
+  assert.equal(bootBob.classAverages.length, 0);
+
+  // 3. Suppression de Trimestre 2 -> sa carte moyenne est supprimée, mais l'annuelle et les autres restent
+  await callApi(`/api/teacher/terms/${terms[1].id}`, { method: 'DELETE', token: 'token-alice' });
+  const bootAfterT2 = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  assert.equal(bootAfterT2.classAverages.length, 4);
+  assert.equal(bootAfterT2.classAverages.some((ca: any) => ca.termId === terms[1].id), false);
+  assert.equal(bootAfterT2.classAverages.some((ca: any) => ca.kind === 'annual'), true);
+
+  // 4. Suppression de TOUS les trimestres restants -> la carte annuelle reste toujours présente !
+  await callApi(`/api/teacher/terms/${terms[0].id}`, { method: 'DELETE', token: 'token-alice' });
+  await callApi(`/api/teacher/terms/${terms[2].id}`, { method: 'DELETE', token: 'token-alice' });
+  await callApi(`/api/teacher/terms/${t4.id}`, { method: 'DELETE', token: 'token-alice' });
+  const bootOnlyAnnual = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  assert.equal(bootOnlyAnnual.classAverages.length, 1);
+  assert.equal(bootOnlyAnnual.classAverages[0].kind, 'annual');
+
+  // 5. Suppression de la classe -> la carte annuelle est supprimée en cascade
+  await callApi(`/api/teacher/classes/${classItem.id}`, { method: 'DELETE', token: 'token-alice' });
+  const bootAfterClassDel = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  assert.equal(bootAfterClassDel.classAverages.length, 0);
+});

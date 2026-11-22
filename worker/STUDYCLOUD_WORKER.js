@@ -170,7 +170,30 @@ async function ensureTeacherGradebookTables(db) {
       FOREIGN KEY (gradebook_id) REFERENCES teacher_gradebooks(id) ON DELETE CASCADE
     )`,
     `CREATE INDEX IF NOT EXISTS idx_teacher_gb_students_gb ON teacher_gradebook_students(user_id, gradebook_id, row_order)`,
-    `CREATE INDEX IF NOT EXISTS idx_teacher_gb_students_class_term ON teacher_gradebook_students(user_id, class_id, term_id, student_uid)`
+    `CREATE INDEX IF NOT EXISTS idx_teacher_gb_students_class_term ON teacher_gradebook_students(user_id, class_id, term_id, student_uid)`,
+    `CREATE TABLE IF NOT EXISTS teacher_class_averages (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      class_id TEXT NOT NULL,
+      term_id TEXT DEFAULT NULL,
+      school_id TEXT NOT NULL,
+      year_id TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'term',
+      title TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      color TEXT NOT NULL DEFAULT '#ffffff',
+      text_color TEXT NOT NULL DEFAULT '#0f172a',
+      border_color TEXT NOT NULL DEFAULT '#e2e8f0',
+      border_dark_color TEXT NOT NULL DEFAULT '#cbd5e1',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+      FOREIGN KEY (class_id) REFERENCES teacher_classes(id) ON DELETE CASCADE,
+      FOREIGN KEY (term_id) REFERENCES teacher_terms(id) ON DELETE CASCADE,
+      FOREIGN KEY (school_id) REFERENCES teacher_schools(id) ON DELETE CASCADE,
+      FOREIGN KEY (year_id) REFERENCES teacher_school_years(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_class_avgs_user_class ON teacher_class_averages(user_id, class_id, sort_order, created_at)`
   ];
   await db.batch(statements.map((sql) => db.prepare(sql)));
   try {
@@ -503,6 +526,67 @@ async function computeGradebookStatsMap(db, userId) {
   }
   return stats;
 }
+async function syncClassAveragesForUser(db, userId, classesRows, termsRows) {
+  const existingRes = await db.prepare("SELECT * FROM teacher_class_averages WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC").bind(userId).all();
+  const existing = existingRes.results || [];
+  const validClassIds = new Set(classesRows.map((c) => String(c.id)));
+  const validTermIds = new Set(termsRows.map((t) => String(t.id)));
+  const hasAnnualByClass = /* @__PURE__ */ new Set();
+  const hasTermCard = /* @__PURE__ */ new Set();
+  const orphanIds = [];
+  for (const row of existing) {
+    if (!validClassIds.has(String(row.class_id))) {
+      orphanIds.push(String(row.id));
+      continue;
+    }
+    if (row.kind === "annual" && !row.term_id) {
+      hasAnnualByClass.add(String(row.class_id));
+    } else if (row.term_id) {
+      if (!validTermIds.has(String(row.term_id))) {
+        orphanIds.push(String(row.id));
+      } else {
+        hasTermCard.add(`${row.class_id}:${row.term_id}`);
+      }
+    }
+  }
+  const now = Date.now();
+  const stmts = [];
+  for (const oid of orphanIds) {
+    stmts.push(db.prepare("DELETE FROM teacher_class_averages WHERE id = ? AND user_id = ?").bind(oid, userId));
+  }
+  for (const cls of classesRows) {
+    if (!hasAnnualByClass.has(String(cls.id))) {
+      const id = makeId("cavg");
+      stmts.push(
+        db.prepare(
+          `INSERT INTO teacher_class_averages
+              (id, user_id, class_id, term_id, school_id, year_id, kind, title, sort_order, color, text_color, border_color, border_dark_color, created_at, updated_at)
+             VALUES (?, ?, ?, NULL, ?, ?, 'annual', ?, 0, '#ffffff', '#0f172a', '#e2e8f0', '#cbd5e1', ?, ?)`
+        ).bind(id, userId, cls.id, cls.school_id, cls.year_id, "Moyenne g\xE9n\xE9rale de l'ann\xE9e", now, now)
+      );
+    }
+  }
+  for (const t of termsRows) {
+    const key = `${t.class_id}:${t.id}`;
+    if (!hasTermCard.has(key)) {
+      const id = makeId("cavg");
+      const num = Math.max(1, Number(t.number) || 1);
+      stmts.push(
+        db.prepare(
+          `INSERT INTO teacher_class_averages
+              (id, user_id, class_id, term_id, school_id, year_id, kind, title, sort_order, color, text_color, border_color, border_dark_color, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 'term', ?, ?, '#ffffff', '#0f172a', '#e2e8f0', '#cbd5e1', ?, ?)`
+        ).bind(id, userId, t.class_id, t.id, t.school_id, t.year_id, `Moyenne g\xE9n\xE9rale \xB7 ${t.name}`, num, now + num, now)
+      );
+    }
+  }
+  if (stmts.length === 0) {
+    return existing;
+  }
+  await runBatchChunked(db, stmts, 80);
+  const refreshed = await db.prepare("SELECT * FROM teacher_class_averages WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC").bind(userId).all();
+  return refreshed.results || [];
+}
 async function buildBootstrapPayload(db, userId, origin, jwtSecret) {
   const [yearsRes, schoolsRes, levelsRes, classesRes, termsRes, subjectsRes, gradebookStats] = await Promise.all([
     db.prepare("SELECT * FROM teacher_school_years WHERE user_id = ? ORDER BY created_at ASC").bind(userId).all(),
@@ -513,6 +597,12 @@ async function buildBootstrapPayload(db, userId, origin, jwtSecret) {
     db.prepare("SELECT * FROM teacher_subjects WHERE user_id = ? ORDER BY created_at ASC").bind(userId).all(),
     computeGradebookStatsMap(db, userId)
   ]);
+  const classAveragesRows = await syncClassAveragesForUser(
+    db,
+    userId,
+    classesRes.results || [],
+    termsRes.results || []
+  );
   const schoolYears = (yearsRes.results || []).map((r) => ({
     id: r.id,
     label: r.label,
@@ -585,6 +675,21 @@ async function buildBootstrapPayload(db, userId, origin, jwtSecret) {
     borderDarkColor: r.border_dark_color || "#cbd5e1",
     createdAt: Number(r.created_at) || Date.now()
   }));
+  const classAverages = classAveragesRows.map((r) => ({
+    id: r.id,
+    classId: r.class_id,
+    termId: r.term_id || void 0,
+    schoolId: r.school_id,
+    yearId: r.year_id,
+    kind: r.kind === "annual" ? "annual" : "term",
+    title: r.title,
+    sortOrder: Number(r.sort_order) || 0,
+    color: r.color || "#ffffff",
+    textColor: r.text_color || "#0f172a",
+    borderColor: r.border_color || "#e2e8f0",
+    borderDarkColor: r.border_dark_color || "#cbd5e1",
+    createdAt: Number(r.created_at) || Date.now()
+  }));
   return {
     success: true,
     userId,
@@ -595,6 +700,7 @@ async function buildBootstrapPayload(db, userId, origin, jwtSecret) {
     classes,
     terms,
     subjects,
+    classAverages,
     gradebookStats
   };
 }
@@ -738,6 +844,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     await db.batch([
       db.prepare(`DELETE FROM teacher_gradebook_students WHERE user_id = ? AND gradebook_id IN (SELECT id FROM teacher_gradebooks WHERE year_id = ? AND user_id = ?)`).bind(userId, yearId, userId),
       db.prepare("DELETE FROM teacher_gradebooks WHERE year_id = ? AND user_id = ?").bind(yearId, userId),
+      db.prepare("DELETE FROM teacher_class_averages WHERE year_id = ? AND user_id = ?").bind(yearId, userId),
       db.prepare("DELETE FROM teacher_subjects WHERE year_id = ? AND user_id = ?").bind(yearId, userId),
       db.prepare("DELETE FROM teacher_terms WHERE year_id = ? AND user_id = ?").bind(yearId, userId),
       db.prepare("DELETE FROM teacher_classes WHERE year_id = ? AND user_id = ?").bind(yearId, userId),
@@ -870,6 +977,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     await db.batch([
       db.prepare(`DELETE FROM teacher_gradebook_students WHERE user_id = ? AND gradebook_id IN (SELECT id FROM teacher_gradebooks WHERE school_id = ? AND user_id = ?)`).bind(userId, schoolId, userId),
       db.prepare("DELETE FROM teacher_gradebooks WHERE school_id = ? AND user_id = ?").bind(schoolId, userId),
+      db.prepare("DELETE FROM teacher_class_averages WHERE school_id = ? AND user_id = ?").bind(schoolId, userId),
       db.prepare("DELETE FROM teacher_subjects WHERE school_id = ? AND user_id = ?").bind(schoolId, userId),
       db.prepare("DELETE FROM teacher_terms WHERE school_id = ? AND user_id = ?").bind(schoolId, userId),
       db.prepare("DELETE FROM teacher_classes WHERE school_id = ? AND user_id = ?").bind(schoolId, userId),
@@ -961,6 +1069,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     await db.batch([
       db.prepare(`DELETE FROM teacher_gradebook_students WHERE user_id = ? AND class_id IN (SELECT id FROM teacher_classes WHERE level_id = ? AND user_id = ?)`).bind(userId, levelId, userId),
       db.prepare(`DELETE FROM teacher_gradebooks WHERE user_id = ? AND class_id IN (SELECT id FROM teacher_classes WHERE level_id = ? AND user_id = ?)`).bind(userId, levelId, userId),
+      db.prepare(`DELETE FROM teacher_class_averages WHERE user_id = ? AND class_id IN (SELECT id FROM teacher_classes WHERE level_id = ? AND user_id = ?)`).bind(userId, levelId, userId),
       db.prepare(`DELETE FROM teacher_subjects WHERE user_id = ? AND class_id IN (SELECT id FROM teacher_classes WHERE level_id = ? AND user_id = ?)`).bind(userId, levelId, userId),
       db.prepare(`DELETE FROM teacher_terms WHERE user_id = ? AND class_id IN (SELECT id FROM teacher_classes WHERE level_id = ? AND user_id = ?)`).bind(userId, levelId, userId),
       db.prepare("DELETE FROM teacher_classes WHERE level_id = ? AND user_id = ?").bind(levelId, userId),
@@ -997,6 +1106,37 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       { id: `term-${classId}-2`, number: 2, name: "Trimestre 2", createdAt: now + 1 },
       { id: `term-${classId}-3`, number: 3, name: "Trimestre 3", createdAt: now + 2 }
     ];
+    const annualAvgCard = {
+      id: makeId("cavg"),
+      classId,
+      termId: void 0,
+      schoolId: ownLevel.school_id,
+      yearId: ownLevel.year_id,
+      kind: "annual",
+      title: "Moyenne g\xE9n\xE9rale de l'ann\xE9e",
+      sortOrder: 0,
+      color: "#ffffff",
+      textColor: "#0f172a",
+      borderColor: "#e2e8f0",
+      borderDarkColor: "#cbd5e1",
+      createdAt: now
+    };
+    const termAvgCards = defaultTerms.map((t) => ({
+      id: makeId("cavg"),
+      classId,
+      termId: t.id,
+      schoolId: ownLevel.school_id,
+      yearId: ownLevel.year_id,
+      kind: "term",
+      title: `Moyenne g\xE9n\xE9rale \xB7 ${t.name}`,
+      sortOrder: t.number,
+      color: "#ffffff",
+      textColor: "#0f172a",
+      borderColor: "#e2e8f0",
+      borderDarkColor: "#cbd5e1",
+      createdAt: t.createdAt
+    }));
+    const allClassAverages = [annualAvgCard, ...termAvgCards];
     const stmts = [
       db.prepare(
         `INSERT INTO teacher_classes
@@ -1025,6 +1165,29 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
           `INSERT INTO teacher_terms (id, user_id, class_id, school_id, year_id, number, name, created_at, updated_at)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(t.id, userId, classId, ownLevel.school_id, ownLevel.year_id, t.number, t.name, t.createdAt, now)
+      ),
+      ...allClassAverages.map(
+        (ca) => db.prepare(
+          `INSERT INTO teacher_class_averages
+              (id, user_id, class_id, term_id, school_id, year_id, kind, title, sort_order, color, text_color, border_color, border_dark_color, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(
+          ca.id,
+          userId,
+          ca.classId,
+          ca.termId ?? null,
+          ca.schoolId,
+          ca.yearId,
+          ca.kind,
+          ca.title,
+          ca.sortOrder,
+          ca.color,
+          ca.textColor,
+          ca.borderColor,
+          ca.borderDarkColor,
+          ca.createdAt,
+          now
+        )
       )
     ];
     await db.batch(stmts);
@@ -1054,7 +1217,8 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         number: t.number,
         name: t.name,
         createdAt: t.createdAt
-      }))
+      })),
+      classAverages: allClassAverages
     }, 201, origin);
   }
   const classItemMatch = path.match(/^\/api\/teacher\/classes\/([^/]+)$/);
@@ -1106,6 +1270,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     await db.batch([
       db.prepare("DELETE FROM teacher_gradebook_students WHERE class_id = ? AND user_id = ?").bind(classId, userId),
       db.prepare("DELETE FROM teacher_gradebooks WHERE class_id = ? AND user_id = ?").bind(classId, userId),
+      db.prepare("DELETE FROM teacher_class_averages WHERE class_id = ? AND user_id = ?").bind(classId, userId),
       db.prepare("DELETE FROM teacher_subjects WHERE class_id = ? AND user_id = ?").bind(classId, userId),
       db.prepare("DELETE FROM teacher_terms WHERE class_id = ? AND user_id = ?").bind(classId, userId),
       db.prepare("DELETE FROM teacher_classes WHERE id = ? AND user_id = ?").bind(classId, userId)
@@ -1125,10 +1290,32 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     const coefficient = coeffRaw !== null && Number.isFinite(coeffRaw) && coeffRaw > 0 ? coeffRaw : null;
     const now = Date.now();
     const id = await resolveSafeNewId(db, "teacher_terms", body.id, "term");
-    await db.prepare(
-      `INSERT INTO teacher_terms (id, user_id, class_id, school_id, year_id, number, name, coefficient, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    ).bind(id, userId, classId, ownClass.school_id, ownClass.year_id, number, name, coefficient, now, now).run();
+    const classAverage = {
+      id: makeId("cavg"),
+      classId,
+      termId: id,
+      schoolId: ownClass.school_id,
+      yearId: ownClass.year_id,
+      kind: "term",
+      title: `Moyenne g\xE9n\xE9rale \xB7 ${name}`,
+      sortOrder: number,
+      color: "#ffffff",
+      textColor: "#0f172a",
+      borderColor: "#e2e8f0",
+      borderDarkColor: "#cbd5e1",
+      createdAt: now
+    };
+    await db.batch([
+      db.prepare(
+        `INSERT INTO teacher_terms (id, user_id, class_id, school_id, year_id, number, name, coefficient, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(id, userId, classId, ownClass.school_id, ownClass.year_id, number, name, coefficient, now, now),
+      db.prepare(
+        `INSERT INTO teacher_class_averages
+            (id, user_id, class_id, term_id, school_id, year_id, kind, title, sort_order, color, text_color, border_color, border_dark_color, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, 'term', ?, ?, '#ffffff', '#0f172a', '#e2e8f0', '#cbd5e1', ?, ?)`
+      ).bind(classAverage.id, userId, classId, id, ownClass.school_id, ownClass.year_id, classAverage.title, number, now, now)
+    ]);
     return jsonResponse2({
       success: true,
       term: {
@@ -1140,7 +1327,8 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         name,
         coefficient: coefficient ?? void 0,
         createdAt: now
-      }
+      },
+      classAverage
     }, 201, origin);
   }
   const termItemMatch = path.match(/^\/api\/teacher\/terms\/([^/]+)$/);
@@ -1161,11 +1349,18 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       }
     }
     const now = Date.now();
-    await db.prepare(
-      `UPDATE teacher_terms
-         SET name = ?, coefficient = ?, updated_at = ?
-         WHERE id = ? AND user_id = ?`
-    ).bind(name, coefficient, now, termId, userId).run();
+    await db.batch([
+      db.prepare(
+        `UPDATE teacher_terms
+           SET name = ?, coefficient = ?, updated_at = ?
+           WHERE id = ? AND user_id = ?`
+      ).bind(name, coefficient, now, termId, userId),
+      db.prepare(
+        `UPDATE teacher_class_averages
+           SET title = ?, updated_at = ?
+           WHERE term_id = ? AND user_id = ? AND kind = 'term'`
+      ).bind(`Moyenne g\xE9n\xE9rale \xB7 ${name}`, now, termId, userId)
+    ]);
     return jsonResponse2({
       success: true,
       term: {
@@ -1189,6 +1384,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     await db.batch([
       db.prepare("DELETE FROM teacher_gradebook_students WHERE term_id = ? AND user_id = ?").bind(termId, userId),
       db.prepare("DELETE FROM teacher_gradebooks WHERE term_id = ? AND user_id = ?").bind(termId, userId),
+      db.prepare("DELETE FROM teacher_class_averages WHERE term_id = ? AND user_id = ?").bind(termId, userId),
       db.prepare("DELETE FROM teacher_subjects WHERE term_id = ? AND user_id = ?").bind(termId, userId),
       db.prepare("DELETE FROM teacher_terms WHERE id = ? AND user_id = ?").bind(termId, userId)
     ]);
@@ -1977,7 +2173,32 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       }
       gradebooksCopied++;
     }
-    const gradebookStats = await computeGradebookStatsMap(db, userId);
+    const [classesAfterTransfer, termsAfterTransfer, gradebookStats] = await Promise.all([
+      db.prepare("SELECT * FROM teacher_classes WHERE user_id = ? ORDER BY created_at ASC").bind(userId).all(),
+      db.prepare("SELECT * FROM teacher_terms WHERE user_id = ? ORDER BY number ASC, created_at ASC").bind(userId).all(),
+      computeGradebookStatsMap(db, userId)
+    ]);
+    const syncedAveragesRows = await syncClassAveragesForUser(
+      db,
+      userId,
+      classesAfterTransfer.results || [],
+      termsAfterTransfer.results || []
+    );
+    const classAverages = syncedAveragesRows.map((r) => ({
+      id: r.id,
+      classId: r.class_id,
+      termId: r.term_id || void 0,
+      schoolId: r.school_id,
+      yearId: r.year_id,
+      kind: r.kind === "annual" ? "annual" : "term",
+      title: r.title,
+      sortOrder: Number(r.sort_order) || 0,
+      color: r.color || "#ffffff",
+      textColor: r.text_color || "#0f172a",
+      borderColor: r.border_color || "#e2e8f0",
+      borderDarkColor: r.border_dark_color || "#cbd5e1",
+      createdAt: Number(r.created_at) || Date.now()
+    }));
     return jsonResponse2({
       success: true,
       serverSummary: {
@@ -1986,6 +2207,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         notesCopied,
         photosCopied
       },
+      classAverages,
       gradebookStats
     }, 200, origin);
   }

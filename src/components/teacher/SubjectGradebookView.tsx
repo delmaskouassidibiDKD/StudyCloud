@@ -77,6 +77,12 @@ interface SubjectGradebookViewProps {
   userId?: string;
   onGradebookSynced?: () => void;
   onBack: () => void;
+  /** Mode maquette / non connecté à la base de données (ex: aperçu Moyenne générale en cours d'adaptation) */
+  disableCloudPersistence?: boolean;
+  /** Libellé personnalisé pour la feuille active en bas (ex: "Moyenne générale de l'année") */
+  customSheetLabel?: string;
+  /** Badge période personnalisé en haut (ex: "Annuelle" ou "Trimestre 1") */
+  customPeriodBadge?: string;
 }
 
 // Métadonnées d'une colonne de notes (intitulé, barème max, coefficient d'évaluation, couleurs)
@@ -303,6 +309,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   userId,
   onGradebookSynced,
   onBack,
+  disableCloudPersistence = false,
+  customSheetLabel,
+  customPeriodBadge,
 }) => {
   const viewerExpandLevel = useViewerExpandLevel();
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
@@ -310,8 +319,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const effectiveTermId = term?.id || subject.termId || 't1';
   const effectiveUserId = userId || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') || '' : '');
   const initialCachedSheet = useMemo(
-    () => (effectiveUserId ? readUserGradebookCache(effectiveUserId, subject.id, effectiveTermId) : null),
-    [effectiveUserId, subject.id, effectiveTermId]
+    () => (!disableCloudPersistence && effectiveUserId ? readUserGradebookCache(effectiveUserId, subject.id, effectiveTermId) : null),
+    [disableCloudPersistence, effectiveUserId, subject.id, effectiveTermId]
   );
 
   // Référence du conteneur de défilement
@@ -531,12 +540,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   });
 
   // Nom de la feuille active (1 tableur complet par matière & trimestre)
-  const activeSheetLabel = `${term?.name || 'Trimestre 1'} · ${subject.name}`;
+  const activeSheetLabel = customSheetLabel || `${term?.name || 'Trimestre 1'} · ${subject.name}`;
 
   // État de sauvegarde cloud D1 + R2 (automatique + bouton manuel "Enregistrer")
   const [isSaved, setIsSaved] = useState<boolean>(true);
   const [cloudSaveStatus, setCloudSaveStatus] = useState<'loading' | 'saved' | 'saving' | 'offline' | 'error'>(() =>
-    typeof navigator !== 'undefined' && navigator.onLine === false
+    disableCloudPersistence
+      ? 'saved'
+      : typeof navigator !== 'undefined' && navigator.onLine === false
       ? 'offline'
       : getTeacherAuthToken()
       ? 'loading'
@@ -610,6 +621,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     if (debounceTimerRef.current !== null) {
       window.clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
+    }
+    if (disableCloudPersistence) {
+      hasPendingCloudChangesRef.current = false;
+      setIsSaved(true);
+      setCloudSaveStatus('saved');
+      return;
     }
     if (!latestPayloadRef.current) return;
     if (!opts?.force && !hasPendingCloudChangesRef.current) return;
@@ -705,7 +722,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     skipNextAutoSaveRef.current = true;
 
     const loadFromCloud = async () => {
-      if (!getTeacherAuthToken()) {
+      if (disableCloudPersistence || !getTeacherAuthToken()) {
         hasHydratedRef.current = true;
         setCloudSaveStatus('saved');
         return;
@@ -810,6 +827,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   // 2. Auto-sauvegarde fluide (cache isolé par userId immédiat + envoi D1 groupé 650 ms)
   useEffect(() => {
+    if (disableCloudPersistence) return;
     if (effectiveUserId) {
       writeUserGradebookCache(effectiveUserId, subject.id, effectiveTermId, currentPayload);
     }
@@ -1601,7 +1619,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       setIsSaved(false);
 
       // Envoi binaire compressé vers Cloudflare R2 (teacher-student-photos/{user_id}/...)
-      if (getTeacherAuthToken()) {
+      if (!disableCloudPersistence && getTeacherAuthToken()) {
         const uploaded = await TeacherGradebookAPI.uploadStudentPhoto({
           subjectId: subject.id,
           termId: effectiveTermId,
@@ -2617,8 +2635,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               </span>
               <span className="text-slate-400 font-normal hidden md:inline">•</span>
               <span className="text-cyan-800 font-bold bg-cyan-50 px-2 py-0.5 rounded text-[10px] border border-cyan-200/80 hidden md:inline-block shrink-0">
-                {term?.name || 'Trimestre 1'}
-                {term?.coefficient !== undefined && term?.coefficient !== null ? ` · Coeff ${term.coefficient}` : ''}
+                {customPeriodBadge || (
+                  <>
+                    {term?.name || 'Trimestre 1'}
+                    {term?.coefficient !== undefined && term?.coefficient !== null ? ` · Coeff ${term.coefficient}` : ''}
+                  </>
+                )}
               </span>
             </div>
           </div>
@@ -4398,7 +4420,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                         const oldKey = std.photoR2Key;
                                         setStudents(prev => prev.map(s => s.id === std.id ? { ...s, photoUrl: undefined, photoR2Key: undefined } : s));
                                         setIsSaved(false);
-                                        if (getTeacherAuthToken() && oldKey) {
+                                        if (!disableCloudPersistence && getTeacherAuthToken() && oldKey) {
                                           TeacherGradebookAPI.deleteStudentPhoto({
                                             subjectId: subject.id,
                                             termId: effectiveTermId,

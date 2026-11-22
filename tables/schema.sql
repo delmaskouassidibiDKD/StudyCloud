@@ -1151,6 +1151,30 @@ CREATE TABLE IF NOT EXISTS teacher_gradebook_students (
 CREATE INDEX IF NOT EXISTS idx_teacher_gb_students_gb ON teacher_gradebook_students(user_id, gradebook_id, row_order);
 CREATE INDEX IF NOT EXISTS idx_teacher_gb_students_class_term ON teacher_gradebook_students(user_id, class_id, term_id, student_uid);
 
+CREATE TABLE IF NOT EXISTS teacher_class_averages (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    class_id TEXT NOT NULL,
+    term_id TEXT DEFAULT NULL,
+    school_id TEXT NOT NULL,
+    year_id TEXT NOT NULL,
+    kind TEXT NOT NULL DEFAULT 'term',
+    title TEXT NOT NULL,
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    color TEXT NOT NULL DEFAULT '#ffffff',
+    text_color TEXT NOT NULL DEFAULT '#0f172a',
+    border_color TEXT NOT NULL DEFAULT '#e2e8f0',
+    border_dark_color TEXT NOT NULL DEFAULT '#cbd5e1',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (class_id) REFERENCES teacher_classes(id) ON DELETE CASCADE,
+    FOREIGN KEY (term_id) REFERENCES teacher_terms(id) ON DELETE CASCADE,
+    FOREIGN KEY (school_id) REFERENCES teacher_schools(id) ON DELETE CASCADE,
+    FOREIGN KEY (year_id) REFERENCES teacher_school_years(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_teacher_class_avgs_user_class ON teacher_class_averages(user_id, class_id, sort_order, created_at);
+
 
 
 

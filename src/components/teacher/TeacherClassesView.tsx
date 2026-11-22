@@ -42,6 +42,7 @@ import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import { DnaLogo } from '../DnaLogo';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
 import { SubjectGradebookView } from './SubjectGradebookView';
+import { ClassAverageSheetView } from './ClassAverageSheetView';
 import { TeacherTransferView } from './TeacherTransferView';
 import { TeacherAnimatedBackground } from './TeacherAnimatedBackground';
 import { SmartFloatingPopover } from './SmartFloatingPopover';
@@ -139,6 +140,22 @@ export interface SubjectItem {
   name: string; // Nom de la matière (ex: Mathématiques)
   coefficient?: number; // Coefficient (facultatif, ex: 3, 2, 1)
   color: string; // hex couleur (Blanc par défaut si non choisi)
+  textColor: string;
+  borderColor: string;
+  borderDarkColor: string;
+  createdAt: number;
+}
+
+export interface ClassAverageCardItem {
+  id: string;
+  classId: string;
+  termId?: string; // Absent pour la carte annuelle ("Moyenne générale de l'année"), présent pour chaque trimestre
+  schoolId: string;
+  yearId: string;
+  kind: 'annual' | 'term';
+  title: string;
+  sortOrder: number;
+  color: string;
   textColor: string;
   borderColor: string;
   borderDarkColor: string;
@@ -626,6 +643,21 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   // Matière sélectionnée dans laquelle on est "rentré" à l'intérieur pour afficher le tableur de notes & moyennes
   const [selectedSubjectInside, setSelectedSubjectInside] = useState<SubjectItem | null>(null);
 
+  // Cartes de calcul de moyenne générale par classe (annuelle + 1 par trimestre, synchronisées en base)
+  const [classAverages, setClassAverages] = useState<ClassAverageCardItem[]>(() => initialCloudCache?.classAverages || []);
+  const [selectedAverageCardInside, setSelectedAverageCardInside] = useState<ClassAverageCardItem | null>(null);
+  const classAveragesScrollRef = useRef<HTMLDivElement>(null);
+
+  const scrollClassAverages = (direction: 'left' | 'right') => {
+    if (classAveragesScrollRef.current) {
+      const scrollAmount = 260;
+      classAveragesScrollRef.current.scrollBy({
+        left: direction === 'left' ? -scrollAmount : scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
   // Chargement complet & isolation stricte par compte depuis Cloudflare D1 (démarrage vierge à ZÉRO — aucune année pré-créée)
   const loadFromCloudD1 = useCallback(async () => {
     // Nettoyer définitivement toute ancienne donnée locale non scopée héritée du code précédent
@@ -654,6 +686,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setClasses(data.classes);
       setTerms(data.terms);
       setSubjects(data.subjects);
+      setClassAverages(data.classAverages || []);
       setServerGradebookStats(data.gradebookStats || {});
       setSelectedYearId((prev) =>
         prev && data.schoolYears.some((y) => y.id === prev) ? prev : data.schoolYears[0]?.id || ''
@@ -704,6 +737,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setClasses(synced.classes);
       setTerms(synced.terms);
       setSubjects(synced.subjects);
+      setClassAverages(synced.classAverages || []);
       setServerGradebookStats(synced.gradebookStats || {});
       setSelectedYearId((prev) =>
         prev && synced.schoolYears.some((y) => y.id === prev) ? prev : synced.schoolYears[0]?.id || ''
@@ -727,10 +761,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setClasses(nextCache?.classes || []);
       setTerms(nextCache?.terms || []);
       setSubjects(nextCache?.subjects || []);
+      setClassAverages(nextCache?.classAverages || []);
       setServerGradebookStats(nextCache?.gradebookStats || {});
       setSelectedYearId(nextCache?.schoolYears?.[0]?.id || '');
       setSelectedSchoolInside(null);
       setSelectedSubjectInside(null);
+      setSelectedAverageCardInside(null);
       setSelectedLevelId(null);
       setSelectedClassId(null);
       setSelectedTermId(null);
@@ -753,9 +789,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       classes,
       terms,
       subjects,
+      classAverages,
       gradebookStats: serverGradebookStats,
     });
-  }, [authUserId, schoolYears, schools, studyLevels, classes, terms, subjects, serverGradebookStats]);
+  }, [authUserId, schoolYears, schools, studyLevels, classes, terms, subjects, classAverages, serverGradebookStats]);
 
   // Rafraîchir uniquement les stats de tableurs après fermeture/sauvegarde d'un tableur
   const refreshCloudStats = useCallback(async () => {
@@ -763,14 +800,19 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     try {
       const data = await TeacherGradebookAPI.bootstrap();
       setServerGradebookStats(data.gradebookStats || {});
+      if (data.classAverages) setClassAverages(data.classAverages);
       writeUserBootstrapCache(authUserId, data);
     } catch {}
   }, [authUserId]);
 
-  // Réinitialiser la matière affichée si l'on change de niveau, de classe, d'école ou de trimestre
+  // Réinitialiser la matière ou la carte moyenne affichée si l'on change de niveau, de classe, d'école ou de trimestre
   useEffect(() => {
     setSelectedSubjectInside(null);
   }, [selectedLevelId, selectedClassId, selectedSchoolInside, selectedTermId]);
+
+  useEffect(() => {
+    setSelectedAverageCardInside(null);
+  }, [selectedLevelId, selectedClassId, selectedSchoolInside]);
 
   // Référence pour le défilement horizontal fluide des trimestres
   const termsScrollRef = useRef<HTMLDivElement>(null);
@@ -1077,7 +1119,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         setClasses(prev => prev.filter(c => c.yearId !== id));
         setTerms(prev => prev.filter(t => t.yearId !== id));
         setSubjects(prev => prev.filter(s => s.yearId !== id));
+        setClassAverages(prev => prev.filter(ca => ca.yearId !== id));
         if (selectedSchoolInside?.yearId === id) setSelectedSchoolInside(null);
+        if (selectedAverageCardInside?.yearId === id) setSelectedAverageCardInside(null);
         setSelectedSchoolId(null);
         setSelectedLevelId(null);
         setSelectedClassId(null);
@@ -1096,8 +1140,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         setClasses(prev => prev.filter(c => c.schoolId !== id));
         setSubjects(prev => prev.filter(s => s.schoolId !== id));
         setTerms(prev => prev.filter(t => t.schoolId !== id));
+        setClassAverages(prev => prev.filter(ca => ca.schoolId !== id));
         if (selectedSchoolId === id) setSelectedSchoolId(null);
         if (selectedSchoolInside?.id === id) setSelectedSchoolInside(null);
+        if (selectedAverageCardInside?.schoolId === id) setSelectedAverageCardInside(null);
         setSelectedLevelId(null);
         setSelectedClassId(null);
         setSelectedTermId(null);
@@ -1115,8 +1161,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         setClasses(prev => prev.filter(c => c.levelId !== id));
         setSubjects(prev => prev.filter(s => !deletedClassIds.has(s.classId)));
         setTerms(prev => prev.filter(t => !deletedClassIds.has(t.classId)));
+        setClassAverages(prev => prev.filter(ca => !deletedClassIds.has(ca.classId)));
         if (selectedLevelId === id) setSelectedLevelId(null);
         if (selectedClassId && deletedClassIds.has(selectedClassId)) setSelectedClassId(null);
+        if (selectedAverageCardInside && deletedClassIds.has(selectedAverageCardInside.classId)) setSelectedAverageCardInside(null);
         clearUserGradebookCaches(authUserId, deletedSubjectIds);
       }
     } else if (targetType === 'class') {
@@ -1129,7 +1177,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         setClasses(prev => prev.filter(c => c.id !== id));
         setSubjects(prev => prev.filter(s => s.classId !== id));
         setTerms(prev => prev.filter(t => t.classId !== id));
+        setClassAverages(prev => prev.filter(ca => ca.classId !== id));
         if (selectedClassId === id) setSelectedClassId(null);
+        if (selectedAverageCardInside?.classId === id) setSelectedAverageCardInside(null);
         clearUserGradebookCaches(authUserId, deletedSubjectIds);
       }
     } else if (targetType === 'term') {
@@ -1144,9 +1194,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       if (ok) {
         setTerms(prev => prev.filter(t => t.id !== id));
         setSubjects(prev => prev.filter(s => !deletedSubjectIds.includes(s.id)));
+        // Supprime uniquement la carte moyenne attachée à ce trimestre (la carte annuelle reste toujours présente)
+        setClassAverages(prev => prev.filter(ca => ca.termId !== id));
         if (selectedTermId === id) setSelectedTermId(null);
         if (selectedSubjectInside && deletedSubjectIds.includes(selectedSubjectInside.id)) {
           setSelectedSubjectInside(null);
+        }
+        if (selectedAverageCardInside?.termId === id) {
+          setSelectedAverageCardInside(null);
         }
         clearUserGradebookCaches(authUserId, deletedSubjectIds);
       }
@@ -1329,8 +1384,40 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         { id: generateTeacherEntityId('term2'), classId: newClassId, schoolId: selectedSchoolInside.id, yearId: selectedSchoolInside.yearId, number: 2, name: 'Trimestre 2', createdAt: now + 1 },
         { id: generateTeacherEntityId('term3'), classId: newClassId, schoolId: selectedSchoolInside.id, yearId: selectedSchoolInside.yearId, number: 3, name: 'Trimestre 3', createdAt: now + 2 }
       ];
+      const optimisticClassAverages: ClassAverageCardItem[] = [
+        {
+          id: generateTeacherEntityId('cavg-annual'),
+          classId: newClassId,
+          schoolId: selectedSchoolInside.id,
+          yearId: selectedSchoolInside.yearId,
+          kind: 'annual',
+          title: "Moyenne générale de l'année",
+          sortOrder: 0,
+          color: '#ffffff',
+          textColor: '#0f172a',
+          borderColor: '#e2e8f0',
+          borderDarkColor: '#cbd5e1',
+          createdAt: now,
+        },
+        ...defaultTerms.map((t) => ({
+          id: generateTeacherEntityId(`cavg-t${t.number}`),
+          classId: newClassId,
+          termId: t.id,
+          schoolId: selectedSchoolInside.id,
+          yearId: selectedSchoolInside.yearId,
+          kind: 'term' as const,
+          title: `Moyenne générale · ${t.name}`,
+          sortOrder: t.number,
+          color: '#ffffff',
+          textColor: '#0f172a',
+          borderColor: '#e2e8f0',
+          borderDarkColor: '#cbd5e1',
+          createdAt: t.createdAt,
+        })),
+      ];
       setClasses(prev => [...prev, newClass]);
       setTerms(prev => [...prev, ...defaultTerms]);
+      setClassAverages(prev => [...prev, ...optimisticClassAverages]);
       setSelectedClassId(newClass.id);
       setSelectedTermId(defaultTerms[0].id);
       setIsAddClassModalOpen(false);
@@ -1352,11 +1439,19 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           }),
         'Erreur de création de la classe.'
       ).then((res) => {
-        if (res?.classItem && res.classItem.id !== newClass.id) {
-          setClasses(prev => prev.map(c => c.id === newClass.id ? res.classItem : c));
-          setTerms(prev => [...prev.filter(t => t.classId !== newClass.id), ...res.terms]);
-          setSelectedClassId(res.classItem.id);
-          setSelectedTermId(res.terms[0]?.id || null);
+        if (res?.classItem) {
+          if (res.classItem.id !== newClass.id) {
+            setClasses(prev => prev.map(c => c.id === newClass.id ? res.classItem : c));
+            setTerms(prev => [...prev.filter(t => t.classId !== newClass.id), ...res.terms]);
+            setSelectedClassId(res.classItem.id);
+            setSelectedTermId(res.terms[0]?.id || null);
+          }
+          if (Array.isArray(res.classAverages) && res.classAverages.length > 0) {
+            setClassAverages(prev => [
+              ...prev.filter(ca => ca.classId !== newClass.id && ca.classId !== res.classItem.id),
+              ...res.classAverages!,
+            ]);
+          }
         }
       });
     }
@@ -1815,7 +1910,23 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       coefficient: parsedCoeff,
       createdAt: Date.now()
     };
+    const optimisticTermAvg: ClassAverageCardItem = {
+      id: generateTeacherEntityId('cavg'),
+      classId: activeClass.id,
+      termId: newTerm.id,
+      schoolId: selectedSchoolInside.id,
+      yearId: selectedSchoolInside.yearId,
+      kind: 'term',
+      title: `Moyenne générale · ${newTerm.name}`,
+      sortOrder: newTerm.number,
+      color: '#ffffff',
+      textColor: '#0f172a',
+      borderColor: '#e2e8f0',
+      borderDarkColor: '#cbd5e1',
+      createdAt: newTerm.createdAt,
+    };
     setTerms(prev => [...prev, newTerm]);
+    setClassAverages(prev => [...prev, optimisticTermAvg]);
     setSelectedTermId(newTerm.id);
     setIsAddTermPopoverOpen(false);
     setNewTermCoeffInput('');
@@ -1835,6 +1946,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         if (res.term.id !== newTerm.id) {
           setSelectedTermId(res.term.id);
         }
+      }
+      if (res?.classAverage) {
+        setClassAverages(prev =>
+          prev.map(ca => (ca.id === optimisticTermAvg.id ? res.classAverage! : ca))
+        );
       }
     });
   };
@@ -1928,6 +2044,73 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     const start = subjectPageIndex * SUBJECTS_PER_PAGE;
     return filteredClassSubjects.slice(start, start + SUBJECTS_PER_PAGE);
   }, [filteredClassSubjects, subjectPageIndex]);
+
+  // Cartes de Moyenne Générale de la classe active (1ère = Annuelle toujours présente, puis 1 par trimestre existant)
+  const currentClassAverageCards = useMemo<ClassAverageCardItem[]>(() => {
+    if (!activeClass) return [];
+    const forClass = classAverages.filter(ca => ca.classId === activeClass.id);
+    const annualCard: ClassAverageCardItem =
+      forClass.find(ca => ca.kind === 'annual' && !ca.termId) || {
+        id: `cavg-annual-${activeClass.id}`,
+        classId: activeClass.id,
+        schoolId: activeClass.schoolId,
+        yearId: activeClass.yearId,
+        kind: 'annual',
+        title: "Moyenne générale de l'année",
+        sortOrder: 0,
+        color: '#ffffff',
+        textColor: '#0f172a',
+        borderColor: '#e2e8f0',
+        borderDarkColor: '#cbd5e1',
+        createdAt: activeClass.createdAt,
+      };
+
+    const termCards: ClassAverageCardItem[] = currentClassTerms.map((term) => {
+      const existing = forClass.find(ca => ca.kind === 'term' && ca.termId === term.id);
+      if (existing) {
+        return {
+          ...existing,
+          title: `Moyenne générale · ${term.name}`,
+          sortOrder: term.number,
+        };
+      }
+      return {
+        id: `cavg-term-${term.id}`,
+        classId: activeClass.id,
+        termId: term.id,
+        schoolId: activeClass.schoolId,
+        yearId: activeClass.yearId,
+        kind: 'term',
+        title: `Moyenne générale · ${term.name}`,
+        sortOrder: term.number,
+        color: '#ffffff',
+        textColor: '#0f172a',
+        borderColor: '#e2e8f0',
+        borderDarkColor: '#cbd5e1',
+        createdAt: term.createdAt,
+      };
+    });
+
+    return [annualCard, ...termCards];
+  }, [activeClass, classAverages, currentClassTerms]);
+
+  // Si le professeur clique sur une carte "Moyenne générale" (annuelle ou trimestrielle) :
+  // Ouvre le tableur dédié identique à celui des matières (non connecté à la base pour l'instant, prêt pour adaptation)
+  if (selectedAverageCardInside && activeClass) {
+    const linkedTerm = selectedAverageCardInside.termId
+      ? currentClassTerms.find(t => t.id === selectedAverageCardInside.termId) || null
+      : null;
+    return (
+      <ClassAverageSheetView
+        averageCard={selectedAverageCardInside}
+        schoolClass={activeClass}
+        schoolYear={currentSelectedYear}
+        school={selectedSchoolInside}
+        term={linkedTerm}
+        onBack={() => setSelectedAverageCardInside(null)}
+      />
+    );
+  }
 
   // Si le professeur clique et rentre à l'intérieur d'une matière créée :
   // Affichage du tableur de notes et moyennes plein écran (identique à WPS/Excel)
@@ -2532,6 +2715,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   );
                   if (res?.gradebookStats) {
                     setServerGradebookStats(res.gradebookStats);
+                  }
+                  if (Array.isArray(res?.classAverages)) {
+                    setClassAverages(res.classAverages);
                   }
                   return res?.serverSummary;
                 }}
@@ -3347,6 +3533,107 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       })
                       )}
                       </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ------------------------------------------------------------------------- */}
+                {/* ZONE CALCUL DE MOYENNE GÉNÉRALE PAR CLASSE (1 LIGNE DÉFILABLE ← / →)      */}
+                {/* 1ère carte = Moyenne générale de l'année (toujours présente),             */}
+                {/* suivie automatiquement par 1 carte par trimestre existant de la classe    */}
+                {/* ------------------------------------------------------------------------- */}
+                {activeClass && currentClassAverageCards.length > 0 && (
+                  <div className="space-y-1.5 pt-2 border-t border-white/15 animate-fade-in">
+                    {/* En-tête de la section Moyenne Générale avec flèches gauche / droite */}
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                        <span className="text-[11px] font-black uppercase tracking-wider text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
+                          Moyenne générale ({currentClassAverageCards.length})
+                        </span>
+                        <span className="text-xs text-cyan-200/75 font-bold">&bull;</span>
+                        <span className="text-[11px] font-bold text-cyan-900 bg-white/95 px-2 py-0.5 rounded-md border border-cyan-300/80 shadow-2xs truncate">
+                          {getClassFullLabel(activeClass)}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => scrollClassAverages('left')}
+                          className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200/80 shadow-2xs flex items-center justify-center transition active:scale-90 cursor-pointer"
+                          title="Défiler les moyennes générales vers la gauche"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5 stroke-[2.5]" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => scrollClassAverages('right')}
+                          className="w-6 h-6 rounded-md bg-white/90 hover:bg-white text-slate-700 hover:text-[#00313d] border border-slate-200/80 shadow-2xs flex items-center justify-center transition active:scale-90 cursor-pointer"
+                          title="Défiler les moyennes générales vers la droite"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5 stroke-[2.5]" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Ligne horizontale unique défilable des cartes blanches par défaut */}
+                    <div
+                      ref={classAveragesScrollRef}
+                      className="flex items-stretch gap-2.5 overflow-x-auto flex-nowrap py-1.5 pl-0.5 pr-2 scrollbar-none scroll-smooth select-none"
+                      style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                    >
+                      {currentClassAverageCards.map((avgCard) => {
+                        const isAnnual = avgCard.kind === 'annual';
+                        const linkedTerm = avgCard.termId
+                          ? currentClassTerms.find(t => t.id === avgCard.termId)
+                          : null;
+                        const isWhite = !avgCard.color || avgCard.color === '#ffffff' || avgCard.color === 'white';
+
+                        return (
+                          <button
+                            key={avgCard.id}
+                            type="button"
+                            onClick={() => setSelectedAverageCardInside(avgCard)}
+                            style={{
+                              backgroundColor: avgCard.color || '#ffffff',
+                              color: avgCard.textColor || (isWhite ? '#0f172a' : '#ffffff'),
+                              borderColor: isWhite ? '#e2e8f0' : (avgCard.borderColor || avgCard.color),
+                              borderBottomColor: isWhite ? '#cbd5e1' : (avgCard.borderDarkColor || '#94a3b8'),
+                            }}
+                            className="group relative w-44 sm:w-48 shrink-0 rounded-xl border-2 border-b-[3px] px-3 py-2 min-h-[62px] flex flex-col justify-between text-left cursor-pointer transition-all duration-200 shadow-xs hover:shadow-md hover:border-cyan-400 hover:-translate-y-0.5 active:translate-y-0.5 active:border-b-2"
+                            title={`Ouvrir le tableau : ${avgCard.title}`}
+                          >
+                            {/* Ligne haute : badge Annuelle ou Trimestre (+ Coeff si défini) */}
+                            <div className="flex items-center justify-between gap-1.5 w-full">
+                              <span
+                                className={`text-[8.5px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded border ${
+                                  isAnnual
+                                    ? 'bg-cyan-50 text-[#00313d] border-cyan-200/80'
+                                    : 'bg-slate-100 text-slate-600 border-slate-200'
+                                }`}
+                              >
+                                {isAnnual ? 'Année complète' : linkedTerm?.name || 'Trimestre'}
+                              </span>
+
+                              {!isAnnual && linkedTerm?.coefficient !== undefined && linkedTerm?.coefficient !== null && (
+                                <span className="text-[8.5px] font-black px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0">
+                                  Coeff {linkedTerm.coefficient}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Centre / Bas : Titre clair de la carte */}
+                            <div className="mt-1.5 flex items-center justify-between gap-1.5 w-full">
+                              <span className="font-black text-[11px] sm:text-xs text-slate-900 leading-tight line-clamp-2">
+                                {isAnnual
+                                  ? "Moyenne générale de l'année"
+                                  : `Moyenne générale · ${linkedTerm?.name || ''}`}
+                              </span>
+                              <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-[#00313d] group-hover:translate-x-0.5 transition-all shrink-0" />
+                            </div>
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
                 )}

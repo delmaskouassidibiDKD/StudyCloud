@@ -14,6 +14,7 @@ import type {
   ClassItem,
   TermItem,
   SubjectItem,
+  ClassAverageCardItem,
 } from '../components/teacher/TeacherClassesView';
 import type {
   GradebookColumnMeta,
@@ -69,6 +70,7 @@ export interface TeacherBootstrapResponse {
   classes: ClassItem[];
   terms: TermItem[];
   subjects: SubjectItem[];
+  classAverages?: ClassAverageCardItem[];
   gradebookStats: Record<string, GradebookInspection>;
   migrated?: boolean;
 }
@@ -576,7 +578,7 @@ export const TeacherGradebookAPI = {
     iconGradient: string;
     defaultTerms?: Array<{ id?: string; number: number; name: string }>;
   }) =>
-    teacherFetchJson<{ success: boolean; classItem: ClassItem; terms: TermItem[] }>('/api/teacher/classes', {
+    teacherFetchJson<{ success: boolean; classItem: ClassItem; terms: TermItem[]; classAverages?: ClassAverageCardItem[] }>('/api/teacher/classes', {
       method: 'POST',
       body: input,
     }),
@@ -605,7 +607,7 @@ export const TeacherGradebookAPI = {
     }),
 
   createTerm: (input: { id?: string; classId: string; number: number; name: string; coefficient?: number | null }) =>
-    teacherFetchJson<{ success: boolean; term: TermItem }>('/api/teacher/terms', {
+    teacherFetchJson<{ success: boolean; term: TermItem; classAverage?: ClassAverageCardItem }>('/api/teacher/terms', {
       method: 'POST',
       body: input,
     }),
@@ -724,6 +726,7 @@ export const TeacherGradebookAPI = {
         notesCopied: number;
         photosCopied: number;
       };
+      classAverages?: ClassAverageCardItem[];
       gradebookStats: Record<string, GradebookInspection>;
     }>('/api/teacher/transfer', {
       method: 'POST',
