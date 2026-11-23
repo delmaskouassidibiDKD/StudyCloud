@@ -1175,6 +1175,20 @@ export const TeacherGradebookAPI = {
       { method: 'POST', body: input }
     ),
 
+  updateDelmasConversationFile: (
+    fileId: string,
+    input: { extractedText: string }
+  ) =>
+    teacherFetchJson<{
+      success: boolean;
+      fileId: string;
+      conversationId: string;
+      extractedText: string;
+    }>(
+      `/api/teacher/delmas/files/${encodeURIComponent(fileId)}`,
+      { method: 'PUT', body: input }
+    ),
+
   deleteDelmasConversationFile: (fileId: string) =>
     teacherFetchJson<{ success: boolean; deletedId: string }>(
       `/api/teacher/delmas/files/${encodeURIComponent(fileId)}`,

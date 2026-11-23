@@ -2577,6 +2577,29 @@ test('Sécurité Assistant Delmas : Anti-IDOR strict sur messages/fichiers et ne
   assert.equal(mediaRes.headers.get('X-Content-Type-Options'), 'nosniff');
   assert.ok((mediaRes.headers.get('Content-Security-Policy') || '').includes('sandbox'));
 
+  // 4.bis Mise à jour persistante D1 de la mémoire extraite (PUT /api/teacher/delmas/files/:fileId) + Anti-IDOR
+  const putMemRes = await callApi(`/api/teacher/delmas/files/${svgFile.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { extractedText: 'TYPE_CONTENU: LISTE_ELEVES_ET_NOTES\nLigne 1 | Nom: DELMAS | Notes: 14, 15' },
+  });
+  assert.equal(putMemRes.status, 200);
+
+  const bobPutMem = await callApi(`/api/teacher/delmas/files/${svgFile.id}`, {
+    method: 'PUT',
+    token: 'token-bob',
+    body: { extractedText: 'Hacked' },
+  });
+  assert.equal(bobPutMem.status, 404);
+
+  const convReloadRes = await callApi('/api/teacher/delmas/conversations/tdconv-sec-1', {
+    method: 'GET',
+    token: 'token-alice',
+  });
+  assert.equal(convReloadRes.status, 200);
+  const convReloadData = await convReloadRes.json();
+  assert.ok(convReloadData.files[0].extractedText.includes('DELMAS'));
+
   // 5. Bob ne peut pas lire le fichier d'Alice sans signature valide, ni le supprimer
   const bobStealMedia = await callApi(`/api/teacher/media?key=${encodeURIComponent(svgFile.r2Key)}`, {
     method: 'GET',

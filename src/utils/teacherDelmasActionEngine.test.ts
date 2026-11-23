@@ -180,6 +180,51 @@ test('classifyTeacherDelmasIntent gère proprement les fichiers joints (lecture 
   assert.equal(imgSave.intent, 'action');
   assert.equal(imgSave.referencesActiveFiles, true);
 
+  // Suivi avec faute/élision "TU VOIS PAS LIMAGE ?" ou "Tu la vois ?" sur un fichier déjà dans la conversation -> 'inspect' + referencesActiveFiles
+  for (const followMsg of ['TU VOIS PAS LIMAGE ?', 'Tu la vois ?', 'Tu as vu mon image ?']) {
+    const res = classifyTeacherDelmasIntent({
+      message: followMsg,
+      hasNewAttachments: false,
+      hasConversationFiles: true,
+      activeContext: sampleContext,
+    });
+    assert.equal(res.intent, 'inspect', `Attendu 'inspect' pour "${followMsg}"`);
+    assert.equal(res.referencesActiveFiles, true, `Attendu referencesActiveFiles=true pour "${followMsg}"`);
+  }
+
+  // Tous les fichiers non supprimés du dossier restent en mémoire permanente dans le prompt
+  const convFiles = [
+    {
+      id: 'tdfile-1',
+      conversationId: 'tdconv-1',
+      fileName: 'notes_whatsapp.jpeg',
+      mimeType: 'image/jpeg',
+      fileType: 'image',
+      sizeBytes: 120000,
+      compressedSizeBytes: 80000,
+      extractedText: 'TYPE_CONTENU: LISTE_ELEVES_ET_NOTES\nLigne 1 | Nom: KOUASSI | Notes: 15, 16',
+      createdAt: Date.now(),
+    },
+  ];
+  const promptWithMem = buildTeacherDelmasSystemPrompt({
+    languageCode: 'fr',
+    activeContext: sampleContext,
+    conversationFiles: convFiles,
+    intent: 'inspect',
+    referencesActiveFiles: false,
+  });
+  assert.ok(promptWithMem.includes('notes_whatsapp.jpeg'));
+  assert.ok(promptWithMem.includes('KOUASSI'));
+
+  const chatPromptWithMem = buildTeacherDelmasSystemPrompt({
+    languageCode: 'fr',
+    activeContext: sampleContext,
+    conversationFiles: convFiles,
+    intent: 'chat',
+  });
+  assert.ok(chatPromptWithMem.includes('notes_whatsapp.jpeg'));
+  assert.ok(chatPromptWithMem.includes('KOUASSI'));
+
   // Confirmation après proposition d’action sur le tableau -> 'action'
   const confirmAction = classifyTeacherDelmasIntent({
     message: 'Oui vas-y',

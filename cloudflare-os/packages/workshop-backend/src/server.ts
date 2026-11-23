@@ -1633,8 +1633,9 @@ RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entou
           // Extraction visuelle proactive et conservée pour TOUS les modèles (y compris secours Llama 3.3 / Kimi)
           let extractedVisionReport = "";
           if (isTeacherGradebook && cfToken && accountId) {
+            const visionParts: string[] = [];
             if (imageBase64 && imageBase64.length > 50) {
-              extractedVisionReport = await runCloudflareVisionAnalysis({
+              const mainRep = await runCloudflareVisionAnalysis({
                 targetImage: imageBase64,
                 docName: docName || "",
                 mimeType,
@@ -1642,8 +1643,9 @@ RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entou
                 cfToken,
                 accountId,
               });
-            } else if ((!docContent || docContent.trim().length < 80) && documentImages.length > 0) {
-              const pageReports: string[] = [];
+              if (mainRep) visionParts.push(mainRep);
+            }
+            if (documentImages.length > 0 && (visionParts.length > 0 || !docContent || docContent.trim().length < 80)) {
               for (let pIdx = 0; pIdx < Math.min(3, documentImages.length); pIdx++) {
                 const pageImg = documentImages[pIdx];
                 if (pageImg?.base64 && pageImg.base64.length > 50) {
@@ -1655,11 +1657,11 @@ RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entou
                     cfToken,
                     accountId,
                   });
-                  if (rep) pageReports.push(`[Page ${pIdx + 1}]\n${rep}`);
+                  if (rep) visionParts.push(`[${pageImg.name || `Page ${pIdx + 1}`}]\n${rep}`);
                 }
               }
-              extractedVisionReport = pageReports.join("\n\n");
             }
+            extractedVisionReport = visionParts.join("\n\n");
           }
 
           if (hasActiveFile && !isTeacherGradebook) {

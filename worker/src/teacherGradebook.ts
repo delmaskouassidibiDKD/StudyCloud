@@ -6794,10 +6794,49 @@ async function dispatchTeacherGradebookRoutes(
     );
   }
 
-  // DELETE /api/teacher/delmas/files/:fileId — Supprimer un fichier du dossier de la conversation
-  const delmasDeleteFileMatch = path.match(/^\/api\/teacher\/delmas\/files\/([a-zA-Z0-9_-]+)$/);
-  if (delmasDeleteFileMatch && method === 'DELETE') {
-    const fileId = delmasDeleteFileMatch[1];
+  // PUT / DELETE /api/teacher/delmas/files/:fileId — Mettre à jour la mémoire extraite (OCR/Whisper) ou supprimer un fichier du dossier de la conversation
+  const delmasFileByIdMatch = path.match(/^\/api\/teacher\/delmas\/files\/([a-zA-Z0-9_-]+)$/);
+  if (delmasFileByIdMatch && (method === 'PUT' || method === 'PATCH')) {
+    const fileId = delmasFileByIdMatch[1];
+    const row = await db
+      .prepare('SELECT id, conversation_id, extracted_text FROM teacher_delmas_files WHERE id = ? AND user_id = ?')
+      .bind(fileId, userId)
+      .first();
+
+    if (!row) {
+      return errorResponse('Fichier introuvable.', 404, origin);
+    }
+
+    const body = await request.json().catch(() => ({}));
+    const nextExtractedText = String(body?.extractedText ?? '').slice(0, 180000);
+    const prevBytes = utf8ByteLength(String(row.extracted_text || ''));
+    const nextBytes = utf8ByteLength(nextExtractedText);
+    const deltaBytes = Math.max(0, nextBytes - prevBytes);
+
+    if (deltaBytes > 0) {
+      const quotaBlocked = await enforceStorageQuota(deltaBytes);
+      if (quotaBlocked) return quotaBlocked;
+    }
+
+    await db
+      .prepare('UPDATE teacher_delmas_files SET extracted_text = ? WHERE id = ? AND user_id = ?')
+      .bind(nextExtractedText, fileId, userId)
+      .run();
+
+    return jsonResponse(
+      {
+        success: true,
+        fileId,
+        conversationId: String(row.conversation_id),
+        extractedText: nextExtractedText,
+      },
+      200,
+      origin
+    );
+  }
+
+  if (delmasFileByIdMatch && method === 'DELETE') {
+    const fileId = delmasFileByIdMatch[1];
     const row = await db
       .prepare('SELECT id, r2_key FROM teacher_delmas_files WHERE id = ? AND user_id = ?')
       .bind(fileId, userId)

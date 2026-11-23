@@ -362,10 +362,10 @@ export function classifyTeacherDelmasIntent(params: {
   const recentMessages = params.recentMessages || [];
 
   const fileReferenceRegex =
-    /\b(image|photo|capture|fichier|fichiers|document|documents|pdf|excel|xlsx|csv|word|docx|audio|vocal|releve|feuille|liste|ci-dessus|joint|joints|piece jointe|scan|copie|picture|file|sheet)\b/i;
+    /(?:\b(?:image|images|limage|limages|photo|photos|laphoto|capture|captures|fichier|fichiers|document|documents|pdf|excel|xlsx|csv|word|docx|audio|vocal|vocaux|releve|releves|feuille|feuilles|liste|listes|ci-dessus|joint|joints|jointe|jointes|piece jointe|scan|copie|picture|file|files|sheet|dedans)\b|l['’]?image|la\s*photo|tu\s+(?:ne\s+)?(?:la|le|les)?\s*vois|tu\s+vois\s+pas|vois[- ]tu|tu\s+(?:ne\s+)?(?:l['’]|les?\s*)?as?\s+(?:pas\s+)?vu|as[- ]tu\s+vu)/i;
 
   const fileImportActionRegex =
-    /\b(rempli|remplis|remplir|ajoute|ajouter|rajoute|rajouter|saisi|saisis|saisir|importe|importer|insere|inserer|mets|met|mettre|ecris|ecrire|copie|copier|enregistre|enregistrer|transfere|transferer|integre|integrer|charge|charger|fill|import|insert|add|put|write|enter|load|copy)\b/i;
+    /\b(rempli|remplis|remplir|ajoute|ajouter|rajoute|rajouter|saisi|saisis|saisir|importe|importer|insere|inserer|mets|met|mettre|ecris|ecrire|copie|copier|enregistre|enregistrer|sauvegarde|sauvegarder|transfere|transferer|integre|integrer|charge|charger|fill|import|insert|add|put|write|enter|load|copy|save)\b/i;
 
   const lastAiMsg = [...recentMessages].reverse().find((m) => m.sender === 'ai');
   const lastUserMsg = [...recentMessages].reverse().find((m) => m.sender === 'user');
@@ -533,7 +533,7 @@ export function classifyTeacherDelmasIntent(params: {
       return {
         intent: 'action',
         reason: 'direct_quick_sheet_imperative',
-        referencesActiveFiles: hasConversationFiles && referencesActiveFiles,
+        referencesActiveFiles: hasConversationFiles,
         needsWorkspaceDb: false,
       };
     }
@@ -725,6 +725,22 @@ export function classifyTeacherDelmasIntent(params: {
   };
 }
 
+function buildPersistentConversationFilesBlock(
+  conversationFiles?: TeacherDelmasFileRecord[]
+): string {
+  if (!conversationFiles || conversationFiles.length === 0) return '';
+  const blocks = conversationFiles.map((f, i) => {
+    const rawTxt = String(f.extractedText || '').trim();
+    const isPlaceholder =
+      !rawTxt || /^\[(?:Image jointe|Enregistrement audio joint)\s*:/i.test(rawTxt);
+    const body = !isPlaceholder
+      ? rawTxt.slice(0, 25000)
+      : `(Fichier ${f.fileType} lié à cette conversation, analyse visuelle/audio jointe ci-dessous)`;
+    return `--- FICHIER ${i + 1} DU DOSSIER DE LA CONVERSATION : « ${f.fileName} » (${f.fileType}) ---\n${body}`;
+  });
+  return `\n\n[MÉMOIRE PERMANENTE DES FICHIERS LIÉS À CETTE CONVERSATION (${conversationFiles.length} fichier(s) actif(s), conservés tant qu'ils ne sont pas supprimés)] :\n${blocks.join('\n\n')}`;
+}
+
 /**
  * Formate le contexte compact du tableau ouvert (uniquement injecté en mode 'inspect' ou 'action').
  */
@@ -742,7 +758,6 @@ function buildActiveSheetContextBlock(params: {
     workspaceSnapshot,
     conversationFiles,
     needsWorkspaceDb,
-    referencesActiveFiles,
   } = params;
 
   const noteColsSummary =
@@ -872,18 +887,8 @@ function buildActiveSheetContextBlock(params: {
     }`;
   }
 
-  let filesContext = '';
-  if (referencesActiveFiles && conversationFiles && conversationFiles.length > 0) {
-    const fileBlocks = conversationFiles
-      .filter((f) => f.extractedText && f.extractedText.trim().length > 0)
-      .map(
-        (f, i) =>
-          `--- FICHIER ${i + 1} : « ${f.fileName} » (${f.fileType}) ---\n${f.extractedText.slice(0, 25000)}`
-      );
-    if (fileBlocks.length > 0) {
-      filesContext = `\n\n[FICHIERS LIÉS À CETTE CONVERSATION] :\n${fileBlocks.join('\n\n')}`;
-    }
-  }
+  // TOUS les fichiers non supprimés du dossier de cette conversation restent connectés en permanence !
+  const filesContext = buildPersistentConversationFilesBlock(conversationFiles);
 
   return `[CONTEXTE SILENCIEUX DU TABLEAU ACTUELLEMENT OUVERT]
 - Année : ${activeContext.yearLabel || 'Non spécifiée'} | Établissement : ${activeContext.schoolName || 'Non spécifié'}
@@ -1010,6 +1015,7 @@ export function buildTeacherDelmasSystemPrompt(params: {
   // MODE 1 : DISCUSSION SIMPLE / CONVERSATION NATURELLE (ZÉRO DUMP DU TABLEAU)
   // =========================================================================
   if (intent === 'chat') {
+    const silentFilesMemory = buildPersistentConversationFilesBlock(conversationFiles);
     return `Tu es **Assistant Delmas**, un assistant intelligent, attentif, calme et chaleureux intégré à l'application de moyennes StudyCloud.
 ${langObj.promptInstruction}
 
@@ -1023,7 +1029,9 @@ CONSIGNES ESSENTIELLES DE COMPORTEMENT :
    - Si (et SEULEMENT si) l'utilisateur te demande ce que tu peux faire (ex : « Que peux-tu faire ? », « Quelles actions peux-tu mener ? »), présente-lui clairement et sobrement tes vraies capacités :
 ${realCapabilitiesSummary}
    - En dehors de cette question précise (par exemple sur un simple « Bonjour », « Salut », « Ça va ? » ou une discussion générale), NE liste PAS ces capacités et réponds de façon courte, naturelle et accueillante.
-5. **Réponse directe et propre** : Rédige directement en Markdown fluide (et LaTeX $...$ / $$...$$ uniquement si la question est mathématique/scientifique). N'affiche JAMAIS de JSON, ni de balise technique, ni de réflexion interne (<think>).`;
+5. **Mémoire permanente des fichiers de la conversation** :
+   - S'il y a des fichiers dans le dossier de cette conversation ci-dessous, tu y es connecté en permanence tant qu'ils ne sont pas supprimés. Ne dis JAMAIS que l'utilisateur n'a joint aucun fichier si le dossier ci-dessous contient un ou plusieurs fichiers ! En revanche, ne les cite pas sans raison sur un simple « Bonjour » ou « Merci ».
+6. **Réponse directe et propre** : Rédige directement en Markdown fluide (et LaTeX $...$ / $$...$$ uniquement si la question est mathématique/scientifique). N'affiche JAMAIS de JSON, ni de balise technique, ni de réflexion interne (<think>).${silentFilesMemory}`;
   }
 
   const contextBlock = buildActiveSheetContextBlock({

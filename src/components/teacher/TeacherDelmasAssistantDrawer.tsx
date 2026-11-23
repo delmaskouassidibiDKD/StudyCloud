@@ -1013,20 +1013,47 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         ...sanitizedTurns,
       ];
 
-      // Médias multimodaux joints UNIQUEMENT si ce tour concerne un fichier/image (évite les fuites OCR sur un simple "Merci")
-      const shouldSendMedia = intentResult.referencesActiveFiles;
-      const targetImageRecord = shouldSendMedia
-        ? currentAttachments.find((f) => f.fileType === 'image' || f.imageBase64) ||
-          [...allConvFiles].reverse().find((f) => f.fileType === 'image' || f.imageBase64)
-        : undefined;
+      // =========================================================================
+      // MÉMOIRE PERMANENTE DES FICHIERS DU DOSSIER DE CETTE CONVERSATION
+      // (Comme dans le Menu Création, tous les fichiers non supprimés restent connectés !)
+      // =========================================================================
+      const hasAnyConvFiles = allConvFiles.length > 0;
+      const isExplicitReanalysisRequested =
+        /(?:r[ée]-?analyse|r[ée]examine|re-?regarde|regarde\s+[àa]\s*nouveau|revois|refais\s+(?:l'|une\s+)?analyse|nouvelle\s+analyse|relis|zoom\s+sur|v[ée]rifie\s+[àa]\s*nouveau|tu\s+(?:ne\s+)?(?:la|le|les)?\s*vois|tu\s+vois\s+pas|vois[- ]tu|as[- ]tu\s+vu|tu\s+as\s+vu|l['’]?image|limage)/i.test(
+          rawText
+        );
+
+      const imageFilesInConv = [
+        ...currentAttachments.filter((f) => f.fileType === 'image' || Boolean(f.imageBase64)),
+        ...[...allConvFiles]
+          .reverse()
+          .filter(
+            (f) =>
+              (f.fileType === 'image' || Boolean(f.imageBase64)) &&
+              !currentAttachments.some((c) => c.id === f.id)
+          ),
+      ];
+
+      const unanalyzedImageRecord = imageFilesInConv.find((f) =>
+        isPlaceholderMediaText(f.extractedText)
+      );
+      const targetImageRecord =
+        unanalyzedImageRecord ||
+        (hasNewAttachments || isExplicitReanalysisRequested ? imageFilesInConv[0] : undefined);
+
+      const shouldRunVisionPass = Boolean(
+        targetImageRecord &&
+          (hasNewAttachments ||
+            isExplicitReanalysisRequested ||
+            (intentResult.intent !== 'chat' && isPlaceholderMediaText(targetImageRecord.extractedText)))
+      );
 
       // Si une image d'une discussion rechargée n'a plus son base64 en RAM, on la recharge depuis son URL R2 signée
-      let resolvedImageBase64 = targetImageRecord?.imageBase64;
+      let resolvedImageBase64 = shouldRunVisionPass ? targetImageRecord?.imageBase64 : undefined;
       if (
-        shouldSendMedia &&
+        shouldRunVisionPass &&
         targetImageRecord &&
         !resolvedImageBase64 &&
-        isPlaceholderMediaText(targetImageRecord.extractedText) &&
         targetImageRecord.url
       ) {
         try {
@@ -1038,28 +1065,75 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         } catch {}
       }
 
-      const firstAudio = shouldSendMedia
-        ? currentAttachments.find((f) => f.audioBase64) ||
-          [...allConvFiles].reverse().find((f) => f.audioBase64)
-        : undefined;
-      const firstDoc = shouldSendMedia
-        ? currentAttachments.find((f) => f.documentBase64 || (f.documentImages && f.documentImages.length > 0)) ||
-          [...allConvFiles].reverse().find((f) => f.documentBase64 || (f.documentImages && f.documentImages.length > 0))
-        : undefined;
+      // Support multi-images dans le même envoi (ex: page 1 + page 2 d'un relevé)
+      const extraPendingImages = shouldRunVisionPass
+        ? currentAttachments
+            .filter(
+              (f) =>
+                f.id !== targetImageRecord?.id &&
+                (f.fileType === 'image' || Boolean(f.imageBase64)) &&
+                Boolean(f.imageBase64)
+            )
+            .slice(0, 3)
+            .map((f) => ({
+              base64: f.imageBase64 as string,
+              mimeType: f.mimeType || 'image/jpeg',
+              name: f.fileName,
+            }))
+        : [];
 
-      // Ne transmettre dans attachedFileContent QUE du vrai texte extrait (jamais de texte factice "[Image jointe : ...]")
-      const combinedDocText = shouldSendMedia
-        ? allConvFiles
-            .filter((f) => !isPlaceholderMediaText(f.extractedText))
-            .map((f) => `[Fichier: ${f.fileName}]\n${f.extractedText}`)
-            .join('\n\n')
-        : '';
+      const audioFilesInConv = [
+        ...currentAttachments.filter((f) => f.fileType === 'audio' || Boolean(f.audioBase64)),
+        ...[...allConvFiles]
+          .reverse()
+          .filter(
+            (f) =>
+              (f.fileType === 'audio' || Boolean(f.audioBase64)) &&
+              !currentAttachments.some((c) => c.id === f.id)
+          ),
+      ];
+      const targetAudioRecord = audioFilesInConv.find(
+        (f) => hasNewAttachments || isPlaceholderMediaText(f.extractedText)
+      );
+      const shouldRunAudioPass = Boolean(
+        targetAudioRecord &&
+          targetAudioRecord.audioBase64 &&
+          (hasNewAttachments ||
+            (intentResult.intent !== 'chat' && isPlaceholderMediaText(targetAudioRecord.extractedText)))
+      );
 
-      const activeAttachedFileName = shouldSendMedia
-        ? (currentAttachments.length > 0
+      const firstDoc =
+        currentAttachments.find(
+          (f) => f.documentBase64 || (f.documentImages && f.documentImages.length > 0)
+        ) ||
+        [...allConvFiles]
+          .reverse()
+          .find(
+            (f) =>
+              (f.documentBase64 || (f.documentImages && f.documentImages.length > 0)) &&
+              isPlaceholderMediaText(f.extractedText)
+          );
+
+      const mergedDocumentImages = [
+        ...extraPendingImages,
+        ...(firstDoc?.documentImages || []),
+      ].slice(0, 3);
+
+      // Tous les fichiers non supprimés du dossier restent connectés en mémoire texte permanente !
+      const combinedDocText =
+        hasAnyConvFiles && intentResult.intent !== 'chat'
+          ? allConvFiles
+              .filter((f) => !isPlaceholderMediaText(f.extractedText))
+              .map((f) => `[Fichier: ${f.fileName}]\n${f.extractedText}`)
+              .join('\n\n')
+          : '';
+
+      const activeAttachedFileName =
+        hasAnyConvFiles && (intentResult.intent !== 'chat' || shouldRunVisionPass || shouldRunAudioPass)
+          ? currentAttachments.length > 0
             ? currentAttachments.map((f) => f.fileName).join(', ')
-            : targetImageRecord?.fileName || firstAudio?.fileName || firstDoc?.fileName || undefined)
-        : undefined;
+            : allConvFiles.map((f) => f.fileName).join(', ')
+          : undefined;
 
       // Modèle Kimi résolu silencieusement en arrière-plan (ex: @cf/moonshotai/kimi-k2.7-code)
       const kimiModel = resolvedKimiModelRef.current || {
@@ -1095,26 +1169,31 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         mimeType: resolvedImageBase64
           ? (resolvedImageBase64.startsWith('data:image/jpeg') ? 'image/jpeg' : targetImageRecord?.mimeType || 'image/jpeg')
           : firstDoc?.mimeType,
-        audioBase64: firstAudio?.audioBase64,
-        audioMimeType: firstAudio?.mimeType,
+        audioBase64: shouldRunAudioPass ? targetAudioRecord?.audioBase64 : undefined,
+        audioMimeType: shouldRunAudioPass ? targetAudioRecord?.mimeType : undefined,
         documentBase64: firstDoc?.documentBase64,
         documentMimeType: firstDoc?.mimeType,
-        documentImages: firstDoc?.documentImages,
+        documentImages: mergedDocumentImages.length > 0 ? mergedDocumentImages : undefined,
         signal: controller.signal,
         abortSignal: controller.signal,
       });
 
-      // Mémoriser le rapport réel Vision / Whisper sur le fichier de la conversation pour les tours suivants
-      if (aiRes.perceptionReport && (targetImageRecord || firstAudio || firstDoc)) {
-        const targetId = targetImageRecord?.id || firstAudio?.id || firstDoc?.id;
-        if (targetId) {
+      // Persister définitivement en D1 (teacher_delmas_files.extracted_text) + en mémoire locale
+      // le rapport réel Vision / Whisper pour qu'Assistant Delmas n'oublie JAMAIS ce fichier !
+      if (aiRes.perceptionReport && (targetImageRecord || targetAudioRecord || firstDoc)) {
+        const targetId = targetImageRecord?.id || targetAudioRecord?.id || firstDoc?.id;
+        const cleanReport = String(aiRes.perceptionReport).trim();
+        if (targetId && cleanReport) {
           setConversationFiles((prev) =>
             prev.map((cf) =>
-              cf.id === targetId && isPlaceholderMediaText(cf.extractedText)
-                ? { ...cf, extractedText: aiRes.perceptionReport || cf.extractedText }
-                : cf
+              cf.id === targetId ? { ...cf, extractedText: cleanReport } : cf
             )
           );
+          if (getTeacherAuthToken()) {
+            TeacherGradebookAPI.updateDelmasConversationFile(targetId, {
+              extractedText: cleanReport,
+            }).catch(() => {});
+          }
         }
       }
 
@@ -1136,7 +1215,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         allowActions: intentResult.intent === 'action',
       });
       const safeActions = filterSafeTeacherDelmasActions(parsed.actions, rawText, {
-        hasAttachedFiles: shouldSendMedia,
+        hasAttachedFiles: hasAnyConvFiles && (intentResult.referencesActiveFiles || shouldRunVisionPass),
       });
 
       // Exécution immédiate des actions demandées sur le tableau ouvert
