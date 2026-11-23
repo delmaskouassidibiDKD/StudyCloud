@@ -929,13 +929,34 @@ async function executeGemini20Flash(_params: any): Promise<string> {
 async function runCloudflareVisionAnalysis(params: {
   targetImage: string;
   docName?: string;
+  mimeType?: string;
+  assistantContext?: string;
   cfToken: string;
   accountId: string;
 }): Promise<string> {
-  const { targetImage, docName, cfToken, accountId } = params;
+  const { targetImage, docName, mimeType, assistantContext, cfToken, accountId } = params;
   if (!targetImage || targetImage.length < 50 || !cfToken || !accountId) return "";
   try {
-    const cfVisionPrompt = `Tu es le moteur de perception visuelle officiel de StudyCloud.
+    const isTeacherGradebook = assistantContext === "teacher_gradebook";
+    const cfVisionPrompt = isTeacherGradebook
+      ? `Tu es un moteur de lecture optique (OCR) haute précision spécialisé dans les relevés de notes, listes d'élèves et documents scolaires pour le tableur de moyennes StudyCloud (« ${docName || "Image jointe"} »).
+EXAMINE MINUTIEUSEMENT CETTE IMAGE ET RÉPONDS EN SUIVANT STRICTEMENT CE FORMAT :
+
+1. CLASSIFICATION DU CONTENU :
+   Indique sur la première ligne :
+   - TYPE_CONTENU: LISTE_ELEVES_ET_NOTES (si l'image contient des noms d'élèves/étudiants accompagnés de notes ou moyennes)
+   - TYPE_CONTENU: LISTE_ELEVES_SEULE (si l'image contient uniquement une liste de noms / matricules sans notes)
+   - TYPE_CONTENU: DOCUMENT_HORS_NOTES (si l'image ne contient AUCUNE liste d'élèves ni notes : ex. photo personnelle, paysage, exercice de cours, facture, objet, schéma, texte sans notes)
+
+2. SI TYPE_CONTENU EST LISTE_ELEVES_ET_NOTES OU LISTE_ELEVES_SEULE :
+   - Indique les en-têtes de colonnes visibles (ex : N°, Matricule, Nom & Prénom, Note 1 /20, Note 2 /20, Devoir, Compo, Moyenne...).
+   - Retranscris FIDÈLEMENT ET SANS EXCEPTION CHAQUE LIGNE VISIBLE de haut en bas au format clair :
+     Ligne 1 | Matricule: <si visible sinon vide> | Nom: <Nom et prénom exact> | Notes: <Note1>, <Note2>, ... (précise le barème /20, /10, /40 si indiqué).
+   - N'INVENTE JAMAIS de nom ni de note. Si un chiffre est illisible, écris [illisible].
+
+3. SI TYPE_CONTENU EST DOCUMENT_HORS_NOTES :
+   - Décris factuellement en 2 à 3 phrases courtes ce qui apparaît réellement sur l'image (sans inventer aucun élève ni aucune note).`
+      : `Tu es le moteur de perception visuelle officiel de StudyCloud.
 Analyse minutieusement cette image/document (« ${docName || "Image d'étude"} »).
 1. TEXTE ET ÉNONCÉ : Retranscris fidèlement l'intégralité du texte, chaque question, consigne et donnée numérique avec son unité.
 2. FORMULES : Écris toutes les formules mathématiques et physiques en KaTeX standard ($...$ ou $$...$$).
@@ -943,7 +964,48 @@ Analyse minutieusement cette image/document (« ${docName || "Image d'étude"} �
 Donne une observation fidèle et exhaustive sans inventer.`;
 
     const cleanB64 = targetImage.includes("base64,") ? targetImage.split("base64,")[1].trim() : targetImage.trim();
-    const binary = Uint8Array.from(atob(cleanB64), c => c.charCodeAt(0));
+    const detectedMime =
+      mimeType && mimeType.startsWith("image/")
+        ? mimeType
+        : targetImage.startsWith("data:image/png")
+        ? "image/png"
+        : targetImage.startsWith("data:image/webp")
+        ? "image/webp"
+        : "image/jpeg";
+    const dataUrl = `data:${detectedMime};base64,${cleanB64}`;
+
+    // Tentative 1 (Haute précision OCR) : Llama 4 Scout 17B Vision via /v1/chat/completions
+    try {
+      const scoutRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${cfToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          model: "@cf/meta/llama-4-scout-17b-16e-instruct",
+          messages: [
+            {
+              role: "user",
+              content: [
+                { type: "text", text: cfVisionPrompt },
+                { type: "image_url", image_url: { url: dataUrl } },
+              ],
+            },
+          ],
+          max_tokens: 4096,
+        }),
+      });
+      if (scoutRes.ok) {
+        const scoutData: any = await scoutRes.json();
+        const scoutText = scoutData?.choices?.[0]?.message?.content || "";
+        if (scoutText && scoutText.trim().length > 15) {
+          return stripAiReasoningScratchpad(cleanTechnicalMediaJargon(scoutText.trim()));
+        }
+      }
+    } catch {}
+
+    // Tentative 2 (Secours éprouvé) : Llama 3.2 11B Vision avec base64 direct (compact et rapide)
     const runUrl = `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/@cf/meta/llama-3.2-11b-vision-instruct`;
     let runRes = await fetch(runUrl, {
       method: "POST",
@@ -953,7 +1015,7 @@ Donne une observation fidèle et exhaustive sans inventer.`;
       },
       body: JSON.stringify({
         prompt: cfVisionPrompt,
-        image: Array.from(binary),
+        image: cleanB64,
         max_tokens: 4096,
       }),
     });
@@ -972,11 +1034,30 @@ Donne une observation fidèle et exhaustive sans inventer.`;
           headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
           body: JSON.stringify({
             prompt: cfVisionPrompt,
-            image: Array.from(binary),
+            image: cleanB64,
             max_tokens: 4096,
           }),
         });
       }
+    }
+
+    // Tentative 3 : format binaire Array<number> si la taille est raisonnable (< 1,2 Mo)
+    if (!runRes.ok && cleanB64.length < 1_600_000) {
+      try {
+        const binary = Uint8Array.from(atob(cleanB64), c => c.charCodeAt(0));
+        runRes = await fetch(runUrl, {
+          method: "POST",
+          headers: {
+            "Authorization": `Bearer ${cfToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            prompt: cfVisionPrompt,
+            image: Array.from(binary),
+            max_tokens: 4096,
+          }),
+        });
+      } catch {}
     }
 
     if (runRes.ok) {
@@ -1544,10 +1625,44 @@ RÈGLE ABSOLUE : Ta réponse DOIT ÊTRE EXCLUSIVEMENT un objet JSON strict entou
             }
           }
 
+          const assistantContext = String(body.assistantContext || "").trim();
+          const isTeacherGradebook = assistantContext === "teacher_gradebook";
           const mediaDesc = getFileDescriptorBackend(docName, mimeType, Boolean(imageBase64), Boolean(videoBase64 || videoFrames.length > 0), Boolean(audioBase64));
           const hasActiveFile = Boolean(hasMedia || (docContent && docContent.trim().length > 0) || (docName && docName.trim().length > 0));
 
-          if (hasActiveFile) {
+          // Extraction visuelle proactive et conservée pour TOUS les modèles (y compris secours Llama 3.3 / Kimi)
+          let extractedVisionReport = "";
+          if (isTeacherGradebook && cfToken && accountId) {
+            if (imageBase64 && imageBase64.length > 50) {
+              extractedVisionReport = await runCloudflareVisionAnalysis({
+                targetImage: imageBase64,
+                docName: docName || "",
+                mimeType,
+                assistantContext,
+                cfToken,
+                accountId,
+              });
+            } else if ((!docContent || docContent.trim().length < 80) && documentImages.length > 0) {
+              const pageReports: string[] = [];
+              for (let pIdx = 0; pIdx < Math.min(3, documentImages.length); pIdx++) {
+                const pageImg = documentImages[pIdx];
+                if (pageImg?.base64 && pageImg.base64.length > 50) {
+                  const rep = await runCloudflareVisionAnalysis({
+                    targetImage: pageImg.base64,
+                    docName: pageImg.name || `${docName || "Document"} (Page ${pIdx + 1})`,
+                    mimeType: pageImg.mimeType,
+                    assistantContext,
+                    cfToken,
+                    accountId,
+                  });
+                  if (rep) pageReports.push(`[Page ${pIdx + 1}]\n${rep}`);
+                }
+              }
+              extractedVisionReport = pageReports.join("\n\n");
+            }
+          }
+
+          if (hasActiveFile && !isTeacherGradebook) {
             systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
 [FICHIER D'ÉTUDE ACTIF : ${mediaDesc.label.toUpperCase()} « ${docName || "Fichier joint"} »]
 Type exact de ce fichier : ${mediaDesc.label} (${mediaDesc.article}).
@@ -1568,7 +1683,20 @@ CONSIGNES STRICTES POUR LE TUTEUR :
    - Si les échanges précédents dans la discussion traitaient d'un autre fichier (par exemple un ancien exercice d'électronique ou un ancien document), IGNORE TOTALEMENT l'ancien fichier et concentre-toi à 100% sur le NOUVEAU fichier actuel (${mediaDesc.article} « ${docName || ''} »).
 5. RÈGLE D'OR : Ne mentionne JAMAIS aucun outil technique externe (ne dis pas "d'après le rapport de perception", "l'outil d'analyse indique"). Parle naturellement : "Sur votre image...", "Dans l'exercice...", "Le schéma montre...".
 ══════════════════════════════════════════════════════════════════════════════`;
-          } else {
+          } else if (hasActiveFile && isTeacherGradebook) {
+            const combinedTeacherFileContent = [
+              extractedVisionReport ? `[CONTENU VISUEL EXTRAIT DE « ${docName || "Image"} »] :\n${extractedVisionReport}` : "",
+              docContent ? `[CONTENU TEXTUEL DU FICHIER « ${docName || "Fichier"} »] :\n${docContent.slice(0, 65000)}` : "",
+              audioTranscript ? `[TRANSCRIPTION AUDIO DE « ${docName || "Audio"} »] :\n${audioTranscript}` : "",
+            ].filter(Boolean).join("\n\n");
+
+            if (combinedTeacherFileContent) {
+              systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
+[CONTENU RÉEL OBSERVÉ DANS ${mediaDesc.article.toUpperCase()} « ${docName || "Fichier joint"} »] :
+${combinedTeacherFileContent}
+══════════════════════════════════════════════════════════════════════════════`;
+            }
+          } else if (!isTeacherGradebook) {
             systemPrompt += `\n\n══════════════════════════════════════════════════════════════════════════════
 [AUCUN FICHIER NI IMAGE JOINT DANS CETTE DEMANDE] :
 - L'étudiant N'A JOINT AUCUN FICHIER (aucune image, aucune photo, aucun document PDF, aucune vidéo, aucun audio).
@@ -1698,7 +1826,26 @@ CONSIGNES STRICTES DE CONTINUATION :
                   const isLastUser = (i === simpleMessages.length - 1 && m.role === "user");
 
                   if (isLastUser) {
-                    if (imageBase64 && imageBase64.length > 50) {
+                    if (isTeacherGradebook) {
+                      const teacherAttachedContext = [
+                        extractedVisionReport
+                          ? `[CONTENU LU SUR L'IMAGE « ${docName || "Image jointe"} »] :\n${extractedVisionReport}`
+                          : "",
+                        docContent
+                          ? `[CONTENU DU FICHIER « ${docName || "Fichier joint"} »] :\n${docContent.slice(0, 65000)}`
+                          : "",
+                        audioTranscript
+                          ? `[TRANSCRIPTION AUDIO « ${docName || "Audio joint"} »] :\n${audioTranscript}`
+                          : "",
+                      ].filter(Boolean).join("\n\n");
+
+                      cfMessages.push({
+                        role: "user",
+                        content: teacherAttachedContext
+                          ? `${teacherAttachedContext}\n\n[DEMANDE DE L'UTILISATEUR] :\n${m.content}`
+                          : m.content,
+                      });
+                    } else if (imageBase64 && imageBase64.length > 50) {
                       // MÉTHODE ROBOT ROUGE MULTIMODAL DIRECT :
                       // Envoi direct de l'image_url à l'IA (Kimi K2.7 Code, GLM 5.3 Flash, etc.)
                       const cleanB64 = imageBase64.includes(",") ? imageBase64.split(",")[1] : imageBase64;
@@ -1735,47 +1882,63 @@ CONSIGNES STRICTES DE CONTINUATION :
                   }
                 }
 
-                let cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
-                  method: "POST",
-                  headers: {
-                    "Authorization": `Bearer ${cfToken}`,
-                    "Content-Type": "application/json",
-                  },
-                  body: JSON.stringify({
-                    model: targetModel,
-                    messages: cfMessages,
-                    max_tokens: 8192,
-                  }),
-                });
+                const candidateWorkerModels =
+                  targetModel === "@cf/moonshotai/kimi-k2.7-code"
+                    ? [targetModel, "@cf/moonshotai/kimi-k2.5"]
+                    : [targetModel];
+
+                let cfRes: Response | null = null;
+                for (const modelCandidate of candidateWorkerModels) {
+                  cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
+                    method: "POST",
+                    headers: {
+                      "Authorization": `Bearer ${cfToken}`,
+                      "Content-Type": "application/json",
+                    },
+                    body: JSON.stringify({
+                      model: modelCandidate,
+                      messages: cfMessages,
+                      max_tokens: 8192,
+                    }),
+                  });
+                  if (cfRes.ok) break;
+                }
 
                 // Si le modèle sélectionné ne supporte pas nativement le format multimodal image_url,
-                // fallback automatique avec Cloudflare Llama Vision
-                if (!cfRes.ok && imageBase64 && imageBase64.length > 50) {
+                // fallback automatique avec Cloudflare Vision (conservé aussi pour le secours Llama 3.3 !)
+                if ((!cfRes || !cfRes.ok) && imageBase64 && imageBase64.length > 50) {
                   try {
-                    const cfVision = await runCloudflareVisionAnalysis({
-                      targetImage: imageBase64,
-                      docName: docName || "",
-                      cfToken,
-                      accountId,
-                    });
-                    if (cfVision) {
+                    if (!extractedVisionReport) {
+                      extractedVisionReport = await runCloudflareVisionAnalysis({
+                        targetImage: imageBase64,
+                        docName: docName || "",
+                        mimeType,
+                        assistantContext,
+                        cfToken,
+                        accountId,
+                      });
+                    }
+                    if (extractedVisionReport) {
                       const textFallbackMessages = cfMessages.map(cm => {
                         if (Array.isArray(cm.content)) {
                           const textPart = cm.content.find((p: any) => p.type === "text")?.text || "";
-                          return { role: cm.role, content: `${textPart}\n\n[OBSERVATION DE L'IMAGE JOINTE] :\n${cfVision}` };
+                          return { role: cm.role, content: `${textPart}\n\n[OBSERVATION DE L'IMAGE JOINTE] :\n${extractedVisionReport}` };
                         }
                         return cm;
                       });
-                      cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
-                        method: "POST",
-                        headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ model: targetModel, messages: textFallbackMessages, max_tokens: 8192 }),
-                      });
+                      for (const modelCandidate of candidateWorkerModels) {
+                        cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
+                          method: "POST",
+                          headers: { "Authorization": `Bearer ${cfToken}`, "Content-Type": "application/json" },
+                          body: JSON.stringify({ model: modelCandidate, messages: textFallbackMessages, max_tokens: 8192 }),
+                        });
+                        if (cfRes.ok) break;
+                      }
                     }
                   } catch {}
                 }
 
-                if (cfRes.ok) {
+                if (cfRes && cfRes.ok) {
                   const cfData: any = await cfRes.json();
                   const msg = cfData?.choices?.[0]?.message;
                   const rawAns = msg?.content || msg?.reasoning_content || "";
@@ -1846,18 +2009,30 @@ CONSIGNES STRICTES DE CONTINUATION :
               }
             }
 
-            // 2.e Secours universel automatique sur Cloudflare Workers AI Llama 3.3
+            // 2.e Secours universel automatique sur Cloudflare Workers AI Llama 3.3 (AVEC rapport vision conservé !)
             if (!answerText) {
               try {
+                if (!extractedVisionReport && imageBase64 && imageBase64.length > 50) {
+                  extractedVisionReport = await runCloudflareVisionAnalysis({
+                    targetImage: imageBase64,
+                    docName: docName || "",
+                    mimeType,
+                    assistantContext,
+                    cfToken,
+                    accountId,
+                  });
+                }
                 const cfMessages: any[] = [];
                 if (systemPrompt) cfMessages.push({ role: "system", content: systemPrompt });
-                const activeDocInfo = docContent || audioTranscript;
+                const activeDocInfo = [extractedVisionReport, docContent, audioTranscript].filter(Boolean).join("\n\n");
                 for (let i = 0; i < simpleMessages.length; i++) {
                   const m = simpleMessages[i];
                   if (i === simpleMessages.length - 1 && m.role === "user" && (activeDocInfo || docName)) {
                     cfMessages.push({
                       role: "user",
-                      content: `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} » (${mediaDesc.article})] :\n${activeDocInfo ? activeDocInfo.slice(0, 65000) : "Fichier joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ${mediaDesc.article} (« ${docName || "Fichier joint"} ») et pose la question : « ${m.content} ».\n1. Commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou contenu réel que tu observes dans ${mediaDesc.article}.\n2. Réponds directement, chaleureusement et précisément à sa question en t'appuyant rigoureusement sur ${mediaDesc.article}.\n3. N'invente aucun filtre analogique, formule ou schéma non présent. Ne fais aucune référence aux anciens fichiers de la discussion et ne demande jamais de renvoyer le fichier.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
+                      content: isTeacherGradebook
+                        ? `[CONTENU DU FICHIER / IMAGE « ${docName || "Fichier joint"} »] :\n${activeDocInfo ? activeDocInfo.slice(0, 65000) : "Aucun texte lisible."}\n\n[DEMANDE DE L'UTILISATEUR] :\n${m.content}`
+                        : `[${mediaDesc.label.toUpperCase()} ACTIF DE L'ÉTUDIANT : « ${docName || "Fichier joint"} » (${mediaDesc.article})] :\n${activeDocInfo ? activeDocInfo.slice(0, 65000) : "Fichier joint par l'étudiant."}\n\n[CONSIGNE PÉDAGOGIQUE POUR LE TUTEUR] :\nL'étudiant travaille sur ${mediaDesc.article} (« ${docName || "Fichier joint"} ») et pose la question : « ${m.content} ».\n1. Commence impérativement par une brève confirmation (1 à 2 phrases) du sujet ou contenu réel que tu observes dans ${mediaDesc.article}.\n2. Réponds directement, chaleureusement et précisément à sa question en t'appuyant rigoureusement sur ${mediaDesc.article}.\n3. N'invente aucun filtre analogique, formule ou schéma non présent. Ne fais aucune référence aux anciens fichiers de la discussion et ne demande jamais de renvoyer le fichier.\n\n[MESSAGE DE L'ÉTUDIANT] :\n${m.content}`,
                     });
                   } else {
                     cfMessages.push({ role: m.role, content: m.content });
@@ -1984,7 +2159,7 @@ CONSIGNES STRICTES DE CONTINUATION :
             }
           }
 
-          if (convId) {
+          if (convId && !body.skipChatHistory) {
             const db = getD1Database();
             if (db) {
               try {
@@ -2139,6 +2314,7 @@ CONSIGNES STRICTES DE CONTINUATION :
             answerText,
             effectiveModelUsed,
             audioTranscript,
+            perceptionReport: extractedVisionReport || audioTranscript || undefined,
             calculatedTokens,
             creditsDeducted,
             remainingCredits,
@@ -2195,7 +2371,7 @@ CONSIGNES STRICTES DE CONTINUATION :
         }
 
         // Mode synchrone classique
-        const { creationRes, answerText, effectiveModelUsed, calculatedTokens, creditsDeducted, remainingCredits, geminiErrorDetail } = await executeGenerationAndPersist();
+        const { creationRes, answerText, effectiveModelUsed, calculatedTokens, creditsDeducted, remainingCredits, geminiErrorDetail, perceptionReport: returnedPerceptionReport } = await executeGenerationAndPersist();
 
         return new Response(JSON.stringify({
           success: true,
@@ -2210,6 +2386,7 @@ CONSIGNES STRICTES DE CONTINUATION :
           response: creationRes.chat_response,
           chat_response: creationRes.chat_response,
           raw_response: answerText,
+          perceptionReport: returnedPerceptionReport || undefined,
           model: effectiveModelUsed,
           tokens: calculatedTokens,
           credits: creditsDeducted,
