@@ -59,6 +59,8 @@ import {
   TeacherDelmasAssistantRibbonButton,
   TeacherDelmasAssistantDrawer,
 } from './TeacherDelmasAssistantDrawer';
+import { GradebookDownloadMenu } from './GradebookDownloadMenu';
+import type { GradebookExportDataset } from '../../utils/gradebookExportUtils';
 import type {
   TeacherDelmasAction,
   TeacherDelmasActiveContext,
@@ -1490,6 +1492,92 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
     XLSX.writeFile(wb, fileName);
   };
 
+  // Jeu de données structuré pour le menu Télécharger (PDF / Word / Copier)
+  const buildAnnualExportDataset = (): GradebookExportDataset => {
+    const yearLabel = schoolYear?.label || 'Annee';
+    const classLabel = schoolClass.name?.trim()
+      ? schoolClass.name.toLowerCase().includes(schoolClass.level.toLowerCase())
+        ? schoolClass.name.trim()
+        : `${schoolClass.level}_${schoolClass.name.trim()}`
+      : schoolClass.level;
+
+    const headers: string[] = [
+      'Rang',
+      ...(effectiveShowMatricule ? ['Matricule'] : []),
+      'Nom & Prénom',
+      ...computed.terms.map(
+        (t) => `${t.name} (c${formatCoeffDisplay(t.effectiveCoeff)})`
+      ),
+      'Total Annuel',
+      `Moy. /${effectiveScaleLabel}`,
+      'Mention',
+      'Décision',
+    ];
+
+    const rows: string[][] = computed.students.map((st) => [
+      st.rankLabel || '-',
+      ...(effectiveShowMatricule ? [st.matricule || '-'] : []),
+      st.name || 'Élève sans nom',
+      ...computed.terms.map((t) => {
+        const cell = st.cellsByTerm[t.id];
+        return cell?.effectiveAverage !== null && cell?.effectiveAverage !== undefined
+          ? cell.effectiveAverage.toFixed(2)
+          : '-';
+      }),
+      st.totalAnnual !== null ? st.totalAnnual.toFixed(2) : '-',
+      st.annualAverage !== null ? st.annualAverage.toFixed(2) : '-',
+      st.mention || '-',
+      st.decision || '-',
+    ]);
+
+    const footerRow: string[] = [
+      '',
+      ...(effectiveShowMatricule ? [''] : []),
+      'MOYENNE DE LA CLASSE',
+      ...computed.terms.map((t) => {
+        const stat = computed.classSummary.byTerm[t.id];
+        return stat?.classAverage20 !== null && stat?.classAverage20 !== undefined
+          ? stat.classAverage20.toFixed(2)
+          : '-';
+      }),
+      computed.classSummary.classTotalAnnualAvg !== null
+        ? computed.classSummary.classTotalAnnualAvg.toFixed(2)
+        : '-',
+      computed.classSummary.classAnnualAverage !== null
+        ? computed.classSummary.classAnnualAverage.toFixed(2)
+        : '-',
+      computed.classSummary.passRatePercent !== null
+        ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
+        : '',
+      `${computed.classSummary.passCount}/${computed.classSummary.gradedStudentCount} admis`,
+    ];
+
+    const metaBadges: string[] = [
+      `Total Coeff ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)}`,
+      `Barème /${effectiveScaleLabel}`,
+      `${computed.students.length} élève${computed.students.length > 1 ? 's' : ''}`,
+    ];
+    if (computed.classSummary.passRatePercent !== null) {
+      metaBadges.push(`Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`);
+    }
+
+    return {
+      fileBaseName: `Moyenne_Annuelle_${classLabel}_${yearLabel}`,
+      title: `MOYENNE GÉNÉRALE ANNUELLE — ${yearLabel.toUpperCase()}`,
+      subtitle: classDisplayName,
+      schoolName: school?.name || undefined,
+      metaBadges,
+      headers,
+      rows,
+      footerRow,
+      summaryNote:
+        computed.classSummary.classAnnualAverage !== null
+          ? `Moyenne annuelle de classe : ${computed.classSummary.classAnnualAverage.toFixed(2)}/${effectiveScaleLabel} • ${computed.classSummary.passCount}/${computed.classSummary.gradedStudentCount} admis`
+          : undefined,
+      nameColumnIndex: effectiveShowMatricule ? 2 : 1,
+    };
+  };
+
   const classDisplayName = schoolClass.name?.trim()
     ? schoolClass.name.toLowerCase().includes(schoolClass.level.toLowerCase())
       ? schoolClass.name.trim()
@@ -1887,15 +1975,10 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition shadow-2xs cursor-pointer active:scale-95"
-            title="Télécharger ce tableau annuel au format Excel (.xlsx)"
-          >
-            <Download className="w-3.5 h-3.5" />
-            <span className="hidden md:inline">Excel</span>
-          </button>
+          <GradebookDownloadMenu
+            getDataset={buildAnnualExportDataset}
+            onExportExcel={handleExportExcel}
+          />
 
           <div className="hidden md:flex items-center gap-1.5 pl-1 border-l border-slate-300">
             <ViewerSuperExpandButton

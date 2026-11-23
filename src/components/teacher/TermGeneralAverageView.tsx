@@ -59,6 +59,8 @@ import {
   TeacherDelmasAssistantRibbonButton,
   TeacherDelmasAssistantDrawer,
 } from './TeacherDelmasAssistantDrawer';
+import { GradebookDownloadMenu } from './GradebookDownloadMenu';
+import type { GradebookExportDataset } from '../../utils/gradebookExportUtils';
 import type {
   TeacherDelmasAction,
   TeacherDelmasActiveContext,
@@ -1513,6 +1515,89 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     XLSX.writeFile(wb, fileName);
   };
 
+  // Jeu de données structuré pour le menu Télécharger (PDF / Word / Copier)
+  const buildTermExportDataset = (): GradebookExportDataset => {
+    const termLabel = liveTerm?.name || term?.name || 'Trimestre';
+    const classLabel = schoolClass.name?.trim()
+      ? schoolClass.name.toLowerCase().includes(schoolClass.level.toLowerCase())
+        ? schoolClass.name.trim()
+        : `${schoolClass.level}_${schoolClass.name.trim()}`
+      : schoolClass.level;
+
+    const headers: string[] = [
+      'Rang',
+      ...(effectiveShowMatricule ? ['Matricule'] : []),
+      'Nom & Prénom',
+      ...computed.subjects.map(
+        (s) => `${s.name} (c${formatCoeffDisplay(s.effectiveCoeff)})`
+      ),
+      `Total`,
+      `Moy. /${effectiveScaleLabel}`,
+      'Mention',
+    ];
+
+    const rows: string[][] = computed.students.map((st) => [
+      st.rankLabel || '-',
+      ...(effectiveShowMatricule ? [st.matricule || '-'] : []),
+      st.name || 'Élève sans nom',
+      ...computed.subjects.map((s) => {
+        const cell = st.cellsBySubject[s.id];
+        return cell?.effectiveAverage !== null && cell?.effectiveAverage !== undefined
+          ? cell.effectiveAverage.toFixed(2)
+          : '-';
+      }),
+      st.totalGeneral !== null ? st.totalGeneral.toFixed(2) : '-',
+      st.generalAverage !== null ? st.generalAverage.toFixed(2) : '-',
+      st.mention || '-',
+    ]);
+
+    const footerRow: string[] = [
+      '',
+      ...(effectiveShowMatricule ? [''] : []),
+      'MOYENNE DE LA CLASSE',
+      ...computed.subjects.map((s) => {
+        const stat = computed.classSummary.bySubject[s.id];
+        return stat?.classAverage20 !== null && stat?.classAverage20 !== undefined
+          ? stat.classAverage20.toFixed(2)
+          : '-';
+      }),
+      computed.classSummary.classTotalGeneralAvg !== null
+        ? computed.classSummary.classTotalGeneralAvg.toFixed(2)
+        : '-',
+      computed.classSummary.classGeneralAverage !== null
+        ? computed.classSummary.classGeneralAverage.toFixed(2)
+        : '-',
+      computed.classSummary.passRatePercent !== null
+        ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
+        : '',
+    ];
+
+    const metaBadges: string[] = [
+      `Total Coeff ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)}`,
+      `Barème /${effectiveScaleLabel}`,
+      `${computed.students.length} élève${computed.students.length > 1 ? 's' : ''}`,
+    ];
+    if (computed.classSummary.passRatePercent !== null) {
+      metaBadges.push(`Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`);
+    }
+
+    return {
+      fileBaseName: `Moyenne_Generale_${classLabel}_${termLabel}`,
+      title: `MOYENNE GÉNÉRALE — ${termLabel.toUpperCase()}`,
+      subtitle: [classDisplayName, schoolYear?.label].filter(Boolean).join(' • '),
+      schoolName: school?.name || undefined,
+      metaBadges,
+      headers,
+      rows,
+      footerRow,
+      summaryNote:
+        computed.classSummary.classGeneralAverage !== null
+          ? `Moyenne générale de classe : ${computed.classSummary.classGeneralAverage.toFixed(2)}/${effectiveScaleLabel}`
+          : undefined,
+      nameColumnIndex: effectiveShowMatricule ? 2 : 1,
+    };
+  };
+
   // Libellé de la classe pour l'en-tête
   const classDisplayName = schoolClass.name?.trim()
     ? schoolClass.name.toLowerCase().includes(schoolClass.level.toLowerCase())
@@ -1924,15 +2009,10 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition shadow-2xs cursor-pointer active:scale-95"
-            title="Télécharger ce tableau au format Excel (.xlsx)"
-          >
-            <Download className="w-3 h-3 text-emerald-700" />
-            <span className="hidden md:inline">Exporter .xlsx</span>
-          </button>
+          <GradebookDownloadMenu
+            getDataset={buildTermExportDataset}
+            onExportExcel={handleExportExcel}
+          />
 
           <div className="flex items-center gap-1.5 shrink-0 ml-0.5">
             <ViewerSuperExpandButton

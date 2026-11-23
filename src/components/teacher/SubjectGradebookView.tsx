@@ -60,6 +60,8 @@ import {
   TeacherDelmasAssistantRibbonButton,
   TeacherDelmasAssistantDrawer,
 } from './TeacherDelmasAssistantDrawer';
+import { GradebookDownloadMenu } from './GradebookDownloadMenu';
+import type { GradebookExportDataset } from '../../utils/gradebookExportUtils';
 import {
   hasRealExplicitMatriculeBatch,
   type TeacherDelmasAction,
@@ -3075,6 +3077,101 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     }
   };
 
+  // Jeu de données structuré pour le menu Télécharger (PDF / Word / Copier)
+  const buildSubjectExportDataset = (): GradebookExportDataset => {
+    const noteHeaders = Array.from({ length: noteColumnCount }, (_, i) => {
+      const meta = columnMetas[i];
+      const title = meta?.title || 'NOTE';
+      const max = meta?.maxScore || 20;
+      return `${title} ${i + 1} (/${max})`;
+    });
+    const headers = [
+      'Rang',
+      ...(effectiveShowMatricule ? ['Matricule'] : []),
+      'Nom & Prénom',
+      ...noteHeaders,
+      `Moyenne (/${effectiveScaleLabel})`,
+      'Mention',
+    ];
+    const nonEmptyRows = studentsWithStats.filter(
+      (s) =>
+        s.name.trim().length > 0 ||
+        (s.matricule && s.matricule.trim().length > 0) ||
+        s.notes.some((n) => String(n || '').trim().length > 0)
+    );
+    const sourceRows = nonEmptyRows.length > 0 ? nonEmptyRows : studentsWithStats;
+
+    const rows = sourceRows.map((s) => {
+      const notesFormatted = s.notes.slice(0, noteColumnCount).map((n, i) => {
+        const meta = columnMetas[i];
+        const parsed = parseStudentNote(n, meta?.maxScore || 20);
+        return parsed.scoreStr ? `${parsed.scoreStr}/${parsed.maxScore}` : '-';
+      });
+      return [
+        s.rank || '-',
+        ...(effectiveShowMatricule ? [s.matricule || '-'] : []),
+        s.name || 'Élève sans nom',
+        ...notesFormatted,
+        s.hasInvalidNote ? '...' : s.averageFormatted || '-',
+        s.mention || '-',
+      ];
+    });
+
+    const gradedStudents = sourceRows.filter((s) => s.average !== null && !s.hasInvalidNote);
+    const classAvg =
+      gradedStudents.length > 0
+        ? gradedStudents.reduce((acc, s) => acc + (s.average ?? 0), 0) / gradedStudents.length
+        : null;
+    const passCount = gradedStudents.filter((s) => (s.average ?? 0) >= effectiveAverageScale / 2).length;
+    const passRate = gradedStudents.length > 0 ? Math.round((passCount / gradedStudents.length) * 100) : null;
+
+    const footerRow =
+      classAvg !== null
+        ? [
+            '',
+            ...(effectiveShowMatricule ? [''] : []),
+            'MOYENNE DE LA CLASSE',
+            ...Array(noteColumnCount).fill(''),
+            `${classAvg.toFixed(2)}/${effectiveScaleLabel}`,
+            passRate !== null ? `Réussite : ${passRate} %` : '',
+          ]
+        : undefined;
+
+    const classLabel = schoolClass.name?.trim()
+      ? schoolClass.name.toLowerCase().includes(schoolClass.level.toLowerCase())
+        ? schoolClass.name.trim()
+        : `${schoolClass.level}_${schoolClass.name.trim()}`
+      : schoolClass.level;
+
+    const metaBadges: string[] = [];
+    if (subject.coefficient !== undefined && subject.coefficient !== null) {
+      metaBadges.push(`Coeff ${subject.coefficient}`);
+    }
+    metaBadges.push(`Barème /${effectiveScaleLabel}`);
+    metaBadges.push(`${sourceRows.length} élève${sourceRows.length > 1 ? 's' : ''}`);
+    if (passRate !== null) {
+      metaBadges.push(`Taux de réussite : ${passRate} %`);
+    }
+
+    return {
+      fileBaseName: `Releve_Notes_${subject.name}_${classLabel}_${term?.name || 'T1'}`,
+      title: `RELEVÉ DE NOTES — ${subject.name.toUpperCase()}`,
+      subtitle: [classFullDisplayName, term?.name || 'Trimestre 1', schoolYear?.label]
+        .filter(Boolean)
+        .join(' • '),
+      schoolName: school?.name || undefined,
+      metaBadges,
+      headers,
+      rows,
+      footerRow,
+      summaryNote:
+        classAvg !== null
+          ? `Moyenne de la classe : ${classAvg.toFixed(2)}/${effectiveScaleLabel} • ${passCount}/${gradedStudents.length} élèves au-dessus de la moyenne`
+          : undefined,
+      nameColumnIndex: effectiveShowMatricule ? 2 : 1,
+    };
+  };
+
   // Nombre total de colonnes et lignes d'arrière-plan
   const backgroundColCount = Math.max(68, noteColumnCount + RIGHT_EXTRA_COLS + 16);
   const backgroundRowCount = Math.max(65, students.length + 35);
@@ -4261,15 +4358,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleExportExcel}
-            className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-300 rounded-lg transition shadow-2xs cursor-pointer active:scale-95"
-            title="Télécharger cette feuille au format Excel (.xlsx)"
-          >
-            <Download className="w-3 h-3 text-emerald-700" />
-            <span className="hidden md:inline">Exporter .xlsx</span>
-          </button>
+          <GradebookDownloadMenu
+            getDataset={buildSubjectExportDataset}
+            onExportExcel={handleExportExcel}
+          />
 
           {(cloudSaveStatus === 'error' || cloudSaveStatus === 'offline') && (
             <button
