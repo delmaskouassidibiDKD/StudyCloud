@@ -63,6 +63,9 @@ export function purgeVolatileStorage(): void {
         k !== 'unifolder_user_id' &&
         k !== 'studycloud_user_id' &&
         k !== 'studycloud_auth_token' &&
+        k !== 'unifolder_current_tab' &&
+        k !== 'unifolder_view_mode' &&
+        !k.startsWith('studycloud_teacher_nav_v1_') &&
         k !== 'studycloud_dashboard_wallpaper' &&
         k !== 'studycloud_dashboard_wallpaper_local' &&
         k !== 'studycloud_dashboard_wallpaper_meta' &&

@@ -57,6 +57,12 @@ import {
   isOfflineOrNetworkError,
 } from '../../services/teacherGradebookApi';
 import type { GradebookInspection } from '../../utils/teacherTransferEngine';
+import {
+  readTeacherNavSnapshot,
+  writeTeacherNavSnapshot,
+  resolveTeacherNavSnapshot,
+  type TeacherNavSnapshot,
+} from '../../utils/teacherNavPersistence';
 
 export type CardColorStyle = 'accent' | 'full';
 
@@ -635,10 +641,44 @@ const InlineSectionSearch: React.FC<InlineSectionSearchProps> = ({
 
 export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, user }) => {
   const { user: authUser } = useAuth();
-  const authUserId = authUser?.id || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') || '' : '');
+  const authUserId =
+    authUser?.id ||
+    (typeof localStorage !== 'undefined'
+      ? localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id') || ''
+      : '');
   const initialCloudCache = useMemo(
     () => (authUserId ? readUserBootstrapCache(authUserId) : null),
     [authUserId]
+  );
+  // Restauration persistante de l'emplacement exact (école, niveau, classe, trimestre, tableau matière, moyenne générale, transfert)
+  // afin de retomber toujours exactement au même endroit après rechargement ou mise à jour
+  const initialNavSnapshot = useMemo(
+    () => (authUserId ? readTeacherNavSnapshot(authUserId) : null),
+    [authUserId]
+  );
+  const initialResolvedNav = useMemo(
+    () =>
+      resolveTeacherNavSnapshot(
+        initialNavSnapshot,
+        initialCloudCache
+          ? {
+              schoolYears: initialCloudCache.schoolYears || [],
+              schools: initialCloudCache.schools || [],
+              studyLevels: initialCloudCache.studyLevels || [],
+              classes: initialCloudCache.classes || [],
+              terms: initialCloudCache.terms || [],
+              subjects: initialCloudCache.subjects || [],
+              classAverages: initialCloudCache.classAverages || [],
+            }
+          : null
+      ),
+    [initialNavSnapshot, initialCloudCache]
+  );
+  const pendingNavRestoreRef = useRef<TeacherNavSnapshot | null>(
+    initialResolvedNav.needsCloudHydration ? initialNavSnapshot : null
+  );
+  const [isRestoringNav, setIsRestoringNav] = useState<boolean>(
+    () => Boolean(initialResolvedNav.needsCloudHydration && getTeacherAuthToken())
   );
 
   // État de synchronisation Cloudflare D1 + R2 (automatique + bouton manuel "Enregistrer")
@@ -739,14 +779,23 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [subjectSearchQuery, setSubjectSearchQuery] = useState('');
 
   // Vue dédiée de transfert / duplication (s'ouvre "à l'intérieur" comme les cartes)
-  const [isTransferViewOpen, setIsTransferViewOpen] = useState(false);
+  const [isTransferViewOpen, setIsTransferViewOpen] = useState<boolean>(
+    () => initialResolvedNav.isTransferViewOpen
+  );
 
   // Agrandissement progressif et plein écran (Image 2 & 3 - Desktop uniquement)
   const viewerExpandLevel = useViewerExpandLevel();
-  const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const [isViewerMaximized, setIsViewerMaximized] = useState<boolean>(
+    () => initialResolvedNav.viewerExpandLevel >= 1
+  );
 
-  // Nettoyage complet de l'agrandissement au démontage du composant
+  // Restaurer le niveau d'agrandissement si l'utilisateur était agrandi / plein écran avant rechargement,
+  // et nettoyer uniquement au démontage réel du module
   useEffect(() => {
+    if (initialResolvedNav.viewerExpandLevel >= 1) {
+      setViewerExpandLevel(initialResolvedNav.viewerExpandLevel);
+      setIsViewerMaximized(true);
+    }
     return () => {
       resetViewerExpand();
     };
@@ -775,30 +824,33 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   });
 
   const [selectedYearId, setSelectedYearId] = useState<string>(() => {
-    return initialCloudCache?.schoolYears?.[0]?.id || '';
+    return initialResolvedNav.selectedYearId || initialCloudCache?.schoolYears?.[0]?.id || '';
   });
 
   // Écoles créées attachées à chaque année scolaire (isolées par user_id dans D1 + logo R2)
   const [schools, setSchools] = useState<SchoolItem[]>(() => initialCloudCache?.schools || []);
 
-  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(null);
+  const [selectedSchoolId, setSelectedSchoolId] = useState<string | null>(
+    () => initialResolvedNav.selectedSchoolId
+  );
 
   // École sélectionnée dans laquelle on est "rentré" à l'intérieur
-  const [selectedSchoolInside, setSelectedSchoolInside] = useState<SchoolItem | null>(null);
+  const [selectedSchoolInside, setSelectedSchoolInside] = useState<SchoolItem | null>(
+    () => initialResolvedNav.selectedSchoolInside
+  );
 
   // Classe dans laquelle on est "rentré" (Écran C : Trimestres fixes en haut + Matières en dessous)
-  const [enteredClassId, setEnteredClassId] = useState<string | null>(null);
-
-  // Réinitialiser la classe ouverte quand on quitte ou change d'école
-  useEffect(() => {
-    setEnteredClassId(null);
-  }, [selectedSchoolInside?.id]);
+  const [enteredClassId, setEnteredClassId] = useState<string | null>(
+    () => initialResolvedNav.enteredClassId
+  );
 
   // Niveaux d'étude créés attachés à chaque école (CP1, 6ème, 2nde, Terminale, Licence 1...)
   const [studyLevels, setStudyLevels] = useState<StudyLevelItem[]>(() => initialCloudCache?.studyLevels || []);
 
   // Niveau d'étude activement sélectionné dans l'école
-  const [selectedLevelId, setSelectedLevelId] = useState<string | null>(null);
+  const [selectedLevelId, setSelectedLevelId] = useState<string | null>(
+    () => initialResolvedNav.selectedLevelId
+  );
 
   // Référence pour le défilement horizontal fluide des niveaux d'étude
   const levelsScrollRef = useRef<HTMLDivElement>(null);
@@ -817,7 +869,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [classes, setClasses] = useState<ClassItem[]>(() => initialCloudCache?.classes || []);
 
   // Classe activement sélectionnée parmi les classes du niveau d'étude actif
-  const [selectedClassId, setSelectedClassId] = useState<string | null>(null);
+  const [selectedClassId, setSelectedClassId] = useState<string | null>(
+    () => initialResolvedNav.selectedClassId
+  );
 
   // Référence pour le défilement horizontal fluide des classes
   const classesScrollRef = useRef<HTMLDivElement>(null);
@@ -839,15 +893,35 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [terms, setTerms] = useState<TermItem[]>(() => initialCloudCache?.terms || []);
 
   // Trimestre actif sélectionné
-  const [selectedTermId, setSelectedTermId] = useState<string | null>(null);
+  const [selectedTermId, setSelectedTermId] = useState<string | null>(
+    () => initialResolvedNav.selectedTermId
+  );
 
   // Matière sélectionnée dans laquelle on est "rentré" à l'intérieur pour afficher le tableur de notes & moyennes
-  const [selectedSubjectInside, setSelectedSubjectInside] = useState<SubjectItem | null>(null);
+  const [selectedSubjectInside, setSelectedSubjectInside] = useState<SubjectItem | null>(
+    () => initialResolvedNav.selectedSubjectInside
+  );
 
   // Cartes de calcul de moyenne générale par classe (annuelle + 1 par trimestre, synchronisées en base)
   const [classAverages, setClassAverages] = useState<ClassAverageCardItem[]>(() => initialCloudCache?.classAverages || []);
-  const [selectedAverageCardInside, setSelectedAverageCardInside] = useState<ClassAverageCardItem | null>(null);
+  const [selectedAverageCardInside, setSelectedAverageCardInside] = useState<ClassAverageCardItem | null>(
+    () => initialResolvedNav.selectedAverageCardInside
+  );
   const classAveragesScrollRef = useRef<HTMLDivElement>(null);
+
+  // Mémoriser les derniers IDs de navigation pour ne réinitialiser les sous-vues QUE sur vrai changement utilisateur
+  // (jamais au montage initial ni lors d'un rafraîchissement des données serveur)
+  const prevNavIdsRef = useRef<{
+    schoolId: string | null;
+    levelId: string | null;
+    classId: string | null;
+    termId: string | null;
+  }>({
+    schoolId: initialResolvedNav.selectedSchoolInside?.id || null,
+    levelId: initialResolvedNav.selectedLevelId,
+    classId: initialResolvedNav.selectedClassId,
+    termId: initialResolvedNav.selectedTermId,
+  });
 
   const scrollClassAverages = (direction: 'left' | 'right') => {
     if (classAveragesScrollRef.current) {
@@ -865,10 +939,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     clearLegacyUnscopedTeacherData();
 
     if (!getTeacherAuthToken() || !authUserId) {
+      pendingNavRestoreRef.current = null;
+      setIsRestoringNav(false);
       setCloudStatus('ready');
       return;
     }
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+      pendingNavRestoreRef.current = null;
+      setIsRestoringNav(false);
       setIsOnline(false);
       setCloudStatus('error');
       setSaveUiState('offline');
@@ -889,17 +967,70 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSubjects(data.subjects);
       setClassAverages(data.classAverages || []);
       setServerGradebookStats(data.gradebookStats || {});
-      setSelectedYearId((prev) =>
-        prev && data.schoolYears.some((y) => y.id === prev) ? prev : data.schoolYears[0]?.id || ''
-      );
-      setSelectedSchoolInside((prev) =>
-        prev ? data.schools.find((s) => s.id === prev.id) || null : null
-      );
+
+      if (pendingNavRestoreRef.current) {
+        const resolved = resolveTeacherNavSnapshot(pendingNavRestoreRef.current, {
+          schoolYears: data.schoolYears || [],
+          schools: data.schools || [],
+          studyLevels: data.studyLevels || [],
+          classes: data.classes || [],
+          terms: data.terms || [],
+          subjects: data.subjects || [],
+          classAverages: data.classAverages || [],
+        });
+        prevNavIdsRef.current = {
+          schoolId: resolved.selectedSchoolInside?.id || null,
+          levelId: resolved.selectedLevelId,
+          classId: resolved.selectedClassId,
+          termId: resolved.selectedTermId,
+        };
+        setSelectedYearId(resolved.selectedYearId);
+        setSelectedSchoolId(resolved.selectedSchoolId);
+        setSelectedSchoolInside(resolved.selectedSchoolInside);
+        setSelectedLevelId(resolved.selectedLevelId);
+        setSelectedClassId(resolved.selectedClassId);
+        setEnteredClassId(resolved.enteredClassId);
+        setSelectedTermId(resolved.selectedTermId);
+        setSelectedSubjectInside(resolved.selectedSubjectInside);
+        setSelectedAverageCardInside(resolved.selectedAverageCardInside);
+        setIsTransferViewOpen(resolved.isTransferViewOpen);
+        if (resolved.viewerExpandLevel >= 1) {
+          setViewerExpandLevel(resolved.viewerExpandLevel);
+          setIsViewerMaximized(true);
+        }
+        pendingNavRestoreRef.current = null;
+        setIsRestoringNav(false);
+      } else {
+        setSelectedYearId((prev) =>
+          prev && data.schoolYears.some((y) => y.id === prev) ? prev : data.schoolYears[0]?.id || ''
+        );
+        setSelectedSchoolInside((prev) =>
+          prev ? data.schools.find((s) => s.id === prev.id) || null : null
+        );
+        setSelectedSubjectInside((prev) =>
+          prev ? data.subjects.find((s) => s.id === prev.id) || null : null
+        );
+        setSelectedAverageCardInside((prev) => {
+          if (!prev) return null;
+          const byId = (data.classAverages || []).find((ca) => ca.id === prev.id);
+          if (byId) return byId;
+          const byMatch = (data.classAverages || []).find(
+            (ca) =>
+              ca.kind === prev.kind &&
+              ca.classId === prev.classId &&
+              (prev.kind === 'annual' ? !ca.termId : ca.termId === prev.termId)
+          );
+          if (byMatch) return byMatch;
+          return data.classes.some((c) => c.id === prev.classId) ? prev : null;
+        });
+      }
 
       writeUserBootstrapCache(authUserId, data);
       isCloudHydratedRef.current = true;
       setCloudStatus('ready');
     } catch (err: any) {
+      pendingNavRestoreRef.current = null;
+      setIsRestoringNav(false);
       if (isOfflineOrNetworkError(err)) {
         setIsOnline(false);
         setSaveUiState('offline');
@@ -952,10 +1083,33 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   const prevAuthUserIdRef = useRef<string>(authUserId);
   useEffect(() => {
-    // Si l'utilisateur change de compte sur le même appareil, réinitialiser immédiatement l'état mémoire avant de charger le nouveau compte depuis D1
+    // Si l'utilisateur change de compte sur le même appareil, réinitialiser immédiatement l'état mémoire et charger la navigation du nouveau compte
     if (prevAuthUserIdRef.current !== authUserId) {
       prevAuthUserIdRef.current = authUserId;
       const nextCache = authUserId ? readUserBootstrapCache(authUserId) : null;
+      const nextNavSnap = authUserId ? readTeacherNavSnapshot(authUserId) : null;
+      const nextResolved = resolveTeacherNavSnapshot(
+        nextNavSnap,
+        nextCache
+          ? {
+              schoolYears: nextCache.schoolYears || [],
+              schools: nextCache.schools || [],
+              studyLevels: nextCache.studyLevels || [],
+              classes: nextCache.classes || [],
+              terms: nextCache.terms || [],
+              subjects: nextCache.subjects || [],
+              classAverages: nextCache.classAverages || [],
+            }
+          : null
+      );
+      pendingNavRestoreRef.current = nextResolved.needsCloudHydration ? nextNavSnap : null;
+      setIsRestoringNav(Boolean(nextResolved.needsCloudHydration && getTeacherAuthToken()));
+      prevNavIdsRef.current = {
+        schoolId: nextResolved.selectedSchoolInside?.id || null,
+        levelId: nextResolved.selectedLevelId,
+        classId: nextResolved.selectedClassId,
+        termId: nextResolved.selectedTermId,
+      };
       setSchoolYears(nextCache?.schoolYears || []);
       setSchools(nextCache?.schools || []);
       setStudyLevels(nextCache?.studyLevels || []);
@@ -964,14 +1118,16 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSubjects(nextCache?.subjects || []);
       setClassAverages(nextCache?.classAverages || []);
       setServerGradebookStats(nextCache?.gradebookStats || {});
-      setSelectedYearId(nextCache?.schoolYears?.[0]?.id || '');
-      setSelectedSchoolInside(null);
-      setSelectedSubjectInside(null);
-      setSelectedAverageCardInside(null);
-      setSelectedLevelId(null);
-      setSelectedClassId(null);
-      setSelectedTermId(null);
-      setIsTransferViewOpen(false);
+      setSelectedYearId(nextResolved.selectedYearId);
+      setSelectedSchoolId(nextResolved.selectedSchoolId);
+      setSelectedSchoolInside(nextResolved.selectedSchoolInside);
+      setSelectedSubjectInside(nextResolved.selectedSubjectInside);
+      setSelectedAverageCardInside(nextResolved.selectedAverageCardInside);
+      setSelectedLevelId(nextResolved.selectedLevelId);
+      setSelectedClassId(nextResolved.selectedClassId);
+      setEnteredClassId(nextResolved.enteredClassId);
+      setSelectedTermId(nextResolved.selectedTermId);
+      setIsTransferViewOpen(nextResolved.isTransferViewOpen);
     }
     isCloudHydratedRef.current = false;
     loadFromCloudD1();
@@ -995,6 +1151,76 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     });
   }, [authUserId, schoolYears, schools, studyLevels, classes, terms, subjects, classAverages, serverGradebookStats]);
 
+  // Persistance en temps réel de l'emplacement exact dans localStorage + sessionStorage (résiste aux rechargements et aux mises à jour)
+  const currentNavPayloadRef = useRef<Omit<TeacherNavSnapshot, 'version' | 'updatedAt'>>({
+    selectedYearId: selectedYearId || null,
+    selectedSchoolId,
+    schoolInsideId: selectedSchoolInside?.id || null,
+    selectedLevelId,
+    selectedClassId,
+    enteredClassId,
+    selectedTermId,
+    subjectInsideId: selectedSubjectInside?.id || null,
+    averageCardInsideId: selectedAverageCardInside?.id || null,
+    averageCardKind: selectedAverageCardInside?.kind || null,
+    averageCardClassId: selectedAverageCardInside?.classId || null,
+    averageCardTermId: selectedAverageCardInside?.termId || null,
+    isTransferViewOpen,
+    viewerExpandLevel,
+  });
+
+  useEffect(() => {
+    const payload: Omit<TeacherNavSnapshot, 'version' | 'updatedAt'> = {
+      selectedYearId: selectedYearId || null,
+      selectedSchoolId,
+      schoolInsideId: selectedSchoolInside?.id || null,
+      selectedLevelId,
+      selectedClassId,
+      enteredClassId,
+      selectedTermId,
+      subjectInsideId: selectedSubjectInside?.id || null,
+      averageCardInsideId: selectedAverageCardInside?.id || null,
+      averageCardKind: selectedAverageCardInside?.kind || null,
+      averageCardClassId: selectedAverageCardInside?.classId || null,
+      averageCardTermId: selectedAverageCardInside?.termId || null,
+      isTransferViewOpen,
+      viewerExpandLevel,
+    };
+    currentNavPayloadRef.current = payload;
+    if (!authUserId || pendingNavRestoreRef.current) return;
+    writeTeacherNavSnapshot(authUserId, payload);
+  }, [
+    authUserId,
+    selectedYearId,
+    selectedSchoolId,
+    selectedSchoolInside?.id,
+    selectedLevelId,
+    selectedClassId,
+    enteredClassId,
+    selectedTermId,
+    selectedSubjectInside?.id,
+    selectedAverageCardInside?.id,
+    selectedAverageCardInside?.kind,
+    selectedAverageCardInside?.classId,
+    selectedAverageCardInside?.termId,
+    isTransferViewOpen,
+    viewerExpandLevel,
+  ]);
+
+  // Flush immédiat de l'emplacement juste avant un rechargement ou une mise à jour de l'application
+  useEffect(() => {
+    const flushNav = () => {
+      if (!authUserId || pendingNavRestoreRef.current) return;
+      writeTeacherNavSnapshot(authUserId, currentNavPayloadRef.current);
+    };
+    window.addEventListener('beforeunload', flushNav);
+    window.addEventListener('pagehide', flushNav);
+    return () => {
+      window.removeEventListener('beforeunload', flushNav);
+      window.removeEventListener('pagehide', flushNav);
+    };
+  }, [authUserId]);
+
   // Rafraîchir uniquement les stats de tableurs après fermeture/sauvegarde d'un tableur
   const refreshCloudStats = useCallback(async () => {
     if (!getTeacherAuthToken() || !authUserId) return;
@@ -1006,14 +1232,52 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     } catch {}
   }, [authUserId]);
 
-  // Réinitialiser la matière ou la carte moyenne affichée si l'on change de niveau, de classe, d'école ou de trimestre
+  // Réinitialiser les sous-vues UNIQUEMENT lorsque l'utilisateur change réellement d'école, niveau, classe ou trimestre
+  // (jamais à la restauration initiale ni lors d'une mise à jour des données serveur)
   useEffect(() => {
-    setSelectedSubjectInside(null);
-  }, [selectedLevelId, selectedClassId, selectedSchoolInside, selectedTermId]);
+    const curSchoolId = selectedSchoolInside?.id || null;
+    const prev = prevNavIdsRef.current;
+    const schoolChanged = prev.schoolId !== curSchoolId;
+    const levelChanged = prev.levelId !== selectedLevelId;
+    const classChanged = prev.classId !== selectedClassId;
+    const termChanged = prev.termId !== selectedTermId;
 
-  useEffect(() => {
-    setSelectedAverageCardInside(null);
-  }, [selectedLevelId, selectedClassId, selectedSchoolInside]);
+    prevNavIdsRef.current = {
+      schoolId: curSchoolId,
+      levelId: selectedLevelId,
+      classId: selectedClassId,
+      termId: selectedTermId,
+    };
+
+    if (pendingNavRestoreRef.current) return;
+
+    if (schoolChanged) {
+      setEnteredClassId((cur) => {
+        if (!cur || !curSchoolId) return null;
+        return classes.some((c) => c.id === cur && c.schoolId === curSchoolId) ? cur : null;
+      });
+      setIsTransferViewOpen(false);
+    }
+
+    if (schoolChanged || levelChanged || classChanged || termChanged) {
+      setSelectedSubjectInside((cur) => {
+        if (!cur) return null;
+        if (!curSchoolId || cur.schoolId !== curSchoolId) return null;
+        if (selectedClassId && cur.classId !== selectedClassId) return null;
+        if (selectedTermId && cur.termId && cur.termId !== selectedTermId) return null;
+        return cur;
+      });
+    }
+
+    if (schoolChanged || levelChanged || classChanged) {
+      setSelectedAverageCardInside((cur) => {
+        if (!cur) return null;
+        if (!curSchoolId || cur.schoolId !== curSchoolId) return null;
+        if (selectedClassId && cur.classId !== selectedClassId) return null;
+        return cur;
+      });
+    }
+  }, [selectedSchoolInside?.id, selectedLevelId, selectedClassId, selectedTermId, classes]);
 
   // Référence pour le défilement horizontal fluide des trimestres
   const termsScrollRef = useRef<HTMLDivElement>(null);
@@ -2448,6 +2712,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   // Assurer que selectedLevelId pointe toujours vers un niveau valide si disponible
   useEffect(() => {
+    if (pendingNavRestoreRef.current) return;
     if (currentSchoolLevels.length > 0) {
       if (!selectedLevelId || !currentSchoolLevels.some(l => l.id === selectedLevelId)) {
         setSelectedLevelId(currentSchoolLevels[0].id);
@@ -2470,6 +2735,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   // Assurer que selectedClassId pointe toujours vers une classe valide dans le niveau actif
   useEffect(() => {
+    if (pendingNavRestoreRef.current) return;
     if (currentLevelClasses.length > 0) {
       if (!selectedClassId || !currentLevelClasses.some(c => c.id === selectedClassId)) {
         setSelectedClassId(currentLevelClasses[0].id);
@@ -2494,6 +2760,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   // Assurer que selectedTermId pointe toujours vers un trimestre valide
   useEffect(() => {
+    if (pendingNavRestoreRef.current) return;
     if (currentClassTerms.length > 0) {
       if (!selectedTermId || !currentClassTerms.some(t => t.id === selectedTermId)) {
         setSelectedTermId(currentClassTerms[0].id);
@@ -2655,8 +2922,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     setIsClassSearchOpen(false);
     setSubjectSearchQuery('');
     setIsSubjectSearchOpen(false);
-    setIsTransferViewOpen(false);
-  }, [selectedSchoolInside]);
+  }, [selectedSchoolInside?.id]);
 
   useEffect(() => {
     setClassSearchQuery('');
@@ -2770,6 +3036,17 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
     return [annualCard, ...termCards];
   }, [activeClass, classAverages, currentClassTerms]);
+
+  // Pendant la restauration sur cache froid (ex: juste après une mise à jour), afficher un écran de chargement sobre
+  // au lieu de flasher le tableau de bord avant de rouvrir la page exacte
+  if (isRestoringNav) {
+    return (
+      <div className="w-full h-full min-h-0 flex-1 flex flex-col items-center justify-center gap-3 bg-[#f3f5f8] dark:bg-[#0b1120] text-slate-700 dark:text-slate-200 select-none">
+        <Loader2 className="w-7 h-7 animate-spin text-blue-600 dark:text-sky-400" />
+        <p className="text-xs font-bold tracking-wide">Restauration de votre espace…</p>
+      </div>
+    );
+  }
 
   // Si le professeur clique sur une carte "Moyenne générale" (annuelle ou trimestrielle) :
   if (selectedAverageCardInside && activeClass) {
