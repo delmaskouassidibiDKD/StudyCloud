@@ -2522,3 +2522,71 @@ test('Suivi facturation R2 + D1 (user_storage_usage), déduplication photos, bac
   assert.equal(delConvRes.status, 200);
   assert.equal(r2Images.store.has(savedConvFile.r2Key), false);
 });
+
+test('Sécurité Assistant Delmas : Anti-IDOR strict sur messages/fichiers et neutralisation XSS des uploads SVG/HTML', async () => {
+  const { callApi } = createHarness();
+
+  // 1. Alice crée une discussion
+  const createRes = await callApi('/api/teacher/delmas/conversations', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { id: 'tdconv-sec-1', title: 'Discussion privée Alice', language: 'fr' },
+  });
+  assert.equal(createRes.status, 200);
+
+  // 2. Bob tente d'injecter un message ou un fichier dans la discussion d'Alice -> 403 strict (pas de fuite SQL 500)
+  const bobMsgInject = await callApi('/api/teacher/delmas/conversations/tdconv-sec-1/messages', {
+    method: 'POST',
+    token: 'token-bob',
+    body: { messages: [{ sender: 'user', content: 'Injection Bob' }] },
+  });
+  assert.equal(bobMsgInject.status, 403);
+
+  const bobFileInject = await callApi('/api/teacher/delmas/conversations/tdconv-sec-1/files', {
+    method: 'POST',
+    token: 'token-bob',
+    body: { fileName: 'hack.txt', mimeType: 'text/plain', extractedText: 'hack' },
+  });
+  assert.equal(bobFileInject.status, 403);
+
+  // 3. Upload d'un fichier SVG contenant du JS malveillant -> MIME rétrogradé + extension .bin + preview SVG rejetée
+  const xssSvgB64 = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>').toString('base64');
+  const svgUploadRes = await callApi('/api/teacher/delmas/conversations/tdconv-sec-1/files', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      fileName: 'piege.svg',
+      mimeType: 'image/svg+xml',
+      fileType: 'image',
+      dataUrl: `data:image/svg+xml;base64,${xssSvgB64}`,
+      previewDataUrl: `data:image/svg+xml;base64,${xssSvgB64}`,
+    },
+  });
+  assert.equal(svgUploadRes.status, 200);
+  const { file: svgFile } = await svgUploadRes.json();
+  assert.equal(svgFile.mimeType, 'application/octet-stream');
+  assert.equal(svgFile.previewDataUrl, undefined);
+  assert.ok(svgFile.r2Key.endsWith('.bin'), 'Extension dangereuse .svg remplacée par .bin');
+
+  // 4. Lecture via /api/teacher/media -> Content-Type application/octet-stream + attachment + CSP sandbox
+  const signedPath = new URL(svgFile.url).pathname + new URL(svgFile.url).search;
+  const mediaRes = await callApi(signedPath, { method: 'GET' });
+  assert.equal(mediaRes.status, 200);
+  assert.equal(mediaRes.headers.get('Content-Type'), 'application/octet-stream');
+  assert.equal(mediaRes.headers.get('Content-Disposition'), 'attachment');
+  assert.equal(mediaRes.headers.get('X-Content-Type-Options'), 'nosniff');
+  assert.ok((mediaRes.headers.get('Content-Security-Policy') || '').includes('sandbox'));
+
+  // 5. Bob ne peut pas lire le fichier d'Alice sans signature valide, ni le supprimer
+  const bobStealMedia = await callApi(`/api/teacher/media?key=${encodeURIComponent(svgFile.r2Key)}`, {
+    method: 'GET',
+    token: 'token-bob',
+  });
+  assert.equal(bobStealMedia.status, 403);
+
+  const bobDeleteFile = await callApi(`/api/teacher/delmas/files/${svgFile.id}`, {
+    method: 'DELETE',
+    token: 'token-bob',
+  });
+  assert.equal(bobDeleteFile.status, 404);
+});

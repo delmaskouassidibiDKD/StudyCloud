@@ -3977,8 +3977,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             summaries.push(`✓ Export Excel (.xlsx) téléchargé`);
             break;
           }
+
+          case 'save_gradebook': {
+            summaries.push(`✓ Tableau enregistré dans le cloud`);
+            break;
+          }
         }
       }
+
+      const explicitSaveRequested = actions.some((a) => a?.type === 'save_gradebook');
 
       if (colsMutated) {
         setNoteColumnCount(workingColCount);
@@ -3992,6 +3999,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       }
       if (colsMutated || studentsMutated || stylesMutated) {
         setIsSaved(false);
+        setTimeout(() => {
+          flushCloudSave({ force: true });
+        }, 220);
+      } else if (explicitSaveRequested) {
+        flushCloudSave({ force: true });
       }
 
       return summaries;

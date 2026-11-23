@@ -541,6 +541,72 @@ async function verifyTeacherMediaSignature(key: string, expStr: string, sig: str
   return timingSafeEqualStr(sig.toLowerCase(), expected.toLowerCase());
 }
 
+const SAFE_INLINE_MEDIA_MIMES = new Set([
+  'image/png',
+  'image/jpeg',
+  'image/jpg',
+  'image/webp',
+  'image/gif',
+  'application/pdf',
+  'audio/mpeg',
+  'audio/mp3',
+  'audio/wav',
+  'audio/ogg',
+  'audio/webm',
+  'audio/mp4',
+  'audio/aac',
+  'audio/flac',
+]);
+
+const DANGEROUS_UPLOAD_MIMES = new Set([
+  'text/html',
+  'application/xhtml+xml',
+  'image/svg+xml',
+  'text/javascript',
+  'application/javascript',
+  'application/x-javascript',
+  'text/xml',
+  'application/xml',
+]);
+
+const DANGEROUS_UPLOAD_EXTS = new Set([
+  'html',
+  'htm',
+  'xhtml',
+  'svg',
+  'svgz',
+  'js',
+  'mjs',
+  'cjs',
+  'xml',
+]);
+
+function sanitizeUploadedMimeAndExt(rawMime: string, rawFileName: string): {
+  mimeType: string;
+  ext: string;
+} {
+  const lowerMime = String(rawMime || 'application/octet-stream')
+    .split(';')[0]
+    .trim()
+    .toLowerCase()
+    .slice(0, 100);
+  const extMatch = String(rawFileName || '').match(/\.([a-zA-Z0-9]{1,8})$/);
+  const rawExt = extMatch ? extMatch[1].toLowerCase() : 'bin';
+
+  if (DANGEROUS_UPLOAD_MIMES.has(lowerMime) || DANGEROUS_UPLOAD_EXTS.has(rawExt)) {
+    return { mimeType: 'application/octet-stream', ext: 'bin' };
+  }
+  return {
+    mimeType: lowerMime || 'application/octet-stream',
+    ext: rawExt,
+  };
+}
+
+function isSafeRasterPreviewDataUrl(val: unknown): val is string {
+  if (typeof val !== 'string') return false;
+  return /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,[a-zA-Z0-9+/=\s]+$/i.test(val);
+}
+
 function detectValidatedImageFormat(bytes: Uint8Array): { contentType: string; ext: string } | null {
   if (!bytes || bytes.length < 12 || bytes.length > MAX_IMAGE_BYTES) return null;
   // JPEG: FF D8 FF
@@ -1798,16 +1864,26 @@ export async function handleTeacherGradebookRoutes(
       return errorResponse('Image introuvable.', 404, origin);
     }
 
-    const contentType = obj.httpMetadata?.contentType || 'image/webp';
+    const rawContentType = String(obj.httpMetadata?.contentType || 'application/octet-stream')
+      .split(';')[0]
+      .trim()
+      .toLowerCase();
+    const isSafeInline = SAFE_INLINE_MEDIA_MIMES.has(rawContentType);
+    const servedContentType = isSafeInline ? rawContentType : 'application/octet-stream';
+    const mediaHeaders: Record<string, string> = {
+      'Content-Type': servedContentType,
+      'X-Content-Type-Options': 'nosniff',
+      'Content-Security-Policy': "default-src 'none'; sandbox",
+      'Cache-Control': 'private, max-age=3600',
+      'Cross-Origin-Resource-Policy': 'cross-origin',
+      ...corsHeaders(origin),
+    };
+    if (!isSafeInline) {
+      mediaHeaders['Content-Disposition'] = 'attachment';
+    }
     return new Response(obj.body, {
       status: 200,
-      headers: {
-        'Content-Type': contentType,
-        'X-Content-Type-Options': 'nosniff',
-        'Cache-Control': 'private, max-age=3600',
-        'Cross-Origin-Resource-Policy': 'cross-origin',
-        ...corsHeaders(origin),
-      },
+      headers: mediaHeaders,
     });
   }
 
@@ -6393,16 +6469,24 @@ async function dispatchTeacherGradebookRoutes(
     const convId = delmasMsgMatch[1];
     const body = await request.json().catch(() => ({}));
 
-    let convRow = await db
-      .prepare('SELECT * FROM teacher_delmas_conversations WHERE id = ? AND user_id = ?')
-      .bind(convId, userId)
+    // Vérification Anti-IDOR stricte : interdit toute écriture sur une conversation appartenant à un autre compte
+    const existingAnyOwner = await db
+      .prepare('SELECT id, user_id, title, language FROM teacher_delmas_conversations WHERE id = ?')
+      .bind(convId)
       .first();
 
-    const rawMessages: any[] = Array.isArray(body?.messages)
+    if (existingAnyOwner && String(existingAnyOwner.user_id) !== userId) {
+      return errorResponse('Accès refusé à cette discussion.', 403, origin);
+    }
+
+    let convRow = existingAnyOwner;
+
+    const rawMessages: any[] = (Array.isArray(body?.messages)
       ? body.messages
       : body?.message
       ? [body.message]
-      : [];
+      : []
+    ).slice(0, 50);
 
     let incomingBytes = 0;
     for (const m of rawMessages) {
@@ -6457,8 +6541,28 @@ async function dispatchTeacherGradebookRoutes(
       const msgId = await resolveSafeNewId(db, 'teacher_delmas_messages', m.id, 'tdmsg');
       const sender = m.sender === 'ai' ? 'ai' : 'user';
       const content = String(m.content ?? '').slice(0, 120000);
-      const actionsArr = Array.isArray(m.actions) ? m.actions : [];
-      const attachmentsArr = Array.isArray(m.attachments) ? m.attachments : [];
+      const actionsArr = Array.isArray(m.actions) ? m.actions.slice(0, 30) : [];
+      const attachmentsArr = (Array.isArray(m.attachments) ? m.attachments.slice(0, 20) : [])
+        .filter((a: any) => a && typeof a === 'object')
+        .map((a: any) => {
+          const safeUrl =
+            typeof a.url === 'string' &&
+            (/^https?:\/\//i.test(a.url) || isSafeRasterPreviewDataUrl(a.url))
+              ? a.url.slice(0, 120000)
+              : undefined;
+          const safePreview = isSafeRasterPreviewDataUrl(a.previewDataUrl)
+            ? a.previewDataUrl.slice(0, 120000)
+            : undefined;
+          return {
+            id: String(a.id || '').slice(0, 80),
+            fileName: String(a.fileName || 'fichier').slice(0, 180),
+            fileType: String(a.fileType || 'document').slice(0, 40),
+            mimeType: sanitizeUploadedMimeAndExt(a.mimeType || '', a.fileName || '').mimeType,
+            sizeBytes: Math.max(0, Number(a.sizeBytes) || 0),
+            url: safeUrl,
+            previewDataUrl: safePreview,
+          };
+        });
       const tokens = Math.max(0, Math.round(Number(m.tokens) || 0));
       const credits = Math.max(0, Number(m.credits) || 0);
       const createdAt = Number(m.createdAt) || now + i;
@@ -6532,16 +6636,26 @@ async function dispatchTeacherGradebookRoutes(
   const delmasFilesMatch = path.match(/^\/api\/teacher\/delmas\/conversations\/([a-zA-Z0-9_-]+)\/files$/);
   if (delmasFilesMatch && method === 'POST') {
     const convId = delmasFilesMatch[1];
+
+    // Vérification Anti-IDOR stricte AVANT tout décodage ou upload R2
+    const existingAnyOwnerConv = await db
+      .prepare('SELECT id, user_id FROM teacher_delmas_conversations WHERE id = ?')
+      .bind(convId)
+      .first();
+    if (existingAnyOwnerConv && String(existingAnyOwnerConv.user_id) !== userId) {
+      return errorResponse('Accès refusé à cette discussion.', 403, origin);
+    }
+
     const body = await request.json().catch(() => ({}));
 
     const fileName = String(body?.fileName || 'fichier').trim().slice(0, 180) || 'fichier';
-    const mimeType = String(body?.mimeType || 'application/octet-stream').trim().slice(0, 100);
+    const sanitizedUpload = sanitizeUploadedMimeAndExt(body?.mimeType || '', fileName);
+    const mimeType = sanitizedUpload.mimeType;
     const fileType = String(body?.fileType || 'document').trim().slice(0, 40);
     const extractedText = String(body?.extractedText || '').slice(0, 180000);
-    const previewDataUrl =
-      typeof body?.previewDataUrl === 'string' && body.previewDataUrl.startsWith('data:image/')
-        ? body.previewDataUrl.slice(0, 120000)
-        : null;
+    const previewDataUrl = isSafeRasterPreviewDataUrl(body?.previewDataUrl)
+      ? body.previewDataUrl.slice(0, 120000)
+      : null;
     const rawDataUrl = typeof body?.dataUrl === 'string' ? body.dataUrl : '';
 
     // Décodage binaire si dataUrl fourni (pour archivage R2 dans le dossier de la conversation)
@@ -6576,12 +6690,7 @@ async function dispatchTeacherGradebookRoutes(
     if (quotaBlocked) return quotaBlocked;
 
     // S'assurer que la conversation existe pour cet utilisateur
-    const existingConv = await db
-      .prepare('SELECT id FROM teacher_delmas_conversations WHERE id = ? AND user_id = ?')
-      .bind(convId, userId)
-      .first();
-
-    if (!existingConv) {
+    if (!existingAnyOwnerConv) {
       await db
         .prepare(
           `INSERT INTO teacher_delmas_conversations
@@ -6602,8 +6711,7 @@ async function dispatchTeacherGradebookRoutes(
     const fileId = await resolveSafeNewId(db, 'teacher_delmas_files', body?.id, 'tdfile');
     const safeUser = sanitizeSegment(userId);
     const safeConv = sanitizeSegment(convId);
-    const extMatch = fileName.match(/\.([a-zA-Z0-9]{1,8})$/);
-    const safeExt = extMatch ? extMatch[1].toLowerCase() : 'bin';
+    const safeExt = sanitizedUpload.ext;
     let r2Key: string | null = null;
 
     if (fileBytes && fileBytes.byteLength > 0) {

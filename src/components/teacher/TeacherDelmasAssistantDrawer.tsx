@@ -53,6 +53,7 @@ import {
   SUPPORTED_DELMAS_LANGUAGES,
   buildTeacherDelmasSystemPrompt,
   classifyTeacherDelmasIntent,
+  filterSafeTeacherDelmasActions,
   parseTeacherDelmasAiResponse,
   pickPreferredKimiModel,
   type ResolvedBackgroundModel,
@@ -1041,16 +1042,17 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       const rawAiOutput =
         aiRes.raw_response || aiRes.rawResponse || aiRes.response || aiRes.chat_response || '';
 
-      // Extraction propre + garde-fou strict : zéro action en mode 'chat' ou 'inspect' !
+      // Extraction propre + pare-feu de sécurité (zéro action en mode chat/inspect + blocage anti-injection)
       const parsed = parseTeacherDelmasAiResponse(rawAiOutput, {
         allowActions: intentResult.intent === 'action',
       });
+      const safeActions = filterSafeTeacherDelmasActions(parsed.actions, rawText);
 
       // Exécution immédiate des actions demandées sur le tableau ouvert
       let appliedSummaries: string[] = [];
-      if (parsed.actions.length > 0 && sheetBridge) {
+      if (safeActions.length > 0 && sheetBridge) {
         const resSummaries = await sheetBridge.executeActions(
-          parsed.actions,
+          safeActions,
           workspaceSnapshot
         );
         if (Array.isArray(resSummaries)) {
@@ -1073,7 +1075,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           ? promptText.replace(/\s+/g, ' ').slice(0, 70)
           : currentConversationTitle;
 
-      const actionsPayload = parsed.actions.map((a, idx) => ({
+      const actionsPayload = safeActions.map((a, idx) => ({
         ...a,
         summary: appliedSummaries[idx] || undefined,
       }));
@@ -1525,11 +1527,13 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
-                      {f.url && (
+                      {f.url &&
+                        (/^https?:\/\//i.test(f.url) ||
+                          /^data:image\/(?:png|jpeg|jpg|webp|gif);base64,/i.test(f.url)) && (
                         <a
                           href={f.url}
                           target="_blank"
-                          rel="noreferrer"
+                          rel="noopener noreferrer"
                           className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-700 transition"
                           title="Ouvrir le fichier"
                         >

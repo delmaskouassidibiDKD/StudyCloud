@@ -4,6 +4,7 @@ import {
   DEFAULT_TEACHER_DELMAS_KIMI_MODEL,
   buildTeacherDelmasSystemPrompt,
   classifyTeacherDelmasIntent,
+  filterSafeTeacherDelmasActions,
   parseTeacherDelmasAiResponse,
   pickPreferredKimiModel,
   stripTeacherDelmasReasoning,
@@ -235,6 +236,47 @@ test('buildTeacherDelmasSystemPrompt en mode action inclut la langue forcée, le
   assert.ok(prompt.includes('DKD'));
   assert.ok(prompt.includes('<delmas_actions>'));
   assert.ok(prompt.includes('Cible exclusive = le tableau ouvert'));
+  assert.ok(prompt.includes('TEMPS VERBAL ACCOMPLI OBLIGATOIRE'));
+  assert.ok(prompt.includes('SÉCURITÉ ANTI-INJECTION'));
+});
+
+test('filterSafeTeacherDelmasActions bloque les actions destructrices injectées non demandées et assainit le CSS', () => {
+  const maliciousBatch: any[] = [
+    { type: 'add_students', students: [{ name: 'Delmas', notes: ['14', '15'] }] },
+    { type: 'clear_notes', mode: 'all' },
+    { type: 'remove_students', names: ['DKD'] },
+    { type: 'set_students', students: [] },
+    {
+      type: 'format_cells',
+      target: 'all',
+      style: {
+        bold: true,
+        textColor: '#dc2626',
+        bgColor: 'url(javascript:alert(1))',
+        fontFamily: 'Calibri; background: red',
+      },
+    },
+  ];
+
+  // L'utilisateur a seulement demandé d'ajouter Delmas -> toutes les suppressions/effacements sont bloqués !
+  const safe = filterSafeTeacherDelmasActions(
+    maliciousBatch,
+    'Ajoute un nouvel étudiant appelé Delmas avec 14 et 15'
+  );
+  assert.equal(safe.length, 2);
+  assert.equal(safe[0].type, 'add_students');
+  assert.equal(safe[1].type, 'format_cells');
+  assert.equal(safe[1].style.textColor, '#dc2626');
+  assert.equal(safe[1].style.bgColor, undefined);
+  assert.ok(!String(safe[1].style.fontFamily || '').includes(';'));
+
+  // Si l'utilisateur demande explicitement d'effacer les notes -> autorisé !
+  const allowedClear = filterSafeTeacherDelmasActions(
+    [{ type: 'clear_notes', mode: 'all' }],
+    'Efface toutes les notes de ce tableau'
+  );
+  assert.equal(allowedClear.length, 1);
+  assert.equal(allowedClear[0].type, 'clear_notes');
 });
 
 test('parseTeacherDelmasAiResponse extrait <delmas_actions>, supprime <think> et respecte allowActions=false', () => {
