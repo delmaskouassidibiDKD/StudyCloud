@@ -87,6 +87,7 @@ export interface GradebookLayoutState {
   customNoteWidths: { [index: number]: number };
   customRowHeights: { [index: number]: number };
   zoomPercent?: number;
+  sortMode?: 'order' | 'merit' | 'alpha';
 }
 
 export interface GradebookStylesState {

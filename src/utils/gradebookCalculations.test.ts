@@ -8,7 +8,8 @@ import {
   formatAverageDisplay,
   getMention,
   harmonizeScoreOn20,
-  parseEvaluationValue
+  parseEvaluationValue,
+  sortGradebookRows
 } from './gradebookCalculations.js';
 
 test('parseEvaluationValue distingue strictement vide/null et 0 explicite', () => {
@@ -212,4 +213,39 @@ test('barèmes personnalisés variés (/5, /10, /12.5, /30, /40, /100) et détec
   );
   assert.equal(exceeding.hasExceedingScore, true);
   assert.equal(exceeding.moyenneMatiere, null);
+});
+
+test('sortGradebookRows : Ordre de mérite, Ordre alphabétique, Ordre initial et verrouillage en cours de saisie', () => {
+  const rows = [
+    { id: 's1', name: 'ZOLA Émile', average: 11.5, notes: ['11.5/20'], originalIndex: 0 },
+    { id: 's2', name: '', average: null, notes: [''], originalIndex: 1 },
+    { id: 's3', name: 'BAKONGO Aya', average: 17.0, notes: ['17/20'], originalIndex: 2 },
+    { id: 's4', name: 'ADAMA Koffi', average: null, notes: [''], originalIndex: 3 },
+    { id: 's5', name: 'KOUASSI Jean', average: 14.5, notes: ['14.5/20'], originalIndex: 4 },
+    { id: 's6', name: '', average: null, notes: [''], originalIndex: 5 },
+  ];
+
+  // Ordre de mérite : 1er (17) -> 2e (14.5) -> 3e (11.5) -> nommé sans moyenne (ADAMA) -> lignes vides en bas
+  assert.deepEqual(
+    sortGradebookRows(rows, 'merit').map((r) => r.id),
+    ['s3', 's5', 's1', 's4', 's2', 's6']
+  );
+
+  // Ordre alphabétique (A -> Z), lignes vides toujours en bas
+  assert.deepEqual(
+    sortGradebookRows(rows, 'alpha').map((r) => r.id),
+    ['s4', 's3', 's5', 's1', 's2', 's6']
+  );
+
+  // Ordre initial : ordre exact de saisie
+  assert.deepEqual(
+    sortGradebookRows(rows, 'order').map((r) => r.id),
+    ['s1', 's2', 's3', 's4', 's5', 's6']
+  );
+
+  // Verrouillage pendant la saisie dans une case : conserve exactement l'ordre visuel courant
+  assert.deepEqual(
+    sortGradebookRows(rows, 'merit', ['s5', 's3', 's1', 's4', 's2', 's6']).map((r) => r.id),
+    ['s5', 's3', 's1', 's4', 's2', 's6']
+  );
 });

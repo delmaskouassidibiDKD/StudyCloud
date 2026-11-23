@@ -57,7 +57,9 @@ import {
   calculateClassRanks,
   formatAverageDisplay,
   getMention,
-  type EvaluationInput
+  sortGradebookRows,
+  type EvaluationInput,
+  type GradebookSortMode
 } from '../../utils/gradebookCalculations';
 import {
   normalizeStudentNameKey,
@@ -382,6 +384,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const [isTextColorMenuOpen, setIsTextColorMenuOpen] = useState<boolean>(false);
   const [isBgColorMenuOpen, setIsBgColorMenuOpen] = useState<boolean>(false);
   const [isGradeAdjustMenuOpen, setIsGradeAdjustMenuOpen] = useState<boolean>(false);
+  const [isSortMenuOpen, setIsSortMenuOpen] = useState<boolean>(false);
+  const [sortMode, setSortMode] = useState<GradebookSortMode>(() => {
+    const saved = initialCachedSheet?.layout?.sortMode;
+    return saved === 'merit' || saved === 'alpha' || saved === 'order' ? saved : 'order';
+  });
+  // Verrouillage temporaire de l'ordre visuel pendant la frappe dans une cellule (évite que la ligne saute sous le curseur)
+  const [lockedOrderIds, setLockedOrderIds] = useState<string[] | null>(null);
   const [gradeAdjustMode, setGradeAdjustMode] = useState<'all' | 'specific'>('all');
   const [gradeAdjustSign, setGradeAdjustSign] = useState<'add' | 'sub'>('add');
   const [gradeAdjustAmountStr, setGradeAdjustAmountStr] = useState<string>('1');
@@ -403,11 +412,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     setIsTextColorMenuOpen(false);
     setIsBgColorMenuOpen(false);
     setIsGradeAdjustMenuOpen(false);
+    setIsSortMenuOpen(false);
     setMenuAnchorEl(null);
   };
 
   // Un seul petit menu peut être ouvert à la fois
-  const isAnyMenuOpen = activeMenuCol !== null || activeMenuRow !== null || activeMenuCell !== null || activeMenuNameCol || activeMenuPhoto !== null || isFontFamilyMenuOpen || isFontSizeMenuOpen || isTextColorMenuOpen || isBgColorMenuOpen || isGradeAdjustMenuOpen;
+  const isAnyMenuOpen = activeMenuCol !== null || activeMenuRow !== null || activeMenuCell !== null || activeMenuNameCol || activeMenuPhoto !== null || isFontFamilyMenuOpen || isFontSizeMenuOpen || isTextColorMenuOpen || isBgColorMenuOpen || isGradeAdjustMenuOpen || isSortMenuOpen;
 
   // Palette de couleur active
   const [activeColorPicker, setActiveColorPicker] = useState<{
@@ -596,6 +606,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       customNoteWidths,
       customRowHeights,
       zoomPercent,
+      sortMode,
     },
     styles: {
       cellColors,
@@ -615,6 +626,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     customNoteWidths,
     customRowHeights,
     zoomPercent,
+    sortMode,
     cellColors,
     rowColors,
     cellCustomStyles,
@@ -782,6 +794,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           if (typeof res.layout?.zoomPercent === 'number' && res.layout.zoomPercent >= 30 && res.layout.zoomPercent <= 200) {
             setZoomPercent(Math.round(res.layout.zoomPercent));
           }
+          if (res.layout?.sortMode === 'merit' || res.layout?.sortMode === 'alpha' || res.layout?.sortMode === 'order') {
+            setSortMode(res.layout.sortMode);
+          }
           setCellColors(res.styles?.cellColors || {});
           setRowColors(res.styles?.rowColors || {});
           setCellCustomStyles(res.styles?.cellCustomStyles || {});
@@ -804,6 +819,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   typeof res.layout?.zoomPercent === 'number' && res.layout.zoomPercent >= 30 && res.layout.zoomPercent <= 200
                     ? Math.round(res.layout.zoomPercent)
                     : 70,
+                sortMode:
+                  res.layout?.sortMode === 'merit' || res.layout?.sortMode === 'alpha' || res.layout?.sortMode === 'order'
+                    ? res.layout.sortMode
+                    : 'order',
               },
               styles: {
                 cellColors: res.styles?.cellColors || {},
@@ -1335,6 +1354,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       if (hasInvalidNote) {
         return {
           ...std,
+          originalIndex: idx,
           rowNumber: idx + 1,
           average: null,
           averageFormatted: '...',
@@ -1358,6 +1378,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
       return {
         ...std,
+        originalIndex: idx,
         rowNumber: idx + 1,
         average: avg,
         averageFormatted: avg !== null ? formatAverageDisplay(avg) : '',
@@ -1377,7 +1398,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       { tolerance: 1e-6 }
     );
 
-    return withAverage.map(s => {
+    const ranked = withAverage.map(s => {
       if (s.hasInvalidNote) {
         return { ...s, rank: '—' };
       }
@@ -1387,7 +1408,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         rank: rankEntry && rankEntry.rankNumber !== null ? rankEntry.rankLabel : (s.name.trim() ? '—' : '')
       };
     });
-  }, [students, noteColumnCount, columnMetas]);
+
+    return sortGradebookRows(ranked, sortMode, lockedOrderIds).map((s, displayIdx) => ({
+      ...s,
+      rowNumber: displayIdx + 1,
+    }));
+  }, [students, noteColumnCount, columnMetas, sortMode, lockedOrderIds]);
 
   // Répertoire partagé des élèves de la classe (auto-complétion inter-matières + liaison studentUid sûre)
   const [classRoster, setClassRoster] = useState<TeacherClassRosterStudent[]>([]);
@@ -1880,14 +1906,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     setIsSaved(false);
   };
 
-  // Recopier une note vers le bas pour tous les élèves suivants
+  // Recopier une note vers le bas pour tous les élèves suivants (dans l'ordre affiché)
   const handleFillDown = (colIndex: number, fromRowIndex: number) => {
-    const sourceStudent = students[fromRowIndex];
+    const sourceStudent = studentsWithStats[fromRowIndex];
     if (!sourceStudent) return;
     const sourceNote = sourceStudent.notes[colIndex] || '';
+    const targetIds = new Set(studentsWithStats.slice(fromRowIndex + 1).map(s => s.id));
 
-    setStudents(prev => prev.map((s, idx) => {
-      if (idx <= fromRowIndex) return s;
+    setStudents(prev => prev.map((s) => {
+      if (!targetIds.has(s.id)) return s;
       const copyNotes = [...s.notes];
       copyNotes[colIndex] = sourceNote;
       return { ...s, notes: copyNotes };
@@ -2147,11 +2174,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       const lines = text.trim().split(/\r?\n/).map(line => line.split('\t'));
       if (lines.length === 0) return;
 
+      const displayedIds = studentsWithStats.map(s => s.id);
       setStudents(prevStudents => {
         const next = [...prevStudents];
         lines.forEach((lineCells, rowOffset) => {
           const targetRowIdx = (activeCellInfo.rowIndex ?? 0) + rowOffset;
-          if (targetRowIdx >= next.length) {
+          const targetId = displayedIds[targetRowIdx];
+          let actualIdx = targetId ? next.findIndex(s => s.id === targetId) : -1;
+          if (actualIdx === -1) {
+            actualIdx = next.length;
             next.push({
               id: generateTeacherEntityId('std'),
               name: '',
@@ -2160,7 +2191,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               notes: Array(noteColumnCount).fill('')
             });
           }
-          const row = { ...next[targetRowIdx], notes: [...next[targetRowIdx].notes] };
+          const row = { ...next[actualIdx], notes: [...next[actualIdx].notes] };
 
           if (activeCellInfo.type === 'name') {
             if (lineCells[0] !== undefined) row.name = lineCells[0].trim();
@@ -2178,7 +2209,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             }
           }
 
-          next[targetRowIdx] = row;
+          next[actualIdx] = row;
         });
         return next;
       });
@@ -2400,7 +2431,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     const rowKey = `row-${rowIndex}`;
 
     const startY = 'touches' in e ? e.touches[0].clientY : e.clientY;
-    const minHeight = getRowMinHeightForContent(students[rowIndex]);
+    const minHeight = getRowMinHeightForContent(studentsWithStats[rowIndex]);
     const initialHeight = Math.max(customRowHeights[rowIndex] || 44, minHeight);
     let hasMoved = false;
 
@@ -3620,7 +3651,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         setGradeAdjustAmountStr(cleaned);
                       }}
                       placeholder="Ex: 1 ou 0.5"
-                      className="flex-1 h-8 px-2.5 text-center font-black text-sm text-slate-900 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+                      className="flex-1 min-w-0 w-full h-8 px-2.5 text-center font-black text-sm text-slate-900 bg-slate-50 border border-slate-300 rounded-lg outline-none focus:bg-white focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
                     />
 
                     <button
@@ -3683,6 +3714,105 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           </div>
           <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Ajuster</span>
         </div>
+
+        {/* Groupe Classement (Ordre de mérite / Alphabétique / Ordre initial) */}
+        <div className="flex flex-col items-center justify-between pl-2.5 border-l border-slate-300 shrink-0">
+          <div className="flex items-center gap-1 pt-1 relative">
+            <button
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                const next = !isSortMenuOpen;
+                closeAllMenus();
+                if (next) {
+                  setMenuAnchorEl(e.currentTarget);
+                  setIsSortMenuOpen(true);
+                }
+              }}
+              className={`gb-menu-trigger h-7 px-2.5 rounded-md border flex items-center gap-1.5 text-[11px] font-bold transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none whitespace-nowrap ${
+                isSortMenuOpen
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white text-slate-800 border-slate-300 hover:border-blue-500 hover:bg-slate-50'
+              }`}
+              title="Trier les élèves (Ordre de mérite, Alphabétique, Ordre initial)"
+            >
+              <ArrowUpDown className={`w-3.5 h-3.5 shrink-0 ${isSortMenuOpen ? 'text-sky-300' : 'text-blue-600'}`} />
+              <span>
+                {sortMode === 'merit'
+                  ? 'Ordre de mérite'
+                  : sortMode === 'alpha'
+                  ? 'Alphabétique (A→Z)'
+                  : 'Ordre initial'}
+              </span>
+              <ChevronDown className={`w-3 h-3 shrink-0 ${isSortMenuOpen ? 'text-white' : 'text-slate-400'}`} />
+            </button>
+
+            <SmartFloatingPopover
+              open={isSortMenuOpen}
+              anchorEl={menuAnchorEl}
+              boundaryEl={gradebookContainerRef.current}
+              preferredSide="bottom"
+              preferredAlign="start"
+              gap={8}
+              onClose={closeAllMenus}
+              ignoreOutsideSelector=".gb-menu-trigger"
+              dataPopoverId="gb-sort-mode-menu"
+              className="w-64 rounded-xl"
+            >
+              <div className="p-1.5 text-xs select-none">
+                {(
+                  [
+                    {
+                      id: 'merit' as GradebookSortMode,
+                      label: 'Ordre de mérite (1er → dernier)',
+                      desc: 'Classement par moyenne décroissante',
+                    },
+                    {
+                      id: 'alpha' as GradebookSortMode,
+                      label: 'Ordre alphabétique (A → Z)',
+                      desc: 'Tri par nom et prénom',
+                    },
+                    {
+                      id: 'order' as GradebookSortMode,
+                      label: 'Ordre initial',
+                      desc: 'Ordre de saisie dans le tableau',
+                    },
+                  ] as const
+                ).map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => {
+                      setLockedOrderIds(null);
+                      setSortMode(opt.id);
+                      setIsSaved(false);
+                      setIsSortMenuOpen(false);
+                    }}
+                    className={`w-full text-left px-2.5 py-2 rounded-lg transition cursor-pointer flex items-center justify-between gap-2 ${
+                      sortMode === opt.id
+                        ? 'bg-blue-50 dark:bg-blue-950/60 text-blue-800 dark:text-blue-200'
+                        : 'hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-100'
+                    }`}
+                  >
+                    <div>
+                      <div className="text-[11.5px] font-extrabold leading-tight">
+                        {opt.label}
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-slate-400 leading-tight mt-0.5">
+                        {opt.desc}
+                      </div>
+                    </div>
+                    {sortMode === opt.id && (
+                      <Check className="w-4 h-4 text-blue-600 dark:text-sky-400 shrink-0" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </SmartFloatingPopover>
+          </div>
+          <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Classement</span>
+        </div>
       </section>
 
       {/* ========================================================================= */}
@@ -3698,7 +3828,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           fx
         </div>
         {(() => {
-          const activeFormulaStd = activeCellInfo.rowIndex !== undefined ? students[activeCellInfo.rowIndex] : undefined;
+          const activeFormulaStd = activeCellInfo.rowIndex !== undefined ? studentsWithStats[activeCellInfo.rowIndex] : undefined;
           const activeFormulaKey = activeFormulaStd
             ? activeCellInfo.type === 'name'
               ? `${activeFormulaStd.id}_name`
@@ -3732,10 +3862,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 const val = e.target.value;
                 setActiveCellInfo(prev => ({ ...prev, value: val }));
                 if (activeCellInfo.type === 'name' && activeCellInfo.rowIndex !== undefined) {
-                  const std = students[activeCellInfo.rowIndex];
+                  const std = studentsWithStats[activeCellInfo.rowIndex];
                   if (std) handleNameChange(std.id, val);
                 } else if (activeCellInfo.type === 'note' && activeCellInfo.rowIndex !== undefined && activeCellInfo.noteColIndex !== undefined) {
-                  const std = students[activeCellInfo.rowIndex];
+                  const std = studentsWithStats[activeCellInfo.rowIndex];
                   if (std) handleRawNoteChange(std.id, activeCellInfo.noteColIndex, val);
                 }
               }}
@@ -4289,7 +4419,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => {
-                                  const targetStudentId = activeCellInfo.rowIndex >= 0 ? students[activeCellInfo.rowIndex]?.id : students[0]?.id;
+                                  const targetStudentId = activeCellInfo.rowIndex >= 0 ? studentsWithStats[activeCellInfo.rowIndex]?.id : studentsWithStats[0]?.id;
                                   if (targetStudentId) {
                                     setActiveColorPicker(activeColorPicker?.mode === 'row' && activeColorPicker?.targetId === `header-${i}` ? null : { mode: 'row', studentId: targetStudentId, targetId: `header-${i}` });
                                   }
@@ -4640,6 +4770,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                 }
                               }}
                               onFocus={(e) => {
+                                if (sortMode !== 'order' && !lockedOrderIds) {
+                                  setLockedOrderIds(studentsWithStats.map((s) => s.id));
+                                }
                                 setActiveCellInfo({
                                   id: `cell-name-${rIdx}`,
                                   type: 'name',
@@ -4707,6 +4840,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               onKeyUp={(e) => syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name')}
                               onClick={(e) => syncInputHighlight(e.currentTarget, `${std.id}_name`, 'name')}
                               onBlur={(e) => {
+                                setLockedOrderIds(null);
                                 if (!isFontFamilyMenuOpenRef.current) {
                                   setHighlightedTarget(prev => prev?.elementId === `input-name-${std.id}` ? null : prev);
                                 }
@@ -5089,6 +5223,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       handleRawNoteChange(std.id, cIdx, newRaw);
                                     }}
                                     onFocus={(e) => {
+                                      if (sortMode !== 'order' && !lockedOrderIds) {
+                                        setLockedOrderIds(studentsWithStats.map((s) => s.id));
+                                      }
                                       setActiveCellInfo({
                                         id: `cell-note-${rIdx}-${cIdx}`,
                                         type: 'note',
@@ -5104,6 +5241,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     onKeyUp={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
                                     onClick={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
                                     onBlur={() => {
+                                      setLockedOrderIds(null);
                                       if (!isFontFamilyMenuOpenRef.current) {
                                         setHighlightedTarget(prev => prev?.elementId === `input-note-score-${std.id}-${cIdx}` ? null : prev);
                                       }
@@ -5162,6 +5300,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       handleRawNoteChange(std.id, cIdx, newRaw);
                                     }}
                                     onFocus={(e) => {
+                                      if (sortMode !== 'order' && !lockedOrderIds) {
+                                        setLockedOrderIds(studentsWithStats.map((s) => s.id));
+                                      }
                                       setActiveCellInfo({
                                         id: `cell-note-${rIdx}-${cIdx}`,
                                         type: 'note',
@@ -5177,6 +5318,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                     onKeyUp={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
                                     onClick={(e) => syncInputHighlight(e.currentTarget, noteCellKey, 'note')}
                                     onBlur={() => {
+                                      setLockedOrderIds(null);
                                       if (!isFontFamilyMenuOpenRef.current) {
                                         setHighlightedTarget(prev => prev?.elementId === `input-note-max-${std.id}-${cIdx}` ? null : prev);
                                       }

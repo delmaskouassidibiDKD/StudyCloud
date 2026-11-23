@@ -418,3 +418,91 @@ export function calculateClassRanks(
 
   return resultMap;
 }
+
+export type GradebookSortMode = 'order' | 'merit' | 'alpha';
+
+export interface SortableGradebookRow {
+  id: string;
+  name: string;
+  average: number | null;
+  hasInvalidNote?: boolean;
+  notes?: string[];
+  originalIndex: number;
+}
+
+/**
+ * Trie les lignes d'un carnet de notes par matière selon le mode choisi :
+ * - 'merit' : Ordre de mérite (1er -> dernier), puis élèves nommés sans moyenne, puis lignes vides en bas.
+ * - 'alpha' : Ordre alphabétique (A -> Z) sur le nom/prénom, lignes vides toujours en bas.
+ * - 'order' : Ordre initial de saisie.
+ * - Si `lockedOrderIds` est fourni (saisie active dans une cellule), conserve l'ordre visuel courant
+ *   jusqu'à la fin de l'édition pour éviter tout saut de curseur.
+ */
+export function sortGradebookRows<T extends SortableGradebookRow>(
+  rows: readonly T[],
+  sortMode: GradebookSortMode,
+  lockedOrderIds?: readonly string[] | null
+): T[] {
+  if (lockedOrderIds && lockedOrderIds.length > 0) {
+    const posMap = new Map<string, number>();
+    lockedOrderIds.forEach((id, idx) => posMap.set(id, idx));
+    return [...rows].sort((a, b) => {
+      const pa = posMap.has(a.id) ? posMap.get(a.id)! : Number.MAX_SAFE_INTEGER;
+      const pb = posMap.has(b.id) ? posMap.get(b.id)! : Number.MAX_SAFE_INTEGER;
+      if (pa !== pb) return pa - pb;
+      return a.originalIndex - b.originalIndex;
+    });
+  }
+
+  if (sortMode === 'order') {
+    return [...rows].sort((a, b) => a.originalIndex - b.originalIndex);
+  }
+
+  const isRowEmpty = (r: T): boolean => {
+    const hasName = (r.name || '').trim().length > 0;
+    const hasAvg =
+      r.average !== null && r.average !== undefined && Number.isFinite(r.average);
+    const hasNotes =
+      Array.isArray(r.notes) &&
+      r.notes.some((n) => {
+        const raw = String(n || '').trim();
+        if (!raw) return false;
+        const scorePart = raw.split('/')[0]?.trim() || '';
+        return scorePart.length > 0 && scorePart !== '-';
+      });
+    return !hasName && !hasAvg && !hasNotes;
+  };
+
+  return [...rows].sort((a, b) => {
+    const emptyA = isRowEmpty(a);
+    const emptyB = isRowEmpty(b);
+    if (emptyA !== emptyB) return emptyA ? 1 : -1;
+    if (emptyA && emptyB) return a.originalIndex - b.originalIndex;
+
+    if (sortMode === 'alpha') {
+      const cmp = (a.name || '')
+        .trim()
+        .localeCompare((b.name || '').trim(), 'fr', {
+          sensitivity: 'base',
+          numeric: true,
+        });
+      return cmp !== 0 ? cmp : a.originalIndex - b.originalIndex;
+    }
+
+    // 'merit' : moyenne décroissante (1er -> dernier), puis élèves nommés sans moyenne
+    const validA = !a.hasInvalidNote && a.average !== null && Number.isFinite(a.average);
+    const validB = !b.hasInvalidNote && b.average !== null && Number.isFinite(b.average);
+    if (validA !== validB) return validA ? -1 : 1;
+    if (validA && validB) {
+      const diff = (b.average as number) - (a.average as number);
+      if (Math.abs(diff) > 1e-6) return diff;
+    }
+    const cmp = (a.name || '')
+      .trim()
+      .localeCompare((b.name || '').trim(), 'fr', {
+        sensitivity: 'base',
+        numeric: true,
+      });
+    return cmp !== 0 ? cmp : a.originalIndex - b.originalIndex;
+  });
+}
