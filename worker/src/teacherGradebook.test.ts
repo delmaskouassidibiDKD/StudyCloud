@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { DatabaseSync } from 'node:sqlite';
-import { handleTeacherGradebookRoutes, ensureTeacherGradebookTables } from './teacherGradebook';
+import {
+  handleTeacherGradebookRoutes,
+  ensureTeacherGradebookTables,
+  computeTeacherGradebookStorageUsage,
+} from './teacherGradebook';
 
 // 1x1 PNG valide (magic bytes 89 50 4E 47 0D 0A 1A 0A)
 const VALID_PNG_BASE64 =
@@ -81,10 +85,21 @@ function createMockR2() {
         customMetadata: options?.customMetadata,
       });
     },
+    async head(key: string) {
+      const item = store.get(key);
+      if (!item) return null;
+      return {
+        key,
+        size: item.bytes.byteLength,
+        httpMetadata: item.httpMetadata,
+        customMetadata: item.customMetadata,
+      };
+    },
     async get(key: string) {
       const item = store.get(key);
       if (!item) return null;
       return {
+        size: item.bytes.byteLength,
         body: item.bytes,
         httpMetadata: item.httpMetadata,
         customMetadata: item.customMetadata,
@@ -1979,4 +1994,404 @@ test('Mentions personnalisées + colonne Matricule (portée tableau ou toute la 
     body: { averageScale: 0 },
   });
   assert.equal(badScale.status, 400);
+});
+
+test('Suivi facturation R2 + D1 (user_storage_usage), déduplication photos, backfill et blocage strict 413 quand quota plein', async () => {
+  const db = createMockD1();
+  const r2Images = createMockR2();
+  const rawEnv = { BUCKET_IMAGES: r2Images };
+  const jwtSecret = 'test-storage-billing-secret';
+
+  // Créer les tables maîtresses StudyCloud de suivi & quota (identiques à worker/src/index.ts)
+  db.sqlite.exec(`
+    CREATE TABLE user_storage_usage (
+      user_id TEXT PRIMARY KEY,
+      total_r2_compressed_bytes INTEGER DEFAULT 0,
+      total_d1_database_bytes INTEGER DEFAULT 0,
+      total_files_count INTEGER DEFAULT 0,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE TABLE user_storage_quotas (
+      user_id TEXT PRIMARY KEY,
+      allowed_bytes INTEGER NOT NULL
+    );
+  `);
+
+  // Quota généreux au départ pour Alice (500 Ko) et Bob (500 Ko)
+  await db.prepare('INSERT INTO user_storage_quotas (user_id, allowed_bytes) VALUES (?, ?)').bind('user-alice', 500 * 1024).run();
+  await db.prepare('INSERT INTO user_storage_quotas (user_id, allowed_bytes) VALUES (?, ?)').bind('user-bob', 500 * 1024).run();
+
+  const recalculateUserStorage = async (uid: string) => {
+    const usage = await computeTeacherGradebookStorageUsage(db, uid, rawEnv);
+    await db
+      .prepare(
+        `INSERT INTO user_storage_usage (user_id, total_r2_compressed_bytes, total_d1_database_bytes, total_files_count, updated_at)
+         VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(user_id) DO UPDATE SET
+           total_r2_compressed_bytes = excluded.total_r2_compressed_bytes,
+           total_d1_database_bytes = excluded.total_d1_database_bytes,
+           total_files_count = excluded.total_files_count,
+           updated_at = CURRENT_TIMESTAMP`
+      )
+      .bind(uid, usage.r2Bytes, usage.d1EstimatedBytes, usage.r2FilesCount)
+      .run();
+    return usage;
+  };
+
+  const checkStorageQuota = async (uid: string, incomingBytes = 0) => {
+    const qRow: any = await db
+      .prepare('SELECT allowed_bytes FROM user_storage_quotas WHERE user_id = ?')
+      .bind(uid)
+      .first();
+    const totalAllowedBytes = Number(qRow?.allowed_bytes ?? 100 * 1024 * 1024);
+
+    let usageRow: any = await db
+      .prepare('SELECT total_r2_compressed_bytes, total_d1_database_bytes FROM user_storage_usage WHERE user_id = ?')
+      .bind(uid)
+      .first();
+    if (!usageRow) {
+      const fresh = await recalculateUserStorage(uid);
+      usageRow = {
+        total_r2_compressed_bytes: fresh.r2Bytes,
+        total_d1_database_bytes: fresh.d1EstimatedBytes,
+      };
+    }
+    const currentUsedBytes =
+      Number(usageRow.total_r2_compressed_bytes || 0) + Number(usageRow.total_d1_database_bytes || 0);
+    const projected = currentUsedBytes + Math.max(0, Number(incomingBytes) || 0);
+    const allowed = totalAllowedBytes > 0 && currentUsedBytes < totalAllowedBytes && projected <= totalAllowedBytes;
+    return {
+      allowed,
+      totalAllowedBytes,
+      totalUsedBytes: currentUsedBytes,
+      remainingBytes: Math.max(0, totalAllowedBytes - currentUsedBytes),
+      totalAllowedMb: Number((totalAllowedBytes / (1024 * 1024)).toFixed(4)),
+      totalUsedMb: Number((currentUsedBytes / (1024 * 1024)).toFixed(4)),
+      error: allowed ? undefined : 'Votre espace de stockage est plein. Veuillez augmenter votre stockage.',
+    };
+  };
+
+  const tokenToUser: Record<string, { userId: string; email: string }> = {
+    'token-alice': { userId: 'user-alice', email: 'alice@school.test' },
+    'token-bob': { userId: 'user-bob', email: 'bob@school.test' },
+  };
+
+  const callApi = async (
+    path: string,
+    opts: { method?: string; token?: string; body?: any } = {}
+  ) => {
+    const url = new URL(`https://api-worker.dkd-technologies.com${path}`);
+    const headers: Record<string, string> = {};
+    if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
+    let reqBody: any;
+    if (opts.body instanceof FormData) {
+      reqBody = opts.body;
+    } else if (opts.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      reqBody = JSON.stringify(opts.body);
+    }
+    const req = new Request(url.toString(), {
+      method: opts.method || 'GET',
+      headers,
+      body: reqBody,
+    });
+    const res = await handleTeacherGradebookRoutes(req, url, url.pathname, req.method, {
+      db,
+      rawEnv,
+      origin: 'https://studycloud.app',
+      jwtSecret,
+      getAuthUser: async (r) => {
+        const auth = r.headers.get('Authorization') || '';
+        const tok = auth.replace(/^Bearer\s+/i, '').trim();
+        return tokenToUser[tok] || null;
+      },
+      corsHeaders: () => ({ 'Access-Control-Allow-Origin': '*' }),
+      jsonResponse: (data, status = 200) =>
+        new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }),
+      errorResponse: (message, status = 400) =>
+        new Response(JSON.stringify({ success: false, error: message }), { status, headers: { 'Content-Type': 'application/json' } }),
+      checkStorageQuota,
+      recalculateUserStorage,
+    });
+    assert.ok(res, `Expected non-null response for ${path}`);
+    return res;
+  };
+
+  // 1. Alice crée une année + une école avec logo PNG + niveau + classe + 2 matières
+  const yRes = await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027' },
+  });
+  assert.equal(yRes.status, 201);
+  const { year } = await yRes.json();
+
+  const schRes = await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'Lycée Technique DKD', logoDataUrl: VALID_PNG_DATA_URL },
+  });
+  assert.equal(schRes.status, 201);
+  const { school } = await schRes.json();
+  assert.ok(school.logoR2Key);
+
+  // Vérifier que user_storage_usage a été mis à jour automatiquement avec le logo R2 + D1
+  const usageAfterSchool: any = await db
+    .prepare('SELECT * FROM user_storage_usage WHERE user_id = ?')
+    .bind('user-alice')
+    .first();
+  assert.equal(usageAfterSchool.total_r2_compressed_bytes, VALID_PNG_BYTES.byteLength);
+  assert.equal(usageAfterSchool.total_files_count, 1);
+  assert.ok(usageAfterSchool.total_d1_database_bytes > 320);
+
+  const lvlRes = await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'Terminale' },
+  });
+  const { level } = await lvlRes.json();
+
+  const clsRes = await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { levelId: level.id, name: 'Tle C', teacherName: 'Prof. Kouamé' },
+  });
+  const { classItem, terms } = await clsRes.json();
+  const term1 = terms[0];
+
+  const mathRes = await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: term1.id, name: 'Mathématiques', coefficient: 4 },
+  });
+  const { subject: mathSubj } = await mathRes.json();
+
+  const frRes = await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: term1.id, name: 'Français', coefficient: 2 },
+  });
+  const { subject: frSubj } = await frRes.json();
+
+  // 2. Upload photo élève + sauvegarde dans 2 matières partageant la MÊME photoR2Key
+  const photoForm = new FormData();
+  photoForm.append('subjectId', mathSubj.id);
+  photoForm.append('termId', term1.id);
+  photoForm.append('studentId', 'std-shared-1');
+  photoForm.append('file', new Blob([VALID_PNG_BYTES], { type: 'image/png' }), 'student.png');
+  const upPhotoRes = await callApi('/api/teacher/photos/student', {
+    method: 'POST',
+    token: 'token-alice',
+    body: photoForm,
+  });
+  assert.equal(upPhotoRes.status, 200);
+  const { photoR2Key } = await upPhotoRes.json();
+
+  const saveMathRes = await callApi(`/api/teacher/gradebook/${mathSubj.id}/${term1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 3,
+      columnMetas: {},
+      layout: {},
+      styles: {},
+      students: [
+        { id: 'std-shared-1', studentUid: 'uid-shared', name: 'Koffi Jean', matricule: 'MAT-001', photoR2Key, notes: ['15', '17', ''] },
+      ],
+    },
+  });
+  assert.equal(saveMathRes.status, 200);
+
+  // Partager la même photoR2Key dans Français (ne doit PAS être facturée 2 fois en R2 !)
+  const saveFrRes = await callApi(`/api/teacher/gradebook/${frSubj.id}/${term1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 3,
+      columnMetas: {},
+      layout: {},
+      styles: {},
+      students: [
+        { id: 'std-shared-2', studentUid: 'uid-shared', name: 'Koffi Jean', matricule: 'MAT-001', photoR2Key, notes: ['14', '16', ''] },
+      ],
+    },
+  });
+  assert.equal(saveFrRes.status, 200);
+
+  const detailedUsage = await computeTeacherGradebookStorageUsage(db, 'user-alice', rawEnv);
+  assert.equal(detailedUsage.schoolLogosCount, 1);
+  assert.equal(detailedUsage.schoolLogosBytes, VALID_PNG_BYTES.byteLength);
+  assert.equal(detailedUsage.studentPhotosCount, 1, 'La photo partagée entre 2 matières ne doit compter qu’une seule fois en R2');
+  assert.equal(detailedUsage.studentPhotosBytes, VALID_PNG_BYTES.byteLength);
+  assert.equal(detailedUsage.r2FilesCount, 2);
+  assert.equal(detailedUsage.r2Bytes, VALID_PNG_BYTES.byteLength * 2);
+  assert.equal(detailedUsage.entities.years, 1);
+  assert.equal(detailedUsage.entities.schools, 1);
+  assert.equal(detailedUsage.entities.classes, 1);
+  assert.equal(detailedUsage.entities.subjects, 2);
+  assert.equal(detailedUsage.entities.gradebooks, 2);
+  assert.equal(detailedUsage.entities.students, 2);
+  assert.equal(detailedUsage.entities.classAverages, 4); // 1 annuelle + 3 trimestres
+
+  // 3. Backfill automatique d'une image legacy dont size_bytes avait été laissé à 0 en D1
+  await db.prepare('UPDATE teacher_schools SET logo_size_bytes = 0 WHERE user_id = ?').bind('user-alice').run();
+  const afterBackfill = await computeTeacherGradebookStorageUsage(db, 'user-alice', rawEnv);
+  assert.equal(afterBackfill.schoolLogosBytes, VALID_PNG_BYTES.byteLength);
+  const schDbRow: any = await db.prepare('SELECT logo_size_bytes FROM teacher_schools WHERE id = ?').bind(school.id).first();
+  assert.equal(Number(schDbRow.logo_size_bytes), VALID_PNG_BYTES.byteLength);
+
+  // 4. Isolation multi-utilisateur : Bob consomme 0 octet malgré les données d'Alice
+  const bobUsage = await computeTeacherGradebookStorageUsage(db, 'user-bob', rawEnv);
+  assert.equal(bobUsage.totalBytes, 0);
+  assert.equal(bobUsage.r2FilesCount, 0);
+  assert.equal(bobUsage.d1RowsCount, 0);
+
+  // 5. SATURATION DU QUOTA D'ALICE -> RIEN NE DOIT RENTRER DANS D1 NI DANS R2 (HTTP 413 STORAGE_LIMIT_EXCEEDED)
+  const currentTotalBytes = detailedUsage.r2Bytes + detailedUsage.d1EstimatedBytes;
+  await db
+    .prepare('UPDATE user_storage_quotas SET allowed_bytes = ? WHERE user_id = ?')
+    .bind(currentTotalBytes, 'user-alice')
+    .run();
+
+  const r2CountBeforeFull = r2Images.store.size;
+  const yearsBeforeFull: any = await db.prepare('SELECT COUNT(*) as c FROM teacher_school_years WHERE user_id = ?').bind('user-alice').first();
+  const schoolsBeforeFull: any = await db.prepare('SELECT COUNT(*) as c FROM teacher_schools WHERE user_id = ?').bind('user-alice').first();
+
+  // 5a. Créer une nouvelle année -> 413 BLOQUÉ
+  const blockedYear = await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2027 - 2028' },
+  });
+  assert.equal(blockedYear.status, 413);
+  const blockedYearJson = await blockedYear.json();
+  assert.equal(blockedYearJson.error, 'STORAGE_LIMIT_EXCEEDED');
+  assert.equal(blockedYearJson.isStorageLimitExceeded, true);
+
+  // 5b. Créer une école avec logo -> 413 BLOQUÉ (zéro écriture D1 et zéro objet R2 !)
+  const blockedSchool = await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'École Interdite', logoDataUrl: VALID_PNG_DATA_URL },
+  });
+  assert.equal(blockedSchool.status, 413);
+
+  // 5c. Uploader une photo élève -> 413 BLOQUÉ (zéro objet R2 !)
+  const blockedPhotoForm = new FormData();
+  blockedPhotoForm.append('subjectId', mathSubj.id);
+  blockedPhotoForm.append('termId', term1.id);
+  blockedPhotoForm.append('studentId', 'std-blocked');
+  blockedPhotoForm.append('file', new Blob([VALID_PNG_BYTES], { type: 'image/png' }), 'blocked.png');
+  const blockedPhoto = await callApi('/api/teacher/photos/student', {
+    method: 'POST',
+    token: 'token-alice',
+    body: blockedPhotoForm,
+  });
+  assert.equal(blockedPhoto.status, 413);
+
+  // 5d. Sauvegarder un tableur avec une nouvelle note et photo inline -> 413 BLOQUÉ
+  const blockedGb = await callApi(`/api/teacher/gradebook/${mathSubj.id}/${term1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 3,
+      columnMetas: {},
+      layout: {},
+      styles: {},
+      students: [
+        { id: 'std-shared-1', studentUid: 'uid-shared', name: 'Koffi Jean', photoR2Key, notes: ['15', '17', '19'] },
+        { id: 'std-new-blocked', studentUid: 'uid-blocked', name: 'Intrus Gratuit', photoUrl: VALID_PNG_DATA_URL, notes: ['20', '20', '20'] },
+      ],
+    },
+  });
+  assert.equal(blockedGb.status, 413);
+
+  // 5e. Batch-create d'écoles avec logos -> 413 BLOQUÉ
+  const blockedBatch = await callApi('/api/teacher/batch-create', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      entity: 'schools',
+      yearId: year.id,
+      items: [{ name: 'Batch Interdit', logoDataUrl: VALID_PNG_DATA_URL }],
+    },
+  });
+  assert.equal(blockedBatch.status, 413);
+
+  // 5f. Transfert avec copie de photo -> 413 BLOQUÉ
+  const blockedTransfer = await callApi('/api/teacher/transfer', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      createdLevels: [],
+      createdClasses: [],
+      createdTerms: [],
+      createdSubjects: [],
+      updatedSubjects: [],
+      gradebookCopies: [
+        {
+          sourceSubjectId: mathSubj.id,
+          sourceTermId: term1.id,
+          targetSubjectId: frSubj.id,
+          targetTermId: term1.id,
+          conflictStrategy: 'replace',
+          options: { contentMode: 'students_and_notes', includePhotos: true, includeMetas: true, includeFormatting: true },
+        },
+      ],
+    },
+  });
+  assert.equal(blockedTransfer.status, 413);
+
+  // Vérifier qu'AUCUN octet / ligne / objet R2 n'est rentré pendant que le stockage d'Alice est saturé !
+  assert.equal(r2Images.store.size, r2CountBeforeFull, 'Aucun objet R2 ne doit être créé quand le quota est plein');
+  const yearsAfterFull: any = await db.prepare('SELECT COUNT(*) as c FROM teacher_school_years WHERE user_id = ?').bind('user-alice').first();
+  const schoolsAfterFull: any = await db.prepare('SELECT COUNT(*) as c FROM teacher_schools WHERE user_id = ?').bind('user-alice').first();
+  assert.equal(yearsAfterFull.c, yearsBeforeFull.c);
+  assert.equal(schoolsAfterFull.c, schoolsBeforeFull.c);
+
+  // Bob (autre compte avec quota disponible) n'est PAS bloqué
+  const bobYear = await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-bob',
+    body: { label: '2026 - 2027' },
+  });
+  assert.equal(bobYear.status, 201);
+
+  // 6. La suppression (DELETE) reste AUTORISÉE quand le stockage est plein pour libérer de l'espace
+  const delFrRes = await callApi(`/api/teacher/subjects/${frSubj.id}`, {
+    method: 'DELETE',
+    token: 'token-alice',
+  });
+  assert.equal(delFrRes.status, 200);
+
+  // Après suppression de Français, user_storage_usage a immédiatement baissé -> Alice peut à nouveau créer une année !
+  const usageAfterDel: any = await db
+    .prepare('SELECT * FROM user_storage_usage WHERE user_id = ?')
+    .bind('user-alice')
+    .first();
+  assert.ok(
+    usageAfterDel.total_r2_compressed_bytes + usageAfterDel.total_d1_database_bytes < currentTotalBytes,
+    'La consommation doit baisser immédiatement après suppression'
+  );
+
+  const unlockedYear = await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2027 - 2028' },
+  });
+  assert.equal(unlockedYear.status, 201);
+
+  // 7. Suppression en cascade de toute l'année 2026-2027 -> R2 tombe à 0 et D1 baisse drastiquement
+  const delYearRes = await callApi(`/api/teacher/years/${year.id}`, {
+    method: 'DELETE',
+    token: 'token-alice',
+  });
+  assert.equal(delYearRes.status, 200);
+  const usageFinal: any = await db
+    .prepare('SELECT * FROM user_storage_usage WHERE user_id = ?')
+    .bind('user-alice')
+    .first();
+  assert.equal(usageFinal.total_r2_compressed_bytes, 0);
+  assert.equal(usageFinal.total_files_count, 0);
+  assert.equal(r2Images.store.size, 0);
 });

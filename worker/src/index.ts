@@ -2,7 +2,11 @@
  * StudyCloud - Cloudflare Worker Backend API
  * Gère la communication complète entre StudyCloud, Cloudflare D1 (SQL) et Cloudflare R2 (Storage).
  */
-import { handleTeacherGradebookRoutes, sanitizeSegment as sanitizeTeacherSegment } from './teacherGradebook';
+import {
+  handleTeacherGradebookRoutes,
+  computeTeacherGradebookStorageUsage,
+  sanitizeSegment as sanitizeTeacherSegment,
+} from './teacherGradebook';
 
 interface D1PreparedStatement {
   bind(...values: any[]): D1PreparedStatement;
@@ -2960,7 +2964,7 @@ async function purgeUserOrphanedR2Files(env: any, rawEnv: any, reqUserId: string
       if (r?.id && typeof r.id === 'string' && r.id.trim()) {
         activeFileIds.add(r.id.trim());
       }
-      for (const field of ['r2_key', 'file_url', 'audio_url', 'image_url', 'video_url', 'preview_url', 'thumbnail_url', 'cover_url']) {
+      for (const field of ['r2_key', 'logo_r2_key', 'photo_r2_key', 'file_url', 'audio_url', 'image_url', 'video_url', 'preview_url', 'thumbnail_url', 'cover_url']) {
         const val = r?.[field];
         if (val && typeof val === 'string') {
           for (const k of extractR2Keys(val)) {
@@ -2972,7 +2976,7 @@ async function purgeUserOrphanedR2Files(env: any, rawEnv: any, reqUserId: string
   };
 
   try {
-    const [f, a, img, v, doc, cl, dl, tr, th, sec] = await Promise.all([
+    const [f, a, img, v, doc, cl, dl, tr, th, sec, tSchools, tStudents] = await Promise.all([
       env.DB.prepare('SELECT id, r2_key, file_url FROM files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
       env.DB.prepare('SELECT id, r2_key, audio_url, cover_url FROM audio_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
       env.DB.prepare('SELECT id, r2_key, image_url, thumbnail_url FROM image_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
@@ -2983,6 +2987,8 @@ async function purgeUserOrphanedR2Files(env: any, rawEnv: any, reqUserId: string
       env.DB.prepare('SELECT id, r2_key, file_url FROM trash_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
       env.DB.prepare('SELECT file_id as id, r2_key, thumbnail_url FROM media_thumbnails WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
       env.DB.prepare('SELECT id, r2_key, file_url FROM secure_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, logo_r2_key FROM teacher_schools WHERE user_id = ? AND logo_r2_key IS NOT NULL').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, photo_r2_key FROM teacher_gradebook_students WHERE user_id = ? AND photo_r2_key IS NOT NULL').bind(reqUserId).all().catch(() => ({ results: [] })),
     ]);
 
     addKeys(f?.results);
@@ -2995,6 +3001,8 @@ async function purgeUserOrphanedR2Files(env: any, rawEnv: any, reqUserId: string
     addKeys(tr?.results);
     addKeys(th?.results);
     addKeys(sec?.results);
+    addKeys(tSchools?.results);
+    addKeys(tStudents?.results);
   } catch (e) {
     console.warn('[purgeUserOrphanedR2Files] Error collecting active keys:', e);
     return 0;
@@ -3740,7 +3748,7 @@ async function cleanUserFavoriteOnDelete(db: any, userId: string, itemId: string
  * Vérification stricte du quota de stockage utilisateur avant toute importation ou enregistrement.
  * Garantit que totalUsedBytes + incomingBytes ne dépasse JAMAIS totalAllowedBytes (used <= allowed).
  */
-async function checkUserStorageQuota(db: any, userId: string, incomingBytes: number = 0): Promise<{
+async function checkUserStorageQuota(db: any, userId: string, incomingBytes: number = 0, rawEnv?: any): Promise<{
   allowed: boolean;
   totalAllowedBytes: number;
   totalUsedBytes: number;
@@ -3781,6 +3789,7 @@ async function checkUserStorageQuota(db: any, userId: string, incomingBytes: num
     let welcomeMb = globalWelcomeMb;
     let paidMb = 0;
     let bonusMb = 0;
+    let isUnlimited = false;
 
     // 2. Lire le quota individuel personnalisé de l'utilisateur
     const quotaRow: any = await db.prepare(
@@ -3788,6 +3797,9 @@ async function checkUserStorageQuota(db: any, userId: string, incomingBytes: num
     ).bind(userId).first().catch(() => null);
 
     if (quotaRow) {
+      if (Number(quotaRow.is_unlimited || 0) === 1) {
+        isUnlimited = true;
+      }
       if (quotaRow.welcome_total_mb !== null && quotaRow.welcome_total_mb !== undefined) {
         welcomeMb = Number(quotaRow.welcome_total_mb);
       }
@@ -3809,7 +3821,7 @@ async function checkUserStorageQuota(db: any, userId: string, incomingBytes: num
     const totalAllowedMb = welcomeMb + paidMb + bonusMb;
     const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
 
-    // 4. Obtenir la consommation réelle actuelle (R2 + D1)
+    // 4. Obtenir la consommation réelle actuelle (R2 + D1 incluant les 9 tables du module Moyenne)
     let currentUsedBytes = 0;
     const cached: any = await db.prepare(
       "SELECT (COALESCE(total_r2_compressed_bytes, 0) + COALESCE(total_d1_database_bytes, 0)) as totalBytes FROM user_storage_usage WHERE user_id = ?"
@@ -3818,24 +3830,43 @@ async function checkUserStorageQuota(db: any, userId: string, incomingBytes: num
     if (cached && cached.totalBytes !== null && cached.totalBytes !== undefined && Number(cached.totalBytes) > 0) {
       currentUsedBytes = Number(cached.totalBytes);
     } else {
-      const filesStat: any = await db.prepare(
-        "SELECT COALESCE(SUM(size), 0) as totalBytes FROM files WHERE user_id = ?"
-      ).bind(userId).first().catch(() => null);
-      const matieresStat: any = await db.prepare(
-        "SELECT COUNT(*) as count FROM matieres WHERE user_id = ?"
-      ).bind(userId).first().catch(() => null);
-      const notesStat: any = await db.prepare(
-        "SELECT COUNT(*) as count FROM notes WHERE user_id = ?"
-      ).bind(userId).first().catch(() => null);
-      const d1Bytes = (Number(matieresStat?.count || 0) + Number(notesStat?.count || 0)) * 2048;
-      currentUsedBytes = Number(filesStat?.totalBytes || 0) + d1Bytes;
+      const recomputed = await recalculateAndSaveUserStorage(db, userId, rawEnv);
+      if (recomputed) {
+        currentUsedBytes = Number(recomputed.totalR2Bytes || 0) + Number(recomputed.totalD1Bytes || 0);
+      } else {
+        const filesStat: any = await db.prepare(
+          "SELECT COALESCE(SUM(size), 0) as totalBytes FROM files WHERE user_id = ?"
+        ).bind(userId).first().catch(() => null);
+        const matieresStat: any = await db.prepare(
+          "SELECT COUNT(*) as count FROM matieres WHERE user_id = ?"
+        ).bind(userId).first().catch(() => null);
+        const notesStat: any = await db.prepare(
+          "SELECT COUNT(*) as count FROM notes WHERE user_id = ?"
+        ).bind(userId).first().catch(() => null);
+        const d1Bytes = (Number(matieresStat?.count || 0) + Number(notesStat?.count || 0)) * 2048;
+        currentUsedBytes = Number(filesStat?.totalBytes || 0) + d1Bytes;
+      }
+    }
+
+    if (isUnlimited) {
+      return {
+        allowed: true,
+        totalAllowedBytes: Math.max(totalAllowedBytes, currentUsedBytes + 1024 * 1024 * 1024),
+        totalUsedBytes: currentUsedBytes,
+        remainingBytes: 1024 * 1024 * 1024,
+        totalAllowedMb,
+        totalUsedMb: Number((currentUsedBytes / (1024 * 1024)).toFixed(2)),
+        welcomeMb,
+        paidMb,
+        bonusMb,
+      };
     }
 
     const projectedUsedBytes = currentUsedBytes + (Number(incomingBytes) || 0);
     const remainingBytes = Math.max(0, totalAllowedBytes - currentUsedBytes);
 
-    if (projectedUsedBytes > totalAllowedBytes) {
-      const isAlreadyFull = currentUsedBytes >= totalAllowedBytes;
+    if (totalAllowedBytes <= 0 || currentUsedBytes >= totalAllowedBytes || projectedUsedBytes > totalAllowedBytes) {
+      const isAlreadyFull = totalAllowedBytes <= 0 || currentUsedBytes >= totalAllowedBytes;
       const errorText = isAlreadyFull
         ? `Votre espace de stockage est plein (${totalAllowedMb} Mo atteints). Impossible d'enregistrer de nouvelles données. Veuillez libérer de l'espace ou souscrire à une extension de stockage.`
         : `Espace de stockage insuffisant. Ce contenu (${formatBytes(incomingBytes)}) dépasse votre quota disponible (${formatBytes(remainingBytes)} restants sur ${formatBytes(totalAllowedBytes)}). Veuillez libérer de l'espace ou souscrire à une extension de stockage.`;
@@ -3881,10 +3912,10 @@ async function checkUserStorageQuota(db: any, userId: string, incomingBytes: num
 }
 
 /**
- * Recalcule rigoureusement le stockage de l'utilisateur sur les 36 tables
+ * Recalcule rigoureusement le stockage de l'utilisateur sur toutes les tables (incluant les 9 tables du module Moyenne + images R2)
  * et met à jour user_storage_usage avec la vraie taille brute d'origine pour la facturation.
  */
-async function recalculateAndSaveUserStorage(db: any, userId: string) {
+async function recalculateAndSaveUserStorage(db: any, userId: string, rawEnv?: any) {
   if (!db || !userId) return null;
   try {
     const [
@@ -3933,7 +3964,8 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
       upgradeReqStats,
       studyImportedStats,
       aiPerceptionStats,
-      syncItemStats
+      syncItemStats,
+      teacherStorage
     ] = await Promise.all([
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM video_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM audio_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
@@ -4005,7 +4037,10 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
       db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(perception_report) + LENGTH(COALESCE(file_name, '')) + LENGTH(file_signature)), 0) as textBytes FROM ai_document_perceptions WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
 
       // 10. Journal de synchronisation et réplication temps réel (sync_items) dans D1 (uniquement les éléments actifs)
-      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(content) + LENGTH(id) + LENGTH(category)), 0) as textBytes FROM sync_items WHERE user_id = ? AND is_deleted = 0").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 }))
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(content) + LENGTH(id) + LENGTH(category)), 0) as textBytes FROM sync_items WHERE user_id = ? AND is_deleted = 0").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+
+      // 11. Module Enseignant / Calcul de moyenne (9 tables D1 + logos écoles & photos élèves R2 dédupliqués)
+      computeTeacherGradebookStorageUsage(db, userId, rawEnv)
     ]);
 
     // Calcul précis des octets d'images de la boutique dans R2
@@ -4035,7 +4070,8 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
                        Number(docStats?.cnt || 0) + Number(classeurStats?.cnt || 0) + Number(matiereFileStats?.cnt || 0) + 
                        Number(studyFileStats?.cnt || 0) +
                        Number(downloadStats?.cnt || 0) + Number(secureStats?.cnt || 0) + Number(trashStats?.cnt || 0) +
-                       Number(thumbnailStats?.cnt || 0) + Number(wallpaperStats?.cnt || 0) + Number(studyImportedStats?.cnt || 0);
+                       Number(thumbnailStats?.cnt || 0) + Number(wallpaperStats?.cnt || 0) + Number(studyImportedStats?.cnt || 0) +
+                       Number(teacherStorage?.r2FilesCount || 0);
 
     const totalFileR2Bytes = Number(videoStats?.compBytes || 0) + Number(audioStats?.compBytes || 0) + 
                              Number(imageStats?.compBytes || 0) + Number(docStats?.compBytes || 0) + 
@@ -4043,7 +4079,8 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
                              Number(studyFileStats?.compBytes || 0) +
                              Number(downloadStats?.compBytes || 0) + Number(secureStats?.compBytes || 0) + 
                              Number(trashStats?.compBytes || 0) +
-                             Number(thumbnailStats?.r2Bytes || 0) + Number(wallpaperStats?.r2Bytes || 0) + Number(studyImportedStats?.compBytes || 0);
+                             Number(thumbnailStats?.r2Bytes || 0) + Number(wallpaperStats?.r2Bytes || 0) + Number(studyImportedStats?.compBytes || 0) +
+                             Number(teacherStorage?.r2Bytes || 0);
 
     const productCount = Number(productStats?.cnt || 0);
     const totalR2Bytes = totalFileR2Bytes + productImagesR2Bytes;
@@ -4062,7 +4099,8 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
                              Number(notifStats?.textBytes || 0) + Number(referralStats?.textBytes || 0) +
                              Number(thumbnailStats?.textBytes || 0) + Number(wallpaperStats?.textBytes || 0) +
                              Number(compressionStats?.textBytes || 0) + Number(dismissedRecentStats?.textBytes || 0) +
-                             Number(sharedFolderDlStats?.textBytes || 0) + Number(upgradeReqStats?.textBytes || 0) + Number(studyImportedStats?.textBytes || 0) + Number(aiPerceptionStats?.textBytes || 0) + Number(syncItemStats?.textBytes || 0);
+                             Number(sharedFolderDlStats?.textBytes || 0) + Number(upgradeReqStats?.textBytes || 0) + Number(studyImportedStats?.textBytes || 0) + Number(aiPerceptionStats?.textBytes || 0) + Number(syncItemStats?.textBytes || 0) +
+                             Number(teacherStorage?.d1TextBytes || 0);
 
     const totalD1Rows = totalFiles + Number(folderCount?.cnt || 0) +
                         productCount + Number(shopStats?.cnt || 0) + Number(cartStats?.cnt || 0) +
@@ -4078,7 +4116,8 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
                         Number(userProfileStats?.cnt || 0) + Number(userPrefsStats?.cnt || 0) +
                         Number(notifStats?.cnt || 0) + Number(referralStats?.cnt || 0) +
                         Number(compressionStats?.cnt || 0) + Number(dismissedRecentStats?.cnt || 0) +
-                        Number(sharedFolderDlStats?.cnt || 0) + Number(upgradeReqStats?.cnt || 0) + Number(studyImportedStats?.cnt || 0) + Number(aiPerceptionStats?.cnt || 0) + Number(syncItemStats?.cnt || 0);
+                        Number(sharedFolderDlStats?.cnt || 0) + Number(upgradeReqStats?.cnt || 0) + Number(studyImportedStats?.cnt || 0) + Number(aiPerceptionStats?.cnt || 0) + Number(syncItemStats?.cnt || 0) +
+                        Number(teacherStorage?.d1RowsCount || 0);
 
     const estimatedD1Bytes = Math.max(1024, totalD1TextBytes + (totalD1Rows * 160));
 
@@ -4088,7 +4127,8 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
                                    Number(studyFileStats?.origBytes || 0) +
                                    Number(downloadStats?.origBytes || 0) + Number(secureStats?.origBytes || 0) + 
                                    Number(trashStats?.origBytes || 0) +
-                                   Number(thumbnailStats?.r2Bytes || 0) + Number(wallpaperStats?.r2Bytes || 0) + Number(studyImportedStats?.origBytes || 0);
+                                   Number(thumbnailStats?.r2Bytes || 0) + Number(wallpaperStats?.r2Bytes || 0) + Number(studyImportedStats?.origBytes || 0) +
+                                   Number(teacherStorage?.r2Bytes || 0);
 
     const totalOriginalBytes = totalFileOriginalBytes + productImagesR2Bytes + estimatedD1Bytes;
     const totalActuallyConsumed = totalR2Bytes + estimatedD1Bytes;
@@ -4115,7 +4155,9 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
         thumbnails: { count: Number(thumbnailStats?.cnt || 0), bytes: Number(thumbnailStats?.r2Bytes || 0) },
         wallpapers: { count: Number(wallpaperStats?.cnt || 0), bytes: Number(wallpaperStats?.r2Bytes || 0) },
         product_images: { count: productCount, bytes: productImagesR2Bytes },
-        study_imported_files: { count: Number(studyImportedStats?.cnt || 0), originalBytes: Number(studyImportedStats?.origBytes || 0), compressedBytes: Number(studyImportedStats?.compBytes || 0) }
+        study_imported_files: { count: Number(studyImportedStats?.cnt || 0), originalBytes: Number(studyImportedStats?.origBytes || 0), compressedBytes: Number(studyImportedStats?.compBytes || 0) },
+        teacher_school_logos: { count: Number(teacherStorage?.schoolLogosCount || 0), bytes: Number(teacherStorage?.schoolLogosBytes || 0) },
+        teacher_student_photos: { count: Number(teacherStorage?.studentPhotosCount || 0), bytes: Number(teacherStorage?.studentPhotosBytes || 0) }
       },
       donnees_d1: {
         wallpapers_config: { count: Number(wallpaperStats?.cnt || 0), bytes: Number(wallpaperStats?.textBytes || 0) },
@@ -4125,7 +4167,13 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
         storage_upgrade_requests: { count: Number(upgradeReqStats?.cnt || 0), bytes: Number(upgradeReqStats?.textBytes || 0) },
         ai_document_perceptions: { count: Number(aiPerceptionStats?.cnt || 0), bytes: Number(aiPerceptionStats?.textBytes || 0) },
         sync_items: { count: Number(syncItemStats?.cnt || 0), bytes: Number(syncItemStats?.textBytes || 0) },
-        study_imported_meta: { count: Number(studyImportedStats?.cnt || 0), bytes: Number(studyImportedStats?.textBytes || 0) }
+        study_imported_meta: { count: Number(studyImportedStats?.cnt || 0), bytes: Number(studyImportedStats?.textBytes || 0) },
+        teacher_gradebook: {
+          count: Number(teacherStorage?.d1RowsCount || 0),
+          bytes: Number(teacherStorage?.d1EstimatedBytes || 0),
+          textBytes: Number(teacherStorage?.d1TextBytes || 0),
+          entities: teacherStorage?.entities || {}
+        }
       }
     };
     const breakdownJson = JSON.stringify(breakdown);
@@ -4172,6 +4220,7 @@ async function recalculateAndSaveUserStorage(db: any, userId: string) {
       compressionRatio: compRatio,
       totalFiles,
       totalD1Rows,
+      teacherStorage,
       breakdown
     };
   } catch (err) {
@@ -5581,6 +5630,7 @@ a:hover{transform:translateY(-2px)}
           'user_word_counts',
           'teacher_gradebook_students',
           'teacher_gradebooks',
+          'teacher_class_averages',
           'teacher_subjects',
           'teacher_terms',
           'teacher_classes',
@@ -5735,6 +5785,10 @@ a:hover{transform:translateY(-2px)}
           corsHeaders,
           jsonResponse,
           errorResponse,
+          checkStorageQuota: (uid: string, incomingBytes?: number) =>
+            checkUserStorageQuota(env.DB, uid, incomingBytes || 0, rawEnv),
+          recalculateUserStorage: (uid: string) =>
+            recalculateAndSaveUserStorage(env.DB, uid, rawEnv),
         });
         if (teacherRes) return teacherRes;
       }
@@ -9583,7 +9637,7 @@ a:hover{transform:translateY(-2px)}
       if (path === '/api/cloud/storage-usage' && method === 'GET') {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
-        const stats = await recalculateAndSaveUserStorage(env.DB, reqUserId);
+        const stats = await recalculateAndSaveUserStorage(env.DB, reqUserId, rawEnv);
         return jsonResponse({ success: true, data: stats }, 200, origin);
       }
 
@@ -17661,8 +17715,8 @@ a:hover{transform:translateY(-2px)}
               }
             } catch (e) {}
 
-            // 4. Recalcul réel R2 + D1
-            const storageUsage: any = await recalculateAndSaveUserStorage(env.DB, userId);
+            // 4. Recalcul réel R2 + D1 (incluant les 9 tables + images R2 du module Calcul de moyenne)
+            const storageUsage: any = await recalculateAndSaveUserStorage(env.DB, userId, rawEnv);
             if (storageUsage) {
               totalFilesCount = Number(storageUsage.totalFiles || 0);
               totalFilesBytes = Number(storageUsage.totalR2Bytes || 0);
@@ -17743,7 +17797,7 @@ a:hover{transform:translateY(-2px)}
           remainingBytes: Math.max(0, totalAllowedBytes - totalActuallyConsumedBytes),
           filesStorage: {
             name: 'Stockage Documents & Fichiers',
-            subtitle: 'Vos cours personnels, devoirs, polycopiés et documents PDF téléversés',
+            subtitle: 'Cours personnels, devoirs, PDF, photos élèves et logos établissements (R2)',
             count: totalFilesCount,
             usedBytes: totalFilesBytes,
             usedMb: usedFilesMb,
@@ -17755,7 +17809,7 @@ a:hover{transform:translateY(-2px)}
           },
           dataStorage: {
             name: "Espace Données & Fiches d'Étude",
-            subtitle: 'Vos fiches mémoires, notes de cours, emploi du temps, relevés et contenus',
+            subtitle: 'Fiches, notes, classes, tableaux de moyennes, emploi du temps et relevés (D1)',
             count: totalDataCount,
             usedBytes: totalDataBytes,
             usedMb: usedDataMb,
@@ -17765,6 +17819,38 @@ a:hover{transform:translateY(-2px)}
             percentage: totalAllowedMb > 0 ? Math.min(100, Math.round((usedDataMb / totalAllowedMb) * 100)) : 0,
             freeNote: 'Partage libre / Sur quota global'
           },
+          teacherGradebookStorage: (() => {
+            const ts = telemetryData?.teacherStorage;
+            const r2Bytes = Number(ts?.r2Bytes || 0);
+            const d1Bytes = Number(ts?.d1EstimatedBytes || 0);
+            const totalTeacherBytes = r2Bytes + d1Bytes;
+            return {
+              r2FilesCount: Number(ts?.r2FilesCount || 0),
+              r2Bytes,
+              r2Formatted: formatSize(r2Bytes),
+              schoolLogosCount: Number(ts?.schoolLogosCount || 0),
+              schoolLogosBytes: Number(ts?.schoolLogosBytes || 0),
+              studentPhotosCount: Number(ts?.studentPhotosCount || 0),
+              studentPhotosBytes: Number(ts?.studentPhotosBytes || 0),
+              d1RowsCount: Number(ts?.d1RowsCount || 0),
+              d1Bytes,
+              d1Formatted: formatSize(d1Bytes),
+              totalBytes: totalTeacherBytes,
+              totalFormatted: formatSize(totalTeacherBytes),
+              percentage: totalAllowedBytes > 0 ? Math.min(100, Math.round((totalTeacherBytes / totalAllowedBytes) * 100)) : 0,
+              entities: ts?.entities || {
+                years: 0,
+                schools: 0,
+                levels: 0,
+                classes: 0,
+                terms: 0,
+                subjects: 0,
+                gradebooks: 0,
+                students: 0,
+                classAverages: 0,
+              },
+            };
+          })(),
           wordsUsage: {
             name: 'Crédits Mots IA',
             subtitle: "Mots pour vos discussions et analyses avec l'IA",

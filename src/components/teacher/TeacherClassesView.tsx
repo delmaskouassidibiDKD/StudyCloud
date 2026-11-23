@@ -758,6 +758,34 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         setIsOnline(false);
         setSaveUiState('offline');
         setSaveFeedbackMessage("Hors ligne — Échec de l'enregistrement. Vérifiez votre connexion Internet.");
+      } else if (err?.isStorageLimitExceeded) {
+        setSaveUiState('error');
+        setSaveFeedbackMessage(err?.message || "Votre espace de stockage est plein. Veuillez augmenter votre stockage.");
+        setCloudStatus('error');
+        setCloudError(err?.message || "Espace de stockage saturé.");
+        // Annuler immédiatement toute création optimiste locale en resynchronisant l'état exact de D1
+        TeacherGradebookAPI.bootstrap()
+          .then((fresh) => {
+            setSchoolYears(fresh.schoolYears);
+            setSchools(fresh.schools);
+            setStudyLevels(fresh.studyLevels);
+            setClasses(fresh.classes);
+            setTerms(fresh.terms);
+            setSubjects(fresh.subjects);
+            setClassAverages(fresh.classAverages || []);
+            setServerGradebookStats(fresh.gradebookStats || {});
+            setSelectedYearId((prev) =>
+              prev && fresh.schoolYears.some((y) => y.id === prev) ? prev : fresh.schoolYears[0]?.id || ''
+            );
+            setSelectedSchoolInside((prev) =>
+              prev ? fresh.schools.find((s) => s.id === prev.id) || null : null
+            );
+            setSelectedSubjectInside((prev) =>
+              prev ? fresh.subjects.find((s) => s.id === prev.id) || null : null
+            );
+            if (authUserId) writeUserBootstrapCache(authUserId, fresh);
+          })
+          .catch(() => {});
       } else {
         setSaveUiState('error');
         setSaveFeedbackMessage(err?.message || errorFallback);
@@ -766,7 +794,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       }
       return null;
     }
-  }, []);
+  }, [authUserId]);
 
   // 1. Accueil par défaut de cette application : le bouton "Tableau de bord" (comme entouré sur l'image 1)
   const [activeNavTab, setActiveNavTab] = useState<'dashboard' | 'trainees' | 'classes' | 'discussions' | 'groups' | 'library'>('dashboard');

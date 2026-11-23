@@ -2733,6 +2733,32 @@ export interface UserStorageQuotaDetails {
     percentage: number;
     freeNote: string;
   };
+  teacherGradebookStorage?: {
+    r2FilesCount: number;
+    r2Bytes: number;
+    r2Formatted: string;
+    schoolLogosCount: number;
+    schoolLogosBytes: number;
+    studentPhotosCount: number;
+    studentPhotosBytes: number;
+    d1RowsCount: number;
+    d1Bytes: number;
+    d1Formatted: string;
+    totalBytes: number;
+    totalFormatted: string;
+    percentage: number;
+    entities: {
+      years: number;
+      schools: number;
+      levels: number;
+      classes: number;
+      terms: number;
+      subjects: number;
+      gradebooks: number;
+      students: number;
+      classAverages: number;
+    };
+  };
   wordsUsage: {
     name: string;
     subtitle: string;

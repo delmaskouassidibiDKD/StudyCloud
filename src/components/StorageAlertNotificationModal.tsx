@@ -8,6 +8,7 @@ export const StorageAlertNotificationModal: React.FC = () => {
   const [activeThreshold, setActiveThreshold] = useState<number>(0);
   const [isBlockingUpload, setIsBlockingUpload] = useState<boolean>(false);
   const [blockingMessage, setBlockingMessage] = useState<string>('');
+  const [blockingUsageOverride, setBlockingUsageOverride] = useState<{ usedText?: string; allowedText?: string } | null>(null);
 
   // Vérifier si l'utilisateur est connecté
   const isUserConnected = (): boolean => {
@@ -85,14 +86,32 @@ export const StorageAlertNotificationModal: React.FC = () => {
       checkStorageQuota();
     };
 
-    // 3. Écouter les blocages stricts d'importation (quota dépassé)
+    // 3. Écouter les blocages stricts d'importation ou d'enregistrement (quota dépassé)
     const handleStorageExceeded = (e: any) => {
       const detail = e.detail || {};
-      const msg = detail.message || "Votre espace de stockage est insuffisant pour enregistrer ce fichier. Le document a été détruit pour préserver votre compte.";
+      const msg = detail.message || "Votre espace de stockage est plein. Aucune nouvelle donnée ne peut être enregistrée. Veuillez libérer de l'espace ou augmenter votre stockage.";
       setBlockingMessage(msg);
+      if (detail.usedFormatted || detail.allowedFormatted) {
+        setBlockingUsageOverride({
+          usedText: detail.usedFormatted,
+          allowedText: detail.allowedFormatted,
+        });
+      }
       setIsBlockingUpload(true);
       setActiveThreshold(100);
       setIsOpen(true);
+
+      // Rafraîchir silencieusement les compteurs exacts en arrière-plan sans refermer la modale bloquante
+      if (isUserConnected()) {
+        const uid = localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id') || undefined;
+        getUserStorageQuota(uid)
+          .then((res) => {
+            if (res && res.success && res.data) {
+              setQuotaData(res.data);
+            }
+          })
+          .catch(() => {});
+      }
     };
 
     window.addEventListener('studycloud_refresh_storage_quota', handleRefresh);
@@ -131,8 +150,8 @@ export const StorageAlertNotificationModal: React.FC = () => {
   }
 
   const pct = isBlockingUpload ? 100 : (quotaData?.totalPercentage ?? activeThreshold);
-  const usedText = quotaData?.totalUsedFormatted || `${pct}% utilisé`;
-  const allowedText = quotaData?.totalAllowedFormatted || 'Quota plein';
+  const usedText = (isBlockingUpload && blockingUsageOverride?.usedText) || quotaData?.totalUsedFormatted || `${pct}% utilisé`;
+  const allowedText = (isBlockingUpload && blockingUsageOverride?.allowedText) || quotaData?.totalAllowedFormatted || 'Quota plein';
 
   const isCritical = pct >= 95 || isBlockingUpload;
   const isExtreme = pct >= 96 || isBlockingUpload;

@@ -769,14 +769,22 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       setCloudSaveStatus('saved');
       onGradebookSynced?.();
     } catch (err: any) {
-      hasPendingCloudChangesRef.current = true;
-      setIsSaved(false);
-      if (isOfflineOrNetworkError(err)) {
-        setCloudSaveStatus('offline');
-        setCloudSaveError("Hors ligne — Échec de l'enregistrement. Vérifiez votre connexion Internet.");
-      } else {
+      if (err?.isStorageLimitExceeded) {
+        // Quota saturé : stopper les réessais automatiques en boucle, la modale d'augmentation s'affiche
+        hasPendingCloudChangesRef.current = false;
+        setIsSaved(false);
         setCloudSaveStatus('error');
-        setCloudSaveError(err?.message || "Échec de l'enregistrement de vos données.");
+        setCloudSaveError(err?.message || "Espace de stockage plein. Veuillez augmenter votre stockage.");
+      } else {
+        hasPendingCloudChangesRef.current = true;
+        setIsSaved(false);
+        if (isOfflineOrNetworkError(err)) {
+          setCloudSaveStatus('offline');
+          setCloudSaveError("Hors ligne — Échec de l'enregistrement. Vérifiez votre connexion Internet.");
+        } else {
+          setCloudSaveStatus('error');
+          setCloudSaveError(err?.message || "Échec de l'enregistrement de vos données.");
+        }
       }
     } finally {
       isCloudSavingRef.current = false;
@@ -2062,8 +2070,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     if (!file || !targetStudentId) return;
 
     setIsUploadingPhoto(true);
+    let prevPhotoUrl: string | undefined;
+    let prevPhotoR2Key: string | undefined;
     try {
       const { blob, dataUrl } = await compressImageToUpload(file, 256, 0.84);
+
+      // Mémoriser l'état précédent pour rollback immédiat si le serveur rejette l'upload (ex: quota 413)
+      const existingStudent = students.find(s => s.id === targetStudentId);
+      prevPhotoUrl = existingStudent?.photoUrl;
+      prevPhotoR2Key = existingStudent?.photoR2Key;
 
       // Aperçu instantané + agrandissement automatique de la case photo
       setStudents(prev => {
@@ -2096,6 +2111,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         );
       }
     } catch (err: any) {
+      // Rollback immédiat de l'aperçu photo si l'upload R2 est refusé (ex: quota saturé 413)
+      setStudents(prev =>
+        prev.map(s =>
+          s.id === targetStudentId
+            ? { ...s, photoUrl: prevPhotoUrl, photoR2Key: prevPhotoR2Key }
+            : s
+        )
+      );
       setCloudSaveStatus('error');
       setCloudSaveError(err?.message || "Échec de l'envoi de la photo élève.");
     } finally {

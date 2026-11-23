@@ -183,6 +183,58 @@ function getBaseUrl(): string {
   return getWorkerApiUrl().replace(/\/+$/, '');
 }
 
+let lastStorageQuotaRefreshAt = 0;
+
+function notifyStorageQuotaRefreshThrottled(): void {
+  if (typeof window === 'undefined') return;
+  const now = Date.now();
+  if (now - lastStorageQuotaRefreshAt < 8000) return;
+  lastStorageQuotaRefreshAt = now;
+  try {
+    window.dispatchEvent(new CustomEvent('studycloud_refresh_storage_quota'));
+  } catch {
+    // Ignore
+  }
+}
+
+function buildStorageExceededError(status: number, data: any): Error & {
+  status: number;
+  payload: any;
+  isStorageLimitExceeded: boolean;
+} {
+  const message =
+    data?.message ||
+    "Votre espace de stockage est plein. Impossible d'enregistrer de nouvelles données. Veuillez libérer de l'espace ou augmenter votre stockage.";
+  if (typeof window !== 'undefined') {
+    try {
+      window.dispatchEvent(
+        new CustomEvent('studycloud_storage_limit_exceeded', {
+          detail: {
+            message,
+            usedFormatted: data?.quota?.usedFormatted,
+            allowedFormatted: data?.quota?.allowedFormatted,
+          },
+        })
+      );
+    } catch {
+      // Ignore
+    }
+  }
+  const err: any = new Error(message);
+  err.status = status;
+  err.payload = data;
+  err.isStorageLimitExceeded = true;
+  return err;
+}
+
+function isStorageLimitErrorResponse(status: number, data: any): boolean {
+  return (
+    status === 413 ||
+    data?.isStorageLimitExceeded === true ||
+    data?.error === 'STORAGE_LIMIT_EXCEEDED'
+  );
+}
+
 async function teacherFetchJson<T>(
   path: string,
   options: {
@@ -197,6 +249,7 @@ async function teacherFetchJson<T>(
     throw new Error('Session non connectée (jeton manquant).');
   }
 
+  const method = options.method || 'GET';
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
   };
@@ -207,7 +260,7 @@ async function teacherFetchJson<T>(
   }
 
   const res = await fetch(`${getBaseUrl()}${path}`, {
-    method: options.method || 'GET',
+    method,
     headers,
     body: bodyPayload,
     keepalive: options.keepalive,
@@ -216,11 +269,18 @@ async function teacherFetchJson<T>(
 
   const data: any = await res.json().catch(() => ({}));
   if (!res.ok) {
-    const errMsg = data?.error || `Erreur serveur (${res.status})`;
+    if (isStorageLimitErrorResponse(res.status, data)) {
+      throw buildStorageExceededError(res.status, data);
+    }
+    const errMsg = data?.message || data?.error || `Erreur serveur (${res.status})`;
     const err: any = new Error(errMsg);
     err.status = res.status;
     err.payload = data;
     throw err;
+  }
+
+  if (method === 'POST' || method === 'PUT' || method === 'DELETE') {
+    notifyStorageQuotaRefreshThrottled();
   }
   return data as T;
 }
@@ -846,7 +906,16 @@ export const TeacherGradebookAPI = {
       body: form,
     });
     const data: any = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data?.error || `Échec d'envoi photo (${res.status})`);
+    if (!res.ok) {
+      if (isStorageLimitErrorResponse(res.status, data)) {
+        throw buildStorageExceededError(res.status, data);
+      }
+      const err: any = new Error(data?.message || data?.error || `Échec d'envoi photo (${res.status})`);
+      err.status = res.status;
+      err.payload = data;
+      throw err;
+    }
+    notifyStorageQuotaRefreshThrottled();
     return data;
   },
 

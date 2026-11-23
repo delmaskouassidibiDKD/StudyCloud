@@ -19,7 +19,8 @@ import {
   Server,
   Database,
   BarChart3,
-  Upload
+  Upload,
+  GraduationCap
 } from 'lucide-react';
 import {
   getUserStorageQuota,
@@ -207,6 +208,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
   const isStorageSaturated = rawUsedMb >= totalAllowedMb;
   const filesStorage = storageData?.filesStorage;
   const dataStorage = storageData?.dataStorage;
+  const teacherStorage = storageData?.teacherGradebookStorage;
 
   // Couleur de la jauge selon le pourcentage
   const gaugeColor = totalPercentage >= 90
@@ -437,7 +439,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
               <div className="flex items-center gap-2.5">
                 <AlertCircle className="w-5 h-5 shrink-0 text-amber-500" />
                 <span>
-                  <strong>Votre espace de stockage est plein ({storageData?.totalAllowedFormatted || `${totalAllowedMb} Mo`}).</strong> Tout nouvel import de fichier est bloqué pour protéger votre compte. Libérez de l'espace ou augmentez votre quota.
+                  <strong>Votre espace de stockage est plein ({storageData?.totalAllowedFormatted || `${totalAllowedMb} Mo`}).</strong> Tout nouvel import ou enregistrement de données (fichiers, photos, classes, notes) est bloqué pour protéger votre compte. Libérez de l'espace ou augmentez votre quota.
                 </span>
               </div>
               <button
@@ -570,10 +572,73 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
 
                 <div className="flex items-center gap-1.5 text-[11px] text-stone-500 dark:text-slate-400 bg-stone-50 dark:bg-slate-900/50 p-2.5 rounded-xl border border-stone-100 dark:border-slate-800">
                   <Info className="w-3.5 h-3.5 text-blue-500 shrink-0" />
-                  <span>Fiches mémos, notes de cours, planning, relevés de notes et contenus enregistrés.</span>
+                  <span>Fiches mémos, notes de cours, planning, classes, tableaux de moyennes et contenus enregistrés.</span>
                 </div>
               </div>
             </div>
+
+            {/* Détail spécifique : Application Calcul de Moyenne (StudyCloud R2 + D1) */}
+            {teacherStorage && (
+              <div className="border-t border-stone-100 dark:border-slate-800 px-5 py-4 bg-stone-50/70 dark:bg-slate-900/40 space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <span className="p-2 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900">
+                      <GraduationCap className="w-4 h-4" />
+                    </span>
+                    <div>
+                      <h3 className="text-xs font-extrabold text-stone-900 dark:text-white leading-tight">
+                        Application Calcul de Moyenne (StudyCloud R2 & D1)
+                      </h3>
+                      <p className="text-[11px] text-stone-500 dark:text-slate-400 leading-tight mt-0.5">
+                        Inclus dans votre consommation globale ci-dessus
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-black text-emerald-700 dark:text-emerald-400">
+                      {teacherStorage.totalFormatted}
+                    </span>
+                    <span className="px-2 py-0.5 bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 font-bold text-[10px] rounded-lg border border-emerald-200 dark:border-emerald-900">
+                      {teacherStorage.percentage}% du quota
+                    </span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {/* Part R2 Moyenne */}
+                  <div className="bg-white dark:bg-[#131b2e] rounded-2xl p-3 border border-stone-200/80 dark:border-slate-800 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-sky-700 dark:text-sky-400">
+                        <Server className="w-3.5 h-3.5 shrink-0" />
+                        <span>Images & Photos (R2)</span>
+                      </div>
+                      <p className="text-[10px] text-stone-500 dark:text-slate-400 mt-0.5 truncate">
+                        {teacherStorage.schoolLogosCount} logo(s) · {teacherStorage.studentPhotosCount} photo(s) élève(s)
+                      </p>
+                    </div>
+                    <span className="text-xs font-black text-stone-900 dark:text-white shrink-0">
+                      {teacherStorage.r2Formatted}
+                    </span>
+                  </div>
+
+                  {/* Part D1 Moyenne */}
+                  <div className="bg-white dark:bg-[#131b2e] rounded-2xl p-3 border border-stone-200/80 dark:border-slate-800 flex items-center justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold text-violet-700 dark:text-violet-400">
+                        <Database className="w-3.5 h-3.5 shrink-0" />
+                        <span>Classes, Notes & Moyennes (D1)</span>
+                      </div>
+                      <p className="text-[10px] text-stone-500 dark:text-slate-400 mt-0.5 truncate">
+                        {teacherStorage.entities.schools} école(s) · {teacherStorage.entities.classes} classe(s) · {teacherStorage.entities.subjects} matière(s) · {teacherStorage.entities.students} ligne(s)
+                      </p>
+                    </div>
+                    <span className="text-xs font-black text-stone-900 dark:text-white shrink-0">
+                      {teacherStorage.d1Formatted}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── ONGLETS DEMANDES ── */}
