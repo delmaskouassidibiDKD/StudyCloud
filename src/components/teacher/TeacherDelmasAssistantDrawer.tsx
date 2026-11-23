@@ -24,6 +24,9 @@ import {
   Image as ImageIcon,
   Volume2,
   ExternalLink,
+  Coins,
+  Zap,
+  ArrowRight,
 } from 'lucide-react';
 import { DelmasRobot } from '../DelmasRobot';
 import { DnaLogo } from '../DnaLogo';
@@ -32,7 +35,13 @@ import {
   StudyCloudAPI,
   getGeminiApiKey,
   sendChatMessageToAi,
+  getActiveTokensPerCredit,
+  convertTokensToCredits,
+  formatConsumedCreditsDisplay,
+  getAiBillingConfig,
+  getUserAiCreditsLive,
 } from '../../services/api';
+import { resetViewerExpand } from '../../utils/viewerExpandManager';
 import {
   extractDocumentDetails,
   resolveImageBase64,
@@ -134,6 +143,9 @@ interface UiChatMessage {
     previewDataUrl?: string;
   }>;
   reaction?: 'like' | 'dislike' | null;
+  tokens?: number;
+  credits?: number;
+  credits_deducted?: number;
   isStreaming?: boolean;
   isError?: boolean;
   createdAt: number;
@@ -343,8 +355,163 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
   const [thinkingLabel, setThinkingLabel] = useState<string>('Assistant Delmas réfléchit...');
   const isGenerating = isThinking || isStreamingReply;
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [openCreditsMsgIds, setOpenCreditsMsgIds] = useState<Set<string>>(() => new Set());
+  const [tokensPerCredit, setTokensPerCredit] = useState<number>(() => getActiveTokensPerCredit());
+  const [isCreditInsufficient, setIsCreditInsufficient] = useState<boolean>(false);
   const [workspaceSnapshot, setWorkspaceSnapshot] =
     useState<TeacherDelmasWorkspaceSnapshot | null>(null);
+
+  const toggleCreditsVisibility = (msgId: string) => {
+    setOpenCreditsMsgIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(msgId)) {
+        next.delete(msgId);
+      } else {
+        next.add(msgId);
+      }
+      return next;
+    });
+  };
+
+  const resolveActiveUserId = useCallback((): string | undefined => {
+    if (typeof window === 'undefined') return undefined;
+    try {
+      const uid =
+        localStorage.getItem('unifolder_user_id') ||
+        localStorage.getItem('studycloud_user_id') ||
+        '';
+      return uid && uid !== 'default-user' ? uid : undefined;
+    } catch {
+      return undefined;
+    }
+  }, []);
+
+  // Synchronisation temps réel avec la même base Cloudflare D1 des Crédits IA que le Menu Création
+  useEffect(() => {
+    getAiBillingConfig()
+      .then((res) => {
+        if (res && res.success && res.config?.tokens_per_credit) {
+          setTokensPerCredit(Number(res.config.tokens_per_credit));
+        }
+      })
+      .catch(() => {});
+
+    const handleConfigUpdate = (e: any) => {
+      if (e?.detail?.tokens_per_credit) {
+        setTokensPerCredit(Number(e.detail.tokens_per_credit));
+      }
+    };
+    const handleInsufficientCredits = () => {
+      setIsCreditInsufficient(true);
+    };
+    const handleCreditsUpdated = (e: any) => {
+      if (typeof e?.detail?.remaining_balance === 'number') {
+        setIsCreditInsufficient(e.detail.remaining_balance <= 0);
+      }
+    };
+
+    window.addEventListener('studycloud_billing_config_updated', handleConfigUpdate);
+    window.addEventListener('studycloud_insufficient_credits', handleInsufficientCredits);
+    window.addEventListener('studycloud_user_credits_updated', handleCreditsUpdated);
+
+    return () => {
+      window.removeEventListener('studycloud_billing_config_updated', handleConfigUpdate);
+      window.removeEventListener('studycloud_insufficient_credits', handleInsufficientCredits);
+      window.removeEventListener('studycloud_user_credits_updated', handleCreditsUpdated);
+    };
+  }, []);
+
+  // Contrôle en direct du solde D1 (user_ai_credits) à chaque ouverture du panneau
+  useEffect(() => {
+    if (!isOpen) return;
+    const uid = resolveActiveUserId();
+    if (!uid) return;
+    getUserAiCreditsLive(uid)
+      .then((res) => {
+        if (res && res.credits) {
+          const bal = Number(res.credits.balance ?? (res.credits as any).credits_balance ?? 0);
+          setIsCreditInsufficient(bal <= 0);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen, resolveActiveUserId]);
+
+  const handleOpenAiSubscriptions = useCallback(() => {
+    resetViewerExpand();
+    onClose();
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('studycloud_open_ai_subscriptions'));
+    }
+  }, [onClose]);
+
+  const getMessageTokens = (msg: UiChatMessage): number => {
+    if (typeof msg.tokens === 'number' && msg.tokens > 0) return msg.tokens;
+    if (typeof msg.credits === 'number' && msg.credits > 20) return msg.credits;
+    return Math.max(55, Math.ceil((msg.content || '').length / 3.8));
+  };
+
+  const getMessageCreditsDisplay = (msg: UiChatMessage): string => {
+    const rawTokens = getMessageTokens(msg);
+    const normLang = (chatLanguage || 'fr').toLowerCase();
+    const getUnit = (val: number) => {
+      if (normLang.startsWith('zh')) return '积分';
+      if (normLang.startsWith('ja')) return 'クレジット';
+      if (normLang.startsWith('ar')) return 'رصيد';
+      if (normLang.startsWith('en')) return val <= 1 ? 'credit' : 'credits';
+      if (normLang.startsWith('de')) return val <= 1 ? 'Credit' : 'Credits';
+      if (normLang.startsWith('es')) return val <= 1 ? 'crédito' : 'créditos';
+      if (normLang.startsWith('pt')) return val <= 1 ? 'crédito' : 'créditos';
+      if (normLang.startsWith('it')) return val <= 1 ? 'credito' : 'crediti';
+      if (normLang.startsWith('ru')) return val <= 1 ? 'кредит' : 'кредита';
+      return val <= 1 ? 'crédit' : 'crédits';
+    };
+
+    if (typeof msg.credits_deducted === 'number' && msg.credits_deducted > 0) {
+      const val = msg.credits_deducted;
+      const fmt = val.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+      return `${fmt} ${getUnit(val)}`;
+    }
+    if (
+      typeof msg.credits === 'number' &&
+      msg.credits > 0 &&
+      msg.credits < (msg.tokens || Infinity) &&
+      msg.credits < 30
+    ) {
+      const val = msg.credits;
+      const fmt = val.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
+      return `${fmt} ${getUnit(val)}`;
+    }
+    return formatConsumedCreditsDisplay(rawTokens, tokensPerCredit, chatLanguage);
+  };
+
+  const creditsUiLabels = (() => {
+    const l = (chatLanguage || 'fr').toLowerCase();
+    if (l.startsWith('en')) {
+      return {
+        consumption: 'Consumption:',
+        creditsBtn: 'credits',
+        insufficientTitle: 'Insufficient AI credits',
+        insufficientSub: 'Your AI credit balance is exhausted. Recharge to continue.',
+        recharge: 'Recharge',
+      };
+    }
+    if (l.startsWith('es')) {
+      return {
+        consumption: 'Consumo:',
+        creditsBtn: 'créditos',
+        insufficientTitle: 'Créditos IA insuficientes',
+        insufficientSub: 'Su saldo de créditos se ha agotado. Recargue para continuar.',
+        recharge: 'Recargar',
+      };
+    }
+    return {
+      consumption: 'Consommation :',
+      creditsBtn: 'crédits',
+      insufficientTitle: 'Crédit IA insuffisant',
+      insufficientSub: 'Votre solde de crédits est épuisé. Rechargez pour continuer.',
+      recharge: 'Recharger',
+    };
+  })();
 
   // Message d'accueil écrit en direct à l'ouverture (discret et sans pression)
   const welcomeCopy = getWelcomeCopyForLanguage(chatLanguage);
@@ -603,6 +770,9 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
               : [],
             attachments: m.attachments || [],
             reaction: m.reaction || null,
+            tokens: Number(m.tokens) || 0,
+            credits: Number(m.credits) || 0,
+            credits_deducted: Number(m.credits) || 0,
             isStreaming: false,
             createdAt: m.createdAt,
           }))
@@ -896,6 +1066,10 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
 
   // Envoi d'un message à l'Assistant Delmas (Kimi en arrière-plan + détection d'intention + écriture en direct)
   const handleSendMessage = async () => {
+    if (isCreditInsufficient) {
+      handleOpenAiSubscriptions();
+      return;
+    }
     const rawText = inputValue.trim();
     if ((!rawText && pendingAttachments.length === 0) || isGenerating || isImportingFiles) {
       return;
@@ -1140,13 +1314,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         modelId: DEFAULT_TEACHER_DELMAS_KIMI_MODEL,
       };
       const configuredToken = kimiModel.apiToken || undefined;
-      const activeUserId = (() => {
-        try {
-          return localStorage.getItem('unifolder_user_id') || undefined;
-        } catch {
-          return undefined;
-        }
-      })();
+      const activeUserId = resolveActiveUserId();
 
       const aiRes = await sendChatMessageToAi({
         messages: historyPayload,
@@ -1257,6 +1425,27 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         summary: appliedSummaries[idx] || undefined,
       }));
 
+      // Calcul exact de la consommation en tokens / crédits IA renvoyée par D1 (identique au Menu Création)
+      const estimatedTokens = Math.max(
+        55,
+        Math.ceil(((promptText || '').length + (fullResponseText || '').length) / 3.8)
+      );
+      const respTokens =
+        (typeof aiRes.tokens === 'number' && aiRes.tokens > 0
+          ? aiRes.tokens
+          : typeof aiRes.usage?.totalTokens === 'number' && aiRes.usage.totalTokens > 0
+          ? aiRes.usage.totalTokens
+          : estimatedTokens);
+      const respCredits =
+        typeof aiRes.credits_deducted === 'number' && aiRes.credits_deducted > 0
+          ? aiRes.credits_deducted
+          : typeof aiRes.credits === 'number' &&
+            aiRes.credits > 0 &&
+            aiRes.credits < respTokens &&
+            aiRes.credits < 30
+          ? aiRes.credits
+          : convertTokensToCredits(respTokens, tokensPerCredit);
+
       activeStreamSaveRef.current = {
         conversationId: targetConversationId,
         autoTitle,
@@ -1267,8 +1456,8 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         attachmentMetaList,
         userCreatedAt: now,
         appliedSummaries,
-        tokens: aiRes.tokens || 0,
-        credits: aiRes.credits_deducted || aiRes.credits || 0,
+        tokens: respTokens,
+        credits: respCredits,
         liveContext,
         currentText: '',
         saved: false,
@@ -1292,6 +1481,9 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                   content: finalText,
                   actions: actionsPayload,
                   appliedSummaries,
+                  tokens: respTokens,
+                  credits: respCredits,
+                  credits_deducted: respCredits,
                   isStreaming: false,
                   createdAt: Date.now(),
                 },
@@ -1304,10 +1496,19 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                     content: finalText,
                     actions: actionsPayload,
                     appliedSummaries,
+                    tokens: respTokens,
+                    credits: respCredits,
+                    credits_deducted: respCredits,
                     isStreaming: false,
                   }
                 : m
             );
+          });
+          // Afficher automatiquement la consommation dès la fin de la réponse/action
+          setOpenCreditsMsgIds((prev) => {
+            const next = new Set(prev);
+            next.add(aiMsgId);
+            return next;
           });
         }
         persistStreamedExchangeToD1(finalText);
@@ -1329,6 +1530,9 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           content: '',
           actions: actionsPayload,
           appliedSummaries,
+          tokens: respTokens,
+          credits: respCredits,
+          credits_deducted: respCredits,
           isStreaming: true,
           createdAt: Date.now(),
         },
@@ -1377,12 +1581,22 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       setIsStreamingReply(false);
       abortControllerRef.current = null;
       if (err?.name === 'AbortError') return;
+      const isInsufficient = Boolean(
+        err?.isInsufficientCredits ||
+          err?.code === 'INSUFFICIENT_CREDITS' ||
+          err?.status === 402
+      );
+      if (isInsufficient) {
+        setIsCreditInsufficient(true);
+      }
       const errMessage: UiChatMessage = {
         id: aiMsgId,
         sender: 'ai',
-        content:
-          err?.message ||
-          "Une erreur est survenue lors de la communication avec l'Assistant Delmas. Veuillez vérifier votre connexion et réessayer.",
+        content: isInsufficient
+          ? err?.message ||
+            'Votre solde de crédits IA est épuisé (0 crédit restant). Veuillez recharger vos crédits depuis le menu « Mes Crédits IA » pour continuer.'
+          : err?.message ||
+            "Une erreur est survenue lors de la communication avec l'Assistant Delmas. Veuillez vérifier votre connexion et réessayer.",
         isError: true,
         isStreaming: false,
         createdAt: Date.now(),
@@ -2113,72 +2327,106 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                       )}
                     </div>
 
-                    {!msg.isStreaming && (
-                      <div className="flex items-center gap-1.5 mt-2 pl-1 text-zinc-400">
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setMessages((prev) =>
-                              prev.map((m) =>
-                                m.id === msg.id
-                                  ? { ...m, reaction: m.reaction === 'like' ? null : 'like' }
-                                  : m
+                    {!msg.isStreaming && msg.content && !msg.isError && (
+                      <div className="flex flex-col mt-2.5 pl-1">
+                        {/* Pastille de consommation en crédits IA (identique au Menu Création) */}
+                        {openCreditsMsgIds.has(msg.id) && (
+                          <div className="mb-2 px-2.5 py-1 rounded-lg bg-zinc-900/95 border border-amber-500/35 text-amber-300 inline-flex items-center gap-1.5 text-xs animate-fadeIn shadow-xs w-fit">
+                            <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                            <span className="text-[11px] font-medium text-zinc-300">
+                              {creditsUiLabels.consumption}
+                            </span>
+                            <span className="text-xs font-bold text-amber-300">
+                              {getMessageCreditsDisplay(msg)}
+                            </span>
+                          </div>
+                        )}
+
+                        <div className="flex items-center gap-1.5 text-zinc-400">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setMessages((prev) =>
+                                prev.map((m) =>
+                                  m.id === msg.id
+                                    ? { ...m, reaction: m.reaction === 'like' ? null : 'like' }
+                                    : m
+                                )
                               )
-                            )
-                          }
-                          className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                            msg.reaction === 'like'
-                              ? 'text-emerald-400 bg-emerald-500/20'
-                              : 'hover:text-white hover:bg-zinc-800'
-                          }`}
-                          title="Utile"
-                        >
-                          <ThumbsUp className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setMessages((prev) =>
-                              prev.map((m) =>
-                                m.id === msg.id
-                                  ? {
-                                      ...m,
-                                      reaction: m.reaction === 'dislike' ? null : 'dislike',
-                                    }
-                                  : m
+                            }
+                            className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                              msg.reaction === 'like'
+                                ? 'text-emerald-400 bg-emerald-500/20'
+                                : 'hover:text-white hover:bg-zinc-800'
+                            }`}
+                            title="Utile"
+                          >
+                            <ThumbsUp className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setMessages((prev) =>
+                                prev.map((m) =>
+                                  m.id === msg.id
+                                    ? {
+                                        ...m,
+                                        reaction: m.reaction === 'dislike' ? null : 'dislike',
+                                      }
+                                    : m
+                                )
                               )
-                            )
-                          }
-                          className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                            msg.reaction === 'dislike'
-                              ? 'text-rose-400 bg-rose-500/20'
-                              : 'hover:text-white hover:bg-zinc-800'
-                          }`}
-                          title="À améliorer"
-                        >
-                          <ThumbsDown className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard.writeText(msg.content);
-                            setCopiedMsgId(msg.id);
-                            setTimeout(() => setCopiedMsgId(null), 2000);
-                          }}
-                          className="p-1.5 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer hover:text-white flex items-center gap-1"
-                          title="Copier la réponse"
-                        >
-                          {copiedMsgId === msg.id ? (
-                            <>
-                              <Check className="w-3.5 h-3.5 text-emerald-400" />
-                              <span className="text-[10px] font-bold text-emerald-400">
-                                Copié
-                              </span>
-                            </>
-                          ) : (
-                            <Copy className="w-3.5 h-3.5" />
-                          )}
-                        </button>
+                            }
+                            className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                              msg.reaction === 'dislike'
+                                ? 'text-rose-400 bg-rose-500/20'
+                                : 'hover:text-white hover:bg-zinc-800'
+                            }`}
+                            title="À améliorer"
+                          >
+                            <ThumbsDown className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard.writeText(msg.content);
+                              setCopiedMsgId(msg.id);
+                              setTimeout(() => setCopiedMsgId(null), 2000);
+                            }}
+                            className="p-1.5 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer hover:text-white flex items-center gap-1"
+                            title="Copier la réponse"
+                          >
+                            {copiedMsgId === msg.id ? (
+                              <>
+                                <Check className="w-3.5 h-3.5 text-emerald-400" />
+                                <span className="text-[10px] font-bold text-emerald-400">
+                                  Copié
+                                </span>
+                              </>
+                            ) : (
+                              <Copy className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+
+                          {/* Bouton Crédits circulaire avec texte 'crédits' en bas (identique au Menu Création) */}
+                          <div className="flex flex-col items-center ml-0.5">
+                            <button
+                              type="button"
+                              onClick={() => toggleCreditsVisibility(msg.id)}
+                              className={`p-1.5 rounded-full transition-all cursor-pointer flex items-center justify-center ${
+                                openCreditsMsgIds.has(msg.id)
+                                  ? 'text-amber-400 bg-amber-500/20 hover:bg-amber-500/30 ring-1 ring-amber-500/40'
+                                  : 'text-zinc-400 hover:text-amber-300 hover:bg-zinc-800'
+                              }`}
+                              title="Afficher la consommation en crédits de cette réponse"
+                            >
+                              <Coins className="w-3.5 h-3.5 text-amber-400" />
+                            </button>
+                            <span className="text-[8.5px] font-semibold text-zinc-400 -mt-0.5 select-none leading-none">
+                              {creditsUiLabels.creditsBtn}
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
@@ -2204,6 +2452,35 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         {/* 4. ZONE BASSE : CHAMP DE SAISIE + BOUTON + D'IMPORTATION FICHIERS   */}
         {/* =================================================================== */}
         <div className="px-2.5 sm:px-5 pt-1.5 pb-4 sm:pb-6 shrink-0 relative z-30">
+          {/* BANDEAU CRÉDIT IA INSUFFISANT (blocage + accès direct à « Mes Crédits IA ») */}
+          {isCreditInsufficient && (
+            <div className="mx-1 sm:mx-2 mb-2.5 px-3.5 py-2.5 rounded-2xl bg-[#1e1315]/95 border-2 border-rose-500/50 shadow-[0_4px_20px_rgba(244,63,94,0.25)] flex items-center justify-between gap-2.5 animate-fadeIn z-20">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-1.5 rounded-xl bg-rose-500/20 text-rose-400 shrink-0">
+                  <Coins className="w-4 h-4 animate-pulse" />
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-bold text-rose-300 truncate">
+                    {creditsUiLabels.insufficientTitle}
+                  </span>
+                  <span className="text-[10px] text-zinc-300 truncate">
+                    {creditsUiLabels.insufficientSub}
+                  </span>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleOpenAiSubscriptions}
+                className="shrink-0 px-3 py-1.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-stone-950 font-black text-xs flex items-center gap-1.5 shadow-md active:scale-95 transition-all cursor-pointer"
+                title="Accéder au menu Mes Crédits IA"
+              >
+                <span>{creditsUiLabels.recharge}</span>
+                <ArrowRight className="w-3.5 h-3.5 stroke-[2.5]" />
+              </button>
+            </div>
+          )}
+
           <div className="relative mx-1 sm:mx-2 rounded-2xl sm:rounded-3xl p-[1.5px] overflow-hidden bg-zinc-700/60 shadow-lg group max-w-full">
             {/* Liseré fin arc-en-ciel rotatif à 360° */}
             <div

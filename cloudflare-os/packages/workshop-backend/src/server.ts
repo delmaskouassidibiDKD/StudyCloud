@@ -2102,8 +2102,13 @@ CONSIGNES STRICTES DE CONTINUATION :
           const aiMsgId = String(body.aiMsgId || body.aiMessageId || `ai-msg-${Date.now()}`).trim();
           const creationId = String(body.creationId || `crea-${Date.now()}`).trim();
 
-          // Calcul précis des jetons / crédits consommés
-          const totalChars = (userPrompt || '').length + (answerText || '').length + (audioTranscript || '').length + (docContent || '').slice(0, 4000).length;
+          // Calcul précis des jetons / crédits consommés (inclut texte, audio, documents et analyse visuelle)
+          const totalChars =
+            (userPrompt || '').length +
+            (answerText || '').length +
+            (audioTranscript || '').length +
+            (docContent || '').slice(0, 4000).length +
+            (extractedVisionReport || '').slice(0, 4000).length;
           const calculatedTokens = Math.max(90, Math.ceil(totalChars / 3.8));
           const tokensPerCredit = Math.max(1, billingConfig?.tokens_per_credit || 1000);
           const rawCreditsDeducted = calculatedTokens / tokensPerCredit;
@@ -2151,7 +2156,7 @@ CONSIGNES STRICTES DE CONTINUATION :
             `).bind(
                 logId,
                 userId,
-                creationRes.creation_type || requestedType || 'chat',
+                isTeacherGradebook ? 'assistant_delmas' : (creationRes.creation_type || requestedType || 'chat'),
                 Math.max(10, Math.ceil((userPrompt || '').length / 3.8)),
                 Math.max(10, Math.ceil((answerText || '').length / 3.8)),
                 calculatedTokens,
