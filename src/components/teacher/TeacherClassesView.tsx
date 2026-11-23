@@ -11,8 +11,6 @@ import {
   ArrowRight,
   ArrowLeftRight,
   Search,
-  Bell,
-  Settings,
   Plus,
   X,
   Check,
@@ -3170,32 +3168,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
           {/* Zone haute droite : Utilitaires + Profil puis Agrandissement dans le creux tout à droite */}
           <div className="flex items-center gap-2 ml-auto flex-wrap justify-end z-10">
-            {/* Groupe utilitaires + profil enseignant (bouton recherche déplacé dans chaque section) */}
-            <div className="flex items-center gap-1.5 bg-white/55 backdrop-blur-md px-1.5 py-1 rounded-2xl border border-white/80 shadow-2xs">
-              {/* Notification Bell */}
-              <button
-                type="button"
-                className="relative w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
-                title="Notifications"
-              >
-                <Bell className="w-3.5 h-3.5" />
-                <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-red-500 ring-2 ring-white"></span>
-              </button>
-
-              {/* Settings Gear */}
-              <button
-                type="button"
-                className="w-7 h-7 rounded-xl bg-white/90 hover:bg-white text-slate-600 hover:text-[#00313d] flex items-center justify-center shadow-2xs border border-white transition cursor-pointer"
-                title="Paramètres"
-              >
-                <Settings className="w-3.5 h-3.5" />
-              </button>
-
-              {/* Séparateur discret */}
-              <div className="w-px h-5 bg-slate-300/60 mx-0.5 hidden sm:block" />
-
-              {/* Profil Enseignant */}
-              <div className="flex items-center gap-1.5 pl-0.5 pr-2.5 py-0.5 bg-white/90 rounded-xl shadow-2xs border border-white">
+            {/* Profil Enseignant (nom tronqué en "..." si trop long, nom complet affiché à côté au survol) */}
+            <div
+              tabIndex={0}
+              className="relative group flex items-center bg-white/55 dark:bg-slate-900/75 backdrop-blur-md p-1 rounded-2xl border border-white/80 dark:border-slate-600/80 shadow-2xs outline-none"
+            >
+              <div className="flex items-center gap-1.5 pl-0.5 pr-2.5 py-0.5 bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-2xs border border-white dark:border-slate-700 cursor-default">
                 <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-cyan-600 to-teal-400 text-white font-bold text-[10px] flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
                   {user?.avatar_url ? (
                     <img src={user.avatar_url} alt="Profile" className="w-full h-full object-cover" />
@@ -3203,14 +3181,28 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     (user?.name ? user.name.charAt(0).toUpperCase() : 'DKD')
                   )}
                 </div>
-                <div className="flex flex-col text-left">
-                  <span className="text-[11px] font-bold text-slate-800 leading-none">
+                <div className="flex flex-col text-left min-w-0 max-w-[110px] sm:max-w-[130px]">
+                  <span className="block truncate text-[11px] font-bold text-slate-800 dark:text-slate-100 leading-tight">
                     {user?.name || 'Professeur'}
                   </span>
-                  <span className="text-[8.5px] text-slate-400 font-medium leading-tight">
+                  <span className="text-[8.5px] text-slate-400 dark:text-slate-400 font-medium leading-tight whitespace-nowrap">
                     Enseignant Pro
                   </span>
                 </div>
+              </div>
+
+              {/* Bulle nom complet affichée à côté lorsque le curseur touche le profil */}
+              <div
+                role="tooltip"
+                className="pointer-events-none opacity-0 invisible group-hover:opacity-100 group-hover:visible group-focus-within:opacity-100 group-focus-within:visible transition-all duration-150 absolute right-full top-1/2 -translate-y-1/2 mr-2.5 z-50 px-3 py-1.5 rounded-xl bg-slate-900/95 text-white border border-slate-500/80 shadow-xl backdrop-blur-md w-max max-w-[280px] sm:max-w-[380px]"
+              >
+                <div className="text-xs font-bold leading-snug break-words">
+                  {user?.name || 'Professeur'}
+                </div>
+                <div className="text-[10px] text-slate-300 font-medium leading-tight">
+                  Enseignant Pro
+                </div>
+                <span className="absolute left-full top-1/2 -translate-y-1/2 -ml-1 w-2 h-2 rotate-45 bg-slate-900/95 border-t border-r border-slate-500/80" />
               </div>
             </div>
 
