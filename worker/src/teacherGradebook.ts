@@ -101,6 +101,8 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       border_dark_color TEXT NOT NULL DEFAULT '#cbd5e1',
       color_style TEXT NOT NULL DEFAULT 'accent',
       icon_gradient TEXT NOT NULL DEFAULT 'from-amber-500 to-orange-600',
+      mention_rules_json TEXT DEFAULT NULL,
+      show_matricule INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -185,6 +187,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       student_uid TEXT NOT NULL,
       row_order INTEGER NOT NULL DEFAULT 0,
       full_name TEXT NOT NULL DEFAULT '',
+      matricule TEXT NOT NULL DEFAULT '',
       photo_r2_key TEXT DEFAULT NULL,
       notes_json TEXT NOT NULL DEFAULT '[]',
       average_20 REAL DEFAULT NULL,
@@ -274,6 +277,31 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
     } catch {
       // Ignorer si déjà migré
     }
+  }
+
+  // Migration idempotente : s'assurer que teacher_classes possède mention_rules_json et show_matricule
+  try {
+    const clsInfo = await db.prepare('PRAGMA table_info(teacher_classes)').all();
+    const clsCols = new Set((clsInfo.results || []).map((c: any) => String(c.name)));
+    if (!clsCols.has('mention_rules_json')) {
+      await db.prepare('ALTER TABLE teacher_classes ADD COLUMN mention_rules_json TEXT DEFAULT NULL').run();
+    }
+    if (!clsCols.has('show_matricule')) {
+      await db.prepare('ALTER TABLE teacher_classes ADD COLUMN show_matricule INTEGER NOT NULL DEFAULT 0').run();
+    }
+  } catch {
+    // Ignorer si déjà migré
+  }
+
+  // Migration idempotente : s'assurer que teacher_gradebook_students possède la colonne matricule
+  try {
+    const stInfo = await db.prepare('PRAGMA table_info(teacher_gradebook_students)').all();
+    const hasMat = (stInfo.results || []).some((c: any) => String(c.name) === 'matricule');
+    if (!hasMat) {
+      await db.prepare("ALTER TABLE teacher_gradebook_students ADD COLUMN matricule TEXT NOT NULL DEFAULT ''").run();
+    }
+  } catch {
+    // Ignorer si déjà migré
   }
 
   initializedTeacherDbs.add(db);
@@ -574,6 +602,46 @@ function safeParseJson<T>(raw: any, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+interface WorkerMentionRule {
+  min: number;
+  label: string;
+}
+
+function sanitizeMentionRulesWorker(raw: any): WorkerMentionRule[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const cleaned: WorkerMentionRule[] = [];
+  const seenMins = new Set<number>();
+  for (const item of raw.slice(0, 15)) {
+    if (!item || typeof item !== 'object') continue;
+    const min = Number(item.min);
+    const label = String(item.label ?? '').trim().slice(0, 48);
+    if (!Number.isFinite(min) || min < 0 || min > 20 || !label) continue;
+    const roundedMin = Math.round(min * 100) / 100;
+    if (seenMins.has(roundedMin)) continue;
+    seenMins.add(roundedMin);
+    cleaned.push({ min: roundedMin, label });
+  }
+  if (cleaned.length === 0) return null;
+  cleaned.sort((a, b) => b.min - a.min);
+  return cleaned;
+}
+
+function extractClassSheetSettings(classRow: any): {
+  mentionRules: WorkerMentionRule[] | null;
+  showMatricule: boolean;
+} {
+  if (!classRow) {
+    return { mentionRules: null, showMatricule: false };
+  }
+  const parsedRules = classRow.mention_rules_json
+    ? sanitizeMentionRulesWorker(safeParseJson<any>(classRow.mention_rules_json, null))
+    : null;
+  return {
+    mentionRules: parsedRules,
+    showMatricule: Number(classRow.show_matricule) === 1,
+  };
 }
 
 function normalizeNameForMatch(val?: string): string {
@@ -937,24 +1005,29 @@ async function buildBootstrapPayload(db: any, userId: string, origin: string, jw
     createdAt: Number(r.created_at) || Date.now(),
   }));
 
-  const classes = (classesRes.results || []).map((r: any) => ({
-    id: r.id,
-    levelId: r.level_id,
-    schoolId: r.school_id,
-    yearId: r.year_id,
-    level: r.level_name,
-    name: r.name || undefined,
-    slogan: r.slogan || undefined,
-    teacherName: r.teacher_name || '',
-    subject: r.subject_label || undefined,
-    color: r.color || '#ffffff',
-    textColor: r.text_color || '#0f172a',
-    borderColor: r.border_color || '#e2e8f0',
-    borderDarkColor: r.border_dark_color || '#cbd5e1',
-    colorStyle: (r.color_style === 'full' ? 'full' : 'accent') as 'accent' | 'full',
-    iconGradient: r.icon_gradient || 'from-amber-500 to-orange-600',
-    createdAt: Number(r.created_at) || Date.now(),
-  }));
+  const classes = (classesRes.results || []).map((r: any) => {
+    const sheetSettings = extractClassSheetSettings(r);
+    return {
+      id: r.id,
+      levelId: r.level_id,
+      schoolId: r.school_id,
+      yearId: r.year_id,
+      level: r.level_name,
+      name: r.name || undefined,
+      slogan: r.slogan || undefined,
+      teacherName: r.teacher_name || '',
+      subject: r.subject_label || undefined,
+      color: r.color || '#ffffff',
+      textColor: r.text_color || '#0f172a',
+      borderColor: r.border_color || '#e2e8f0',
+      borderDarkColor: r.border_dark_color || '#cbd5e1',
+      colorStyle: (r.color_style === 'full' ? 'full' : 'accent') as 'accent' | 'full',
+      iconGradient: r.icon_gradient || 'from-amber-500 to-orange-600',
+      mentionRules: sheetSettings.mentionRules,
+      showMatricule: sheetSettings.showMatricule,
+      createdAt: Number(r.created_at) || Date.now(),
+    };
+  });
 
   const terms = (termsRes.results || []).map((r: any) => ({
     id: r.id,
@@ -1758,9 +1831,126 @@ export async function handleTeacherGradebookRoutes(
         borderDarkColor,
         colorStyle,
         iconGradient,
+        ...extractClassSheetSettings(existing),
         createdAt: Number(existing.created_at),
       },
     }, 200, origin);
+  }
+
+  // Paramètres de tableaux appliqués à toute une classe (mentions personnalisées + colonne Matricule)
+  const classSheetSettingsMatch = path.match(/^\/api\/teacher\/classes\/([^/]+)\/sheet-settings$/);
+  if (classSheetSettingsMatch && method === 'PUT') {
+    const classId = decodeURIComponent(classSheetSettingsMatch[1]);
+    const existing: any = await db
+      .prepare('SELECT id, mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
+      .bind(classId, userId)
+      .first();
+    if (!existing) return errorResponse('Classe introuvable ou non autorisée.', 404, origin);
+
+    const body: any = await request.json().catch(() => ({}));
+    const hasMentionUpdate = Object.prototype.hasOwnProperty.call(body, 'mentionRules');
+    const hasMatriculeUpdate = Object.prototype.hasOwnProperty.call(body, 'showMatricule');
+    const now = Date.now();
+
+    let nextMentionRulesJson: string | null = existing.mention_rules_json ?? null;
+    if (hasMentionUpdate) {
+      if (body.mentionRules === null) {
+        nextMentionRulesJson = null;
+      } else {
+        const sanitized = sanitizeMentionRulesWorker(body.mentionRules);
+        if (!sanitized) {
+          return errorResponse('Les intervalles de mention sont invalides.', 400, origin);
+        }
+        nextMentionRulesJson = JSON.stringify(sanitized);
+      }
+    }
+
+    let nextShowMatricule: number = Number(existing.show_matricule) === 1 ? 1 : 0;
+    if (hasMatriculeUpdate) {
+      nextShowMatricule = body.showMatricule ? 1 : 0;
+    }
+
+    const stmts: any[] = [
+      db
+        .prepare(
+          `UPDATE teacher_classes
+           SET mention_rules_json = ?, show_matricule = ?, updated_at = ?
+           WHERE id = ? AND user_id = ?`
+        )
+        .bind(nextMentionRulesJson, nextShowMatricule, now, classId, userId),
+    ];
+
+    // Nettoyer les surcharges locales obsolètes sur tous les tableaux existants de la classe
+    // afin que le choix "Appliquer à toute la classe" prenne immédiatement effet partout.
+    if (hasMentionUpdate || hasMatriculeUpdate) {
+      const [gbsRes, avgsRes] = await Promise.all([
+        db
+          .prepare('SELECT id, layout_json FROM teacher_gradebooks WHERE user_id = ? AND class_id = ?')
+          .bind(userId, classId)
+          .all(),
+        db
+          .prepare('SELECT id, layout_json FROM teacher_class_averages WHERE user_id = ? AND class_id = ?')
+          .bind(userId, classId)
+          .all(),
+      ]);
+
+      for (const gb of gbsRes.results || []) {
+        const parsed = safeParseJson<Record<string, any>>(gb.layout_json, {});
+        let changed = false;
+        if (hasMentionUpdate && Object.prototype.hasOwnProperty.call(parsed, 'mentionRules')) {
+          delete parsed.mentionRules;
+          changed = true;
+        }
+        if (hasMatriculeUpdate && Object.prototype.hasOwnProperty.call(parsed, 'showMatricule')) {
+          delete parsed.showMatricule;
+          changed = true;
+        }
+        if (changed) {
+          stmts.push(
+            db
+              .prepare('UPDATE teacher_gradebooks SET layout_json = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+              .bind(JSON.stringify(parsed), now, gb.id, userId)
+          );
+        }
+      }
+
+      for (const avg of avgsRes.results || []) {
+        const parsed = safeParseJson<Record<string, any>>(avg.layout_json, {});
+        let changed = false;
+        if (hasMentionUpdate && Object.prototype.hasOwnProperty.call(parsed, 'mentionRules')) {
+          delete parsed.mentionRules;
+          changed = true;
+        }
+        if (hasMatriculeUpdate && Object.prototype.hasOwnProperty.call(parsed, 'showMatricule')) {
+          delete parsed.showMatricule;
+          changed = true;
+        }
+        if (changed) {
+          stmts.push(
+            db
+              .prepare('UPDATE teacher_class_averages SET layout_json = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+              .bind(JSON.stringify(parsed), now, avg.id, userId)
+          );
+        }
+      }
+    }
+
+    await runBatchChunked(db, stmts, 60);
+
+    const updatedSettings = extractClassSheetSettings({
+      mention_rules_json: nextMentionRulesJson,
+      show_matricule: nextShowMatricule,
+    });
+
+    return jsonResponse(
+      {
+        success: true,
+        classId,
+        classSettings: updatedSettings,
+      },
+      200,
+      origin
+    );
   }
 
   if (classItemMatch && method === 'DELETE') {
@@ -2101,10 +2291,17 @@ export async function handleTeacherGradebookRoutes(
       .first();
     if (!ownSubject) return errorResponse('Matière introuvable ou non autorisée.', 404, origin);
 
-    const gb: any = await db
-      .prepare('SELECT * FROM teacher_gradebooks WHERE user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1')
-      .bind(userId, subjectId, termId)
-      .first();
+    const [gb, classRow]: any[] = await Promise.all([
+      db
+        .prepare('SELECT * FROM teacher_gradebooks WHERE user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1')
+        .bind(userId, subjectId, termId)
+        .first(),
+      db
+        .prepare('SELECT mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
+        .bind(ownSubject.class_id, userId)
+        .first(),
+    ]);
+    const classSettings = extractClassSheetSettings(classRow);
 
     if (!gb) {
       return jsonResponse({
@@ -2116,6 +2313,7 @@ export async function handleTeacherGradebookRoutes(
         layout: {},
         styles: {},
         students: [],
+        classSettings,
       }, 200, origin);
     }
 
@@ -2133,6 +2331,7 @@ export async function handleTeacherGradebookRoutes(
         id: row.id,
         studentUid: row.student_uid || row.id,
         name: row.full_name || '',
+        matricule: row.matricule || '',
         photoR2Key: row.photo_r2_key || undefined,
         photoUrl: row.photo_r2_key ? await signTeacherMediaUrl(apiOrigin, row.photo_r2_key, jwtSecret) : undefined,
         notes: safeParseJson<string[]>(row.notes_json, []),
@@ -2150,6 +2349,7 @@ export async function handleTeacherGradebookRoutes(
       layout: safeParseJson(gb.layout_json, {}),
       styles: safeParseJson(gb.styles_json, {}),
       students,
+      classSettings,
     }, 200, origin);
   }
 
@@ -2201,6 +2401,7 @@ export async function handleTeacherGradebookRoutes(
       studentUid: string;
       rowOrder: number;
       fullName: string;
+      matricule: string;
       photoR2Key: string | null;
       notesJson: string;
       average20: number | null;
@@ -2211,6 +2412,7 @@ export async function handleTeacherGradebookRoutes(
       const rowId = s.id && typeof s.id === 'string' && s.id.length <= 80 ? s.id : makeId('std');
       const studentUid = s.studentUid && typeof s.studentUid === 'string' && s.studentUid.length <= 80 ? s.studentUid : rowId;
       const fullName = String(s.name || '').slice(0, 160);
+      const matricule = String(s.matricule ?? '').trim().slice(0, 48);
       const notes = Array.isArray(s.notes)
         ? s.notes.slice(0, 200).map((n: any) => String(n ?? '').slice(0, 32))
         : [];
@@ -2247,6 +2449,7 @@ export async function handleTeacherGradebookRoutes(
         studentUid,
         rowOrder: idx,
         fullName,
+        matricule,
         photoR2Key,
         notesJson: JSON.stringify(notes),
         average20,
@@ -2310,8 +2513,8 @@ export async function handleTeacherGradebookRoutes(
         db
           .prepare(
             `INSERT INTO teacher_gradebook_students
-              (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, matricule, photo_r2_key, notes_json, average_20, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           )
           .bind(
             row.id,
@@ -2323,6 +2526,7 @@ export async function handleTeacherGradebookRoutes(
             row.studentUid,
             row.rowOrder,
             row.fullName,
+            row.matricule,
             row.photoR2Key,
             row.notesJson,
             row.average20,
@@ -2393,6 +2597,12 @@ export async function handleTeacherGradebookRoutes(
       updatedAt: Number(cardRow.updated_at) || Date.now(),
     };
 
+    const cardClassRow: any = await db
+      .prepare('SELECT mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
+      .bind(cardRow.class_id, userId)
+      .first();
+    const classSettings = extractClassSheetSettings(cardClassRow);
+
     if (card.kind === 'annual') {
       const [termsRes, termAvgCardsRes, subjectsRes, gradebooksRes, studentsRes] = await Promise.all([
         db
@@ -2429,7 +2639,7 @@ export async function handleTeacherGradebookRoutes(
           .all(),
         db
           .prepare(
-            `SELECT id, gradebook_id, subject_id, term_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20
+            `SELECT id, gradebook_id, subject_id, term_id, student_uid, row_order, full_name, matricule, photo_r2_key, notes_json, average_20
              FROM teacher_gradebook_students
              WHERE user_id = ? AND class_id = ?
              ORDER BY row_order ASC, created_at ASC`
@@ -2528,6 +2738,7 @@ export async function handleTeacherGradebookRoutes(
           id: row.id,
           studentUid: row.student_uid || row.id,
           name: row.full_name || '',
+          matricule: row.matricule || '',
           photoR2Key: row.photo_r2_key || undefined,
           photoUrl,
           average20: computed.average !== null ? computed.average : fallbackAvg,
@@ -2561,6 +2772,7 @@ export async function handleTeacherGradebookRoutes(
         term: null,
         subjects: [],
         subjectGradebooks: {},
+        classSettings,
         annualData: {
           terms: annualTerms,
         },
@@ -2574,6 +2786,7 @@ export async function handleTeacherGradebookRoutes(
         term: null,
         subjects: [],
         subjectGradebooks: {},
+        classSettings,
       }, 200, origin);
     }
 
@@ -2600,7 +2813,7 @@ export async function handleTeacherGradebookRoutes(
         .all(),
       db
         .prepare(
-          `SELECT id, gradebook_id, subject_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20
+          `SELECT id, gradebook_id, subject_id, student_uid, row_order, full_name, matricule, photo_r2_key, notes_json, average_20
            FROM teacher_gradebook_students
            WHERE user_id = ? AND class_id = ? AND term_id = ?
            ORDER BY row_order ASC, created_at ASC`
@@ -2663,6 +2876,7 @@ export async function handleTeacherGradebookRoutes(
             id: row.id,
             studentUid: row.student_uid || row.id,
             name: row.full_name || '',
+            matricule: row.matricule || '',
             photoR2Key: row.photo_r2_key || undefined,
             photoUrl,
             average20: computed.average !== null ? computed.average : fallbackAvg,
@@ -2701,6 +2915,7 @@ export async function handleTeacherGradebookRoutes(
       term,
       subjects,
       subjectGradebooks,
+      classSettings,
     }, 200, origin);
   }
 
@@ -2844,7 +3059,7 @@ export async function handleTeacherGradebookRoutes(
 
     const rosterRes = await db
       .prepare(
-        `SELECT s.student_uid, s.id, s.full_name, s.photo_r2_key, s.subject_id, subj.name AS subject_name
+        `SELECT s.student_uid, s.id, s.full_name, s.matricule, s.photo_r2_key, s.subject_id, subj.name AS subject_name
          FROM teacher_gradebook_students s
          LEFT JOIN teacher_subjects subj ON subj.id = s.subject_id AND subj.user_id = s.user_id
          WHERE s.user_id = ? AND s.class_id = ? AND TRIM(COALESCE(s.full_name, '')) != ''
@@ -2858,6 +3073,7 @@ export async function handleTeacherGradebookRoutes(
       {
         studentUid: string;
         name: string;
+        matricule?: string;
         photoR2Key?: string;
         subjectIds: string[];
         subjectNames: string[];
@@ -2869,12 +3085,14 @@ export async function handleTeacherGradebookRoutes(
       if (!name) continue;
       const uid = String(r.student_uid || r.id || '').trim();
       if (!uid) continue;
+      const mat = String(r.matricule || '').trim();
 
       let entry = byUid.get(uid);
       if (!entry) {
         entry = {
           studentUid: uid,
           name,
+          matricule: mat || undefined,
           photoR2Key: r.photo_r2_key || undefined,
           subjectIds: [],
           subjectNames: [],
@@ -2883,6 +3101,9 @@ export async function handleTeacherGradebookRoutes(
       } else {
         if (!entry.photoR2Key && r.photo_r2_key) {
           entry.photoR2Key = r.photo_r2_key;
+        }
+        if (!entry.matricule && mat) {
+          entry.matricule = mat;
         }
       }
 
@@ -2898,6 +3119,7 @@ export async function handleTeacherGradebookRoutes(
       Array.from(byUid.values()).map(async (item) => ({
         studentUid: item.studentUid,
         name: item.name,
+        matricule: item.matricule || '',
         photoR2Key: item.photoR2Key,
         photoUrl: item.photoR2Key
           ? await signTeacherMediaUrl(apiOrigin, item.photoR2Key, jwtSecret)
@@ -3775,6 +3997,7 @@ export async function handleTeacherGradebookRoutes(
         id: string;
         studentUid: string;
         fullName: string;
+        matricule: string;
         photoR2Key: string | null;
         notes: string[];
       }> = [];
@@ -3788,6 +4011,7 @@ export async function handleTeacherGradebookRoutes(
               id: st.id,
               studentUid: st.student_uid || st.id,
               fullName: st.full_name || '',
+              matricule: st.matricule || '',
               photoR2Key: st.photo_r2_key || null,
               notes,
             });
@@ -3799,6 +4023,7 @@ export async function handleTeacherGradebookRoutes(
               id: rid,
               studentUid: rid,
               fullName: '',
+              matricule: '',
               photoR2Key: null,
               notes: Array(finalColCount).fill(''),
             });
@@ -3817,6 +4042,7 @@ export async function handleTeacherGradebookRoutes(
               id: st.id,
               studentUid: st.student_uid || st.id,
               fullName: st.full_name || '',
+              matricule: st.matricule || '',
               photoR2Key: st.photo_r2_key || null,
               notes,
             });
@@ -3840,6 +4066,9 @@ export async function handleTeacherGradebookRoutes(
             const targetIdx = existingByName.get(norm)!;
             const targetRow = finalRows[targetIdx];
             studentIdMap.set(srcSt.id, targetRow.id);
+            if (!targetRow.matricule && srcSt.matricule) {
+              targetRow.matricule = String(srcSt.matricule).trim();
+            }
             if (opts.contentMode === 'students_and_notes') {
               targetRow.notes = targetRow.notes.map((existingVal, idx) =>
                 existingVal.trim() ? existingVal : copiedNotes[idx] || ''
@@ -3867,6 +4096,7 @@ export async function handleTeacherGradebookRoutes(
             id: newRowId,
             studentUid: srcSt.student_uid || newRowId,
             fullName: String(srcSt.full_name || '').trim(),
+            matricule: String(srcSt.matricule || '').trim(),
             photoR2Key: newPhotoKey,
             notes: copiedNotes,
           });
@@ -3880,6 +4110,7 @@ export async function handleTeacherGradebookRoutes(
             id: rid,
             studentUid: rid,
             fullName: '',
+            matricule: '',
             photoR2Key: null,
             notes: Array(finalColCount).fill(''),
           });
@@ -3955,8 +4186,8 @@ export async function handleTeacherGradebookRoutes(
           db
             .prepare(
               `INSERT INTO teacher_gradebook_students
-                (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, matricule, photo_r2_key, notes_json, average_20, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
             )
             .bind(
               r.id,
@@ -3968,6 +4199,7 @@ export async function handleTeacherGradebookRoutes(
               r.studentUid,
               i,
               r.fullName,
+              r.matricule,
               r.photoR2Key,
               JSON.stringify(r.notes),
               computeAverage20(r.notes, finalColMetas),

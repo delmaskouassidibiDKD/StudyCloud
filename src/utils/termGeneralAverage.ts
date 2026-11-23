@@ -1,7 +1,8 @@
 import {
   calculateClassRanks,
   calculateGeneralAverage,
-  getMention,
+  getMentionFromCustomRules,
+  type CustomMentionRule,
   type SubjectForGeneralAverage,
 } from './gradebookCalculations';
 
@@ -22,6 +23,7 @@ export interface GradebookStudentSnapshot {
   id: string;
   studentUid: string;
   name: string;
+  matricule?: string;
   photoUrl?: string;
   photoR2Key?: string;
   average20: number | null;
@@ -43,6 +45,8 @@ export interface TermAverageOverrides {
   manualStudents?: ManualAverageStudent[];
   /** Moyennes saisies directement dans ce tableau (mode hybride), indexées par [studentKey][subjectId] */
   subjectOverrides?: Record<string, Record<string, number | null>>;
+  /** Matricules saisis ou complétés directement dans ce tableau, indexés par [studentKey] */
+  matriculeOverrides?: Record<string, string>;
   /** Fusions validées par le professeur ("C'est le même élève") */
   mergedLinks?: StudentMergeLink[];
   /** Paires confirmées distinctes par le professeur ("Ce sont 2 élèves différents") */
@@ -52,6 +56,7 @@ export interface TermAverageOverrides {
 export interface TermAverageLayoutState {
   colWidthRank?: number;
   colWidthPhoto?: number;
+  colWidthMatricule?: number;
   colWidthName?: number;
   colWidthSubjectMoy?: number;
   colWidthSubjectWeighted?: number;
@@ -62,6 +67,8 @@ export interface TermAverageLayoutState {
   customSubjectWeightedWidths?: Record<string, number>;
   customRowHeights?: Record<string, number>;
   zoomPercent?: number;
+  mentionRules?: CustomMentionRule[] | null;
+  showMatricule?: boolean;
 }
 
 export interface TermAverageStylesState {
@@ -87,6 +94,7 @@ export interface ComputedTermAverageStudent {
   isManualOnly: boolean;
   originalOrder: number;
   name: string;
+  matricule?: string;
   photoUrl?: string;
   photoR2Key?: string;
   /** Matières dans lesquelles cet élève existe dans les tableurs */
@@ -287,6 +295,7 @@ interface InternalStudentBucket {
   isManualOnly: boolean;
   originalOrder: number;
   name: string;
+  matricule?: string;
   photoUrl?: string;
   photoR2Key?: string;
   autoBySubject: Record<string, number | null>;
@@ -482,6 +491,7 @@ export interface ComputeTermAverageInput {
   subjectGradebooks: Record<string, GradebookStudentSnapshot[]>;
   overrides?: TermAverageOverrides | null;
   sortMode?: TermAverageSortMode;
+  mentionRules?: readonly CustomMentionRule[] | null;
 }
 
 /**
@@ -507,6 +517,7 @@ export function computeTermGeneralAverageTable(
 
   const overrides = input.overrides || {};
   const subjectOverrides = overrides.subjectOverrides || {};
+  const matriculeOverrides = overrides.matriculeOverrides || {};
   const manualStudents = Array.isArray(overrides.manualStudents)
     ? overrides.manualStudents
     : [];
@@ -664,6 +675,7 @@ export function computeTermGeneralAverageTable(
           isManualOnly: false,
           originalOrder: orderCounter++,
           name: trimmedName,
+          matricule: (row.matricule || '').trim() || undefined,
           photoUrl: row.photoUrl || undefined,
           photoR2Key: row.photoR2Key || undefined,
           autoBySubject: {},
@@ -686,6 +698,9 @@ export function computeTermGeneralAverageTable(
               bucketsByWordBag.set(wordBag, bagList);
             }
           }
+        }
+        if (!target.matricule && row.matricule && row.matricule.trim()) {
+          target.matricule = row.matricule.trim();
         }
         if (!target.photoUrl && row.photoUrl) {
           target.photoUrl = row.photoUrl;
@@ -765,6 +780,9 @@ export function computeTermGeneralAverageTable(
       }
 
       if (!primary.name && secondary.name) primary.name = secondary.name;
+      if (!primary.matricule && secondary.matricule) {
+        primary.matricule = secondary.matricule;
+      }
       if (!primary.photoUrl && secondary.photoUrl) {
         primary.photoUrl = secondary.photoUrl;
       }
@@ -859,6 +877,18 @@ export function computeTermGeneralAverageTable(
 
     const genRes = calculateGeneralAverage(subjectsForAvg);
     const presentSubjectIds = Object.keys(bucket.autoBySubject);
+    let overrideMatricule: string | undefined;
+    if (typeof matriculeOverrides[bucket.key] === 'string' && matriculeOverrides[bucket.key].trim()) {
+      overrideMatricule = matriculeOverrides[bucket.key].trim();
+    } else {
+      for (const alias of bucket.aliasKeys) {
+        if (typeof matriculeOverrides[alias] === 'string' && matriculeOverrides[alias].trim()) {
+          overrideMatricule = matriculeOverrides[alias].trim();
+          break;
+        }
+      }
+    }
+    const effectiveMatricule = overrideMatricule || bucket.matricule || undefined;
 
     return {
       key: bucket.key,
@@ -866,6 +896,7 @@ export function computeTermGeneralAverageTable(
       isManualOnly: bucket.isManualOnly,
       originalOrder: bucket.originalOrder,
       name: bucket.name,
+      matricule: effectiveMatricule,
       photoUrl: bucket.photoUrl,
       photoR2Key: bucket.photoR2Key,
       presentSubjectIds,
@@ -875,7 +906,7 @@ export function computeTermGeneralAverageTable(
       totalCoeffCounted: genRes.sommeCoeffsMatiere,
       gradedSubjectsCount: genRes.matieresComptees,
       generalAverage: genRes.moyenneGenerale,
-      mention: getMention(genRes.moyenneGenerale),
+      mention: getMentionFromCustomRules(genRes.moyenneGenerale, input.mentionRules),
     };
   });
 

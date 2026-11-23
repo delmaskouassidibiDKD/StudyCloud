@@ -1,6 +1,7 @@
 import React from 'react';
 import { TermGeneralAverageView } from './TermGeneralAverageView';
 import { AnnualGeneralAverageView } from './AnnualGeneralAverageView';
+import type { ClassSheetSettings } from '../../services/teacherGradebookApi';
 import type {
   ClassAverageCardItem,
   ClassItem,
@@ -23,6 +24,7 @@ export interface ClassAverageSheetViewProps {
   onSubjectCoefficientUpdated?: (subjectId: string, coefficient: number | null) => void;
   onOpenTermAverageCard?: (termId: string) => void;
   onTermCoefficientUpdated?: (termId: string, coefficient: number | null) => void;
+  onClassSettingsUpdated?: (classId: string, settings: ClassSheetSettings) => void;
   onBack: () => void;
 }
 
@@ -48,6 +50,7 @@ export const ClassAverageSheetView: React.FC<ClassAverageSheetViewProps> = ({
   onSubjectCoefficientUpdated,
   onOpenTermAverageCard,
   onTermCoefficientUpdated,
+  onClassSettingsUpdated,
   onBack,
 }) => {
   if (averageCard.kind === 'term') {
@@ -63,6 +66,7 @@ export const ClassAverageSheetView: React.FC<ClassAverageSheetViewProps> = ({
         initialSubjects={initialSubjects}
         onOpenSubject={onOpenSubject}
         onSubjectCoefficientUpdated={onSubjectCoefficientUpdated}
+        onClassSettingsUpdated={onClassSettingsUpdated}
         onBack={onBack}
       />
     );
@@ -79,6 +83,7 @@ export const ClassAverageSheetView: React.FC<ClassAverageSheetViewProps> = ({
       initialTerms={initialTerms}
       onOpenTermAverageCard={onOpenTermAverageCard}
       onTermCoefficientUpdated={onTermCoefficientUpdated}
+      onClassSettingsUpdated={onClassSettingsUpdated}
       onBack={onBack}
     />
   );

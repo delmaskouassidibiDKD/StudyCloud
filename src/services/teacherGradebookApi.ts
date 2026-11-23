@@ -34,6 +34,12 @@ import type {
   TermAverageSubject,
 } from '../utils/termGeneralAverage';
 import type { AnnualTermData } from '../utils/annualGeneralAverage';
+import type { CustomMentionRule } from '../utils/gradebookCalculations';
+
+export interface ClassSheetSettings {
+  mentionRules: CustomMentionRule[] | null;
+  showMatricule: boolean;
+}
 
 export interface ClassAverageSheetCardPayload extends ClassAverageCardItem {
   layout: TermAverageLayoutState;
@@ -50,6 +56,7 @@ export interface ClassAverageSheetResponse {
   term: TermItem | null;
   subjects: TermAverageSubject[];
   subjectGradebooks: Record<string, GradebookStudentSnapshot[]>;
+  classSettings?: ClassSheetSettings;
   annualData?: {
     terms: AnnualTermData[];
   };
@@ -65,6 +72,7 @@ export interface ClassAverageSheetSavePayload {
 export interface TeacherClassRosterStudent {
   studentUid: string;
   name: string;
+  matricule?: string;
   photoUrl?: string;
   photoR2Key?: string;
   subjectIds: string[];
@@ -81,6 +89,7 @@ export interface GradebookLayoutState {
   noteColWidth: number;
   colWidthRank: number;
   colWidthPhoto: number;
+  colWidthMatricule?: number;
   colWidthName: number;
   colWidthAverage: number;
   colWidthMention: number;
@@ -88,6 +97,8 @@ export interface GradebookLayoutState {
   customRowHeights: { [index: number]: number };
   zoomPercent?: number;
   sortMode?: 'order' | 'merit' | 'alpha';
+  mentionRules?: CustomMentionRule[] | null;
+  showMatricule?: boolean;
 }
 
 export interface GradebookStylesState {
@@ -110,6 +121,7 @@ export interface TeacherGradebookResponse extends TeacherGradebookPayload {
   gradebookId?: string;
   version: number;
   updatedAt?: number;
+  classSettings?: ClassSheetSettings;
 }
 
 export interface TeacherBootstrapResponse {
@@ -752,6 +764,21 @@ export const TeacherGradebookAPI = {
     teacherFetchJson<TeacherGradebookResponse>(
       `/api/teacher/gradebook/${encodeURIComponent(subjectId)}/${encodeURIComponent(termId)}`,
       { method: 'GET', signal }
+    ),
+
+  updateClassSheetSettings: (
+    classId: string,
+    input: {
+      mentionRules?: CustomMentionRule[] | null;
+      showMatricule?: boolean;
+    }
+  ) =>
+    teacherFetchJson<{ success: boolean; classId: string; classSettings: ClassSheetSettings }>(
+      `/api/teacher/classes/${encodeURIComponent(classId)}/sheet-settings`,
+      {
+        method: 'PUT',
+        body: input,
+      }
     ),
 
   saveGradebook: (

@@ -8,6 +8,7 @@ import {
   type TermAverageSortMode,
   type TermAverageSubject,
 } from './termGeneralAverage';
+import type { CustomMentionRule } from './gradebookCalculations';
 
 export interface AnnualTermData {
   id: string;
@@ -45,6 +46,7 @@ export interface ComputedAnnualStudent {
   isManualOnly: boolean;
   originalOrder: number;
   name: string;
+  matricule?: string;
   photoUrl?: string;
   photoR2Key?: string;
   presentTermIds: string[];
@@ -96,6 +98,7 @@ export interface ComputeAnnualAverageInput {
   terms: AnnualTermData[];
   overrides?: TermAverageOverrides | null;
   sortMode?: TermAverageSortMode;
+  mentionRules?: readonly CustomMentionRule[] | null;
 }
 
 const getEffectiveTermCoeff = (coeff?: number | null): number => {
@@ -175,6 +178,7 @@ export function computeAnnualGeneralAverageTable(
         id: `${term.id}_${st.key}`,
         studentUid: st.studentUid || '',
         name: st.name,
+        matricule: st.matricule,
         photoUrl: st.photoUrl,
         photoR2Key: st.photoR2Key,
         average20: st.generalAverage,
@@ -198,6 +202,7 @@ export function computeAnnualGeneralAverageTable(
     subjectGradebooks: termGradebooks,
     overrides: input.overrides || {},
     sortMode: input.sortMode || 'merit',
+    mentionRules: input.mentionRules,
   });
 
   // 3. Enrichir chaque élève avec les données annuelles (rangs par trimestre, évolution, décision)
@@ -256,6 +261,7 @@ export function computeAnnualGeneralAverageTable(
       isManualOnly: st.isManualOnly,
       originalOrder: st.originalOrder,
       name: st.name,
+      matricule: st.matricule,
       photoUrl: st.photoUrl,
       photoR2Key: st.photoR2Key,
       presentTermIds: st.presentSubjectIds,

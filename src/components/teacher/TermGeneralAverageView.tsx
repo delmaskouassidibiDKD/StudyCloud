@@ -51,6 +51,10 @@ import type {
 } from './TeacherClassesView';
 import type { CellCustomStyle } from './SubjectGradebookView';
 import { SmartFloatingPopover } from './SmartFloatingPopover';
+import {
+  MentionAndMatriculeControls,
+  type SheetSettingScope,
+} from './MentionAndMatriculeControls';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import {
   useViewerExpandLevel,
@@ -65,7 +69,13 @@ import {
   writeUserClassAverageCache,
   type ClassAverageSheetResponse,
   type ClassAverageSheetSavePayload,
+  type ClassSheetSettings,
 } from '../../services/teacherGradebookApi';
+import {
+  DEFAULT_CUSTOM_MENTION_RULES,
+  resolveMentionWithRules,
+  type CustomMentionRule,
+} from '../../utils/gradebookCalculations';
 import {
   computeTermGeneralAverageTable,
   formatCoeffDisplay,
@@ -94,6 +104,8 @@ export interface TermGeneralAverageViewProps {
   onOpenSubject?: (subjectId: string) => void;
   /** Notifie la vue parente dès qu'un coefficient de matière est enregistré depuis ce tableau */
   onSubjectCoefficientUpdated?: (subjectId: string, coefficient: number | null) => void;
+  /** Notifie la vue parente si les paramètres globaux de classe (mentions / matricule) sont modifiés */
+  onClassSettingsUpdated?: (classId: string, settings: ClassSheetSettings) => void;
   onBack: () => void;
 }
 
@@ -145,17 +157,24 @@ const getExcelColumnLabel = (index: number): string => {
   return label;
 };
 
-const getMentionBadgeStyle = (mention: string): string => {
-  switch (mention) {
-    case 'Très bien':
+const getMentionBadgeStyle = (
+  average: number | null,
+  rules: readonly CustomMentionRule[]
+): string => {
+  if (average === null || !Number.isFinite(average)) {
+    return 'bg-slate-50 text-slate-400 border-slate-200';
+  }
+  const { tone } = resolveMentionWithRules(average, rules);
+  switch (tone) {
+    case 'emerald':
       return 'bg-emerald-100 text-emerald-800 border-emerald-300';
-    case 'Bien':
+    case 'teal':
       return 'bg-teal-50 text-teal-800 border-teal-200';
-    case 'Assez bien':
+    case 'sky':
       return 'bg-blue-50 text-blue-800 border-blue-200';
-    case 'Passable':
+    case 'amber':
       return 'bg-amber-50 text-amber-800 border-amber-200';
-    case 'Insuffisant':
+    case 'rose':
       return 'bg-red-50 text-red-700 border-red-200';
     default:
       return 'bg-slate-50 text-slate-400 border-slate-200';
@@ -186,10 +205,12 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
   initialSubjects = [],
   onOpenSubject,
   onSubjectCoefficientUpdated,
+  onClassSettingsUpdated,
   onBack,
 }) => {
   const viewerExpandLevel = useViewerExpandLevel();
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Hydratation synchrone immédiate depuis le cache local isolé au compte (évite tout saut visuel / zoom brusque à l'ouverture)
   const initialCachedSheet = useMemo(
@@ -235,9 +256,25 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
   const [overrides, setOverrides] = useState<TermAverageOverrides>(() => ({
     manualStudents: initialCachedSheet?.card?.overrides?.manualStudents || [],
     subjectOverrides: initialCachedSheet?.card?.overrides?.subjectOverrides || {},
+    matriculeOverrides: initialCachedSheet?.card?.overrides?.matriculeOverrides || {},
     mergedLinks: initialCachedSheet?.card?.overrides?.mergedLinks || [],
     distinctPairs: initialCachedSheet?.card?.overrides?.distinctPairs || [],
   }));
+  // Paramètres globaux de classe (mentions personnalisées + colonne Matricule)
+  const [classSettings, setClassSettings] = useState<ClassSheetSettings>(() => ({
+    mentionRules:
+      initialCachedSheet?.classSettings?.mentionRules ??
+      schoolClass.mentionRules ??
+      null,
+    showMatricule:
+      initialCachedSheet?.classSettings?.showMatricule ??
+      Boolean(schoolClass.showMatricule),
+  }));
+  const [closeMentionMatriculeSignal, setCloseMentionMatriculeSignal] = useState(0);
+  const [editingMatriculeCell, setEditingMatriculeCell] = useState<{
+    studentKey: string;
+    draft: string;
+  } | null>(null);
   const [isDuplicatesModalOpen, setIsDuplicatesModalOpen] = useState(false);
   const [manualMergePrimaryKey, setManualMergePrimaryKey] = useState('');
   const [manualMergeSecondaryKey, setManualMergeSecondaryKey] = useState('');
@@ -306,9 +343,31 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
   >(null);
   const [isSavingCoeff, setIsSavingCoeff] = useState(false);
 
+  // Règles de mention et visibilité Matricule effectives (priorité surcharge tableau, sinon classe, sinon défaut)
+  const effectiveMentionRules = useMemo<readonly CustomMentionRule[]>(() => {
+    if (layout.mentionRules === null) return DEFAULT_CUSTOM_MENTION_RULES;
+    if (layout.mentionRules && layout.mentionRules.length > 0) return layout.mentionRules;
+    if (classSettings.mentionRules && classSettings.mentionRules.length > 0) {
+      return classSettings.mentionRules;
+    }
+    return DEFAULT_CUSTOM_MENTION_RULES;
+  }, [layout.mentionRules, classSettings.mentionRules]);
+
+  const hasCustomMentionRules = Boolean(
+    layout.mentionRules !== null &&
+      ((layout.mentionRules && layout.mentionRules.length > 0) ||
+        (classSettings.mentionRules && classSettings.mentionRules.length > 0))
+  );
+
+  const effectiveShowMatricule =
+    typeof layout.showMatricule === 'boolean'
+      ? layout.showMatricule
+      : Boolean(classSettings.showMatricule);
+
   // Largeurs effectives des colonnes (avec valeurs par défaut harmonieuses)
   const colWidthRank = layout.colWidthRank ?? 68;
   const colWidthPhoto = layout.colWidthPhoto ?? 64;
+  const colWidthMatricule = layout.colWidthMatricule ?? 124;
   const colWidthName = layout.colWidthName ?? 220;
   const defaultSubjMoyW = layout.colWidthSubjectMoy ?? 78;
   const defaultSubjWeightedW = layout.colWidthSubjectWeighted ?? 86;
@@ -353,6 +412,9 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         setSubjects(res.subjects || []);
         setSubjectGradebooks(res.subjectGradebooks || {});
         if (res.term) setLiveTerm(res.term);
+        if (res.classSettings) {
+          setClassSettings(res.classSettings);
+        }
         if (!opts.showSpinner || !isDirtyRef.current) {
           const loadedLayout = res.card?.layout || {};
           setLayout(loadedLayout);
@@ -371,6 +433,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
           setOverrides({
             manualStudents: res.card?.overrides?.manualStudents || [],
             subjectOverrides: res.card?.overrides?.subjectOverrides || {},
+            matriculeOverrides: res.card?.overrides?.matriculeOverrides || {},
             mergedLinks: res.card?.overrides?.mergedLinks || [],
             distinctPairs: res.card?.overrides?.distinctPairs || [],
           });
@@ -485,6 +548,166 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     onBack();
   };
 
+  // Enregistrer les intervalles de mentions (ce tableau ou toute la classe)
+  const handleSaveMentionRules = useCallback(
+    async (rules: CustomMentionRule[] | null, scope: SheetSettingScope) => {
+      const token = getTeacherAuthToken();
+      if (scope === 'class') {
+        if (token) {
+          const res = await TeacherGradebookAPI.updateClassSheetSettings(schoolClass.id, {
+            mentionRules: rules,
+          });
+          setClassSettings(res.classSettings);
+          setLayout((prev) => {
+            if (!('mentionRules' in prev)) return prev;
+            const next = { ...prev };
+            delete next.mentionRules;
+            return next;
+          });
+          if (userId) {
+            const cached = readUserClassAverageCache(userId, averageCard.id);
+            if (cached) {
+              const nextCardLayout = { ...(cached.card?.layout || {}) };
+              delete nextCardLayout.mentionRules;
+              writeUserClassAverageCache(userId, averageCard.id, {
+                ...cached,
+                classSettings: res.classSettings,
+                card: { ...cached.card, layout: nextCardLayout },
+              });
+            }
+          }
+          onClassSettingsUpdated?.(schoolClass.id, res.classSettings);
+          setHasSavedAtLeastOnce(true);
+          setCloudStatus('saved');
+          return;
+        }
+        const nextSettings: ClassSheetSettings = { ...classSettings, mentionRules: rules };
+        setClassSettings(nextSettings);
+        setLayout((prev) => {
+          const next = { ...prev };
+          delete next.mentionRules;
+          return next;
+        });
+        onClassSettingsUpdated?.(schoolClass.id, nextSettings);
+        return;
+      }
+
+      const nextLayout: TermAverageLayoutState = {
+        ...layout,
+        zoomPercent,
+        mentionRules: rules,
+      };
+      setLayout(nextLayout);
+      const nextPayload: ClassAverageSheetSavePayload = {
+        layout: nextLayout,
+        styles,
+        overrides,
+        sortMode,
+      };
+      latestPayloadRef.current = nextPayload;
+      if (token) {
+        await TeacherGradebookAPI.saveClassAverageSheet(averageCard.id, nextPayload);
+        setIsDirty(false);
+        setHasSavedAtLeastOnce(true);
+        setCloudStatus('saved');
+      } else {
+        setIsDirty(true);
+      }
+    },
+    [
+      schoolClass.id,
+      classSettings,
+      userId,
+      averageCard.id,
+      onClassSettingsUpdated,
+      layout,
+      zoomPercent,
+      styles,
+      overrides,
+      sortMode,
+    ]
+  );
+
+  // Enregistrer l'affichage de la colonne Matricule (ce tableau ou toute la classe)
+  const handleSaveShowMatricule = useCallback(
+    async (show: boolean, scope: SheetSettingScope) => {
+      const token = getTeacherAuthToken();
+      if (scope === 'class') {
+        if (token) {
+          const res = await TeacherGradebookAPI.updateClassSheetSettings(schoolClass.id, {
+            showMatricule: show,
+          });
+          setClassSettings(res.classSettings);
+          setLayout((prev) => {
+            if (!('showMatricule' in prev)) return prev;
+            const next = { ...prev };
+            delete next.showMatricule;
+            return next;
+          });
+          if (userId) {
+            const cached = readUserClassAverageCache(userId, averageCard.id);
+            if (cached) {
+              const nextCardLayout = { ...(cached.card?.layout || {}) };
+              delete nextCardLayout.showMatricule;
+              writeUserClassAverageCache(userId, averageCard.id, {
+                ...cached,
+                classSettings: res.classSettings,
+                card: { ...cached.card, layout: nextCardLayout },
+              });
+            }
+          }
+          onClassSettingsUpdated?.(schoolClass.id, res.classSettings);
+          setHasSavedAtLeastOnce(true);
+          setCloudStatus('saved');
+          return;
+        }
+        const nextSettings: ClassSheetSettings = { ...classSettings, showMatricule: show };
+        setClassSettings(nextSettings);
+        setLayout((prev) => {
+          const next = { ...prev };
+          delete next.showMatricule;
+          return next;
+        });
+        onClassSettingsUpdated?.(schoolClass.id, nextSettings);
+        return;
+      }
+
+      const nextLayout: TermAverageLayoutState = {
+        ...layout,
+        zoomPercent,
+        showMatricule: show,
+      };
+      setLayout(nextLayout);
+      const nextPayload: ClassAverageSheetSavePayload = {
+        layout: nextLayout,
+        styles,
+        overrides,
+        sortMode,
+      };
+      latestPayloadRef.current = nextPayload;
+      if (token) {
+        await TeacherGradebookAPI.saveClassAverageSheet(averageCard.id, nextPayload);
+        setIsDirty(false);
+        setHasSavedAtLeastOnce(true);
+        setCloudStatus('saved');
+      } else {
+        setIsDirty(true);
+      }
+    },
+    [
+      schoolClass.id,
+      classSettings,
+      userId,
+      averageCard.id,
+      onClassSettingsUpdated,
+      layout,
+      zoomPercent,
+      styles,
+      overrides,
+      sortMode,
+    ]
+  );
+
   // Calcul réactif temps réel du tableau complet
   const computed = useMemo(
     () =>
@@ -493,8 +716,9 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         subjectGradebooks,
         overrides,
         sortMode,
+        mentionRules: effectiveMentionRules,
       }),
-    [subjects, subjectGradebooks, overrides, sortMode]
+    [subjects, subjectGradebooks, overrides, sortMode, effectiveMentionRules]
   );
 
   // Matières dont le coefficient n'a pas encore été enregistré en base
@@ -952,6 +1176,25 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     setIsDirty(true);
   };
 
+  const commitManualMatricule = (studentKey: string, rawDraft: string) => {
+    const clean = rawDraft.trim().slice(0, 48);
+    pushUndoState();
+    setOverrides((prev) => {
+      const nextMap = { ...(prev.matriculeOverrides || {}) };
+      if (!clean) {
+        delete nextMap[studentKey];
+      } else {
+        nextMap[studentKey] = clean;
+      }
+      return {
+        ...prev,
+        matriculeOverrides: nextMap,
+      };
+    });
+    setEditingMatriculeCell(null);
+    setIsDirty(true);
+  };
+
   // Redimensionnement par glisser-déposer des colonnes
   const startColumnResize = (
     e: React.MouseEvent,
@@ -985,6 +1228,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     try {
       const row1 = [
         'RANG',
+        ...(effectiveShowMatricule ? ['MATRICULE'] : []),
         'NOM & PRÉNOM',
         ...computed.subjects.flatMap((s) => [
           `${s.name} (Coeff ${formatCoeffDisplay(s.effectiveCoeff)}) - Moy. /20`,
@@ -997,6 +1241,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
       const bodyRows = computed.students.map((st) => [
         st.rankLabel,
+        ...(effectiveShowMatricule ? [st.matricule || ''] : []),
         st.name || 'Élève sans nom',
         ...computed.subjects.flatMap((s) => {
           const cell = st.cellsBySubject[s.id];
@@ -1012,6 +1257,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
       const footerRow = [
         '—',
+        ...(effectiveShowMatricule ? [''] : []),
         'MOYENNE DE LA CLASSE',
         ...computed.subjects.flatMap((s) => {
           const stat = computed.classSummary.bySubject[s.id];
@@ -1049,14 +1295,22 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     const termLabel = liveTerm?.name || term?.name || 'Trimestre';
 
     // Ligne 1 : En-têtes groupés
-    const headerRow1: any[] = ['RANG', 'NOM & PRÉNOM'];
-    const headerRow2: any[] = ['', ''];
-    const merges: XLSX.Range[] = [
-      { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, // RANG
-      { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, // NOM & PRÉNOM
-    ];
+    const headerRow1: any[] = effectiveShowMatricule
+      ? ['RANG', 'MATRICULE', 'NOM & PRÉNOM']
+      : ['RANG', 'NOM & PRÉNOM'];
+    const headerRow2: any[] = effectiveShowMatricule ? ['', '', ''] : ['', ''];
+    const merges: XLSX.Range[] = effectiveShowMatricule
+      ? [
+          { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, // RANG
+          { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, // MATRICULE
+          { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } }, // NOM & PRÉNOM
+        ]
+      : [
+          { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, // RANG
+          { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, // NOM & PRÉNOM
+        ];
 
-    let colCursor = 2;
+    let colCursor = effectiveShowMatricule ? 3 : 2;
     for (const subj of computed.subjects) {
       headerRow1.push(
         `${subj.name.toUpperCase()} (Coeff ${formatCoeffDisplay(subj.effectiveCoeff)})`,
@@ -1084,6 +1338,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
     const studentRows = computed.students.map((st) => [
       st.rankLabel,
+      ...(effectiveShowMatricule ? [st.matricule || ''] : []),
       st.name || 'Élève sans nom',
       ...computed.subjects.flatMap((s) => {
         const cell = st.cellsBySubject[s.id];
@@ -1103,6 +1358,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
     const footerRow = [
       '',
+      ...(effectiveShowMatricule ? [''] : []),
       'MOYENNE DE LA CLASSE',
       ...computed.subjects.flatMap((s) => {
         const stat = computed.classSummary.bySubject[s.id];
@@ -1162,6 +1418,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
   const totalTableWidth =
     colWidthRank +
     colWidthPhoto +
+    (effectiveShowMatricule ? colWidthMatricule : 0) +
     colWidthName +
     computed.subjects.reduce(
       (acc, s) => acc + getSubjMoyWidth(s.id) + getSubjWeightedWidth(s.id),
@@ -1185,6 +1442,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
   return (
     <div
+      ref={containerRef}
       className={`term-avg-sheet flex flex-col bg-[#f3f5f8] dark:bg-[#0b1120] text-slate-800 dark:text-slate-100 select-none overflow-hidden transition-colors duration-200 ${
         viewerExpandLevel >= 2
           ? 'fixed inset-0 z-[60] w-screen h-screen'
@@ -1729,7 +1987,15 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
             <button
               type="button"
               onClick={() => {
-                setLayout({ zoomPercent });
+                setLayout((prev) => ({
+                  zoomPercent,
+                  ...(prev.mentionRules !== undefined
+                    ? { mentionRules: prev.mentionRules }
+                    : {}),
+                  ...(typeof prev.showMatricule === 'boolean'
+                    ? { showMatricule: prev.showMatricule }
+                    : {}),
+                }));
                 setIsDirty(true);
               }}
               className="h-6 px-2 flex items-center gap-1 rounded bg-white hover:bg-slate-100 border border-slate-300 text-[10px] font-bold text-slate-600 transition cursor-pointer"
@@ -1774,6 +2040,22 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
             Classement & Rapprochements
           </span>
         </div>
+
+        {/* Groupes Mentions personnalisées & Colonne Matricule (ce tableau ou toute la classe) */}
+        <MentionAndMatriculeControls
+          effectiveMentionRules={effectiveMentionRules}
+          hasCustomMentionRules={hasCustomMentionRules}
+          showMatricule={effectiveShowMatricule}
+          classLabel={classDisplayName}
+          boundaryEl={containerRef.current}
+          onWillOpen={() => {
+            setOpenMenu(null);
+            setCoeffPopover(null);
+          }}
+          closeSignal={closeMentionMatriculeSignal}
+          onSaveMentionRules={handleSaveMentionRules}
+          onSaveShowMatricule={handleSaveShowMatricule}
+        />
       </section>
 
       {/* ========================================================================= */}
@@ -1869,6 +2151,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
             return;
           }
           setOpenMenu(null);
+          setCloseMentionMatriculeSignal((n) => n + 1);
         }}
       >
         <div
@@ -2000,6 +2283,25 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                               className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
                             />
                           </th>
+
+                          {/* MATRICULE (optionnel — derrière PROFIL) */}
+                          {effectiveShowMatricule && (
+                            <th
+                              rowSpan={2}
+                              style={{ width: `${colWidthMatricule}px` }}
+                              className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center font-black text-[11px] tracking-wide uppercase align-middle bg-[#eef2f6]"
+                            >
+                              MATRICULE
+                              <div
+                                onMouseDown={(e) =>
+                                  startColumnResize(e, colWidthMatricule, 90, (w) =>
+                                    setLayout((p) => ({ ...p, colWidthMatricule: w }))
+                                  )
+                                }
+                                className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
+                              />
+                            </th>
+                          )}
 
                           {/* NOM & PRÉNOM */}
                           <th
@@ -2250,7 +2552,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                         {computed.students.length === 0 ? (
                           <tr>
                             <td
-                              colSpan={6 + computed.subjects.length * 2}
+                              colSpan={(effectiveShowMatricule ? 7 : 6) + computed.subjects.length * 2}
                               className="px-6 py-10 text-center text-xs text-slate-500 border-b border-slate-300 bg-slate-50/40"
                             >
                               <p className="font-bold text-slate-700 mb-1">
@@ -2344,6 +2646,77 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                     </td>
                                   );
                                 })()}
+
+                                {/* 2bis. MATRICULE (optionnel — derrière PROFIL) */}
+                                {effectiveShowMatricule &&
+                                  (() => {
+                                    const cellKey = `${rowKey}_matricule`;
+                                    const isSel = activeCell.cellKey === cellKey;
+                                    const isEditingMat =
+                                      editingMatriculeCell?.studentKey === student.key;
+                                    return (
+                                      <td
+                                        data-cell-key={cellKey}
+                                        onClick={() => {
+                                          setActiveCell({
+                                            cellKey,
+                                            rowKey,
+                                            coordDisplay: `MAT${rowNum}`,
+                                            formulaText: student.matricule
+                                              ? `Matricule de ${student.name || 'cet élève'} : ${student.matricule} (cliquer pour modifier)`
+                                              : `Matricule de ${student.name || 'cet élève'} : non renseigné (cliquer pour saisir)`,
+                                          });
+                                          if (!isEditingMat) {
+                                            setEditingMatriculeCell({
+                                              studentKey: student.key,
+                                              draft: student.matricule || '',
+                                            });
+                                          }
+                                        }}
+                                        style={getCellInlineStyle(cellKey, rowKey)}
+                                        className={`h-11 border-r border-b border-slate-300 px-2 text-center align-middle text-xs font-mono font-bold text-slate-700 cursor-pointer ${
+                                          isSel ? 'ring-2 ring-inset ring-blue-500' : ''
+                                        }`}
+                                        title="Cliquer pour saisir ou modifier le matricule"
+                                      >
+                                        {isEditingMat ? (
+                                          <input
+                                            type="text"
+                                            autoFocus
+                                            maxLength={48}
+                                            value={editingMatriculeCell.draft}
+                                            onChange={(e) =>
+                                              setEditingMatriculeCell((prev) =>
+                                                prev ? { ...prev, draft: e.target.value } : null
+                                              )
+                                            }
+                                            onBlur={() =>
+                                              commitManualMatricule(
+                                                student.key,
+                                                editingMatriculeCell.draft
+                                              )
+                                            }
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                commitManualMatricule(
+                                                  student.key,
+                                                  editingMatriculeCell.draft
+                                                );
+                                              } else if (e.key === 'Escape') {
+                                                setEditingMatriculeCell(null);
+                                              }
+                                            }}
+                                            placeholder="Matricule..."
+                                            className="w-full h-7 px-1.5 text-center font-mono text-xs font-bold rounded border border-blue-500 bg-blue-50/60 text-slate-900 outline-none"
+                                          />
+                                        ) : student.matricule ? (
+                                          <span className="truncate block">{student.matricule}</span>
+                                        ) : (
+                                          <span className="text-slate-300 font-sans font-normal">—</span>
+                                        )}
+                                      </td>
+                                    );
+                                  })()}
 
                                 {/* 3. NOM & PRÉNOM */}
                                 {(() => {
@@ -2734,7 +3107,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                     >
                                       <span
                                         className={`inline-block px-2 py-0.5 rounded-full border text-[10.5px] font-extrabold whitespace-nowrap ${getMentionBadgeStyle(
-                                          student.mention
+                                          student.generalAverage,
+                                          effectiveMentionRules
                                         )}`}
                                       >
                                         {student.mention}
@@ -2750,7 +3124,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                         {/* LIGNE DE SYNTHÈSE : MOYENNE DE LA CLASSE */}
                         <tr className="term-avg-footer-row bg-slate-100 border-t-2 border-slate-800 font-black text-slate-900">
                           <td
-                            colSpan={3}
+                            colSpan={effectiveShowMatricule ? 4 : 3}
                             className="h-11 border-r-2 border-b border-slate-800 px-3 text-right text-[11px] uppercase tracking-wide bg-slate-200/70"
                           >
                             Moyenne de la classe
@@ -3249,6 +3623,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                       {previewStudent.name || 'Élève sans nom'}
                     </h4>
                     <div className="text-[11px] font-semibold text-slate-500 truncate">
+                      {previewStudent.matricule ? `Mat. ${previewStudent.matricule} • ` : ''}
                       {classDisplayName} • {periodBadgeLabel}
                     </div>
                   </div>
@@ -3340,7 +3715,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                   </span>
                   <span
                     className={`px-3 py-1 rounded-full border text-xs font-black ${getMentionBadgeStyle(
-                      previewStudent.mention
+                      previewStudent.generalAverage,
+                      effectiveMentionRules
                     )}`}
                   >
                     {previewStudent.mention}

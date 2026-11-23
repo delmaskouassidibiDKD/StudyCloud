@@ -1725,3 +1725,182 @@ test('Feuille Moyenne générale annuelle (GET & PUT /api/teacher/class-average-
     404
   );
 });
+
+test('Mentions personnalisées + colonne Matricule (portée tableau ou toute la classe) + propagation matricule et Anti-IDOR', async () => {
+  const { callApi } = createHarness();
+
+  const { year } = await (await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027' },
+  })).json();
+  const { school } = await (await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'CME' },
+  })).json();
+  const { level } = await (await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'BTS 2' },
+  })).json();
+  const { classItem, terms, classAverages } = await (await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { levelId: level.id, name: 'Électrotechnique', teacherName: 'DKD' },
+  })).json();
+
+  const [t1, t2] = terms;
+  const t1AvgCard = classAverages.find((c: any) => c.kind === 'term' && c.termId === t1.id);
+  const annualCard = classAverages.find((c: any) => c.kind === 'annual');
+
+  const { subject: sMath } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Mathématiques', coefficient: 4 },
+  })).json();
+  const { subject: sFr } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Français', coefficient: 2 },
+  })).json();
+
+  // 1. Enregistrer un élève avec matricule + surcharge locale sur Maths uniquement
+  const putGb = await callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 1,
+      columnMetas: { 0: { maxScore: 20, coeffEval: 1 } },
+      layout: {
+        showMatricule: true,
+        mentionRules: [{ min: 15, label: 'Excellent' }, { min: 0, label: 'À revoir' }],
+      },
+      styles: {},
+      students: [
+        {
+          id: 'st-1',
+          studentUid: 'uid-dkd',
+          name: 'KOUASSI Jean',
+          matricule: '2026-ELT-001',
+          notes: ['16/20'],
+        },
+      ],
+    },
+  });
+  assert.equal(putGb.status, 200);
+
+  // Vérifier la lecture du matricule sur Maths, le répertoire classe, le bilan trimestriel et le bilan annuel
+  const gbMath = await (await callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, { token: 'token-alice' })).json();
+  assert.equal(gbMath.students[0].matricule, '2026-ELT-001');
+  assert.equal(gbMath.layout.showMatricule, true);
+  assert.equal(gbMath.classSettings.showMatricule, false);
+
+  const roster = await (await callApi(`/api/teacher/class-roster/${classItem.id}`, { token: 'token-alice' })).json();
+  assert.equal(roster.students[0].matricule, '2026-ELT-001');
+
+  const termSheet = await (await callApi(`/api/teacher/class-average-sheet/${t1AvgCard.id}`, { token: 'token-alice' })).json();
+  assert.equal(termSheet.subjectGradebooks[sMath.id][0].matricule, '2026-ELT-001');
+  assert.equal(termSheet.classSettings.showMatricule, false);
+
+  const annualSheet = await (await callApi(`/api/teacher/class-average-sheet/${annualCard.id}`, { token: 'token-alice' })).json();
+  assert.equal(annualSheet.annualData.terms[0].subjectGradebooks[sMath.id][0].matricule, '2026-ELT-001');
+
+  // 2. Appliquer mentions personnalisées + colonne Matricule à TOUTE LA CLASSE
+  const classRules = [
+    { min: 17, label: 'Félicitations' },
+    { min: 13, label: 'Tableau d’honneur' },
+    { min: 10, label: 'Satisfaisant' },
+    { min: 0, label: 'Insuffisant' },
+  ];
+  const settingsRes = await callApi(`/api/teacher/classes/${classItem.id}/sheet-settings`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      mentionRules: classRules,
+      showMatricule: true,
+    },
+  });
+  assert.equal(settingsRes.status, 200);
+  const settingsJson = await settingsRes.json();
+  assert.equal(settingsJson.classSettings.showMatricule, true);
+  assert.equal(settingsJson.classSettings.mentionRules.length, 4);
+  assert.equal(settingsJson.classSettings.mentionRules[0].label, 'Félicitations');
+
+  // Vérifier que les surcharges locales obsolètes de Maths ont été nettoyées et que Français + Moyennes héritent des réglages de classe
+  const gbMathAfter = await (await callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, { token: 'token-alice' })).json();
+  assert.equal(gbMathAfter.layout.mentionRules, undefined);
+  assert.equal(gbMathAfter.layout.showMatricule, undefined);
+  assert.equal(gbMathAfter.classSettings.showMatricule, true);
+  assert.equal(gbMathAfter.classSettings.mentionRules[0].label, 'Félicitations');
+
+  const gbFrAfter = await (await callApi(`/api/teacher/gradebook/${sFr.id}/${t1.id}`, { token: 'token-alice' })).json();
+  assert.equal(gbFrAfter.classSettings.showMatricule, true);
+  assert.equal(gbFrAfter.classSettings.mentionRules[1].label, 'Tableau d’honneur');
+
+  const termSheetAfter = await (await callApi(`/api/teacher/class-average-sheet/${t1AvgCard.id}`, { token: 'token-alice' })).json();
+  assert.equal(termSheetAfter.classSettings.showMatricule, true);
+  assert.equal(termSheetAfter.classSettings.mentionRules[0].label, 'Félicitations');
+
+  // Vérifier dans bootstrap
+  const boot = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  const bootCls = boot.classes.find((c: any) => c.id === classItem.id);
+  assert.equal(bootCls.showMatricule, true);
+  assert.equal(bootCls.mentionRules[0].label, 'Félicitations');
+
+  // 3. Vérifier la préservation du matricule lors d'un transfert vers Trimestre 2
+  const targetSubjId = 'sub-math-t2-transfer';
+  const transferRes = await callApi('/api/teacher/transfer', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      createdLevels: [],
+      createdClasses: [],
+      createdTerms: [],
+      createdSubjects: [
+        {
+          id: targetSubjId,
+          classId: classItem.id,
+          termId: t2.id,
+          schoolId: school.id,
+          yearId: year.id,
+          name: 'Mathématiques',
+          coefficient: 4,
+          color: '#ffffff',
+          textColor: '#0f172a',
+          borderColor: '#e2e8f0',
+          borderDarkColor: '#cbd5e1',
+          colorStyle: 'accent',
+          createdAt: Date.now(),
+        },
+      ],
+      updatedSubjects: [],
+      gradebookCopies: [
+        {
+          sourceSubjectId: sMath.id,
+          sourceTermId: t1.id,
+          targetSubjectId: targetSubjId,
+          targetTermId: t2.id,
+          conflictStrategy: 'replace',
+          options: {
+            contentMode: 'students_only',
+            includePhotos: false,
+            includeMetas: true,
+            includeFormatting: true,
+          },
+        },
+      ],
+    },
+  });
+  assert.equal(transferRes.status, 200);
+  const gbMathT2 = await (await callApi(`/api/teacher/gradebook/${targetSubjId}/${t2.id}`, { token: 'token-alice' })).json();
+  assert.equal(gbMathT2.students[0].matricule, '2026-ELT-001');
+
+  // 4. Anti-IDOR : Bob ne peut pas modifier les réglages de la classe d'Alice
+  const bobSettings = await callApi(`/api/teacher/classes/${classItem.id}/sheet-settings`, {
+    method: 'PUT',
+    token: 'token-bob',
+    body: { showMatricule: false },
+  });
+  assert.equal(bobSettings.status, 404);
+});

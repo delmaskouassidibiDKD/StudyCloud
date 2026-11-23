@@ -117,6 +117,8 @@ export interface ClassItem {
   borderDarkColor: string;
   colorStyle?: CardColorStyle;
   iconGradient: string;
+  mentionRules?: Array<{ min: number; label: string }> | null;
+  showMatricule?: boolean;
   createdAt: number;
 }
 
@@ -3107,6 +3109,19 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             )
           );
         }}
+        onClassSettingsUpdated={(classId, settings) => {
+          setClasses(prev =>
+            prev.map(c =>
+              c.id === classId
+                ? {
+                    ...c,
+                    mentionRules: settings.mentionRules,
+                    showMatricule: settings.showMatricule,
+                  }
+                : c
+            )
+          );
+        }}
         onBack={() => setSelectedAverageCardInside(null)}
       />
     );
@@ -3124,6 +3139,19 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         term={activeTerm}
         userId={authUserId}
         onGradebookSynced={refreshCloudStats}
+        onClassSettingsUpdated={(classId, settings) => {
+          setClasses(prev =>
+            prev.map(c =>
+              c.id === classId
+                ? {
+                    ...c,
+                    mentionRules: settings.mentionRules,
+                    showMatricule: settings.showMatricule,
+                  }
+                : c
+            )
+          );
+        }}
         onBack={() => {
           setSelectedSubjectInside(null);
           refreshCloudStats();

@@ -86,6 +86,8 @@ async function ensureTeacherGradebookTables(db) {
       border_dark_color TEXT NOT NULL DEFAULT '#cbd5e1',
       color_style TEXT NOT NULL DEFAULT 'accent',
       icon_gradient TEXT NOT NULL DEFAULT 'from-amber-500 to-orange-600',
+      mention_rules_json TEXT DEFAULT NULL,
+      show_matricule INTEGER NOT NULL DEFAULT 0,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -166,6 +168,7 @@ async function ensureTeacherGradebookTables(db) {
       student_uid TEXT NOT NULL,
       row_order INTEGER NOT NULL DEFAULT 0,
       full_name TEXT NOT NULL DEFAULT '',
+      matricule TEXT NOT NULL DEFAULT '',
       photo_r2_key TEXT DEFAULT NULL,
       notes_json TEXT NOT NULL DEFAULT '[]',
       average_20 REAL DEFAULT NULL,
@@ -244,6 +247,25 @@ async function ensureTeacherGradebookTables(db) {
       }
     } catch {
     }
+  }
+  try {
+    const clsInfo = await db.prepare("PRAGMA table_info(teacher_classes)").all();
+    const clsCols = new Set((clsInfo.results || []).map((c) => String(c.name)));
+    if (!clsCols.has("mention_rules_json")) {
+      await db.prepare("ALTER TABLE teacher_classes ADD COLUMN mention_rules_json TEXT DEFAULT NULL").run();
+    }
+    if (!clsCols.has("show_matricule")) {
+      await db.prepare("ALTER TABLE teacher_classes ADD COLUMN show_matricule INTEGER NOT NULL DEFAULT 0").run();
+    }
+  } catch {
+  }
+  try {
+    const stInfo = await db.prepare("PRAGMA table_info(teacher_gradebook_students)").all();
+    const hasMat = (stInfo.results || []).some((c) => String(c.name) === "matricule");
+    if (!hasMat) {
+      await db.prepare("ALTER TABLE teacher_gradebook_students ADD COLUMN matricule TEXT NOT NULL DEFAULT ''").run();
+    }
+  } catch {
   }
   initializedTeacherDbs.add(db);
 }
@@ -447,6 +469,34 @@ function safeParseJson(raw, fallback) {
   } catch {
     return fallback;
   }
+}
+function sanitizeMentionRulesWorker(raw) {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const cleaned = [];
+  const seenMins = /* @__PURE__ */ new Set();
+  for (const item of raw.slice(0, 15)) {
+    if (!item || typeof item !== "object") continue;
+    const min = Number(item.min);
+    const label = String(item.label ?? "").trim().slice(0, 48);
+    if (!Number.isFinite(min) || min < 0 || min > 20 || !label) continue;
+    const roundedMin = Math.round(min * 100) / 100;
+    if (seenMins.has(roundedMin)) continue;
+    seenMins.add(roundedMin);
+    cleaned.push({ min: roundedMin, label });
+  }
+  if (cleaned.length === 0) return null;
+  cleaned.sort((a, b) => b.min - a.min);
+  return cleaned;
+}
+function extractClassSheetSettings(classRow) {
+  if (!classRow) {
+    return { mentionRules: null, showMatricule: false };
+  }
+  const parsedRules = classRow.mention_rules_json ? sanitizeMentionRulesWorker(safeParseJson(classRow.mention_rules_json, null)) : null;
+  return {
+    mentionRules: parsedRules,
+    showMatricule: Number(classRow.show_matricule) === 1
+  };
 }
 function normalizeNameForMatch(val) {
   return String(val || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
@@ -712,24 +762,29 @@ async function buildBootstrapPayload(db, userId, origin, jwtSecret) {
     colorStyle: r.color_style === "full" ? "full" : "accent",
     createdAt: Number(r.created_at) || Date.now()
   }));
-  const classes = (classesRes.results || []).map((r) => ({
-    id: r.id,
-    levelId: r.level_id,
-    schoolId: r.school_id,
-    yearId: r.year_id,
-    level: r.level_name,
-    name: r.name || void 0,
-    slogan: r.slogan || void 0,
-    teacherName: r.teacher_name || "",
-    subject: r.subject_label || void 0,
-    color: r.color || "#ffffff",
-    textColor: r.text_color || "#0f172a",
-    borderColor: r.border_color || "#e2e8f0",
-    borderDarkColor: r.border_dark_color || "#cbd5e1",
-    colorStyle: r.color_style === "full" ? "full" : "accent",
-    iconGradient: r.icon_gradient || "from-amber-500 to-orange-600",
-    createdAt: Number(r.created_at) || Date.now()
-  }));
+  const classes = (classesRes.results || []).map((r) => {
+    const sheetSettings = extractClassSheetSettings(r);
+    return {
+      id: r.id,
+      levelId: r.level_id,
+      schoolId: r.school_id,
+      yearId: r.year_id,
+      level: r.level_name,
+      name: r.name || void 0,
+      slogan: r.slogan || void 0,
+      teacherName: r.teacher_name || "",
+      subject: r.subject_label || void 0,
+      color: r.color || "#ffffff",
+      textColor: r.text_color || "#0f172a",
+      borderColor: r.border_color || "#e2e8f0",
+      borderDarkColor: r.border_dark_color || "#cbd5e1",
+      colorStyle: r.color_style === "full" ? "full" : "accent",
+      iconGradient: r.icon_gradient || "from-amber-500 to-orange-600",
+      mentionRules: sheetSettings.mentionRules,
+      showMatricule: sheetSettings.showMatricule,
+      createdAt: Number(r.created_at) || Date.now()
+    };
+  });
   const terms = (termsRes.results || []).map((r) => ({
     id: r.id,
     classId: r.class_id,
@@ -1353,9 +1408,97 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         borderDarkColor,
         colorStyle,
         iconGradient,
+        ...extractClassSheetSettings(existing),
         createdAt: Number(existing.created_at)
       }
     }, 200, origin);
+  }
+  const classSheetSettingsMatch = path.match(/^\/api\/teacher\/classes\/([^/]+)\/sheet-settings$/);
+  if (classSheetSettingsMatch && method === "PUT") {
+    const classId = decodeURIComponent(classSheetSettingsMatch[1]);
+    const existing = await db.prepare("SELECT id, mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(classId, userId).first();
+    if (!existing) return errorResponse2("Classe introuvable ou non autoris\xE9e.", 404, origin);
+    const body = await request.json().catch(() => ({}));
+    const hasMentionUpdate = Object.prototype.hasOwnProperty.call(body, "mentionRules");
+    const hasMatriculeUpdate = Object.prototype.hasOwnProperty.call(body, "showMatricule");
+    const now = Date.now();
+    let nextMentionRulesJson = existing.mention_rules_json ?? null;
+    if (hasMentionUpdate) {
+      if (body.mentionRules === null) {
+        nextMentionRulesJson = null;
+      } else {
+        const sanitized = sanitizeMentionRulesWorker(body.mentionRules);
+        if (!sanitized) {
+          return errorResponse2("Les intervalles de mention sont invalides.", 400, origin);
+        }
+        nextMentionRulesJson = JSON.stringify(sanitized);
+      }
+    }
+    let nextShowMatricule = Number(existing.show_matricule) === 1 ? 1 : 0;
+    if (hasMatriculeUpdate) {
+      nextShowMatricule = body.showMatricule ? 1 : 0;
+    }
+    const stmts = [
+      db.prepare(
+        `UPDATE teacher_classes
+           SET mention_rules_json = ?, show_matricule = ?, updated_at = ?
+           WHERE id = ? AND user_id = ?`
+      ).bind(nextMentionRulesJson, nextShowMatricule, now, classId, userId)
+    ];
+    if (hasMentionUpdate || hasMatriculeUpdate) {
+      const [gbsRes, avgsRes] = await Promise.all([
+        db.prepare("SELECT id, layout_json FROM teacher_gradebooks WHERE user_id = ? AND class_id = ?").bind(userId, classId).all(),
+        db.prepare("SELECT id, layout_json FROM teacher_class_averages WHERE user_id = ? AND class_id = ?").bind(userId, classId).all()
+      ]);
+      for (const gb of gbsRes.results || []) {
+        const parsed = safeParseJson(gb.layout_json, {});
+        let changed = false;
+        if (hasMentionUpdate && Object.prototype.hasOwnProperty.call(parsed, "mentionRules")) {
+          delete parsed.mentionRules;
+          changed = true;
+        }
+        if (hasMatriculeUpdate && Object.prototype.hasOwnProperty.call(parsed, "showMatricule")) {
+          delete parsed.showMatricule;
+          changed = true;
+        }
+        if (changed) {
+          stmts.push(
+            db.prepare("UPDATE teacher_gradebooks SET layout_json = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(JSON.stringify(parsed), now, gb.id, userId)
+          );
+        }
+      }
+      for (const avg of avgsRes.results || []) {
+        const parsed = safeParseJson(avg.layout_json, {});
+        let changed = false;
+        if (hasMentionUpdate && Object.prototype.hasOwnProperty.call(parsed, "mentionRules")) {
+          delete parsed.mentionRules;
+          changed = true;
+        }
+        if (hasMatriculeUpdate && Object.prototype.hasOwnProperty.call(parsed, "showMatricule")) {
+          delete parsed.showMatricule;
+          changed = true;
+        }
+        if (changed) {
+          stmts.push(
+            db.prepare("UPDATE teacher_class_averages SET layout_json = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(JSON.stringify(parsed), now, avg.id, userId)
+          );
+        }
+      }
+    }
+    await runBatchChunked(db, stmts, 60);
+    const updatedSettings = extractClassSheetSettings({
+      mention_rules_json: nextMentionRulesJson,
+      show_matricule: nextShowMatricule
+    });
+    return jsonResponse2(
+      {
+        success: true,
+        classId,
+        classSettings: updatedSettings
+      },
+      200,
+      origin
+    );
   }
   if (classItemMatch && method === "DELETE") {
     const classId = decodeURIComponent(classItemMatch[1]);
@@ -1599,7 +1742,11 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     const termId = decodeURIComponent(gradebookMatch[2]);
     const ownSubject = await db.prepare("SELECT id, class_id, school_id, year_id FROM teacher_subjects WHERE id = ? AND user_id = ? LIMIT 1").bind(subjectId, userId).first();
     if (!ownSubject) return errorResponse2("Mati\xE8re introuvable ou non autoris\xE9e.", 404, origin);
-    const gb = await db.prepare("SELECT * FROM teacher_gradebooks WHERE user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1").bind(userId, subjectId, termId).first();
+    const [gb, classRow] = await Promise.all([
+      db.prepare("SELECT * FROM teacher_gradebooks WHERE user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1").bind(userId, subjectId, termId).first(),
+      db.prepare("SELECT mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(ownSubject.class_id, userId).first()
+    ]);
+    const classSettings = extractClassSheetSettings(classRow);
     if (!gb) {
       return jsonResponse2({
         success: true,
@@ -1609,7 +1756,8 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         columnMetas: {},
         layout: {},
         styles: {},
-        students: []
+        students: [],
+        classSettings
       }, 200, origin);
     }
     const stRes = await db.prepare(
@@ -1622,6 +1770,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         id: row.id,
         studentUid: row.student_uid || row.id,
         name: row.full_name || "",
+        matricule: row.matricule || "",
         photoR2Key: row.photo_r2_key || void 0,
         photoUrl: row.photo_r2_key ? await signTeacherMediaUrl(apiOrigin, row.photo_r2_key, jwtSecret) : void 0,
         notes: safeParseJson(row.notes_json, [])
@@ -1637,7 +1786,8 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       columnMetas: safeParseJson(gb.col_metas_json, {}),
       layout: safeParseJson(gb.layout_json, {}),
       styles: safeParseJson(gb.styles_json, {}),
-      students
+      students,
+      classSettings
     }, 200, origin);
   }
   if (gradebookMatch && method === "PUT") {
@@ -1673,6 +1823,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       const rowId = s.id && typeof s.id === "string" && s.id.length <= 80 ? s.id : makeId("std");
       const studentUid = s.studentUid && typeof s.studentUid === "string" && s.studentUid.length <= 80 ? s.studentUid : rowId;
       const fullName = String(s.name || "").slice(0, 160);
+      const matricule = String(s.matricule ?? "").trim().slice(0, 48);
       const notes = Array.isArray(s.notes) ? s.notes.slice(0, 200).map((n) => String(n ?? "").slice(0, 32)) : [];
       let photoR2Key = null;
       if (s.photoR2Key && isOwnedR2Key(String(s.photoR2Key), userId)) {
@@ -1702,6 +1853,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         studentUid,
         rowOrder: idx,
         fullName,
+        matricule,
         photoR2Key,
         notesJson: JSON.stringify(notes),
         average20
@@ -1755,8 +1907,8 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       stmts.push(
         db.prepare(
           `INSERT INTO teacher_gradebook_students
-              (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+              (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, matricule, photo_r2_key, notes_json, average_20, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         ).bind(
           row.id,
           userId,
@@ -1767,6 +1919,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
           row.studentUid,
           row.rowOrder,
           row.fullName,
+          row.matricule,
           row.photoR2Key,
           row.notesJson,
           row.average20,
@@ -1821,6 +1974,8 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       createdAt: Number(cardRow.created_at) || Date.now(),
       updatedAt: Number(cardRow.updated_at) || Date.now()
     };
+    const cardClassRow = await db.prepare("SELECT mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(cardRow.class_id, userId).first();
+    const classSettings = extractClassSheetSettings(cardClassRow);
     if (card.kind === "annual") {
       const [termsRes, termAvgCardsRes, subjectsRes2, gradebooksRes2, studentsRes2] = await Promise.all([
         db.prepare(
@@ -1844,7 +1999,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
              WHERE user_id = ? AND class_id = ?`
         ).bind(userId, cardRow.class_id).all(),
         db.prepare(
-          `SELECT id, gradebook_id, subject_id, term_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20
+          `SELECT id, gradebook_id, subject_id, term_id, student_uid, row_order, full_name, matricule, photo_r2_key, notes_json, average_20
              FROM teacher_gradebook_students
              WHERE user_id = ? AND class_id = ?
              ORDER BY row_order ASC, created_at ASC`
@@ -1921,6 +2076,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
           id: row.id,
           studentUid: row.student_uid || row.id,
           name: row.full_name || "",
+          matricule: row.matricule || "",
           photoR2Key: row.photo_r2_key || void 0,
           photoUrl,
           average20: computed.average !== null ? computed.average : fallbackAvg,
@@ -1949,6 +2105,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         term: null,
         subjects: [],
         subjectGradebooks: {},
+        classSettings,
         annualData: {
           terms: annualTerms
         }
@@ -1960,7 +2117,8 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         card,
         term: null,
         subjects: [],
-        subjectGradebooks: {}
+        subjectGradebooks: {},
+        classSettings
       }, 200, origin);
     }
     const [termRow, subjectsRes, gradebooksRes, studentsRes] = await Promise.all([
@@ -1976,7 +2134,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
            WHERE user_id = ? AND class_id = ? AND term_id = ?`
       ).bind(userId, cardRow.class_id, cardRow.term_id).all(),
       db.prepare(
-        `SELECT id, gradebook_id, subject_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20
+        `SELECT id, gradebook_id, subject_id, student_uid, row_order, full_name, matricule, photo_r2_key, notes_json, average_20
            FROM teacher_gradebook_students
            WHERE user_id = ? AND class_id = ? AND term_id = ?
            ORDER BY row_order ASC, created_at ASC`
@@ -2022,6 +2180,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
             id: row.id,
             studentUid: row.student_uid || row.id,
             name: row.full_name || "",
+            matricule: row.matricule || "",
             photoR2Key: row.photo_r2_key || void 0,
             photoUrl,
             average20: computed.average !== null ? computed.average : fallbackAvg,
@@ -2051,7 +2210,8 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       card,
       term,
       subjects,
-      subjectGradebooks
+      subjectGradebooks,
+      classSettings
     }, 200, origin);
   }
   if (avgSheetMatch && method === "PUT") {
@@ -2138,7 +2298,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       return errorResponse2("Classe introuvable ou non autoris\xE9e.", 404, origin);
     }
     const rosterRes = await db.prepare(
-      `SELECT s.student_uid, s.id, s.full_name, s.photo_r2_key, s.subject_id, subj.name AS subject_name
+      `SELECT s.student_uid, s.id, s.full_name, s.matricule, s.photo_r2_key, s.subject_id, subj.name AS subject_name
          FROM teacher_gradebook_students s
          LEFT JOIN teacher_subjects subj ON subj.id = s.subject_id AND subj.user_id = s.user_id
          WHERE s.user_id = ? AND s.class_id = ? AND TRIM(COALESCE(s.full_name, '')) != ''
@@ -2150,11 +2310,13 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       if (!name) continue;
       const uid = String(r.student_uid || r.id || "").trim();
       if (!uid) continue;
+      const mat = String(r.matricule || "").trim();
       let entry = byUid.get(uid);
       if (!entry) {
         entry = {
           studentUid: uid,
           name,
+          matricule: mat || void 0,
           photoR2Key: r.photo_r2_key || void 0,
           subjectIds: [],
           subjectNames: []
@@ -2163,6 +2325,9 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       } else {
         if (!entry.photoR2Key && r.photo_r2_key) {
           entry.photoR2Key = r.photo_r2_key;
+        }
+        if (!entry.matricule && mat) {
+          entry.matricule = mat;
         }
       }
       if (r.subject_id && !entry.subjectIds.includes(r.subject_id)) {
@@ -2176,6 +2341,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       Array.from(byUid.values()).map(async (item) => ({
         studentUid: item.studentUid,
         name: item.name,
+        matricule: item.matricule || "",
         photoR2Key: item.photoR2Key,
         photoUrl: item.photoR2Key ? await signTeacherMediaUrl(apiOrigin, item.photoR2Key, jwtSecret) : void 0,
         subjectIds: item.subjectIds,
@@ -2902,6 +3068,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
               id: st.id,
               studentUid: st.student_uid || st.id,
               fullName: st.full_name || "",
+              matricule: st.matricule || "",
               photoR2Key: st.photo_r2_key || null,
               notes
             });
@@ -2913,6 +3080,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
               id: rid,
               studentUid: rid,
               fullName: "",
+              matricule: "",
               photoR2Key: null,
               notes: Array(finalColCount).fill("")
             });
@@ -2930,6 +3098,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
               id: st.id,
               studentUid: st.student_uid || st.id,
               fullName: st.full_name || "",
+              matricule: st.matricule || "",
               photoR2Key: st.photo_r2_key || null,
               notes
             });
@@ -2951,6 +3120,9 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
             const targetIdx = existingByName.get(norm);
             const targetRow = finalRows[targetIdx];
             studentIdMap.set(srcSt.id, targetRow.id);
+            if (!targetRow.matricule && srcSt.matricule) {
+              targetRow.matricule = String(srcSt.matricule).trim();
+            }
             if (opts.contentMode === "students_and_notes") {
               targetRow.notes = targetRow.notes.map(
                 (existingVal, idx) => existingVal.trim() ? existingVal : copiedNotes[idx] || ""
@@ -2976,6 +3148,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
             id: newRowId,
             studentUid: srcSt.student_uid || newRowId,
             fullName: String(srcSt.full_name || "").trim(),
+            matricule: String(srcSt.matricule || "").trim(),
             photoR2Key: newPhotoKey,
             notes: copiedNotes
           });
@@ -2987,6 +3160,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
             id: rid,
             studentUid: rid,
             fullName: "",
+            matricule: "",
             photoR2Key: null,
             notes: Array(finalColCount).fill("")
           });
@@ -3047,8 +3221,8 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         gbStmts.push(
           db.prepare(
             `INSERT INTO teacher_gradebook_students
-                (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, photo_r2_key, notes_json, average_20, created_at, updated_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+                (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, matricule, photo_r2_key, notes_json, average_20, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
           ).bind(
             r.id,
             userId,
@@ -3059,6 +3233,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
             r.studentUid,
             i,
             r.fullName,
+            r.matricule,
             r.photoR2Key,
             JSON.stringify(r.notes),
             computeAverage20(r.notes, finalColMetas),

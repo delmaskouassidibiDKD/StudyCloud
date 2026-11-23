@@ -506,3 +506,106 @@ export function sortGradebookRows<T extends SortableGradebookRow>(
     return cmp !== 0 ? cmp : a.originalIndex - b.originalIndex;
   });
 }
+
+export interface CustomMentionRule {
+  /** Seuil minimal inclusif sur 20 (ex: 16, 14, 12, 10, 0) */
+  min: number;
+  /** Libellé libre défini par le professeur (ex: "Excellent", "Très bien", "Honorable"...) */
+  label: string;
+}
+
+export const DEFAULT_CUSTOM_MENTION_RULES: readonly CustomMentionRule[] = [
+  { min: 16, label: 'Très bien' },
+  { min: 14, label: 'Bien' },
+  { min: 12, label: 'Assez bien' },
+  { min: 10, label: 'Passable' },
+  { min: 0, label: 'Insuffisant' },
+];
+
+/**
+ * Nettoie, trie par seuil décroissant et déduplique une liste d'intervalles de mentions personnalisés.
+ * Retourne null si la liste est vide ou invalide.
+ */
+export function sanitizeCustomMentionRules(
+  raw: unknown
+): CustomMentionRule[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const cleaned: CustomMentionRule[] = [];
+  const seenMins = new Set<number>();
+
+  for (const item of raw.slice(0, 15)) {
+    if (!item || typeof item !== 'object') continue;
+    const rawMin = Number((item as any).min);
+    const rawLabel = String((item as any).label ?? '').trim().slice(0, 48);
+    if (!Number.isFinite(rawMin) || rawMin < 0 || rawMin > 20 || !rawLabel) {
+      continue;
+    }
+    const roundedMin = Math.round(rawMin * 100) / 100;
+    if (seenMins.has(roundedMin)) continue;
+    seenMins.add(roundedMin);
+    cleaned.push({ min: roundedMin, label: rawLabel });
+  }
+
+  if (cleaned.length === 0) return null;
+  cleaned.sort((a, b) => b.min - a.min);
+  return cleaned;
+}
+
+/**
+ * Résout la mention à partir des intervalles personnalisés du professeur (ou par défaut si null/vide).
+ * Retourne le libellé ainsi qu'une teinte harmonieuse calculée selon la position dans l'échelle.
+ */
+export function resolveMentionWithRules(
+  moyenne: number | null,
+  customRules?: readonly CustomMentionRule[] | null
+): {
+  label: string;
+  tone: 'emerald' | 'teal' | 'sky' | 'amber' | 'rose' | 'neutral';
+} {
+  if (moyenne === null || !Number.isFinite(moyenne)) {
+    return { label: '—', tone: 'neutral' };
+  }
+
+  const rules =
+    customRules && customRules.length > 0
+      ? [...customRules].sort((a, b) => b.min - a.min)
+      : [...DEFAULT_CUSTOM_MENTION_RULES];
+
+  let matchedIdx = -1;
+  for (let i = 0; i < rules.length; i++) {
+    if (moyenne + 1e-9 >= rules[i].min) {
+      matchedIdx = i;
+      break;
+    }
+  }
+
+  // Si la note est inférieure au plus petit seuil défini, on utilise le dernier palier (le plus bas)
+  const effectiveIdx = matchedIdx === -1 ? rules.length - 1 : matchedIdx;
+  const matched = rules[effectiveIdx];
+
+  // Déterminer une teinte visuelle cohérente avec la position du palier et la moyenne
+  let tone: 'emerald' | 'teal' | 'sky' | 'amber' | 'rose' = 'amber';
+  if (moyenne >= 16 || (effectiveIdx === 0 && rules.length >= 4 && moyenne >= 14)) {
+    tone = 'emerald';
+  } else if (moyenne >= 14) {
+    tone = 'teal';
+  } else if (moyenne >= 12) {
+    tone = 'sky';
+  } else if (moyenne >= 10) {
+    tone = 'amber';
+  } else {
+    tone = 'rose';
+  }
+
+  return { label: matched.label, tone };
+}
+
+/**
+ * Version chaîne simple de resolveMentionWithRules (pour les moteurs de calcul trimestriel et annuel).
+ */
+export function getMentionFromCustomRules(
+  moyenne: number | null,
+  customRules?: readonly CustomMentionRule[] | null
+): string {
+  return resolveMentionWithRules(moyenne, customRules).label;
+}

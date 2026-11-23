@@ -9,7 +9,9 @@ import {
   getMention,
   harmonizeScoreOn20,
   parseEvaluationValue,
-  sortGradebookRows
+  sortGradebookRows,
+  sanitizeCustomMentionRules,
+  resolveMentionWithRules
 } from './gradebookCalculations.js';
 
 test('parseEvaluationValue distingue strictement vide/null et 0 explicite', () => {
@@ -248,4 +250,28 @@ test('sortGradebookRows : Ordre de mérite, Ordre alphabétique, Ordre initial e
     sortGradebookRows(rows, 'merit', ['s5', 's3', 's1', 's4', 's2', 's6']).map((r) => r.id),
     ['s5', 's3', 's1', 's4', 's2', 's6']
   );
+});
+
+test('sanitizeCustomMentionRules et resolveMentionWithRules gèrent les intervalles personnalisés et libellés libres', () => {
+  const cleaned = sanitizeCustomMentionRules([
+    { min: 10, label: 'Admis' },
+    { min: 17.5, label: 'Excellent' },
+    { min: 14, label: 'Honorable' },
+    { min: 0, label: 'Avertissement' },
+    { min: 25, label: 'Invalide > 20' }, // ignoré
+    { min: 10, label: 'Doublon' }, // ignoré
+  ]);
+  assert.deepEqual(cleaned, [
+    { min: 17.5, label: 'Excellent' },
+    { min: 14, label: 'Honorable' },
+    { min: 10, label: 'Admis' },
+    { min: 0, label: 'Avertissement' },
+  ]);
+
+  assert.equal(resolveMentionWithRules(18, cleaned).label, 'Excellent');
+  assert.equal(resolveMentionWithRules(17.5, cleaned).label, 'Excellent');
+  assert.equal(resolveMentionWithRules(15.2, cleaned).label, 'Honorable');
+  assert.equal(resolveMentionWithRules(10, cleaned).label, 'Admis');
+  assert.equal(resolveMentionWithRules(8.5, cleaned).label, 'Avertissement');
+  assert.equal(resolveMentionWithRules(null, cleaned).label, '—');
 });
