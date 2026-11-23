@@ -2613,3 +2613,99 @@ test('Sécurité Assistant Delmas : Anti-IDOR strict sur messages/fichiers et ne
   });
   assert.equal(bobDeleteFile.status, 404);
 });
+
+test('Copie inter-matières (Mathématiques -> Français) : réallocation automatique anti-collision de PK teacher_gradebook_students.id sans jamais renvoyer 500', async () => {
+  const { callApi } = createHarness();
+
+  const { year } = await (await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027' },
+  })).json();
+  const { school } = await (await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'CME' },
+  })).json();
+  const { level } = await (await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'BTS 2' },
+  })).json();
+  const { classItem, terms } = await (await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { levelId: level.id, name: 'Groupe 2', teacherName: 'DKD' },
+  })).json();
+  const t1 = terms[0];
+
+  const { subject: sMath } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Mathématiques', coefficient: 2 },
+  })).json();
+  const { subject: sFr } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Français', coefficient: 3 },
+  })).json();
+
+  // 1. Enregistrer 2 élèves en Mathématiques avec leurs id primaires
+  const mathSave = await callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 2,
+      columnMetas: { 0: { maxScore: 20 }, 1: { maxScore: 20 } },
+      layout: {},
+      styles: {},
+      students: [
+        { id: 'std_shared_1', studentUid: 'std_shared_1', name: 'KOUASSI Aya Mariam', notes: ['15/20', '14/20'] },
+        { id: 'std_shared_2', studentUid: 'std_shared_2', name: 'TRAORÉ Ibrahim', notes: ['12/20', '13/20'] },
+      ],
+    },
+  });
+  assert.equal(mathSave.status, 200);
+
+  // 2. Sauvegarder Français en réutilisant volontairement les MÊMES id primaires (cas bug copie + doublon intra-payload)
+  const frSave = await callApi(`/api/teacher/gradebook/${sFr.id}/${t1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 2,
+      columnMetas: { 0: { maxScore: 20 }, 1: { maxScore: 20 } },
+      layout: {},
+      styles: {
+        cellCustomStyles: { std_shared_1_name: { bold: true } },
+        rowColors: { std_shared_1: '#eff6ff' },
+      },
+      students: [
+        { id: 'std_shared_1', studentUid: 'std_shared_1', name: 'KOUASSI Aya Mariam', notes: ['', ''] },
+        { id: 'std_shared_2', studentUid: 'std_shared_2', name: 'TRAORÉ Ibrahim', notes: ['', ''] },
+        { id: 'std_dup_in_same_sheet', name: 'BÉDIÉ Jean-Marc', notes: ['14/20', ''] },
+        { id: 'std_dup_in_same_sheet', name: 'KONÉ Sékou', notes: ['11/20', ''] },
+      ],
+    },
+  });
+  assert.equal(frSave.status, 200);
+  const frSaveData = await frSave.json();
+  assert.equal(frSaveData.savedStudentsCount, 4);
+  assert.ok(frSaveData.remappedStudentIds?.std_shared_1);
+  assert.notEqual(frSaveData.remappedStudentIds.std_shared_1, 'std_shared_1');
+  assert.ok(frSaveData.remappedStudentIds?.std_shared_2);
+
+  // 3. Vérifier que Mathématiques est intact et que Français a ses propres id tout en gardant studentUid + styles remappés
+  const [mathGet, frGet] = await Promise.all([
+    callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, { token: 'token-alice' }).then((r) => r.json()),
+    callApi(`/api/teacher/gradebook/${sFr.id}/${t1.id}`, { token: 'token-alice' }).then((r) => r.json()),
+  ]);
+  assert.equal(mathGet.students.length, 2);
+  assert.equal(mathGet.students[0].id, 'std_shared_1');
+  assert.equal(frGet.students.length, 4);
+  assert.equal(frGet.students[0].id, frSaveData.remappedStudentIds.std_shared_1);
+  assert.equal(frGet.students[0].studentUid, 'std_shared_1');
+  assert.equal(frGet.students[1].studentUid, 'std_shared_2');
+  assert.notEqual(frGet.students[2].id, frGet.students[3].id);
+  assert.equal(frGet.styles.cellCustomStyles[`${frSaveData.remappedStudentIds.std_shared_1}_name`]?.bold, true);
+  assert.equal(frGet.styles.rowColors[frSaveData.remappedStudentIds.std_shared_1], '#eff6ff');
+});

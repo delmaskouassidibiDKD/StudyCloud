@@ -1210,12 +1210,19 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       const rawAiOutput =
         aiRes.raw_response || aiRes.rawResponse || aiRes.response || aiRes.chat_response || '';
 
-      // Extraction propre + pare-feu de sécurité (zéro action en mode chat/inspect + anti-injection + zéro faux save_gradebook vide)
+      // Extraction propre + pare-feu de sécurité (zéro action en mode chat/inspect + anti-injection + zéro faux matricules 1..10 + zéro faux save_gradebook vide)
       const parsed = parseTeacherDelmasAiResponse(rawAiOutput, {
         allowActions: intentResult.intent === 'action',
       });
+      const sourceFileTexts = [
+        ...(aiRes.perceptionReport ? [String(aiRes.perceptionReport)] : []),
+        ...allConvFiles
+          .filter((f) => !isPlaceholderMediaText(f.extractedText))
+          .map((f) => String(f.extractedText || '')),
+      ];
       const safeActions = filterSafeTeacherDelmasActions(parsed.actions, rawText, {
         hasAttachedFiles: hasAnyConvFiles && (intentResult.referencesActiveFiles || shouldRunVisionPass),
+        sourceFileTexts,
       });
 
       // Exécution immédiate des actions demandées sur le tableau ouvert

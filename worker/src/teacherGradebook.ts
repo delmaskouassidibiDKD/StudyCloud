@@ -3357,8 +3357,41 @@ async function dispatchTeacherGradebookRoutes(
 
     const colMetasStr = JSON.stringify(columnMetas);
     const layoutStr = JSON.stringify(layout);
-    const stylesStr = JSON.stringify(styles);
 
+    // Protection structurelle anti-collision de clé primaire `teacher_gradebook_students.id` :
+    // Si une ligne copiée depuis une autre matière (ou un autre tableur / compte) réutilise un `id`
+    // déjà présent dans un AUTRE `gradebook_id` (ou dupliqué dans ce même payload), on lui attribue
+    // automatiquement un nouvel `id` unique tout en conservant intact son `student_uid` (liaison inter-matières).
+    const candidateRowIds = Array.from(
+      new Set(
+        incomingStudents
+          .map((s: any) =>
+            s && typeof s.id === 'string' && s.id.trim().length > 0 && s.id.length <= 80
+              ? s.id.trim()
+              : ''
+          )
+          .filter(Boolean)
+      )
+    );
+    const collidingRowIds = new Set<string>();
+    for (let i = 0; i < candidateRowIds.length; i += 60) {
+      const chunk = candidateRowIds.slice(i, i + 60);
+      const placeholders = chunk.map(() => '?').join(', ');
+      const found = await db
+        .prepare(
+          `SELECT id FROM teacher_gradebook_students
+           WHERE id IN (${placeholders}) AND (gradebook_id != ? OR user_id != ?)`
+        )
+        .bind(...chunk, gradebookId, userId)
+        .all()
+        .catch(() => ({ results: [] }));
+      for (const r of found.results || []) {
+        if (r?.id) collidingRowIds.add(String(r.id));
+      }
+    }
+
+    const assignedRowIds = new Set<string>();
+    const remappedRowIdMap = new Map<string, string>();
     const keptR2Keys = new Set<string>();
     const pendingPhotoUploads: Array<{
       key: string;
@@ -3378,13 +3411,31 @@ async function dispatchTeacherGradebookRoutes(
       average20: number | null;
     }> = [];
 
-    let newD1Bytes = utf8ByteLength(colMetasStr) + utf8ByteLength(layoutStr) + utf8ByteLength(stylesStr) + 160;
+    let newD1Bytes = utf8ByteLength(colMetasStr) + utf8ByteLength(layoutStr) + 160;
     let newPhotoBytes = 0;
 
     for (let idx = 0; idx < incomingStudents.length; idx++) {
       const s = incomingStudents[idx] || {};
-      const rowId = s.id && typeof s.id === 'string' && s.id.length <= 80 ? s.id : makeId('std');
-      const studentUid = s.studentUid && typeof s.studentUid === 'string' && s.studentUid.length <= 80 ? s.studentUid : rowId;
+      const rawCandidateId =
+        s.id && typeof s.id === 'string' && s.id.trim().length > 0 && s.id.length <= 80
+          ? s.id.trim()
+          : '';
+      const needsFreshRowId =
+        !rawCandidateId ||
+        collidingRowIds.has(rawCandidateId) ||
+        assignedRowIds.has(rawCandidateId);
+      const rowId = needsFreshRowId ? makeId('std') : rawCandidateId;
+      assignedRowIds.add(rowId);
+      if (rawCandidateId && rowId !== rawCandidateId && !remappedRowIdMap.has(rawCandidateId)) {
+        remappedRowIdMap.set(rawCandidateId, rowId);
+      }
+      const studentUid =
+        s.studentUid &&
+        typeof s.studentUid === 'string' &&
+        s.studentUid.trim().length > 0 &&
+        s.studentUid.length <= 80
+          ? s.studentUid.trim()
+          : rawCandidateId || rowId;
       const fullName = String(s.name || '').slice(0, 160);
       const matricule = String(s.matricule ?? '').trim().slice(0, 48);
       const notes = Array.isArray(s.notes)
@@ -3453,6 +3504,44 @@ async function dispatchTeacherGradebookRoutes(
         average20,
       });
     }
+
+    // Si certains `id` d'élèves ont été réalloués pour éviter une collision inter-matières,
+    // remapper proprement les clés de styles (`cellCustomStyles`, `cellColors`, `rowColors`) associées.
+    let effectiveStyles = styles;
+    if (remappedRowIdMap.size > 0 && styles && typeof styles === 'object') {
+      const remapKeyedRecord = (rec: any, exactOnly = false): any => {
+        if (!rec || typeof rec !== 'object' || Array.isArray(rec)) return rec;
+        const next: Record<string, any> = {};
+        for (const [k, v] of Object.entries(rec)) {
+          let nextKey = k;
+          if (exactOnly) {
+            const mapped = remappedRowIdMap.get(k);
+            if (mapped) nextKey = mapped;
+          } else {
+            for (const [oldId, newId] of remappedRowIdMap.entries()) {
+              if (k === oldId) {
+                nextKey = newId;
+                break;
+              }
+              if (k.startsWith(`${oldId}_`)) {
+                nextKey = `${newId}${k.slice(oldId.length)}`;
+                break;
+              }
+            }
+          }
+          next[nextKey] = v;
+        }
+        return next;
+      };
+      effectiveStyles = {
+        ...styles,
+        ...(styles.cellCustomStyles ? { cellCustomStyles: remapKeyedRecord(styles.cellCustomStyles) } : {}),
+        ...(styles.cellColors ? { cellColors: remapKeyedRecord(styles.cellColors) } : {}),
+        ...(styles.rowColors ? { rowColors: remapKeyedRecord(styles.rowColors, true) } : {}),
+      };
+    }
+    const stylesStr = JSON.stringify(effectiveStyles);
+    newD1Bytes += utf8ByteLength(stylesStr);
 
     // Contrôle STRICT du quota AVANT toute écriture dans R2 ou D1
     const incomingGbBytes = newPhotoBytes + Math.max(1, newD1Bytes - existingD1Bytes);
@@ -3581,6 +3670,9 @@ async function dispatchTeacherGradebookRoutes(
       version: nextVersion,
       updatedAt: now,
       savedStudentsCount: preparedRows.length,
+      ...(remappedRowIdMap.size > 0
+        ? { remappedStudentIds: Object.fromEntries(remappedRowIdMap) }
+        : {}),
     }, 200, origin);
   }
 

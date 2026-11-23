@@ -852,7 +852,13 @@ export const TeacherGradebookAPI = {
     payload: TeacherGradebookPayload,
     opts: { keepalive?: boolean } = {}
   ) =>
-    teacherFetchJson<{ success: boolean; gradebookId: string; version: number; updatedAt: number }>(
+    teacherFetchJson<{
+      success: boolean;
+      gradebookId: string;
+      version: number;
+      updatedAt: number;
+      remappedStudentIds?: Record<string, string>;
+    }>(
       `/api/teacher/gradebook/${encodeURIComponent(subjectId)}/${encodeURIComponent(termId)}`,
       {
         method: 'PUT',

@@ -5,6 +5,9 @@ import {
   buildTeacherDelmasSystemPrompt,
   classifyTeacherDelmasIntent,
   filterSafeTeacherDelmasActions,
+  hasRealExplicitMatriculeBatch,
+  isLikelyFakeRowNumberMatricule,
+  isLikelyFakeSequentialMatriculeBatch,
   parseTeacherDelmasAiResponse,
   pickPreferredKimiModel,
   stripTeacherDelmasReasoning,
@@ -406,4 +409,139 @@ test('parseTeacherDelmasAiResponse supporte encore un fallback JSON propre sans 
     stripTeacherDelmasReasoning('<think>internal</think>Bonjour !'),
     'Bonjour !'
   );
+});
+
+test('Détection des faux matricules séquentiels (1..10) vs vrais matricules scolaires explicites', () => {
+  assert.equal(isLikelyFakeRowNumberMatricule('1'), true);
+  assert.equal(isLikelyFakeRowNumberMatricule('10'), true);
+  assert.equal(isLikelyFakeRowNumberMatricule('01'), true);
+  assert.equal(isLikelyFakeRowNumberMatricule('#3'), true);
+  assert.equal(isLikelyFakeRowNumberMatricule('1er'), true);
+  assert.equal(isLikelyFakeRowNumberMatricule('-'), true);
+  assert.equal(isLikelyFakeRowNumberMatricule('24-BTS-001'), false);
+  assert.equal(isLikelyFakeRowNumberMatricule('MAT-01'), false);
+  assert.equal(isLikelyFakeRowNumberMatricule('184592A'), false);
+  assert.equal(isLikelyFakeRowNumberMatricule('2025014'), false);
+
+  assert.equal(
+    isLikelyFakeSequentialMatriculeBatch(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10']),
+    true
+  );
+  assert.equal(isLikelyFakeSequentialMatriculeBatch(['0001', '0002', '0003']), true);
+  assert.equal(hasRealExplicitMatriculeBatch(['1', '2', '3', '4', '5']), false);
+  assert.equal(hasRealExplicitMatriculeBatch(['24-BTS-001', '24-BTS-002']), true);
+  assert.equal(hasRealExplicitMatriculeBatch(['2025001', '2025002']), true);
+});
+
+test('filterSafeTeacherDelmasActions supprime les faux matricules 1..10 / inventés et bloque set_show_matricule non demandé', () => {
+  // 1. Image contenant une colonne N° (1..3) sans vraie colonne Matricule -> tout est nettoyé et la colonne reste masquée
+  const fakeFromImage = filterSafeTeacherDelmasActions(
+    [
+      {
+        type: 'add_students',
+        students: [
+          { name: 'KOUASSI Aya Mariam', matricule: '1', notes: ['15', '14'] },
+          { name: 'TRAORÉ Ibrahim', matricule: '2', notes: ['12', '13'] },
+          { name: 'BÉDIÉ Jean-Marc', matricule: '3', notes: ['16', '15'] },
+        ],
+      },
+      { type: 'set_show_matricule', show: true, scope: 'sheet' },
+    ],
+    'IL FAUT LES ENREGISTRER',
+    {
+      hasAttachedFiles: true,
+      sourceFileTexts: [
+        'TYPE_CONTENU: LISTE_ELEVES_ET_NOTES\nCOLONNE_MATRICULE_PRESENTE: NON\nLigne 1 | Nom: KOUASSI Aya Mariam | Notes: 15, 14',
+      ],
+    }
+  );
+  assert.equal(fakeFromImage.length, 1);
+  assert.equal(fakeFromImage[0].type, 'add_students');
+  assert.deepEqual(
+    fakeFromImage[0].students.map((s: any) => s.matricule),
+    ['', '', '']
+  );
+
+  // 2. Sans fichier joint, l'utilisateur demande uniquement des notes mais l'IA invente des matricules aléatoires
+  const hallucinatedNoFile = filterSafeTeacherDelmasActions(
+    [
+      {
+        type: 'add_students',
+        students: [
+          { name: 'Delmas', matricule: '24-001', notes: ['14', '15'] },
+          { name: 'Koné', matricule: '83921', notes: ['12', '13'] },
+        ],
+      },
+      { type: 'set_show_matricule', show: true },
+    ],
+    'Ajoute Delmas avec 14 et 15 et Koné avec 12 et 13'
+  );
+  assert.equal(hallucinatedNoFile.length, 1);
+  assert.deepEqual(
+    hallucinatedNoFile[0].students.map((s: any) => s.matricule),
+    ['', '']
+  );
+
+  // 3. Sur update_students sans demande de matricule, la propriété matricule inventée est supprimée (préserve l'existant)
+  const updateHallucinated = filterSafeTeacherDelmasActions(
+    [
+      {
+        type: 'update_students',
+        updates: [{ matchName: 'Delmas', matricule: '1', notes: { '1': '16' } }],
+      },
+      { type: 'set_show_matricule', show: true },
+    ],
+    'Mets 16 en Note 1 à Delmas'
+  );
+  assert.equal(updateHallucinated.length, 1);
+  assert.equal('matricule' in updateHallucinated[0].updates[0], false);
+
+  // 4. Image comportant de VRAIS matricules (COLONNE_MATRICULE_PRESENTE: OUI) -> conservés ET set_show_matricule autorisé !
+  const realFromImage = filterSafeTeacherDelmasActions(
+    [
+      { type: 'set_show_matricule', show: true, scope: 'sheet' },
+      {
+        type: 'add_students',
+        students: [
+          { name: 'KOUASSI Aya Mariam', matricule: '24-BTS-001', notes: ['15', '14'] },
+          { name: 'TRAORÉ Ibrahim', matricule: '24-BTS-002', notes: ['12', '13'] },
+        ],
+      },
+    ],
+    'Enregistre les élèves de cette image',
+    {
+      hasAttachedFiles: true,
+      sourceFileTexts: [
+        'TYPE_CONTENU: LISTE_ELEVES_ET_NOTES\nCOLONNE_MATRICULE_PRESENTE: OUI\nLigne 1 | Matricule: 24-BTS-001 | Nom: KOUASSI Aya Mariam | Notes: 15, 14\nLigne 2 | Matricule: 24-BTS-002 | Nom: TRAORÉ Ibrahim | Notes: 12, 13',
+      ],
+    }
+  );
+  assert.equal(realFromImage.length, 2);
+  assert.equal(realFromImage[0].type, 'set_show_matricule');
+  assert.deepEqual(
+    realFromImage[1].students.map((s: any) => s.matricule),
+    ['24-BTS-001', '24-BTS-002']
+  );
+
+  // 5. Demande explicite de l'utilisateur (ajout ou masquage/nettoyage de matricules) -> entièrement respectée !
+  const explicitAddMat = filterSafeTeacherDelmasActions(
+    [
+      { type: 'add_students', students: [{ name: 'Delmas', matricule: '07', notes: ['15'] }] },
+      { type: 'set_show_matricule', show: true },
+    ],
+    'Ajoute Delmas avec le matricule 07 et la note 15'
+  );
+  assert.equal(explicitAddMat.length, 2);
+  assert.equal(explicitAddMat[0].students[0].matricule, '07');
+
+  const explicitHideAndClear = filterSafeTeacherDelmasActions(
+    [
+      { type: 'set_show_matricule', show: false, scope: 'sheet' },
+      { type: 'update_students', updates: [{ matchName: 'KOUASSI', matricule: '' }] },
+    ],
+    'Cache la colonne matricule et efface les faux matricules'
+  );
+  assert.equal(explicitHideAndClear.length, 2);
+  assert.equal(explicitHideAndClear[0].show, false);
+  assert.equal(explicitHideAndClear[1].updates[0].matricule, '');
 });

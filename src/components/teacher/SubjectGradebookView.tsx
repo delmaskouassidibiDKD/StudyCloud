@@ -60,10 +60,11 @@ import {
   TeacherDelmasAssistantRibbonButton,
   TeacherDelmasAssistantDrawer,
 } from './TeacherDelmasAssistantDrawer';
-import type {
-  TeacherDelmasAction,
-  TeacherDelmasActiveContext,
-  TeacherDelmasSheetBridge,
+import {
+  hasRealExplicitMatriculeBatch,
+  type TeacherDelmasAction,
+  type TeacherDelmasActiveContext,
+  type TeacherDelmasSheetBridge,
 } from '../../utils/teacherDelmasActionEngine';
 import type { TeacherDelmasWorkspaceSnapshot } from '../../services/teacherGradebookApi';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
@@ -763,12 +764,27 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     setCloudSaveError(null);
 
     try {
-      await TeacherGradebookAPI.saveGradebook(
+      const saveRes = await TeacherGradebookAPI.saveGradebook(
         subject.id,
         effectiveTermId,
         latestPayloadRef.current,
         { keepalive: opts?.keepalive }
       );
+      if (saveRes?.remappedStudentIds && Object.keys(saveRes.remappedStudentIds).length > 0) {
+        const remap = saveRes.remappedStudentIds;
+        skipNextAutoSaveRef.current = true;
+        setStudents((prev) =>
+          prev.map((row) => {
+            const nextId = remap[row.id];
+            if (!nextId) return row;
+            return {
+              ...row,
+              id: nextId,
+              studentUid: row.studentUid || row.id,
+            };
+          })
+        );
+      }
       if (needsFollowupSaveRef.current) {
         needsFollowupSaveRef.current = false;
         hasPendingCloudChangesRef.current = true;
@@ -3195,6 +3211,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         return out;
       };
 
+      let pendingAutoShowMatricule = false;
+      let explicitMatriculeToggleSeen = false;
+
       for (const action of actions) {
         if (!action || typeof action !== 'object') continue;
 
@@ -3203,7 +3222,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             const incoming = Array.isArray(action.students) ? action.students : [];
             if (incoming.length === 0) break;
             let added = 0;
-            let hasAnyMat = false;
+            const collectedMats: string[] = [];
             for (const item of incoming) {
               if (!item || typeof item !== 'object') continue;
               const cleanName = String(item.name || '').trim();
@@ -3214,7 +3233,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               );
               const hasAnyNote = normalizedNotes.some((n) => n.trim().length > 0);
               if (!cleanName && !cleanMat && !hasAnyNote) continue;
-              if (cleanMat) hasAnyMat = true;
+              if (cleanMat) collectedMats.push(cleanMat);
               const emptyIdx = workingStudents.findIndex(isRowEmpty);
               if (emptyIdx >= 0) {
                 const target = workingStudents[emptyIdx];
@@ -3236,8 +3255,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             }
             if (added > 0) {
               studentsMutated = true;
-              if (hasAnyMat && !effectiveShowMatricule) {
-                await handleSaveShowMatricule(true, 'sheet');
+              if (hasRealExplicitMatriculeBatch(collectedMats) && !effectiveShowMatricule) {
+                pendingAutoShowMatricule = true;
               }
               summaries.push(`✓ ${added} élève(s) ajouté(s) dans ${subject.name}`);
             }
@@ -3251,7 +3270,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               ? action.students
               : [action];
             let updatedCount = 0;
-            let hasAnyMat = false;
+            const collectedMats: string[] = [];
             const displayedOrderIds = studentsWithStats.map((s) => s.id);
 
             for (const u of updates) {
@@ -3291,7 +3310,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               if (targetIdx === -1 && (u.newName || searchName)) {
                 const emptyIdx = workingStudents.findIndex(isRowEmpty);
                 const cleanMat = String(u.matricule || '').trim().slice(0, 48);
-                if (cleanMat) hasAnyMat = true;
+                if (cleanMat) collectedMats.push(cleanMat);
                 if (emptyIdx >= 0) {
                   workingStudents[emptyIdx] = {
                     ...workingStudents[emptyIdx],
@@ -3317,7 +3336,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   u.matricule !== undefined
                     ? String(u.matricule).trim().slice(0, 48)
                     : cur.matricule || '';
-                if (u.matricule) hasAnyMat = true;
+                if (typeof u.matricule === 'string' && u.matricule.trim()) {
+                  collectedMats.push(u.matricule.trim());
+                }
                 workingStudents[targetIdx] = {
                   ...cur,
                   name:
@@ -3336,8 +3357,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
             if (updatedCount > 0) {
               studentsMutated = true;
-              if (hasAnyMat && !effectiveShowMatricule) {
-                await handleSaveShowMatricule(true, 'sheet');
+              if (hasRealExplicitMatriculeBatch(collectedMats) && !effectiveShowMatricule) {
+                pendingAutoShowMatricule = true;
               }
               summaries.push(`✓ ${updatedCount} élève(s) mis à jour dans ${subject.name}`);
             }
@@ -3347,10 +3368,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           case 'set_students': {
             const list = Array.isArray(action.students) ? action.students : [];
             if (list.length === 0) break;
-            let hasAnyMat = false;
+            const collectedMats: string[] = [];
             workingStudents = list.map((item: any) => {
               const cleanMat = String(item?.matricule || '').trim().slice(0, 48);
-              if (cleanMat) hasAnyMat = true;
+              if (cleanMat) collectedMats.push(cleanMat);
               return {
                 id: generateTeacherEntityId('std'),
                 name: String(item?.name || '').trim(),
@@ -3362,8 +3383,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               };
             });
             studentsMutated = true;
-            if (hasAnyMat && !effectiveShowMatricule) {
-              await handleSaveShowMatricule(true, 'sheet');
+            if (hasRealExplicitMatriculeBatch(collectedMats) && !effectiveShowMatricule) {
+              pendingAutoShowMatricule = true;
             }
             summaries.push(
               `✓ Liste de ${workingStudents.length} élève(s) appliquée dans ${subject.name}`
@@ -3645,6 +3666,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             const show = action.show !== undefined ? Boolean(action.show) : true;
             const scope: SheetSettingScope =
               action.scope === 'class' ? 'class' : 'sheet';
+            explicitMatriculeToggleSeen = true;
             await handleSaveShowMatricule(show, scope);
             summaries.push(
               `✓ Colonne Matricule ${show ? 'affichée' : 'masquée'} (${
@@ -3896,29 +3918,53 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             );
             const sourceSubj =
               workspaceSnapshot.subjects.find(
-                (s) =>
-                  s.id === action.sourceSubjectId ||
-                  (s.classId === schoolClass.id &&
-                    normalizeStudentNameKey(s.name).includes(searchSubjName))
+                (s) => action.sourceSubjectId && s.id === action.sourceSubjectId
               ) ||
-              workspaceSnapshot.subjects.find((s) =>
-                normalizeStudentNameKey(s.name).includes(searchSubjName)
+              workspaceSnapshot.subjects.find(
+                (s) =>
+                  s.classId === schoolClass.id &&
+                  s.termId === effectiveTermId &&
+                  searchSubjName.length > 0 &&
+                  normalizeStudentNameKey(s.name).includes(searchSubjName)
+              ) ||
+              workspaceSnapshot.subjects.find(
+                (s) =>
+                  s.classId === schoolClass.id &&
+                  searchSubjName.length > 0 &&
+                  normalizeStudentNameKey(s.name).includes(searchSubjName)
+              ) ||
+              workspaceSnapshot.subjects.find(
+                (s) =>
+                  searchSubjName.length > 0 &&
+                  normalizeStudentNameKey(s.name).includes(searchSubjName)
               );
 
             if (sourceSubj) {
-              const sourceGb = workspaceSnapshot.gradebooks.find(
-                (g) => g.subjectId === sourceSubj.id
-              );
+              const sourceGb =
+                workspaceSnapshot.gradebooks.find(
+                  (g) => g.subjectId === sourceSubj.id && g.termId === effectiveTermId
+                ) ||
+                workspaceSnapshot.gradebooks.find(
+                  (g) => g.subjectId === sourceSubj.id
+                );
               if (sourceGb && sourceGb.students.length > 0) {
                 const includeNotes = Boolean(action.includeNotes);
-                let hasAnyMat = false;
+                const sourceHasRealMatricules = hasRealExplicitMatriculeBatch(
+                  sourceGb.students.map((st) => st.matricule || '')
+                );
                 workingStudents = sourceGb.students.map((st) => {
-                  if (st.matricule) hasAnyMat = true;
+                  const cleanMat = sourceHasRealMatricules
+                    ? String(st.matricule || '').trim().slice(0, 48)
+                    : effectiveShowMatricule
+                    ? String(st.matricule || '').trim().slice(0, 48)
+                    : '';
                   return {
-                    id: st.id || generateTeacherEntityId('std'),
-                    studentUid: st.id,
+                    // Toujours générer un nouvel `id` unique pour cette matière (évite toute collision PK D1),
+                    // tout en conservant `studentUid` pour relier l'élève entre matières dans Moyenne Générale.
+                    id: generateTeacherEntityId('std'),
+                    studentUid: st.id || generateTeacherEntityId('std'),
                     name: st.name,
-                    matricule: st.matricule || '',
+                    matricule: cleanMat,
                     notes: includeNotes
                       ? normalizeIncomingNotes(
                           st.notes,
@@ -3928,8 +3974,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   };
                 });
                 studentsMutated = true;
-                if (hasAnyMat && !effectiveShowMatricule) {
-                  await handleSaveShowMatricule(true, 'sheet');
+                if (sourceHasRealMatricules && !effectiveShowMatricule) {
+                  pendingAutoShowMatricule = true;
                 }
                 summaries.push(
                   `✓ ${sourceGb.students.length} élève(s) copié(s) depuis « ${sourceSubj.name} »`
@@ -3997,7 +4043,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       if (stylesMutated) {
         setCellCustomStyles(workingCellStyles);
       }
-      if (colsMutated || studentsMutated || stylesMutated) {
+      if (pendingAutoShowMatricule && !explicitMatriculeToggleSeen) {
+        setSheetShowMatricule(true);
+      }
+      if (colsMutated || studentsMutated || stylesMutated || (pendingAutoShowMatricule && !explicitMatriculeToggleSeen)) {
         setIsSaved(false);
         setTimeout(() => {
           flushCloudSave({ force: true });

@@ -949,10 +949,13 @@ EXAMINE MINUTIEUSEMENT CETTE IMAGE ET RÉPONDS EN SUIVANT STRICTEMENT CE FORMAT 
    - TYPE_CONTENU: DOCUMENT_HORS_NOTES (si l'image ne contient AUCUNE liste d'élèves ni notes : ex. photo personnelle, paysage, exercice de cours, facture, objet, schéma, texte sans notes)
 
 2. SI TYPE_CONTENU EST LISTE_ELEVES_ET_NOTES OU LISTE_ELEVES_SEULE :
-   - Indique les en-têtes de colonnes visibles (ex : N°, Matricule, Nom & Prénom, Note 1 /20, Note 2 /20, Devoir, Compo, Moyenne...).
+   - Indique les en-têtes de colonnes réellement visibles sur l'image.
+   - Indique sur une ligne dédiée :
+     COLONNE_MATRICULE_PRESENTE: OUI (UNIQUEMENT s'il existe une vraie colonne explicitement intitulée « Matricule », « Mat. », « ID Élève », « Code élève » ou « N° Matricule » contenant de vrais codes/identifiants élèves) ou NON (s'il y a seulement une colonne de numérotation de ligne « N° », « # », « Rang » contenant 1, 2, 3, 4... ou aucune colonne matricule).
+   - RÈGLE STRICTE SUR LE MATRICULE : Ne confonds JAMAIS un numéro de ligne ou d'ordre (« N° », « 1, 2, 3, 4... », « 01, 02, 03... », « Rang ») avec un Matricule ! S'il n'y a pas de vraie colonne Matricule, laisse IMPÉRATIVEMENT « Matricule: » vide (ne mets RIEN après « Matricule: »).
    - Retranscris FIDÈLEMENT ET SANS EXCEPTION CHAQUE LIGNE VISIBLE de haut en bas au format clair :
-     Ligne 1 | Matricule: <si visible sinon vide> | Nom: <Nom et prénom exact> | Notes: <Note1>, <Note2>, ... (précise le barème /20, /10, /40 si indiqué).
-   - N'INVENTE JAMAIS de nom ni de note. Si un chiffre est illisible, écris [illisible].
+     Ligne 1 | Matricule: <UNIQUEMENT si vraie colonne Matricule visible, sinon laisser vide> | Nom: <Nom et prénom exact> | Notes: <Note1>, <Note2>, ... (précise le barème /20, /10, /40 si indiqué).
+   - N'INVENTE JAMAIS de nom, de matricule ni de note. Si un chiffre est illisible, écris [illisible].
 
 3. SI TYPE_CONTENU EST DOCUMENT_HORS_NOTES :
    - Décris factuellement en 2 à 3 phrases courtes ce qui apparaît réellement sur l'image (sans inventer aucun élève ni aucune note).`
