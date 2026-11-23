@@ -101,6 +101,9 @@ test('classifyTeacherDelmasIntent distingue discussion simple (chat), lecture/an
     'Devrais-je passer la moyenne de ce tableau sur 40 ?',
     'Comment trier ce tableau par ordre de mérite ?',
     'Bonjour, quelle est la moyenne de DKD ?',
+    'DES ACTION QUE TU PEUX MENER DANS LE TABLEAUX',
+    'Quelles actions peux-tu faire dans le tableau ?',
+    'Est-ce que tu peux modifier le tableau ?',
   ]) {
     const intent = classifyTeacherDelmasIntent({
       message: msg,
@@ -193,7 +196,7 @@ test('classifyTeacherDelmasIntent gère proprement les fichiers joints (lecture 
   assert.equal(casualOk.intent, 'chat');
 });
 
-test('buildTeacherDelmasSystemPrompt en mode chat ne divulgue ni les lignes du tableau ni le catalogue d’actions', () => {
+test('buildTeacherDelmasSystemPrompt en mode chat ne divulgue ni les lignes du tableau ni le catalogue JSON mais connaît ses vraies capacités', () => {
   const chatPrompt = buildTeacherDelmasSystemPrompt({
     languageCode: 'fr',
     activeContext: sampleContext,
@@ -202,9 +205,20 @@ test('buildTeacherDelmasSystemPrompt en mode chat ne divulgue ni les lignes du t
 
   assert.ok(chatPrompt.includes('ZÉRO pression'));
   assert.ok(chatPrompt.includes('NE cite AUCUNE donnée du tableau'));
+  assert.ok(chatPrompt.includes('NE DIS JAMAIS'));
+  assert.ok(chatPrompt.includes('Trier le classement'));
   assert.ok(!chatPrompt.includes('id="std-1"'));
   assert.ok(!chatPrompt.includes('add_students'));
   assert.ok(!chatPrompt.includes('<delmas_actions>'));
+
+  const inspectPrompt = buildTeacherDelmasSystemPrompt({
+    languageCode: 'fr',
+    activeContext: sampleContext,
+    intent: 'inspect',
+  });
+  assert.ok(inspectPrompt.includes('NE DIS JAMAIS'));
+  assert.ok(inspectPrompt.includes('Trier le classement'));
+  assert.ok(inspectPrompt.includes('DKD'));
 });
 
 test('buildTeacherDelmasSystemPrompt en mode action inclut la langue forcée, le contexte actif et la cible exclusive', () => {

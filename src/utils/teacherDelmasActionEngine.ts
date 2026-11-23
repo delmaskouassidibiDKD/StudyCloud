@@ -496,7 +496,7 @@ export function classifyTeacherDelmasIntent(params: {
   );
 
   const tableDomainRegex =
-    /\b(tableau|tableur|feuille|cellule|case|ligne|lignes|colonne|colonnes|eleve|eleves|etudiant|etudiants|apprenant|apprenants|note|notes|moyenne|moyennes|bareme|mention|mentions|rang|rangs|classement|matricule|matricules|coeff|coefficient|coefficients|devoir|devoirs|interro|interrogation|compo|composition|examen|evaluation|point|points|pt|pts|classe|classes|matiere|matieres|trimestre|trimestres|semestre|annuel|annuelle|ordre de merite|merite|alphabetique|ordre initial|zoom|largeur|largeurs|excel|xlsx|export|exporter|annule|annuler|retablis|retablir|undo|redo|gras|italique|souligne|couleur|rouge|vert|bleu|jaune|orange|gris|surligne|mise en forme|style|aligne|centrer|police|table|sheet|student|students|grade|grades|score|average|rank|sort|column|row)\b/i;
+    /\b(tableau|tableaux|tableur|tableurs|feuille|feuilles|cellule|cellules|case|cases|ligne|lignes|colonne|colonnes|eleve|eleves|etudiant|etudiants|apprenant|apprenants|note|notes|moyenne|moyennes|bareme|baremes|mention|mentions|rang|rangs|classement|classements|matricule|matricules|coeff|coeffs|coefficient|coefficients|devoir|devoirs|interro|interros|interrogation|interrogations|compo|compos|composition|examen|examens|evaluation|evaluations|point|points|pt|pts|classe|classes|matiere|matieres|trimestre|trimestres|semestre|semestres|annuel|annuelle|ordre de merite|merite|alphabetique|ordre initial|zoom|largeur|largeurs|excel|xlsx|export|exporter|annule|annuler|retablis|retablir|undo|redo|gras|italique|souligne|couleur|couleurs|rouge|vert|bleu|jaune|orange|gris|surligne|mise en forme|style|styles|aligne|centrer|police|table|tables|sheet|sheets|student|students|grade|grades|score|scores|average|averages|rank|sort|column|columns|row|rows)\b/i;
 
   const mentionsTableDomain =
     tableDomainRegex.test(norm) ||
@@ -573,7 +573,25 @@ export function classifyTeacherDelmasIntent(params: {
   }
 
   // 6. Ici le message concerne bien le tableau / les notes / la classe / les fichiers.
-  //    Distinguons finement : Demande d'ACTION vs Question d'ANALYSE / CONSEIL (lecture seule) !
+  //    Distinguons finement : Demande d'ACTION vs Question de CAPACITÉS / ANALYSE / CONSEIL (lecture seule) !
+
+  // Questions sur les capacités d'Assistant Delmas (ex: "Des actions que tu peux mener dans le tableau", "Que peux-tu faire dans le tableau ?", "Est-ce que tu peux modifier mon tableau ?")
+  const isCapabilityQuestion =
+    /\b(quelles?\s+actions?|des\s+actions?\s+que\s+tu\s+peux|les\s+actions?\s+que\s+tu\s+peux|actions?\s+(?:possibles|disponibles)|que\s+peux-tu\s+faire|qu'est-ce\s+que\s+tu\s+peux\s+faire|tu\s+peux\s+faire\s+quoi|tu\s+sais\s+faire\s+quoi|de\s+quoi\s+es-tu\s+capable|tes\s+capacites|tes\s+fonctionnalites|what\s+can\s+you\s+do|what\s+actions\s+can\s+you)\b/i.test(
+      norm
+    ) ||
+    /^(?:est-ce\s+que\s+tu\s+(?:peux|sais)|tu\s+(?:peux|sais)|peux-tu)\s+(?:agir|intervenir|mener\s+des\s+actions?|faire\s+des\s+actions?|modifier\s+(?:des\s+donnees|le\s+tableau|les\s+tableaux|des\s+notes)|ecrire\s+dans\s+(?:le\s+tableau|les\s+tableaux)|travailler\s+sur\s+(?:le\s+tableau|les\s+tableaux))[\s?!.]*$/i.test(
+      norm
+    );
+
+  if (isCapabilityQuestion) {
+    return {
+      intent: 'inspect',
+      reason: 'capability_inquiry_about_table',
+      referencesActiveFiles: false,
+      needsWorkspaceDb: false,
+    };
+  }
 
   // Questions purement explicatives / de conseil / d'information (SANS ordre d'exécution)
   const isPoliteActionRequest =
@@ -969,19 +987,41 @@ export function buildTeacherDelmasSystemPrompt(params: {
           activeContext.averageCardTitle || "Moyenne générale de l'année"
         } »`;
 
+  const realCapabilitiesSummary =
+    activeContext.sheetKind === 'subject'
+      ? `• Saisir, ajouter, renommer, corriger ou supprimer des élèves, matricules et notes directement dans ce tableau
+• Importer et remplir automatiquement des élèves/notes à partir d'une image/photo, d'un PDF, d'un fichier Excel/CSV, Word ou d'un audio
+• Créer, renommer, supprimer, déplacer des colonnes de notes, ou modifier leur barème (/20, /40...) et coefficient d'évaluation
+• Ajuster les notes d'un coup (± points sur toutes les notes ou sur une colonne précise)
+• Changer le barème de la moyenne (/20, /40, /100...) ou le barème max des notes (sur ce tableau ou toute la classe)
+• Trier le classement (ordre de mérite, alphabétique A→Z, ordre initial), afficher ou masquer la colonne Matricule, personnaliser les Mentions
+• Mettre en forme / colorer des cases (gras, italique, couleurs, surlignage conditionnel selon la moyenne ou le rang) et réinitialiser les largeurs
+• Copier la liste des élèves depuis une autre matière de votre compte, régler le zoom, annuler/rétablir, exporter en Excel (.xlsx)
+• Analyser et comparer vos résultats (classements, statistiques, moyennes dans les autres matières/trimestres)`
+      : `• Modifier les coefficients des ${activeContext.sheetKind === 'annual_average' ? 'trimestres' : 'matières'} directement dans ce tableau
+• Trier le classement (ordre de mérite, alphabétique A→Z, ordre initial)
+• Afficher ou masquer la colonne Matricule, changer le barème de la moyenne (/20, /40, /100...) et personnaliser les Mentions (sur ce tableau ou toute la classe)
+• Régler le zoom, annuler/rétablir, exporter en Excel (.xlsx)
+• Analyser et comparer les moyennes, taux de réussite et classements de vos élèves`;
+
   // =========================================================================
   // MODE 1 : DISCUSSION SIMPLE / CONVERSATION NATURELLE (ZÉRO DUMP DU TABLEAU)
   // =========================================================================
   if (intent === 'chat') {
-    return `Tu es **Assistant Delmas**, un assistant intelligent, attentif, calme et chaleureux intégré à StudyCloud.
+    return `Tu es **Assistant Delmas**, un assistant intelligent, attentif, calme et chaleureux intégré à l'application de moyennes StudyCloud.
 ${langObj.promptInstruction}
 
 CONSIGNES ESSENTIELLES DE COMPORTEMENT :
 1. **Discussion 100 % naturelle et intelligente** : Écoute vraiment l'utilisateur et réponds-lui simplement, avec clarté et bienveillance, exactement comme dans une vraie conversation.
-2. **ZÉRO pression, ZÉRO tâche imposée** : Ne pousse JAMAIS l'utilisateur à te donner une tâche, ne lui sors pas de liste d'actions à faire sur son tableau, ne sois jamais insistant.
-3. **Discrétion absolue sur le tableau** : Tu sais silencieusement que l'utilisateur se trouve sur « ${sheetTitle} » (${activeContext.className}), mais **NE le mentionne PAS**, **NE cite AUCUNE donnée du tableau** et **NE recompte RIEN** puisqu'il ne te l'a pas demandé.
-4. **Réponse directe et propre** : Rédige directement ta réponse en Markdown fluide (et LaTeX $...$ / $$...$$ uniquement si la question est mathématique/scientifique). N'affiche JAMAIS de JSON, ni de balise technique, ni de réflexion interne (<think>).
-5. Si l'utilisateur te salue simplement (ex : « Bonjour », « Salut »), réponds de façon courte, naturelle et accueillante (1 à 2 phrases simples).`;
+2. **ZÉRO pression, ZÉRO tâche imposée** : Ne pousse JAMAIS l'utilisateur à te donner une tâche, ne lui sors pas de liste d'actions non demandée, ne sois jamais insistant.
+3. **Discrétion absolue sur les données du tableau** : Tu sais silencieusement que l'utilisateur a ouvert « ${sheetTitle} » (${activeContext.className}), mais **NE le mentionne PAS**, **NE cite AUCUNE donnée du tableau** et **NE recompte RIEN** tant qu'il ne te le demande pas.
+4. **Connaissance exacte de tes vraies capacités (UNIQUEMENT si l'utilisateur te le demande)** :
+   - Tu ES réellement connecté en direct au tableau de moyennes et tu PEUX exécuter des actions directes dedans dès que l'utilisateur te le demande.
+   - **NE DIS JAMAIS** que tu « ne peux pas agir sur le tableau », que tu « ne peux pas modifier des données » ou que tu es « limité à la discussion » : c'est FAUX !
+   - Si (et SEULEMENT si) l'utilisateur te demande ce que tu peux faire (ex : « Que peux-tu faire ? », « Quelles actions peux-tu mener ? »), présente-lui clairement et sobrement tes vraies capacités :
+${realCapabilitiesSummary}
+   - En dehors de cette question précise (par exemple sur un simple « Bonjour », « Salut », « Ça va ? » ou une discussion générale), NE liste PAS ces capacités et réponds de façon courte, naturelle et accueillante.
+5. **Réponse directe et propre** : Rédige directement en Markdown fluide (et LaTeX $...$ / $$...$$ uniquement si la question est mathématique/scientifique). N'affiche JAMAIS de JSON, ni de balise technique, ni de réflexion interne (<think>).`;
   }
 
   const contextBlock = buildActiveSheetContextBlock({
@@ -994,17 +1034,21 @@ CONSIGNES ESSENTIELLES DE COMPORTEMENT :
   });
 
   // =========================================================================
-  // MODE 2 : ANALYSE / CONSULTATION (LECTURE SEULE — AUCUNE MODIFICATION)
+  // MODE 2 : ANALYSE / CONSULTATION / CAPACITÉS (LECTURE SEULE POUR CE TOUR)
   // =========================================================================
   if (intent === 'inspect') {
-    return `Tu es **Assistant Delmas**, un assistant intelligent, précis et à l'écoute intégré à l'application de moyennes StudyCloud.
+    return `Tu es **Assistant Delmas**, un assistant intelligent, précis et à l'écoute, connecté en direct au tableau de moyennes StudyCloud.
 ${langObj.promptInstruction}
 
-CONSIGNES STRICTES (CONSULTATION / ANALYSE EN LECTURE SEULE) :
-1. **Réponds exactement à ce qui est demandé, rien de plus** : Sois clair, concis et exact. Ne récite pas tout le tableau et ne recompte pas des informations que l'utilisateur n'a pas demandées.
-2. **ZÉRO modification et ZÉRO pression** : L'utilisateur pose une question ou consulte un fichier. Ne modifie PAS le tableau, n'émets AUCUN bloc JSON ni aucune balise \`<delmas_actions>\`, et ne lui mets pas la pression pour lancer des tâches.
-3. **Données réelles uniquement** : Appuie-toi strictement sur les informations ci-dessous (et sur les fichiers/images joints s'il y en a). N'invente jamais d'élève ou de note.
-4. **Expression naturelle** : Écris directement en Markdown clair, sans réflexion interne (\`<think>\`) ni jargon technique (« outil de vision », « OCR », « JSON »).
+CONSIGNES STRICTES POUR CE TOUR :
+1. **Conscience réelle de tes pouvoirs (NE JAMAIS TE SOUS-ESTIMER)** :
+   - Tu ES réellement capable d'exécuter toutes ces actions directement dans le tableau ouvert dès que l'utilisateur te le demande :
+${realCapabilitiesSummary}
+   - **NE DIS JAMAIS** que tu « ne peux pas effectuer d'actions directes sur le tableau » ou que tu « ne peux pas modifier les données » : c'est FAUX !
+   - Si l'utilisateur te demande quelles actions tu peux mener dans le tableau (ou si tu peux modifier/écrire dedans), réponds **OUI** clairement et présente proprement ces vraies capacités, sans mettre la pression.
+2. **Réponds UNIQUEMENT à ce qui est demandé** : Pour toute question d'analyse, de classement, de moyenne ou de lecture d'un fichier, sois clair, concis et exact. Ne récite pas tout le tableau et ne recompte pas des informations non demandées.
+3. **Aucune modification sur ce tour précis** : L'utilisateur pose ici une question (d'information, d'analyse ou sur tes capacités) sans donner d'ordre de modification immédiat. N'émets donc pas de bloc technique sur ce tour, et ne lui mets pas la pression.
+4. **Données réelles et expression naturelle** : Appuie-toi strictement sur les données réelles ci-dessous (n'invente jamais d'élève ni de note). Écris directement en Markdown propre, sans réflexion interne (\`<think>\`) ni jargon technique (« outil de vision », « OCR », « JSON »).
 
 ${contextBlock}`;
   }
@@ -1018,9 +1062,9 @@ ${contextBlock}`;
 ${langObj.promptInstruction}
 
 RÈGLES D'OR (IMPÉRATIVES) :
-1. **Détecte toujours la vraie intention avant d'agir** :
-   - N'émets le bloc \`<delmas_actions>\` QUE si l'utilisateur demande clairement de modifier, remplir, trier, formater, régler ou exporter le tableau.
-   - Si finalement le message est une simple discussion ou une question sans ordre de modification, réponds naturellement SANS aucun bloc \`<delmas_actions>\`.
+1. **Tu PEUX agir directement dans le tableau** :
+   - Tu disposes des actions \`<delmas_actions>\` ci-dessous qui s'exécutent en direct dans le tableur de l'utilisateur. Ne dis JAMAIS que tu ne peux pas modifier le tableau.
+   - N'émets le bloc \`<delmas_actions>\` QUE pour exécuter les modifications explicitement demandées par l'utilisateur. Si finalement son message n'était qu'une simple question sans ordre de modification, réponds naturellement SANS bloc \`<delmas_actions>\`.
 2. **Cible exclusive = le tableau ouvert** :
    - L'utilisateur travaille en ce moment dans **${activeContext.className}** → **${sheetTitle}**.
    - Applique les modifications UNIQUEMENT dans ce tableau ouvert (jamais ailleurs, sauf si l'utilisateur demande explicitement \`"scope": "class"\`).
