@@ -55,6 +55,10 @@ import {
   MentionAndMatriculeControls,
   type SheetSettingScope,
 } from './MentionAndMatriculeControls';
+import {
+  TeacherDelmasAssistantRibbonButton,
+  TeacherDelmasAssistantDrawer,
+} from './TeacherDelmasAssistantDrawer';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import {
   useViewerExpandLevel,
@@ -1542,6 +1546,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     order: 'Ordre initial',
   };
 
+  const [isDelmasAssistantOpen, setIsDelmasAssistantOpen] = useState(false);
+
   return (
     <div
       ref={containerRef}
@@ -1559,15 +1565,15 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
           border-color: #334155 !important;
           color: #e2e8f0 !important;
         }
-        .dark .term-avg-sheet > header button,
-        .dark .term-avg-sheet > section button,
+        .dark .term-avg-sheet > header button:not(.delmas-ribbon-trigger),
+        .dark .term-avg-sheet > section button:not(.delmas-ribbon-trigger),
         .dark .term-avg-sheet > section select {
           background-color: #1e293b !important;
           border-color: #475569 !important;
           color: #e2e8f0 !important;
         }
-        .dark .term-avg-sheet > header button:hover,
-        .dark .term-avg-sheet > section button:hover {
+        .dark .term-avg-sheet > header button:not(.delmas-ribbon-trigger):hover,
+        .dark .term-avg-sheet > section button:not(.delmas-ribbon-trigger):hover {
           background-color: #334155 !important;
         }
         .dark .term-avg-sheet .term-avg-grid-canvas {
@@ -2162,6 +2168,12 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
           onSaveMentionRules={handleSaveMentionRules}
           onSaveShowMatricule={handleSaveShowMatricule}
           onSaveAverageScale={handleSaveAverageScale}
+        />
+
+        {/* Bouton Assistant Delmas (Robot bleu animé + "Assistant Delmas" écrit en bas, placé tout à droite du ruban) */}
+        <TeacherDelmasAssistantRibbonButton
+          isOpen={isDelmasAssistantOpen}
+          onToggle={() => setIsDelmasAssistantOpen((prev) => !prev)}
         />
       </section>
 
@@ -4094,6 +4106,12 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
           </div>,
           document.body
         )}
+
+      {/* Menu latéral droit coulissant fluide : Assistant Delmas */}
+      <TeacherDelmasAssistantDrawer
+        isOpen={isDelmasAssistantOpen}
+        onClose={() => setIsDelmasAssistantOpen(false)}
+      />
     </div>
   );
 };

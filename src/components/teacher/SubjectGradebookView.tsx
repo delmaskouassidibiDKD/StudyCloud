@@ -56,6 +56,10 @@ import {
   type NoteColumnOption,
   type SheetSettingScope,
 } from './MentionAndMatriculeControls';
+import {
+  TeacherDelmasAssistantRibbonButton,
+  TeacherDelmasAssistantDrawer,
+} from './TeacherDelmasAssistantDrawer';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
 import {
@@ -658,6 +662,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   // Poignées externes (Astérisque et coin bas-droite)
   const [isDraggingCorner, setIsDraggingCorner] = useState(false);
+  const [isDelmasAssistantOpen, setIsDelmasAssistantOpen] = useState(false);
   const [isDraggingRight, setIsDraggingRight] = useState(false);
   const [dragPreviewRows, setDragPreviewRows] = useState(0);
 
@@ -4240,6 +4245,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           onSaveAverageScale={handleSaveAverageScale}
           onBulkUpdateNoteMax={handleBulkUpdateNoteMax}
         />
+
+        {/* Bouton Assistant Delmas (Robot bleu animé + "Assistant Delmas" écrit en bas, placé tout à droite du ruban) */}
+        <TeacherDelmasAssistantRibbonButton
+          isOpen={isDelmasAssistantOpen}
+          onToggle={() => setIsDelmasAssistantOpen((prev) => !prev)}
+        />
       </section>
 
       {/* ========================================================================= */}
@@ -6499,6 +6510,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         </>,
         document.body
       )}
+
+      {/* Menu latéral droit coulissant fluide : Assistant Delmas */}
+      <TeacherDelmasAssistantDrawer
+        isOpen={isDelmasAssistantOpen}
+        onClose={() => setIsDelmasAssistantOpen(false)}
+      />
     </div>
   );
 };
