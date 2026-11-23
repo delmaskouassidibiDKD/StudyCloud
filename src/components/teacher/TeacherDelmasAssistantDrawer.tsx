@@ -184,6 +184,51 @@ function createSmallImagePreviewDataUrl(file: File): Promise<string | undefined>
   });
 }
 
+function createVisionReadyImageDataUrl(file: File): Promise<string | undefined> {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result !== 'string') {
+        resolve(undefined);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const maxDim = 1600;
+          const ratio = Math.min(1, maxDim / Math.max(img.width || 1, img.height || 1));
+          const w = Math.max(1, Math.round(img.width * ratio));
+          const h = Math.max(1, Math.round(img.height * ratio));
+          const canvas = document.createElement('canvas');
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(undefined);
+            return;
+          }
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, w, h);
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL('image/jpeg', 0.88));
+        } catch {
+          resolve(undefined);
+        }
+      };
+      img.onerror = () => resolve(undefined);
+      img.src = reader.result;
+    };
+    reader.onerror = () => resolve(undefined);
+    reader.readAsDataURL(file);
+  });
+}
+
+function isPlaceholderMediaText(text?: string): boolean {
+  if (!text) return true;
+  const t = text.trim();
+  return !t || /^\[(?:Image jointe|Enregistrement audio joint)\s*:/i.test(t);
+}
+
 function getCachedKimiBackgroundModel(): ResolvedBackgroundModel {
   try {
     const raw = localStorage.getItem('studycloud_active_ai_models_v2');
@@ -626,8 +671,10 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
 
         if (isImg) {
           fileType = 'image';
-          // 1. Image complète pour la vision IA multimodale
-          imageBase64 = await resolveImageBase64(file, `${file.name}_${file.size}`);
+          // 1. Image nette redimensionnée (<= 1600px JPEG 88%) pour une lecture OCR / Vision ultra-rapide et précise
+          imageBase64 =
+            (await createVisionReadyImageDataUrl(file)) ||
+            (await resolveImageBase64(file, `${file.name}_${file.size}`));
           // 2. Miniature légère pour l'aperçu rapide
           previewDataUrl = await createSmallImagePreviewDataUrl(file);
           // 3. Image compressée WebP pour l'enregistrement dans le dossier R2 de la conversation (tout en facturant origSize en Mo !)
@@ -637,14 +684,15 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           } catch {
             r2DataUrlToUpload = imageBase64;
           }
-          extractedText = `[Image jointe : « ${file.name} » (${formatFileSizeShort(origSize)})]`;
+          // Ne pas injecter de texte factice : le contenu réel sera lu par la Vision IA
+          extractedText = '';
         } else if (isAud) {
           fileType = 'audio';
           audioBase64 = await blobToBase64(file);
           if (origSize <= 5 * 1024 * 1024) {
             r2DataUrlToUpload = audioBase64;
           }
-          extractedText = `[Enregistrement audio joint : « ${file.name} » (${formatFileSizeShort(origSize)})]`;
+          extractedText = '';
         } else {
           // Extraction complète via documentTextExtractor (PDF, Word, Excel, CSV, PowerPoint, Texte...)
           const details = await extractDocumentDetails({
@@ -967,25 +1015,51 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
 
       // Médias multimodaux joints UNIQUEMENT si ce tour concerne un fichier/image (évite les fuites OCR sur un simple "Merci")
       const shouldSendMedia = intentResult.referencesActiveFiles;
-      const firstImage = shouldSendMedia
-        ? currentAttachments.find((f) => f.imageBase64) ||
-          [...allConvFiles].reverse().find((f) => f.imageBase64)
+      const targetImageRecord = shouldSendMedia
+        ? currentAttachments.find((f) => f.fileType === 'image' || f.imageBase64) ||
+          [...allConvFiles].reverse().find((f) => f.fileType === 'image' || f.imageBase64)
         : undefined;
+
+      // Si une image d'une discussion rechargée n'a plus son base64 en RAM, on la recharge depuis son URL R2 signée
+      let resolvedImageBase64 = targetImageRecord?.imageBase64;
+      if (
+        shouldSendMedia &&
+        targetImageRecord &&
+        !resolvedImageBase64 &&
+        isPlaceholderMediaText(targetImageRecord.extractedText) &&
+        targetImageRecord.url
+      ) {
+        try {
+          const imgRes = await fetch(targetImageRecord.url);
+          if (imgRes.ok) {
+            const imgBlob = await imgRes.blob();
+            resolvedImageBase64 = await blobToBase64(imgBlob);
+          }
+        } catch {}
+      }
+
       const firstAudio = shouldSendMedia
         ? currentAttachments.find((f) => f.audioBase64) ||
           [...allConvFiles].reverse().find((f) => f.audioBase64)
         : undefined;
       const firstDoc = shouldSendMedia
-        ? currentAttachments.find((f) => f.documentBase64)
+        ? currentAttachments.find((f) => f.documentBase64 || (f.documentImages && f.documentImages.length > 0)) ||
+          [...allConvFiles].reverse().find((f) => f.documentBase64 || (f.documentImages && f.documentImages.length > 0))
         : undefined;
+
+      // Ne transmettre dans attachedFileContent QUE du vrai texte extrait (jamais de texte factice "[Image jointe : ...]")
       const combinedDocText = shouldSendMedia
         ? allConvFiles
-            .map((f) =>
-              f.extractedText ? `[Fichier: ${f.fileName}]\n${f.extractedText}` : ''
-            )
-            .filter(Boolean)
+            .filter((f) => !isPlaceholderMediaText(f.extractedText))
+            .map((f) => `[Fichier: ${f.fileName}]\n${f.extractedText}`)
             .join('\n\n')
         : '';
+
+      const activeAttachedFileName = shouldSendMedia
+        ? (currentAttachments.length > 0
+            ? currentAttachments.map((f) => f.fileName).join(', ')
+            : targetImageRecord?.fileName || firstAudio?.fileName || firstDoc?.fileName || undefined)
+        : undefined;
 
       // Modèle Kimi résolu silencieusement en arrière-plan (ex: @cf/moonshotai/kimi-k2.7-code)
       const kimiModel = resolvedKimiModelRef.current || {
@@ -1014,12 +1088,13 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         isOrchestratorChat: false,
         requested_type: undefined,
         skipChatHistory: true,
-        attachedFileName: shouldSendMedia
-          ? currentAttachments.map((f) => f.fileName).join(', ') || undefined
-          : undefined,
+        assistantContext: 'teacher_gradebook',
+        attachedFileName: activeAttachedFileName,
         attachedFileContent: combinedDocText || undefined,
-        imageBase64: firstImage?.imageBase64,
-        mimeType: firstImage?.mimeType || firstDoc?.mimeType,
+        imageBase64: resolvedImageBase64,
+        mimeType: resolvedImageBase64
+          ? (resolvedImageBase64.startsWith('data:image/jpeg') ? 'image/jpeg' : targetImageRecord?.mimeType || 'image/jpeg')
+          : firstDoc?.mimeType,
         audioBase64: firstAudio?.audioBase64,
         audioMimeType: firstAudio?.mimeType,
         documentBase64: firstDoc?.documentBase64,
@@ -1028,6 +1103,20 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         signal: controller.signal,
         abortSignal: controller.signal,
       });
+
+      // Mémoriser le rapport réel Vision / Whisper sur le fichier de la conversation pour les tours suivants
+      if (aiRes.perceptionReport && (targetImageRecord || firstAudio || firstDoc)) {
+        const targetId = targetImageRecord?.id || firstAudio?.id || firstDoc?.id;
+        if (targetId) {
+          setConversationFiles((prev) =>
+            prev.map((cf) =>
+              cf.id === targetId && isPlaceholderMediaText(cf.extractedText)
+                ? { ...cf, extractedText: aiRes.perceptionReport || cf.extractedText }
+                : cf
+            )
+          );
+        }
+      }
 
       // Si l'utilisateur a annulé ou changé de conversation pendant la requête
       if (
@@ -1042,11 +1131,13 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       const rawAiOutput =
         aiRes.raw_response || aiRes.rawResponse || aiRes.response || aiRes.chat_response || '';
 
-      // Extraction propre + pare-feu de sécurité (zéro action en mode chat/inspect + blocage anti-injection)
+      // Extraction propre + pare-feu de sécurité (zéro action en mode chat/inspect + anti-injection + zéro faux save_gradebook vide)
       const parsed = parseTeacherDelmasAiResponse(rawAiOutput, {
         allowActions: intentResult.intent === 'action',
       });
-      const safeActions = filterSafeTeacherDelmasActions(parsed.actions, rawText);
+      const safeActions = filterSafeTeacherDelmasActions(parsed.actions, rawText, {
+        hasAttachedFiles: shouldSendMedia,
+      });
 
       // Exécution immédiate des actions demandées sur le tableau ouvert
       let appliedSummaries: string[] = [];

@@ -170,6 +170,16 @@ test('classifyTeacherDelmasIntent gère proprement les fichiers joints (lecture 
   assert.equal(imgImport.intent, 'action');
   assert.equal(imgImport.referencesActiveFiles, true);
 
+  // Image + demande "IL FAUT LES ENREGISTRER" -> 'action'
+  const imgSave = classifyTeacherDelmasIntent({
+    message: 'IL FAUT LES ENREGISTRER',
+    hasNewAttachments: true,
+    hasConversationFiles: true,
+    activeContext: sampleContext,
+  });
+  assert.equal(imgSave.intent, 'action');
+  assert.equal(imgSave.referencesActiveFiles, true);
+
   // Confirmation après proposition d’action sur le tableau -> 'action'
   const confirmAction = classifyTeacherDelmasIntent({
     message: 'Oui vas-y',
@@ -238,6 +248,27 @@ test('buildTeacherDelmasSystemPrompt en mode action inclut la langue forcée, le
   assert.ok(prompt.includes('Cible exclusive = le tableau ouvert'));
   assert.ok(prompt.includes('TEMPS VERBAL ACCOMPLI OBLIGATOIRE'));
   assert.ok(prompt.includes('SÉCURITÉ ANTI-INJECTION'));
+  assert.ok(prompt.includes('DOCUMENT_HORS_NOTES'));
+  assert.ok(prompt.includes('ne comporte pas de notes'));
+});
+
+test('filterSafeTeacherDelmasActions bloque le faux save_gradebook vide quand un fichier est joint sans insertion', () => {
+  const fakeSaveOnly = filterSafeTeacherDelmasActions(
+    [{ type: 'save_gradebook' }],
+    'IL FAUT LES ENREGISTRER',
+    { hasAttachedFiles: true }
+  );
+  assert.equal(fakeSaveOnly.length, 0);
+
+  const realImportWithSave = filterSafeTeacherDelmasActions(
+    [
+      { type: 'add_students', students: [{ name: 'Kouassi', notes: ['15', '16'] }] },
+      { type: 'save_gradebook' },
+    ],
+    'IL FAUT LES ENREGISTRER',
+    { hasAttachedFiles: true }
+  );
+  assert.equal(realImportWithSave.length, 2);
 });
 
 test('filterSafeTeacherDelmasActions bloque les actions destructrices injectées non demandées et assainit le CSS', () => {
