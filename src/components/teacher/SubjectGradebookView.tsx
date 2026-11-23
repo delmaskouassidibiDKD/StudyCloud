@@ -741,7 +741,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       setCloudSaveError('Session non connectée. Veuillez vous reconnecter.');
       return;
     }
-    if (isCloudSavingRef.current) {
+    if (isCloudSavingRef.current || isUploadingPhotoRef.current) {
       needsFollowupSaveRef.current = true;
       return;
     }
@@ -855,6 +855,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 matricule: s.matricule || '',
                 photoUrl: s.photoUrl,
                 photoR2Key: s.photoR2Key,
+                photoSizeBytes: s.photoSizeBytes,
                 notes: Array.from({ length: cols }, (_, i) => s.notes?.[i] || ''),
               }))
             : Array.from({ length: 8 }, () => ({
@@ -2059,6 +2060,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   };
 
   // Upload photo vers le dossier R2 dédié des photos de profil élèves
+  const isUploadingPhotoRef = useRef<boolean>(false);
   const handleTriggerPhotoUpload = (studentId: string) => {
     setUploadingStudentId(studentId);
     photoInputRef.current?.click();
@@ -2070,6 +2072,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     e.target.value = '';
     if (!file || !targetStudentId) return;
 
+    // Suspendre tout auto-save pendant l'envoi R2 pour éviter toute course entre POST /photos/student et PUT /gradebook
+    if (debounceTimerRef.current !== null) {
+      window.clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+    }
+    isUploadingPhotoRef.current = true;
     setIsUploadingPhoto(true);
     const originalFileBytes = Math.max(0, Number(file.size) || 0);
     let prevPhotoUrl: string | undefined;
@@ -2084,10 +2092,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       prevPhotoR2Key = existingStudent?.photoR2Key;
       prevPhotoSizeBytes = existingStudent?.photoSizeBytes;
 
-      // Aperçu instantané + agrandissement automatique de la case photo (sans déclencher un auto-save prématuré avant le retour de R2)
-      if (!disableCloudPersistence && getTeacherAuthToken()) {
-        skipNextAutoSaveRef.current = true;
-      }
+      // Agrandissement automatique de la case photo
       setStudents(prev => {
         const studentIndex = prev.findIndex(s => s.id === targetStudentId);
         if (studentIndex >= 0) {
@@ -2096,10 +2101,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             [studentIndex]: Math.max(rowPrev[studentIndex] || 44, 80)
           }));
         }
-        return prev.map(s => s.id === targetStudentId ? { ...s, photoUrl: dataUrl, photoSizeBytes: originalFileBytes } : s);
+        return prev;
       });
       setColWidthPhoto(prev => Math.max(prev, 80));
-      setIsSaved(false);
 
       // Envoi binaire compressé vers Cloudflare R2 + vraie taille brute d'origine (file.size) pour facturation stockage
       if (!disableCloudPersistence && getTeacherAuthToken()) {
@@ -2110,6 +2114,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           blob,
           originalSizeBytes: originalFileBytes,
         });
+        isUploadingPhotoRef.current = false;
         setStudents(prev =>
           prev.map(s =>
             s.id === targetStudentId
@@ -2122,8 +2127,18 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               : s
           )
         );
+      } else {
+        isUploadingPhotoRef.current = false;
+        setStudents(prev =>
+          prev.map(s =>
+            s.id === targetStudentId
+              ? { ...s, photoUrl: dataUrl, photoSizeBytes: originalFileBytes }
+              : s
+          )
+        );
       }
     } catch (err: any) {
+      isUploadingPhotoRef.current = false;
       // Rollback immédiat de l'aperçu photo si l'upload R2 est refusé (ex: quota saturé 413)
       setStudents(prev =>
         prev.map(s =>
@@ -2135,6 +2150,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       setCloudSaveStatus('error');
       setCloudSaveError(err?.message || "Échec de l'envoi de la photo élève.");
     } finally {
+      isUploadingPhotoRef.current = false;
       setIsUploadingPhoto(false);
     }
   };
@@ -5082,6 +5098,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       e.stopPropagation();
                                       setPreviewPhotoStudent(std);
                                     }}
+                                    onError={() => {
+                                      setStudents(prev =>
+                                        prev.map(s =>
+                                          s.id === std.id
+                                            ? { ...s, photoUrl: undefined, photoR2Key: undefined, photoSizeBytes: undefined }
+                                            : s
+                                        )
+                                      );
+                                    }}
                                     className="w-full h-full object-cover cursor-pointer hover:opacity-90 transition duration-200" 
                                   />
                                 </div>
@@ -5143,9 +5168,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                       onClick={() => {
                                         setActiveMenuPhoto(null);
                                         const oldKey = std.photoR2Key;
-                                        setStudents(prev => prev.map(s => s.id === std.id ? { ...s, photoUrl: undefined, photoR2Key: undefined } : s));
+                                        setStudents(prev => prev.map(s => s.id === std.id ? { ...s, photoUrl: undefined, photoR2Key: undefined, photoSizeBytes: undefined } : s));
                                         setIsSaved(false);
-                                        if (!disableCloudPersistence && getTeacherAuthToken() && oldKey) {
+                                        if (!disableCloudPersistence && getTeacherAuthToken()) {
                                           TeacherGradebookAPI.deleteStudentPhoto({
                                             subjectId: subject.id,
                                             termId: effectiveTermId,

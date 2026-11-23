@@ -2219,6 +2219,32 @@ test('Suivi facturation R2 + D1 (user_storage_usage), déduplication photos, bac
   });
   assert.equal(saveMathRes.status, 200);
 
+  // 2b. Protection anti-course : si un auto-save PUT /gradebook en vol arrive juste après POST /photos/student
+  //     avec l'ancien aperçu data:image/ (sans photoR2Key), la photo R2 fraîche ne doit JAMAIS être supprimée ni écrasée !
+  const stalePutRes = await callApi(`/api/teacher/gradebook/${mathSubj.id}/${term1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 3,
+      columnMetas: {},
+      layout: {},
+      styles: {},
+      students: [
+        { id: 'std-shared-1', studentUid: 'uid-shared', name: 'Koffi Jean', matricule: 'MAT-001', photoUrl: VALID_PNG_DATA_URL, notes: ['15', '17', ''] },
+      ],
+    },
+  });
+  assert.equal(stalePutRes.status, 200);
+  assert.ok(r2Images.store.has(photoR2Key), 'La photo R2 fraîchement uploadée ne doit jamais être supprimée par un auto-save concurrent');
+
+  // Vérifier que GET /gradebook renvoie toujours une URL signée valide qui charge bien l'image depuis R2 (200 OK)
+  const getMathAfterRace = await (await callApi(`/api/teacher/gradebook/${mathSubj.id}/${term1.id}`, { token: 'token-alice' })).json();
+  assert.equal(getMathAfterRace.students[0].photoR2Key, photoR2Key);
+  assert.equal(getMathAfterRace.students[0].photoSizeBytes, PHOTO_ORIG_2_23_MB);
+  const mediaPath = new URL(getMathAfterRace.students[0].photoUrl).pathname + new URL(getMathAfterRace.students[0].photoUrl).search;
+  const mediaGetRes = await callApi(mediaPath, { method: 'GET' });
+  assert.equal(mediaGetRes.status, 200);
+
   // Partager la même photoR2Key dans Français (ne doit PAS être facturée 2 fois en R2 !)
   const saveFrRes = await callApi(`/api/teacher/gradebook/${frSubj.id}/${term1.id}`, {
     method: 'PUT',

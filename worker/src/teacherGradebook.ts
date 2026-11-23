@@ -26,10 +26,13 @@ export interface StorageQuotaCheckResult {
 export interface TeacherGradebookStorageUsage {
   r2FilesCount: number;
   r2Bytes: number;
+  r2CompressedBytes: number;
   schoolLogosCount: number;
   schoolLogosBytes: number;
+  schoolLogosCompressedBytes: number;
   studentPhotosCount: number;
   studentPhotosBytes: number;
+  studentPhotosCompressedBytes: number;
   d1RowsCount: number;
   d1TextBytes: number;
   d1EstimatedBytes: number;
@@ -93,6 +96,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       name TEXT NOT NULL,
       logo_r2_key TEXT DEFAULT NULL,
       logo_size_bytes INTEGER NOT NULL DEFAULT 0,
+      logo_compressed_size_bytes INTEGER NOT NULL DEFAULT 0,
       color TEXT NOT NULL DEFAULT '#ffffff',
       text_color TEXT NOT NULL DEFAULT '#0f172a',
       border_color TEXT NOT NULL DEFAULT '#e2e8f0',
@@ -231,6 +235,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       matricule TEXT NOT NULL DEFAULT '',
       photo_r2_key TEXT DEFAULT NULL,
       photo_size_bytes INTEGER NOT NULL DEFAULT 0,
+      photo_compressed_size_bytes INTEGER NOT NULL DEFAULT 0,
       notes_json TEXT NOT NULL DEFAULT '[]',
       average_20 REAL DEFAULT NULL,
       created_at INTEGER NOT NULL,
@@ -338,18 +343,21 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
     // Ignorer si déjà migré
   }
 
-  // Migration idempotente : s'assurer que teacher_schools possède la colonne logo_size_bytes
+  // Migration idempotente : s'assurer que teacher_schools possède logo_size_bytes (Mo original) et logo_compressed_size_bytes (R2 compressé)
   try {
     const schInfo = await db.prepare('PRAGMA table_info(teacher_schools)').all();
-    const hasLogoSize = (schInfo.results || []).some((c: any) => String(c.name) === 'logo_size_bytes');
-    if (!hasLogoSize) {
+    const schCols = new Set((schInfo.results || []).map((c: any) => String(c.name)));
+    if (!schCols.has('logo_size_bytes')) {
       await db.prepare('ALTER TABLE teacher_schools ADD COLUMN logo_size_bytes INTEGER NOT NULL DEFAULT 0').run();
+    }
+    if (!schCols.has('logo_compressed_size_bytes')) {
+      await db.prepare('ALTER TABLE teacher_schools ADD COLUMN logo_compressed_size_bytes INTEGER NOT NULL DEFAULT 0').run();
     }
   } catch {
     // Ignorer si déjà migré
   }
 
-  // Migration idempotente : s'assurer que teacher_gradebook_students possède matricule et photo_size_bytes
+  // Migration idempotente : s'assurer que teacher_gradebook_students possède matricule, photo_size_bytes (Mo original) et photo_compressed_size_bytes (R2 compressé)
   try {
     const stInfo = await db.prepare('PRAGMA table_info(teacher_gradebook_students)').all();
     const stCols = new Set((stInfo.results || []).map((c: any) => String(c.name)));
@@ -358,6 +366,9 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
     }
     if (!stCols.has('photo_size_bytes')) {
       await db.prepare('ALTER TABLE teacher_gradebook_students ADD COLUMN photo_size_bytes INTEGER NOT NULL DEFAULT 0').run();
+    }
+    if (!stCols.has('photo_compressed_size_bytes')) {
+      await db.prepare('ALTER TABLE teacher_gradebook_students ADD COLUMN photo_compressed_size_bytes INTEGER NOT NULL DEFAULT 0').run();
     }
   } catch {
     // Ignorer si déjà migré
@@ -750,12 +761,18 @@ async function copyOwnedR2Photo(
   return { key: destKey, sizeBytes: billedSizeBytes };
 }
 
+function extractTimestampFromR2Key(key: string | null | undefined): number {
+  if (!key || typeof key !== 'string') return 0;
+  const m = key.match(/_(\d{13})_[a-f0-9]+\.(?:webp|jpg|jpeg|png)$/i);
+  return m ? Number(m[1]) || 0 : 0;
+}
+
 const ensuredTeacherSizeColsDbs = new WeakSet<object>();
 
 /**
  * Calcule l'occupation réelle (R2 + D1) de l'ensemble du module Enseignant / Calcul de moyenne
  * pour un utilisateur donné :
- *  - R2 : logos d'établissements + photos élèves (dédupliqués par clé R2 unique pour zéro double facturation)
+ *  - R2 : logos d'établissements + photos élèves (dédupliqués par clé R2 unique, facturés sur le Mo original + suivi taille compressée R2)
  *  - D1 : somme exacte en octets UTF-8 de toutes les colonnes des 9 tables teacher_* + 160 octets/ligne (overhead SQLite)
  * Effectue aussi le rattrapage paresseux (backfill via R2 head) pour les images déjà enregistrées avant cette mise à jour.
  */
@@ -767,10 +784,13 @@ export async function computeTeacherGradebookStorageUsage(
   const empty: TeacherGradebookStorageUsage = {
     r2FilesCount: 0,
     r2Bytes: 0,
+    r2CompressedBytes: 0,
     schoolLogosCount: 0,
     schoolLogosBytes: 0,
+    schoolLogosCompressedBytes: 0,
     studentPhotosCount: 0,
     studentPhotosBytes: 0,
+    studentPhotosCompressedBytes: 0,
     d1RowsCount: 0,
     d1TextBytes: 0,
     d1EstimatedBytes: 0,
@@ -799,10 +819,16 @@ export async function computeTeacherGradebookStorageUsage(
         if (schCols.length > 0 && !schCols.includes('logo_size_bytes')) {
           await db.prepare('ALTER TABLE teacher_schools ADD COLUMN logo_size_bytes INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
         }
+        if (schCols.length > 0 && !schCols.includes('logo_compressed_size_bytes')) {
+          await db.prepare('ALTER TABLE teacher_schools ADD COLUMN logo_compressed_size_bytes INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
+        }
         const stInfo = await db.prepare('PRAGMA table_info(teacher_gradebook_students)').all();
         const stCols = (stInfo.results || []).map((c: any) => String(c.name));
         if (stCols.length > 0 && !stCols.includes('photo_size_bytes')) {
           await db.prepare('ALTER TABLE teacher_gradebook_students ADD COLUMN photo_size_bytes INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
+        }
+        if (stCols.length > 0 && !stCols.includes('photo_compressed_size_bytes')) {
+          await db.prepare('ALTER TABLE teacher_gradebook_students ADD COLUMN photo_compressed_size_bytes INTEGER NOT NULL DEFAULT 0').run().catch(() => {});
         }
         if (schCols.length > 0 && stCols.length > 0) {
           ensuredTeacherSizeColsDbs.add(db);
@@ -877,7 +903,7 @@ export async function computeTeacherGradebookStorageUsage(
     }
 
     const zeroD1 = { cnt: 0, textBytes: 0 };
-    const zeroR2 = { cnt: 0, r2Bytes: 0 };
+    const zeroR2 = { cnt: 0, r2Bytes: 0, compBytes: 0 };
 
     const [
       yearsStat,
@@ -984,9 +1010,13 @@ export async function computeTeacherGradebookStorageUsage(
 
       db
         .prepare(
-          `SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as r2Bytes
+          `SELECT COUNT(*) as cnt,
+                  COALESCE(SUM(size_bytes), 0) as r2Bytes,
+                  COALESCE(SUM(CASE WHEN comp_bytes > 0 THEN comp_bytes ELSE size_bytes END), 0) as compBytes
            FROM (
-             SELECT logo_r2_key, MAX(COALESCE(logo_size_bytes, 0)) as size_bytes
+             SELECT logo_r2_key,
+                    MAX(COALESCE(logo_size_bytes, 0)) as size_bytes,
+                    MAX(COALESCE(logo_compressed_size_bytes, 0)) as comp_bytes
              FROM teacher_schools
              WHERE user_id = ? AND logo_r2_key IS NOT NULL AND logo_r2_key != ''
              GROUP BY logo_r2_key
@@ -998,9 +1028,13 @@ export async function computeTeacherGradebookStorageUsage(
 
       db
         .prepare(
-          `SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as r2Bytes
+          `SELECT COUNT(*) as cnt,
+                  COALESCE(SUM(size_bytes), 0) as r2Bytes,
+                  COALESCE(SUM(CASE WHEN comp_bytes > 0 THEN comp_bytes ELSE size_bytes END), 0) as compBytes
            FROM (
-             SELECT photo_r2_key, MAX(COALESCE(photo_size_bytes, 0)) as size_bytes
+             SELECT photo_r2_key,
+                    MAX(COALESCE(photo_size_bytes, 0)) as size_bytes,
+                    MAX(COALESCE(photo_compressed_size_bytes, 0)) as comp_bytes
              FROM teacher_gradebook_students
              WHERE user_id = ? AND photo_r2_key IS NOT NULL AND photo_r2_key != ''
              GROUP BY photo_r2_key
@@ -1049,18 +1083,24 @@ export async function computeTeacherGradebookStorageUsage(
 
     const schoolLogosCount = Number(schoolLogosR2?.cnt || 0);
     const schoolLogosBytes = Number(schoolLogosR2?.r2Bytes || 0);
+    const schoolLogosCompressedBytes = Number(schoolLogosR2?.compBytes || schoolLogosBytes);
     const studentPhotosCount = Number(studentPhotosR2?.cnt || 0);
     const studentPhotosBytes = Number(studentPhotosR2?.r2Bytes || 0);
+    const studentPhotosCompressedBytes = Number(studentPhotosR2?.compBytes || studentPhotosBytes);
     const r2FilesCount = schoolLogosCount + studentPhotosCount;
     const r2Bytes = schoolLogosBytes + studentPhotosBytes;
+    const r2CompressedBytes = schoolLogosCompressedBytes + studentPhotosCompressedBytes;
 
     return {
       r2FilesCount,
       r2Bytes,
+      r2CompressedBytes,
       schoolLogosCount,
       schoolLogosBytes,
+      schoolLogosCompressedBytes,
       studentPhotosCount,
       studentPhotosBytes,
+      studentPhotosCompressedBytes,
       d1RowsCount,
       d1TextBytes,
       d1EstimatedBytes,
@@ -2986,17 +3026,49 @@ async function dispatchTeacherGradebookRoutes(
       .bind(userId, gb.id)
       .all();
 
+    const hasR2Bucket = Boolean(getTeacherPhotosBucket(rawEnv));
+    const missingR2StudentIds: string[] = [];
+
     const students = await Promise.all(
-      (stRes.results || []).map(async (row: any) => ({
-        id: row.id,
-        studentUid: row.student_uid || row.id,
-        name: row.full_name || '',
-        matricule: row.matricule || '',
-        photoR2Key: row.photo_r2_key || undefined,
-        photoUrl: row.photo_r2_key ? await signTeacherMediaUrl(apiOrigin, row.photo_r2_key, jwtSecret) : undefined,
-        notes: safeParseJson<string[]>(row.notes_json, []),
-      }))
+      (stRes.results || []).map(async (row: any) => {
+        let validPhotoKey: string | undefined = row.photo_r2_key || undefined;
+        let photoSizeBytes = Number(row.photo_size_bytes || 0);
+        if (validPhotoKey && hasR2Bucket) {
+          const r2Size = await getOwnedR2ObjectSize(rawEnv, validPhotoKey);
+          if (r2Size <= 0) {
+            // Auto-réparation : si la clé R2 en D1 pointe vers un objet supprimé, la nettoyer pour ne jamais afficher une icône d'image cassée
+            validPhotoKey = undefined;
+            photoSizeBytes = 0;
+            missingR2StudentIds.push(String(row.id));
+          } else if (photoSizeBytes <= 0) {
+            photoSizeBytes = r2Size;
+          }
+        }
+        return {
+          id: row.id,
+          studentUid: row.student_uid || row.id,
+          name: row.full_name || '',
+          matricule: row.matricule || '',
+          photoR2Key: validPhotoKey,
+          photoSizeBytes: validPhotoKey ? photoSizeBytes : undefined,
+          photoUrl: validPhotoKey ? await signTeacherMediaUrl(apiOrigin, validPhotoKey, jwtSecret) : undefined,
+          notes: safeParseJson<string[]>(row.notes_json, []),
+        };
+      })
     );
+
+    if (missingR2StudentIds.length > 0) {
+      for (const sid of missingR2StudentIds) {
+        await db
+          .prepare('UPDATE teacher_gradebook_students SET photo_r2_key = NULL, photo_size_bytes = 0, photo_compressed_size_bytes = 0 WHERE id = ? AND user_id = ?')
+          .bind(sid, userId)
+          .run()
+          .catch(() => {});
+      }
+      if (deps.recalculateUserStorage) {
+        await deps.recalculateUserStorage(userId).catch(() => {});
+      }
+    }
 
     return jsonResponse({
       success: true,
@@ -3128,9 +3200,18 @@ async function dispatchTeacherGradebookRoutes(
       let photoR2Key: string | null = null;
       let photoSizeBytes = 0;
       const clientPhotoSizeBytes = Math.min(100 * 1024 * 1024, Math.max(0, Math.floor(Number(s.photoSizeBytes) || 0)));
+      const prevRowKey = prevKeyByStudentId.get(rowId) || null;
+      const prevRowKeyAgeMs = prevRowKey ? now - extractTimestampFromR2Key(prevRowKey) : Number.POSITIVE_INFINITY;
+      const isFreshConcurrentUpload = Boolean(prevRowKey && prevRowKeyAgeMs >= 0 && prevRowKeyAgeMs < 45000);
+
       if (s.photoR2Key && isOwnedR2Key(String(s.photoR2Key), userId)) {
         photoR2Key = String(s.photoR2Key);
         photoSizeBytes = Math.max(knownPhotoSizeByKey.get(photoR2Key) || 0, clientPhotoSizeBytes);
+      } else if (isFreshConcurrentUpload && s.photoRemoved !== true && prevRowKey) {
+        // Protection anti-course : POST /api/teacher/photos/student vient tout juste d'enregistrer prevRowKey en D1/R2
+        // pendant qu'un auto-save du tableur était en vol avec l'aperçu base64 ou sans la nouvelle clé.
+        photoR2Key = prevRowKey;
+        photoSizeBytes = Math.max(knownPhotoSizeByKey.get(prevRowKey) || 0, clientPhotoSizeBytes);
       } else if (s.photoUrl && typeof s.photoUrl === 'string' && s.photoUrl.startsWith('data:image/')) {
         // Filet de sécurité : si une image base64 arrive (ex: hors-ligne ou collage), pré-décoder avant contrôle quota puis pousser dans R2 !
         const bytes = decodeBase64DataUrl(s.photoUrl);
@@ -3148,12 +3229,10 @@ async function dispatchTeacherGradebookRoutes(
             studentId: rowId,
           });
         }
-      } else if (s.photoUrl && prevKeyByStudentId.has(rowId)) {
+      } else if (s.photoUrl && prevRowKey) {
         // Le front n'a pas changé la photo existante (URL signée inchangée)
-        photoR2Key = prevKeyByStudentId.get(rowId) || null;
-        if (photoR2Key) {
-          photoSizeBytes = Math.max(knownPhotoSizeByKey.get(photoR2Key) || 0, clientPhotoSizeBytes);
-        }
+        photoR2Key = prevRowKey;
+        photoSizeBytes = Math.max(knownPhotoSizeByKey.get(prevRowKey) || 0, clientPhotoSizeBytes);
       }
 
       if (photoR2Key) keptR2Keys.add(photoR2Key);
@@ -3997,8 +4076,8 @@ async function dispatchTeacherGradebookRoutes(
         .first();
       if (existingRow) {
         await db
-          .prepare('UPDATE teacher_gradebook_students SET photo_r2_key = ?, photo_size_bytes = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-          .bind(photoR2Key, billedPhotoBytes, now, studentId, userId)
+          .prepare('UPDATE teacher_gradebook_students SET photo_r2_key = ?, photo_size_bytes = ?, photo_compressed_size_bytes = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+          .bind(photoR2Key, billedPhotoBytes, bytes.byteLength, now, studentId, userId)
           .run();
         if (existingRow.photo_r2_key && existingRow.photo_r2_key !== photoR2Key) {
           await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, [existingRow.photo_r2_key]);
@@ -4032,8 +4111,8 @@ async function dispatchTeacherGradebookRoutes(
         await db
           .prepare(
             `INSERT OR REPLACE INTO teacher_gradebook_students
-              (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, matricule, photo_r2_key, photo_size_bytes, notes_json, average_20, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, 0, '', '', ?, ?, '[]', NULL, ?, ?)`
+              (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, matricule, photo_r2_key, photo_size_bytes, photo_compressed_size_bytes, notes_json, average_20, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, '', '', ?, ?, ?, '[]', NULL, ?, ?)`
           )
           .bind(
             studentId,
@@ -4045,6 +4124,7 @@ async function dispatchTeacherGradebookRoutes(
             studentId,
             photoR2Key,
             billedPhotoBytes,
+            bytes.byteLength,
             now,
             now
           )
@@ -4058,6 +4138,7 @@ async function dispatchTeacherGradebookRoutes(
       photoR2Key,
       photoUrl,
       photoSizeBytes: billedPhotoBytes,
+      photoCompressedSizeBytes: bytes.byteLength,
     }, 200, origin);
   }
 
@@ -4087,7 +4168,7 @@ async function dispatchTeacherGradebookRoutes(
       await db
         .prepare(
           `UPDATE teacher_gradebook_students
-           SET photo_r2_key = NULL, photo_size_bytes = 0, updated_at = ?
+           SET photo_r2_key = NULL, photo_size_bytes = 0, photo_compressed_size_bytes = 0, updated_at = ?
            WHERE id = ? AND user_id = ? AND subject_id = ? AND term_id = ?`
         )
         .bind(Date.now(), studentId, userId, subjectId, termId)
