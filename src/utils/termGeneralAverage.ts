@@ -1,7 +1,9 @@
 import {
   calculateClassRanks,
   calculateGeneralAverage,
+  DEFAULT_AVERAGE_SCALE,
   getMentionFromCustomRules,
+  sanitizeAverageScale,
   type CustomMentionRule,
   type SubjectForGeneralAverage,
 } from './gradebookCalculations';
@@ -69,6 +71,7 @@ export interface TermAverageLayoutState {
   zoomPercent?: number;
   mentionRules?: CustomMentionRule[] | null;
   showMatricule?: boolean;
+  averageScale?: number;
 }
 
 export interface TermAverageStylesState {
@@ -162,6 +165,8 @@ export interface ComputedTermAverageTable {
   classSummary: ComputedTermClassSummary;
   /** Doublons potentiels (noms très proches / homonymes ambigus) soumis à validation humaine */
   potentialDuplicates: PotentialDuplicateCandidate[];
+  /** Barème maximal effectif sur lequel toutes les moyennes de ce tableau sont ramenées (défaut : 20) */
+  averageScale: number;
 }
 
 /**
@@ -270,10 +275,14 @@ export function formatCoeffDisplay(coeff: number): string {
   return String(Number(coeff.toFixed(2))).replace('.', ',');
 }
 
-export function parseManualAverageInput(raw: string): {
+export function parseManualAverageInput(
+  raw: string,
+  maxScale = DEFAULT_AVERAGE_SCALE
+): {
   valid: boolean;
   value: number | null;
 } {
+  const safeMax = sanitizeAverageScale(maxScale) ?? DEFAULT_AVERAGE_SCALE;
   const trimmed = String(raw ?? '').trim();
   if (trimmed === '') {
     return { valid: true, value: null };
@@ -283,7 +292,7 @@ export function parseManualAverageInput(raw: string): {
     return { valid: false, value: null };
   }
   const num = Number(normalized);
-  if (!Number.isFinite(num) || num < 0 || num > 20) {
+  if (!Number.isFinite(num) || num < 0 || num > safeMax) {
     return { valid: false, value: null };
   }
   return { valid: true, value: num };
@@ -492,6 +501,8 @@ export interface ComputeTermAverageInput {
   overrides?: TermAverageOverrides | null;
   sortMode?: TermAverageSortMode;
   mentionRules?: readonly CustomMentionRule[] | null;
+  /** Barème maximal cible des moyennes du tableau (défaut : 20, ex: 20, 40, 100...) */
+  averageScale?: number;
 }
 
 /**
@@ -518,6 +529,9 @@ export function computeTermGeneralAverageTable(
   const overrides = input.overrides || {};
   const subjectOverrides = overrides.subjectOverrides || {};
   const matriculeOverrides = overrides.matriculeOverrides || {};
+  const averageScale = sanitizeAverageScale(input.averageScale) ?? DEFAULT_AVERAGE_SCALE;
+  const scaleFactor = averageScale / 20;
+  const passThreshold = averageScale / 2;
   const manualStudents = Array.isArray(overrides.manualStudents)
     ? overrides.manualStudents
     : [];
@@ -814,12 +828,16 @@ export function computeTermGeneralAverageTable(
     const subjectsForAvg: SubjectForGeneralAverage[] = [];
 
     for (const subject of normalizedSubjects) {
-      const autoAvg =
+      const rawAutoAvg20 =
         subject.id in bucket.autoBySubject
           ? bucket.autoBySubject[subject.id]
           : null;
+      const autoAvg =
+        rawAutoAvg20 !== null && Number.isFinite(rawAutoAvg20)
+          ? rawAutoAvg20 * scaleFactor
+          : null;
 
-      let manualAvg: number | null = null;
+      let rawManualAvg20: number | null = null;
       const directMap = subjectOverrides[bucket.key];
       if (
         directMap &&
@@ -827,7 +845,7 @@ export function computeTermGeneralAverageTable(
         directMap[subject.id] !== null &&
         Number.isFinite(Number(directMap[subject.id]))
       ) {
-        manualAvg = Number(directMap[subject.id]);
+        rawManualAvg20 = Number(directMap[subject.id]);
       } else {
         for (const alias of bucket.aliasKeys) {
           const aliasMap = subjectOverrides[alias];
@@ -837,11 +855,15 @@ export function computeTermGeneralAverageTable(
             aliasMap[subject.id] !== null &&
             Number.isFinite(Number(aliasMap[subject.id]))
           ) {
-            manualAvg = Number(aliasMap[subject.id]);
+            rawManualAvg20 = Number(aliasMap[subject.id]);
             break;
           }
         }
       }
+      const manualAvg =
+        rawManualAvg20 !== null && Number.isFinite(rawManualAvg20)
+          ? rawManualAvg20 * scaleFactor
+          : null;
 
       let effectiveAverage: number | null = null;
       let source: 'gradebook' | 'manual' | 'empty' = 'empty';
@@ -906,7 +928,11 @@ export function computeTermGeneralAverageTable(
       totalCoeffCounted: genRes.sommeCoeffsMatiere,
       gradedSubjectsCount: genRes.matieresComptees,
       generalAverage: genRes.moyenneGenerale,
-      mention: getMentionFromCustomRules(genRes.moyenneGenerale, input.mentionRules),
+      mention: getMentionFromCustomRules(
+        genRes.moyenneGenerale,
+        input.mentionRules,
+        averageScale
+      ),
     };
   });
 
@@ -1004,7 +1030,7 @@ export function computeTermGeneralAverageTable(
       if (lowestAverage === null || st.generalAverage < lowestAverage) {
         lowestAverage = st.generalAverage;
       }
-      if (st.generalAverage >= 10) {
+      if (st.generalAverage + 1e-9 >= passThreshold) {
         passCount += 1;
       }
     }
@@ -1038,5 +1064,6 @@ export function computeTermGeneralAverageTable(
     students: sortedStudents,
     classSummary,
     potentialDuplicates,
+    averageScale,
   };
 }

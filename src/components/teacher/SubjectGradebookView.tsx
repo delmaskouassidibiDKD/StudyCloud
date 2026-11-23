@@ -50,15 +50,23 @@ import {
 import * as XLSX from 'xlsx';
 import { SubjectItem, ClassItem, SchoolItem, SchoolYearItem, TermItem } from './TeacherClassesView';
 import { SmartFloatingPopover } from './SmartFloatingPopover';
-import { MentionAndMatriculeControls, type SheetSettingScope } from './MentionAndMatriculeControls';
+import {
+  MentionAndMatriculeControls,
+  type BulkNoteMaxUpdateInput,
+  type NoteColumnOption,
+  type SheetSettingScope,
+} from './MentionAndMatriculeControls';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
 import {
   calculateSubjectAverage,
   calculateClassRanks,
+  DEFAULT_AVERAGE_SCALE,
   formatAverageDisplay,
+  formatScaleValue,
   DEFAULT_CUSTOM_MENTION_RULES,
   resolveMentionWithRules,
+  sanitizeAverageScale,
   sortGradebookRows,
   type CustomMentionRule,
   type EvaluationInput,
@@ -397,10 +405,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     const saved = initialCachedSheet?.layout?.sortMode;
     return saved === 'merit' || saved === 'alpha' || saved === 'order' ? saved : 'order';
   });
-  // Paramètres de classe (mentions personnalisées + colonne Matricule) et éventuelles surcharges propres à ce tableau
+  // Paramètres de classe (mentions personnalisées + colonne Matricule + moyenne max) et éventuelles surcharges propres à ce tableau
   const [classSettings, setClassSettings] = useState<ClassSheetSettings>(() => ({
     mentionRules: schoolClass.mentionRules ?? null,
     showMatricule: Boolean(schoolClass.showMatricule),
+    averageScale: sanitizeAverageScale(schoolClass.averageScale) ?? DEFAULT_AVERAGE_SCALE,
   }));
   const [sheetMentionRules, setSheetMentionRules] = useState<CustomMentionRule[] | null | undefined>(
     () => initialCachedSheet?.layout?.mentionRules
@@ -408,6 +417,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const [sheetShowMatricule, setSheetShowMatricule] = useState<boolean | undefined>(
     () => initialCachedSheet?.layout?.showMatricule
   );
+  const [sheetAverageScale, setSheetAverageScale] = useState<number | undefined>(() => {
+    const s = sanitizeAverageScale(initialCachedSheet?.layout?.averageScale);
+    return s !== null ? s : undefined;
+  });
 
   const effectiveMentionRules = useMemo<readonly CustomMentionRule[]>(() => {
     if (sheetMentionRules === null) return DEFAULT_CUSTOM_MENTION_RULES;
@@ -425,6 +438,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     typeof sheetShowMatricule === 'boolean'
       ? sheetShowMatricule
       : Boolean(classSettings.showMatricule);
+  const effectiveAverageScale =
+    sanitizeAverageScale(sheetAverageScale) ??
+    sanitizeAverageScale(classSettings.averageScale) ??
+    DEFAULT_AVERAGE_SCALE;
+  const effectiveScaleLabel = formatScaleValue(effectiveAverageScale);
 
   // Verrouillage temporaire de l'ordre visuel pendant la frappe dans une cellule (évite que la ligne saute sous le curseur)
   const [lockedOrderIds, setLockedOrderIds] = useState<string[] | null>(null);
@@ -660,6 +678,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       sortMode,
       ...(sheetMentionRules !== undefined ? { mentionRules: sheetMentionRules } : {}),
       ...(typeof sheetShowMatricule === 'boolean' ? { showMatricule: sheetShowMatricule } : {}),
+      ...(typeof sheetAverageScale === 'number' ? { averageScale: sheetAverageScale } : {}),
     },
     styles: {
       cellColors,
@@ -683,6 +702,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     sortMode,
     sheetMentionRules,
     sheetShowMatricule,
+    sheetAverageScale,
     cellColors,
     rowColors,
     cellCustomStyles,
@@ -811,6 +831,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           setClassSettings({
             mentionRules: res.classSettings.mentionRules ?? null,
             showMatricule: Boolean(res.classSettings.showMatricule),
+            averageScale:
+              sanitizeAverageScale(res.classSettings.averageScale) ?? DEFAULT_AVERAGE_SCALE,
           });
         }
         if (res && res.exists) {
@@ -867,6 +889,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           setSheetShowMatricule(
             typeof res.layout?.showMatricule === 'boolean' ? res.layout.showMatricule : undefined
           );
+          const loadedAvgScale = sanitizeAverageScale(res.layout?.averageScale);
+          setSheetAverageScale(loadedAvgScale !== null ? loadedAvgScale : undefined);
           setCellColors(res.styles?.cellColors || {});
           setRowColors(res.styles?.rowColors || {});
           setCellCustomStyles(res.styles?.cellCustomStyles || {});
@@ -896,6 +920,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     : 'order',
                 ...(res.layout?.mentionRules !== undefined ? { mentionRules: res.layout.mentionRules } : {}),
                 ...(typeof res.layout?.showMatricule === 'boolean' ? { showMatricule: res.layout.showMatricule } : {}),
+                ...(loadedAvgScale !== null ? { averageScale: loadedAvgScale } : {}),
               },
               styles: {
                 cellColors: res.styles?.cellColors || {},
@@ -1397,7 +1422,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   // Calcul automatique de la mention pédagogique selon les intervalles personnalisés (ou barème par défaut)
   const getStudentMention = (average: number | null): { label: string; badgeClass: string } => {
-    const resolved = resolveMentionWithRules(average, effectiveMentionRules);
+    const resolved = resolveMentionWithRules(average, effectiveMentionRules, effectiveAverageScale);
     if (average === null || resolved.label === '—') {
       return { label: '—', badgeClass: 'text-slate-400 font-semibold' };
     }
@@ -1450,7 +1475,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         coeffEval: columnMetas[cIdx]?.coeffEval ?? 1
       }));
 
-      const subjectResult = calculateSubjectAverage(evaluations, { rejectExceedingMax: true });
+      const subjectResult = calculateSubjectAverage(evaluations, {
+        rejectExceedingMax: true,
+        targetScale: effectiveAverageScale,
+      });
       const avg = subjectResult.moyenneMatiere;
       const mentionInfo = getStudentMention(avg);
 
@@ -1491,7 +1519,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       ...s,
       rowNumber: displayIdx + 1,
     }));
-  }, [students, noteColumnCount, columnMetas, sortMode, lockedOrderIds, effectiveMentionRules]);
+  }, [students, noteColumnCount, columnMetas, sortMode, lockedOrderIds, effectiveMentionRules, effectiveAverageScale]);
 
   // Répertoire partagé des élèves de la classe (auto-complétion inter-matières + liaison studentUid sûre)
   const [classRoster, setClassRoster] = useState<TeacherClassRosterStudent[]>([]);
@@ -1669,6 +1697,127 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       await flushCloudSave({ force: true });
     },
     [disableCloudPersistence, schoolClass.id, classSettings, onClassSettingsUpdated, flushCloudSave]
+  );
+
+  // Liste des colonnes de notes pour le sélecteur "Max des notes"
+  const noteColumnOptions = useMemo<NoteColumnOption[]>(
+    () =>
+      Array.from({ length: noteColumnCount }, (_, i) => {
+        const meta = columnMetas[i];
+        const title = (meta?.title || 'NOTE').trim().toUpperCase();
+        const maxScore = meta?.maxScore && meta.maxScore > 0 ? meta.maxScore : 20;
+        return {
+          index: i,
+          label: `${title} ${i + 1}`,
+          maxScore,
+        };
+      }),
+    [noteColumnCount, columnMetas]
+  );
+
+  // Enregistrer la moyenne maximale (ce tableau uniquement ou toute la classe)
+  const handleSaveAverageScale = useCallback(
+    async (scale: number, scope: SheetSettingScope) => {
+      const cleanScale = sanitizeAverageScale(scale);
+      if (cleanScale === null) return;
+      if (scope === 'class') {
+        if (!disableCloudPersistence && getTeacherAuthToken()) {
+          const res = await TeacherGradebookAPI.updateClassSheetSettings(schoolClass.id, {
+            averageScale: cleanScale,
+          });
+          setClassSettings(res.classSettings);
+          setSheetAverageScale(undefined);
+          onClassSettingsUpdated?.(schoolClass.id, res.classSettings);
+        } else {
+          const nextSettings: ClassSheetSettings = {
+            ...classSettings,
+            averageScale: cleanScale,
+          };
+          setClassSettings(nextSettings);
+          setSheetAverageScale(undefined);
+          onClassSettingsUpdated?.(schoolClass.id, nextSettings);
+        }
+        return;
+      }
+      setSheetAverageScale(cleanScale);
+      if (latestPayloadRef.current) {
+        latestPayloadRef.current = {
+          ...latestPayloadRef.current,
+          layout: {
+            ...latestPayloadRef.current.layout,
+            averageScale: cleanScale,
+          },
+        };
+      }
+      hasPendingCloudChangesRef.current = true;
+      setIsSaved(false);
+      await flushCloudSave({ force: true });
+    },
+    [disableCloudPersistence, schoolClass.id, classSettings, onClassSettingsUpdated, flushCloudSave]
+  );
+
+  // Modifier en un coup le barème maximal de toutes les notes ou d'une note spécifique
+  const handleBulkUpdateNoteMax = useCallback(
+    async (input: BulkNoteMaxUpdateInput) => {
+      const cleanMax = sanitizeAverageScale(input.maxScore);
+      if (cleanMax === null) return;
+
+      const targetIndices =
+        input.mode === 'all'
+          ? Array.from({ length: noteColumnCount }, (_, i) => i)
+          : typeof input.colIndex === 'number' &&
+            input.colIndex >= 0 &&
+            input.colIndex < noteColumnCount
+          ? [input.colIndex]
+          : [];
+      if (targetIndices.length === 0) return;
+
+      const nextMetas: { [idx: number]: GradebookColumnMeta } = { ...columnMetas };
+      for (const idx of targetIndices) {
+        const existing = nextMetas[idx] || { maxScore: 20 };
+        nextMetas[idx] = {
+          ...existing,
+          maxScore: cleanMax,
+        };
+      }
+
+      const nextStudents: StudentGradeRow[] = students.map((s) => {
+        const copyNotes = Array.from({ length: noteColumnCount }, (_, i) => s.notes[i] || '');
+        for (const idx of targetIndices) {
+          const prevDefaultMax = columnMetas[idx]?.maxScore || 20;
+          const parsed = parseStudentNote(copyNotes[idx], prevDefaultMax);
+          if (!parsed.scoreStr) {
+            // Case vide : rester vide pour hériter automatiquement du nouveau max de la colonne (-/40)
+            copyNotes[idx] = '';
+          } else if (
+            input.convertExistingScores &&
+            parsed.scoreNum !== null &&
+            parsed.maxScore > 0
+          ) {
+            const converted = Math.round(((parsed.scoreNum / parsed.maxScore) * cleanMax) * 100) / 100;
+            copyNotes[idx] = formatStudentNote(String(converted), cleanMax);
+          } else {
+            copyNotes[idx] = formatStudentNote(parsed.scoreStr, cleanMax);
+          }
+        }
+        return { ...s, notes: copyNotes };
+      });
+
+      setColumnMetas(nextMetas);
+      setStudents(nextStudents);
+
+      if (latestPayloadRef.current) {
+        latestPayloadRef.current = {
+          ...latestPayloadRef.current,
+          columnMetas: nextMetas,
+          students: nextStudents,
+        };
+      }
+      hasPendingCloudChangesRef.current = true;
+      setIsSaved(false);
+      await flushCloudSave({ force: true });
+    },
+    [noteColumnCount, columnMetas, students, flushCloudSave]
   );
 
   // Liaison silencieuse ultra-sûre au blur UNIQUEMENT s'il existe un unique élève correspondant sans homonyme
@@ -2302,7 +2451,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           const meta = columnMetas[i] || { title: 'NOTE', maxScore: 20 };
           return `${meta.title || 'NOTE'} ${i + 1} (/${meta.maxScore})`;
         }),
-        'MOYENNE (/20)',
+        `MOYENNE (/${effectiveScaleLabel})`,
         'MENTION'
       ];
 
@@ -2318,7 +2467,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           ...(effectiveShowMatricule ? [s.matricule || '-'] : []),
           s.name || 'Élève sans nom',
           ...studentNotes,
-          s.averageFormatted ? `${s.averageFormatted}/20` : '-',
+          s.averageFormatted ? `${s.averageFormatted}/${effectiveScaleLabel}` : '-',
           s.mention || '-'
         ];
       });
@@ -2813,7 +2962,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         ...(effectiveShowMatricule ? ['Matricule'] : []),
         'Nom & Prénom',
         ...noteHeaders,
-        'Moyenne (/20)',
+        `Moyenne (/${effectiveScaleLabel})`,
         'Mention',
       ];
       const dataRows = studentsWithStats.map(s => {
@@ -4016,11 +4165,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           <span className="text-[9px] text-slate-500 font-medium leading-none mb-0.5">Classement</span>
         </div>
 
-        {/* Groupes Mentions personnalisées & Colonne Matricule (ce tableau ou toute la classe) */}
+        {/* Groupes Mentions personnalisées, Colonne Matricule & Barème (ce tableau ou toute la classe) */}
         <MentionAndMatriculeControls
           effectiveMentionRules={effectiveMentionRules}
           hasCustomMentionRules={hasCustomMentionRules}
           showMatricule={effectiveShowMatricule}
+          averageScale={effectiveAverageScale}
+          noteColumns={noteColumnOptions}
+          studentsCount={students.length}
           classLabel={
             schoolClass.name?.trim()
               ? schoolClass.name.toLowerCase().includes(schoolClass.level.toLowerCase())
@@ -4033,6 +4185,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           closeSignal={closeMentionMatriculeSignal}
           onSaveMentionRules={handleSaveMentionRules}
           onSaveShowMatricule={handleSaveShowMatricule}
+          onSaveAverageScale={handleSaveAverageScale}
+          onBulkUpdateNoteMax={handleBulkUpdateNoteMax}
         />
       </section>
 
@@ -4744,11 +4898,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       }}
                       className={`h-12 border-r ${
                         isColActive('col-moyenne') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'
-                      } flex items-center justify-center p-1 text-center bg-blue-100/70 shrink-0 relative cursor-pointer`}
-                      title="Moyenne générale (Double-cliquer pour sélectionner le trait vertical)"
+                      } flex flex-col items-center justify-center p-1 text-center bg-blue-100/70 shrink-0 relative cursor-pointer`}
+                      title={`Moyenne ramenée sur /${effectiveScaleLabel} (Double-cliquer pour sélectionner le trait vertical)`}
                     >
-                      <span className="font-black text-xs sm:text-sm text-blue-950 tracking-wider uppercase">
+                      <span className="font-black text-xs sm:text-sm text-blue-950 tracking-wider uppercase leading-none">
                         MOYENNE
+                      </span>
+                      <span className="text-[9.5px] font-extrabold text-blue-700 leading-none mt-0.5">
+                        /{effectiveScaleLabel}
                       </span>
                       {renderColHandle('col-moyenne')}
                     </div>
@@ -5746,9 +5903,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                                   ? 'text-slate-400 font-mono text-sm tracking-widest'
                                   : std.average === null
                                   ? 'text-slate-300'
-                                  : std.average >= 12
+                                  : std.average >= effectiveAverageScale * 0.6
                                   ? 'text-emerald-700 bg-emerald-50/90 py-0.5 px-1.5 rounded border border-emerald-300'
-                                  : std.average >= 10
+                                  : std.average >= effectiveAverageScale * 0.5
                                   ? 'text-blue-700 bg-blue-50/90 py-0.5 px-1.5 rounded border border-blue-300'
                                   : 'text-rose-700 bg-rose-50/90 py-0.5 px-1.5 rounded border border-rose-300'
                               }`}
@@ -5758,7 +5915,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               ) : std.average !== null ? (
                                 <>
                                   <span>{std.averageFormatted}</span>
-                                  <span className="text-[10px] sm:text-[11px] opacity-75">/ 20</span>
+                                  <span className="text-[10px] sm:text-[11px] opacity-75">
+                                    / {effectiveScaleLabel}
+                                  </span>
                                 </>
                               ) : (
                                 <span className="text-slate-300 font-semibold">—</span>
@@ -6023,7 +6182,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 <input
                   type="number"
                   min={1}
-                  max={100}
+                  max={1000}
                   value={editingColModal.maxScore}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
@@ -6239,13 +6398,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   <span className={`font-black text-sm ${
                     !previewStats || previewStats.average === null
                       ? 'text-slate-400'
-                      : previewStats.average >= 12
+                      : previewStats.average >= effectiveAverageScale * 0.6
                       ? 'text-emerald-700'
-                      : previewStats.average >= 10
+                      : previewStats.average >= effectiveAverageScale * 0.5
                       ? 'text-blue-700'
                       : 'text-rose-700'
                   }`}>
-                    {previewStats?.averageFormatted ? `${previewStats.averageFormatted} / 20` : '-'}
+                    {previewStats?.averageFormatted ? `${previewStats.averageFormatted} / ${effectiveScaleLabel}` : '-'}
                   </span>
                 </div>
 

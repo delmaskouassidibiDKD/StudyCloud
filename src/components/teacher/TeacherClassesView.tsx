@@ -117,8 +117,9 @@ export interface ClassItem {
   borderDarkColor: string;
   colorStyle?: CardColorStyle;
   iconGradient: string;
-  mentionRules?: Array<{ min: number; label: string }> | null;
+  mentionRules?: Array<{ min: number; label: string; scale?: number }> | null;
   showMatricule?: boolean;
+  averageScale?: number;
   createdAt: number;
 }
 
@@ -3117,6 +3118,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     ...c,
                     mentionRules: settings.mentionRules,
                     showMatricule: settings.showMatricule,
+                    averageScale: settings.averageScale,
                   }
                 : c
             )
@@ -3147,6 +3149,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     ...c,
                     mentionRules: settings.mentionRules,
                     showMatricule: settings.showMatricule,
+                    averageScale: settings.averageScale,
                   }
                 : c
             )

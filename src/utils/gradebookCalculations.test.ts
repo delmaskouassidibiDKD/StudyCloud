@@ -275,3 +275,41 @@ test('sanitizeCustomMentionRules et resolveMentionWithRules gèrent les interval
   assert.equal(resolveMentionWithRules(8.5, cleaned).label, 'Avertissement');
   assert.equal(resolveMentionWithRules(null, cleaned).label, '—');
 });
+
+test('calculateSubjectAverage et resolveMentionWithRules ramènent les notes variées sur un barème maximal personnalisé (/40, /100, /10)', () => {
+  // Note 1: 14/20 (70%), Note 2: 32/40 (80%) => moyenne exacte = 75%
+  const evals = [
+    { valeur: 14, max: 20, coeffEval: 1 },
+    { valeur: 32, max: 40, coeffEval: 1 },
+  ];
+  const on20 = calculateSubjectAverage(evals, { targetScale: 20 });
+  const on40 = calculateSubjectAverage(evals, { targetScale: 40 });
+  const on100 = calculateSubjectAverage(evals, { targetScale: 100 });
+  const on10 = calculateSubjectAverage(evals, { targetScale: 10 });
+
+  assert.ok(Math.abs((on20.moyenneMatiere ?? 0) - 15) < 1e-9);
+  assert.ok(Math.abs((on40.moyenneMatiere ?? 0) - 30) < 1e-9);
+  assert.ok(Math.abs((on100.moyenneMatiere ?? 0) - 75) < 1e-9);
+  assert.ok(Math.abs((on10.moyenneMatiere ?? 0) - 7.5) < 1e-9);
+
+  // Mentions par défaut adaptées automatiquement sur /40 (30/40 = 15/20 => Bien, 18/40 = 9/20 => Insuffisant)
+  assert.equal(resolveMentionWithRules(30, null, 40).label, 'Bien');
+  assert.equal(resolveMentionWithRules(32, null, 40).label, 'Très bien');
+  assert.equal(resolveMentionWithRules(18, null, 40).label, 'Insuffisant');
+
+  // Mentions personnalisées saisies sur /40
+  const rules40 = sanitizeCustomMentionRules(
+    [
+      { min: 35, label: 'Excellence', scale: 40 },
+      { min: 25, label: 'Satisfaisant', scale: 40 },
+      { min: 0, label: 'À revoir', scale: 40 },
+    ],
+    40
+  );
+  assert.equal(rules40?.length, 3);
+  assert.equal(resolveMentionWithRules(36, rules40, 40).label, 'Excellence');
+  assert.equal(resolveMentionWithRules(30, rules40, 40).label, 'Satisfaisant');
+  assert.equal(resolveMentionWithRules(20, rules40, 40).label, 'À revoir');
+  // Même règle appliquée proportionnellement si un autre tableau est sur /20 (17.5/20 => Excellence)
+  assert.equal(resolveMentionWithRules(17.5, rules40, 20).label, 'Excellence');
+});

@@ -1903,4 +1903,80 @@ test('Mentions personnalisées + colonne Matricule (portée tableau ou toute la 
     body: { showMatricule: false },
   });
   assert.equal(bobSettings.status, 404);
+
+  // 5. Moyenne maximale (averageScale) sur ce tableau puis sur toute la classe + nettoyage surcharge locale + mentions sur /40
+  const putScaleSheet = await callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 2,
+      columnMetas: { 0: { title: 'NOTE', maxScore: 40 }, 1: { title: 'NOTE', maxScore: 40 } },
+      layout: { averageScale: 50, zoomPercent: 75 },
+      styles: {},
+      students: [
+        { id: 'st-1', studentUid: 'uid-awa', name: 'AWA KONÉ', matricule: '2026-ELT-001', notes: ['30/40', '34/40'] },
+      ],
+    },
+  });
+  assert.equal(putScaleSheet.status, 200);
+  const gbWithLocalScale = await (await callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, { token: 'token-alice' })).json();
+  assert.equal(gbWithLocalScale.layout.averageScale, 50);
+  assert.equal(gbWithLocalScale.classSettings.averageScale, 20);
+  assert.equal(gbWithLocalScale.columnMetas['0'].maxScore, 40);
+
+  // Appliquer averageScale = 40 + mentions sur /40 à toute la classe
+  const scaleClassRes = await callApi(`/api/teacher/classes/${classItem.id}/sheet-settings`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      averageScale: 40,
+      mentionRules: [
+        { min: 34, label: 'Excellent', scale: 40 },
+        { min: 20, label: 'Admis', scale: 40 },
+        { min: 0, label: 'Échec', scale: 40 },
+      ],
+    },
+  });
+  assert.equal(scaleClassRes.status, 200);
+  const scaleClassJson = await scaleClassRes.json();
+  assert.equal(scaleClassJson.classSettings.averageScale, 40);
+  assert.equal(scaleClassJson.classSettings.mentionRules[0].min, 34);
+  assert.equal(scaleClassJson.classSettings.mentionRules[0].scale, 40);
+
+  // La surcharge locale averageScale=50 de Maths doit avoir été nettoyée, et Français + Moyenne générale + Bootstrap reçoivent 40
+  const gbMathScaleAfter = await (await callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, { token: 'token-alice' })).json();
+  assert.equal(gbMathScaleAfter.layout.averageScale, undefined);
+  assert.equal(gbMathScaleAfter.classSettings.averageScale, 40);
+
+  const termScaleAfter = await (await callApi(`/api/teacher/class-average-sheet/${t1AvgCard.id}`, { token: 'token-alice' })).json();
+  assert.equal(termScaleAfter.classSettings.averageScale, 40);
+
+  const bootScale = await (await callApi('/api/teacher/bootstrap', { token: 'token-alice' })).json();
+  assert.equal(bootScale.classes.find((c: any) => c.id === classItem.id)?.averageScale, 40);
+
+  // Vérifier la persistance de matriculeOverrides sur la feuille de moyenne générale
+  const putAvgMat = await callApi(`/api/teacher/class-average-sheet/${t1AvgCard.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      layout: { averageScale: 100 },
+      styles: {},
+      overrides: {
+        matriculeOverrides: { 'uid:uid-awa': 'MAT-999' },
+      },
+      sortMode: 'merit',
+    },
+  });
+  assert.equal(putAvgMat.status, 200);
+  const termMatAfter = await (await callApi(`/api/teacher/class-average-sheet/${t1AvgCard.id}`, { token: 'token-alice' })).json();
+  assert.equal(termMatAfter.card.layout.averageScale, 100);
+  assert.equal(termMatAfter.card.overrides.matriculeOverrides['uid:uid-awa'], 'MAT-999');
+
+  // Rejet d'un averageScale invalide (0 ou > 1000)
+  const badScale = await callApi(`/api/teacher/classes/${classItem.id}/sheet-settings`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { averageScale: 0 },
+  });
+  assert.equal(badScale.status, 400);
 });

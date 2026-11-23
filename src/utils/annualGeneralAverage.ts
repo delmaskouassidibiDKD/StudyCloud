@@ -8,7 +8,11 @@ import {
   type TermAverageSortMode,
   type TermAverageSubject,
 } from './termGeneralAverage';
-import type { CustomMentionRule } from './gradebookCalculations';
+import {
+  DEFAULT_AVERAGE_SCALE,
+  sanitizeAverageScale,
+  type CustomMentionRule,
+} from './gradebookCalculations';
 
 export interface AnnualTermData {
   id: string;
@@ -92,6 +96,7 @@ export interface ComputedAnnualAverageTable {
   students: ComputedAnnualStudent[];
   classSummary: ComputedAnnualClassSummary;
   potentialDuplicates: PotentialDuplicateCandidate[];
+  averageScale: number;
 }
 
 export interface ComputeAnnualAverageInput {
@@ -99,6 +104,7 @@ export interface ComputeAnnualAverageInput {
   overrides?: TermAverageOverrides | null;
   sortMode?: TermAverageSortMode;
   mentionRules?: readonly CustomMentionRule[] | null;
+  averageScale?: number;
 }
 
 const getEffectiveTermCoeff = (coeff?: number | null): number => {
@@ -197,12 +203,16 @@ export function computeAnnualGeneralAverageTable(
     coefficient: t.coefficient,
   }));
 
+  const averageScale = sanitizeAverageScale(input.averageScale) ?? DEFAULT_AVERAGE_SCALE;
+  const passThreshold = averageScale / 2;
+
   const aggregated = computeTermGeneralAverageTable({
     subjects: termAsSubjects,
     subjectGradebooks: termGradebooks,
     overrides: input.overrides || {},
     sortMode: input.sortMode || 'merit',
     mentionRules: input.mentionRules,
+    averageScale,
   });
 
   // 3. Enrichir chaque élève avec les données annuelles (rangs par trimestre, évolution, décision)
@@ -251,7 +261,7 @@ export function computeAnnualGeneralAverageTable(
     const decision: 'Admis(e)' | 'Ajourné(e)' | '—' =
       st.generalAverage === null
         ? '—'
-        : st.generalAverage >= 10
+        : st.generalAverage + 1e-9 >= passThreshold
         ? 'Admis(e)'
         : 'Ajourné(e)';
 
@@ -309,5 +319,6 @@ export function computeAnnualGeneralAverageTable(
       passRatePercent: aggregated.classSummary.passRatePercent,
     },
     potentialDuplicates: aggregated.potentialDuplicates,
+    averageScale,
   };
 }

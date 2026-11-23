@@ -72,8 +72,11 @@ import {
   type ClassSheetSettings,
 } from '../../services/teacherGradebookApi';
 import {
+  DEFAULT_AVERAGE_SCALE,
   DEFAULT_CUSTOM_MENTION_RULES,
+  formatScaleValue,
   resolveMentionWithRules,
+  sanitizeAverageScale,
   type CustomMentionRule,
 } from '../../utils/gradebookCalculations';
 import {
@@ -159,12 +162,13 @@ const getExcelColumnLabel = (index: number): string => {
 
 const getMentionBadgeStyle = (
   average: number | null,
-  rules: readonly CustomMentionRule[]
+  rules: readonly CustomMentionRule[],
+  averageScale = DEFAULT_AVERAGE_SCALE
 ): string => {
   if (average === null || !Number.isFinite(average)) {
     return 'bg-slate-50 text-slate-400 border-slate-200';
   }
-  const { tone } = resolveMentionWithRules(average, rules);
+  const { tone } = resolveMentionWithRules(average, rules, averageScale);
   switch (tone) {
     case 'emerald':
       return 'bg-emerald-100 text-emerald-800 border-emerald-300';
@@ -260,7 +264,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     mergedLinks: initialCachedSheet?.card?.overrides?.mergedLinks || [],
     distinctPairs: initialCachedSheet?.card?.overrides?.distinctPairs || [],
   }));
-  // Paramètres globaux de classe (mentions personnalisées + colonne Matricule)
+  // Paramètres globaux de classe (mentions personnalisées + colonne Matricule + moyenne max)
   const [classSettings, setClassSettings] = useState<ClassSheetSettings>(() => ({
     mentionRules:
       initialCachedSheet?.classSettings?.mentionRules ??
@@ -269,6 +273,10 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     showMatricule:
       initialCachedSheet?.classSettings?.showMatricule ??
       Boolean(schoolClass.showMatricule),
+    averageScale:
+      sanitizeAverageScale(initialCachedSheet?.classSettings?.averageScale) ??
+      sanitizeAverageScale(schoolClass.averageScale) ??
+      DEFAULT_AVERAGE_SCALE,
   }));
   const [closeMentionMatriculeSignal, setCloseMentionMatriculeSignal] = useState(0);
   const [editingMatriculeCell, setEditingMatriculeCell] = useState<{
@@ -363,6 +371,13 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     typeof layout.showMatricule === 'boolean'
       ? layout.showMatricule
       : Boolean(classSettings.showMatricule);
+
+  const effectiveAverageScale =
+    sanitizeAverageScale(layout.averageScale) ??
+    sanitizeAverageScale(classSettings.averageScale) ??
+    DEFAULT_AVERAGE_SCALE;
+  const effectiveScaleLabel = formatScaleValue(effectiveAverageScale);
+  const passThreshold = effectiveAverageScale / 2;
 
   // Largeurs effectives des colonnes (avec valeurs par défaut harmonieuses)
   const colWidthRank = layout.colWidthRank ?? 68;
@@ -708,6 +723,91 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     ]
   );
 
+  // Enregistrer la moyenne maximale (ce tableau ou toute la classe)
+  const handleSaveAverageScale = useCallback(
+    async (scale: number, scope: SheetSettingScope) => {
+      const cleanScale = sanitizeAverageScale(scale);
+      if (cleanScale === null) return;
+      const token = getTeacherAuthToken();
+      if (scope === 'class') {
+        if (token) {
+          const res = await TeacherGradebookAPI.updateClassSheetSettings(schoolClass.id, {
+            averageScale: cleanScale,
+          });
+          setClassSettings(res.classSettings);
+          setLayout((prev) => {
+            if (!('averageScale' in prev)) return prev;
+            const next = { ...prev };
+            delete next.averageScale;
+            return next;
+          });
+          if (userId) {
+            const cached = readUserClassAverageCache(userId, averageCard.id);
+            if (cached) {
+              const nextCardLayout = { ...(cached.card?.layout || {}) };
+              delete nextCardLayout.averageScale;
+              writeUserClassAverageCache(userId, averageCard.id, {
+                ...cached,
+                classSettings: res.classSettings,
+                card: { ...cached.card, layout: nextCardLayout },
+              });
+            }
+          }
+          onClassSettingsUpdated?.(schoolClass.id, res.classSettings);
+          setHasSavedAtLeastOnce(true);
+          setCloudStatus('saved');
+          return;
+        }
+        const nextSettings: ClassSheetSettings = {
+          ...classSettings,
+          averageScale: cleanScale,
+        };
+        setClassSettings(nextSettings);
+        setLayout((prev) => {
+          const next = { ...prev };
+          delete next.averageScale;
+          return next;
+        });
+        onClassSettingsUpdated?.(schoolClass.id, nextSettings);
+        return;
+      }
+
+      const nextLayout: TermAverageLayoutState = {
+        ...layout,
+        zoomPercent,
+        averageScale: cleanScale,
+      };
+      setLayout(nextLayout);
+      const nextPayload: ClassAverageSheetSavePayload = {
+        layout: nextLayout,
+        styles,
+        overrides,
+        sortMode,
+      };
+      latestPayloadRef.current = nextPayload;
+      if (token) {
+        await TeacherGradebookAPI.saveClassAverageSheet(averageCard.id, nextPayload);
+        setIsDirty(false);
+        setHasSavedAtLeastOnce(true);
+        setCloudStatus('saved');
+      } else {
+        setIsDirty(true);
+      }
+    },
+    [
+      schoolClass.id,
+      classSettings,
+      userId,
+      averageCard.id,
+      onClassSettingsUpdated,
+      layout,
+      zoomPercent,
+      styles,
+      overrides,
+      sortMode,
+    ]
+  );
+
   // Calcul réactif temps réel du tableau complet
   const computed = useMemo(
     () =>
@@ -717,8 +817,9 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         overrides,
         sortMode,
         mentionRules: effectiveMentionRules,
+        averageScale: effectiveAverageScale,
       }),
-    [subjects, subjectGradebooks, overrides, sortMode, effectiveMentionRules]
+    [subjects, subjectGradebooks, overrides, sortMode, effectiveMentionRules, effectiveAverageScale]
   );
 
   // Matières dont le coefficient n'a pas encore été enregistré en base
@@ -1148,7 +1249,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     subjectId: string,
     rawDraft: string
   ) => {
-    const parsed = parseManualAverageInput(rawDraft);
+    const parsed = parseManualAverageInput(rawDraft, effectiveAverageScale);
     if (!parsed.valid) {
       setEditingManualCell((prev) => (prev ? { ...prev, invalid: true } : null));
       return;
@@ -1160,7 +1261,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       if (parsed.value === null) {
         delete studentMap[subjectId];
       } else {
-        studentMap[subjectId] = parsed.value;
+        // Stocker normalisé sur /20 pour rester 100 % exact lors des changements de barème
+        studentMap[subjectId] = (parsed.value / effectiveAverageScale) * 20;
       }
       if (Object.keys(studentMap).length === 0) {
         delete nextOverrides[studentKey];
@@ -1231,11 +1333,11 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         ...(effectiveShowMatricule ? ['MATRICULE'] : []),
         'NOM & PRÉNOM',
         ...computed.subjects.flatMap((s) => [
-          `${s.name} (Coeff ${formatCoeffDisplay(s.effectiveCoeff)}) - Moy. /20`,
+          `${s.name} (Coeff ${formatCoeffDisplay(s.effectiveCoeff)}) - Moy. /${effectiveScaleLabel}`,
           `${s.name} - Moy. × Coeff`,
         ]),
         `TOTAL GÉNÉRAL (Total Coeff : ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`,
-        'MOYENNE GÉNÉRALE (/20)',
+        `MOYENNE GÉNÉRALE (/${effectiveScaleLabel})`,
         'MENTION',
       ];
 
@@ -1316,7 +1418,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         `${subj.name.toUpperCase()} (Coeff ${formatCoeffDisplay(subj.effectiveCoeff)})`,
         ''
       );
-      headerRow2.push('Moy. /20', 'Moy. × Coeff');
+      headerRow2.push(`Moy. /${effectiveScaleLabel}`, 'Moy. × Coeff');
       merges.push({
         s: { r: 0, c: colCursor },
         e: { r: 0, c: colCursor + 1 },
@@ -1326,7 +1428,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
     headerRow1.push(
       `TOTAL GÉNÉRAL (Coeff ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`,
-      'MOYENNE GÉNÉRALE (/20)',
+      `MOYENNE GÉNÉRALE (/${effectiveScaleLabel})`,
       'MENTION'
     );
     headerRow2.push('', '', '');
@@ -1995,6 +2097,9 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                   ...(typeof prev.showMatricule === 'boolean'
                     ? { showMatricule: prev.showMatricule }
                     : {}),
+                  ...(typeof prev.averageScale === 'number'
+                    ? { averageScale: prev.averageScale }
+                    : {}),
                 }));
                 setIsDirty(true);
               }}
@@ -2041,11 +2146,12 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
           </span>
         </div>
 
-        {/* Groupes Mentions personnalisées & Colonne Matricule (ce tableau ou toute la classe) */}
+        {/* Groupes Mentions personnalisées, Colonne Matricule & Barème (ce tableau ou toute la classe) */}
         <MentionAndMatriculeControls
           effectiveMentionRules={effectiveMentionRules}
           hasCustomMentionRules={hasCustomMentionRules}
           showMatricule={effectiveShowMatricule}
+          averageScale={effectiveAverageScale}
           classLabel={classDisplayName}
           boundaryEl={containerRef.current}
           onWillOpen={() => {
@@ -2055,6 +2161,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
           closeSignal={closeMentionMatriculeSignal}
           onSaveMentionRules={handleSaveMentionRules}
           onSaveShowMatricule={handleSaveShowMatricule}
+          onSaveAverageScale={handleSaveAverageScale}
         />
       </section>
 
@@ -2442,7 +2549,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                               MOYENNE GÉNÉRALE
                             </div>
                             <div className="text-[10px] font-bold text-emerald-700 mt-0.5">
-                              / 20
+                              / {effectiveScaleLabel}
                             </div>
                             <div
                               onMouseDown={(e) =>
@@ -2491,9 +2598,9 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                   width: `${getSubjMoyWidth(subject.id)}px`,
                                 }}
                                 className="relative border-r border-b-2 border-slate-800 px-1 py-1 text-center text-[10px] font-extrabold uppercase tracking-tight text-slate-700 bg-white"
-                                title={`Moyenne sur 20 en ${subject.name}`}
+                                title={`Moyenne sur ${effectiveScaleLabel} en ${subject.name}`}
                               >
-                                Moy. /20
+                                Moy. /{effectiveScaleLabel}
                                 <div
                                   onMouseDown={(e) =>
                                     startColumnResize(
@@ -2599,7 +2706,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                                   student.name || 'cet élève'
                                                 } : ${student.rankLabel} (Moyenne générale : ${formatFrenchNumber(
                                                   student.generalAverage
-                                                )} / 20)`
+                                                )} / ${effectiveScaleLabel})`
                                               : 'Non classé (aucune moyenne saisie)',
                                         })
                                       }
@@ -2832,10 +2939,10 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                               cell?.source === 'gradebook'
                                                 ? `${subject.name} · Moyenne de ${
                                                     student.name || 'cet élève'
-                                                  } : ${avgStr} / 20 (calculée automatiquement depuis le tableau de la matière)`
+                                                  } : ${avgStr} / ${effectiveScaleLabel} (calculée automatiquement depuis le tableau de la matière)`
                                                 : cell?.source === 'manual'
-                                                ? `${subject.name} · Saisie directe : ${avgStr} / 20 (cliquez pour modifier ou effacer)`
-                                                : `${subject.name} · Aucune note dans la matière — cliquez ici pour saisir directement une moyenne (/20)`,
+                                                ? `${subject.name} · Saisie directe : ${avgStr} / ${effectiveScaleLabel} (cliquez pour modifier ou effacer)`
+                                                : `${subject.name} · Aucune note dans la matière — cliquez ici pour saisir directement une moyenne (/${effectiveScaleLabel})`,
                                           });
                                           if (canDirectEdit && !isEditingThis) {
                                             setEditingManualCell({
@@ -2845,7 +2952,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                                 cell?.manualAverage !== null &&
                                                 cell?.manualAverage !== undefined
                                                   ? String(
-                                                      cell.manualAverage
+                                                      Math.round(cell.manualAverage * 100) / 100
                                                     ).replace('.', ',')
                                                   : '',
                                             });
@@ -2858,14 +2965,14 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                             : ''
                                         } ${
                                           cell?.effectiveAverage !== null &&
-                                          cell.effectiveAverage < 10
+                                          cell.effectiveAverage < passThreshold
                                             ? 'text-red-600'
                                             : 'text-slate-800'
                                         }`}
                                         title={
                                           cell?.source === 'gradebook'
                                             ? 'Synchronisée automatiquement depuis le tableau de cette matière'
-                                            : 'Cliquer pour saisir directement une moyenne (/20)'
+                                            : `Cliquer pour saisir directement une moyenne (/${effectiveScaleLabel})`
                                         }
                                       >
                                         {isEditingThis ? (
@@ -2902,7 +3009,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                                 setEditingManualCell(null);
                                               }
                                             }}
-                                            placeholder="/20"
+                                            placeholder={`/${effectiveScaleLabel}`}
                                             className={`w-full h-7 text-center text-xs font-bold rounded outline-none border ${
                                               editingManualCell.invalid
                                                 ? 'border-red-500 bg-red-50 text-red-700'
@@ -3043,7 +3150,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                   const isSel = activeCell.cellKey === cellKey;
                                   const isPassing =
                                     student.generalAverage !== null &&
-                                    student.generalAverage >= 10;
+                                    student.generalAverage + 1e-9 >= passThreshold;
                                   return (
                                     <td
                                       data-cell-key={cellKey}
@@ -3061,7 +3168,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                                   student.totalCoeffCounted
                                                 )} = ${formatFrenchNumber(
                                                   student.generalAverage
-                                                )} / 20`
+                                                )} / ${effectiveScaleLabel}`
                                               : 'Moyenne Générale : aucune matière notée',
                                         })
                                       }
@@ -3108,7 +3215,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                       <span
                                         className={`inline-block px-2 py-0.5 rounded-full border text-[10.5px] font-extrabold whitespace-nowrap ${getMentionBadgeStyle(
                                           student.generalAverage,
-                                          effectiveMentionRules
+                                          effectiveMentionRules,
+                                          effectiveAverageScale
                                         )}`}
                                       >
                                         {student.mention}
@@ -3199,7 +3307,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                           </strong>
                         </span>
                         <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-800">
-                          Admis (≥ 10) :{' '}
+                          Admis (≥ {formatScaleValue(passThreshold)}) :{' '}
                           <strong>
                             {computed.classSummary.passCount}/
                             {computed.classSummary.gradedStudentCount}
@@ -3229,7 +3337,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
             {averageCard.title}
           </div>
           <span className="hidden sm:inline text-[10.5px] text-slate-500">
-            Calcul automatique par matière (Moy. /20 et Moy. × Coeff) •{' '}
+            Calcul automatique par matière (Moy. /{effectiveScaleLabel} et Moy. × Coeff) •{' '}
             {computed.subjects.length} matière(s)
           </span>
         </div>
@@ -3678,7 +3786,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                           Coeff
                         </th>
                         <th className="py-1.5 px-2 text-center font-black">
-                          Moy. /20
+                          Moy. /{effectiveScaleLabel}
                         </th>
                         <th className="py-1.5 px-2 text-center font-black">
                           Moy. × Coeff
@@ -3716,7 +3824,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                   <span
                     className={`px-3 py-1 rounded-full border text-xs font-black ${getMentionBadgeStyle(
                       previewStudent.generalAverage,
-                      effectiveMentionRules
+                      effectiveMentionRules,
+                      effectiveAverageScale
                     )}`}
                   >
                     {previewStudent.mention}

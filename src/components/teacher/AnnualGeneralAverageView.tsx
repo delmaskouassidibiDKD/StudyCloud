@@ -72,8 +72,11 @@ import {
   type ClassSheetSettings,
 } from '../../services/teacherGradebookApi';
 import {
+  DEFAULT_AVERAGE_SCALE,
   DEFAULT_CUSTOM_MENTION_RULES,
+  formatScaleValue,
   resolveMentionWithRules,
+  sanitizeAverageScale,
   type CustomMentionRule,
 } from '../../utils/gradebookCalculations';
 import {
@@ -168,12 +171,13 @@ const getExcelColumnLabel = (index: number): string => {
 
 const getMentionBadgeStyle = (
   average: number | null,
-  rules: readonly CustomMentionRule[]
+  rules: readonly CustomMentionRule[],
+  averageScale = DEFAULT_AVERAGE_SCALE
 ): string => {
   if (average === null || !Number.isFinite(average)) {
     return 'bg-slate-50 text-slate-400 border-slate-200';
   }
-  const { tone } = resolveMentionWithRules(average, rules);
+  const { tone } = resolveMentionWithRules(average, rules, averageScale);
   switch (tone) {
     case 'emerald':
       return 'bg-emerald-100 text-emerald-800 border-emerald-300';
@@ -266,7 +270,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
     mergedLinks: initialCachedSheet?.card?.overrides?.mergedLinks || [],
     distinctPairs: initialCachedSheet?.card?.overrides?.distinctPairs || [],
   }));
-  // Paramètres globaux de classe (mentions personnalisées + colonne Matricule)
+  // Paramètres globaux de classe (mentions personnalisées + colonne Matricule + moyenne max)
   const [classSettings, setClassSettings] = useState<ClassSheetSettings>(() => ({
     mentionRules:
       initialCachedSheet?.classSettings?.mentionRules ??
@@ -275,6 +279,10 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
     showMatricule:
       initialCachedSheet?.classSettings?.showMatricule ??
       Boolean(schoolClass.showMatricule),
+    averageScale:
+      sanitizeAverageScale(initialCachedSheet?.classSettings?.averageScale) ??
+      sanitizeAverageScale(schoolClass.averageScale) ??
+      DEFAULT_AVERAGE_SCALE,
   }));
   const [closeMentionMatriculeSignal, setCloseMentionMatriculeSignal] = useState(0);
   const [editingMatriculeCell, setEditingMatriculeCell] = useState<{
@@ -369,6 +377,13 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
     typeof layout.showMatricule === 'boolean'
       ? layout.showMatricule
       : Boolean(classSettings.showMatricule);
+
+  const effectiveAverageScale =
+    sanitizeAverageScale(layout.averageScale) ??
+    sanitizeAverageScale(classSettings.averageScale) ??
+    DEFAULT_AVERAGE_SCALE;
+  const effectiveScaleLabel = formatScaleValue(effectiveAverageScale);
+  const passThreshold = effectiveAverageScale / 2;
 
   // Largeurs effectives des colonnes
   const colWidthRank = layout.colWidthRank ?? 68;
@@ -714,6 +729,91 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
     ]
   );
 
+  // Enregistrer la moyenne maximale (ce tableau ou toute la classe)
+  const handleSaveAverageScale = useCallback(
+    async (scale: number, scope: SheetSettingScope) => {
+      const cleanScale = sanitizeAverageScale(scale);
+      if (cleanScale === null) return;
+      const token = getTeacherAuthToken();
+      if (scope === 'class') {
+        if (token) {
+          const res = await TeacherGradebookAPI.updateClassSheetSettings(schoolClass.id, {
+            averageScale: cleanScale,
+          });
+          setClassSettings(res.classSettings);
+          setLayout((prev) => {
+            if (!('averageScale' in prev)) return prev;
+            const next = { ...prev };
+            delete next.averageScale;
+            return next;
+          });
+          if (userId) {
+            const cached = readUserClassAverageCache(userId, averageCard.id);
+            if (cached) {
+              const nextCardLayout = { ...(cached.card?.layout || {}) };
+              delete nextCardLayout.averageScale;
+              writeUserClassAverageCache(userId, averageCard.id, {
+                ...cached,
+                classSettings: res.classSettings,
+                card: { ...cached.card, layout: nextCardLayout },
+              });
+            }
+          }
+          onClassSettingsUpdated?.(schoolClass.id, res.classSettings);
+          setHasSavedAtLeastOnce(true);
+          setCloudStatus('saved');
+          return;
+        }
+        const nextSettings: ClassSheetSettings = {
+          ...classSettings,
+          averageScale: cleanScale,
+        };
+        setClassSettings(nextSettings);
+        setLayout((prev) => {
+          const next = { ...prev };
+          delete next.averageScale;
+          return next;
+        });
+        onClassSettingsUpdated?.(schoolClass.id, nextSettings);
+        return;
+      }
+
+      const nextLayout: TermAverageLayoutState = {
+        ...layout,
+        zoomPercent,
+        averageScale: cleanScale,
+      };
+      setLayout(nextLayout);
+      const nextPayload: ClassAverageSheetSavePayload = {
+        layout: nextLayout,
+        styles,
+        overrides,
+        sortMode,
+      };
+      latestPayloadRef.current = nextPayload;
+      if (token) {
+        await TeacherGradebookAPI.saveClassAverageSheet(averageCard.id, nextPayload);
+        setIsDirty(false);
+        setHasSavedAtLeastOnce(true);
+        setCloudStatus('saved');
+      } else {
+        setIsDirty(true);
+      }
+    },
+    [
+      schoolClass.id,
+      classSettings,
+      userId,
+      averageCard.id,
+      onClassSettingsUpdated,
+      layout,
+      zoomPercent,
+      styles,
+      overrides,
+      sortMode,
+    ]
+  );
+
   // Calcul réactif temps réel du tableau annuel complet
   const computed = useMemo(
     () =>
@@ -722,8 +822,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
         overrides,
         sortMode,
         mentionRules: effectiveMentionRules,
+        averageScale: effectiveAverageScale,
       }),
-    [annualTerms, overrides, sortMode, effectiveMentionRules]
+    [annualTerms, overrides, sortMode, effectiveMentionRules, effectiveAverageScale]
   );
 
   // Trimestres sans coefficient enregistré en base
@@ -1121,7 +1222,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
     termId: string,
     rawDraft: string
   ) => {
-    const parsed = parseManualAverageInput(rawDraft);
+    const parsed = parseManualAverageInput(rawDraft, effectiveAverageScale);
     if (!parsed.valid) {
       setEditingManualCell((prev) => (prev ? { ...prev, invalid: true } : null));
       return;
@@ -1133,7 +1234,8 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       if (parsed.value === null) {
         delete studentMap[termId];
       } else {
-        studentMap[termId] = parsed.value;
+        // Stocker normalisé sur /20 pour rester 100 % exact lors des changements de barème
+        studentMap[termId] = (parsed.value / effectiveAverageScale) * 20;
       }
       if (Object.keys(studentMap).length === 0) {
         delete nextOverrides[studentKey];
@@ -1204,11 +1306,11 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
         ...(effectiveShowMatricule ? ['MATRICULE'] : []),
         'NOM & PRÉNOM',
         ...computed.terms.flatMap((t) => [
-          `${t.name} (Coeff ${formatCoeffDisplay(t.effectiveCoeff)}) - Moy. /20`,
+          `${t.name} (Coeff ${formatCoeffDisplay(t.effectiveCoeff)}) - Moy. /${effectiveScaleLabel}`,
           `${t.name} - Moy. × Coeff`,
         ]),
         `TOTAL ANNUEL (Total Coeff : ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`,
-        'MOYENNE ANNUELLE (/20)',
+        `MOYENNE ANNUELLE (/${effectiveScaleLabel})`,
         'MENTION',
         'DÉCISION',
       ];
@@ -1291,7 +1393,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
         `${termCol.name.toUpperCase()} (Coeff ${formatCoeffDisplay(termCol.effectiveCoeff)})`,
         ''
       );
-      headerRow2.push('Moy. /20', 'Moy. × Coeff');
+      headerRow2.push(`Moy. /${effectiveScaleLabel}`, 'Moy. × Coeff');
       merges.push({
         s: { r: 0, c: colCursor },
         e: { r: 0, c: colCursor + 1 },
@@ -1301,7 +1403,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
 
     headerRow1.push(
       `TOTAL ANNUEL (Coeff ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`,
-      'MOYENNE ANNUELLE (/20)',
+      `MOYENNE ANNUELLE (/${effectiveScaleLabel})`,
       'MENTION',
       'DÉCISION'
     );
@@ -1905,6 +2007,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                   ...(typeof prev.showMatricule === 'boolean'
                     ? { showMatricule: prev.showMatricule }
                     : {}),
+                  ...(typeof prev.averageScale === 'number'
+                    ? { averageScale: prev.averageScale }
+                    : {}),
                 }));
                 setIsDirty(true);
               }}
@@ -1951,11 +2056,12 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
           </span>
         </div>
 
-        {/* Groupes Mentions personnalisées & Colonne Matricule (ce tableau ou toute la classe) */}
+        {/* Groupes Mentions personnalisées, Colonne Matricule & Barème (ce tableau ou toute la classe) */}
         <MentionAndMatriculeControls
           effectiveMentionRules={effectiveMentionRules}
           hasCustomMentionRules={hasCustomMentionRules}
           showMatricule={effectiveShowMatricule}
+          averageScale={effectiveAverageScale}
           classLabel={classDisplayName}
           boundaryEl={containerRef.current}
           onWillOpen={() => {
@@ -1965,6 +2071,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
           closeSignal={closeMentionMatriculeSignal}
           onSaveMentionRules={handleSaveMentionRules}
           onSaveShowMatricule={handleSaveShowMatricule}
+          onSaveAverageScale={handleSaveAverageScale}
         />
       </section>
 
@@ -2343,7 +2450,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                               MOYENNE ANNUELLE
                             </div>
                             <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">
-                              / 20
+                              / {effectiveScaleLabel}
                             </div>
                             <div
                               onMouseDown={(e) =>
@@ -2380,9 +2487,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                               <th
                                 style={{ width: `${getTermMoyWidth(termCol.id)}px` }}
                                 className="relative border-r border-b-2 border-slate-800 px-1 py-1 text-center text-[10px] font-extrabold uppercase tracking-tight text-slate-700 bg-white"
-                                title={`Moyenne générale sur 20 au ${termCol.name}`}
+                                title={`Moyenne générale sur ${effectiveScaleLabel} au ${termCol.name}`}
                               >
-                                Moy. /20
+                                Moy. /{effectiveScaleLabel}
                                 <div
                                   onMouseDown={(e) =>
                                     startColumnResize(
@@ -2485,7 +2592,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                                   student.name || 'cet élève'
                                                 } : ${student.rankLabel} (Moyenne annuelle : ${formatFrenchNumber(
                                                   student.annualAverage
-                                                )} / 20 — ${student.decision})`
+                                                )} / ${effectiveScaleLabel} — ${student.decision})`
                                               : 'Non classé (aucune moyenne trimestrielle)',
                                         })
                                       }
@@ -2670,14 +2777,14 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                               cell?.source === 'gradebook'
                                                 ? `${termCol.name} · Moyenne de ${
                                                     student.name || 'cet élève'
-                                                  } : ${avgStr} / 20 (Rang trimestriel : ${
+                                                  } : ${avgStr} / ${effectiveScaleLabel} (Rang trimestriel : ${
                                                     cell.termRankLabel
                                                   } · ${cell.gradedSubjectsCount}/${
                                                     cell.totalSubjectsCount
                                                   } matière(s))`
                                                 : cell?.source === 'manual'
-                                                ? `${termCol.name} · Saisie directe : ${avgStr} / 20 (cliquez pour modifier ou effacer)`
-                                                : `${termCol.name} · Aucune moyenne calculée — cliquez ici pour saisir directement une moyenne (/20)`,
+                                                ? `${termCol.name} · Saisie directe : ${avgStr} / ${effectiveScaleLabel} (cliquez pour modifier ou effacer)`
+                                                : `${termCol.name} · Aucune moyenne calculée — cliquez ici pour saisir directement une moyenne (/${effectiveScaleLabel})`,
                                           });
                                           if (canDirectEdit && !isEditingThis) {
                                             setEditingManualCell({
@@ -2686,7 +2793,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                               draft:
                                                 cell?.manualAverage !== null &&
                                                 cell?.manualAverage !== undefined
-                                                  ? String(cell.manualAverage).replace('.', ',')
+                                                  ? String(
+                                                      Math.round(cell.manualAverage * 100) / 100
+                                                    ).replace('.', ',')
                                                   : '',
                                             });
                                           }
@@ -2696,14 +2805,14 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                           isMoySel ? 'ring-2 ring-inset ring-blue-500' : ''
                                         } ${
                                           cell?.effectiveAverage !== null &&
-                                          cell.effectiveAverage < 10
+                                          cell.effectiveAverage < passThreshold
                                             ? 'text-red-600'
                                             : 'text-slate-800'
                                         }`}
                                         title={
                                           cell?.source === 'gradebook'
                                             ? `Synchronisée automatiquement depuis ${termCol.name} (Rang : ${cell.termRankLabel})`
-                                            : 'Cliquer pour saisir directement une moyenne (/20)'
+                                            : `Cliquer pour saisir directement une moyenne (/${effectiveScaleLabel})`
                                         }
                                       >
                                         {isEditingThis ? (
@@ -2740,7 +2849,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                                 setEditingManualCell(null);
                                               }
                                             }}
-                                            placeholder="/20"
+                                            placeholder={`/${effectiveScaleLabel}`}
                                             className={`w-full h-7 text-center text-xs font-bold rounded outline-none border ${
                                               editingManualCell.invalid
                                                 ? 'border-red-500 bg-red-50 text-red-700'
@@ -2863,7 +2972,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                   const isSel = activeCell.cellKey === cellKey;
                                   const isPassing =
                                     student.annualAverage !== null &&
-                                    student.annualAverage >= 10;
+                                    student.annualAverage + 1e-9 >= passThreshold;
                                   return (
                                     <td
                                       data-cell-key={cellKey}
@@ -2881,7 +2990,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                                   student.totalCoeffCounted
                                                 )} = ${formatFrenchNumber(
                                                   student.annualAverage
-                                                )} / 20 — ${student.decision}`
+                                                )} / ${effectiveScaleLabel} — ${student.decision}`
                                               : 'Moyenne Annuelle : aucun trimestre noté',
                                         })
                                       }
@@ -2924,7 +3033,8 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                       <span
                                         className={`inline-block px-2 py-0.5 rounded-full border text-[10.5px] font-extrabold whitespace-nowrap ${getMentionBadgeStyle(
                                           student.annualAverage,
-                                          effectiveMentionRules
+                                          effectiveMentionRules,
+                                          effectiveAverageScale
                                         )}`}
                                       >
                                         {student.mention}
@@ -3007,7 +3117,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                           </strong>
                         </span>
                         <span className="px-2 py-0.5 rounded-md bg-blue-50 border border-blue-200 text-blue-800">
-                          Admis (≥ 10) :{' '}
+                          Admis (≥ {formatScaleValue(passThreshold)}) :{' '}
                           <strong>
                             {computed.classSummary.passCount}/
                             {computed.classSummary.gradedStudentCount}
@@ -3037,7 +3147,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             {averageCard.title}
           </div>
           <span className="hidden sm:inline text-[10.5px] text-slate-500">
-            Synthèse annuelle automatique (Moy. /20 et Moy. × Coeff) •{' '}
+            Synthèse annuelle automatique (Moy. /{effectiveScaleLabel} et Moy. × Coeff) •{' '}
             {computed.terms.length} trimestre(s)
           </span>
         </div>
@@ -3511,7 +3621,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                       <tr>
                         <th className="py-1.5 px-2.5 text-left font-black">Trimestre</th>
                         <th className="py-1.5 px-2 text-center font-black">Coeff</th>
-                        <th className="py-1.5 px-2 text-center font-black">Moy. /20</th>
+                        <th className="py-1.5 px-2 text-center font-black">
+                          Moy. /{effectiveScaleLabel}
+                        </th>
                         <th className="py-1.5 px-2 text-center font-black">Moy. × Coeff</th>
                         <th className="py-1.5 px-2 text-center font-black">Rang</th>
                       </tr>
@@ -3549,7 +3661,8 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                     <span
                       className={`px-3 py-1 rounded-full border text-xs font-black ${getMentionBadgeStyle(
                         previewStudent.annualAverage,
-                        effectiveMentionRules
+                        effectiveMentionRules,
+                        effectiveAverageScale
                       )}`}
                     >
                       {previewStudent.mention}

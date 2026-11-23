@@ -88,6 +88,7 @@ async function ensureTeacherGradebookTables(db) {
       icon_gradient TEXT NOT NULL DEFAULT 'from-amber-500 to-orange-600',
       mention_rules_json TEXT DEFAULT NULL,
       show_matricule INTEGER NOT NULL DEFAULT 0,
+      average_scale REAL NOT NULL DEFAULT 20,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -256,6 +257,9 @@ async function ensureTeacherGradebookTables(db) {
     }
     if (!clsCols.has("show_matricule")) {
       await db.prepare("ALTER TABLE teacher_classes ADD COLUMN show_matricule INTEGER NOT NULL DEFAULT 0").run();
+    }
+    if (!clsCols.has("average_scale")) {
+      await db.prepare("ALTER TABLE teacher_classes ADD COLUMN average_scale REAL NOT NULL DEFAULT 20").run();
     }
   } catch {
   }
@@ -470,6 +474,12 @@ function safeParseJson(raw, fallback) {
     return fallback;
   }
 }
+function sanitizeAverageScaleWorker(raw) {
+  if (raw === null || raw === void 0 || raw === "") return null;
+  const num = typeof raw === "string" ? Number(raw.trim().replace(",", ".")) : Number(raw);
+  if (!Number.isFinite(num) || num < 1 || num > 1e3) return null;
+  return Math.round(num * 100) / 100;
+}
 function sanitizeMentionRulesWorker(raw) {
   if (!Array.isArray(raw) || raw.length === 0) return null;
   const cleaned = [];
@@ -478,11 +488,15 @@ function sanitizeMentionRulesWorker(raw) {
     if (!item || typeof item !== "object") continue;
     const min = Number(item.min);
     const label = String(item.label ?? "").trim().slice(0, 48);
-    if (!Number.isFinite(min) || min < 0 || min > 20 || !label) continue;
+    const parsedScale = sanitizeAverageScaleWorker(item.scale);
+    const cap = parsedScale !== null ? parsedScale : 20;
+    if (!Number.isFinite(min) || min < 0 || min > cap || !label) continue;
     const roundedMin = Math.round(min * 100) / 100;
     if (seenMins.has(roundedMin)) continue;
     seenMins.add(roundedMin);
-    cleaned.push({ min: roundedMin, label });
+    cleaned.push(
+      parsedScale !== null ? { min: roundedMin, label, scale: parsedScale } : { min: roundedMin, label }
+    );
   }
   if (cleaned.length === 0) return null;
   cleaned.sort((a, b) => b.min - a.min);
@@ -490,12 +504,13 @@ function sanitizeMentionRulesWorker(raw) {
 }
 function extractClassSheetSettings(classRow) {
   if (!classRow) {
-    return { mentionRules: null, showMatricule: false };
+    return { mentionRules: null, showMatricule: false, averageScale: 20 };
   }
   const parsedRules = classRow.mention_rules_json ? sanitizeMentionRulesWorker(safeParseJson(classRow.mention_rules_json, null)) : null;
   return {
     mentionRules: parsedRules,
-    showMatricule: Number(classRow.show_matricule) === 1
+    showMatricule: Number(classRow.show_matricule) === 1,
+    averageScale: sanitizeAverageScaleWorker(classRow.average_scale) ?? 20
   };
 }
 function normalizeNameForMatch(val) {
@@ -782,6 +797,7 @@ async function buildBootstrapPayload(db, userId, origin, jwtSecret) {
       iconGradient: r.icon_gradient || "from-amber-500 to-orange-600",
       mentionRules: sheetSettings.mentionRules,
       showMatricule: sheetSettings.showMatricule,
+      averageScale: sheetSettings.averageScale,
       createdAt: Number(r.created_at) || Date.now()
     };
   });
@@ -1416,11 +1432,12 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
   const classSheetSettingsMatch = path.match(/^\/api\/teacher\/classes\/([^/]+)\/sheet-settings$/);
   if (classSheetSettingsMatch && method === "PUT") {
     const classId = decodeURIComponent(classSheetSettingsMatch[1]);
-    const existing = await db.prepare("SELECT id, mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(classId, userId).first();
+    const existing = await db.prepare("SELECT id, mention_rules_json, show_matricule, average_scale FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(classId, userId).first();
     if (!existing) return errorResponse2("Classe introuvable ou non autoris\xE9e.", 404, origin);
     const body = await request.json().catch(() => ({}));
     const hasMentionUpdate = Object.prototype.hasOwnProperty.call(body, "mentionRules");
     const hasMatriculeUpdate = Object.prototype.hasOwnProperty.call(body, "showMatricule");
+    const hasScaleUpdate = Object.prototype.hasOwnProperty.call(body, "averageScale");
     const now = Date.now();
     let nextMentionRulesJson = existing.mention_rules_json ?? null;
     if (hasMentionUpdate) {
@@ -1438,14 +1455,22 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     if (hasMatriculeUpdate) {
       nextShowMatricule = body.showMatricule ? 1 : 0;
     }
+    let nextAverageScale = sanitizeAverageScaleWorker(existing.average_scale) ?? 20;
+    if (hasScaleUpdate) {
+      const parsedScale = sanitizeAverageScaleWorker(body.averageScale);
+      if (parsedScale === null) {
+        return errorResponse2("La moyenne maximale doit \xEAtre comprise entre 1 et 1000.", 400, origin);
+      }
+      nextAverageScale = parsedScale;
+    }
     const stmts = [
       db.prepare(
         `UPDATE teacher_classes
-           SET mention_rules_json = ?, show_matricule = ?, updated_at = ?
+           SET mention_rules_json = ?, show_matricule = ?, average_scale = ?, updated_at = ?
            WHERE id = ? AND user_id = ?`
-      ).bind(nextMentionRulesJson, nextShowMatricule, now, classId, userId)
+      ).bind(nextMentionRulesJson, nextShowMatricule, nextAverageScale, now, classId, userId)
     ];
-    if (hasMentionUpdate || hasMatriculeUpdate) {
+    if (hasMentionUpdate || hasMatriculeUpdate || hasScaleUpdate) {
       const [gbsRes, avgsRes] = await Promise.all([
         db.prepare("SELECT id, layout_json FROM teacher_gradebooks WHERE user_id = ? AND class_id = ?").bind(userId, classId).all(),
         db.prepare("SELECT id, layout_json FROM teacher_class_averages WHERE user_id = ? AND class_id = ?").bind(userId, classId).all()
@@ -1459,6 +1484,10 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
         }
         if (hasMatriculeUpdate && Object.prototype.hasOwnProperty.call(parsed, "showMatricule")) {
           delete parsed.showMatricule;
+          changed = true;
+        }
+        if (hasScaleUpdate && Object.prototype.hasOwnProperty.call(parsed, "averageScale")) {
+          delete parsed.averageScale;
           changed = true;
         }
         if (changed) {
@@ -1478,6 +1507,10 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
           delete parsed.showMatricule;
           changed = true;
         }
+        if (hasScaleUpdate && Object.prototype.hasOwnProperty.call(parsed, "averageScale")) {
+          delete parsed.averageScale;
+          changed = true;
+        }
         if (changed) {
           stmts.push(
             db.prepare("UPDATE teacher_class_averages SET layout_json = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(JSON.stringify(parsed), now, avg.id, userId)
@@ -1488,7 +1521,8 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     await runBatchChunked(db, stmts, 60);
     const updatedSettings = extractClassSheetSettings({
       mention_rules_json: nextMentionRulesJson,
-      show_matricule: nextShowMatricule
+      show_matricule: nextShowMatricule,
+      average_scale: nextAverageScale
     });
     return jsonResponse2(
       {
@@ -1744,7 +1778,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     if (!ownSubject) return errorResponse2("Mati\xE8re introuvable ou non autoris\xE9e.", 404, origin);
     const [gb, classRow] = await Promise.all([
       db.prepare("SELECT * FROM teacher_gradebooks WHERE user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1").bind(userId, subjectId, termId).first(),
-      db.prepare("SELECT mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(ownSubject.class_id, userId).first()
+      db.prepare("SELECT mention_rules_json, show_matricule, average_scale FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(ownSubject.class_id, userId).first()
     ]);
     const classSettings = extractClassSheetSettings(classRow);
     if (!gb) {
@@ -1974,7 +2008,7 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
       createdAt: Number(cardRow.created_at) || Date.now(),
       updatedAt: Number(cardRow.updated_at) || Date.now()
     };
-    const cardClassRow = await db.prepare("SELECT mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(cardRow.class_id, userId).first();
+    const cardClassRow = await db.prepare("SELECT mention_rules_json, show_matricule, average_scale FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1").bind(cardRow.class_id, userId).first();
     const classSettings = extractClassSheetSettings(cardClassRow);
     if (card.kind === "annual") {
       const [termsRes, termAvgCardsRes, subjectsRes2, gradebooksRes2, studentsRes2] = await Promise.all([
@@ -2259,9 +2293,23 @@ async function handleTeacherGradebookRoutes(request, url, path, method, deps) {
     const cleanDistinctPairs = Array.isArray(rawOverrides.distinctPairs) ? rawOverrides.distinctPairs.slice(0, 500).filter(
       (p) => Array.isArray(p) && p.length === 2 && typeof p[0] === "string" && typeof p[1] === "string" && p[0].trim().length > 0 && p[1].trim().length > 0 && p[0].trim() !== p[1].trim()
     ).map((p) => [p[0].trim().slice(0, 160), p[1].trim().slice(0, 160)]) : [];
+    const cleanMatriculeOverrides = {};
+    if (rawOverrides.matriculeOverrides && typeof rawOverrides.matriculeOverrides === "object") {
+      let count = 0;
+      for (const [stKey, rawMat] of Object.entries(rawOverrides.matriculeOverrides)) {
+        if (count >= 600) break;
+        if (!stKey || typeof rawMat !== "string") continue;
+        const cleanMat = rawMat.trim().slice(0, 48);
+        if (cleanMat) {
+          cleanMatriculeOverrides[String(stKey).slice(0, 160)] = cleanMat;
+          count++;
+        }
+      }
+    }
     const cleanOverrides = {
       manualStudents: cleanManualStudents,
       subjectOverrides: cleanSubjectOverrides,
+      matriculeOverrides: cleanMatriculeOverrides,
       mergedLinks: cleanMergedLinks,
       distinctPairs: cleanDistinctPairs
     };

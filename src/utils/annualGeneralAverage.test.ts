@@ -209,3 +209,53 @@ test('Rapprochement inter-trimestres : inversion sûre, faute de frappe signalé
   const kofi = res.students.find((s) => s.name === 'KOFI Yao');
   assert.ok(koffi && kofi, 'Aucune fusion silencieuse sur une faute de frappe');
 });
+
+test('Moyenne générale annuelle ramenée sur un barème maximal personnalisé (/40 et /100) avec seuil d’admission adapté', () => {
+  const res40 = computeAnnualGeneralAverageTable({
+    averageScale: 40,
+    terms: [
+      {
+        id: 't1',
+        number: 1,
+        name: 'Trimestre 1',
+        coefficient: 1,
+        effectiveCoeff: 1,
+        subjects: [{ id: 'm1', name: 'Maths', coefficient: 2, effectiveCoeff: 2 }],
+        subjectGradebooks: {
+          m1: [
+            { id: 'r1', studentUid: 'u1', name: 'AWA', average20: 14, notesCount: 2 },
+            { id: 'r2', studentUid: 'u2', name: 'PAUL', average20: 9, notesCount: 2 },
+          ],
+        },
+      },
+      {
+        id: 't2',
+        number: 2,
+        name: 'Trimestre 2',
+        coefficient: 1,
+        effectiveCoeff: 1,
+        subjects: [{ id: 'm2', name: 'Maths', coefficient: 2, effectiveCoeff: 2 }],
+        subjectGradebooks: {
+          m2: [
+            { id: 'r3', studentUid: 'u1', name: 'AWA', average20: 16, notesCount: 2 },
+            { id: 'r4', studentUid: 'u2', name: 'PAUL', average20: 9, notesCount: 2 },
+          ],
+        },
+      },
+    ],
+  });
+
+  assert.equal(res40.averageScale, 40);
+  const awa = res40.students.find((s) => s.studentUid === 'u1')!;
+  const paul = res40.students.find((s) => s.studentUid === 'u2')!;
+  // AWA : (14+16)/2 = 15/20 => 30/40 ; progression +4 pts sur /40 ; Bien ; Admis(e)
+  assert.ok(Math.abs((awa.annualAverage ?? 0) - 30) < 1e-6);
+  assert.ok(Math.abs((awa.progressionDelta ?? 0) - 4) < 1e-6);
+  assert.equal(awa.mention, 'Bien');
+  assert.equal(awa.decision, 'Admis(e)');
+  // PAUL : 9/20 => 18/40 (< 20/40) => Ajourné(e)
+  assert.ok(Math.abs((paul.annualAverage ?? 0) - 18) < 1e-6);
+  assert.equal(paul.decision, 'Ajourné(e)');
+  assert.equal(res40.classSummary.passCount, 1);
+  assert.equal(res40.classSummary.passRatePercent, 50);
+});

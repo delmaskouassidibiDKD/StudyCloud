@@ -103,6 +103,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       icon_gradient TEXT NOT NULL DEFAULT 'from-amber-500 to-orange-600',
       mention_rules_json TEXT DEFAULT NULL,
       show_matricule INTEGER NOT NULL DEFAULT 0,
+      average_scale REAL NOT NULL DEFAULT 20,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -279,7 +280,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
     }
   }
 
-  // Migration idempotente : s'assurer que teacher_classes possède mention_rules_json et show_matricule
+  // Migration idempotente : s'assurer que teacher_classes possède mention_rules_json, show_matricule et average_scale
   try {
     const clsInfo = await db.prepare('PRAGMA table_info(teacher_classes)').all();
     const clsCols = new Set((clsInfo.results || []).map((c: any) => String(c.name)));
@@ -288,6 +289,9 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
     }
     if (!clsCols.has('show_matricule')) {
       await db.prepare('ALTER TABLE teacher_classes ADD COLUMN show_matricule INTEGER NOT NULL DEFAULT 0').run();
+    }
+    if (!clsCols.has('average_scale')) {
+      await db.prepare('ALTER TABLE teacher_classes ADD COLUMN average_scale REAL NOT NULL DEFAULT 20').run();
     }
   } catch {
     // Ignorer si déjà migré
@@ -607,6 +611,15 @@ function safeParseJson<T>(raw: any, fallback: T): T {
 interface WorkerMentionRule {
   min: number;
   label: string;
+  scale?: number;
+}
+
+function sanitizeAverageScaleWorker(raw: any): number | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const num =
+    typeof raw === 'string' ? Number(raw.trim().replace(',', '.')) : Number(raw);
+  if (!Number.isFinite(num) || num < 1 || num > 1000) return null;
+  return Math.round(num * 100) / 100;
 }
 
 function sanitizeMentionRulesWorker(raw: any): WorkerMentionRule[] | null {
@@ -617,11 +630,17 @@ function sanitizeMentionRulesWorker(raw: any): WorkerMentionRule[] | null {
     if (!item || typeof item !== 'object') continue;
     const min = Number(item.min);
     const label = String(item.label ?? '').trim().slice(0, 48);
-    if (!Number.isFinite(min) || min < 0 || min > 20 || !label) continue;
+    const parsedScale = sanitizeAverageScaleWorker(item.scale);
+    const cap = parsedScale !== null ? parsedScale : 20;
+    if (!Number.isFinite(min) || min < 0 || min > cap || !label) continue;
     const roundedMin = Math.round(min * 100) / 100;
     if (seenMins.has(roundedMin)) continue;
     seenMins.add(roundedMin);
-    cleaned.push({ min: roundedMin, label });
+    cleaned.push(
+      parsedScale !== null
+        ? { min: roundedMin, label, scale: parsedScale }
+        : { min: roundedMin, label }
+    );
   }
   if (cleaned.length === 0) return null;
   cleaned.sort((a, b) => b.min - a.min);
@@ -631,9 +650,10 @@ function sanitizeMentionRulesWorker(raw: any): WorkerMentionRule[] | null {
 function extractClassSheetSettings(classRow: any): {
   mentionRules: WorkerMentionRule[] | null;
   showMatricule: boolean;
+  averageScale: number;
 } {
   if (!classRow) {
-    return { mentionRules: null, showMatricule: false };
+    return { mentionRules: null, showMatricule: false, averageScale: 20 };
   }
   const parsedRules = classRow.mention_rules_json
     ? sanitizeMentionRulesWorker(safeParseJson<any>(classRow.mention_rules_json, null))
@@ -641,6 +661,7 @@ function extractClassSheetSettings(classRow: any): {
   return {
     mentionRules: parsedRules,
     showMatricule: Number(classRow.show_matricule) === 1,
+    averageScale: sanitizeAverageScaleWorker(classRow.average_scale) ?? 20,
   };
 }
 
@@ -1025,6 +1046,7 @@ async function buildBootstrapPayload(db: any, userId: string, origin: string, jw
       iconGradient: r.icon_gradient || 'from-amber-500 to-orange-600',
       mentionRules: sheetSettings.mentionRules,
       showMatricule: sheetSettings.showMatricule,
+      averageScale: sheetSettings.averageScale,
       createdAt: Number(r.created_at) || Date.now(),
     };
   });
@@ -1837,12 +1859,12 @@ export async function handleTeacherGradebookRoutes(
     }, 200, origin);
   }
 
-  // Paramètres de tableaux appliqués à toute une classe (mentions personnalisées + colonne Matricule)
+  // Paramètres de tableaux appliqués à toute une classe (mentions personnalisées + colonne Matricule + moyenne max)
   const classSheetSettingsMatch = path.match(/^\/api\/teacher\/classes\/([^/]+)\/sheet-settings$/);
   if (classSheetSettingsMatch && method === 'PUT') {
     const classId = decodeURIComponent(classSheetSettingsMatch[1]);
     const existing: any = await db
-      .prepare('SELECT id, mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
+      .prepare('SELECT id, mention_rules_json, show_matricule, average_scale FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
       .bind(classId, userId)
       .first();
     if (!existing) return errorResponse('Classe introuvable ou non autorisée.', 404, origin);
@@ -1850,6 +1872,7 @@ export async function handleTeacherGradebookRoutes(
     const body: any = await request.json().catch(() => ({}));
     const hasMentionUpdate = Object.prototype.hasOwnProperty.call(body, 'mentionRules');
     const hasMatriculeUpdate = Object.prototype.hasOwnProperty.call(body, 'showMatricule');
+    const hasScaleUpdate = Object.prototype.hasOwnProperty.call(body, 'averageScale');
     const now = Date.now();
 
     let nextMentionRulesJson: string | null = existing.mention_rules_json ?? null;
@@ -1870,19 +1893,28 @@ export async function handleTeacherGradebookRoutes(
       nextShowMatricule = body.showMatricule ? 1 : 0;
     }
 
+    let nextAverageScale: number = sanitizeAverageScaleWorker(existing.average_scale) ?? 20;
+    if (hasScaleUpdate) {
+      const parsedScale = sanitizeAverageScaleWorker(body.averageScale);
+      if (parsedScale === null) {
+        return errorResponse('La moyenne maximale doit être comprise entre 1 et 1000.', 400, origin);
+      }
+      nextAverageScale = parsedScale;
+    }
+
     const stmts: any[] = [
       db
         .prepare(
           `UPDATE teacher_classes
-           SET mention_rules_json = ?, show_matricule = ?, updated_at = ?
+           SET mention_rules_json = ?, show_matricule = ?, average_scale = ?, updated_at = ?
            WHERE id = ? AND user_id = ?`
         )
-        .bind(nextMentionRulesJson, nextShowMatricule, now, classId, userId),
+        .bind(nextMentionRulesJson, nextShowMatricule, nextAverageScale, now, classId, userId),
     ];
 
     // Nettoyer les surcharges locales obsolètes sur tous les tableaux existants de la classe
     // afin que le choix "Appliquer à toute la classe" prenne immédiatement effet partout.
-    if (hasMentionUpdate || hasMatriculeUpdate) {
+    if (hasMentionUpdate || hasMatriculeUpdate || hasScaleUpdate) {
       const [gbsRes, avgsRes] = await Promise.all([
         db
           .prepare('SELECT id, layout_json FROM teacher_gradebooks WHERE user_id = ? AND class_id = ?')
@@ -1905,6 +1937,10 @@ export async function handleTeacherGradebookRoutes(
           delete parsed.showMatricule;
           changed = true;
         }
+        if (hasScaleUpdate && Object.prototype.hasOwnProperty.call(parsed, 'averageScale')) {
+          delete parsed.averageScale;
+          changed = true;
+        }
         if (changed) {
           stmts.push(
             db
@@ -1925,6 +1961,10 @@ export async function handleTeacherGradebookRoutes(
           delete parsed.showMatricule;
           changed = true;
         }
+        if (hasScaleUpdate && Object.prototype.hasOwnProperty.call(parsed, 'averageScale')) {
+          delete parsed.averageScale;
+          changed = true;
+        }
         if (changed) {
           stmts.push(
             db
@@ -1940,6 +1980,7 @@ export async function handleTeacherGradebookRoutes(
     const updatedSettings = extractClassSheetSettings({
       mention_rules_json: nextMentionRulesJson,
       show_matricule: nextShowMatricule,
+      average_scale: nextAverageScale,
     });
 
     return jsonResponse(
@@ -2297,7 +2338,7 @@ export async function handleTeacherGradebookRoutes(
         .bind(userId, subjectId, termId)
         .first(),
       db
-        .prepare('SELECT mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
+        .prepare('SELECT mention_rules_json, show_matricule, average_scale FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
         .bind(ownSubject.class_id, userId)
         .first(),
     ]);
@@ -2598,7 +2639,7 @@ export async function handleTeacherGradebookRoutes(
     };
 
     const cardClassRow: any = await db
-      .prepare('SELECT mention_rules_json, show_matricule FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
+      .prepare('SELECT mention_rules_json, show_matricule, average_scale FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
       .bind(cardRow.class_id, userId)
       .first();
     const classSettings = extractClassSheetSettings(cardClassRow);
@@ -3004,9 +3045,24 @@ export async function handleTeacherGradebookRoutes(
           .map((p: any) => [p[0].trim().slice(0, 160), p[1].trim().slice(0, 160)] as [string, string])
       : [];
 
+    const cleanMatriculeOverrides: Record<string, string> = {};
+    if (rawOverrides.matriculeOverrides && typeof rawOverrides.matriculeOverrides === 'object') {
+      let count = 0;
+      for (const [stKey, rawMat] of Object.entries(rawOverrides.matriculeOverrides)) {
+        if (count >= 600) break;
+        if (!stKey || typeof rawMat !== 'string') continue;
+        const cleanMat = rawMat.trim().slice(0, 48);
+        if (cleanMat) {
+          cleanMatriculeOverrides[String(stKey).slice(0, 160)] = cleanMat;
+          count++;
+        }
+      }
+    }
+
     const cleanOverrides = {
       manualStudents: cleanManualStudents,
       subjectOverrides: cleanSubjectOverrides,
+      matriculeOverrides: cleanMatriculeOverrides,
       mergedLinks: cleanMergedLinks,
       distinctPairs: cleanDistinctPairs,
     };

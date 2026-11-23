@@ -39,6 +39,7 @@ import type { CustomMentionRule } from '../utils/gradebookCalculations';
 export interface ClassSheetSettings {
   mentionRules: CustomMentionRule[] | null;
   showMatricule: boolean;
+  averageScale: number;
 }
 
 export interface ClassAverageSheetCardPayload extends ClassAverageCardItem {
@@ -99,6 +100,7 @@ export interface GradebookLayoutState {
   sortMode?: 'order' | 'merit' | 'alpha';
   mentionRules?: CustomMentionRule[] | null;
   showMatricule?: boolean;
+  averageScale?: number;
 }
 
 export interface GradebookStylesState {
@@ -771,6 +773,7 @@ export const TeacherGradebookAPI = {
     input: {
       mentionRules?: CustomMentionRule[] | null;
       showMatricule?: boolean;
+      averageScale?: number;
     }
   ) =>
     teacherFetchJson<{ success: boolean; classId: string; classSettings: ClassSheetSettings }>(

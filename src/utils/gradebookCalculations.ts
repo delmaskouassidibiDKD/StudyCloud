@@ -12,9 +12,42 @@ export interface EvaluationInput {
   coeffEval?: number;
 }
 
+export const DEFAULT_AVERAGE_SCALE = 20;
+export const MIN_AVERAGE_SCALE = 1;
+export const MAX_AVERAGE_SCALE = 1000;
+
+/**
+ * Valide et normalise un barème maximal de moyenne (ex: 10, 20, 30, 40, 50, 100...).
+ * Retourne null si invalide ou hors bornes [1, 1000].
+ */
+export function sanitizeAverageScale(raw: unknown): number | null {
+  if (raw === null || raw === undefined || raw === '') return null;
+  const num =
+    typeof raw === 'string'
+      ? Number(raw.trim().replace(',', '.'))
+      : Number(raw);
+  if (!Number.isFinite(num) || num < MIN_AVERAGE_SCALE || num > MAX_AVERAGE_SCALE) {
+    return null;
+  }
+  return Math.round(num * 100) / 100;
+}
+
+/**
+ * Formate proprement un barème pour l'affichage (ex: 20 -> "20", 40 -> "40", 12.5 -> "12,5").
+ */
+export function formatScaleValue(scale: number | null | undefined): string {
+  const safe = sanitizeAverageScale(scale) ?? DEFAULT_AVERAGE_SCALE;
+  if (Math.abs(safe - Math.round(safe)) < 1e-6) {
+    return String(Math.round(safe));
+  }
+  return safe.toFixed(2).replace(/0$/, '').replace('.', ',');
+}
+
 export interface SubjectAverageOptions {
   /** Si true, toute note strictement supérieure à son barème max est considérée invalide */
   rejectExceedingMax?: boolean;
+  /** Barème maximal cible de la moyenne (défaut : 20 — ex: 20, 40, 50, 100...) */
+  targetScale?: number;
 }
 
 export interface SubjectAverageResult {
@@ -131,21 +164,35 @@ export function parseEvaluationValue(
 }
 
 /**
- * Étape A1 : Harmonise une note sur 20 : noteSur20 = (valeur / max) * 20.
+ * Étape A1 : Harmonise une note sur un barème cible (par défaut /20) :
+ * noteSurCible = (valeur / max) * targetScale.
  * Retourne null si max <= 0 (évite toute division par zéro) ou si valeur < 0 / invalide.
  */
-export function harmonizeScoreOn20(valeur: number, max: number): number | null {
+export function harmonizeScoreOnScale(
+  valeur: number,
+  max: number,
+  targetScale = DEFAULT_AVERAGE_SCALE
+): number | null {
   if (!Number.isFinite(max) || max <= 0) {
     return null;
   }
   if (!Number.isFinite(valeur) || valeur < 0) {
     return null;
   }
-  return (valeur / max) * 20;
+  const safeTarget = sanitizeAverageScale(targetScale) ?? DEFAULT_AVERAGE_SCALE;
+  return (valeur / max) * safeTarget;
 }
 
 /**
- * Étapes A1 & A2 : Calcule la moyenne pondérée d'une matière sur 20 pour un élève.
+ * Étape A1 : Harmonise une note sur 20 : noteSur20 = (valeur / max) * 20.
+ * Retourne null si max <= 0 (évite toute division par zéro) ou si valeur < 0 / invalide.
+ */
+export function harmonizeScoreOn20(valeur: number, max: number): number | null {
+  return harmonizeScoreOnScale(valeur, max, 20);
+}
+
+/**
+ * Étapes A1 & A2 : Calcule la moyenne pondérée d'une matière sur `targetScale` (défaut /20) pour un élève.
  * - Ignore toute évaluation vide / null / undefined.
  * - Ignore toute évaluation avec max <= 0 (aucune division par zéro).
  * - Utilise coeffEval (défaut 1 si non défini).
@@ -156,6 +203,7 @@ export function calculateSubjectAverage(
   evaluations: readonly EvaluationInput[],
   options: SubjectAverageOptions = {}
 ): SubjectAverageResult {
+  const targetScale = sanitizeAverageScale(options.targetScale) ?? DEFAULT_AVERAGE_SCALE;
   let totalPondere = 0;
   let sommeCoeffs = 0;
   let evaluationsValides = 0;
@@ -191,12 +239,12 @@ export function calculateSubjectAverage(
       continue;
     }
 
-    const noteSur20 = harmonizeScoreOn20(parsedVal, evaluation.max);
-    if (noteSur20 === null) {
+    const noteSurCible = harmonizeScoreOnScale(parsedVal, evaluation.max, targetScale);
+    if (noteSurCible === null) {
       continue;
     }
 
-    totalPondere += noteSur20 * coeff;
+    totalPondere += noteSurCible * coeff;
     sommeCoeffs += coeff;
     evaluationsValides += 1;
   }
@@ -296,13 +344,16 @@ export function roundAverage2Decimals(moyenne: number | null): number | null {
  */
 export function formatAverageDisplay(
   moyenne: number | null,
-  withOutOf20Suffix = false
+  withOutOfScaleSuffix = false,
+  targetScale = DEFAULT_AVERAGE_SCALE
 ): string {
   if (moyenne === null || !Number.isFinite(moyenne)) {
     return '—';
   }
   const formatted = moyenne.toFixed(2);
-  return withOutOf20Suffix ? `${formatted} / 20` : formatted;
+  return withOutOfScaleSuffix
+    ? `${formatted} / ${formatScaleValue(targetScale)}`
+    : formatted;
 }
 
 /**
@@ -508,28 +559,70 @@ export function sortGradebookRows<T extends SortableGradebookRow>(
 }
 
 export interface CustomMentionRule {
-  /** Seuil minimal inclusif sur 20 (ex: 16, 14, 12, 10, 0) */
+  /** Seuil minimal inclusif sur `scale` (défaut /20 : ex. 16, 14, 12, 10, 0) */
   min: number;
   /** Libellé libre défini par le professeur (ex: "Excellent", "Très bien", "Honorable"...) */
   label: string;
+  /** Barème de référence sur lequel ce seuil a été saisi (défaut : 20 pour rétrocompatibilité) */
+  scale?: number;
 }
 
 export const DEFAULT_CUSTOM_MENTION_RULES: readonly CustomMentionRule[] = [
-  { min: 16, label: 'Très bien' },
-  { min: 14, label: 'Bien' },
-  { min: 12, label: 'Assez bien' },
-  { min: 10, label: 'Passable' },
-  { min: 0, label: 'Insuffisant' },
+  { min: 16, label: 'Très bien', scale: 20 },
+  { min: 14, label: 'Bien', scale: 20 },
+  { min: 12, label: 'Assez bien', scale: 20 },
+  { min: 10, label: 'Passable', scale: 20 },
+  { min: 0, label: 'Insuffisant', scale: 20 },
 ];
+
+/**
+ * Retourne les règles de mention par défaut adaptées au barème `targetScale` (ex: 32/40, 28/40...).
+ */
+export function getDefaultMentionRulesForScale(
+  targetScale = DEFAULT_AVERAGE_SCALE
+): CustomMentionRule[] {
+  const safeScale = sanitizeAverageScale(targetScale) ?? DEFAULT_AVERAGE_SCALE;
+  return DEFAULT_CUSTOM_MENTION_RULES.map((r) => ({
+    min: Math.round(((r.min / 20) * safeScale) * 100) / 100,
+    label: r.label,
+    scale: safeScale,
+  }));
+}
+
+/**
+ * Convertit proportionnellement une liste de règles de mentions vers un barème cible (ex: /20 -> /40).
+ */
+export function scaleMentionRulesToTarget(
+  rules: readonly CustomMentionRule[],
+  targetScale = DEFAULT_AVERAGE_SCALE
+): CustomMentionRule[] {
+  const safeTarget = sanitizeAverageScale(targetScale) ?? DEFAULT_AVERAGE_SCALE;
+  return [...rules]
+    .map((r) => {
+      const srcScale = sanitizeAverageScale(r.scale) ?? DEFAULT_AVERAGE_SCALE;
+      const convertedMin =
+        Math.abs(srcScale - safeTarget) < 1e-6
+          ? r.min
+          : Math.round(((r.min / srcScale) * safeTarget) * 100) / 100;
+      return {
+        min: Math.max(0, Math.min(safeTarget, convertedMin)),
+        label: r.label,
+        scale: safeTarget,
+      };
+    })
+    .sort((a, b) => b.min - a.min);
+}
 
 /**
  * Nettoie, trie par seuil décroissant et déduplique une liste d'intervalles de mentions personnalisés.
  * Retourne null si la liste est vide ou invalide.
  */
 export function sanitizeCustomMentionRules(
-  raw: unknown
+  raw: unknown,
+  maxScale = DEFAULT_AVERAGE_SCALE
 ): CustomMentionRule[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null;
+  const safeCap = sanitizeAverageScale(maxScale) ?? DEFAULT_AVERAGE_SCALE;
   const cleaned: CustomMentionRule[] = [];
   const seenMins = new Set<number>();
 
@@ -537,13 +630,19 @@ export function sanitizeCustomMentionRules(
     if (!item || typeof item !== 'object') continue;
     const rawMin = Number((item as any).min);
     const rawLabel = String((item as any).label ?? '').trim().slice(0, 48);
-    if (!Number.isFinite(rawMin) || rawMin < 0 || rawMin > 20 || !rawLabel) {
+    const parsedScale = sanitizeAverageScale((item as any).scale);
+    const effectiveCap = parsedScale !== null ? parsedScale : safeCap;
+    if (!Number.isFinite(rawMin) || rawMin < 0 || rawMin > effectiveCap || !rawLabel) {
       continue;
     }
     const roundedMin = Math.round(rawMin * 100) / 100;
     if (seenMins.has(roundedMin)) continue;
     seenMins.add(roundedMin);
-    cleaned.push({ min: roundedMin, label: rawLabel });
+    cleaned.push(
+      parsedScale !== null
+        ? { min: roundedMin, label: rawLabel, scale: parsedScale }
+        : { min: roundedMin, label: rawLabel }
+    );
   }
 
   if (cleaned.length === 0) return null;
@@ -552,12 +651,14 @@ export function sanitizeCustomMentionRules(
 }
 
 /**
- * Résout la mention à partir des intervalles personnalisés du professeur (ou par défaut si null/vide).
+ * Résout la mention à partir des intervalles personnalisés du professeur (ou par défaut si null/vide),
+ * en tenant compte du barème maximal actif (`targetScale`, défaut /20).
  * Retourne le libellé ainsi qu'une teinte harmonieuse calculée selon la position dans l'échelle.
  */
 export function resolveMentionWithRules(
   moyenne: number | null,
-  customRules?: readonly CustomMentionRule[] | null
+  customRules?: readonly CustomMentionRule[] | null,
+  targetScale = DEFAULT_AVERAGE_SCALE
 ): {
   label: string;
   tone: 'emerald' | 'teal' | 'sky' | 'amber' | 'rose' | 'neutral';
@@ -566,32 +667,51 @@ export function resolveMentionWithRules(
     return { label: '—', tone: 'neutral' };
   }
 
-  const rules =
+  const safeScale = sanitizeAverageScale(targetScale) ?? DEFAULT_AVERAGE_SCALE;
+  const sourceRules =
     customRules && customRules.length > 0
-      ? [...customRules].sort((a, b) => b.min - a.min)
-      : [...DEFAULT_CUSTOM_MENTION_RULES];
+      ? customRules
+      : DEFAULT_CUSTOM_MENTION_RULES;
+
+  const normalizedRules = sourceRules
+    .map((r) => {
+      const ruleScale = sanitizeAverageScale(r.scale) ?? DEFAULT_AVERAGE_SCALE;
+      const thresholdOnTarget =
+        Math.abs(ruleScale - safeScale) < 1e-6
+          ? r.min
+          : (r.min / ruleScale) * safeScale;
+      return {
+        min: thresholdOnTarget,
+        label: r.label,
+      };
+    })
+    .sort((a, b) => b.min - a.min);
 
   let matchedIdx = -1;
-  for (let i = 0; i < rules.length; i++) {
-    if (moyenne + 1e-9 >= rules[i].min) {
+  for (let i = 0; i < normalizedRules.length; i++) {
+    if (moyenne + 1e-9 >= normalizedRules[i].min) {
       matchedIdx = i;
       break;
     }
   }
 
   // Si la note est inférieure au plus petit seuil défini, on utilise le dernier palier (le plus bas)
-  const effectiveIdx = matchedIdx === -1 ? rules.length - 1 : matchedIdx;
-  const matched = rules[effectiveIdx];
+  const effectiveIdx = matchedIdx === -1 ? normalizedRules.length - 1 : matchedIdx;
+  const matched = normalizedRules[effectiveIdx];
 
-  // Déterminer une teinte visuelle cohérente avec la position du palier et la moyenne
+  // Déterminer une teinte visuelle cohérente ramenée en équivalent /20
+  const moyenneOn20 = (moyenne / safeScale) * 20;
   let tone: 'emerald' | 'teal' | 'sky' | 'amber' | 'rose' = 'amber';
-  if (moyenne >= 16 || (effectiveIdx === 0 && rules.length >= 4 && moyenne >= 14)) {
+  if (
+    moyenneOn20 >= 16 ||
+    (effectiveIdx === 0 && normalizedRules.length >= 4 && moyenneOn20 >= 14)
+  ) {
     tone = 'emerald';
-  } else if (moyenne >= 14) {
+  } else if (moyenneOn20 >= 14) {
     tone = 'teal';
-  } else if (moyenne >= 12) {
+  } else if (moyenneOn20 >= 12) {
     tone = 'sky';
-  } else if (moyenne >= 10) {
+  } else if (moyenneOn20 >= 10) {
     tone = 'amber';
   } else {
     tone = 'rose';
@@ -605,7 +725,8 @@ export function resolveMentionWithRules(
  */
 export function getMentionFromCustomRules(
   moyenne: number | null,
-  customRules?: readonly CustomMentionRule[] | null
+  customRules?: readonly CustomMentionRule[] | null,
+  targetScale = DEFAULT_AVERAGE_SCALE
 ): string {
-  return resolveMentionWithRules(moyenne, customRules).label;
+  return resolveMentionWithRules(moyenne, customRules, targetScale).label;
 }
