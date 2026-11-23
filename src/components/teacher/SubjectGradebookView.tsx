@@ -60,6 +60,12 @@ import {
   TeacherDelmasAssistantRibbonButton,
   TeacherDelmasAssistantDrawer,
 } from './TeacherDelmasAssistantDrawer';
+import type {
+  TeacherDelmasAction,
+  TeacherDelmasActiveContext,
+  TeacherDelmasSheetBridge,
+} from '../../utils/teacherDelmasActionEngine';
+import type { TeacherDelmasWorkspaceSnapshot } from '../../services/teacherGradebookApi';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import { useViewerExpandLevel, setViewerExpandLevel, resetViewerExpand } from '../../utils/viewerExpandManager';
 import {
@@ -3056,6 +3062,900 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Nombre total de colonnes et lignes d'arrière-plan
   const backgroundColCount = Math.max(68, noteColumnCount + RIGHT_EXTRA_COLS + 16);
   const backgroundRowCount = Math.max(65, students.length + 35);
+
+  const classFullDisplayName = schoolClass.name?.trim()
+    ? schoolClass.name.toLowerCase().includes(schoolClass.level.toLowerCase())
+      ? schoolClass.name.trim()
+      : `${schoolClass.level} • ${schoolClass.name.trim()}`
+    : schoolClass.level;
+
+  // Pont d'action en direct pour l'Assistant Delmas (strictement ciblé sur CE tableau ouvert)
+  const delmasSheetBridge: TeacherDelmasSheetBridge = {
+    getContext: (): TeacherDelmasActiveContext => ({
+      sheetKind: 'subject',
+      yearId: schoolYear?.id,
+      yearLabel: schoolYear?.label,
+      schoolId: school?.id,
+      schoolName: school?.name,
+      classId: schoolClass.id,
+      className: classFullDisplayName,
+      levelName: schoolClass.level,
+      termId: term?.id || effectiveTermId,
+      termName: term?.name || 'Trimestre 1',
+      termCoefficient: term?.coefficient ?? null,
+      subjectId: subject.id,
+      subjectName: subject.name,
+      subjectCoefficient: subject.coefficient ?? null,
+      sortMode,
+      showMatricule: effectiveShowMatricule,
+      averageScale: effectiveAverageScale,
+      mentionRules: effectiveMentionRules,
+      zoomPercent,
+      activeCellCoord: activeCellInfo.coordDisplay || undefined,
+      activeCellValue: activeCellInfo.value || undefined,
+      noteColumns: Array.from({ length: noteColumnCount }, (_, i) => {
+        const meta = columnMetas[i] || { title: 'NOTE', maxScore: 20, coeffEval: 1 };
+        const title = meta.title || 'NOTE';
+        return {
+          index: i,
+          colNumber: i + 1,
+          title,
+          label: `${title} ${i + 1}`,
+          maxScore: meta.maxScore || 20,
+          coeffEval: meta.coeffEval ?? 1,
+        };
+      }),
+      students: studentsWithStats.map((s, idx) => ({
+        rowIndex: idx + 1,
+        id: s.id,
+        name: s.name || '',
+        matricule: s.matricule || '',
+        notes: Array.from({ length: noteColumnCount }, (_, c) => {
+          const meta = columnMetas[c] || { maxScore: 20 };
+          const parsed = parseStudentNote(s.notes[c] || '', meta.maxScore);
+          return parsed.scoreStr ? `${parsed.scoreStr}/${parsed.maxScore}` : '';
+        }),
+        averageFormatted: s.averageFormatted || '',
+        averageNumber: s.average,
+        rank: s.rank || '',
+        mention: s.mention || '',
+      })),
+    }),
+
+    executeActions: async (
+      actions: TeacherDelmasAction[],
+      workspaceSnapshot?: TeacherDelmasWorkspaceSnapshot | null
+    ): Promise<string[]> => {
+      const summaries: string[] = [];
+      if (!Array.isArray(actions) || actions.length === 0) return summaries;
+
+      let workingStudents = [...students.map((s) => ({ ...s, notes: [...s.notes] }))];
+      let workingColCount = noteColumnCount;
+      let workingColMetas: { [idx: number]: GradebookColumnMeta } = { ...columnMetas };
+      let workingCellStyles: { [key: string]: CellCustomStyle } = { ...cellCustomStyles };
+      let studentsMutated = false;
+      let colsMutated = false;
+      let stylesMutated = false;
+
+      const isRowEmpty = (r: StudentGradeRow) =>
+        !(r.name || '').trim() &&
+        !(r.matricule || '').trim() &&
+        !r.notes.some((n) => parseStudentNote(n, 20).scoreStr.length > 0);
+
+      const normalizeIncomingNotes = (
+        rawNotes: any,
+        baseNotes: string[]
+      ): string[] => {
+        const out = Array.from({ length: workingColCount }, (_, i) => baseNotes[i] || '');
+        if (Array.isArray(rawNotes)) {
+          rawNotes.forEach((val, idx) => {
+            if (idx >= workingColCount) {
+              workingColCount = idx + 1;
+              colsMutated = true;
+            }
+            if (val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== '-') {
+              const maxS = workingColMetas[idx]?.maxScore || 20;
+              const rawStr = String(val).trim();
+              if (rawStr.includes('/')) {
+                const [sc, mx] = rawStr.split('/');
+                const cleanSc = sanitizeDecimalInput(sc);
+                const cleanMx = Number(mx) > 0 ? Number(mx) : maxS;
+                out[idx] = formatStudentNote(cleanSc, cleanMx);
+              } else {
+                out[idx] = formatStudentNote(sanitizeDecimalInput(rawStr), maxS);
+              }
+            }
+          });
+        } else if (rawNotes && typeof rawNotes === 'object') {
+          for (const [k, val] of Object.entries(rawNotes)) {
+            const numMatch = String(k).match(/(\d+)/);
+            const colIdx = numMatch ? Math.max(0, parseInt(numMatch[1], 10) - 1) : -1;
+            if (colIdx >= 0 && colIdx < 30) {
+              if (colIdx >= workingColCount) {
+                workingColCount = colIdx + 1;
+                colsMutated = true;
+              }
+              const maxS = workingColMetas[colIdx]?.maxScore || 20;
+              const rawStr = val !== undefined && val !== null ? String(val).trim() : '';
+              if (!rawStr || rawStr === '-') {
+                out[colIdx] = '';
+              } else if (rawStr.includes('/')) {
+                const [sc, mx] = rawStr.split('/');
+                out[colIdx] = formatStudentNote(
+                  sanitizeDecimalInput(sc),
+                  Number(mx) > 0 ? Number(mx) : maxS
+                );
+              } else {
+                out[colIdx] = formatStudentNote(sanitizeDecimalInput(rawStr), maxS);
+              }
+            }
+          }
+        }
+        while (out.length < workingColCount) out.push('');
+        return out;
+      };
+
+      for (const action of actions) {
+        if (!action || typeof action !== 'object') continue;
+
+        switch (action.type) {
+          case 'add_students': {
+            const incoming = Array.isArray(action.students) ? action.students : [];
+            if (incoming.length === 0) break;
+            let added = 0;
+            let hasAnyMat = false;
+            for (const item of incoming) {
+              if (!item || typeof item !== 'object') continue;
+              const cleanName = String(item.name || '').trim();
+              const cleanMat = String(item.matricule || '').trim().slice(0, 48);
+              if (cleanMat) hasAnyMat = true;
+              const emptyIdx = workingStudents.findIndex(isRowEmpty);
+              if (emptyIdx >= 0) {
+                const target = workingStudents[emptyIdx];
+                workingStudents[emptyIdx] = {
+                  ...target,
+                  name: cleanName,
+                  matricule: cleanMat || target.matricule || '',
+                  notes: normalizeIncomingNotes(item.notes, target.notes),
+                };
+              } else {
+                workingStudents.push({
+                  id: generateTeacherEntityId('std'),
+                  name: cleanName,
+                  matricule: cleanMat,
+                  notes: normalizeIncomingNotes(
+                    item.notes,
+                    Array(workingColCount).fill('')
+                  ),
+                });
+              }
+              added++;
+            }
+            if (added > 0) {
+              studentsMutated = true;
+              if (hasAnyMat && !effectiveShowMatricule) {
+                await handleSaveShowMatricule(true, 'sheet');
+              }
+              summaries.push(`✓ ${added} élève(s) ajouté(s) dans ${subject.name}`);
+            }
+            break;
+          }
+
+          case 'update_students': {
+            const updates = Array.isArray(action.updates)
+              ? action.updates
+              : Array.isArray(action.students)
+              ? action.students
+              : [action];
+            let updatedCount = 0;
+            let hasAnyMat = false;
+            const displayedOrderIds = studentsWithStats.map((s) => s.id);
+
+            for (const u of updates) {
+              if (!u || typeof u !== 'object') continue;
+              let targetIdx = -1;
+
+              if (u.studentId) {
+                targetIdx = workingStudents.findIndex((s) => s.id === String(u.studentId));
+              }
+              if (targetIdx === -1 && typeof u.rowIndex === 'number' && u.rowIndex >= 1) {
+                const dispId = displayedOrderIds[u.rowIndex - 1];
+                if (dispId) {
+                  targetIdx = workingStudents.findIndex((s) => s.id === dispId);
+                } else if (u.rowIndex - 1 < workingStudents.length) {
+                  targetIdx = u.rowIndex - 1;
+                }
+              }
+              const searchName = String(u.matchName || u.name || '').trim();
+              if (targetIdx === -1 && searchName) {
+                const normSearch = normalizeStudentNameKey(searchName);
+                const bagSearch = canonicalWordBagKey(normSearch);
+                targetIdx = workingStudents.findIndex((s) => {
+                  const sn = normalizeStudentNameKey(s.name || '');
+                  if (!sn) return false;
+                  return (
+                    sn === normSearch ||
+                    (bagSearch && canonicalWordBagKey(sn) === bagSearch) ||
+                    sn.includes(normSearch) ||
+                    normSearch.includes(sn)
+                  );
+                });
+              }
+
+              if (targetIdx === -1 && (u.newName || searchName)) {
+                const emptyIdx = workingStudents.findIndex(isRowEmpty);
+                const cleanMat = String(u.matricule || '').trim().slice(0, 48);
+                if (cleanMat) hasAnyMat = true;
+                if (emptyIdx >= 0) {
+                  workingStudents[emptyIdx] = {
+                    ...workingStudents[emptyIdx],
+                    name: String(u.newName || searchName).trim(),
+                    matricule: cleanMat || workingStudents[emptyIdx].matricule || '',
+                    notes: normalizeIncomingNotes(u.notes, workingStudents[emptyIdx].notes),
+                  };
+                } else {
+                  workingStudents.push({
+                    id: generateTeacherEntityId('std'),
+                    name: String(u.newName || searchName).trim(),
+                    matricule: cleanMat,
+                    notes: normalizeIncomingNotes(u.notes, Array(workingColCount).fill('')),
+                  });
+                }
+                updatedCount++;
+                continue;
+              }
+
+              if (targetIdx >= 0) {
+                const cur = workingStudents[targetIdx];
+                const cleanMat =
+                  u.matricule !== undefined
+                    ? String(u.matricule).trim().slice(0, 48)
+                    : cur.matricule || '';
+                if (u.matricule) hasAnyMat = true;
+                workingStudents[targetIdx] = {
+                  ...cur,
+                  name:
+                    typeof u.newName === 'string' && u.newName.trim()
+                      ? u.newName.trim()
+                      : cur.name,
+                  matricule: cleanMat,
+                  notes:
+                    u.notes !== undefined
+                      ? normalizeIncomingNotes(u.notes, cur.notes)
+                      : cur.notes,
+                };
+                updatedCount++;
+              }
+            }
+
+            if (updatedCount > 0) {
+              studentsMutated = true;
+              if (hasAnyMat && !effectiveShowMatricule) {
+                await handleSaveShowMatricule(true, 'sheet');
+              }
+              summaries.push(`✓ ${updatedCount} élève(s) mis à jour dans ${subject.name}`);
+            }
+            break;
+          }
+
+          case 'set_students': {
+            const list = Array.isArray(action.students) ? action.students : [];
+            if (list.length === 0) break;
+            let hasAnyMat = false;
+            workingStudents = list.map((item: any) => {
+              const cleanMat = String(item?.matricule || '').trim().slice(0, 48);
+              if (cleanMat) hasAnyMat = true;
+              return {
+                id: generateTeacherEntityId('std'),
+                name: String(item?.name || '').trim(),
+                matricule: cleanMat,
+                notes: normalizeIncomingNotes(
+                  item?.notes,
+                  Array(workingColCount).fill('')
+                ),
+              };
+            });
+            studentsMutated = true;
+            if (hasAnyMat && !effectiveShowMatricule) {
+              await handleSaveShowMatricule(true, 'sheet');
+            }
+            summaries.push(
+              `✓ Liste de ${workingStudents.length} élève(s) appliquée dans ${subject.name}`
+            );
+            break;
+          }
+
+          case 'remove_students': {
+            const namesToRemove = Array.isArray(action.names)
+              ? action.names.map((n: any) => normalizeStudentNameKey(String(n)))
+              : [];
+            const rowsToRemove = new Set<number>(
+              Array.isArray(action.rowIndices)
+                ? action.rowIndices.map((r: any) => Number(r))
+                : []
+            );
+            const displayedIds = studentsWithStats.map((s) => s.id);
+            const idsFromRowIndices = new Set<string>();
+            rowsToRemove.forEach((rNum) => {
+              if (rNum >= 1 && displayedIds[rNum - 1]) {
+                idsFromRowIndices.add(displayedIds[rNum - 1]);
+              }
+            });
+
+            const beforeLen = workingStudents.length;
+            workingStudents = workingStudents.filter((s) => {
+              if (action.removeEmpty && isRowEmpty(s)) return false;
+              if (idsFromRowIndices.has(s.id)) return false;
+              if (namesToRemove.length > 0) {
+                const sn = normalizeStudentNameKey(s.name || '');
+                if (sn && namesToRemove.some((target: string) => target && (sn === target || sn.includes(target)))) {
+                  return false;
+                }
+              }
+              return true;
+            });
+
+            if (workingStudents.length === 0) {
+              workingStudents = [
+                {
+                  id: generateTeacherEntityId('std'),
+                  name: '',
+                  matricule: '',
+                  notes: Array(workingColCount).fill(''),
+                },
+              ];
+            }
+            if (workingStudents.length !== beforeLen) {
+              studentsMutated = true;
+              summaries.push(
+                `✓ ${Math.max(1, beforeLen - workingStudents.length)} ligne(s) supprimée(s)`
+              );
+            }
+            break;
+          }
+
+          case 'clear_notes': {
+            const isSpec =
+              action.mode === 'specific' &&
+              (action.colNumber !== undefined || action.colIndex !== undefined);
+            const specIdx =
+              action.colNumber !== undefined
+                ? Number(action.colNumber) - 1
+                : Number(action.colIndex);
+
+            workingStudents = workingStudents.map((s) => {
+              const copyNotes = [...s.notes];
+              if (isSpec && specIdx >= 0 && specIdx < workingColCount) {
+                copyNotes[specIdx] = '';
+              } else {
+                for (let i = 0; i < workingColCount; i++) copyNotes[i] = '';
+              }
+              return { ...s, notes: copyNotes };
+            });
+            studentsMutated = true;
+            summaries.push(
+              isSpec
+                ? `✓ Notes de la colonne ${specIdx + 1} effacées`
+                : `✓ Toutes les notes de ${subject.name} ont été effacées`
+            );
+            break;
+          }
+
+          case 'add_note_column': {
+            const count = Math.min(15, Math.max(1, Number(action.count) || 1));
+            const title = String(action.title || 'NOTE').trim().toUpperCase().slice(0, 24) || 'NOTE';
+            const maxScore = sanitizeAverageScale(action.maxScore) || 20;
+            const coeffEval =
+              Number(action.coeffEval) > 0 ? Math.round(Number(action.coeffEval) * 100) / 100 : 1;
+
+            for (let c = 0; c < count; c++) {
+              const newIdx = workingColCount;
+              workingColCount += 1;
+              workingColMetas[newIdx] = { title, maxScore, coeffEval };
+              workingStudents = workingStudents.map((s) => ({
+                ...s,
+                notes: [...s.notes, ''],
+              }));
+            }
+            colsMutated = true;
+            studentsMutated = true;
+            summaries.push(
+              `✓ ${count} colonne(s) « ${title} » (/${maxScore}) ajoutée(s)`
+            );
+            break;
+          }
+
+          case 'update_note_column': {
+            const colIdx =
+              action.colNumber !== undefined
+                ? Number(action.colNumber) - 1
+                : Number(action.colIndex) || 0;
+            if (colIdx >= 0 && colIdx < workingColCount) {
+              const prevMeta = workingColMetas[colIdx] || {
+                title: 'NOTE',
+                maxScore: 20,
+                coeffEval: 1,
+              };
+              const nextTitle =
+                typeof action.title === 'string' && action.title.trim()
+                  ? action.title.trim().toUpperCase().slice(0, 24)
+                  : prevMeta.title || 'NOTE';
+              const nextMax =
+                sanitizeAverageScale(action.maxScore) || prevMeta.maxScore || 20;
+              const nextCoeff =
+                action.coeffEval !== undefined && Number(action.coeffEval) > 0
+                  ? Math.round(Number(action.coeffEval) * 100) / 100
+                  : prevMeta.coeffEval ?? 1;
+
+              workingColMetas[colIdx] = {
+                ...prevMeta,
+                title: nextTitle,
+                maxScore: nextMax,
+                coeffEval: nextCoeff,
+              };
+              workingStudents = workingStudents.map((s) => {
+                const copyNotes = [...s.notes];
+                const parsed = parseStudentNote(
+                  copyNotes[colIdx] || '',
+                  prevMeta.maxScore || 20
+                );
+                if (parsed.scoreStr) {
+                  copyNotes[colIdx] = formatStudentNote(parsed.scoreStr, nextMax);
+                }
+                return { ...s, notes: copyNotes };
+              });
+              colsMutated = true;
+              studentsMutated = true;
+              summaries.push(
+                `✓ Colonne ${nextTitle} ${colIdx + 1} configurée (/${nextMax}, coeff ${nextCoeff})`
+              );
+            }
+            break;
+          }
+
+          case 'delete_note_column': {
+            const colIdx =
+              action.colNumber !== undefined
+                ? Number(action.colNumber) - 1
+                : Number(action.colIndex) || 0;
+            if (workingColCount > 1 && colIdx >= 0 && colIdx < workingColCount) {
+              workingColCount -= 1;
+              workingStudents = workingStudents.map((s) => {
+                const copy = [...s.notes];
+                copy.splice(colIdx, 1);
+                return { ...s, notes: copy };
+              });
+              const nextMetas: { [idx: number]: GradebookColumnMeta } = {};
+              Object.keys(workingColMetas).forEach((k) => {
+                const idx = parseInt(k, 10);
+                if (idx < colIdx) nextMetas[idx] = workingColMetas[idx];
+                else if (idx > colIdx) nextMetas[idx - 1] = workingColMetas[idx];
+              });
+              workingColMetas = nextMetas;
+              colsMutated = true;
+              studentsMutated = true;
+              summaries.push(`✓ Colonne de note ${colIdx + 1} supprimée`);
+            }
+            break;
+          }
+
+          case 'swap_note_columns': {
+            const idx1 =
+              action.colNumber1 !== undefined
+                ? Number(action.colNumber1) - 1
+                : Number(action.colIndex1) || 0;
+            const idx2 =
+              action.colNumber2 !== undefined
+                ? Number(action.colNumber2) - 1
+                : Number(action.colIndex2) || 0;
+            if (
+              idx1 >= 0 &&
+              idx1 < workingColCount &&
+              idx2 >= 0 &&
+              idx2 < workingColCount &&
+              idx1 !== idx2
+            ) {
+              handleSwapColumns(idx1, idx2);
+              summaries.push(`✓ Colonnes ${idx1 + 1} et ${idx2 + 1} déplacées`);
+            }
+            break;
+          }
+
+          case 'adjust_grades': {
+            const rawDelta =
+              action.delta !== undefined
+                ? Number(action.delta)
+                : action.sign === 'sub'
+                ? -Math.abs(Number(action.amount) || 0)
+                : Math.abs(Number(action.amount) || 0);
+            if (!Number.isFinite(rawDelta) || rawDelta === 0) break;
+
+            const isSpec =
+              action.mode === 'specific' &&
+              (action.colNumber !== undefined || action.colIndex !== undefined);
+            const specIdx =
+              action.colNumber !== undefined
+                ? Number(action.colNumber) - 1
+                : Number(action.colIndex) || 0;
+
+            const targetCols = isSpec
+              ? [specIdx]
+              : Array.from({ length: workingColCount }, (_, i) => i);
+
+            let touchedCells = 0;
+            workingStudents = workingStudents.map((s) => {
+              const copyNotes = [...s.notes];
+              for (const cIdx of targetCols) {
+                if (cIdx < 0 || cIdx >= workingColCount) continue;
+                const colMeta = workingColMetas[cIdx] || { maxScore: 20 };
+                const parsed = parseStudentNote(copyNotes[cIdx] || '', colMeta.maxScore);
+                if (parsed.scoreNum === null || parsed.scoreStr === '') continue;
+                const nextVal = Math.max(
+                  0,
+                  Math.min(
+                    parsed.maxScore,
+                    Math.round((parsed.scoreNum + rawDelta) * 100) / 100
+                  )
+                );
+                copyNotes[cIdx] = formatStudentNote(String(nextVal), parsed.maxScore);
+                touchedCells++;
+              }
+              return { ...s, notes: copyNotes };
+            });
+
+            if (touchedCells > 0) {
+              studentsMutated = true;
+              const signStr = rawDelta > 0 ? `+${rawDelta}` : `${rawDelta}`;
+              summaries.push(
+                `✓ Ajustement ${signStr} pt appliqué sur ${touchedCells} note(s)`
+              );
+            }
+            break;
+          }
+
+          case 'set_sort_mode': {
+            const mode: GradebookSortMode =
+              action.sortMode === 'merit' || action.mode === 'merit'
+                ? 'merit'
+                : action.sortMode === 'alpha' || action.mode === 'alpha'
+                ? 'alpha'
+                : 'order';
+            setLockedOrderIds(null);
+            setSortMode(mode);
+            setIsSaved(false);
+            summaries.push(
+              `✓ Classement : ${
+                mode === 'merit'
+                  ? 'Ordre de mérite (1er → dernier)'
+                  : mode === 'alpha'
+                  ? 'Ordre alphabétique (A → Z)'
+                  : 'Ordre initial'
+              }`
+            );
+            break;
+          }
+
+          case 'set_show_matricule': {
+            const show = action.show !== undefined ? Boolean(action.show) : true;
+            const scope: SheetSettingScope =
+              action.scope === 'class' ? 'class' : 'sheet';
+            await handleSaveShowMatricule(show, scope);
+            summaries.push(
+              `✓ Colonne Matricule ${show ? 'affichée' : 'masquée'} (${
+                scope === 'class' ? 'toute la classe' : 'ce tableau'
+              })`
+            );
+            break;
+          }
+
+          case 'set_average_scale': {
+            const cleanScale = sanitizeAverageScale(action.scale);
+            if (cleanScale !== null) {
+              const scope: SheetSettingScope =
+                action.scope === 'class' ? 'class' : 'sheet';
+              await handleSaveAverageScale(cleanScale, scope);
+              summaries.push(
+                `✓ Moyenne ramenée sur /${cleanScale} (${
+                  scope === 'class' ? 'toute la classe' : 'ce tableau'
+                })`
+              );
+            }
+            break;
+          }
+
+          case 'bulk_update_note_max': {
+            const cleanMax = sanitizeAverageScale(action.maxScore);
+            if (cleanMax !== null) {
+              const isSpec = action.mode === 'specific';
+              const colIdx =
+                action.colNumber !== undefined
+                  ? Number(action.colNumber) - 1
+                  : Number(action.colIndex) || 0;
+              const targetIndices = isSpec
+                ? [colIdx]
+                : Array.from({ length: workingColCount }, (_, i) => i);
+
+              for (const idx of targetIndices) {
+                if (idx < 0 || idx >= workingColCount) continue;
+                const prevMeta = workingColMetas[idx] || { maxScore: 20 };
+                workingColMetas[idx] = { ...prevMeta, maxScore: cleanMax };
+              }
+
+              workingStudents = workingStudents.map((s) => {
+                const copyNotes = Array.from(
+                  { length: workingColCount },
+                  (_, i) => s.notes[i] || ''
+                );
+                for (const idx of targetIndices) {
+                  if (idx < 0 || idx >= workingColCount) continue;
+                  const prevDefaultMax = columnMetas[idx]?.maxScore || 20;
+                  const parsed = parseStudentNote(copyNotes[idx], prevDefaultMax);
+                  if (!parsed.scoreStr) {
+                    copyNotes[idx] = '';
+                  } else if (
+                    action.convertExisting &&
+                    parsed.scoreNum !== null &&
+                    parsed.maxScore > 0
+                  ) {
+                    const converted =
+                      Math.round(((parsed.scoreNum / parsed.maxScore) * cleanMax) * 100) /
+                      100;
+                    copyNotes[idx] = formatStudentNote(String(converted), cleanMax);
+                  } else {
+                    copyNotes[idx] = formatStudentNote(parsed.scoreStr, cleanMax);
+                  }
+                }
+                return { ...s, notes: copyNotes };
+              });
+              colsMutated = true;
+              studentsMutated = true;
+              summaries.push(
+                isSpec
+                  ? `✓ Barème de la Note ${colIdx + 1} mis sur /${cleanMax}`
+                  : `✓ Barème de toutes les notes mis sur /${cleanMax}`
+              );
+            }
+            break;
+          }
+
+          case 'set_mention_rules': {
+            const rawRules = Array.isArray(action.rules) ? action.rules : [];
+            if (rawRules.length > 0) {
+              const cleanRules: CustomMentionRule[] = rawRules
+                .map((r: any) => ({
+                  min: Math.max(0, Number(r.min) || 0),
+                  label: String(r.label || '').trim().slice(0, 48),
+                  scale: effectiveAverageScale,
+                }))
+                .filter((r: CustomMentionRule) => r.label.length > 0);
+              if (cleanRules.length > 0) {
+                const scope: SheetSettingScope =
+                  action.scope === 'class' ? 'class' : 'sheet';
+                await handleSaveMentionRules(cleanRules, scope);
+                summaries.push(
+                  `✓ Intervalles de mentions personnalisés appliqués (${
+                    scope === 'class' ? 'toute la classe' : 'ce tableau'
+                  })`
+                );
+              }
+            }
+            break;
+          }
+
+          case 'format_cells': {
+            const st = action.style || {};
+            const stylePatch: Partial<CellCustomStyle> = {};
+            if (typeof st.bold === 'boolean') stylePatch.bold = st.bold;
+            if (typeof st.italic === 'boolean') stylePatch.italic = st.italic;
+            if (typeof st.underline === 'boolean') stylePatch.underline = st.underline;
+            if (typeof st.strikethrough === 'boolean')
+              stylePatch.strikethrough = st.strikethrough;
+            if (st.textColor || st.color)
+              stylePatch.color = String(st.textColor || st.color);
+            if (st.bgColor !== undefined) stylePatch.bgColor = String(st.bgColor);
+            if (st.fontFamily) stylePatch.fontFamily = String(st.fontFamily);
+            if (Number(st.fontSize) >= 8)
+              stylePatch.fontSize = Math.min(48, Number(st.fontSize));
+            if (
+              st.textAlign === 'left' ||
+              st.textAlign === 'center' ||
+              st.textAlign === 'right'
+            ) {
+              stylePatch.textAlign = st.textAlign;
+            }
+
+            const applyToStudentRow = (stdId: string, onlyCol?: string, noteIdx?: number) => {
+              const keys: string[] = [];
+              if (!onlyCol || onlyCol === 'all') {
+                keys.push(
+                  `${stdId}_rank`,
+                  `${stdId}_matricule`,
+                  `${stdId}_name`,
+                  `${stdId}_avg`,
+                  `${stdId}_mention`
+                );
+                for (let c = 0; c < workingColCount; c++) keys.push(`${stdId}_${c}`);
+              } else if (onlyCol === 'name') keys.push(`${stdId}_name`);
+              else if (onlyCol === 'matricule') keys.push(`${stdId}_matricule`);
+              else if (onlyCol === 'average') keys.push(`${stdId}_avg`);
+              else if (onlyCol === 'mention') keys.push(`${stdId}_mention`);
+              else if (onlyCol === 'rank') keys.push(`${stdId}_rank`);
+              else if (onlyCol === 'note' && typeof noteIdx === 'number')
+                keys.push(`${stdId}_${noteIdx}`);
+
+              for (const k of keys) {
+                workingCellStyles[k] = { ...workingCellStyles[k], ...stylePatch };
+              }
+            };
+
+            const noteIdx =
+              action.colNumber !== undefined
+                ? Number(action.colNumber) - 1
+                : action.colIndex !== undefined
+                ? Number(action.colIndex)
+                : undefined;
+
+            if (action.target === 'student') {
+              const searchName = normalizeStudentNameKey(String(action.studentName || ''));
+              const rIdx = typeof action.rowIndex === 'number' ? action.rowIndex - 1 : -1;
+              studentsWithStats.forEach((s, i) => {
+                if (
+                  i === rIdx ||
+                  (searchName &&
+                    normalizeStudentNameKey(s.name || '').includes(searchName))
+                ) {
+                  applyToStudentRow(s.id, action.column, noteIdx);
+                }
+              });
+            } else if (action.target === 'column') {
+              studentsWithStats.forEach((s) =>
+                applyToStudentRow(s.id, action.column || 'all', noteIdx)
+              );
+            } else if (action.target === 'condition') {
+              const thresh =
+                action.threshold !== undefined
+                  ? Number(action.threshold)
+                  : effectiveAverageScale / 2;
+              studentsWithStats.forEach((s, i) => {
+                if (action.condition === 'average_below' && s.average !== null && s.average < thresh) {
+                  applyToStudentRow(s.id, action.column, noteIdx);
+                } else if (
+                  action.condition === 'average_above' &&
+                  s.average !== null &&
+                  s.average >= thresh
+                ) {
+                  applyToStudentRow(s.id, action.column, noteIdx);
+                } else if (action.condition === 'rank_top' && i < (Number(action.threshold) || 3)) {
+                  applyToStudentRow(s.id, action.column, noteIdx);
+                }
+              });
+            } else {
+              studentsWithStats.forEach((s) =>
+                applyToStudentRow(s.id, action.column, noteIdx)
+              );
+            }
+            stylesMutated = true;
+            summaries.push(`✓ Mise en forme appliquée dans ${subject.name}`);
+            break;
+          }
+
+          case 'clear_formatting': {
+            workingCellStyles = {};
+            setCellColors({});
+            setRowColors({});
+            stylesMutated = true;
+            summaries.push(`✓ Mise en forme réinitialisée`);
+            break;
+          }
+
+          case 'copy_students_from_subject': {
+            if (!workspaceSnapshot) break;
+            const searchSubjName = normalizeStudentNameKey(
+              String(action.sourceSubjectName || '')
+            );
+            const sourceSubj =
+              workspaceSnapshot.subjects.find(
+                (s) =>
+                  s.id === action.sourceSubjectId ||
+                  (s.classId === schoolClass.id &&
+                    normalizeStudentNameKey(s.name).includes(searchSubjName))
+              ) ||
+              workspaceSnapshot.subjects.find((s) =>
+                normalizeStudentNameKey(s.name).includes(searchSubjName)
+              );
+
+            if (sourceSubj) {
+              const sourceGb = workspaceSnapshot.gradebooks.find(
+                (g) => g.subjectId === sourceSubj.id
+              );
+              if (sourceGb && sourceGb.students.length > 0) {
+                const includeNotes = Boolean(action.includeNotes);
+                let hasAnyMat = false;
+                workingStudents = sourceGb.students.map((st) => {
+                  if (st.matricule) hasAnyMat = true;
+                  return {
+                    id: st.id || generateTeacherEntityId('std'),
+                    studentUid: st.id,
+                    name: st.name,
+                    matricule: st.matricule || '',
+                    notes: includeNotes
+                      ? normalizeIncomingNotes(
+                          st.notes,
+                          Array(workingColCount).fill('')
+                        )
+                      : Array(workingColCount).fill(''),
+                  };
+                });
+                studentsMutated = true;
+                if (hasAnyMat && !effectiveShowMatricule) {
+                  await handleSaveShowMatricule(true, 'sheet');
+                }
+                summaries.push(
+                  `✓ ${sourceGb.students.length} élève(s) copié(s) depuis « ${sourceSubj.name} »`
+                );
+              }
+            }
+            break;
+          }
+
+          case 'set_zoom': {
+            const z = Math.min(200, Math.max(30, Math.round(Number(action.zoomPercent) || 70)));
+            setZoomPercent(z);
+            setIsSaved(false);
+            summaries.push(`✓ Zoom réglé à ${z}%`);
+            break;
+          }
+
+          case 'reset_column_widths': {
+            setColWidthRank(64);
+            setColWidthPhoto(68);
+            setColWidthMatricule(118);
+            setColWidthName(190);
+            setNoteColWidth(96);
+            setCustomNoteWidths({});
+            setCustomRowHeights({});
+            setIsSaved(false);
+            summaries.push(`✓ Largeurs des colonnes réinitialisées`);
+            break;
+          }
+
+          case 'undo': {
+            handleUndo();
+            summaries.push(`✓ Dernière modification annulée`);
+            break;
+          }
+
+          case 'redo': {
+            handleRedo();
+            summaries.push(`✓ Modification rétablie`);
+            break;
+          }
+
+          case 'export_excel': {
+            handleExportExcel();
+            summaries.push(`✓ Export Excel (.xlsx) téléchargé`);
+            break;
+          }
+        }
+      }
+
+      if (colsMutated) {
+        setNoteColumnCount(workingColCount);
+        setColumnMetas(workingColMetas);
+      }
+      if (studentsMutated) {
+        setStudents(workingStudents);
+      }
+      if (stylesMutated) {
+        setCellCustomStyles(workingCellStyles);
+      }
+      if (colsMutated || studentsMutated || stylesMutated) {
+        setIsSaved(false);
+      }
+
+      return summaries;
+    },
+  };
 
   return (
     <div 
@@ -6515,6 +7415,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       <TeacherDelmasAssistantDrawer
         isOpen={isDelmasAssistantOpen}
         onClose={() => setIsDelmasAssistantOpen(false)}
+        sheetBridge={delmasSheetBridge}
       />
     </div>
   );

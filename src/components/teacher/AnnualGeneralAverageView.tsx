@@ -59,6 +59,11 @@ import {
   TeacherDelmasAssistantRibbonButton,
   TeacherDelmasAssistantDrawer,
 } from './TeacherDelmasAssistantDrawer';
+import type {
+  TeacherDelmasAction,
+  TeacherDelmasActiveContext,
+  TeacherDelmasSheetBridge,
+} from '../../utils/teacherDelmasActionEngine';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import {
   useViewerExpandLevel,
@@ -1517,6 +1522,117 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
   };
 
   const [isDelmasAssistantOpen, setIsDelmasAssistantOpen] = useState(false);
+
+  const delmasSheetBridge: TeacherDelmasSheetBridge = {
+    getContext: (): TeacherDelmasActiveContext => ({
+      sheetKind: 'annual_average',
+      yearId: schoolYear?.id,
+      yearLabel: schoolYear?.label,
+      schoolId: school?.id,
+      schoolName: school?.name,
+      classId: schoolClass.id,
+      className: classDisplayName,
+      levelName: schoolClass.level,
+      averageCardId: averageCard.id,
+      averageCardTitle: averageCard.title,
+      sortMode,
+      showMatricule: effectiveShowMatricule,
+      averageScale: effectiveAverageScale,
+      mentionRules: effectiveMentionRules,
+      zoomPercent,
+      activeCellCoord: activeCell.coordDisplay || undefined,
+      activeCellValue: activeCell.formulaText || undefined,
+      students: computed.students.map((st, idx) => ({
+        rowIndex: idx + 1,
+        id: st.key,
+        name: st.name || '',
+        matricule: st.matricule || '',
+        averageFormatted:
+          st.annualAverage !== null ? st.annualAverage.toFixed(2) : '',
+        averageNumber: st.annualAverage,
+        rank: st.rankLabel || '',
+        mention: st.mention || '',
+      })),
+      generalAverageMeta: {
+        totalClassCoeff: computed.classSummary.totalClassCoeff,
+        classGeneralAverage: computed.classSummary.classAnnualAverage,
+        passRatePercent: computed.classSummary.passRatePercent,
+        terms: computed.terms.map((t) => ({
+          id: t.id,
+          name: t.name,
+          coefficient: t.coefficient ?? null,
+        })),
+      },
+    }),
+
+    executeActions: async (actions: TeacherDelmasAction[]): Promise<string[]> => {
+      const summaries: string[] = [];
+      for (const action of actions) {
+        if (!action || typeof action !== 'object') continue;
+        switch (action.type) {
+          case 'set_sort_mode': {
+            const mode: TermAverageSortMode =
+              action.sortMode === 'merit' || action.mode === 'merit'
+                ? 'merit'
+                : action.sortMode === 'alpha' || action.mode === 'alpha'
+                ? 'alpha'
+                : 'order';
+            handleSortChange(mode);
+            summaries.push(`✓ Classement : ${sortLabelMap[mode]}`);
+            break;
+          }
+          case 'set_show_matricule': {
+            const show = action.show !== undefined ? Boolean(action.show) : true;
+            const scope: SheetSettingScope =
+              action.scope === 'class' ? 'class' : 'sheet';
+            await handleSaveShowMatricule(show, scope);
+            summaries.push(`✓ Colonne Matricule ${show ? 'affichée' : 'masquée'}`);
+            break;
+          }
+          case 'set_average_scale': {
+            const scale = Number(action.scale) || 20;
+            const scope: SheetSettingScope =
+              action.scope === 'class' ? 'class' : 'sheet';
+            await handleSaveAverageScale(scale, scope);
+            summaries.push(`✓ Barème de la moyenne passé sur /${scale}`);
+            break;
+          }
+          case 'set_mention_rules': {
+            if (Array.isArray(action.rules) && action.rules.length > 0) {
+              const scope: SheetSettingScope =
+                action.scope === 'class' ? 'class' : 'sheet';
+              await handleSaveMentionRules(action.rules, scope);
+              summaries.push(`✓ Intervalles de mentions mis à jour`);
+            }
+            break;
+          }
+          case 'set_zoom': {
+            const z = Math.min(180, Math.max(40, Math.round(Number(action.zoomPercent) || 80)));
+            setZoomPercent(z);
+            setIsDirty(true);
+            summaries.push(`✓ Zoom réglé à ${z}%`);
+            break;
+          }
+          case 'undo': {
+            handleUndo();
+            summaries.push(`✓ Dernière modification annulée`);
+            break;
+          }
+          case 'redo': {
+            handleRedo();
+            summaries.push(`✓ Modification rétablie`);
+            break;
+          }
+          case 'export_excel': {
+            handleExportExcel();
+            summaries.push(`✓ Export Excel (.xlsx) téléchargé`);
+            break;
+          }
+        }
+      }
+      return summaries;
+    },
+  };
 
   return (
     <div
@@ -3955,6 +4071,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       <TeacherDelmasAssistantDrawer
         isOpen={isDelmasAssistantOpen}
         onClose={() => setIsDelmasAssistantOpen(false)}
+        sheetBridge={delmasSheetBridge}
       />
     </div>
   );

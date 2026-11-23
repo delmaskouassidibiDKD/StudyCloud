@@ -1062,4 +1062,232 @@ export const TeacherGradebookAPI = {
       '/api/teacher/batch-create',
       { method: 'POST', body: { entity: 'subjects', classId, termId, items } }
     ),
+
+  // --------------------------------------------------------------------------
+  // ASSISTANT DELMAS (CONVERSATIONS, MESSAGES, DOSSIER FICHIERS R2 & CONTEXTE D1)
+  // --------------------------------------------------------------------------
+  listDelmasConversations: (signal?: AbortSignal) =>
+    teacherFetchJson<{
+      success: boolean;
+      conversations: TeacherDelmasConversationSummary[];
+    }>('/api/teacher/delmas/conversations', { method: 'GET', signal }),
+
+  createOrUpdateDelmasConversation: (input: {
+    id?: string;
+    title?: string;
+    language?: string;
+    contextYearId?: string;
+    contextSchoolId?: string;
+    contextClassId?: string;
+    contextTermId?: string;
+    contextSubjectId?: string;
+    contextSheetKind?: string;
+  }) =>
+    teacherFetchJson<{
+      success: boolean;
+      conversation: TeacherDelmasConversationSummary;
+    }>('/api/teacher/delmas/conversations', { method: 'POST', body: input }),
+
+  getDelmasConversation: (conversationId: string, signal?: AbortSignal) =>
+    teacherFetchJson<{
+      success: boolean;
+      conversation: TeacherDelmasConversationSummary;
+      messages: TeacherDelmasMessageRecord[];
+      files: TeacherDelmasFileRecord[];
+    }>(`/api/teacher/delmas/conversations/${encodeURIComponent(conversationId)}`, {
+      method: 'GET',
+      signal,
+    }),
+
+  updateDelmasConversation: (
+    conversationId: string,
+    input: { title?: string; language?: string; isPinned?: boolean }
+  ) =>
+    teacherFetchJson<{
+      success: boolean;
+      conversation: Partial<TeacherDelmasConversationSummary>;
+    }>(`/api/teacher/delmas/conversations/${encodeURIComponent(conversationId)}`, {
+      method: 'PUT',
+      body: input,
+    }),
+
+  deleteDelmasConversation: (conversationId: string) =>
+    teacherFetchJson<{ success: boolean; deletedId: string }>(
+      `/api/teacher/delmas/conversations/${encodeURIComponent(conversationId)}`,
+      { method: 'DELETE' }
+    ),
+
+  saveDelmasMessages: (
+    conversationId: string,
+    input: {
+      title?: string;
+      language?: string;
+      contextYearId?: string;
+      contextSchoolId?: string;
+      contextClassId?: string;
+      contextTermId?: string;
+      contextSubjectId?: string;
+      contextSheetKind?: string;
+      messages: Array<{
+        id?: string;
+        sender: 'user' | 'ai';
+        content: string;
+        actions?: any[];
+        attachments?: any[];
+        reaction?: 'like' | 'dislike' | null;
+        tokens?: number;
+        credits?: number;
+        createdAt?: number;
+      }>;
+    }
+  ) =>
+    teacherFetchJson<{
+      success: boolean;
+      conversationId: string;
+      title: string;
+      messages: TeacherDelmasMessageRecord[];
+    }>(
+      `/api/teacher/delmas/conversations/${encodeURIComponent(conversationId)}/messages`,
+      { method: 'POST', body: input }
+    ),
+
+  uploadDelmasConversationFile: (
+    conversationId: string,
+    input: {
+      id?: string;
+      fileName: string;
+      mimeType: string;
+      fileType: string;
+      dataUrl?: string;
+      previewDataUrl?: string;
+      extractedText?: string;
+      originalSizeBytes?: number;
+      sizeBytes?: number;
+      conversationTitle?: string;
+      language?: string;
+    }
+  ) =>
+    teacherFetchJson<{
+      success: boolean;
+      file: TeacherDelmasFileRecord;
+    }>(
+      `/api/teacher/delmas/conversations/${encodeURIComponent(conversationId)}/files`,
+      { method: 'POST', body: input }
+    ),
+
+  deleteDelmasConversationFile: (fileId: string) =>
+    teacherFetchJson<{ success: boolean; deletedId: string }>(
+      `/api/teacher/delmas/files/${encodeURIComponent(fileId)}`,
+      { method: 'DELETE' }
+    ),
+
+  getDelmasWorkspaceContext: (signal?: AbortSignal) =>
+    teacherFetchJson<{
+      success: boolean;
+      workspace: TeacherDelmasWorkspaceSnapshot;
+    }>('/api/teacher/delmas/workspace-context', { method: 'GET', signal }),
 };
+
+export interface TeacherDelmasConversationSummary {
+  id: string;
+  title: string;
+  language: string;
+  contextYearId?: string;
+  contextSchoolId?: string;
+  contextClassId?: string;
+  contextTermId?: string;
+  contextSubjectId?: string;
+  contextSheetKind?: string;
+  isPinned: boolean;
+  pinnedAt?: number | null;
+  filesCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface TeacherDelmasMessageRecord {
+  id: string;
+  conversationId: string;
+  sender: 'user' | 'ai';
+  content: string;
+  actions: any[];
+  attachments: Array<{
+    id: string;
+    fileName: string;
+    fileType: string;
+    mimeType: string;
+    sizeBytes?: number;
+    url?: string;
+    previewDataUrl?: string;
+  }>;
+  reaction?: 'like' | 'dislike' | null;
+  tokens?: number;
+  credits?: number;
+  createdAt: number;
+}
+
+export interface TeacherDelmasFileRecord {
+  id: string;
+  conversationId: string;
+  fileName: string;
+  mimeType: string;
+  fileType: string;
+  r2Key?: string;
+  url?: string;
+  previewDataUrl?: string;
+  sizeBytes: number;
+  compressedSizeBytes: number;
+  extractedText: string;
+  createdAt: number;
+  // Transient client-side fields for immediate multimodal AI send
+  imageBase64?: string;
+  audioBase64?: string;
+  documentBase64?: string;
+  documentImages?: Array<{ base64: string; mimeType: string; name?: string }>;
+}
+
+export interface TeacherDelmasWorkspaceSnapshot {
+  years: Array<{ id: string; label: string }>;
+  schools: Array<{ id: string; yearId: string; name: string }>;
+  levels: Array<{ id: string; schoolId: string; yearId: string; name: string }>;
+  classes: Array<{
+    id: string;
+    levelId: string;
+    schoolId: string;
+    yearId: string;
+    level: string;
+    name: string;
+    teacherName: string;
+    showMatricule: boolean;
+    averageScale: number;
+  }>;
+  terms: Array<{
+    id: string;
+    classId: string;
+    number: number;
+    name: string;
+    coefficient: number | null;
+  }>;
+  subjects: Array<{
+    id: string;
+    classId: string;
+    termId: string;
+    name: string;
+    coefficient: number | null;
+  }>;
+  gradebooks: Array<{
+    id: string;
+    subjectId: string;
+    termId: string;
+    classId: string;
+    noteColCount: number;
+    colMetas: Record<string, any>;
+    students: Array<{
+      id: string;
+      name: string;
+      matricule: string;
+      notes: string[];
+      average20: number | null;
+    }>;
+  }>;
+}

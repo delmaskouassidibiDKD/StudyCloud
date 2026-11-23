@@ -274,6 +274,60 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       FOREIGN KEY (year_id) REFERENCES teacher_school_years(id) ON DELETE CASCADE
     )`,
     `CREATE INDEX IF NOT EXISTS idx_teacher_class_avgs_user_class ON teacher_class_averages(user_id, class_id, sort_order, created_at)`,
+
+    `CREATE TABLE IF NOT EXISTS teacher_delmas_conversations (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT 'Nouvelle discussion',
+      language TEXT NOT NULL DEFAULT 'fr',
+      context_year_id TEXT DEFAULT NULL,
+      context_school_id TEXT DEFAULT NULL,
+      context_class_id TEXT DEFAULT NULL,
+      context_term_id TEXT DEFAULT NULL,
+      context_subject_id TEXT DEFAULT NULL,
+      context_sheet_kind TEXT NOT NULL DEFAULT 'subject',
+      is_pinned INTEGER NOT NULL DEFAULT 0,
+      pinned_at INTEGER DEFAULT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_delmas_conv_user ON teacher_delmas_conversations(user_id, is_pinned DESC, updated_at DESC)`,
+
+    `CREATE TABLE IF NOT EXISTS teacher_delmas_messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      sender TEXT NOT NULL DEFAULT 'user',
+      content TEXT NOT NULL DEFAULT '',
+      actions_json TEXT NOT NULL DEFAULT '[]',
+      attachments_json TEXT NOT NULL DEFAULT '[]',
+      reaction TEXT DEFAULT NULL,
+      tokens INTEGER NOT NULL DEFAULT 0,
+      credits REAL NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (conversation_id) REFERENCES teacher_delmas_conversations(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_delmas_msg_conv ON teacher_delmas_messages(user_id, conversation_id, created_at ASC)`,
+
+    `CREATE TABLE IF NOT EXISTS teacher_delmas_files (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+      file_type TEXT NOT NULL DEFAULT 'document',
+      r2_key TEXT DEFAULT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      compressed_size_bytes INTEGER NOT NULL DEFAULT 0,
+      extracted_text TEXT NOT NULL DEFAULT '',
+      preview_data_url TEXT DEFAULT NULL,
+      created_at INTEGER NOT NULL,
+      FOREIGN KEY (conversation_id) REFERENCES teacher_delmas_conversations(id) ON DELETE CASCADE,
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+    `CREATE INDEX IF NOT EXISTS idx_teacher_delmas_files_conv ON teacher_delmas_files(user_id, conversation_id, created_at ASC)`,
   ];
 
   await db.batch(statements.map((sql) => db.prepare(sql)));
@@ -436,14 +490,15 @@ function isOwnedR2Key(key: string | null | undefined, userId: string): boolean {
   const safeUser = sanitizeSegment(userId);
   return (
     key.startsWith(`teacher-student-photos/${safeUser}/`) ||
-    key.startsWith(`teacher-school-logos/${safeUser}/`)
+    key.startsWith(`teacher-school-logos/${safeUser}/`) ||
+    key.startsWith(`teacher-delmas-files/${safeUser}/`)
   );
 }
 
 function extractOwnerSegmentFromR2Key(key: string): string | null {
   if (!key || typeof key !== 'string') return null;
   if (key.includes('..') || key.includes('\\') || key.includes('\0')) return null;
-  const match = key.match(/^(?:teacher-student-photos|teacher-school-logos)\/([a-zA-Z0-9_-]+)\/[a-zA-Z0-9_./-]+$/);
+  const match = key.match(/^(?:teacher-student-photos|teacher-school-logos|teacher-delmas-files)\/([a-zA-Z0-9_-]+)\/[a-zA-Z0-9_./-]+$/);
   return match ? match[1] : null;
 }
 
@@ -917,6 +972,10 @@ export async function computeTeacherGradebookStorageUsage(
       classAveragesStat,
       schoolLogosR2,
       studentPhotosR2,
+      delmasConvsStat,
+      delmasMsgsStat,
+      delmasFilesStat,
+      delmasFilesR2,
     ] = await Promise.all([
       db
         .prepare(
@@ -1043,6 +1102,54 @@ export async function computeTeacherGradebookStorageUsage(
         .bind(userId)
         .first()
         .catch(() => zeroR2),
+
+      db
+        .prepare(
+          `SELECT COUNT(*) as cnt,
+                  COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(COALESCE(title, '') AS BLOB)) + LENGTH(CAST(COALESCE(language, '') AS BLOB)) + LENGTH(CAST(COALESCE(context_year_id, '') AS BLOB)) + LENGTH(CAST(COALESCE(context_school_id, '') AS BLOB)) + LENGTH(CAST(COALESCE(context_class_id, '') AS BLOB)) + LENGTH(CAST(COALESCE(context_term_id, '') AS BLOB)) + LENGTH(CAST(COALESCE(context_subject_id, '') AS BLOB)) + LENGTH(CAST(COALESCE(context_sheet_kind, '') AS BLOB))), 0) as textBytes
+           FROM teacher_delmas_conversations WHERE user_id = ?`
+        )
+        .bind(userId)
+        .first()
+        .catch(() => zeroD1),
+
+      db
+        .prepare(
+          `SELECT COUNT(*) as cnt,
+                  COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(conversation_id AS BLOB)) + LENGTH(CAST(COALESCE(sender, '') AS BLOB)) + LENGTH(CAST(COALESCE(content, '') AS BLOB)) + LENGTH(CAST(COALESCE(actions_json, '[]') AS BLOB)) + LENGTH(CAST(COALESCE(attachments_json, '[]') AS BLOB))), 0) as textBytes
+           FROM teacher_delmas_messages WHERE user_id = ?`
+        )
+        .bind(userId)
+        .first()
+        .catch(() => zeroD1),
+
+      db
+        .prepare(
+          `SELECT COUNT(*) as cnt,
+                  COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(conversation_id AS BLOB)) + LENGTH(CAST(COALESCE(file_name, '') AS BLOB)) + LENGTH(CAST(COALESCE(mime_type, '') AS BLOB)) + LENGTH(CAST(COALESCE(file_type, '') AS BLOB)) + LENGTH(CAST(COALESCE(r2_key, '') AS BLOB)) + LENGTH(CAST(COALESCE(extracted_text, '') AS BLOB))), 0) as textBytes
+           FROM teacher_delmas_files WHERE user_id = ?`
+        )
+        .bind(userId)
+        .first()
+        .catch(() => zeroD1),
+
+      db
+        .prepare(
+          `SELECT COUNT(*) as cnt,
+                  COALESCE(SUM(size_bytes), 0) as r2Bytes,
+                  COALESCE(SUM(CASE WHEN comp_bytes > 0 THEN comp_bytes ELSE size_bytes END), 0) as compBytes
+           FROM (
+             SELECT r2_key,
+                    MAX(COALESCE(size_bytes, 0)) as size_bytes,
+                    MAX(COALESCE(compressed_size_bytes, 0)) as comp_bytes
+             FROM teacher_delmas_files
+             WHERE user_id = ? AND r2_key IS NOT NULL AND r2_key != ''
+             GROUP BY r2_key
+           )`
+        )
+        .bind(userId)
+        .first()
+        .catch(() => zeroR2),
     ]);
 
     const entities = {
@@ -1057,6 +1164,11 @@ export async function computeTeacherGradebookStorageUsage(
       classAverages: Number(classAveragesStat?.cnt || 0),
     };
 
+    const delmasRowsCount =
+      Number(delmasConvsStat?.cnt || 0) +
+      Number(delmasMsgsStat?.cnt || 0) +
+      Number(delmasFilesStat?.cnt || 0);
+
     const d1RowsCount =
       entities.years +
       entities.schools +
@@ -1066,7 +1178,8 @@ export async function computeTeacherGradebookStorageUsage(
       entities.subjects +
       entities.gradebooks +
       entities.students +
-      entities.classAverages;
+      entities.classAverages +
+      delmasRowsCount;
 
     const d1TextBytes =
       Number(yearsStat?.textBytes || 0) +
@@ -1077,7 +1190,10 @@ export async function computeTeacherGradebookStorageUsage(
       Number(subjectsStat?.textBytes || 0) +
       Number(gradebooksStat?.textBytes || 0) +
       Number(studentsStat?.textBytes || 0) +
-      Number(classAveragesStat?.textBytes || 0);
+      Number(classAveragesStat?.textBytes || 0) +
+      Number(delmasConvsStat?.textBytes || 0) +
+      Number(delmasMsgsStat?.textBytes || 0) +
+      Number(delmasFilesStat?.textBytes || 0);
 
     const d1EstimatedBytes = d1RowsCount > 0 ? d1TextBytes + d1RowsCount * 160 : 0;
 
@@ -1087,9 +1203,12 @@ export async function computeTeacherGradebookStorageUsage(
     const studentPhotosCount = Number(studentPhotosR2?.cnt || 0);
     const studentPhotosBytes = Number(studentPhotosR2?.r2Bytes || 0);
     const studentPhotosCompressedBytes = Number(studentPhotosR2?.compBytes || studentPhotosBytes);
-    const r2FilesCount = schoolLogosCount + studentPhotosCount;
-    const r2Bytes = schoolLogosBytes + studentPhotosBytes;
-    const r2CompressedBytes = schoolLogosCompressedBytes + studentPhotosCompressedBytes;
+    const delmasFilesCount = Number(delmasFilesR2?.cnt || 0);
+    const delmasFilesBytes = Number(delmasFilesR2?.r2Bytes || 0);
+    const delmasFilesCompressedBytes = Number(delmasFilesR2?.compBytes || delmasFilesBytes);
+    const r2FilesCount = schoolLogosCount + studentPhotosCount + delmasFilesCount;
+    const r2Bytes = schoolLogosBytes + studentPhotosBytes + delmasFilesBytes;
+    const r2CompressedBytes = schoolLogosCompressedBytes + studentPhotosCompressedBytes + delmasFilesCompressedBytes;
 
     return {
       r2FilesCount,
@@ -5941,6 +6060,735 @@ async function dispatchTeacherGradebookRoutes(
 
     const payload = await buildBootstrapPayload(db, userId, apiOrigin, jwtSecret);
     return jsonResponse({ ...payload, syncedAt: now }, 200, origin);
+  }
+
+  // ==========================================================================
+  // 12. ASSISTANT DELMAS (CONVERSATIONS, MESSAGES, DOSSIER FICHIERS R2 & CONTEXTE D1)
+  // ==========================================================================
+  const now = Date.now();
+
+  // GET /api/teacher/delmas/conversations — Liste des conversations de l'utilisateur
+  if (path === '/api/teacher/delmas/conversations' && method === 'GET') {
+    const [convsRes, filesCountRes] = await Promise.all([
+      db
+        .prepare(
+          `SELECT id, title, language, context_year_id, context_school_id, context_class_id,
+                  context_term_id, context_subject_id, context_sheet_kind, is_pinned, pinned_at,
+                  created_at, updated_at
+           FROM teacher_delmas_conversations
+           WHERE user_id = ?
+           ORDER BY is_pinned DESC, COALESCE(pinned_at, 0) DESC, updated_at DESC
+           LIMIT 200`
+        )
+        .bind(userId)
+        .all()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare(
+          `SELECT conversation_id, COUNT(*) as file_count
+           FROM teacher_delmas_files
+           WHERE user_id = ?
+           GROUP BY conversation_id`
+        )
+        .bind(userId)
+        .all()
+        .catch(() => ({ results: [] })),
+    ]);
+
+    const fileCountMap = new Map<string, number>();
+    for (const r of filesCountRes.results || []) {
+      fileCountMap.set(String(r.conversation_id), Number(r.file_count) || 0);
+    }
+
+    const conversations = (convsRes.results || []).map((r: any) => ({
+      id: String(r.id),
+      title: String(r.title || 'Nouvelle discussion'),
+      language: String(r.language || 'fr'),
+      contextYearId: r.context_year_id || undefined,
+      contextSchoolId: r.context_school_id || undefined,
+      contextClassId: r.context_class_id || undefined,
+      contextTermId: r.context_term_id || undefined,
+      contextSubjectId: r.context_subject_id || undefined,
+      contextSheetKind: r.context_sheet_kind || 'subject',
+      isPinned: Boolean(r.is_pinned),
+      pinnedAt: r.pinned_at ? Number(r.pinned_at) : null,
+      filesCount: fileCountMap.get(String(r.id)) || 0,
+      createdAt: Number(r.created_at) || now,
+      updatedAt: Number(r.updated_at) || now,
+    }));
+
+    return jsonResponse({ success: true, conversations }, 200, origin);
+  }
+
+  // POST /api/teacher/delmas/conversations — Créer ou mettre à jour une conversation
+  if (path === '/api/teacher/delmas/conversations' && method === 'POST') {
+    const body = await request.json().catch(() => ({}));
+    const convId = await resolveSafeNewId(db, 'teacher_delmas_conversations', body?.id, 'tdconv');
+    const title = String(body?.title || 'Nouvelle discussion').trim().slice(0, 140) || 'Nouvelle discussion';
+    const language = String(body?.language || 'fr').trim().slice(0, 12) || 'fr';
+    const contextYearId = body?.contextYearId ? String(body.contextYearId).slice(0, 80) : null;
+    const contextSchoolId = body?.contextSchoolId ? String(body.contextSchoolId).slice(0, 80) : null;
+    const contextClassId = body?.contextClassId ? String(body.contextClassId).slice(0, 80) : null;
+    const contextTermId = body?.contextTermId ? String(body.contextTermId).slice(0, 80) : null;
+    const contextSubjectId = body?.contextSubjectId ? String(body.contextSubjectId).slice(0, 80) : null;
+    const contextSheetKind = String(body?.contextSheetKind || 'subject').slice(0, 32);
+
+    const existing = await db
+      .prepare('SELECT id, user_id, created_at, is_pinned, pinned_at FROM teacher_delmas_conversations WHERE id = ?')
+      .bind(convId)
+      .first();
+
+    if (existing && String(existing.user_id) === userId) {
+      await db
+        .prepare(
+          `UPDATE teacher_delmas_conversations
+           SET title = ?, language = ?, context_year_id = COALESCE(?, context_year_id),
+               context_school_id = COALESCE(?, context_school_id),
+               context_class_id = COALESCE(?, context_class_id),
+               context_term_id = COALESCE(?, context_term_id),
+               context_subject_id = COALESCE(?, context_subject_id),
+               context_sheet_kind = COALESCE(?, context_sheet_kind),
+               updated_at = ?
+           WHERE id = ? AND user_id = ?`
+        )
+        .bind(
+          title,
+          language,
+          contextYearId,
+          contextSchoolId,
+          contextClassId,
+          contextTermId,
+          contextSubjectId,
+          contextSheetKind,
+          now,
+          convId,
+          userId
+        )
+        .run();
+    } else {
+      const quotaBlocked = await enforceStorageQuota(320);
+      if (quotaBlocked) return quotaBlocked;
+
+      await db
+        .prepare(
+          `INSERT INTO teacher_delmas_conversations
+            (id, user_id, title, language, context_year_id, context_school_id, context_class_id,
+             context_term_id, context_subject_id, context_sheet_kind, is_pinned, pinned_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`
+        )
+        .bind(
+          convId,
+          userId,
+          title,
+          language,
+          contextYearId,
+          contextSchoolId,
+          contextClassId,
+          contextTermId,
+          contextSubjectId,
+          contextSheetKind,
+          now,
+          now
+        )
+        .run();
+    }
+
+    return jsonResponse(
+      {
+        success: true,
+        conversation: {
+          id: convId,
+          title,
+          language,
+          contextYearId: contextYearId || undefined,
+          contextSchoolId: contextSchoolId || undefined,
+          contextClassId: contextClassId || undefined,
+          contextTermId: contextTermId || undefined,
+          contextSubjectId: contextSubjectId || undefined,
+          contextSheetKind,
+          isPinned: Boolean(existing?.is_pinned),
+          pinnedAt: existing?.pinned_at ? Number(existing.pinned_at) : null,
+          filesCount: 0,
+          createdAt: Number(existing?.created_at) || now,
+          updatedAt: now,
+        },
+      },
+      200,
+      origin
+    );
+  }
+
+  // GET / PUT / DELETE /api/teacher/delmas/conversations/:id
+  const delmasConvMatch = path.match(/^\/api\/teacher\/delmas\/conversations\/([a-zA-Z0-9_-]+)$/);
+  if (delmasConvMatch) {
+    const convId = delmasConvMatch[1];
+    const convRow = await db
+      .prepare('SELECT * FROM teacher_delmas_conversations WHERE id = ? AND user_id = ?')
+      .bind(convId, userId)
+      .first();
+
+    if (!convRow) {
+      return errorResponse('Discussion introuvable.', 404, origin);
+    }
+
+    if (method === 'GET') {
+      const [msgsRes, filesRes] = await Promise.all([
+        db
+          .prepare(
+            `SELECT id, conversation_id, sender, content, actions_json, attachments_json,
+                    reaction, tokens, credits, created_at
+             FROM teacher_delmas_messages
+             WHERE user_id = ? AND conversation_id = ?
+             ORDER BY created_at ASC`
+          )
+          .bind(userId, convId)
+          .all()
+          .catch(() => ({ results: [] })),
+        db
+          .prepare(
+            `SELECT id, conversation_id, file_name, mime_type, file_type, r2_key,
+                    size_bytes, compressed_size_bytes, extracted_text, preview_data_url, created_at
+             FROM teacher_delmas_files
+             WHERE user_id = ? AND conversation_id = ?
+             ORDER BY created_at ASC`
+          )
+          .bind(userId, convId)
+          .all()
+          .catch(() => ({ results: [] })),
+      ]);
+
+      const files = await Promise.all(
+        (filesRes.results || []).map(async (f: any) => ({
+          id: String(f.id),
+          conversationId: String(f.conversation_id),
+          fileName: String(f.file_name),
+          mimeType: String(f.mime_type || 'application/octet-stream'),
+          fileType: String(f.file_type || 'document'),
+          r2Key: f.r2_key || undefined,
+          url: f.r2_key
+            ? await signTeacherMediaUrl(apiOrigin, String(f.r2_key), jwtSecret)
+            : f.preview_data_url || undefined,
+          previewDataUrl: f.preview_data_url || undefined,
+          sizeBytes: Number(f.size_bytes) || 0,
+          compressedSizeBytes: Number(f.compressed_size_bytes) || 0,
+          extractedText: String(f.extracted_text || ''),
+          createdAt: Number(f.created_at) || now,
+        }))
+      );
+
+      const messages = (msgsRes.results || []).map((m: any) => ({
+        id: String(m.id),
+        conversationId: String(m.conversation_id),
+        sender: m.sender === 'ai' ? 'ai' : 'user',
+        content: String(m.content || ''),
+        actions: safeParseJson<any[]>(m.actions_json, []),
+        attachments: safeParseJson<any[]>(m.attachments_json, []),
+        reaction: m.reaction || null,
+        tokens: Number(m.tokens) || 0,
+        credits: Number(m.credits) || 0,
+        createdAt: Number(m.created_at) || now,
+      }));
+
+      return jsonResponse(
+        {
+          success: true,
+          conversation: {
+            id: String(convRow.id),
+            title: String(convRow.title || 'Nouvelle discussion'),
+            language: String(convRow.language || 'fr'),
+            contextYearId: convRow.context_year_id || undefined,
+            contextSchoolId: convRow.context_school_id || undefined,
+            contextClassId: convRow.context_class_id || undefined,
+            contextTermId: convRow.context_term_id || undefined,
+            contextSubjectId: convRow.context_subject_id || undefined,
+            contextSheetKind: convRow.context_sheet_kind || 'subject',
+            isPinned: Boolean(convRow.is_pinned),
+            pinnedAt: convRow.pinned_at ? Number(convRow.pinned_at) : null,
+            filesCount: files.length,
+            createdAt: Number(convRow.created_at) || now,
+            updatedAt: Number(convRow.updated_at) || now,
+          },
+          messages,
+          files,
+        },
+        200,
+        origin
+      );
+    }
+
+    if (method === 'PUT') {
+      const body = await request.json().catch(() => ({}));
+      const nextTitle =
+        typeof body?.title === 'string' && body.title.trim()
+          ? body.title.trim().slice(0, 140)
+          : String(convRow.title || 'Nouvelle discussion');
+      const nextLang =
+        typeof body?.language === 'string' && body.language.trim()
+          ? body.language.trim().slice(0, 12)
+          : String(convRow.language || 'fr');
+      const nextPinned =
+        typeof body?.isPinned === 'boolean' ? (body.isPinned ? 1 : 0) : Number(convRow.is_pinned) || 0;
+      const nextPinnedAt =
+        typeof body?.isPinned === 'boolean'
+          ? body.isPinned
+            ? now
+            : null
+          : convRow.pinned_at;
+
+      await db
+        .prepare(
+          `UPDATE teacher_delmas_conversations
+           SET title = ?, language = ?, is_pinned = ?, pinned_at = ?, updated_at = ?
+           WHERE id = ? AND user_id = ?`
+        )
+        .bind(nextTitle, nextLang, nextPinned, nextPinnedAt, now, convId, userId)
+        .run();
+
+      return jsonResponse(
+        {
+          success: true,
+          conversation: {
+            id: convId,
+            title: nextTitle,
+            language: nextLang,
+            isPinned: Boolean(nextPinned),
+            pinnedAt: nextPinnedAt ? Number(nextPinnedAt) : null,
+            updatedAt: now,
+          },
+        },
+        200,
+        origin
+      );
+    }
+
+    if (method === 'DELETE') {
+      const filesRes = await db
+        .prepare('SELECT r2_key FROM teacher_delmas_files WHERE user_id = ? AND conversation_id = ?')
+        .bind(userId, convId)
+        .all()
+        .catch(() => ({ results: [] }));
+
+      const r2Keys = (filesRes.results || [])
+        .map((r: any) => (r.r2_key ? String(r.r2_key) : null))
+        .filter(Boolean);
+
+      await db
+        .batch([
+          db.prepare('DELETE FROM teacher_delmas_files WHERE user_id = ? AND conversation_id = ?').bind(userId, convId),
+          db.prepare('DELETE FROM teacher_delmas_messages WHERE user_id = ? AND conversation_id = ?').bind(userId, convId),
+          db.prepare('DELETE FROM teacher_delmas_conversations WHERE id = ? AND user_id = ?').bind(convId, userId),
+        ]);
+
+      if (r2Keys.length > 0) {
+        await deleteOwnedR2Keys(rawEnv, userId, r2Keys);
+      }
+
+      return jsonResponse({ success: true, deletedId: convId }, 200, origin);
+    }
+  }
+
+  // POST /api/teacher/delmas/conversations/:id/messages — Enregistrer un message (ou couple user + ai) dans la conversation
+  const delmasMsgMatch = path.match(/^\/api\/teacher\/delmas\/conversations\/([a-zA-Z0-9_-]+)\/messages$/);
+  if (delmasMsgMatch && method === 'POST') {
+    const convId = delmasMsgMatch[1];
+    const body = await request.json().catch(() => ({}));
+
+    let convRow = await db
+      .prepare('SELECT * FROM teacher_delmas_conversations WHERE id = ? AND user_id = ?')
+      .bind(convId, userId)
+      .first();
+
+    const rawMessages: any[] = Array.isArray(body?.messages)
+      ? body.messages
+      : body?.message
+      ? [body.message]
+      : [];
+
+    let incomingBytes = 0;
+    for (const m of rawMessages) {
+      incomingBytes +=
+        160 +
+        utf8ByteLength(m?.content || '') +
+        utf8ByteLength(JSON.stringify(m?.actions || [])) +
+        utf8ByteLength(JSON.stringify(m?.attachments || []));
+    }
+
+    const quotaBlocked = await enforceStorageQuota(Math.max(200, incomingBytes));
+    if (quotaBlocked) return quotaBlocked;
+
+    if (!convRow) {
+      const initialTitle =
+        String(body?.title || rawMessages[0]?.content || 'Nouvelle discussion')
+          .trim()
+          .replace(/\s+/g, ' ')
+          .slice(0, 80) || 'Nouvelle discussion';
+      const lang = String(body?.language || 'fr').trim().slice(0, 12) || 'fr';
+      await db
+        .prepare(
+          `INSERT INTO teacher_delmas_conversations
+            (id, user_id, title, language, context_year_id, context_school_id, context_class_id,
+             context_term_id, context_subject_id, context_sheet_kind, is_pinned, pinned_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`
+        )
+        .bind(
+          convId,
+          userId,
+          initialTitle,
+          lang,
+          body?.contextYearId ? String(body.contextYearId).slice(0, 80) : null,
+          body?.contextSchoolId ? String(body.contextSchoolId).slice(0, 80) : null,
+          body?.contextClassId ? String(body.contextClassId).slice(0, 80) : null,
+          body?.contextTermId ? String(body.contextTermId).slice(0, 80) : null,
+          body?.contextSubjectId ? String(body.contextSubjectId).slice(0, 80) : null,
+          String(body?.contextSheetKind || 'subject').slice(0, 32),
+          now,
+          now
+        )
+        .run();
+      convRow = { id: convId, title: initialTitle, language: lang };
+    }
+
+    const stmts: any[] = [];
+    const savedMessages: any[] = [];
+
+    for (let i = 0; i < rawMessages.length; i++) {
+      const m = rawMessages[i];
+      if (!m || typeof m !== 'object') continue;
+      const msgId = await resolveSafeNewId(db, 'teacher_delmas_messages', m.id, 'tdmsg');
+      const sender = m.sender === 'ai' ? 'ai' : 'user';
+      const content = String(m.content ?? '').slice(0, 120000);
+      const actionsArr = Array.isArray(m.actions) ? m.actions : [];
+      const attachmentsArr = Array.isArray(m.attachments) ? m.attachments : [];
+      const tokens = Math.max(0, Math.round(Number(m.tokens) || 0));
+      const credits = Math.max(0, Number(m.credits) || 0);
+      const createdAt = Number(m.createdAt) || now + i;
+
+      stmts.push(
+        db
+          .prepare(
+            `INSERT OR REPLACE INTO teacher_delmas_messages
+              (id, conversation_id, user_id, sender, content, actions_json, attachments_json, reaction, tokens, credits, created_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          )
+          .bind(
+            msgId,
+            convId,
+            userId,
+            sender,
+            content,
+            JSON.stringify(actionsArr),
+            JSON.stringify(attachmentsArr),
+            m.reaction || null,
+            tokens,
+            credits,
+            createdAt
+          )
+      );
+
+      savedMessages.push({
+        id: msgId,
+        conversationId: convId,
+        sender,
+        content,
+        actions: actionsArr,
+        attachments: attachmentsArr,
+        reaction: m.reaction || null,
+        tokens,
+        credits,
+        createdAt,
+      });
+    }
+
+    const nextTitle =
+      typeof body?.title === 'string' && body.title.trim()
+        ? body.title.trim().slice(0, 140)
+        : String(convRow.title || '') === 'Nouvelle discussion' && rawMessages[0]?.content
+        ? String(rawMessages[0].content).trim().replace(/\s+/g, ' ').slice(0, 75)
+        : String(convRow.title || 'Nouvelle discussion');
+
+    stmts.push(
+      db
+        .prepare('UPDATE teacher_delmas_conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?')
+        .bind(nextTitle, now, convId, userId)
+    );
+
+    if (stmts.length > 0) {
+      await runBatchChunked(db, stmts, 50);
+    }
+
+    return jsonResponse(
+      {
+        success: true,
+        conversationId: convId,
+        title: nextTitle,
+        messages: savedMessages,
+      },
+      200,
+      origin
+    );
+  }
+
+  // POST /api/teacher/delmas/conversations/:id/files — Importer un fichier/image dans le dossier dédié de la conversation
+  const delmasFilesMatch = path.match(/^\/api\/teacher\/delmas\/conversations\/([a-zA-Z0-9_-]+)\/files$/);
+  if (delmasFilesMatch && method === 'POST') {
+    const convId = delmasFilesMatch[1];
+    const body = await request.json().catch(() => ({}));
+
+    const fileName = String(body?.fileName || 'fichier').trim().slice(0, 180) || 'fichier';
+    const mimeType = String(body?.mimeType || 'application/octet-stream').trim().slice(0, 100);
+    const fileType = String(body?.fileType || 'document').trim().slice(0, 40);
+    const extractedText = String(body?.extractedText || '').slice(0, 180000);
+    const previewDataUrl =
+      typeof body?.previewDataUrl === 'string' && body.previewDataUrl.startsWith('data:image/')
+        ? body.previewDataUrl.slice(0, 120000)
+        : null;
+    const rawDataUrl = typeof body?.dataUrl === 'string' ? body.dataUrl : '';
+
+    // Décodage binaire si dataUrl fourni (pour archivage R2 dans le dossier de la conversation)
+    let fileBytes: Uint8Array | null = null;
+    if (rawDataUrl) {
+      const b64Idx = rawDataUrl.indexOf(';base64,');
+      const cleanB64 = (b64Idx >= 0 ? rawDataUrl.slice(b64Idx + 8) : rawDataUrl).replace(/\s+/g, '');
+      if (cleanB64.length > 0 && cleanB64.length <= 8 * 1024 * 1024 * 1.4) {
+        try {
+          const bin = atob(cleanB64);
+          fileBytes = new Uint8Array(bin.length);
+          for (let i = 0; i < bin.length; i++) {
+            fileBytes[i] = bin.charCodeAt(i);
+          }
+        } catch {
+          fileBytes = null;
+        }
+      }
+    }
+
+    const compressedBytesLen = fileBytes ? fileBytes.byteLength : utf8ByteLength(extractedText);
+    const requestedOriginalSize = Number(body?.originalSizeBytes);
+    const billedSizeBytes =
+      Number.isFinite(requestedOriginalSize) && requestedOriginalSize > compressedBytesLen
+        ? Math.min(Math.round(requestedOriginalSize), 50 * 1024 * 1024)
+        : Math.max(compressedBytesLen, Number(body?.sizeBytes) || 0);
+
+    const incomingD1AndR2Bytes =
+      billedSizeBytes + 160 + utf8ByteLength(fileName) + utf8ByteLength(extractedText);
+
+    const quotaBlocked = await enforceStorageQuota(Math.max(256, incomingD1AndR2Bytes));
+    if (quotaBlocked) return quotaBlocked;
+
+    // S'assurer que la conversation existe pour cet utilisateur
+    const existingConv = await db
+      .prepare('SELECT id FROM teacher_delmas_conversations WHERE id = ? AND user_id = ?')
+      .bind(convId, userId)
+      .first();
+
+    if (!existingConv) {
+      await db
+        .prepare(
+          `INSERT INTO teacher_delmas_conversations
+            (id, user_id, title, language, context_sheet_kind, is_pinned, pinned_at, created_at, updated_at)
+           VALUES (?, ?, ?, ?, 'subject', 0, NULL, ?, ?)`
+        )
+        .bind(
+          convId,
+          userId,
+          String(body?.conversationTitle || `Fichier : ${fileName}`).slice(0, 120),
+          String(body?.language || 'fr').slice(0, 12),
+          now,
+          now
+        )
+        .run();
+    }
+
+    const fileId = await resolveSafeNewId(db, 'teacher_delmas_files', body?.id, 'tdfile');
+    const safeUser = sanitizeSegment(userId);
+    const safeConv = sanitizeSegment(convId);
+    const extMatch = fileName.match(/\.([a-zA-Z0-9]{1,8})$/);
+    const safeExt = extMatch ? extMatch[1].toLowerCase() : 'bin';
+    let r2Key: string | null = null;
+
+    if (fileBytes && fileBytes.byteLength > 0) {
+      const candidateKey = `teacher-delmas-files/${safeUser}/${safeConv}/${sanitizeSegment(fileId)}_${now}.${safeExt}`;
+      const bucket = getTeacherPhotosBucket(rawEnv) || getFallbackMainBucket(rawEnv);
+      if (bucket) {
+        try {
+          await bucket.put(candidateKey, fileBytes, {
+            httpMetadata: {
+              contentType: mimeType || 'application/octet-stream',
+              cacheControl: 'private, max-age=31536000',
+            },
+            customMetadata: {
+              userId: safeUser,
+              conversationId: safeConv,
+              fileId: sanitizeSegment(fileId),
+              fileName: fileName.slice(0, 120),
+              originalSizeBytes: String(billedSizeBytes),
+            },
+          });
+          r2Key = candidateKey;
+        } catch {
+          r2Key = null;
+        }
+      }
+    }
+
+    await db
+      .prepare(
+        `INSERT INTO teacher_delmas_files
+          (id, conversation_id, user_id, file_name, mime_type, file_type, r2_key,
+           size_bytes, compressed_size_bytes, extracted_text, preview_data_url, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        fileId,
+        convId,
+        userId,
+        fileName,
+        mimeType,
+        fileType,
+        r2Key,
+        billedSizeBytes,
+        compressedBytesLen,
+        extractedText,
+        previewDataUrl,
+        now
+      )
+      .run();
+
+    await db
+      .prepare('UPDATE teacher_delmas_conversations SET updated_at = ? WHERE id = ? AND user_id = ?')
+      .bind(now, convId, userId)
+      .run();
+
+    const signedUrl = r2Key
+      ? await signTeacherMediaUrl(apiOrigin, r2Key, jwtSecret)
+      : previewDataUrl || undefined;
+
+    return jsonResponse(
+      {
+        success: true,
+        file: {
+          id: fileId,
+          conversationId: convId,
+          fileName,
+          mimeType,
+          fileType,
+          r2Key: r2Key || undefined,
+          url: signedUrl,
+          previewDataUrl: previewDataUrl || undefined,
+          sizeBytes: billedSizeBytes,
+          compressedSizeBytes: compressedBytesLen,
+          extractedText,
+          createdAt: now,
+        },
+      },
+      200,
+      origin
+    );
+  }
+
+  // DELETE /api/teacher/delmas/files/:fileId — Supprimer un fichier du dossier de la conversation
+  const delmasDeleteFileMatch = path.match(/^\/api\/teacher\/delmas\/files\/([a-zA-Z0-9_-]+)$/);
+  if (delmasDeleteFileMatch && method === 'DELETE') {
+    const fileId = delmasDeleteFileMatch[1];
+    const row = await db
+      .prepare('SELECT id, r2_key FROM teacher_delmas_files WHERE id = ? AND user_id = ?')
+      .bind(fileId, userId)
+      .first();
+
+    if (!row) {
+      return errorResponse('Fichier introuvable.', 404, origin);
+    }
+
+    await db
+      .prepare('DELETE FROM teacher_delmas_files WHERE id = ? AND user_id = ?')
+      .bind(fileId, userId)
+      .run();
+
+    if (row.r2_key) {
+      await deleteOwnedR2Keys(rawEnv, userId, [String(row.r2_key)]);
+    }
+
+    return jsonResponse({ success: true, deletedId: fileId }, 200, origin);
+  }
+
+  // GET /api/teacher/delmas/workspace-context — Lecture complète de la base de données Moyennes de l'utilisateur
+  if (path === '/api/teacher/delmas/workspace-context' && method === 'GET') {
+    const [yearsRes, schoolsRes, levelsRes, classesRes, termsRes, subjectsRes, gbsRes, studentsRes] =
+      await Promise.all([
+        db.prepare('SELECT id, label FROM teacher_school_years WHERE user_id = ? ORDER BY created_at ASC').bind(userId).all(),
+        db.prepare('SELECT id, year_id, name FROM teacher_schools WHERE user_id = ? ORDER BY created_at ASC').bind(userId).all(),
+        db.prepare('SELECT id, school_id, year_id, name FROM teacher_study_levels WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC').bind(userId).all(),
+        db.prepare('SELECT id, level_id, school_id, year_id, level_name, name, teacher_name, show_matricule, average_scale FROM teacher_classes WHERE user_id = ? ORDER BY created_at ASC').bind(userId).all(),
+        db.prepare('SELECT id, class_id, school_id, year_id, number, name, coefficient FROM teacher_terms WHERE user_id = ? ORDER BY number ASC').bind(userId).all(),
+        db.prepare('SELECT id, class_id, term_id, school_id, year_id, name, coefficient FROM teacher_subjects WHERE user_id = ? ORDER BY created_at ASC').bind(userId).all(),
+        db.prepare('SELECT id, subject_id, term_id, class_id, note_col_count, col_metas_json, layout_json FROM teacher_gradebooks WHERE user_id = ?').bind(userId).all(),
+        db.prepare('SELECT id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, matricule, notes_json, average_20 FROM teacher_gradebook_students WHERE user_id = ? ORDER BY row_order ASC').bind(userId).all(),
+      ]);
+
+    const studentsByGb = new Map<string, any[]>();
+    for (const s of studentsRes.results || []) {
+      const gbId = String(s.gradebook_id);
+      const list = studentsByGb.get(gbId) || [];
+      list.push({
+        id: String(s.student_uid || s.id),
+        name: String(s.full_name || ''),
+        matricule: String(s.matricule || ''),
+        notes: safeParseJson<string[]>(s.notes_json, []),
+        average20: s.average_20 !== null && s.average_20 !== undefined ? Number(s.average_20) : null,
+      });
+      studentsByGb.set(gbId, list);
+    }
+
+    const gradebooks = (gbsRes.results || []).map((g: any) => ({
+      id: String(g.id),
+      subjectId: String(g.subject_id),
+      termId: String(g.term_id),
+      classId: String(g.class_id),
+      noteColCount: Number(g.note_col_count) || 7,
+      colMetas: safeParseJson<Record<string, any>>(g.col_metas_json, {}),
+      students: (studentsByGb.get(String(g.id)) || []).filter(
+        (st) => st.name.trim().length > 0 || st.matricule.trim().length > 0 || st.notes.some((n: string) => String(n).trim().length > 0)
+      ),
+    }));
+
+    return jsonResponse(
+      {
+        success: true,
+        workspace: {
+          years: (yearsRes.results || []).map((y: any) => ({ id: String(y.id), label: String(y.label) })),
+          schools: (schoolsRes.results || []).map((s: any) => ({ id: String(s.id), yearId: String(s.year_id), name: String(s.name) })),
+          levels: (levelsRes.results || []).map((l: any) => ({ id: String(l.id), schoolId: String(l.school_id), yearId: String(l.year_id), name: String(l.name) })),
+          classes: (classesRes.results || []).map((c: any) => ({
+            id: String(c.id),
+            levelId: String(c.level_id),
+            schoolId: String(c.school_id),
+            yearId: String(c.year_id),
+            level: String(c.level_name),
+            name: String(c.name || ''),
+            teacherName: String(c.teacher_name || ''),
+            showMatricule: Boolean(c.show_matricule),
+            averageScale: Number(c.average_scale) || 20,
+          })),
+          terms: (termsRes.results || []).map((t: any) => ({
+            id: String(t.id),
+            classId: String(t.class_id),
+            number: Number(t.number) || 1,
+            name: String(t.name),
+            coefficient: t.coefficient !== null && t.coefficient !== undefined ? Number(t.coefficient) : null,
+          })),
+          subjects: (subjectsRes.results || []).map((s: any) => ({
+            id: String(s.id),
+            classId: String(s.class_id),
+            termId: String(s.term_id),
+            name: String(s.name),
+            coefficient: s.coefficient !== null && s.coefficient !== undefined ? Number(s.coefficient) : null,
+          })),
+          gradebooks,
+        },
+      },
+      200,
+      origin
+    );
   }
 
   return errorResponse(`Route enseignant non trouvée : ${method} ${path}`, 404, origin);

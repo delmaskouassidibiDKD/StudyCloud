@@ -2437,4 +2437,88 @@ test('Suivi facturation R2 + D1 (user_storage_usage), déduplication photos, bac
   assert.equal(usageFinal.total_r2_compressed_bytes, 0);
   assert.equal(usageFinal.total_files_count, 0);
   assert.equal(r2Images.store.size, 0);
+
+  // 8. Assistant Delmas : conversations D1, messages, dossier R2 dédié par conversation, facturation stockage & suppression
+  const convRes = await callApi('/api/teacher/delmas/conversations', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      id: 'tdconv-test-1',
+      title: 'Notes Mathématiques BTS 2',
+      language: 'fr',
+      contextClassId: 'cls-bts2',
+      contextSubjectId: 'subj-math',
+      contextSheetKind: 'subject',
+    },
+  });
+  assert.equal(convRes.status, 200);
+
+  // Import d'un fichier image (1,5 Mo original compressé en PNG) dans le dossier de la conversation
+  const FILE_ORIG_1_5_MB = 1_572_864;
+  const upFileRes = await callApi('/api/teacher/delmas/conversations/tdconv-test-1/files', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      fileName: 'releve_notes_bts2.png',
+      mimeType: 'image/png',
+      fileType: 'image',
+      dataUrl: VALID_PNG_DATA_URL,
+      extractedText: '1. DKD 16/20\n2. Koffi 14/20',
+      originalSizeBytes: FILE_ORIG_1_5_MB,
+    },
+  });
+  assert.equal(upFileRes.status, 200);
+  const { file: savedConvFile } = await upFileRes.json();
+  assert.ok(savedConvFile.r2Key.startsWith('teacher-delmas-files/user-alice/tdconv-test-1/'));
+  assert.equal(savedConvFile.sizeBytes, FILE_ORIG_1_5_MB);
+
+  // Sauvegarde d'un échange de messages avec actions appliquées
+  const msgSaveRes = await callApi('/api/teacher/delmas/conversations/tdconv-test-1/messages', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      messages: [
+        { sender: 'user', content: 'Ajoute DKD avec 16/20 et Koffi avec 14/20' },
+        {
+          sender: 'ai',
+          content: "C'est fait ! J'ai ajouté les 2 élèves dans Mathématiques.",
+          actions: [{ summary: '✓ 2 élève(s) ajouté(s) dans Mathématiques' }],
+        },
+      ],
+    },
+  });
+  assert.equal(msgSaveRes.status, 200);
+
+  // Vérifier que le dossier de la conversation et ses messages sont bien récupérés et isolés d'un autre utilisateur
+  const getConvRes = await callApi('/api/teacher/delmas/conversations/tdconv-test-1', {
+    method: 'GET',
+    token: 'token-alice',
+  });
+  assert.equal(getConvRes.status, 200);
+  const convDetail = await getConvRes.json();
+  assert.equal(convDetail.messages.length, 2);
+  assert.equal(convDetail.files.length, 1);
+  assert.equal(convDetail.files[0].fileName, 'releve_notes_bts2.png');
+
+  // Bob ne peut pas accéder à la conversation d'Alice (Anti-IDOR 404)
+  const bobStealConv = await callApi('/api/teacher/delmas/conversations/tdconv-test-1', {
+    method: 'GET',
+    token: 'token-bob',
+  });
+  assert.equal(bobStealConv.status, 404);
+
+  // Vérifier que le fichier de 1,5 Mo de la conversation est bien comptabilisé dans user_storage_usage
+  const usageWithConv: any = await db
+    .prepare('SELECT * FROM user_storage_usage WHERE user_id = ?')
+    .bind('user-alice')
+    .first();
+  assert.equal(usageWithConv.total_r2_compressed_bytes, FILE_ORIG_1_5_MB);
+
+  // Suppression de la conversation -> supprime aussi son dossier R2 et libère le stockage
+  const delConvRes = await callApi('/api/teacher/delmas/conversations/tdconv-test-1', {
+    method: 'DELETE',
+    token: 'token-alice',
+  });
+  assert.equal(delConvRes.status, 200);
+  assert.equal(r2Images.store.has(savedConvFile.r2Key), false);
 });
