@@ -124,6 +124,7 @@ export interface StudentGradeRow {
   matricule?: string;
   photoUrl?: string;
   photoR2Key?: string;
+  photoSizeBytes?: number;
   notes: string[]; // Notes dynamiques stockées sous forme "score/max" ou "score"
 }
 
@@ -2070,8 +2071,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     if (!file || !targetStudentId) return;
 
     setIsUploadingPhoto(true);
+    const originalFileBytes = Math.max(0, Number(file.size) || 0);
     let prevPhotoUrl: string | undefined;
     let prevPhotoR2Key: string | undefined;
+    let prevPhotoSizeBytes: number | undefined;
     try {
       const { blob, dataUrl } = await compressImageToUpload(file, 256, 0.84);
 
@@ -2079,8 +2082,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       const existingStudent = students.find(s => s.id === targetStudentId);
       prevPhotoUrl = existingStudent?.photoUrl;
       prevPhotoR2Key = existingStudent?.photoR2Key;
+      prevPhotoSizeBytes = existingStudent?.photoSizeBytes;
 
-      // Aperçu instantané + agrandissement automatique de la case photo
+      // Aperçu instantané + agrandissement automatique de la case photo (sans déclencher un auto-save prématuré avant le retour de R2)
+      if (!disableCloudPersistence && getTeacherAuthToken()) {
+        skipNextAutoSaveRef.current = true;
+      }
       setStudents(prev => {
         const studentIndex = prev.findIndex(s => s.id === targetStudentId);
         if (studentIndex >= 0) {
@@ -2089,23 +2096,29 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             [studentIndex]: Math.max(rowPrev[studentIndex] || 44, 80)
           }));
         }
-        return prev.map(s => s.id === targetStudentId ? { ...s, photoUrl: dataUrl } : s);
+        return prev.map(s => s.id === targetStudentId ? { ...s, photoUrl: dataUrl, photoSizeBytes: originalFileBytes } : s);
       });
       setColWidthPhoto(prev => Math.max(prev, 80));
       setIsSaved(false);
 
-      // Envoi binaire compressé vers Cloudflare R2 (teacher-student-photos/{user_id}/...)
+      // Envoi binaire compressé vers Cloudflare R2 + vraie taille brute d'origine (file.size) pour facturation stockage
       if (!disableCloudPersistence && getTeacherAuthToken()) {
         const uploaded = await TeacherGradebookAPI.uploadStudentPhoto({
           subjectId: subject.id,
           termId: effectiveTermId,
           studentId: targetStudentId,
           blob,
+          originalSizeBytes: originalFileBytes,
         });
         setStudents(prev =>
           prev.map(s =>
             s.id === targetStudentId
-              ? { ...s, photoR2Key: uploaded.photoR2Key, photoUrl: uploaded.photoUrl }
+              ? {
+                  ...s,
+                  photoR2Key: uploaded.photoR2Key,
+                  photoUrl: uploaded.photoUrl,
+                  photoSizeBytes: uploaded.photoSizeBytes || originalFileBytes,
+                }
               : s
           )
         );
@@ -2115,7 +2128,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       setStudents(prev =>
         prev.map(s =>
           s.id === targetStudentId
-            ? { ...s, photoUrl: prevPhotoUrl, photoR2Key: prevPhotoR2Key }
+            ? { ...s, photoUrl: prevPhotoUrl, photoR2Key: prevPhotoR2Key, photoSizeBytes: prevPhotoSizeBytes }
             : s
         )
       );

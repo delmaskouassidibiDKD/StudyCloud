@@ -673,15 +673,22 @@ async function getOwnedR2ObjectSize(rawEnv: any, key: string | null | undefined)
     try {
       if (typeof b.head === 'function') {
         const meta = await b.head(key);
-        if (meta && Number(meta.size) > 0) return Number(meta.size);
+        if (meta) {
+          const origMeta = Number(meta.customMetadata?.originalSizeBytes || 0);
+          const rawSize = Number(meta.size || 0);
+          const best = Math.max(origMeta, rawSize);
+          if (best > 0) return best;
+        }
       }
       if (typeof b.get === 'function') {
         const obj = await b.get(key);
         if (obj) {
-          if (Number(obj.size) > 0) return Number(obj.size);
+          const origMeta = Number(obj.customMetadata?.originalSizeBytes || 0);
+          const rawSize = Number(obj.size || 0);
+          if (Math.max(origMeta, rawSize) > 0) return Math.max(origMeta, rawSize);
           if (typeof obj.arrayBuffer === 'function') {
             const ab = await obj.arrayBuffer();
-            if (ab && ab.byteLength > 0) return ab.byteLength;
+            if (ab && ab.byteLength > 0) return Math.max(origMeta, ab.byteLength);
           }
         }
       }
@@ -718,6 +725,10 @@ async function copyOwnedR2Photo(
   const fmt = detectValidatedImageFormat(bytes);
   if (!fmt) return null;
 
+  const billedSizeBytes = Math.max(
+    bytes.byteLength,
+    Number(obj.customMetadata?.originalSizeBytes || 0)
+  );
   const safeUser = sanitizeSegment(userId);
   const rand = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
   const destKey = `teacher-student-photos/${safeUser}/${sanitizeSegment(targetSchoolId)}/${sanitizeSegment(targetClassId)}/${sanitizeSegment(targetStudentId)}_${Date.now()}_${rand}.${fmt.ext}`;
@@ -733,9 +744,10 @@ async function copyOwnedR2Photo(
       schoolId: sanitizeSegment(targetSchoolId),
       classId: sanitizeSegment(targetClassId),
       studentId: sanitizeSegment(targetStudentId),
+      originalSizeBytes: String(billedSizeBytes),
     },
   });
-  return { key: destKey, sizeBytes: bytes.byteLength };
+  return { key: destKey, sizeBytes: billedSizeBytes };
 }
 
 const ensuredTeacherSizeColsDbs = new WeakSet<object>();
@@ -1878,7 +1890,8 @@ async function dispatchTeacherGradebookRoutes(
       if (!bytes || !fmt) return errorResponse('Format de logo invalide (PNG/JPEG/WebP, max 600 Ko).', 400, origin);
       const rand = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
       logoR2Key = `teacher-school-logos/${sanitizeSegment(userId)}/${sanitizeSegment(id)}_${now}_${rand}.${fmt.ext}`;
-      logoSizeBytes = bytes.byteLength;
+      const rawOrig = Math.floor(Number(body.logoOriginalSizeBytes) || 0);
+      logoSizeBytes = Math.max(bytes.byteLength, Math.min(100 * 1024 * 1024, rawOrig));
       pendingLogoUpload = { key: logoR2Key, bytes, contentType: fmt.contentType };
     }
 
@@ -1908,6 +1921,7 @@ async function dispatchTeacherGradebookRoutes(
         userId: sanitizeSegment(userId),
         kind: 'school_logo',
         schoolId: sanitizeSegment(id),
+        originalSizeBytes: String(logoSizeBytes),
       });
     }
 
@@ -1968,16 +1982,17 @@ async function dispatchTeacherGradebookRoutes(
       if (!bytes || !fmt) return errorResponse('Format de logo invalide (PNG/JPEG/WebP, max 600 Ko).', 400, origin);
       const rand = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
       const newKey = `teacher-school-logos/${sanitizeSegment(userId)}/${sanitizeSegment(schoolId)}_${now}_${rand}.${fmt.ext}`;
+      const rawOrig = Math.floor(Number(body.logoOriginalSizeBytes) || 0);
       oldKeyToDelete = logoR2Key;
       logoR2Key = newKey;
-      logoSizeBytes = bytes.byteLength;
+      logoSizeBytes = Math.max(bytes.byteLength, Math.min(100 * 1024 * 1024, rawOrig));
       pendingLogoUpload = { key: newKey, bytes, contentType: fmt.contentType };
     }
 
     const isPureLogoRemoval = body.removeLogo === true && !pendingLogoUpload && name === String(existing.name || '');
     if (!isPureLogoRemoval) {
       const incomingDelta =
-        (pendingLogoUpload ? Math.max(pendingLogoUpload.bytes.byteLength, 1) : 0) +
+        (pendingLogoUpload ? Math.max(logoSizeBytes, 1) : 0) +
         Math.max(1, utf8ByteLength(name) - utf8ByteLength(existing.name));
       const quotaBlocked = await enforceStorageQuota(incomingDelta);
       if (quotaBlocked) return quotaBlocked;
@@ -1988,6 +2003,7 @@ async function dispatchTeacherGradebookRoutes(
         userId: sanitizeSegment(userId),
         kind: 'school_logo',
         schoolId: sanitizeSegment(schoolId),
+        originalSizeBytes: String(logoSizeBytes),
       });
     }
 
@@ -3111,9 +3127,10 @@ async function dispatchTeacherGradebookRoutes(
 
       let photoR2Key: string | null = null;
       let photoSizeBytes = 0;
+      const clientPhotoSizeBytes = Math.min(100 * 1024 * 1024, Math.max(0, Math.floor(Number(s.photoSizeBytes) || 0)));
       if (s.photoR2Key && isOwnedR2Key(String(s.photoR2Key), userId)) {
         photoR2Key = String(s.photoR2Key);
-        photoSizeBytes = knownPhotoSizeByKey.get(photoR2Key) || 0;
+        photoSizeBytes = Math.max(knownPhotoSizeByKey.get(photoR2Key) || 0, clientPhotoSizeBytes);
       } else if (s.photoUrl && typeof s.photoUrl === 'string' && s.photoUrl.startsWith('data:image/')) {
         // Filet de sécurité : si une image base64 arrive (ex: hors-ligne ou collage), pré-décoder avant contrôle quota puis pousser dans R2 !
         const bytes = decodeBase64DataUrl(s.photoUrl);
@@ -3122,8 +3139,8 @@ async function dispatchTeacherGradebookRoutes(
           const rand = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
           const uploadedKey = `teacher-student-photos/${sanitizeSegment(userId)}/${sanitizeSegment(ownSubject.school_id)}/${sanitizeSegment(ownSubject.class_id)}/${sanitizeSegment(rowId)}_${now}_${rand}.${fmt.ext}`;
           photoR2Key = uploadedKey;
-          photoSizeBytes = bytes.byteLength;
-          newPhotoBytes += bytes.byteLength;
+          photoSizeBytes = Math.max(bytes.byteLength, clientPhotoSizeBytes);
+          newPhotoBytes += photoSizeBytes;
           pendingPhotoUploads.push({
             key: uploadedKey,
             bytes,
@@ -3135,7 +3152,7 @@ async function dispatchTeacherGradebookRoutes(
         // Le front n'a pas changé la photo existante (URL signée inchangée)
         photoR2Key = prevKeyByStudentId.get(rowId) || null;
         if (photoR2Key) {
-          photoSizeBytes = knownPhotoSizeByKey.get(photoR2Key) || 0;
+          photoSizeBytes = Math.max(knownPhotoSizeByKey.get(photoR2Key) || 0, clientPhotoSizeBytes);
         }
       }
 
@@ -3902,6 +3919,7 @@ async function dispatchTeacherGradebookRoutes(
     let subjectId = '';
     let termId = '';
     let studentId = '';
+    let rawOriginalSizeBytes = 0;
     let bytes: Uint8Array | null = null;
 
     if (contentTypeHeader.includes('multipart/form-data')) {
@@ -3909,6 +3927,7 @@ async function dispatchTeacherGradebookRoutes(
       subjectId = String(formData.get('subjectId') || '').trim();
       termId = String(formData.get('termId') || '').trim();
       studentId = String(formData.get('studentId') || '').trim();
+      rawOriginalSizeBytes = Number(formData.get('originalSizeBytes') || 0);
       const file = formData.get('file') as any;
       if (file && typeof file.arrayBuffer === 'function') {
         const ab = await file.arrayBuffer();
@@ -3919,6 +3938,7 @@ async function dispatchTeacherGradebookRoutes(
       subjectId = String(body.subjectId || '').trim();
       termId = String(body.termId || '').trim();
       studentId = String(body.studentId || '').trim();
+      rawOriginalSizeBytes = Number(body.originalSizeBytes || 0);
       if (typeof body.dataUrl === 'string') {
         bytes = decodeBase64DataUrl(body.dataUrl);
       }
@@ -3934,13 +3954,19 @@ async function dispatchTeacherGradebookRoutes(
     }
 
     const ownSubject: any = await db
-      .prepare('SELECT id, class_id, school_id FROM teacher_subjects WHERE id = ? AND user_id = ? LIMIT 1')
+      .prepare('SELECT id, class_id, term_id, school_id, year_id FROM teacher_subjects WHERE id = ? AND user_id = ? LIMIT 1')
       .bind(subjectId, userId)
       .first();
     if (!ownSubject) return errorResponse('Matière introuvable ou non autorisée.', 404, origin);
 
+    // Facturation sur la vraie taille brute d'origine du fichier image importé par l'utilisateur (ex: 2,23 Mo)
+    const billedPhotoBytes = Math.max(
+      bytes.byteLength,
+      Math.min(100 * 1024 * 1024, Math.floor(rawOriginalSizeBytes || 0))
+    );
+
     // Contrôle STRICT du quota AVANT tout envoi dans R2
-    const quotaBlocked = await enforceStorageQuota(bytes.byteLength + 160);
+    const quotaBlocked = await enforceStorageQuota(billedPhotoBytes + 160);
     if (quotaBlocked) return quotaBlocked;
 
     const now = Date.now();
@@ -3953,28 +3979,76 @@ async function dispatchTeacherGradebookRoutes(
       schoolId: sanitizeSegment(ownSubject.school_id),
       classId: sanitizeSegment(ownSubject.class_id),
       studentId: sanitizeSegment(studentId),
+      originalSizeBytes: String(billedPhotoBytes),
     });
     if (!uploaded) {
       return errorResponse('Stockage des photos temporairement indisponible.', 503, origin);
     }
 
-    // Si la ligne élève existe déjà en D1, mettre à jour photo_r2_key et photo_size_bytes immédiatement et nettoyer l'ancienne photo R2
-    if (termId) {
+    // Persister immédiatement photo_r2_key et photo_size_bytes en D1 (même si le tableur ou la ligne élève n'avait pas encore été sauvegardé)
+    const effectiveTermId = termId || String(ownSubject.term_id || '');
+    if (effectiveTermId) {
       const existingRow: any = await db
         .prepare(
           `SELECT id, photo_r2_key FROM teacher_gradebook_students
            WHERE id = ? AND user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1`
         )
-        .bind(studentId, userId, subjectId, termId)
+        .bind(studentId, userId, subjectId, effectiveTermId)
         .first();
       if (existingRow) {
         await db
           .prepare('UPDATE teacher_gradebook_students SET photo_r2_key = ?, photo_size_bytes = ?, updated_at = ? WHERE id = ? AND user_id = ?')
-          .bind(photoR2Key, bytes.byteLength, now, studentId, userId)
+          .bind(photoR2Key, billedPhotoBytes, now, studentId, userId)
           .run();
         if (existingRow.photo_r2_key && existingRow.photo_r2_key !== photoR2Key) {
           await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, [existingRow.photo_r2_key]);
         }
+      } else {
+        let existingGb: any = await db
+          .prepare('SELECT id FROM teacher_gradebooks WHERE user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1')
+          .bind(userId, subjectId, effectiveTermId)
+          .first();
+        const gradebookId = existingGb ? String(existingGb.id) : makeId('gb');
+        if (!existingGb) {
+          await db
+            .prepare(
+              `INSERT OR IGNORE INTO teacher_gradebooks
+                (id, user_id, subject_id, term_id, class_id, school_id, year_id, note_col_count, col_metas_json, layout_json, styles_json, version, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 7, '{}', '{}', '{}', 1, ?, ?)`
+            )
+            .bind(
+              gradebookId,
+              userId,
+              subjectId,
+              effectiveTermId,
+              ownSubject.class_id,
+              ownSubject.school_id,
+              ownSubject.year_id,
+              now,
+              now
+            )
+            .run();
+        }
+        await db
+          .prepare(
+            `INSERT OR REPLACE INTO teacher_gradebook_students
+              (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, matricule, photo_r2_key, photo_size_bytes, notes_json, average_20, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, '', '', ?, ?, '[]', NULL, ?, ?)`
+          )
+          .bind(
+            studentId,
+            userId,
+            gradebookId,
+            subjectId,
+            effectiveTermId,
+            ownSubject.class_id,
+            studentId,
+            photoR2Key,
+            billedPhotoBytes,
+            now,
+            now
+          )
+          .run();
       }
     }
 
@@ -3983,7 +4057,7 @@ async function dispatchTeacherGradebookRoutes(
       success: true,
       photoR2Key,
       photoUrl,
-      photoSizeBytes: bytes.byteLength,
+      photoSizeBytes: billedPhotoBytes,
     }, 200, origin);
   }
 
@@ -4122,7 +4196,8 @@ async function dispatchTeacherGradebookRoutes(
           }
           const rand = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
           logoR2Key = `teacher-school-logos/${sanitizeSegment(userId)}/${sanitizeSegment(id)}_${now}_${rand}.${fmt.ext}`;
-          logoSizeBytes = bytes.byteLength;
+          const rawOrig = Math.floor(Number(it.logoOriginalSizeBytes) || 0);
+          logoSizeBytes = Math.max(bytes.byteLength, Math.min(100 * 1024 * 1024, rawOrig));
           pendingLogoUploads.push({ key: logoR2Key, bytes, contentType: fmt.contentType, schoolId: id });
         }
 

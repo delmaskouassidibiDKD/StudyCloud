@@ -497,15 +497,22 @@ async function getOwnedR2ObjectSize(rawEnv, key) {
     try {
       if (typeof b.head === "function") {
         const meta = await b.head(key);
-        if (meta && Number(meta.size) > 0) return Number(meta.size);
+        if (meta) {
+          const origMeta = Number(meta.customMetadata?.originalSizeBytes || 0);
+          const rawSize = Number(meta.size || 0);
+          const best = Math.max(origMeta, rawSize);
+          if (best > 0) return best;
+        }
       }
       if (typeof b.get === "function") {
         const obj = await b.get(key);
         if (obj) {
-          if (Number(obj.size) > 0) return Number(obj.size);
+          const origMeta = Number(obj.customMetadata?.originalSizeBytes || 0);
+          const rawSize = Number(obj.size || 0);
+          if (Math.max(origMeta, rawSize) > 0) return Math.max(origMeta, rawSize);
           if (typeof obj.arrayBuffer === "function") {
             const ab = await obj.arrayBuffer();
-            if (ab && ab.byteLength > 0) return ab.byteLength;
+            if (ab && ab.byteLength > 0) return Math.max(origMeta, ab.byteLength);
           }
         }
       }
@@ -530,6 +537,10 @@ async function copyOwnedR2Photo(rawEnv, userId, sourceKey, targetSchoolId, targe
   const bytes = new Uint8Array(buf);
   const fmt = detectValidatedImageFormat(bytes);
   if (!fmt) return null;
+  const billedSizeBytes = Math.max(
+    bytes.byteLength,
+    Number(obj.customMetadata?.originalSizeBytes || 0)
+  );
   const safeUser = sanitizeSegment(userId);
   const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
   const destKey = `teacher-student-photos/${safeUser}/${sanitizeSegment(targetSchoolId)}/${sanitizeSegment(targetClassId)}/${sanitizeSegment(targetStudentId)}_${Date.now()}_${rand}.${fmt.ext}`;
@@ -543,10 +554,11 @@ async function copyOwnedR2Photo(rawEnv, userId, sourceKey, targetSchoolId, targe
       kind: "student_photo",
       schoolId: sanitizeSegment(targetSchoolId),
       classId: sanitizeSegment(targetClassId),
-      studentId: sanitizeSegment(targetStudentId)
+      studentId: sanitizeSegment(targetStudentId),
+      originalSizeBytes: String(billedSizeBytes)
     }
   });
-  return { key: destKey, sizeBytes: bytes.byteLength };
+  return { key: destKey, sizeBytes: billedSizeBytes };
 }
 var ensuredTeacherSizeColsDbs = /* @__PURE__ */ new WeakSet();
 async function computeTeacherGradebookStorageUsage(db, userId, rawEnv) {
@@ -1350,7 +1362,8 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
       if (!bytes || !fmt) return errorResponse2("Format de logo invalide (PNG/JPEG/WebP, max 600 Ko).", 400, origin);
       const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
       logoR2Key = `teacher-school-logos/${sanitizeSegment(userId)}/${sanitizeSegment(id)}_${now}_${rand}.${fmt.ext}`;
-      logoSizeBytes = bytes.byteLength;
+      const rawOrig = Math.floor(Number(body.logoOriginalSizeBytes) || 0);
+      logoSizeBytes = Math.max(bytes.byteLength, Math.min(100 * 1024 * 1024, rawOrig));
       pendingLogoUpload = { key: logoR2Key, bytes, contentType: fmt.contentType };
     }
     const color = String(body.color || "#ffffff").slice(0, 32);
@@ -1365,7 +1378,8 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
       await uploadImageBytesToR2(rawEnv, pendingLogoUpload.key, pendingLogoUpload.bytes, pendingLogoUpload.contentType, {
         userId: sanitizeSegment(userId),
         kind: "school_logo",
-        schoolId: sanitizeSegment(id)
+        schoolId: sanitizeSegment(id),
+        originalSizeBytes: String(logoSizeBytes)
       });
     }
     await db.prepare(
@@ -1414,14 +1428,15 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
       if (!bytes || !fmt) return errorResponse2("Format de logo invalide (PNG/JPEG/WebP, max 600 Ko).", 400, origin);
       const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
       const newKey = `teacher-school-logos/${sanitizeSegment(userId)}/${sanitizeSegment(schoolId)}_${now}_${rand}.${fmt.ext}`;
+      const rawOrig = Math.floor(Number(body.logoOriginalSizeBytes) || 0);
       oldKeyToDelete = logoR2Key;
       logoR2Key = newKey;
-      logoSizeBytes = bytes.byteLength;
+      logoSizeBytes = Math.max(bytes.byteLength, Math.min(100 * 1024 * 1024, rawOrig));
       pendingLogoUpload = { key: newKey, bytes, contentType: fmt.contentType };
     }
     const isPureLogoRemoval = body.removeLogo === true && !pendingLogoUpload && name === String(existing.name || "");
     if (!isPureLogoRemoval) {
-      const incomingDelta = (pendingLogoUpload ? Math.max(pendingLogoUpload.bytes.byteLength, 1) : 0) + Math.max(1, utf8ByteLength(name) - utf8ByteLength(existing.name));
+      const incomingDelta = (pendingLogoUpload ? Math.max(logoSizeBytes, 1) : 0) + Math.max(1, utf8ByteLength(name) - utf8ByteLength(existing.name));
       const quotaBlocked = await enforceStorageQuota(incomingDelta);
       if (quotaBlocked) return quotaBlocked;
     }
@@ -1429,7 +1444,8 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
       await uploadImageBytesToR2(rawEnv, pendingLogoUpload.key, pendingLogoUpload.bytes, pendingLogoUpload.contentType, {
         userId: sanitizeSegment(userId),
         kind: "school_logo",
-        schoolId: sanitizeSegment(schoolId)
+        schoolId: sanitizeSegment(schoolId),
+        originalSizeBytes: String(logoSizeBytes)
       });
     }
     const color = String(body.color || existing.color).slice(0, 32);
@@ -2265,9 +2281,10 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
       const notesJson = JSON.stringify(notes);
       let photoR2Key = null;
       let photoSizeBytes = 0;
+      const clientPhotoSizeBytes = Math.min(100 * 1024 * 1024, Math.max(0, Math.floor(Number(s.photoSizeBytes) || 0)));
       if (s.photoR2Key && isOwnedR2Key(String(s.photoR2Key), userId)) {
         photoR2Key = String(s.photoR2Key);
-        photoSizeBytes = knownPhotoSizeByKey.get(photoR2Key) || 0;
+        photoSizeBytes = Math.max(knownPhotoSizeByKey.get(photoR2Key) || 0, clientPhotoSizeBytes);
       } else if (s.photoUrl && typeof s.photoUrl === "string" && s.photoUrl.startsWith("data:image/")) {
         const bytes = decodeBase64DataUrl(s.photoUrl);
         const fmt = bytes ? detectValidatedImageFormat(bytes) : null;
@@ -2275,8 +2292,8 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
           const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
           const uploadedKey = `teacher-student-photos/${sanitizeSegment(userId)}/${sanitizeSegment(ownSubject.school_id)}/${sanitizeSegment(ownSubject.class_id)}/${sanitizeSegment(rowId)}_${now}_${rand}.${fmt.ext}`;
           photoR2Key = uploadedKey;
-          photoSizeBytes = bytes.byteLength;
-          newPhotoBytes += bytes.byteLength;
+          photoSizeBytes = Math.max(bytes.byteLength, clientPhotoSizeBytes);
+          newPhotoBytes += photoSizeBytes;
           pendingPhotoUploads.push({
             key: uploadedKey,
             bytes,
@@ -2287,7 +2304,7 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
       } else if (s.photoUrl && prevKeyByStudentId.has(rowId)) {
         photoR2Key = prevKeyByStudentId.get(rowId) || null;
         if (photoR2Key) {
-          photoSizeBytes = knownPhotoSizeByKey.get(photoR2Key) || 0;
+          photoSizeBytes = Math.max(knownPhotoSizeByKey.get(photoR2Key) || 0, clientPhotoSizeBytes);
         }
       }
       if (photoR2Key) keptR2Keys.add(photoR2Key);
@@ -2845,12 +2862,14 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
     let subjectId = "";
     let termId = "";
     let studentId = "";
+    let rawOriginalSizeBytes = 0;
     let bytes = null;
     if (contentTypeHeader.includes("multipart/form-data")) {
       const formData = await request.formData();
       subjectId = String(formData.get("subjectId") || "").trim();
       termId = String(formData.get("termId") || "").trim();
       studentId = String(formData.get("studentId") || "").trim();
+      rawOriginalSizeBytes = Number(formData.get("originalSizeBytes") || 0);
       const file = formData.get("file");
       if (file && typeof file.arrayBuffer === "function") {
         const ab = await file.arrayBuffer();
@@ -2861,6 +2880,7 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
       subjectId = String(body.subjectId || "").trim();
       termId = String(body.termId || "").trim();
       studentId = String(body.studentId || "").trim();
+      rawOriginalSizeBytes = Number(body.originalSizeBytes || 0);
       if (typeof body.dataUrl === "string") {
         bytes = decodeBase64DataUrl(body.dataUrl);
       }
@@ -2872,9 +2892,13 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
     if (!fmt) {
       return errorResponse2("Image invalide ou trop lourde (formats accept\xE9s : JPEG, PNG, WebP, max 600 Ko).", 400, origin);
     }
-    const ownSubject = await db.prepare("SELECT id, class_id, school_id FROM teacher_subjects WHERE id = ? AND user_id = ? LIMIT 1").bind(subjectId, userId).first();
+    const ownSubject = await db.prepare("SELECT id, class_id, term_id, school_id, year_id FROM teacher_subjects WHERE id = ? AND user_id = ? LIMIT 1").bind(subjectId, userId).first();
     if (!ownSubject) return errorResponse2("Mati\xE8re introuvable ou non autoris\xE9e.", 404, origin);
-    const quotaBlocked = await enforceStorageQuota(bytes.byteLength + 160);
+    const billedPhotoBytes = Math.max(
+      bytes.byteLength,
+      Math.min(100 * 1024 * 1024, Math.floor(rawOriginalSizeBytes || 0))
+    );
+    const quotaBlocked = await enforceStorageQuota(billedPhotoBytes + 160);
     if (quotaBlocked) return quotaBlocked;
     const now = Date.now();
     const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
@@ -2884,21 +2908,60 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
       kind: "student_photo",
       schoolId: sanitizeSegment(ownSubject.school_id),
       classId: sanitizeSegment(ownSubject.class_id),
-      studentId: sanitizeSegment(studentId)
+      studentId: sanitizeSegment(studentId),
+      originalSizeBytes: String(billedPhotoBytes)
     });
     if (!uploaded) {
       return errorResponse2("Stockage des photos temporairement indisponible.", 503, origin);
     }
-    if (termId) {
+    const effectiveTermId = termId || String(ownSubject.term_id || "");
+    if (effectiveTermId) {
       const existingRow = await db.prepare(
         `SELECT id, photo_r2_key FROM teacher_gradebook_students
            WHERE id = ? AND user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1`
-      ).bind(studentId, userId, subjectId, termId).first();
+      ).bind(studentId, userId, subjectId, effectiveTermId).first();
       if (existingRow) {
-        await db.prepare("UPDATE teacher_gradebook_students SET photo_r2_key = ?, photo_size_bytes = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(photoR2Key, bytes.byteLength, now, studentId, userId).run();
+        await db.prepare("UPDATE teacher_gradebook_students SET photo_r2_key = ?, photo_size_bytes = ?, updated_at = ? WHERE id = ? AND user_id = ?").bind(photoR2Key, billedPhotoBytes, now, studentId, userId).run();
         if (existingRow.photo_r2_key && existingRow.photo_r2_key !== photoR2Key) {
           await deleteUnreferencedStudentR2Keys(db, rawEnv, userId, [existingRow.photo_r2_key]);
         }
+      } else {
+        let existingGb = await db.prepare("SELECT id FROM teacher_gradebooks WHERE user_id = ? AND subject_id = ? AND term_id = ? LIMIT 1").bind(userId, subjectId, effectiveTermId).first();
+        const gradebookId = existingGb ? String(existingGb.id) : makeId("gb");
+        if (!existingGb) {
+          await db.prepare(
+            `INSERT OR IGNORE INTO teacher_gradebooks
+                (id, user_id, subject_id, term_id, class_id, school_id, year_id, note_col_count, col_metas_json, layout_json, styles_json, version, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, 7, '{}', '{}', '{}', 1, ?, ?)`
+          ).bind(
+            gradebookId,
+            userId,
+            subjectId,
+            effectiveTermId,
+            ownSubject.class_id,
+            ownSubject.school_id,
+            ownSubject.year_id,
+            now,
+            now
+          ).run();
+        }
+        await db.prepare(
+          `INSERT OR REPLACE INTO teacher_gradebook_students
+              (id, user_id, gradebook_id, subject_id, term_id, class_id, student_uid, row_order, full_name, matricule, photo_r2_key, photo_size_bytes, notes_json, average_20, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, 0, '', '', ?, ?, '[]', NULL, ?, ?)`
+        ).bind(
+          studentId,
+          userId,
+          gradebookId,
+          subjectId,
+          effectiveTermId,
+          ownSubject.class_id,
+          studentId,
+          photoR2Key,
+          billedPhotoBytes,
+          now,
+          now
+        ).run();
       }
     }
     const photoUrl = await signTeacherMediaUrl(apiOrigin, photoR2Key, jwtSecret);
@@ -2906,7 +2969,7 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
       success: true,
       photoR2Key,
       photoUrl,
-      photoSizeBytes: bytes.byteLength
+      photoSizeBytes: billedPhotoBytes
     }, 200, origin);
   }
   if (path === "/api/teacher/photos/student" && method === "DELETE") {
@@ -3013,7 +3076,8 @@ async function dispatchTeacherGradebookRoutes(request, url, path, method, userId
           }
           const rand = crypto.randomUUID().replace(/-/g, "").slice(0, 8);
           logoR2Key = `teacher-school-logos/${sanitizeSegment(userId)}/${sanitizeSegment(id)}_${now}_${rand}.${fmt.ext}`;
-          logoSizeBytes = bytes.byteLength;
+          const rawOrig = Math.floor(Number(it.logoOriginalSizeBytes) || 0);
+          logoSizeBytes = Math.max(bytes.byteLength, Math.min(100 * 1024 * 1024, rawOrig));
           pendingLogoUploads.push({ key: logoR2Key, bytes, contentType: fmt.contentType, schoolId: id });
         }
         const color = String(it.color || "#ffffff").slice(0, 32);
@@ -20078,7 +20142,9 @@ Lien vers le produit : ${productShareUrl}`;
         }, 200, origin);
       }
       if (path === "/api/user/storage" && method === "GET") {
-        const userId = url.searchParams.get("userId") || request.headers.get("x-user-id") || "";
+        const authUser = await getAuthUser(request);
+        const jwtUserId = authUser?.userId ? String(authUser.userId).trim() : "";
+        const userId = jwtUserId || url.searchParams.get("userId") || request.headers.get("x-user-id") || "";
         if (!userId || userId === "default-user") {
           return jsonResponse({
             success: true,

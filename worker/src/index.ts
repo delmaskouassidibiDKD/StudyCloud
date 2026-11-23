@@ -17580,7 +17580,9 @@ a:hover{transform:translateY(-2px)}
       // 28. QUOTA DE STOCKAGE & SUIVI UTILISATEUR (/api/user/storage)
       // ----------------------------------------------------------------------
       if (path === '/api/user/storage' && method === 'GET') {
-        const userId = url.searchParams.get('userId') || request.headers.get('x-user-id') || '';
+        const authUser = await getAuthUser(request);
+        const jwtUserId = authUser?.userId ? String(authUser.userId).trim() : '';
+        const userId = jwtUserId || url.searchParams.get('userId') || request.headers.get('x-user-id') || '';
         if (!userId || userId === 'default-user') {
           return jsonResponse({
             success: true,

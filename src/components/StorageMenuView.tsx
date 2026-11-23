@@ -63,7 +63,16 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
     setError(null);
 
     try {
-      const currentUserId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      let currentUserId = localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id') || 'default-user';
+      try {
+        const rawAuthUser = localStorage.getItem('sc_auth_user');
+        if (rawAuthUser) {
+          const parsed = JSON.parse(rawAuthUser);
+          if (parsed?.id && parsed.id !== 'default-user') {
+            currentUserId = String(parsed.id);
+          }
+        }
+      } catch {}
       const res = await getUserStorageQuota(currentUserId);
       if (res.success && res.data) {
         setStorageData(res.data);

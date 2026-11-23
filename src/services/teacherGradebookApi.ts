@@ -661,6 +661,7 @@ export const TeacherGradebookAPI = {
     yearId: string;
     name: string;
     logoDataUrl?: string | null;
+    logoOriginalSizeBytes?: number;
     color: string;
     textColor: string;
     borderColor: string;
@@ -677,6 +678,7 @@ export const TeacherGradebookAPI = {
     input: {
       name: string;
       logoDataUrl?: string | null;
+      logoOriginalSizeBytes?: number;
       removeLogo?: boolean;
       color: string;
       textColor: string;
@@ -890,13 +892,17 @@ export const TeacherGradebookAPI = {
     termId: string;
     studentId: string;
     blob: Blob;
-  }): Promise<{ success: boolean; photoR2Key: string; photoUrl: string }> => {
+    originalSizeBytes?: number;
+  }): Promise<{ success: boolean; photoR2Key: string; photoUrl: string; photoSizeBytes?: number }> => {
     const token = getTeacherAuthToken();
     if (!token) throw new Error('Session non connectée.');
     const form = new FormData();
     form.append('subjectId', params.subjectId);
     form.append('termId', params.termId);
     form.append('studentId', params.studentId);
+    if (params.originalSizeBytes && params.originalSizeBytes > 0) {
+      form.append('originalSizeBytes', String(Math.floor(params.originalSizeBytes)));
+    }
     const ext = params.blob.type === 'image/png' ? 'png' : params.blob.type === 'image/jpeg' ? 'jpg' : 'webp';
     form.append('file', params.blob, `student.${ext}`);
 
@@ -966,6 +972,7 @@ export const TeacherGradebookAPI = {
       id?: string;
       name: string;
       logoDataUrl?: string | null;
+      logoOriginalSizeBytes?: number;
       color?: string;
       textColor?: string;
       borderColor?: string;

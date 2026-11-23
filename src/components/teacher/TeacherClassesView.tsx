@@ -2352,10 +2352,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const [isAddSchoolModalOpen, setIsAddSchoolModalOpen] = useState(false);
   const [schoolName, setSchoolName] = useState('');
   const [schoolLogo, setSchoolLogo] = useState<string | null>(null);
+  const [schoolLogoOriginalSize, setSchoolLogoOriginalSize] = useState<number>(0);
   const [selectedSchoolColor, setSelectedSchoolColor] = useState(SCHOOL_COLOR_OPTIONS[0]); // Blanc par défaut
   const [schoolColorStyle, setSchoolColorStyle] = useState<CardColorStyle>('full');
   const [schoolCreationMode, setSchoolCreationMode] = useState<'single' | 'batch'>('single');
-  const [batchSchoolRows, setBatchSchoolRows] = useState<Array<{ uid: string; name: string; logoDataUrl: string | null }>>(() => [
+  const [batchSchoolRows, setBatchSchoolRows] = useState<Array<{ uid: string; name: string; logoDataUrl: string | null; logoOriginalSizeBytes?: number }>>(() => [
     { uid: makeBatchRowUid(), name: '', logoDataUrl: null },
     { uid: makeBatchRowUid(), name: '', logoDataUrl: null },
   ]);
@@ -2364,6 +2365,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const resetSchoolForm = () => {
     setSchoolName('');
     setSchoolLogo(null);
+    setSchoolLogoOriginalSize(0);
     setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
     setSchoolColorStyle('full');
     setSchoolCreationMode('single');
@@ -2380,21 +2382,26 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     [batchSchoolRows]
   );
 
-  // Compression & chargement du logo de l'école (format rond max 256x256 px pour préserver le stockage)
+  // Compression & chargement du logo de l'école (format rond max 256x256 px pour préserver le stockage, tout en facturant la taille brute d'origine)
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const origBytes = Math.max(0, Number(file.size) || 0);
     const dataUrl = await compressLogoFileToDataUrl(file);
-    if (dataUrl) setSchoolLogo(dataUrl);
+    if (dataUrl) {
+      setSchoolLogo(dataUrl);
+      setSchoolLogoOriginalSize(origBytes);
+    }
   };
 
   const handleBatchSchoolLogoUpload = async (rowUid: string, e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    const origBytes = Math.max(0, Number(file.size) || 0);
     const dataUrl = await compressLogoFileToDataUrl(file);
     if (dataUrl) {
       setBatchSchoolRows((prev) =>
-        prev.map((r) => (r.uid === rowUid ? { ...r, logoDataUrl: dataUrl } : r))
+        prev.map((r) => (r.uid === rowUid ? { ...r, logoDataUrl: dataUrl, logoOriginalSizeBytes: origBytes } : r))
       );
     }
     e.target.value = '';
@@ -2434,6 +2441,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 id: generateTeacherEntityId('school'),
                 name: row.name.trim(),
                 logoDataUrl: row.logoDataUrl,
+                logoOriginalSizeBytes: row.logoOriginalSizeBytes,
                 color: selectedSchoolColor.bg,
                 textColor: selectedSchoolColor.text,
                 borderColor: selectedSchoolColor.border,
@@ -2482,11 +2490,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       const targetId = editingSchool.id;
       setIsAddSchoolModalOpen(false);
       setEditingSchool(null);
+      const pickedLogoSize = pickedNewDataUrl ? schoolLogoOriginalSize : 0;
       runCloudMutation(
         () =>
           TeacherGradebookAPI.updateSchool(targetId, {
             name: updated.name,
             logoDataUrl: pickedNewDataUrl,
+            logoOriginalSizeBytes: pickedLogoSize,
             removeLogo: removedLogo,
             color: updated.color,
             textColor: updated.textColor,
@@ -2504,6 +2514,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     } else {
       if (!selectedYearId) return;
       const pickedDataUrl = schoolLogo && schoolLogo.startsWith('data:image/') ? schoolLogo : null;
+      const pickedLogoSize = pickedDataUrl ? schoolLogoOriginalSize : 0;
       const newSchool: SchoolItem = {
         id: generateTeacherEntityId('school'),
         yearId: selectedYearId,
@@ -2527,6 +2538,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             yearId: newSchool.yearId,
             name: newSchool.name,
             logoDataUrl: pickedDataUrl,
+            logoOriginalSizeBytes: pickedLogoSize,
             color: newSchool.color,
             textColor: newSchool.textColor,
             borderColor: newSchool.borderColor,
@@ -2544,6 +2556,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
     setSchoolName('');
     setSchoolLogo(null);
+    setSchoolLogoOriginalSize(0);
     setSelectedSchoolColor(SCHOOL_COLOR_OPTIONS[0]);
     setSchoolColorStyle('full');
   };

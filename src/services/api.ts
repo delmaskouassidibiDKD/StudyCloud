@@ -2892,22 +2892,50 @@ export function computeFallbackUserStorage(userId: string): UserStorageQuotaDeta
  * Récupère le stockage réel de l'utilisateur depuis le worker principal et la base D1,
  * avec résilience absolue pour ne JAMAIS afficher de bannière d'erreur rouge.
  */
+function resolveActiveStorageUserId(explicitUserId?: string): string {
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const rawAuthUser = localStorage.getItem('sc_auth_user');
+      if (rawAuthUser) {
+        const parsed = JSON.parse(rawAuthUser);
+        if (parsed?.id && parsed.id !== 'default-user' && parsed.id !== 'user_anonymous') {
+          return String(parsed.id);
+        }
+      }
+    } catch {}
+  }
+  if (explicitUserId && explicitUserId !== 'default-user' && explicitUserId !== 'user_anonymous') {
+    return explicitUserId;
+  }
+  if (typeof localStorage !== 'undefined') {
+    const uid = localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id');
+    if (uid && uid !== 'default-user') return uid;
+  }
+  return explicitUserId || 'default-user';
+}
+
 export async function getUserStorageQuota(userId?: string): Promise<{
   success: boolean;
   data: UserStorageQuotaDetails;
   error?: string;
 }> {
-  const currentUserId = userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+  const currentUserId = resolveActiveStorageUserId(userId);
   const fallbackData = computeFallbackUserStorage(currentUserId);
+  const authToken =
+    typeof localStorage !== 'undefined'
+      ? localStorage.getItem('sc_auth_token') || localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token')
+      : null;
+  const reqHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-user-id': currentUserId,
+    ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+  };
 
   try {
     const primaryUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/user/storage?userId=${encodeURIComponent(currentUserId)}`;
     const res = await fetch(primaryUrl, {
       method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-id': currentUserId,
-      },
+      headers: reqHeaders,
     });
 
     if (res.ok) {

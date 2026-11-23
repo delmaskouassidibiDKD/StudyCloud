@@ -2173,11 +2173,16 @@ test('Suivi facturation R2 + D1 (user_storage_usage), déduplication photos, bac
   });
   const { subject: frSubj } = await frRes.json();
 
-  // 2. Upload photo élève + sauvegarde dans 2 matières partageant la MÊME photoR2Key
+  // 2. Upload photo élève de 2,23 Mo (originalSizeBytes = 2_338_324) sur un tableur pas encore sauvegardé :
+  //    doit immédiatement créer la ligne en D1 et créditer 2,23 Mo dans user_storage_usage !
+  const PHOTO_ORIG_2_23_MB = 2_338_324;
+  await db.prepare('UPDATE user_storage_quotas SET allowed_bytes = ? WHERE user_id = ?').bind(10 * 1024 * 1024, 'user-alice').run();
+
   const photoForm = new FormData();
   photoForm.append('subjectId', mathSubj.id);
   photoForm.append('termId', term1.id);
   photoForm.append('studentId', 'std-shared-1');
+  photoForm.append('originalSizeBytes', String(PHOTO_ORIG_2_23_MB));
   photoForm.append('file', new Blob([VALID_PNG_BYTES], { type: 'image/png' }), 'student.png');
   const upPhotoRes = await callApi('/api/teacher/photos/student', {
     method: 'POST',
@@ -2185,7 +2190,19 @@ test('Suivi facturation R2 + D1 (user_storage_usage), déduplication photos, bac
     body: photoForm,
   });
   assert.equal(upPhotoRes.status, 200);
-  const { photoR2Key } = await upPhotoRes.json();
+  const { photoR2Key, photoSizeBytes } = await upPhotoRes.json();
+  assert.equal(photoSizeBytes, PHOTO_ORIG_2_23_MB);
+
+  // Vérifier qu'IMMÉDIATEMENT après l'upload (avant même saveGradebook), user_storage_usage inclut déjà les 2,23 Mo !
+  const usageImmediatelyAfterPhoto: any = await db
+    .prepare('SELECT * FROM user_storage_usage WHERE user_id = ?')
+    .bind('user-alice')
+    .first();
+  assert.equal(
+    usageImmediatelyAfterPhoto.total_r2_compressed_bytes,
+    VALID_PNG_BYTES.byteLength + PHOTO_ORIG_2_23_MB,
+    'Les 2,23 Mo de la photo élève doivent être comptabilisés immédiatement dès POST /api/teacher/photos/student'
+  );
 
   const saveMathRes = await callApi(`/api/teacher/gradebook/${mathSubj.id}/${term1.id}`, {
     method: 'PUT',
@@ -2222,9 +2239,9 @@ test('Suivi facturation R2 + D1 (user_storage_usage), déduplication photos, bac
   assert.equal(detailedUsage.schoolLogosCount, 1);
   assert.equal(detailedUsage.schoolLogosBytes, VALID_PNG_BYTES.byteLength);
   assert.equal(detailedUsage.studentPhotosCount, 1, 'La photo partagée entre 2 matières ne doit compter qu’une seule fois en R2');
-  assert.equal(detailedUsage.studentPhotosBytes, VALID_PNG_BYTES.byteLength);
+  assert.equal(detailedUsage.studentPhotosBytes, PHOTO_ORIG_2_23_MB);
   assert.equal(detailedUsage.r2FilesCount, 2);
-  assert.equal(detailedUsage.r2Bytes, VALID_PNG_BYTES.byteLength * 2);
+  assert.equal(detailedUsage.r2Bytes, VALID_PNG_BYTES.byteLength + PHOTO_ORIG_2_23_MB);
   assert.equal(detailedUsage.entities.years, 1);
   assert.equal(detailedUsage.entities.schools, 1);
   assert.equal(detailedUsage.entities.classes, 1);
