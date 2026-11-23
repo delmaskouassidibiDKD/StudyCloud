@@ -1,50 +1,217 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  DEFAULT_TEACHER_DELMAS_KIMI_MODEL,
   buildTeacherDelmasSystemPrompt,
+  classifyTeacherDelmasIntent,
   parseTeacherDelmasAiResponse,
+  pickPreferredKimiModel,
+  stripTeacherDelmasReasoning,
+  type TeacherDelmasActiveContext,
 } from './teacherDelmasActionEngine';
 import { DEFAULT_CUSTOM_MENTION_RULES } from './gradebookCalculations';
 
-test('buildTeacherDelmasSystemPrompt inclut la classe active, la matière ouverte, la langue forcée et la règle de ciblage exclusif', () => {
+const sampleContext: TeacherDelmasActiveContext = {
+  sheetKind: 'subject',
+  yearId: 'y-1',
+  yearLabel: '2026 - 2027',
+  schoolId: 'sch-1',
+  schoolName: 'GROUPE 2 ELECTROTECHNIQUE',
+  classId: 'cls-1',
+  className: 'BTS 2 • GROUPE 2 ELECTROTECHNIQUE',
+  levelName: 'BTS 2',
+  termId: 't-1',
+  termName: 'Trimestre 1',
+  subjectId: 'subj-math',
+  subjectName: 'Mathématiques',
+  subjectCoefficient: 2,
+  sortMode: 'order',
+  showMatricule: false,
+  averageScale: 20,
+  mentionRules: DEFAULT_CUSTOM_MENTION_RULES,
+  zoomPercent: 70,
+  noteColumns: [
+    { index: 0, colNumber: 1, title: 'NOTE', label: 'NOTE 1', maxScore: 20, coeffEval: 1 },
+    { index: 1, colNumber: 2, title: 'NOTE', label: 'NOTE 2', maxScore: 20, coeffEval: 1 },
+  ],
+  students: [
+    {
+      rowIndex: 1,
+      id: 'std-1',
+      name: 'DKD',
+      matricule: '24-001',
+      notes: ['14/20', ''],
+      averageFormatted: '14,00',
+      averageNumber: 14,
+      rank: '1er',
+      mention: 'Bien',
+    },
+  ],
+};
+
+test('pickPreferredKimiModel choisit automatiquement Kimi K2.7 Code actif en arrière-plan', () => {
+  const res = pickPreferredKimiModel(
+    [
+      { id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3', provider: 'cloudflare', is_active: 1 },
+      { id: '@cf/moonshotai/kimi-k2.7-code', name: 'Kimi K2.7 Code', provider: 'cloudflare', is_active: 1 },
+      { id: 'gemini-2.0-flash', name: 'Gemini', provider: 'google', is_active: 1 },
+    ],
+    '@cf/moonshotai/kimi-k2.7-code'
+  );
+  assert.equal(res.modelId, '@cf/moonshotai/kimi-k2.7-code');
+  assert.equal(res.apiToken, undefined);
+
+  // Fallback garanti vers Kimi si la liste est vide ou ne contient que Llama
+  const fallback = pickPreferredKimiModel(
+    [{ id: '@cf/meta/llama-3.3-70b-instruct-fp8-fast', name: 'Llama 3.3', provider: 'cloudflare', is_active: 1 }],
+    '@cf/meta/llama-3.3-70b-instruct-fp8-fast'
+  );
+  assert.equal(fallback.modelId, DEFAULT_TEACHER_DELMAS_KIMI_MODEL);
+});
+
+test('classifyTeacherDelmasIntent distingue discussion simple (chat), lecture/analyse (inspect) et demande d’action (action)', () => {
+  // 1. Salutations, politesses, discussions générales -> 'chat' (ZÉRO action, ZÉRO fuite de fichiers)
+  for (const msg of [
+    'Bonjour',
+    'Salut ça va ?',
+    'Merci beaucoup !',
+    'Qui es-tu ?',
+    'Explique-moi le théorème de Pythagore',
+    'Rédige un court message bienveillant pour les parents',
+    'Comment calculer une moyenne pondérée ?',
+  ]) {
+    const intent = classifyTeacherDelmasIntent({
+      message: msg,
+      hasNewAttachments: false,
+      hasConversationFiles: true,
+      activeContext: sampleContext,
+    });
+    assert.equal(intent.intent, 'chat', `Attendu 'chat' pour: "${msg}" (obtenu ${intent.intent} / ${intent.reason})`);
+    assert.equal(intent.referencesActiveFiles, false, `Ne doit pas renvoyer les anciens fichiers pour: "${msg}"`);
+  }
+
+  // 2. Questions de lecture/analyse ou de conseil sur le tableau -> 'inspect' (ZÉRO modification)
+  for (const msg of [
+    'Dans quelle classe je suis ?',
+    'Qui est le premier de la classe ?',
+    'Quelle est la moyenne de DKD ?',
+    "Combien d'élèves ont plus de 10/20 ?",
+    'Affiche-moi les notes de DKD',
+    'Peux-tu me donner la liste des élèves sous la moyenne ?',
+    'Devrais-je passer la moyenne de ce tableau sur 40 ?',
+    'Comment trier ce tableau par ordre de mérite ?',
+    'Bonjour, quelle est la moyenne de DKD ?',
+  ]) {
+    const intent = classifyTeacherDelmasIntent({
+      message: msg,
+      hasNewAttachments: false,
+      hasConversationFiles: false,
+      activeContext: sampleContext,
+    });
+    assert.equal(intent.intent, 'inspect', `Attendu 'inspect' pour: "${msg}" (obtenu ${intent.intent} / ${intent.reason})`);
+  }
+
+  // 3. Demandes explicites d’action sur le tableau ou l’interface -> 'action'
+  for (const msg of [
+    'Mets 16 en note 2 à DKD',
+    'Peux-tu trier le tableau par ordre de mérite ?',
+    'Ajoute +1 point à tout le monde',
+    'Affiche la colonne matricule',
+    'Passe la moyenne sur 40',
+    'Mets toutes les notes sur 40',
+    'Mets en rouge les élèves qui ont moins de 10',
+    'Supprime les lignes vides',
+    'Exporte en Excel',
+    'Zoom à 85%',
+    'DKD 15 17',
+    'Ajoute KOUASSI Jean avec 15 et 14',
+  ]) {
+    const intent = classifyTeacherDelmasIntent({
+      message: msg,
+      hasNewAttachments: false,
+      hasConversationFiles: false,
+      activeContext: sampleContext,
+    });
+    assert.equal(intent.intent, 'action', `Attendu 'action' pour: "${msg}" (obtenu ${intent.intent} / ${intent.reason})`);
+  }
+});
+
+test('classifyTeacherDelmasIntent gère proprement les fichiers joints (lecture seule vs import) et les confirmations', () => {
+  // Image envoyée sans consigne d’écriture -> 'inspect' (ne modifie pas le tableau sans accord)
+  const imgOnly = classifyTeacherDelmasIntent({
+    message: '',
+    hasNewAttachments: true,
+    hasConversationFiles: true,
+    activeContext: sampleContext,
+  });
+  assert.equal(imgOnly.intent, 'inspect');
+  assert.equal(imgOnly.referencesActiveFiles, true);
+
+  // Image + question de lecture -> 'inspect'
+  const imgRead = classifyTeacherDelmasIntent({
+    message: 'Que vois-tu sur cette photo ?',
+    hasNewAttachments: true,
+    hasConversationFiles: true,
+    activeContext: sampleContext,
+  });
+  assert.equal(imgRead.intent, 'inspect');
+
+  // Image + demande de remplissage -> 'action'
+  const imgImport = classifyTeacherDelmasIntent({
+    message: 'Ajoute ces élèves et leurs notes dans le tableau',
+    hasNewAttachments: true,
+    hasConversationFiles: true,
+    activeContext: sampleContext,
+  });
+  assert.equal(imgImport.intent, 'action');
+  assert.equal(imgImport.referencesActiveFiles, true);
+
+  // Confirmation après proposition d’action sur le tableau -> 'action'
+  const confirmAction = classifyTeacherDelmasIntent({
+    message: 'Oui vas-y',
+    hasNewAttachments: false,
+    hasConversationFiles: true,
+    activeContext: sampleContext,
+    recentMessages: [
+      { sender: 'user', content: 'Lis cette photo' },
+      { sender: 'ai', content: "J'ai lu 5 élèves. Souhaitez-vous que je les ajoute dans votre tableau ?" },
+    ],
+  });
+  assert.equal(confirmAction.intent, 'action');
+
+  // Simple "ok" après discussion générale -> 'chat'
+  const casualOk = classifyTeacherDelmasIntent({
+    message: 'Ok',
+    hasNewAttachments: false,
+    hasConversationFiles: false,
+    activeContext: sampleContext,
+    recentMessages: [
+      { sender: 'user', content: 'Explique-moi le théorème de Thalès' },
+      { sender: 'ai', content: 'Le théorème de Thalès relie les longueurs dans un triangle...' },
+    ],
+  });
+  assert.equal(casualOk.intent, 'chat');
+});
+
+test('buildTeacherDelmasSystemPrompt en mode chat ne divulgue ni les lignes du tableau ni le catalogue d’actions', () => {
+  const chatPrompt = buildTeacherDelmasSystemPrompt({
+    languageCode: 'fr',
+    activeContext: sampleContext,
+    intent: 'chat',
+  });
+
+  assert.ok(chatPrompt.includes('ZÉRO pression'));
+  assert.ok(chatPrompt.includes('NE cite AUCUNE donnée du tableau'));
+  assert.ok(!chatPrompt.includes('id="std-1"'));
+  assert.ok(!chatPrompt.includes('add_students'));
+  assert.ok(!chatPrompt.includes('<delmas_actions>'));
+});
+
+test('buildTeacherDelmasSystemPrompt en mode action inclut la langue forcée, le contexte actif et la cible exclusive', () => {
   const prompt = buildTeacherDelmasSystemPrompt({
     languageCode: 'en',
-    activeContext: {
-      sheetKind: 'subject',
-      yearId: 'y-1',
-      yearLabel: '2026 - 2027',
-      schoolId: 'sch-1',
-      schoolName: 'GROUPE 2 ELECTROTECHNIQUE',
-      classId: 'cls-1',
-      className: 'BTS 2 • GROUPE 2 ELECTROTECHNIQUE',
-      levelName: 'BTS 2',
-      termId: 't-1',
-      termName: 'Trimestre 1',
-      subjectId: 'subj-math',
-      subjectName: 'Mathématiques',
-      subjectCoefficient: 2,
-      sortMode: 'order',
-      showMatricule: false,
-      averageScale: 20,
-      mentionRules: DEFAULT_CUSTOM_MENTION_RULES,
-      zoomPercent: 70,
-      noteColumns: [
-        { index: 0, colNumber: 1, title: 'NOTE', label: 'NOTE 1', maxScore: 20, coeffEval: 1 },
-      ],
-      students: [
-        {
-          rowIndex: 1,
-          id: 'std-1',
-          name: 'DKD',
-          matricule: '24-001',
-          notes: ['14/20'],
-          averageFormatted: '14,00',
-          averageNumber: 14,
-          rank: '1er',
-          mention: 'Bien',
-        },
-      ],
-    },
+    activeContext: sampleContext,
+    intent: 'action',
   });
 
   assert.ok(prompt.includes('RESPOND EXCLUSIVELY AND 100% IN CLEAR, NATURAL, PROFESSIONAL ENGLISH'));
@@ -52,27 +219,59 @@ test('buildTeacherDelmasSystemPrompt inclut la classe active, la matière ouvert
   assert.ok(prompt.includes('Mathématiques'));
   assert.ok(prompt.includes('Trimestre 1'));
   assert.ok(prompt.includes('DKD'));
-  assert.ok(prompt.includes('CIBLE EXCLUSIVE = LE TABLEAU OUVERT'));
-  assert.ok(prompt.includes('AUCUNE MODIFICATION NON DEMANDÉE'));
+  assert.ok(prompt.includes('<delmas_actions>'));
+  assert.ok(prompt.includes('Cible exclusive = le tableau ouvert'));
 });
 
-test('parseTeacherDelmasAiResponse extrait chat_response et actions sans jamais exposer le JSON brut', () => {
+test('parseTeacherDelmasAiResponse extrait <delmas_actions>, supprime <think> et respecte allowActions=false', () => {
+  const raw = `<think>The user wants to add Kouassi and sort by merit.</think>
+C'est fait ! J'ai ajouté **Kouassi** et trié le tableau par ordre de mérite.
+
+<delmas_actions>
+[
+  { "type": "add_students", "students": [{ "name": "Kouassi", "notes": ["16", "15"] }] },
+  { "type": "set_sort_mode", "sortMode": "merit" },
+  { "type": "unknown_hallucinated_action", "foo": "bar" }
+]
+</delmas_actions>`;
+
+  const parsed = parseTeacherDelmasAiResponse(raw, { allowActions: true });
+  assert.equal(
+    parsed.chatResponse,
+    "C'est fait ! J'ai ajouté **Kouassi** et trié le tableau par ordre de mérite."
+  );
+  assert.ok(!parsed.chatResponse.includes('<think>'));
+  assert.ok(!parsed.chatResponse.includes('<delmas_actions>'));
+  assert.equal(parsed.actions.length, 2);
+  assert.equal(parsed.actions[0].type, 'add_students');
+  assert.equal(parsed.actions[1].type, 'set_sort_mode');
+
+  // Garde-fou strict : en mode chat/inspect (allowActions: false), AUCUNE action ne passe
+  const blocked = parseTeacherDelmasAiResponse(raw, { allowActions: false });
+  assert.equal(blocked.actions.length, 0);
+  assert.equal(
+    blocked.chatResponse,
+    "C'est fait ! J'ai ajouté **Kouassi** et trié le tableau par ordre de mérite."
+  );
+});
+
+test('parseTeacherDelmasAiResponse supporte encore un fallback JSON propre sans jamais exposer le JSON brut', () => {
   const raw = `\`\`\`json
 {
-  "chat_response": "J'ai ajouté les 2 élèves dans Mathématiques et trié par ordre de mérite.",
+  "chat_response": "J'ai mis 16 en Note 2 à DKD.",
   "actions": [
-    { "type": "add_students", "students": [{ "name": "Kouassi", "notes": ["16", "15"] }] },
-    { "type": "set_sort_mode", "sortMode": "merit" }
+    { "type": "update_students", "updates": [{ "matchName": "DKD", "notes": { "2": "16" } }] }
   ]
 }
 \`\`\``;
 
-  const parsed = parseTeacherDelmasAiResponse(raw);
+  const parsed = parseTeacherDelmasAiResponse(raw, { allowActions: true });
+  assert.equal(parsed.chatResponse, "J'ai mis 16 en Note 2 à DKD.");
+  assert.equal(parsed.actions.length, 1);
+  assert.equal(parsed.actions[0].type, 'update_students');
+
   assert.equal(
-    parsed.chatResponse,
-    "J'ai ajouté les 2 élèves dans Mathématiques et trié par ordre de mérite."
+    stripTeacherDelmasReasoning('<think>internal</think>Bonjour !'),
+    'Bonjour !'
   );
-  assert.equal(parsed.actions.length, 2);
-  assert.equal(parsed.actions[0].type, 'add_students');
-  assert.equal(parsed.actions[1].type, 'set_sort_mode');
 });

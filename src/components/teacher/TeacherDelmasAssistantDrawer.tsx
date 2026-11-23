@@ -28,7 +28,11 @@ import {
 import { DelmasRobot } from '../DelmasRobot';
 import { DnaLogo } from '../DnaLogo';
 import { MathText } from '../MathText';
-import { sendChatMessageToAi } from '../../services/api';
+import {
+  StudyCloudAPI,
+  getGeminiApiKey,
+  sendChatMessageToAi,
+} from '../../services/api';
 import {
   extractDocumentDetails,
   resolveImageBase64,
@@ -45,9 +49,13 @@ import {
   type TeacherDelmasWorkspaceSnapshot,
 } from '../../services/teacherGradebookApi';
 import {
+  DEFAULT_TEACHER_DELMAS_KIMI_MODEL,
   SUPPORTED_DELMAS_LANGUAGES,
   buildTeacherDelmasSystemPrompt,
+  classifyTeacherDelmasIntent,
   parseTeacherDelmasAiResponse,
+  pickPreferredKimiModel,
+  type ResolvedBackgroundModel,
   type TeacherDelmasSheetBridge,
 } from '../../utils/teacherDelmasActionEngine';
 
@@ -175,12 +183,79 @@ function createSmallImagePreviewDataUrl(file: File): Promise<string | undefined>
   });
 }
 
+function getCachedKimiBackgroundModel(): ResolvedBackgroundModel {
+  try {
+    const raw = localStorage.getItem('studycloud_active_ai_models_v2');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return pickPreferredKimiModel(parsed, DEFAULT_TEACHER_DELMAS_KIMI_MODEL);
+      }
+    }
+  } catch {}
+  return { modelId: DEFAULT_TEACHER_DELMAS_KIMI_MODEL };
+}
+
+function getWelcomeCopyForLanguage(langCode: string): {
+  title: string;
+  subtitle: string;
+  placeholder: string;
+} {
+  const hour = new Date().getHours();
+  const isEvening = hour >= 18 || hour < 5;
+  switch (langCode) {
+    case 'en':
+      return {
+        title: `${isEvening ? 'Good evening' : 'Hello'}! How can I help you?`,
+        subtitle: 'Chat freely, ask a question, or tell me what you need on your sheet.',
+        placeholder: 'Write a message or ask for a task...',
+      };
+    case 'es':
+      return {
+        title: `${isEvening ? 'Buenas noches' : 'Hola'}! ¿En qué puedo ayudarte?`,
+        subtitle: 'Conversa libremente, haz una pregunta o dime qué necesitas en tu tabla.',
+        placeholder: 'Escribe un mensaje o pide una tarea...',
+      };
+    case 'ar':
+      return {
+        title: 'مرحباً! كيف يمكنني مساعدتك؟',
+        subtitle: 'تحدث بحرية، اطرح سؤالك أو أخبرني بما تريد تنفيذه في جدولك.',
+        placeholder: 'اكتب رسالتك أو اطلب مهمة...',
+      };
+    case 'de':
+      return {
+        title: `${isEvening ? 'Guten Abend' : 'Hallo'}! Wie kann ich Ihnen helfen?`,
+        subtitle: 'Sprechen Sie frei, stellen Sie eine Frage oder sagen Sie mir, was in Ihrer Tabelle zu tun ist.',
+        placeholder: 'Nachricht schreiben oder eine Aufgabe anfragen...',
+      };
+    case 'pt':
+      return {
+        title: `${isEvening ? 'Boa noite' : 'Olá'}! Como posso ajudar?`,
+        subtitle: 'Converse livremente, faça uma pergunta ou diga o que precisa na sua tabela.',
+        placeholder: 'Escreva uma mensagem ou peça uma tarefa...',
+      };
+    case 'it':
+      return {
+        title: `${isEvening ? 'Buonasera' : 'Ciao'}! Come posso aiutarti?`,
+        subtitle: 'Parla liberamente, fai una domanda o dimmi cosa fare nella tua tabella.',
+        placeholder: 'Scrivi un messaggio o chiedi un’azione...',
+      };
+    default:
+      return {
+        title: `${isEvening ? 'Bonsoir' : 'Bonjour'} ! Comment puis-je vous aider ?`,
+        subtitle: 'Discutez librement, posez vos questions ou demandez-moi une action sur votre tableau.',
+        placeholder: 'Écrivez un message ou demandez une action...',
+      };
+  }
+}
+
 /**
  * Menu latéral droit coulissant de manière fluide pour l'espace de discussion Assistant Delmas :
- * - Modèle imposé automatiquement en arrière-plan (aucun sélecteur de modèle affiché)
+ * - Modèle Kimi imposé automatiquement en arrière-plan (aucun sélecteur de modèle affiché)
  * - Sélecteur de langue qui force l'IA à travailler à 100 % dans la langue choisie
- * - Connaissance en temps réel de la classe, du trimestre et de la matière ouverte (ciblage strict sur le tableau ouvert)
- * - Exécution directe dans le tableau et pilotage de toutes les fonctionnalités de l'interface
+ * - Détection fine de l'intention (discussion libre vs analyse vs action sur le tableau)
+ * - Réponse écrite en direct caractère par caractère (streaming fluide)
+ * - Connaissance en temps réel de la classe, du trimestre et de la matière ouverte (ciblage strict)
  * - Bouton + d'importation de fichiers & images de tout type (photos de notes, Excel, PDF, Word, Audio)
  * - Sauvegarde D1 des conversations + dossier R2 de fichiers liés à chaque conversation
  */
@@ -215,12 +290,20 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
   const [isFilesFolderOpen, setIsFilesFolderOpen] = useState(false);
   const [isImportingFiles, setIsImportingFiles] = useState(false);
 
-  // État d'envoi IA
+  // État d'envoi IA & écriture en direct
   const [inputValue, setInputValue] = useState('');
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isThinking, setIsThinking] = useState(false);
+  const [isStreamingReply, setIsStreamingReply] = useState(false);
+  const [thinkingLabel, setThinkingLabel] = useState<string>('Assistant Delmas réfléchit...');
+  const isGenerating = isThinking || isStreamingReply;
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [workspaceSnapshot, setWorkspaceSnapshot] =
     useState<TeacherDelmasWorkspaceSnapshot | null>(null);
+
+  // Message d'accueil écrit en direct à l'ouverture (discret et sans pression)
+  const welcomeCopy = getWelcomeCopyForLanguage(chatLanguage);
+  const [displayedWelcomeTitle, setDisplayedWelcomeTitle] = useState<string>('');
+  const [isTypingWelcome, setIsTypingWelcome] = useState<boolean>(false);
 
   // Redimensionnement horizontal du panneau latéral
   const [drawerWidth, setDrawerWidth] = useState<number>(470);
@@ -232,6 +315,31 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const welcomeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const isUserScrolledUpRef = useRef<boolean>(false);
+  const currentConversationIdRef = useRef<string>(currentConversationId);
+  const resolvedKimiModelRef = useRef<ResolvedBackgroundModel>(getCachedKimiBackgroundModel());
+  const activeStreamSaveRef = useRef<{
+    conversationId: string;
+    autoTitle: string;
+    language: string;
+    userMsgId: string;
+    aiMsgId: string;
+    promptText: string;
+    attachmentMetaList: any[];
+    userCreatedAt: number;
+    appliedSummaries: string[];
+    tokens: number;
+    credits: number;
+    liveContext: any;
+    currentText: string;
+    saved: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    currentConversationIdRef.current = currentConversationId;
+  }, [currentConversationId]);
 
   const currentChatLangObj =
     SUPPORTED_DELMAS_LANGUAGES.find((l) => l.code === chatLanguage) ||
@@ -247,12 +355,74 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       : `${activeContext.averageCardTitle || 'Moyenne générale'} • ${activeContext.className}`
     : '';
 
-  // Auto-scroll fluide vers le bas à chaque nouveau message
+  // Écriture fluide du titre d'accueil lors de l'ouverture sur une discussion vide
   useEffect(() => {
-    if (messagesScrollRef.current) {
+    if (welcomeTimerRef.current) {
+      clearInterval(welcomeTimerRef.current);
+      welcomeTimerRef.current = null;
+    }
+    if (!isOpen || messages.length > 0) {
+      setDisplayedWelcomeTitle(welcomeCopy.title);
+      setIsTypingWelcome(false);
+      return;
+    }
+    const target = welcomeCopy.title;
+    let idx = 0;
+    setDisplayedWelcomeTitle('');
+    setIsTypingWelcome(true);
+    welcomeTimerRef.current = setInterval(() => {
+      idx += 2;
+      if (idx >= target.length) {
+        setDisplayedWelcomeTitle(target);
+        setIsTypingWelcome(false);
+        if (welcomeTimerRef.current) {
+          clearInterval(welcomeTimerRef.current);
+          welcomeTimerRef.current = null;
+        }
+      } else {
+        setDisplayedWelcomeTitle(target.slice(0, idx));
+      }
+    }, 18);
+
+    return () => {
+      if (welcomeTimerRef.current) {
+        clearInterval(welcomeTimerRef.current);
+        welcomeTimerRef.current = null;
+      }
+    };
+  }, [isOpen, chatLanguage, messages.length === 0]);
+
+  // Nettoyage complet des timers au démontage
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) {
+        clearInterval(typingTimerRef.current);
+        typingTimerRef.current = null;
+      }
+      if (welcomeTimerRef.current) {
+        clearInterval(welcomeTimerRef.current);
+        welcomeTimerRef.current = null;
+      }
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+    };
+  }, []);
+
+  // Auto-scroll fluide vers le bas (respecte si l'utilisateur a défilé vers le haut)
+  useEffect(() => {
+    if (messagesScrollRef.current && !isUserScrolledUpRef.current) {
       messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
     }
-  }, [messages, isGenerating]);
+  }, [messages, isThinking, isStreamingReply]);
+
+  const handleMessagesScroll = () => {
+    const el = messagesScrollRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    isUserScrolledUpRef.current = distanceFromBottom > 90;
+  };
 
   // Fermeture des menus déroulants de langue au clic extérieur
   useEffect(() => {
@@ -270,19 +440,26 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMainLangMenuOpen, isDrawerLangMenuOpen]);
 
-  // Chargement de la liste des conversations et du contexte D1 Moyennes à l'ouverture
+  // Chargement silencieux du modèle Kimi actif + conversations + contexte D1 à l'ouverture
   const refreshConversationsAndWorkspace = useCallback(async () => {
-    if (!getTeacherAuthToken()) return;
+    const token = getTeacherAuthToken();
     try {
-      const [convRes, wsRes] = await Promise.all([
-        TeacherGradebookAPI.listDelmasConversations().catch(() => null),
-        TeacherGradebookAPI.getDelmasWorkspaceContext().catch(() => null),
+      const [convRes, wsRes, modelCfg] = await Promise.all([
+        token ? TeacherGradebookAPI.listDelmasConversations().catch(() => null) : Promise.resolve(null),
+        token ? TeacherGradebookAPI.getDelmasWorkspaceContext().catch(() => null) : Promise.resolve(null),
+        StudyCloudAPI.getRobotRougeConfig().catch(() => null),
       ]);
       if (convRes?.conversations) {
         setConversations(convRes.conversations);
       }
       if (wsRes?.workspace) {
         setWorkspaceSnapshot(wsRes.workspace);
+      }
+      if (modelCfg?.success && Array.isArray(modelCfg.models)) {
+        resolvedKimiModelRef.current = pickPreferredKimiModel(
+          modelCfg.models,
+          modelCfg.config?.default_model
+        );
       }
     } catch {
       // Silencieux hors ligne
@@ -310,13 +487,23 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     }
   };
 
+  const stopActiveTypingTimer = () => {
+    if (typingTimerRef.current) {
+      clearInterval(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+  };
+
   // Créer une nouvelle discussion (+)
   const handleStartNewConversation = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    stopActiveTypingTimer();
+    activeStreamSaveRef.current = null;
     const newId = generateTeacherEntityId('tdconv');
+    currentConversationIdRef.current = newId;
     setCurrentConversationId(newId);
     setCurrentConversationTitle('Nouvelle discussion');
     setMessages([]);
@@ -325,26 +512,38 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     setIsFilesFolderOpen(false);
     setIsHistoryDrawerOpen(false);
     setOpenConvMenuId(null);
-    setIsGenerating(false);
+    setIsThinking(false);
+    setIsStreamingReply(false);
     setInputValue('');
+    isUserScrolledUpRef.current = false;
     setTimeout(() => textareaRef.current?.focus(), 50);
   };
 
   // Ouvrir une conversation existante depuis l'historique (charge ses messages + son dossier de fichiers liés)
   const handleLoadConversation = async (conv: TeacherDelmasConversationSummary) => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    stopActiveTypingTimer();
+    activeStreamSaveRef.current = null;
+    setIsThinking(false);
+    setIsStreamingReply(false);
     setOpenConvMenuId(null);
     setIsHistoryDrawerOpen(false);
+    currentConversationIdRef.current = conv.id;
     setCurrentConversationId(conv.id);
     setCurrentConversationTitle(conv.title);
     if (conv.language) {
       setChatLanguage(conv.language);
     }
     setPendingAttachments([]);
+    isUserScrolledUpRef.current = false;
 
     if (!getTeacherAuthToken()) return;
     try {
       const res = await TeacherGradebookAPI.getDelmasConversation(conv.id);
-      if (res?.success) {
+      if (res?.success && currentConversationIdRef.current === conv.id) {
         setMessages(
           (res.messages || []).map((m: TeacherDelmasMessageRecord) => ({
             id: m.id,
@@ -358,6 +557,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
               : [],
             attachments: m.attachments || [],
             reaction: m.reaction || null,
+            isStreaming: false,
             createdAt: m.createdAt,
           }))
         );
@@ -581,29 +781,90 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     }
   };
 
-  // Arrêter la génération en cours
+  const persistStreamedExchangeToD1 = useCallback(
+    async (finalTextOverride?: string) => {
+      const meta = activeStreamSaveRef.current;
+      if (!meta || meta.saved) return;
+      meta.saved = true;
+
+      const textToSave = (finalTextOverride ?? meta.currentText ?? '').trim();
+      if (!getTeacherAuthToken() || !textToSave) return;
+
+      if (currentConversationIdRef.current === meta.conversationId) {
+        setCurrentConversationTitle(meta.autoTitle);
+      }
+
+      await TeacherGradebookAPI.saveDelmasMessages(meta.conversationId, {
+        title: meta.autoTitle,
+        language: meta.language,
+        contextYearId: meta.liveContext?.yearId,
+        contextSchoolId: meta.liveContext?.schoolId,
+        contextClassId: meta.liveContext?.classId,
+        contextTermId: meta.liveContext?.termId,
+        contextSubjectId: meta.liveContext?.subjectId,
+        contextSheetKind: meta.liveContext?.sheetKind || 'subject',
+        messages: [
+          {
+            id: meta.userMsgId,
+            sender: 'user',
+            content: meta.promptText,
+            attachments: meta.attachmentMetaList,
+            createdAt: meta.userCreatedAt,
+          },
+          {
+            id: meta.aiMsgId,
+            sender: 'ai',
+            content: textToSave,
+            actions: meta.appliedSummaries.map((s) => ({ summary: s })),
+            tokens: meta.tokens,
+            credits: meta.credits,
+            createdAt: Date.now(),
+          },
+        ],
+      }).catch(() => {});
+
+      refreshConversationsAndWorkspace();
+    },
+    [refreshConversationsAndWorkspace]
+  );
+
+  // Arrêter la génération ou l'écriture en direct (conserve proprement le texte déjà écrit)
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
-    setIsGenerating(false);
+    stopActiveTypingTimer();
+    setMessages((prev) =>
+      prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
+    );
+    setIsThinking(false);
+    setIsStreamingReply(false);
+    if (activeStreamSaveRef.current && !activeStreamSaveRef.current.saved) {
+      persistStreamedExchangeToD1(activeStreamSaveRef.current.currentText);
+    }
   };
 
-  // Envoi d'un message à l'Assistant Delmas + exécution directe des actions sur le tableau ouvert
+  // Envoi d'un message à l'Assistant Delmas (Kimi en arrière-plan + détection d'intention + écriture en direct)
   const handleSendMessage = async () => {
     const rawText = inputValue.trim();
     if ((!rawText && pendingAttachments.length === 0) || isGenerating || isImportingFiles) {
       return;
     }
 
+    stopActiveTypingTimer();
+    activeStreamSaveRef.current = null;
+    isUserScrolledUpRef.current = false;
+
     const currentAttachments = [...pendingAttachments];
+    const hasNewAttachments = currentAttachments.length > 0;
     const promptText =
       rawText ||
       (currentAttachments.length === 1
-        ? `Analyse ce fichier « ${currentAttachments[0].fileName} » et aide-moi pour mon tableau.`
-        : `Analyse ces ${currentAttachments.length} fichiers joints et aide-moi pour mon tableau.`);
+        ? `Peux-tu lire ce fichier « ${currentAttachments[0].fileName} » ?`
+        : `Peux-tu lire ces ${currentAttachments.length} fichiers joints ?`);
 
+    const targetConversationId = currentConversationId;
     const userMsgId = generateTeacherEntityId('tdmsg');
     const aiMsgId = generateTeacherEntityId('tdmsg');
     const now = Date.now();
@@ -626,65 +887,135 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       createdAt: now,
     };
 
-    const nextMessages = [...messages, userMessage];
-    setMessages(nextMessages);
+    const previousMessages = messages.filter((m) => !m.isError && m.content.trim().length > 0);
+    setMessages([...messages, userMessage]);
     setInputValue('');
     setPendingAttachments([]);
-    setIsGenerating(true);
+
+    const liveContext = sheetBridge ? sheetBridge.getContext() : null;
+    const allConvFiles = [
+      ...conversationFiles,
+      ...currentAttachments.filter(
+        (att) => !conversationFiles.some((cf) => cf.id === att.id)
+      ),
+    ];
+
+    // 1. Détection fine de l'intention réelle (discussion libre vs analyse lecture seule vs action sur le tableau)
+    const intentResult = classifyTeacherDelmasIntent({
+      message: rawText,
+      hasNewAttachments,
+      hasConversationFiles: allConvFiles.length > 0,
+      activeContext: liveContext,
+      workspaceSnapshot,
+      recentMessages: previousMessages.slice(-6).map((m) => ({
+        sender: m.sender,
+        content: m.content,
+      })),
+    });
+
+    setThinkingLabel(
+      hasNewAttachments
+        ? 'Lecture du fichier en cours...'
+        : intentResult.intent === 'action'
+        ? 'Préparation de votre demande...'
+        : intentResult.intent === 'inspect'
+        ? 'Analyse en cours...'
+        : 'Assistant Delmas réfléchit...'
+    );
+    setIsThinking(true);
+    setIsStreamingReply(false);
 
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     try {
-      const liveContext = sheetBridge ? sheetBridge.getContext() : null;
-      const allConvFiles = [
-        ...conversationFiles,
-        ...currentAttachments.filter(
-          (att) => !conversationFiles.some((cf) => cf.id === att.id)
-        ),
-      ];
-
       const systemPrompt = liveContext
         ? buildTeacherDelmasSystemPrompt({
             languageCode: chatLanguage,
             activeContext: liveContext,
             workspaceSnapshot,
             conversationFiles: allConvFiles,
+            intent: intentResult.intent,
+            needsWorkspaceDb: intentResult.needsWorkspaceDb,
+            referencesActiveFiles: intentResult.referencesActiveFiles,
           })
         : `Tu es Assistant Delmas. ${currentChatLangObj.promptInstruction}`;
 
-      // Construction de l'historique pour le LLM
+      // Historique propre avec alternance stricte user / assistant
+      const sanitizedTurns: Array<{ role: 'user' | 'assistant'; content: string }> = [];
+      for (const m of previousMessages.slice(-12)) {
+        const role: 'user' | 'assistant' = m.sender === 'user' ? 'user' : 'assistant';
+        const last = sanitizedTurns[sanitizedTurns.length - 1];
+        if (last && last.role === role) {
+          last.content = `${last.content}\n\n${m.content}`;
+        } else {
+          sanitizedTurns.push({ role, content: m.content });
+        }
+      }
+      const lastTurn = sanitizedTurns[sanitizedTurns.length - 1];
+      if (lastTurn && lastTurn.role === 'user') {
+        lastTurn.content = `${lastTurn.content}\n\n${promptText}`;
+      } else {
+        sanitizedTurns.push({ role: 'user', content: promptText });
+      }
+
       const historyPayload = [
         { role: 'system', content: systemPrompt },
-        ...messages.slice(-10).map((m) => ({
-          role: m.sender === 'user' ? 'user' : 'assistant',
-          content: m.content,
-        })),
-        { role: 'user', content: promptText },
+        ...sanitizedTurns,
       ];
 
-      // Récupération des médias multimodaux joints (image, audio, PDF/document)
-      const firstImage =
-        currentAttachments.find((f) => f.imageBase64) ||
-        [...allConvFiles].reverse().find((f) => f.imageBase64);
-      const firstAudio = currentAttachments.find((f) => f.audioBase64);
-      const firstDoc = currentAttachments.find((f) => f.documentBase64);
-      const combinedDocText = allConvFiles
-        .map((f) =>
-          f.extractedText ? `[Fichier: ${f.fileName}]\n${f.extractedText}` : ''
-        )
-        .filter(Boolean)
-        .join('\n\n');
+      // Médias multimodaux joints UNIQUEMENT si ce tour concerne un fichier/image (évite les fuites OCR sur un simple "Merci")
+      const shouldSendMedia = intentResult.referencesActiveFiles;
+      const firstImage = shouldSendMedia
+        ? currentAttachments.find((f) => f.imageBase64) ||
+          [...allConvFiles].reverse().find((f) => f.imageBase64)
+        : undefined;
+      const firstAudio = shouldSendMedia
+        ? currentAttachments.find((f) => f.audioBase64) ||
+          [...allConvFiles].reverse().find((f) => f.audioBase64)
+        : undefined;
+      const firstDoc = shouldSendMedia
+        ? currentAttachments.find((f) => f.documentBase64)
+        : undefined;
+      const combinedDocText = shouldSendMedia
+        ? allConvFiles
+            .map((f) =>
+              f.extractedText ? `[Fichier: ${f.fileName}]\n${f.extractedText}` : ''
+            )
+            .filter(Boolean)
+            .join('\n\n')
+        : '';
 
-      // Appel au moteur IA en arrière-plan (sans exposer le modèle à l'utilisateur)
+      // Modèle Kimi résolu silencieusement en arrière-plan (ex: @cf/moonshotai/kimi-k2.7-code)
+      const kimiModel = resolvedKimiModelRef.current || {
+        modelId: DEFAULT_TEACHER_DELMAS_KIMI_MODEL,
+      };
+      const configuredToken = kimiModel.apiToken || undefined;
+      const activeUserId = (() => {
+        try {
+          return localStorage.getItem('unifolder_user_id') || undefined;
+        } catch {
+          return undefined;
+        }
+      })();
+
       const aiRes = await sendChatMessageToAi({
         messages: historyPayload,
         history: historyPayload,
         prompt: promptText,
         message: promptText,
-        conversationId: currentConversationId,
-        attachedFileName:
-          currentAttachments.map((f) => f.fileName).join(', ') || undefined,
+        userId: activeUserId,
+        conversationId: targetConversationId,
+        model: kimiModel.modelId,
+        selectedModel: kimiModel.modelId,
+        apiKey: configuredToken || getGeminiApiKey() || undefined,
+        apiToken: configuredToken,
+        isOrchestratorChat: false,
+        requested_type: undefined,
+        skipChatHistory: true,
+        attachedFileName: shouldSendMedia
+          ? currentAttachments.map((f) => f.fileName).join(', ') || undefined
+          : undefined,
         attachedFileContent: combinedDocText || undefined,
         imageBase64: firstImage?.imageBase64,
         mimeType: firstImage?.mimeType || firstDoc?.mimeType,
@@ -694,11 +1025,26 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         documentMimeType: firstDoc?.mimeType,
         documentImages: firstDoc?.documentImages,
         signal: controller.signal,
+        abortSignal: controller.signal,
       });
+
+      // Si l'utilisateur a annulé ou changé de conversation pendant la requête
+      if (
+        controller.signal.aborted ||
+        currentConversationIdRef.current !== targetConversationId
+      ) {
+        setIsThinking(false);
+        setIsStreamingReply(false);
+        return;
+      }
 
       const rawAiOutput =
         aiRes.raw_response || aiRes.rawResponse || aiRes.response || aiRes.chat_response || '';
-      const parsed = parseTeacherDelmasAiResponse(rawAiOutput);
+
+      // Extraction propre + garde-fou strict : zéro action en mode 'chat' ou 'inspect' !
+      const parsed = parseTeacherDelmasAiResponse(rawAiOutput, {
+        allowActions: intentResult.intent === 'action',
+      });
 
       // Exécution immédiate des actions demandées sur le tableau ouvert
       let appliedSummaries: string[] = [];
@@ -712,61 +1058,145 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         }
       }
 
-      const aiMessage: UiChatMessage = {
-        id: aiMsgId,
-        sender: 'ai',
-        content: parsed.chatResponse,
-        actions: parsed.actions.map((a, idx) => ({
-          ...a,
-          summary: appliedSummaries[idx] || undefined,
-        })),
+      if (
+        controller.signal.aborted ||
+        currentConversationIdRef.current !== targetConversationId
+      ) {
+        setIsThinking(false);
+        setIsStreamingReply(false);
+        return;
+      }
+
+      const fullResponseText = parsed.chatResponse || 'Je suis à votre écoute.';
+      const autoTitle =
+        currentConversationTitle === 'Nouvelle discussion'
+          ? promptText.replace(/\s+/g, ' ').slice(0, 70)
+          : currentConversationTitle;
+
+      const actionsPayload = parsed.actions.map((a, idx) => ({
+        ...a,
+        summary: appliedSummaries[idx] || undefined,
+      }));
+
+      activeStreamSaveRef.current = {
+        conversationId: targetConversationId,
+        autoTitle,
+        language: chatLanguage,
+        userMsgId,
+        aiMsgId,
+        promptText,
+        attachmentMetaList,
+        userCreatedAt: now,
         appliedSummaries,
-        createdAt: Date.now(),
+        tokens: aiRes.tokens || 0,
+        credits: aiRes.credits_deducted || aiRes.credits || 0,
+        liveContext,
+        currentText: '',
+        saved: false,
       };
 
-      setMessages((prev) => [...prev, aiMessage]);
+      setIsThinking(false);
+      abortControllerRef.current = null;
 
-      // Sauvegarde de la conversation et des messages dans D1
-      if (getTeacherAuthToken()) {
-        const autoTitle =
-          currentConversationTitle === 'Nouvelle discussion'
-            ? promptText.replace(/\s+/g, ' ').slice(0, 70)
-            : currentConversationTitle;
+      const finalizeLiveMessage = (finalText: string) => {
+        stopActiveTypingTimer();
+        setIsStreamingReply(false);
+        if (currentConversationIdRef.current === targetConversationId) {
+          setMessages((prev) => {
+            const exists = prev.some((m) => m.id === aiMsgId);
+            if (!exists) {
+              return [
+                ...prev,
+                {
+                  id: aiMsgId,
+                  sender: 'ai',
+                  content: finalText,
+                  actions: actionsPayload,
+                  appliedSummaries,
+                  isStreaming: false,
+                  createdAt: Date.now(),
+                },
+              ];
+            }
+            return prev.map((m) =>
+              m.id === aiMsgId
+                ? {
+                    ...m,
+                    content: finalText,
+                    actions: actionsPayload,
+                    appliedSummaries,
+                    isStreaming: false,
+                  }
+                : m
+            );
+          });
+        }
+        persistStreamedExchangeToD1(finalText);
+      };
 
-        setCurrentConversationTitle(autoTitle);
-
-        await TeacherGradebookAPI.saveDelmasMessages(currentConversationId, {
-          title: autoTitle,
-          language: chatLanguage,
-          contextYearId: liveContext?.yearId,
-          contextSchoolId: liveContext?.schoolId,
-          contextClassId: liveContext?.classId,
-          contextTermId: liveContext?.termId,
-          contextSubjectId: liveContext?.subjectId,
-          contextSheetKind: liveContext?.sheetKind || 'subject',
-          messages: [
-            {
-              id: userMsgId,
-              sender: 'user',
-              content: promptText,
-              attachments: attachmentMetaList,
-              createdAt: now,
-            },
-            {
-              id: aiMsgId,
-              sender: 'ai',
-              content: parsed.chatResponse,
-              actions: appliedSummaries.map((s) => ({ summary: s })),
-              tokens: aiRes.tokens || 0,
-              credits: aiRes.credits_deducted || aiRes.credits || 0,
-              createdAt: Date.now(),
-            },
-          ],
-        }).catch(() => {});
-
-        refreshConversationsAndWorkspace();
+      // Si l'onglet est en arrière-plan, on finalise directement ; sinon écriture EN DIRECT !
+      if (typeof document !== 'undefined' && document.hidden) {
+        finalizeLiveMessage(fullResponseText);
+        return;
       }
+
+      // Insertion immédiate de la bulle vide en mode écriture en direct
+      setIsStreamingReply(true);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: aiMsgId,
+          sender: 'ai',
+          content: '',
+          actions: actionsPayload,
+          appliedSummaries,
+          isStreaming: true,
+          createdAt: Date.now(),
+        },
+      ]);
+
+      // Découpage en graphèmes/points de code Unicode pour ne jamais couper un emoji en deux
+      const chars = Array.from(fullResponseText);
+      const totalChars = chars.length;
+      const tickMs = 16;
+      const charsPerTick =
+        totalChars <= 220
+          ? 2
+          : Math.max(
+              3,
+              Math.ceil(
+                totalChars /
+                  Math.max(1, Math.floor(Math.min(4000, Math.max(1500, totalChars * 4.5)) / tickMs))
+              )
+            );
+      let cursor = 0;
+
+      typingTimerRef.current = setInterval(() => {
+        if (currentConversationIdRef.current !== targetConversationId) {
+          stopActiveTypingTimer();
+          setIsStreamingReply(false);
+          return;
+        }
+        cursor += charsPerTick;
+        if (cursor >= totalChars) {
+          if (activeStreamSaveRef.current) {
+            activeStreamSaveRef.current.currentText = fullResponseText;
+          }
+          finalizeLiveMessage(fullResponseText);
+        } else {
+          const partial = chars.slice(0, cursor).join('');
+          if (activeStreamSaveRef.current) {
+            activeStreamSaveRef.current.currentText = partial;
+          }
+          setMessages((prev) =>
+            prev.map((m) => (m.id === aiMsgId ? { ...m, content: partial } : m))
+          );
+        }
+      }, tickMs);
     } catch (err: any) {
+      setIsThinking(false);
+      setIsStreamingReply(false);
+      abortControllerRef.current = null;
       if (err?.name === 'AbortError') return;
       const errMessage: UiChatMessage = {
         id: aiMsgId,
@@ -775,12 +1205,10 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           err?.message ||
           "Une erreur est survenue lors de la communication avec l'Assistant Delmas. Veuillez vérifier votre connexion et réessayer.",
         isError: true,
+        isStreaming: false,
         createdAt: Date.now(),
       };
       setMessages((prev) => [...prev, errMessage]);
-    } finally {
-      setIsGenerating(false);
-      abortControllerRef.current = null;
     }
   };
 
@@ -1374,6 +1802,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         {/* =================================================================== */}
         <div
           ref={messagesScrollRef}
+          onScroll={handleMessagesScroll}
           className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-5 flex flex-col select-text"
         >
           {messages.length === 0 && !isGenerating ? (
@@ -1394,14 +1823,17 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                 </span>
               </div>
 
-              {/* Titre principal */}
-              <h2 className="text-lg sm:text-2xl font-extrabold text-white mb-2.5 tracking-tight leading-snug max-w-md px-2">
-                Ravi de te retrouver ! Qu&apos;est-ce qu&apos;on étudie ensemble ?
+              {/* Titre principal écrit en direct (calme et sans pression) */}
+              <h2 className="text-lg sm:text-2xl font-extrabold text-white mb-2.5 tracking-tight leading-snug max-w-md px-2 min-h-[2rem]">
+                {displayedWelcomeTitle || welcomeCopy.title}
+                {isTypingWelcome && (
+                  <span className="inline-block w-[2px] h-[1.05em] bg-orange-400 animate-pulse ml-0.5 align-middle" />
+                )}
               </h2>
 
-              {/* Sous-titre */}
-              <p className="text-xs sm:text-sm font-medium text-white/85 max-w-xs sm:max-w-sm leading-relaxed px-2 text-center">
-                Synthèses, fiches de révision ou quiz : dis-moi ce dont tu as besoin.
+              {/* Sous-titre discret */}
+              <p className="text-xs sm:text-sm font-medium text-white/80 max-w-xs sm:max-w-sm leading-relaxed px-2 text-center">
+                {welcomeCopy.subtitle}
               </p>
             </div>
           ) : (
@@ -1461,7 +1893,9 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                   <div className="flex flex-col w-full text-zinc-100">
                     <div className="mb-1.5 flex items-center gap-2">
                       <DnaLogo
-                        className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500"
+                        className={`w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500 ${
+                          msg.isStreaming ? 'animate-spin' : ''
+                        }`}
                         glow={true}
                       />
                       <span className="text-xs font-bold text-orange-400 tracking-wide uppercase">
@@ -1490,88 +1924,96 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                       }`}
                     >
                       <MathText text={msg.content} />
+                      {msg.isStreaming && (
+                        <span
+                          className="inline-block w-[2px] h-[1.05em] bg-orange-400 animate-pulse ml-0.5 align-middle rounded-full"
+                          aria-hidden="true"
+                        />
+                      )}
                     </div>
 
-                    <div className="flex items-center gap-1.5 mt-2 pl-1 text-zinc-400">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMessages((prev) =>
-                            prev.map((m) =>
-                              m.id === msg.id
-                                ? { ...m, reaction: m.reaction === 'like' ? null : 'like' }
-                                : m
+                    {!msg.isStreaming && (
+                      <div className="flex items-center gap-1.5 mt-2 pl-1 text-zinc-400">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id
+                                  ? { ...m, reaction: m.reaction === 'like' ? null : 'like' }
+                                  : m
+                              )
                             )
-                          )
-                        }
-                        className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                          msg.reaction === 'like'
-                            ? 'text-emerald-400 bg-emerald-500/20'
-                            : 'hover:text-white hover:bg-zinc-800'
-                        }`}
-                        title="Utile"
-                      >
-                        <ThumbsUp className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setMessages((prev) =>
-                            prev.map((m) =>
-                              m.id === msg.id
-                                ? {
-                                    ...m,
-                                    reaction: m.reaction === 'dislike' ? null : 'dislike',
-                                  }
-                                : m
+                          }
+                          className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                            msg.reaction === 'like'
+                              ? 'text-emerald-400 bg-emerald-500/20'
+                              : 'hover:text-white hover:bg-zinc-800'
+                          }`}
+                          title="Utile"
+                        >
+                          <ThumbsUp className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setMessages((prev) =>
+                              prev.map((m) =>
+                                m.id === msg.id
+                                  ? {
+                                      ...m,
+                                      reaction: m.reaction === 'dislike' ? null : 'dislike',
+                                    }
+                                  : m
+                              )
                             )
-                          )
-                        }
-                        className={`p-1.5 rounded-full transition-colors cursor-pointer ${
-                          msg.reaction === 'dislike'
-                            ? 'text-rose-400 bg-rose-500/20'
-                            : 'hover:text-white hover:bg-zinc-800'
-                        }`}
-                        title="À améliorer"
-                      >
-                        <ThumbsDown className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          navigator.clipboard.writeText(msg.content);
-                          setCopiedMsgId(msg.id);
-                          setTimeout(() => setCopiedMsgId(null), 2000);
-                        }}
-                        className="p-1.5 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer hover:text-white flex items-center gap-1"
-                        title="Copier la réponse"
-                      >
-                        {copiedMsgId === msg.id ? (
-                          <>
-                            <Check className="w-3.5 h-3.5 text-emerald-400" />
-                            <span className="text-[10px] font-bold text-emerald-400">
-                              Copié
-                            </span>
-                          </>
-                        ) : (
-                          <Copy className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    </div>
+                          }
+                          className={`p-1.5 rounded-full transition-colors cursor-pointer ${
+                            msg.reaction === 'dislike'
+                              ? 'text-rose-400 bg-rose-500/20'
+                              : 'hover:text-white hover:bg-zinc-800'
+                          }`}
+                          title="À améliorer"
+                        >
+                          <ThumbsDown className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(msg.content);
+                            setCopiedMsgId(msg.id);
+                            setTimeout(() => setCopiedMsgId(null), 2000);
+                          }}
+                          className="p-1.5 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer hover:text-white flex items-center gap-1"
+                          title="Copier la réponse"
+                        >
+                          {copiedMsgId === msg.id ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 text-emerald-400" />
+                              <span className="text-[10px] font-bold text-emerald-400">
+                                Copié
+                              </span>
+                            </>
+                          ) : (
+                            <Copy className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
             ))
           )}
 
-          {isGenerating && (
+          {isThinking && (
             <div className="flex items-center gap-2.5 bg-[#26282d] px-3.5 py-2.5 rounded-2xl w-fit max-w-[90%] shadow-md animate-fadeIn">
               <DnaLogo
                 className="w-5 h-5 animate-spin shrink-0 text-orange-500"
                 glow={true}
               />
               <span className="text-xs sm:text-[13px] font-medium text-zinc-200 animate-pulse">
-                Assistant Delmas travaille sur votre tableau...
+                {thinkingLabel}
               </span>
             </div>
           )}
@@ -1609,7 +2051,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                     handleSendMessage();
                   }
                 }}
-                placeholder="Posez votre question ou collez votre cours..."
+                placeholder={welcomeCopy.placeholder}
                 rows={2}
                 className="w-full bg-transparent text-white placeholder-zinc-400 text-xs sm:text-sm outline-none resize-none overflow-y-auto select-text"
               />

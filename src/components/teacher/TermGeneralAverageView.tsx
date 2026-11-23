@@ -1603,6 +1603,31 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       for (const action of actions) {
         if (!action || typeof action !== 'object') continue;
         switch (action.type) {
+          case 'set_subject_coefficient': {
+            const coeffNum = Number(String(action.coefficient ?? '').replace(',', '.'));
+            const searchName = String(action.subjectName || '').trim().toLowerCase();
+            if (Number.isFinite(coeffNum) && coeffNum >= 0.25 && coeffNum <= 100) {
+              const targetSubj =
+                computed.subjects.find((s) => s.id === action.subjectId) ||
+                computed.subjects.find(
+                  (s) =>
+                    searchName &&
+                    (s.name.toLowerCase() === searchName ||
+                      s.name.toLowerCase().includes(searchName))
+                );
+              if (targetSubj && getTeacherAuthToken()) {
+                await TeacherGradebookAPI.updateSubject(targetSubj.id, {
+                  coefficient: coeffNum,
+                });
+                applySavedCoefficientsLocally([
+                  { subjectId: targetSubj.id, coefficient: coeffNum },
+                ]);
+                setCloudStatus('saved');
+                summaries.push(`✓ Coefficient de ${targetSubj.name} passé à ${coeffNum}`);
+              }
+            }
+            break;
+          }
           case 'set_sort_mode': {
             const mode: TermAverageSortMode =
               action.sortMode === 'merit' || action.mode === 'merit'

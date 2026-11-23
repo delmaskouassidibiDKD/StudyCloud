@@ -3208,6 +3208,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               if (!item || typeof item !== 'object') continue;
               const cleanName = String(item.name || '').trim();
               const cleanMat = String(item.matricule || '').trim().slice(0, 48);
+              const normalizedNotes = normalizeIncomingNotes(
+                item.notes,
+                Array(workingColCount).fill('')
+              );
+              const hasAnyNote = normalizedNotes.some((n) => n.trim().length > 0);
+              if (!cleanName && !cleanMat && !hasAnyNote) continue;
               if (cleanMat) hasAnyMat = true;
               const emptyIdx = workingStudents.findIndex(isRowEmpty);
               if (emptyIdx >= 0) {
@@ -3223,10 +3229,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   id: generateTeacherEntityId('std'),
                   name: cleanName,
                   matricule: cleanMat,
-                  notes: normalizeIncomingNotes(
-                    item.notes,
-                    Array(workingColCount).fill('')
-                  ),
+                  notes: normalizedNotes,
                 });
               }
               added++;
@@ -3255,31 +3258,34 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               if (!u || typeof u !== 'object') continue;
               let targetIdx = -1;
 
+              // 1. Correspondance exacte par ID
               if (u.studentId) {
                 targetIdx = workingStudents.findIndex((s) => s.id === String(u.studentId));
               }
-              if (targetIdx === -1 && typeof u.rowIndex === 'number' && u.rowIndex >= 1) {
-                const dispId = displayedOrderIds[u.rowIndex - 1];
-                if (dispId) {
-                  targetIdx = workingStudents.findIndex((s) => s.id === dispId);
-                } else if (u.rowIndex - 1 < workingStudents.length) {
-                  targetIdx = u.rowIndex - 1;
-                }
-              }
+              // 2. Correspondance par nom (prioritaire sur rowIndex pour éviter tout décalage)
               const searchName = String(u.matchName || u.name || '').trim();
               if (targetIdx === -1 && searchName) {
                 const normSearch = normalizeStudentNameKey(searchName);
                 const bagSearch = canonicalWordBagKey(normSearch);
                 targetIdx = workingStudents.findIndex((s) => {
                   const sn = normalizeStudentNameKey(s.name || '');
-                  if (!sn) return false;
-                  return (
-                    sn === normSearch ||
-                    (bagSearch && canonicalWordBagKey(sn) === bagSearch) ||
-                    sn.includes(normSearch) ||
-                    normSearch.includes(sn)
-                  );
+                  return Boolean(sn) && (sn === normSearch || (bagSearch && canonicalWordBagKey(sn) === bagSearch));
                 });
+                if (targetIdx === -1) {
+                  targetIdx = workingStudents.findIndex((s) => {
+                    const sn = normalizeStudentNameKey(s.name || '');
+                    return Boolean(sn) && (sn.includes(normSearch) || normSearch.includes(sn));
+                  });
+                }
+              }
+              // 3. Repli par numéro de ligne uniquement si aucun nom n'a été fourni ou trouvé
+              if (targetIdx === -1 && !searchName && typeof u.rowIndex === 'number' && u.rowIndex >= 1) {
+                const dispId = displayedOrderIds[u.rowIndex - 1];
+                if (dispId) {
+                  targetIdx = workingStudents.findIndex((s) => s.id === dispId);
+                } else if (u.rowIndex - 1 < workingStudents.length) {
+                  targetIdx = u.rowIndex - 1;
+                }
               }
 
               if (targetIdx === -1 && (u.newName || searchName)) {
@@ -3795,20 +3801,46 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 ? Number(action.colIndex)
                 : undefined;
 
+            const evaluatedRows =
+              studentsMutated || colsMutated
+                ? workingStudents.map((s) => {
+                    const evals: EvaluationInput[] = Array.from(
+                      { length: workingColCount },
+                      (_, c) => {
+                        const meta = workingColMetas[c] || { maxScore: 20, coeffEval: 1 };
+                        const parsed = parseStudentNote(s.notes[c] || '', meta.maxScore);
+                        return {
+                          valeur: parsed.scoreNum,
+                          max: parsed.maxScore || meta.maxScore || 20,
+                          coeffEval: meta.coeffEval ?? 1,
+                        };
+                      }
+                    );
+                    const res = calculateSubjectAverage(evals, {
+                      targetScale: effectiveAverageScale,
+                    });
+                    return { id: s.id, name: s.name || '', average: res.moyenneMatiere };
+                  })
+                : studentsWithStats.map((s) => ({
+                    id: s.id,
+                    name: s.name || '',
+                    average: s.average,
+                  }));
+
             if (action.target === 'student') {
               const searchName = normalizeStudentNameKey(String(action.studentName || ''));
               const rIdx = typeof action.rowIndex === 'number' ? action.rowIndex - 1 : -1;
-              studentsWithStats.forEach((s, i) => {
+              evaluatedRows.forEach((s, i) => {
                 if (
-                  i === rIdx ||
                   (searchName &&
-                    normalizeStudentNameKey(s.name || '').includes(searchName))
+                    normalizeStudentNameKey(s.name).includes(searchName)) ||
+                  (!searchName && i === rIdx)
                 ) {
                   applyToStudentRow(s.id, action.column, noteIdx);
                 }
               });
             } else if (action.target === 'column') {
-              studentsWithStats.forEach((s) =>
+              evaluatedRows.forEach((s) =>
                 applyToStudentRow(s.id, action.column || 'all', noteIdx)
               );
             } else if (action.target === 'condition') {
@@ -3816,7 +3848,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 action.threshold !== undefined
                   ? Number(action.threshold)
                   : effectiveAverageScale / 2;
-              studentsWithStats.forEach((s, i) => {
+              const rankedOrder =
+                action.condition === 'rank_top'
+                  ? [...evaluatedRows]
+                      .filter((r) => r.average !== null)
+                      .sort((a, b) => (b.average ?? -Infinity) - (a.average ?? -Infinity))
+                      .slice(0, Math.max(1, Number(action.threshold) || 3))
+                  : [];
+              const topIds = new Set(rankedOrder.map((r) => r.id));
+
+              evaluatedRows.forEach((s) => {
                 if (action.condition === 'average_below' && s.average !== null && s.average < thresh) {
                   applyToStudentRow(s.id, action.column, noteIdx);
                 } else if (
@@ -3825,12 +3866,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   s.average >= thresh
                 ) {
                   applyToStudentRow(s.id, action.column, noteIdx);
-                } else if (action.condition === 'rank_top' && i < (Number(action.threshold) || 3)) {
+                } else if (action.condition === 'rank_top' && topIds.has(s.id)) {
                   applyToStudentRow(s.id, action.column, noteIdx);
                 }
               });
             } else {
-              studentsWithStats.forEach((s) =>
+              evaluatedRows.forEach((s) =>
                 applyToStudentRow(s.id, action.column, noteIdx)
               );
             }

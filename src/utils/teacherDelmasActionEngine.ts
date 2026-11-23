@@ -5,6 +5,8 @@ import type {
   TeacherDelmasWorkspaceSnapshot,
 } from '../services/teacherGradebookApi';
 
+export const DEFAULT_TEACHER_DELMAS_KIMI_MODEL = '@cf/moonshotai/kimi-k2.7-code';
+
 export interface SupportedDelmasLanguage {
   code: string;
   name: string;
@@ -175,6 +177,34 @@ export type TeacherDelmasActionType =
   | 'set_term_coefficient'
   | 'copy_students_from_subject';
 
+export const VALID_TEACHER_DELMAS_ACTION_TYPES: ReadonlySet<string> = new Set<TeacherDelmasActionType>([
+  'add_students',
+  'update_students',
+  'set_students',
+  'remove_students',
+  'clear_notes',
+  'add_note_column',
+  'update_note_column',
+  'delete_note_column',
+  'swap_note_columns',
+  'adjust_grades',
+  'set_sort_mode',
+  'set_show_matricule',
+  'set_average_scale',
+  'bulk_update_note_max',
+  'set_mention_rules',
+  'format_cells',
+  'clear_formatting',
+  'set_zoom',
+  'reset_column_widths',
+  'undo',
+  'redo',
+  'export_excel',
+  'set_subject_coefficient',
+  'set_term_coefficient',
+  'copy_students_from_subject',
+]);
+
 export interface TeacherDelmasAction {
   type: TeacherDelmasActionType;
   [key: string]: any;
@@ -188,53 +218,523 @@ export interface TeacherDelmasSheetBridge {
   ) => Promise<string[]> | string[];
 }
 
+export type TeacherDelmasIntent = 'chat' | 'inspect' | 'action';
+
+export interface TeacherDelmasIntentResult {
+  intent: TeacherDelmasIntent;
+  reason: string;
+  referencesActiveFiles: boolean;
+  needsWorkspaceDb: boolean;
+}
+
+export interface ResolvedBackgroundModel {
+  modelId: string;
+  apiToken?: string;
+}
+
 /**
- * Construit le prompt système complet pour l'Assistant Delmas :
- * - Force la langue choisie
- * - Indique exactement dans quelle école, classe, trimestre et matière l'utilisateur travaille
- * - Interdit formellement de modifier une autre matière/classe si l'utilisateur ne l'a pas demandé
- * - Interdit de modifier le tableau si l'utilisateur pose uniquement une question
- * - Expose le schéma JSON des actions pour piloter le tableau et toutes les fonctionnalités de l'interface
+ * Sélectionne automatiquement le modèle Kimi actif configuré sur StudyCloud
+ * (sans jamais exposer de sélecteur de modèle à l'utilisateur).
  */
-export function buildTeacherDelmasSystemPrompt(params: {
-  languageCode: string;
+export function pickPreferredKimiModel(
+  models?: Array<{
+    id?: string;
+    model_id?: string;
+    name?: string;
+    nickname?: string;
+    provider?: string;
+    is_active?: number | boolean | string;
+    enabled?: number | boolean | string;
+    api_token?: string;
+  }> | null,
+  defaultModel?: string | null
+): ResolvedBackgroundModel {
+  const cleanToken = (m?: { provider?: string; api_token?: string }): string | undefined => {
+    if (!m || m.provider === 'cloudflare') return undefined;
+    const raw = typeof m.api_token === 'string' ? m.api_token.trim() : '';
+    if (!raw || raw.startsWith('AIzaSyDKct') || raw.length < 25) return undefined;
+    return raw;
+  };
+
+  const activeList = Array.isArray(models)
+    ? models.filter((m) => {
+        if (!m) return false;
+        const activeFlag =
+          m.is_active === undefined && m.enabled === undefined
+            ? true
+            : m.is_active === 1 ||
+              m.is_active === true ||
+              m.is_active === '1' ||
+              m.enabled === 1 ||
+              m.enabled === true ||
+              m.enabled === '1';
+        const id = String(m.id || m.model_id || '').toLowerCase();
+        return activeFlag && id.length > 0 && !id.includes('gemini') && m.provider !== 'google';
+      })
+    : [];
+
+  const isKimiEntry = (m: any): boolean => {
+    const id = String(m?.id || m?.model_id || '').toLowerCase();
+    const name = String(m?.name || '').toLowerCase();
+    const nick = String(m?.nickname || '').toLowerCase();
+    return id.includes('kimi') || name.includes('kimi') || nick.includes('kimi');
+  };
+
+  // 1. Si defaultModel est un modèle Kimi actif, on le choisit en priorité absolue
+  if (defaultModel && String(defaultModel).toLowerCase().includes('kimi')) {
+    const exactDef = activeList.find(
+      (m) => String(m.id || m.model_id) === String(defaultModel)
+    );
+    if (exactDef) {
+      return {
+        modelId: String(exactDef.id || exactDef.model_id),
+        apiToken: cleanToken(exactDef),
+      };
+    }
+    return { modelId: String(defaultModel) };
+  }
+
+  // 2. Sinon on cherche le premier modèle Kimi actif dans la liste
+  const firstKimi = activeList.find(isKimiEntry);
+  if (firstKimi) {
+    return {
+      modelId: String(firstKimi.id || firstKimi.model_id),
+      apiToken: cleanToken(firstKimi),
+    };
+  }
+
+  // 3. Fallback garanti vers Kimi K2.7 Code
+  return { modelId: DEFAULT_TEACHER_DELMAS_KIMI_MODEL };
+}
+
+function normalizeForMatch(text: string): string {
+  return String(text || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[’'`]/g, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/**
+ * Supprime les balises de réflexion interne (<think>, <thought>, <reasoning>)
+ * et monologues internes en anglais que peuvent émettre les modèles de raisonnement comme Kimi.
+ */
+export function stripTeacherDelmasReasoning(text: string): string {
+  if (!text || typeof text !== 'string') return '';
+  let cleaned = text;
+  cleaned = cleaned.replace(/<think>[\s\S]*?<\/think>/gi, '');
+  cleaned = cleaned.replace(/<thought>[\s\S]*?<\/thought>/gi, '');
+  cleaned = cleaned.replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '');
+  cleaned = cleaned.replace(/<(?:think|thought|reasoning)>[\s\S]*$/gi, '');
+  // Nettoie aussi les termes techniques internes de vision/OCR si le backend en mentionne
+  cleaned = cleaned
+    .replace(/(?:gr[âa]ce [àa]|via|selon|d'apr[èe]s|avec)\s+l'outil\s+de\s+vision/gi, "d'après votre image")
+    .replace(/l'outil\s+de\s+vision/gi, "l'analyse visuelle")
+    .replace(/expert\s+vision/gi, "l'analyse visuelle");
+  return cleaned.trim();
+}
+
+/**
+ * Détecte finement l'intention réelle de l'utilisateur (comme dans le Menu Création) :
+ * - 'chat'    : discussion naturelle, salutation, remerciement, question générale hors tableau
+ *               → aucune donnée du tableau n'est récitée, aucune pression, aucune action autorisée.
+ * - 'inspect' : question de lecture/analyse sur le tableau, la classe, les notes ou un fichier joint
+ *               → accès aux données réelles pour répondre exactement, zéro modification du tableau.
+ * - 'action'  : demande explicite d'écrire, modifier, trier, configurer, formater ou importer dans le tableau
+ *               → exécution ciblée et précise uniquement sur ce qui est demandé.
+ */
+export function classifyTeacherDelmasIntent(params: {
+  message: string;
+  hasNewAttachments?: boolean;
+  hasConversationFiles?: boolean;
+  activeContext?: TeacherDelmasActiveContext | null;
+  workspaceSnapshot?: TeacherDelmasWorkspaceSnapshot | null;
+  recentMessages?: Array<{ sender: 'user' | 'ai'; content: string }>;
+}): TeacherDelmasIntentResult {
+  const raw = String(params.message || '').trim();
+  const norm = normalizeForMatch(raw);
+  const hasNewAttachments = Boolean(params.hasNewAttachments);
+  const hasConversationFiles = Boolean(params.hasConversationFiles || hasNewAttachments);
+  const recentMessages = params.recentMessages || [];
+
+  const fileReferenceRegex =
+    /\b(image|photo|capture|fichier|fichiers|document|documents|pdf|excel|xlsx|csv|word|docx|audio|vocal|releve|feuille|liste|ci-dessus|joint|joints|piece jointe|scan|copie|picture|file|sheet)\b/i;
+
+  const fileImportActionRegex =
+    /\b(rempli|remplis|remplir|ajoute|ajouter|rajoute|rajouter|saisi|saisis|saisir|importe|importer|insere|inserer|mets|met|mettre|ecris|ecrire|copie|copier|enregistre|enregistrer|transfere|transferer|integre|integrer|charge|charger|fill|import|insert|add|put|write|enter|load|copy)\b/i;
+
+  const lastAiMsg = [...recentMessages].reverse().find((m) => m.sender === 'ai');
+  const lastUserMsg = [...recentMessages].reverse().find((m) => m.sender === 'user');
+  const lastAiNorm = lastAiMsg ? normalizeForMatch(lastAiMsg.content) : '';
+
+  const referencesActiveFiles =
+    hasNewAttachments || (hasConversationFiles && fileReferenceRegex.test(norm));
+
+  // 1. Fichier ou image fraîchement joint à CE message
+  if (hasNewAttachments) {
+    if (norm.length === 0) {
+      // L'utilisateur a envoyé une image/fichier sans consigne d'écriture → on lit/analyse sans écraser le tableau !
+      return {
+        intent: 'inspect',
+        reason: 'new_attachment_without_write_order',
+        referencesActiveFiles: true,
+        needsWorkspaceDb: false,
+      };
+    }
+    const isPureFileQuestion =
+      /^(que vois-tu|qu'est-ce que tu vois|tu vois|vois-tu|lis|decris|analyse|resume|explique|combien|qui est|quel|quelle|what do you see|read|describe|analyze|summarize)\b/i.test(
+        norm
+      ) && !fileImportActionRegex.test(norm);
+
+    if (!isPureFileQuestion && fileImportActionRegex.test(norm)) {
+      return {
+        intent: 'action',
+        reason: 'new_attachment_with_import_action',
+        referencesActiveFiles: true,
+        needsWorkspaceDb: false,
+      };
+    }
+    return {
+      intent: 'inspect',
+      reason: 'new_attachment_inspection',
+      referencesActiveFiles: true,
+      needsWorkspaceDb: false,
+    };
+  }
+
+  // 2. Confirmation courte qui suit une proposition d'action explicite de l'assistant
+  const shortAffirmativeRegex =
+    /^(oui|ouais|ok|okay|d'accord|dac|vas-y|vazy|fais-le|fais le|fais ca|applique|applique-le|applique ca|go|yes|yeah|sure|do it|apply|go ahead|lance|valide|c'est bon fais-le|oui vas-y|oui fais-le|oui applique|oui ajoute-les|ajoute-les|mets-les|remplis-le)[\s!.,?]*$/i;
+
+  const explicitFollowUpActionRegex =
+    /^(vas-y|vazy|fais-le|fais le|fais ca|applique|applique-le|applique ca|ajoute-les|mets-les|remplis-le|remplis le|lance|do it|apply|go ahead|oui vas-y|oui fais-le|oui applique|oui ajoute-les)[\s!.,?]*$/i;
+
+  if (shortAffirmativeRegex.test(norm)) {
+    const aiOfferedAction =
+      Boolean(lastAiNorm) &&
+      (lastAiNorm.includes('?') ||
+        /\b(souhaitez-vous|voulez-vous|veux-tu|puis-je|je peux|dois-je|would you like|shall i|want me to)\b/i.test(
+          lastAiNorm
+        )) &&
+      /\b(tableau|eleve|eleves|note|notes|ajouter|inserer|remplir|modifier|trier|bareme|matricule|mention|importer|appliquer|supprimer|copier|formater|exporter|coefficient)\b/i.test(
+        lastAiNorm
+      );
+
+    if (explicitFollowUpActionRegex.test(norm) || aiOfferedAction) {
+      return {
+        intent: 'action',
+        reason: 'confirmed_follow_up_action',
+        referencesActiveFiles: hasConversationFiles,
+        needsWorkspaceDb: false,
+      };
+    }
+
+    // Simple "ok", "d'accord", "oui" en conversation normale → pur chat
+    return {
+      intent: 'chat',
+      reason: 'casual_acknowledgement',
+      referencesActiveFiles: false,
+      needsWorkspaceDb: false,
+    };
+  }
+
+  // 3. Salutations, politesses, bavardage pur (multilingue)
+  const pureGreetingOrCourtesyRegex =
+    /^(bonjour|bonsoir|salut|coucou|hello|hi|hey|yo|hola|buenos dias|buenas tardes|hallo|guten tag|ciao|ola|salam|assalam\w*|merci|merci beaucoup|mercii+|thanks|thank you|gracias|danke|grazie|obrigado|super|parfait|genial|cool|top|tres bien|bien recu|bien compris|c'est note|nickel|impeccable|ca va|comment ca va|comment vas-tu|tu vas bien|comment allez-vous|how are you|tu es la|t'es la|are you there|qui es-tu|tu es qui|c'est quoi ton nom|comment tu t'appelles|who are you|what is your name|au revoir|a bientot|bonne journee|bonne soiree|bye|goodbye|你好|您好|谢谢|こんにちは|ありがとう|привет|спасибо|مرحبا|السلام عليكم|شكرا)[\s!.,?😊👍🙏]*$/i;
+
+  const greetingWithSmallTalkRegex =
+    /^(bonjour|bonsoir|salut|coucou|hello|hi|hey)\s*[,!.]?\s*(assistant\s*delmas|delmas)?\s*[,!.]?\s*(ca va|comment ca va|comment vas-tu|tu vas bien|how are you|tu es la|quoi de neuf|ca roule|tout va bien)?[\s!.,?]*$/i;
+
+  if (pureGreetingOrCourtesyRegex.test(norm) || greetingWithSmallTalkRegex.test(norm)) {
+    return {
+      intent: 'chat',
+      reason: 'pure_greeting_or_courtesy',
+      referencesActiveFiles: false,
+      needsWorkspaceDb: false,
+    };
+  }
+
+  // 4. Détection du lien avec le domaine du tableur / de la base Moyennes
+  const activeContext = params.activeContext;
+  const workspaceSnapshot = params.workspaceSnapshot;
+
+  const mentionsActiveStudent = Boolean(
+    activeContext?.students?.some((s) => {
+      const sn = normalizeForMatch(s.name || '');
+      if (sn.length < 2) return false;
+      if (norm.includes(sn)) return true;
+      const parts = sn.split(' ').filter((p) => p.length >= 3);
+      return parts.some((p) => new RegExp(`\\b${p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(norm));
+    })
+  );
+
+  const activeSubjectNorm = normalizeForMatch(activeContext?.subjectName || '');
+  const activeClassNorm = normalizeForMatch(activeContext?.className || '');
+  const mentionsActiveSubjectOrClass =
+    (activeSubjectNorm.length >= 3 && norm.includes(activeSubjectNorm)) ||
+    (activeClassNorm.length >= 3 && norm.includes(activeClassNorm));
+
+  const mentionsOtherWorkspaceEntity = Boolean(
+    workspaceSnapshot?.subjects?.some((s) => {
+      const sn = normalizeForMatch(s.name || '');
+      return sn.length >= 3 && sn !== activeSubjectNorm && norm.includes(sn);
+    }) ||
+      workspaceSnapshot?.classes?.some((c) => {
+        const cn = normalizeForMatch(c.name || c.level || '');
+        return cn.length >= 3 && cn !== activeClassNorm && norm.includes(cn);
+      })
+  );
+
+  const needsWorkspaceDb = Boolean(
+    mentionsOtherWorkspaceEntity ||
+      activeContext?.sheetKind !== 'subject' ||
+      /\b(autre matiere|autres matieres|autre classe|autres classes|toute la classe|toutes les classes|tous les trimestres|trimestre\s*\d|semestre\s*\d|compare|comparer|comparaison|copie depuis|copier depuis|importer depuis|base de donnees|bilan global|autres tableaux|toutes mes classes)\b/i.test(
+        norm
+      )
+  );
+
+  const tableDomainRegex =
+    /\b(tableau|tableur|feuille|cellule|case|ligne|lignes|colonne|colonnes|eleve|eleves|etudiant|etudiants|apprenant|apprenants|note|notes|moyenne|moyennes|bareme|mention|mentions|rang|rangs|classement|matricule|matricules|coeff|coefficient|coefficients|devoir|devoirs|interro|interrogation|compo|composition|examen|evaluation|point|points|pt|pts|classe|classes|matiere|matieres|trimestre|trimestres|semestre|annuel|annuelle|ordre de merite|merite|alphabetique|ordre initial|zoom|largeur|largeurs|excel|xlsx|export|exporter|annule|annuler|retablis|retablir|undo|redo|gras|italique|souligne|couleur|rouge|vert|bleu|jaune|orange|gris|surligne|mise en forme|style|aligne|centrer|police|table|sheet|student|students|grade|grades|score|average|rank|sort|column|row)\b/i;
+
+  const mentionsTableDomain =
+    tableDomainRegex.test(norm) ||
+    mentionsActiveStudent ||
+    mentionsActiveSubjectOrClass ||
+    mentionsOtherWorkspaceEntity ||
+    referencesActiveFiles;
+
+  // Vérification des scripts non-latins (arabe, chinois, japonais, russe) :
+  // si ce n'est pas une salutation courte, on laisse Kimi décider intelligemment en mode action prudent.
+  const hasNonLatinScript = /[\u0600-\u06FF\u4E00-\u9FFF\u3040-\u30FF\u0400-\u04FF]/.test(raw);
+  if (hasNonLatinScript && raw.length > 10) {
+    return {
+      intent: 'action',
+      reason: 'non_latin_smart_routing',
+      referencesActiveFiles: hasConversationFiles,
+      needsWorkspaceDb,
+    };
+  }
+
+  // 5. Si le message ne parle PAS explicitement du vocabulaire "tableau/notes",
+  //    vérifions d'abord les commandes directes d'édition rapides (ex: "Ajoute KOUASSI Jean avec 15 et 14", "Supprime Koné", "Annule")
+  if (!mentionsTableDomain) {
+    const directQuickSheetCommandRegex =
+      /^(?:(?:peux-tu|tu peux|pourrais-tu|s'il te plait|stp|svp|merci de)\s+)?(ajoute|ajouter|rajoute|rajouter|insere|inserer|saisis|saisir|supprime|supprimer|renomme|renommer|mets|met|mettre|annule|annuler|retablis|retablir|undo|redo)\b/i;
+    const isNonTableWritingRequest =
+      /\b(paragraphe|phrase|texte|mail|email|lettre|poeme|histoire|blague|exemple|exercice|cours|lecon|definition|formule|resume|introduction|conclusion)\b/i.test(
+        norm
+      );
+
+    if (directQuickSheetCommandRegex.test(norm) && !isNonTableWritingRequest) {
+      return {
+        intent: 'action',
+        reason: 'direct_quick_sheet_imperative',
+        referencesActiveFiles: hasConversationFiles && referencesActiveFiles,
+        needsWorkspaceDb: false,
+      };
+    }
+
+    // Vérifier si c'est une suite courte d'une question précédente sur le tableau (ex: "Et le 2e ?", "Et sa note ?")
+    const isShortFollowUp =
+      norm.length <= 75 &&
+      /^(et\s+|pour\s+|pareil|meme chose|idem|lequel|laquelle|lesquels|combien|qui|lui|elle|eux|celui|celle|aussi|encore|continue|suite)/i.test(
+        norm
+      );
+    const prevUserNorm = lastUserMsg ? normalizeForMatch(lastUserMsg.content) : '';
+    const prevWasAboutTable =
+      tableDomainRegex.test(prevUserNorm) || tableDomainRegex.test(lastAiNorm);
+
+    if (isShortFollowUp && prevWasAboutTable) {
+      if (/\b(pareil|meme chose|idem|aussi|annule|retablis|fais)\b/i.test(norm)) {
+        return {
+          intent: 'action',
+          reason: 'contextual_table_action_follow_up',
+          referencesActiveFiles: hasConversationFiles,
+          needsWorkspaceDb,
+        };
+      }
+      return {
+        intent: 'inspect',
+        reason: 'contextual_table_inspect_follow_up',
+        referencesActiveFiles: hasConversationFiles,
+        needsWorkspaceDb,
+      };
+    }
+
+    // Discussion générale / question pédagogique / rédaction → 'chat' pur (sans polluer avec le tableau !)
+    return {
+      intent: 'chat',
+      reason: 'general_conversation_unrelated_to_table',
+      referencesActiveFiles: false,
+      needsWorkspaceDb: false,
+    };
+  }
+
+  // 6. Ici le message concerne bien le tableau / les notes / la classe / les fichiers.
+  //    Distinguons finement : Demande d'ACTION vs Question d'ANALYSE / CONSEIL (lecture seule) !
+
+  // Questions purement explicatives / de conseil / d'information (SANS ordre d'exécution)
+  const isPoliteActionRequest =
+    /\b(peux-tu|tu peux|pourrais-tu|tu pourrais|est-ce que tu peux|est-ce que tu pourrais|voudrais-tu|j'aimerais que tu|je veux que tu|je voudrais que tu|merci de|s'il te plait|stp|svp|can you|could you|please|would you)\b/i.test(
+      norm
+    );
+
+  const isAdvisoryOrHowToQuestion =
+    !isPoliteActionRequest &&
+    /^(comment\s+(faire|puis-je|je peux|on|trier|calculer|changer|modifier|ajouter|supprimer|afficher|exporter|mettre)|pourquoi\b|devrais-je\b|est-ce que je (dois|devrais|peux)\b|faut-il\b|c'est quoi\b|qu'est-ce que\b|explique(?:-moi)?\b|dis-moi comment\b|how (do i|to|can i)\b|should i\b|why\b|what is\b|explain\b)/i.test(
+      norm
+    );
+
+  if (isAdvisoryOrHowToQuestion) {
+    // Si la question est purement théorique (ex: "Comment calculer une moyenne pondérée ?") sans nom d'élève ni "ce tableau"
+    const asksAboutCurrentSheet =
+      mentionsActiveStudent ||
+      mentionsActiveSubjectOrClass ||
+      /\b(mon tableau|ce tableau|ma classe|cette classe|mes eleves|mes notes|ici|actuel|actuelle|ouvert)\b/i.test(
+        norm
+      );
+    return {
+      intent: asksAboutCurrentSheet ? 'inspect' : 'chat',
+      reason: 'advisory_or_howto_question',
+      referencesActiveFiles,
+      needsWorkspaceDb: asksAboutCurrentSheet && needsWorkspaceDb,
+    };
+  }
+
+  // Commandes explicites d'action sur le tableau ou les fonctionnalités de l'interface
+  const strongActionVerbRegex =
+    /\b(ajoute|ajouter|rajoute|rajouter|insere|inserer|saisis|saisir|entre|entrer|remplis|remplir|ecris|ecrire|mets|met|mettre|attribue|attribuer|noter|importe|importer|cree|creer|modifie|modifier|change|changer|remplace|remplacer|corrige|corriger|renomme|renommer|actualise|passe|passer|ramene|ramener|convertis|convertir|regle|regler|configure|configurer|definis|definir|personnalise|personnaliser|ajuste|ajuster|augmente|augmenter|diminue|diminuer|baisse|baisser|retire|retirer|enleve|enlever|bonus|malus|supprime|supprimer|efface|effacer|vide|vider|nettoie|nettoyer|trie|trier|classe|classer|ordonne|ordonner|cache|cacher|masque|masquer|colore|colorer|colorie|colorier|surligne|surligner|formate|formater|aligne|aligner|centre|centrer|deplace|deplacer|inverse|inverser|echange|echanger|copie|copier|exporte|exporter|telecharge|telecharger|annule|annuler|retablis|retablir|undo|redo|zoome|dezoome|reinitialise|reinitialiser|add|insert|fill|write|put|set|update|edit|modify|replace|rename|fix|adjust|increase|decrease|convert|delete|remove|clear|clean|sort|hide|color|highlight|bold|italic|underline|format|align|copy|export|reset)\b/i;
+
+  // Raccourcis de saisie ou de réglage directs (ex: "+1 pt à tous", "moyenne sur 40", "DKD : 15, 14", "ordre de mérite", "zoom 80%")
+  const shorthandActionRegex =
+    /([+-]\s*\d+(?:[.,]\d+)?\s*(?:pt|pts|point|points)\b)|(\b(?:moyenne|notes?|toutes les notes|note\s*\d+)\s+sur\s+\d+\b)|(\b(?:ordre de merite|ordre alphabetique|ordre initial)\b)|(\bzoom\s*(?:a\s*)?\d+\s*%?)|(\b\d+(?:[.,]\d+)?\s*\/\s*\d+\b)/i;
+
+  // Questions de pure lecture (qui, combien, quel, dans quelle classe, bilan, résumé, liste, compare...)
+  const readOnlyQueryRegex =
+    /^(qui\b|combien\b|quel\b|quelle\b|quels\b|quelles\b|ou\b|dans quelle\b|suis-je\b|je suis dans\b|est-ce que\b|y a-t-il\b|a-t-il\b|ont-ils\b|fais(?:-moi)?\s+(?:un|le)\s+(?:bilan|resume|point|rapport|recap)|donne(?:-moi)?\s+(?:la moyenne|les moyennes|le rang|le classement|le bilan|la liste|les notes|les statistiques|le taux)|montre(?:-moi)?\s+(?:qui|les eleves|les notes|la moyenne|le classement)|liste(?:-moi)?\b|compare\b|analyse\b|calcule(?:-moi)?\s+(?:juste|la moyenne|le taux)|verifie\b|que vois-tu|qu'est-ce que|who\b|how many\b|what is\b|which\b|where am i)/i;
+
+  const hasStrongActionVerb = strongActionVerbRegex.test(norm);
+  const hasShorthandAction = shorthandActionRegex.test(norm);
+  const startsAsReadOnly = readOnlyQueryRegex.test(norm);
+
+  // Attention à "affiche" / "montre" :
+  // - "affiche la colonne matricule" → ACTION UI !
+  // - "montre-moi qui a la moyenne" → INSPECT !
+  const isShowMatriculeAction =
+    /\b(affiche|afficher|montre|montrer|active|activer|cache|cacher|masque|masquer|desactive|desactiver)\b.*\bmatricule\b/i.test(
+      norm
+    );
+
+  if (isShowMatriculeAction) {
+    return {
+      intent: 'action',
+      reason: 'explicit_matricule_toggle',
+      referencesActiveFiles,
+      needsWorkspaceDb,
+    };
+  }
+
+  // Attention à "donne 15 à DKD" (ACTION) vs "donne-moi la moyenne de DKD" (INSPECT)
+  const isGiveGradeAction =
+    /\b(donne|donner|attribue|attribuer|mets|met|mettre)\b[^?]*\b\d+(?:[.,]\d+)?\b/i.test(norm);
+
+  if (isGiveGradeAction) {
+    return {
+      intent: 'action',
+      reason: 'explicit_grade_assignment',
+      referencesActiveFiles,
+      needsWorkspaceDb,
+    };
+  }
+
+  if (startsAsReadOnly && !isPoliteActionRequest) {
+    // Ex: "Quelle est la moyenne de DKD ?", "Qui est le premier ?", "Dans quelle classe je suis ?", "Combien d'élèves ont plus de 10/20 ?"
+    // Même si "10/20" apparaît dans la question, c'est une question de lecture seule !
+    return {
+      intent: 'inspect',
+      reason: 'read_only_table_query',
+      referencesActiveFiles,
+      needsWorkspaceDb,
+    };
+  }
+
+  // Si la phrase se termine par "?" sans requête polie d'exécution ("Peux-tu...?") et sans verbe fort d'écriture :
+  if (norm.endsWith('?') && !isPoliteActionRequest && !hasStrongActionVerb) {
+    return {
+      intent: 'inspect',
+      reason: 'interrogative_table_question',
+      referencesActiveFiles,
+      needsWorkspaceDb,
+    };
+  }
+
+  // Note : "classe" en tant que nom ("ma classe", "la classe", "dans quelle classe") ne doit PAS compter comme le verbe "classer" !
+  const strongActionWithoutNounClasse = strongActionVerbRegex.test(
+    norm.replace(/\b(ma|la|cette|toute la|dans la|dans quelle|de la|une)\s+classe\b/gi, '$1 grp')
+      .replace(/\b(note|notes)\s+(de|du|des|d'|\d+)\b/gi, 'val $2')
+      .replace(/\b(la|les|des|mes|ses|leurs|une|sa|toutes les)\s+notes?\b/gi, '$1 vals')
+  );
+
+  if (strongActionWithoutNounClasse || (hasShorthandAction && !norm.endsWith('?'))) {
+    return {
+      intent: 'action',
+      reason: 'explicit_table_or_ui_action',
+      referencesActiveFiles,
+      needsWorkspaceDb,
+    };
+  }
+
+  // Si un nom d'élève + une valeur numérique est donné directement sans question (ex: "DKD 15 16")
+  if (mentionsActiveStudent && /\b\d+(?:[.,]\d+)?\b/.test(norm) && !norm.endsWith('?')) {
+    return {
+      intent: 'action',
+      reason: 'direct_student_grade_entry',
+      referencesActiveFiles,
+      needsWorkspaceDb,
+    };
+  }
+
+  // Par défaut pour toute autre question/remarque liée au tableau : lecture seule sécurisée (zéro modification surprise !)
+  return {
+    intent: 'inspect',
+    reason: 'default_safe_table_inspection',
+    referencesActiveFiles,
+    needsWorkspaceDb,
+  };
+}
+
+/**
+ * Formate le contexte compact du tableau ouvert (uniquement injecté en mode 'inspect' ou 'action').
+ */
+function buildActiveSheetContextBlock(params: {
   activeContext: TeacherDelmasActiveContext;
+  sheetTitle: string;
   workspaceSnapshot?: TeacherDelmasWorkspaceSnapshot | null;
   conversationFiles?: TeacherDelmasFileRecord[];
+  needsWorkspaceDb: boolean;
+  referencesActiveFiles: boolean;
 }): string {
-  const { languageCode, activeContext, workspaceSnapshot, conversationFiles } = params;
-  const langObj =
-    SUPPORTED_DELMAS_LANGUAGES.find((l) => l.code === languageCode) ||
-    SUPPORTED_DELMAS_LANGUAGES[0];
+  const {
+    activeContext,
+    sheetTitle,
+    workspaceSnapshot,
+    conversationFiles,
+    needsWorkspaceDb,
+    referencesActiveFiles,
+  } = params;
 
-  const sheetTitle =
-    activeContext.sheetKind === 'subject'
-      ? `Matière « ${activeContext.subjectName || 'Matière'} »${
-          activeContext.subjectCoefficient !== undefined &&
-          activeContext.subjectCoefficient !== null
-            ? ` (Coeff ${activeContext.subjectCoefficient})`
-            : ''
-        }`
-      : activeContext.sheetKind === 'term_average'
-      ? `Tableau de Moyenne générale du trimestre « ${
-          activeContext.termName || activeContext.averageCardTitle || 'Trimestre'
-        } »`
-      : `Tableau de Moyenne générale annuelle « ${
-          activeContext.averageCardTitle || "Moyenne générale de l'année"
-        } »`;
-
-  // Résumé des colonnes de notes du tableau ouvert
   const noteColsSummary =
     activeContext.noteColumns && activeContext.noteColumns.length > 0
       ? activeContext.noteColumns
           .map(
             (c) =>
-              `Colonne ${c.colNumber} (${c.label}) : barème /${c.maxScore}, coeff éval = ${c.coeffEval}`
+              `Col ${c.colNumber} (${c.label}) : /${c.maxScore}, coeff=${c.coeffEval}`
           )
-          .join('\n  - ')
-      : 'Aucune colonne de note (tableau de moyenne générale)';
+          .join(' | ')
+      : 'Tableau de moyenne générale (pas de colonnes de notes individuelles)';
 
-  // Résumé des élèves du tableau ouvert
   const nonEmptyStudents = activeContext.students.filter(
     (s) =>
       s.name.trim().length > 0 ||
@@ -249,26 +749,56 @@ export function buildTeacherDelmasSystemPrompt(params: {
           .map((s) => {
             const notesPart =
               s.notes && s.notes.length > 0
-                ? ` | Notes: [${s.notes
-                    .map((n, idx) => `N${idx + 1}=${n || '-'}`)
-                    .join(', ')}]`
+                ? ` | Notes: [${s.notes.map((n, idx) => `N${idx + 1}=${n || '-'}`).join(', ')}]`
                 : '';
-            const matPart = s.matricule ? ` | Matricule: ${s.matricule}` : '';
+            const matPart = s.matricule ? ` | Mat: ${s.matricule}` : '';
             const avgPart = s.averageFormatted
-              ? ` | Moyenne: ${s.averageFormatted}/${activeContext.averageScale}`
+              ? ` | Moy: ${s.averageFormatted}/${activeContext.averageScale}`
               : '';
             const rankPart = s.rank ? ` | Rang: ${s.rank}` : '';
             const mentionPart = s.mention ? ` | Mention: ${s.mention}` : '';
-            return `Ligne ${s.rowIndex} (id="${s.id}") : Nom="${s.name}"${matPart}${notesPart}${avgPart}${rankPart}${mentionPart}`;
+            return `Ligne ${s.rowIndex} (id="${s.id}") : ${s.name}${matPart}${notesPart}${avgPart}${rankPart}${mentionPart}`;
           })
           .join('\n  - ')
-      : `Le tableau ouvert contient actuellement ${activeContext.students.length} lignes vides prêtes à être remplies.`;
+      : `Aucun élève renseigné (${activeContext.students.length} lignes vides disponibles).`;
 
-  // Résumé de la base de données Moyennes de l'utilisateur (autres matières/classes du compte)
+  const mentionRulesStr = activeContext.mentionRules
+    .map((r) => `>= ${r.min} : "${r.label}"`)
+    .join(', ');
+
+  let generalMetaBlock = '';
+  if (activeContext.generalAverageMeta) {
+    const gm = activeContext.generalAverageMeta;
+    const parts: string[] = [];
+    if (gm.classGeneralAverage !== undefined && gm.classGeneralAverage !== null) {
+      parts.push(`Moyenne de classe : ${gm.classGeneralAverage.toFixed(2)}/${activeContext.averageScale}`);
+    }
+    if (gm.passRatePercent !== undefined && gm.passRatePercent !== null) {
+      parts.push(`Taux de réussite : ${gm.passRatePercent.toFixed(1)}%`);
+    }
+    if (gm.subjects && gm.subjects.length > 0) {
+      parts.push(
+        `Matières : ${gm.subjects
+          .map((s) => `${s.name} (id="${s.id}", coeff=${s.coefficient ?? 1})`)
+          .join(', ')}`
+      );
+    }
+    if (gm.terms && gm.terms.length > 0) {
+      parts.push(
+        `Trimestres : ${gm.terms
+          .map((t) => `${t.name} (id="${t.id}", coeff=${t.coefficient ?? 1})`)
+          .join(', ')}`
+      );
+    }
+    if (parts.length > 0) {
+      generalMetaBlock = `\n- Synthèse du tableau général : ${parts.join(' | ')}`;
+    }
+  }
+
   let dbOverview = '';
-  if (workspaceSnapshot) {
+  if (needsWorkspaceDb && workspaceSnapshot) {
     const classLines: string[] = [];
-    for (const cls of workspaceSnapshot.classes.slice(0, 25)) {
+    for (const cls of workspaceSnapshot.classes.slice(0, 20)) {
       const clsDisplay = cls.name
         ? cls.name.toLowerCase().includes(cls.level.toLowerCase())
           ? cls.name
@@ -284,261 +814,406 @@ export function buildTeacherDelmasSystemPrompt(params: {
             const gb = workspaceSnapshot.gradebooks.find(
               (g) => g.subjectId === s.id && g.termId === t.id
             );
-            const stdCount = gb ? gb.students.length : 0;
-            return `${s.name} (id="${s.id}", coeff=${s.coefficient ?? 1}, ${stdCount} élèves)`;
+            return `${s.name} (id="${s.id}", coeff=${s.coefficient ?? 1}, ${gb ? gb.students.length : 0} élèves)`;
           })
           .join(', ');
-        return `${t.name} (id="${t.id}", coeff=${t.coefficient ?? 1}) : [${subjStr || 'aucune matière'}]`;
+        return `${t.name} (coeff=${t.coefficient ?? 1}) : [${subjStr || 'aucune matière'}]`;
       });
-      classLines.push(`- Classe « ${clsDisplay} » (id="${cls.id}") :\n    ${termSummaries.join('\n    ')}`);
+      classLines.push(`- ${clsDisplay} : ${termSummaries.join(' | ')}`);
     }
 
-    // Détail des élèves des autres matières de la MÊME classe active pour lecture/comparaison rapide
     const sameClassGradebooks = workspaceSnapshot.gradebooks.filter(
       (g) => g.classId === activeContext.classId && g.subjectId !== activeContext.subjectId
     );
     const otherSubjectsDetails: string[] = [];
-    for (const gb of sameClassGradebooks.slice(0, 15)) {
+    for (const gb of sameClassGradebooks.slice(0, 12)) {
       const subj = workspaceSnapshot.subjects.find((s) => s.id === gb.subjectId);
       const term = workspaceSnapshot.terms.find((t) => t.id === gb.termId);
       if (!subj || gb.students.length === 0) continue;
       const stList = gb.students
-        .slice(0, 60)
+        .slice(0, 50)
         .map(
           (st) =>
-            `${st.name}${st.matricule ? ` (${st.matricule})` : ''}: notes=[${st.notes
+            `${st.name}${st.matricule ? ` (${st.matricule})` : ''}: [${st.notes
               .filter((_, i) => i < gb.noteColCount)
               .map((n) => n || '-')
               .join(', ')}], moy/20=${st.average20 !== null ? st.average20.toFixed(2) : '-'}`
         )
         .join(' ; ');
-      otherSubjectsDetails.push(
-        `  * ${subj.name} (${term?.name || 'Trimestre'}, subjectId="${subj.id}") : ${stList}`
-      );
+      otherSubjectsDetails.push(`  * ${subj.name} (${term?.name || 'Trimestre'}) : ${stList}`);
     }
 
-    dbOverview = `
-[BASE DE DONNÉES « APPLICATION MOYENNES » DU COMPTE UTILISATEUR (LECTURE SEULE PAR DÉFAUT)] :
-${classLines.length > 0 ? classLines.join('\n') : 'Aucune autre classe enregistrée.'}
-${
-  otherSubjectsDetails.length > 0
-    ? `\n[DÉTAIL DES AUTRES MATIÈRES DE LA CLASSE ACTIVE « ${activeContext.className} »] :\n${otherSubjectsDetails.join('\n')}`
-    : ''
-}`;
+    dbOverview = `\n\n[AUTRES DONNÉES DE L'APPLICATION MOYENNES DU COMPTE (LECTURE SEULE)] :\n${
+      classLines.length > 0 ? classLines.join('\n') : 'Aucune autre classe.'
+    }${
+      otherSubjectsDetails.length > 0
+        ? `\n[AUTRES MATIÈRES DE LA CLASSE « ${activeContext.className} »] :\n${otherSubjectsDetails.join('\n')}`
+        : ''
+    }`;
   }
 
-  // Résumé des fichiers liés dans le dossier de la conversation
   let filesContext = '';
-  if (conversationFiles && conversationFiles.length > 0) {
+  if (referencesActiveFiles && conversationFiles && conversationFiles.length > 0) {
     const fileBlocks = conversationFiles
       .filter((f) => f.extractedText && f.extractedText.trim().length > 0)
       .map(
         (f, i) =>
-          `--- FICHIER ${i + 1} DU DOSSIER DE LA CONVERSATION : « ${f.fileName} » (${f.fileType}) ---\n${f.extractedText.slice(0, 25000)}`
+          `--- FICHIER ${i + 1} : « ${f.fileName} » (${f.fileType}) ---\n${f.extractedText.slice(0, 25000)}`
       );
     if (fileBlocks.length > 0) {
-      filesContext = `\n[DOSSIER DES FICHIERS LIÉS À CETTE CONVERSATION] :\n${fileBlocks.join('\n\n')}`;
+      filesContext = `\n\n[FICHIERS LIÉS À CETTE CONVERSATION] :\n${fileBlocks.join('\n\n')}`;
     }
   }
 
-  const mentionRulesStr = activeContext.mentionRules
-    .map((r) => `>= ${r.min} : "${r.label}"`)
-    .join(', ');
-
-  return `Tu es **Assistant Delmas**, le copilote intelligent intégré au tableur de moyennes de StudyCloud.
-${langObj.promptInstruction}
-
-=====================================================================
-1. EMPLACEMENT EXACT OÙ SE TROUVE L'UTILISATEUR EN CE MOMENT MÊME
-=====================================================================
-- Année scolaire : ${activeContext.yearLabel || 'Non spécifiée'}
-- Établissement : ${activeContext.schoolName || 'Non spécifié'}
-- Classe actuelle : **${activeContext.className}** ${activeContext.levelName ? `(Niveau : ${activeContext.levelName})` : ''}
-- Trimestre actuel : **${activeContext.termName || 'Trimestre 1'}**
-- Tableau actuellement ouvert à l'écran : **${sheetTitle}** (type="${activeContext.sheetKind}")
-- Réglages actuels de ce tableau :
-  * Tri : ${activeContext.sortMode === 'merit' ? 'Ordre de mérite (1er → dernier)' : activeContext.sortMode === 'alpha' ? 'Ordre alphabétique (A → Z)' : 'Ordre initial'}
-  * Colonne Matricule affichée : ${activeContext.showMatricule ? 'OUI' : 'NON'}
-  * Barème de la moyenne : Sur /${activeContext.averageScale}
-  * Intervalles de mentions : ${mentionRulesStr}
-  * Zoom : ${activeContext.zoomPercent}%
-  ${activeContext.activeCellCoord ? `* Case actuellement sélectionnée par l'utilisateur : ${activeContext.activeCellCoord} (valeur="${activeContext.activeCellValue || ''}")` : ''}
-- Colonnes de notes de ce tableau :
-  - ${noteColsSummary}
-- Élèves actuellement présents dans ce tableau ouvert (${nonEmptyStudents.length} élèves renseignés sur ${activeContext.students.length} lignes) :
-  - ${studentsSummary}
-${dbOverview}
-${filesContext}
-
-=====================================================================
-2. RÈGLES STRICTES DE CIBLAGE ET D'EXÉCUTION (TRÈS IMPORTANT)
-=====================================================================
-1. **CIBLE EXCLUSIVE = LE TABLEAU OUVERT** :
-   Tu sais exactement que l'utilisateur travaille en ce moment dans la classe **« ${activeContext.className} »** et dans **${sheetTitle}**.
-   Quand l'utilisateur te demande d'écrire, d'ajouter des élèves, de saisir des notes, de trier, de changer le barème, d'afficher le matricule, d'ajuster des points ou de mettre en forme, tu appliques ces actions **UNIQUEMENT dans ce tableau actuellement ouvert** et **JAMAIS ailleurs** (ne touche jamais une autre matière ou une autre classe si l'utilisateur ne l'a pas explicitement demandé).
-2. **AUCUNE MODIFICATION NON DEMANDÉE** :
-   Si l'utilisateur te pose simplement une question (ex: « Dans quelle classe je suis ? », « Qui est le premier ? », « Combien d'élèves ont la moyenne ? », « Que contient cette image ? », « Compare avec les notes d'une autre matière ») SANS te demander de modifier le tableau, tu réponds clairement et le tableau \`"actions"\` DOIT être vide (\`"actions": []\`).
-3. **EXTRACTION DEPUIS IMAGE / PHOTO / EXCEL / PDF / AUDIO** :
-   Si l'utilisateur importe une photo de liste d'élèves, un relevé de notes manuscrit ou imprimé, un fichier Excel/CSV/Word/PDF ou dicte des notes, et demande de les mettre dans le tableau, lis toutes les lignes visibles avec une précision maximale et génère les actions (\`add_students\` ou \`update_students\` + \`set_show_matricule\` si des matricules sont présents) pour tout remplir d'un seul coup !
-
-=====================================================================
-3. FORMAT DE RÉPONSE OBLIGATOIRE (JSON STRICT)
-=====================================================================
-Tu dois TOUJOURS répondre avec un unique objet JSON valide (sans texte en dehors du JSON) ayant exactement cette structure :
-\`\`\`json
-{
-  "chat_response": "Ta réponse claire, chaleureuse et précise dans la langue choisie (${langObj.name}). Explique ce que tu as fait ou réponds à la question.",
-  "actions": [
-    // Liste des actions à exécuter immédiatement sur le tableau ouvert (vide [] si aucune modification n'est demandée)
-  ]
-}
-\`\`\`
-
-=====================================================================
-4. CATALOGUE COMPLET DES ACTIONS DISPONIBLES DANS "actions"
-=====================================================================
-Voici toutes les actions que tu peux placer dans \`"actions"\` lorsque l'utilisateur te demande d'agir sur le tableau :
-
-1. **Ajouter des élèves (remplit d'abord les lignes vides du tableau puis ajoute des lignes)** :
-   \`{ "type": "add_students", "students": [ { "name": "KOUASSI Delmas", "matricule": "24-001", "notes": ["15", "14.5", "18"] } ] }\`
-   (Si tu ajoutes aussi des matricules et que la colonne Matricule est masquée, ajoute aussi \`{ "type": "set_show_matricule", "show": true, "scope": "sheet" }\`).
-
-2. **Modifier les notes, le nom ou le matricule d'élèves existants** :
-   \`{ "type": "update_students", "updates": [ { "matchName": "DKD", "rowIndex": 1, "newName": "DKD Kouassi", "matricule": "MAT-01", "notes": { "1": "16", "2": "17.5" } } ] }\`
-   (Dans \`"notes"\`, la clé \`"1"\` correspond à NOTE 1, \`"2"\` à NOTE 2, etc. Tu peux cibler un élève par \`"matchName"\`, par \`"rowIndex"\` 1..N, ou par \`"studentId"\`).
-
-3. **Remplacer toute la liste des élèves du tableau ouvert** :
-   \`{ "type": "set_students", "students": [ { "name": "Élève 1", "matricule": "", "notes": ["12", "14"] } ] }\`
-
-4. **Supprimer des élèves ou nettoyer les lignes vides** :
-   \`{ "type": "remove_students", "names": ["Nom Élève"], "rowIndices": [3, 4], "removeEmpty": false }\`
-   (Mets \`"removeEmpty": true\` pour supprimer toutes les lignes vides du tableau).
-
-5. **Effacer des notes** :
-   \`{ "type": "clear_notes", "mode": "all" }\` ou \`{ "type": "clear_notes", "mode": "specific", "colNumber": 1 }\`
-
-6. **Ajouter une ou plusieurs colonnes de notes** :
-   \`{ "type": "add_note_column", "title": "NOTE", "maxScore": 20, "coeffEval": 1, "count": 1 }\`
-
-7. **Modifier l'intitulé, le barème (/20, /40...) ou le coefficient d'une colonne de note** :
-   \`{ "type": "update_note_column", "colNumber": 1, "title": "DEVOIR", "maxScore": 40, "coeffEval": 2 }\`
-
-8. **Supprimer ou déplacer une colonne de note** :
-   \`{ "type": "delete_note_column", "colNumber": 7 }\`
-   \`{ "type": "swap_note_columns", "colNumber1": 1, "colNumber2": 2 }\`
-
-9. **Ajuster les notes (± Ajouter ou retirer des points comme le bouton Ajuster du ruban)** :
-   \`{ "type": "adjust_grades", "mode": "all", "delta": 1.5 }\` (ou \`"mode": "specific", "colNumber": 2, "delta": -1\`)
-
-10. **Changer le classement / tri des élèves (Ordre de mérite, Alphabétique, Ordre initial)** :
-    \`{ "type": "set_sort_mode", "sortMode": "merit" }\` (\`"merit"\` = Ordre de mérite 1er → dernier, \`"alpha"\` = Ordre alphabétique A → Z, \`"order"\` = Ordre initial)
-
-11. **Afficher ou masquer la colonne Matricule (ce tableau ou toute la classe)** :
-    \`{ "type": "set_show_matricule", "show": true, "scope": "sheet" }\` (\`"scope": "sheet"\` par défaut, ou \`"class"\` si l'utilisateur demande pour toute la classe)
-
-12. **Définir sur combien la moyenne générale est calculée (ex: sur /20, /40, /100...)** :
-    \`{ "type": "set_average_scale", "scale": 40, "scope": "sheet" }\` (\`"scope": "sheet"\` par défaut, ou \`"class"\` si demandé pour toute la classe)
-
-13. **Changer d'un coup le barème maximal de toutes les notes ou d'une note spécifique** :
-    \`{ "type": "bulk_update_note_max", "mode": "all", "maxScore": 40, "convertExisting": false }\` (ou \`"mode": "specific", "colNumber": 1, "maxScore": 40, "convertExisting": true\`)
-
-14. **Personnaliser les intervalles et libellés de Mentions** :
-    \`{ "type": "set_mention_rules", "scope": "sheet", "rules": [ { "min": 16, "label": "Très Bien" }, { "min": 14, "label": "Bien" }, { "min": 12, "label": "Assez Bien" }, { "min": 10, "label": "Passable" }, { "min": 0, "label": "Insuffisant" } ] }\`
-
-15. **Mettre en forme les cases (Gras, Italique, Souligné, Couleur du texte, Couleur de fond, Police, Taille, Alignement)** :
-    \`{ "type": "format_cells", "target": "all" | "student" | "column" | "condition", "studentName": "DKD", "rowIndex": 1, "column": "name" | "matricule" | "note" | "average" | "mention" | "rank", "colNumber": 1, "condition": "average_below" | "average_above" | "rank_top", "threshold": 10, "style": { "bold": true, "italic": false, "underline": false, "textColor": "#dc2626", "bgColor": "#fee2e2", "fontFamily": "Calibri", "fontSize": 12, "textAlign": "center" } }\`
-
-16. **Effacer la mise en forme / couleurs du tableau** :
-    \`{ "type": "clear_formatting" }\`
-
-17. **Copier les élèves depuis une autre matière de la base de données dans ce tableau ouvert** :
-    \`{ "type": "copy_students_from_subject", "sourceSubjectName": "Physique", "includeNotes": false }\`
-
-18. **Modifier le coefficient d'une matière ou d'un trimestre (dans les tableaux de Moyenne Générale)** :
-    \`{ "type": "set_subject_coefficient", "subjectName": "Mathématiques", "coefficient": 4 }\`
-    \`{ "type": "set_term_coefficient", "termName": "Trimestre 1", "coefficient": 2 }\`
-
-19. **Zoom, Largeurs, Annuler (Undo), Rétablir (Redo), Exporter en Excel (.xlsx)** :
-    \`{ "type": "set_zoom", "zoomPercent": 80 }\`
-    \`{ "type": "reset_column_widths" }\`
-    \`{ "type": "undo" }\`
-    \`{ "type": "redo" }\`
-    \`{ "type": "export_excel" }\`
-`;
+  return `[CONTEXTE SILENCIEUX DU TABLEAU ACTUELLEMENT OUVERT]
+- Année : ${activeContext.yearLabel || 'Non spécifiée'} | Établissement : ${activeContext.schoolName || 'Non spécifié'}
+- Classe active : ${activeContext.className}${activeContext.levelName ? ` (${activeContext.levelName})` : ''}
+- Trimestre actif : ${activeContext.termName || 'Trimestre 1'}
+- Tableau ouvert : ${sheetTitle} (type="${activeContext.sheetKind}")
+- Réglages : Tri=${activeContext.sortMode} | Matricule=${activeContext.showMatricule ? 'affiché' : 'masqué'} | Moyenne=/${activeContext.averageScale} | Zoom=${activeContext.zoomPercent}%
+- Mentions : ${mentionRulesStr}${
+    activeContext.activeCellCoord
+      ? `\n- Case sélectionnée : ${activeContext.activeCellCoord} ("${activeContext.activeCellValue || ''}")`
+      : ''
+  }${generalMetaBlock}
+- Colonnes : ${noteColsSummary}
+- Élèves (${nonEmptyStudents.length} renseignés / ${activeContext.students.length} lignes) :
+  - ${studentsSummary}${dbOverview}${filesContext}`;
 }
 
 /**
- * Extrait proprement { chatResponse, actions } de la réponse brute du LLM
- * en garantissant qu'aucun JSON brut ne s'affiche jamais dans la bulle de discussion.
+ * Catalogue d'actions adapté exactement au type de tableau ouvert.
  */
-export function parseTeacherDelmasAiResponse(rawText: string): {
+function buildActionsCatalogForSheet(sheetKind: TeacherDelmasActiveContext['sheetKind']): string {
+  const commonActions = `
+- Trier le classement : \`{ "type": "set_sort_mode", "sortMode": "merit" | "alpha" | "order" }\`
+- Afficher/masquer Matricule : \`{ "type": "set_show_matricule", "show": true | false, "scope": "sheet" | "class" }\`
+- Changer le barème de la moyenne (/20, /40, /100...) : \`{ "type": "set_average_scale", "scale": 40, "scope": "sheet" | "class" }\`
+- Personnaliser les mentions : \`{ "type": "set_mention_rules", "scope": "sheet" | "class", "rules": [ { "min": 16, "label": "Très Bien" }, ... ] }\`
+- Zoom / Annuler / Rétablir / Export Excel : \`{ "type": "set_zoom", "zoomPercent": 80 }\` | \`{ "type": "undo" }\` | \`{ "type": "redo" }\` | \`{ "type": "export_excel" }\``;
+
+  if (sheetKind === 'term_average') {
+    return `[ACTIONS DISPONIBLES SUR CE TABLEAU DE MOYENNE GÉNÉRALE DU TRIMESTRE] :
+- Modifier le coefficient d'une matière : \`{ "type": "set_subject_coefficient", "subjectName": "Mathématiques", "coefficient": 4 }\`${commonActions}`;
+  }
+
+  if (sheetKind === 'annual_average') {
+    return `[ACTIONS DISPONIBLES SUR CE TABLEAU DE MOYENNE GÉNÉRALE ANNUELLE] :
+- Modifier le coefficient d'un trimestre : \`{ "type": "set_term_coefficient", "termName": "Trimestre 1", "coefficient": 2 }\`${commonActions}`;
+  }
+
+  return `[ACTIONS DISPONIBLES SUR CE TABLEAU DE MATIÈRE] :
+- Ajouter de NOUVEAUX élèves (remplit les lignes vides puis en crée si besoin) :
+  \`{ "type": "add_students", "students": [ { "name": "KOUASSI Delmas", "matricule": "24-001", "notes": ["15", "14.5"] } ] }\`
+- Modifier un ou plusieurs élèves EXISTANTS (préserve leurs autres notes non mentionnées) :
+  \`{ "type": "update_students", "updates": [ { "studentId": "...", "matchName": "DKD", "newName": "Nouveau Nom", "matricule": "MAT-01", "notes": { "1": "16", "2": "17.5" } } ] }\`
+- Remplacer toute la liste des élèves : \`{ "type": "set_students", "students": [ { "name": "...", "matricule": "", "notes": ["12"] } ] }\`
+- Supprimer des élèves ou les lignes vides : \`{ "type": "remove_students", "names": ["Nom"], "rowIndices": [3], "removeEmpty": false }\`
+- Effacer des notes : \`{ "type": "clear_notes", "mode": "all" | "specific", "colNumber": 1 }\`
+- Ajouter / modifier / supprimer / échanger des colonnes de notes :
+  \`{ "type": "add_note_column", "title": "DEVOIR", "maxScore": 20, "coeffEval": 1, "count": 1 }\`
+  \`{ "type": "update_note_column", "colNumber": 1, "title": "DEVOIR", "maxScore": 40, "coeffEval": 2 }\`
+  \`{ "type": "delete_note_column", "colNumber": 7 }\`
+  \`{ "type": "swap_note_columns", "colNumber1": 1, "colNumber2": 2 }\`
+- Ajuster les notes (± points) : \`{ "type": "adjust_grades", "mode": "all" | "specific", "colNumber": 1, "delta": 1.5 }\`
+- Changer d'un coup le max de toutes les notes ou d'une note : \`{ "type": "bulk_update_note_max", "mode": "all" | "specific", "colNumber": 1, "maxScore": 40, "convertExisting": false }\`
+- Mise en forme des cases :
+  \`{ "type": "format_cells", "target": "all" | "student" | "column" | "condition", "studentName": "DKD", "column": "name" | "matricule" | "note" | "average" | "mention" | "rank", "colNumber": 1, "condition": "average_below" | "average_above" | "rank_top", "threshold": 10, "style": { "bold": true, "italic": false, "underline": false, "textColor": "#dc2626", "bgColor": "#fee2e2", "fontFamily": "Calibri", "fontSize": 12, "textAlign": "center" } }\`
+- Effacer la mise en forme : \`{ "type": "clear_formatting" }\`
+- Copier les élèves d'une autre matière dans ce tableau : \`{ "type": "copy_students_from_subject", "sourceSubjectName": "Physique", "includeNotes": false }\`
+- Réinitialiser les largeurs de colonnes : \`{ "type": "reset_column_widths" }\`${commonActions}`;
+}
+
+/**
+ * Construit un prompt système intelligent, naturel et adapté à l'intention détectée :
+ * - Mode 'chat'    : discussion naturelle comme dans le Menu Création, SANS citer ni recompter le tableau, SANS pression.
+ * - Mode 'inspect' : réponse précise sur le tableau/les fichiers en lecture seule, SANS modification ni pression.
+ * - Mode 'action'  : réponse naturelle + bloc discret <delmas_actions>[...]</delmas_actions> UNIQUEMENT pour les tâches demandées.
+ */
+export function buildTeacherDelmasSystemPrompt(params: {
+  languageCode: string;
+  activeContext: TeacherDelmasActiveContext;
+  workspaceSnapshot?: TeacherDelmasWorkspaceSnapshot | null;
+  conversationFiles?: TeacherDelmasFileRecord[];
+  intent?: TeacherDelmasIntent;
+  needsWorkspaceDb?: boolean;
+  referencesActiveFiles?: boolean;
+}): string {
+  const {
+    languageCode,
+    activeContext,
+    workspaceSnapshot,
+    conversationFiles,
+    intent = 'action',
+    needsWorkspaceDb = false,
+    referencesActiveFiles = false,
+  } = params;
+
+  const langObj =
+    SUPPORTED_DELMAS_LANGUAGES.find((l) => l.code === languageCode) ||
+    SUPPORTED_DELMAS_LANGUAGES[0];
+
+  const sheetTitle =
+    activeContext.sheetKind === 'subject'
+      ? `Matière « ${activeContext.subjectName || 'Matière'} »${
+          activeContext.subjectCoefficient !== undefined &&
+          activeContext.subjectCoefficient !== null
+            ? ` (Coeff ${activeContext.subjectCoefficient})`
+            : ''
+        }`
+      : activeContext.sheetKind === 'term_average'
+      ? `Moyenne générale du trimestre « ${
+          activeContext.termName || activeContext.averageCardTitle || 'Trimestre'
+        } »`
+      : `Moyenne générale annuelle « ${
+          activeContext.averageCardTitle || "Moyenne générale de l'année"
+        } »`;
+
+  // =========================================================================
+  // MODE 1 : DISCUSSION SIMPLE / CONVERSATION NATURELLE (ZÉRO DUMP DU TABLEAU)
+  // =========================================================================
+  if (intent === 'chat') {
+    return `Tu es **Assistant Delmas**, un assistant intelligent, attentif, calme et chaleureux intégré à StudyCloud.
+${langObj.promptInstruction}
+
+CONSIGNES ESSENTIELLES DE COMPORTEMENT :
+1. **Discussion 100 % naturelle et intelligente** : Écoute vraiment l'utilisateur et réponds-lui simplement, avec clarté et bienveillance, exactement comme dans une vraie conversation.
+2. **ZÉRO pression, ZÉRO tâche imposée** : Ne pousse JAMAIS l'utilisateur à te donner une tâche, ne lui sors pas de liste d'actions à faire sur son tableau, ne sois jamais insistant.
+3. **Discrétion absolue sur le tableau** : Tu sais silencieusement que l'utilisateur se trouve sur « ${sheetTitle} » (${activeContext.className}), mais **NE le mentionne PAS**, **NE cite AUCUNE donnée du tableau** et **NE recompte RIEN** puisqu'il ne te l'a pas demandé.
+4. **Réponse directe et propre** : Rédige directement ta réponse en Markdown fluide (et LaTeX $...$ / $$...$$ uniquement si la question est mathématique/scientifique). N'affiche JAMAIS de JSON, ni de balise technique, ni de réflexion interne (<think>).
+5. Si l'utilisateur te salue simplement (ex : « Bonjour », « Salut »), réponds de façon courte, naturelle et accueillante (1 à 2 phrases simples).`;
+  }
+
+  const contextBlock = buildActiveSheetContextBlock({
+    activeContext,
+    sheetTitle,
+    workspaceSnapshot,
+    conversationFiles,
+    needsWorkspaceDb,
+    referencesActiveFiles,
+  });
+
+  // =========================================================================
+  // MODE 2 : ANALYSE / CONSULTATION (LECTURE SEULE — AUCUNE MODIFICATION)
+  // =========================================================================
+  if (intent === 'inspect') {
+    return `Tu es **Assistant Delmas**, un assistant intelligent, précis et à l'écoute intégré à l'application de moyennes StudyCloud.
+${langObj.promptInstruction}
+
+CONSIGNES STRICTES (CONSULTATION / ANALYSE EN LECTURE SEULE) :
+1. **Réponds exactement à ce qui est demandé, rien de plus** : Sois clair, concis et exact. Ne récite pas tout le tableau et ne recompte pas des informations que l'utilisateur n'a pas demandées.
+2. **ZÉRO modification et ZÉRO pression** : L'utilisateur pose une question ou consulte un fichier. Ne modifie PAS le tableau, n'émets AUCUN bloc JSON ni aucune balise \`<delmas_actions>\`, et ne lui mets pas la pression pour lancer des tâches.
+3. **Données réelles uniquement** : Appuie-toi strictement sur les informations ci-dessous (et sur les fichiers/images joints s'il y en a). N'invente jamais d'élève ou de note.
+4. **Expression naturelle** : Écris directement en Markdown clair, sans réflexion interne (\`<think>\`) ni jargon technique (« outil de vision », « OCR », « JSON »).
+
+${contextBlock}`;
+  }
+
+  // =========================================================================
+  // MODE 3 : EXÉCUTION DE TÂCHE SUR LE TABLEAU OUVERT (PRÉCIS & RESPECTUEUX)
+  // =========================================================================
+  const actionsCatalog = buildActionsCatalogForSheet(activeContext.sheetKind);
+
+  return `Tu es **Assistant Delmas**, un assistant intelligent, fin et rigoureux connecté en direct au tableau de moyennes actuellement ouvert sur StudyCloud.
+${langObj.promptInstruction}
+
+RÈGLES D'OR (IMPÉRATIVES) :
+1. **Détecte toujours la vraie intention avant d'agir** :
+   - N'émets le bloc \`<delmas_actions>\` QUE si l'utilisateur demande clairement de modifier, remplir, trier, formater, régler ou exporter le tableau.
+   - Si finalement le message est une simple discussion ou une question sans ordre de modification, réponds naturellement SANS aucun bloc \`<delmas_actions>\`.
+2. **Cible exclusive = le tableau ouvert** :
+   - L'utilisateur travaille en ce moment dans **${activeContext.className}** → **${sheetTitle}**.
+   - Applique les modifications UNIQUEMENT dans ce tableau ouvert (jamais ailleurs, sauf si l'utilisateur demande explicitement \`"scope": "class"\`).
+3. **Précision chirurgicale — ZÉRO zèle non demandé** :
+   - Fais UNIQUEMENT ce que l'utilisateur demande. Ne touche aucune autre note, ne supprime rien de non demandé, ne recompte pas tout le tableau dans ta réponse et ne mets aucune pression pour d'autres tâches.
+   - Pour modifier un élève DÉJÀ présent dans le tableau, utilise \`update_students\` (avec son \`studentId\` ou \`matchName\`) afin de préserver intactes ses autres notes. Utilise \`add_students\` uniquement pour de nouveaux élèves.
+   - Si l'utilisateur importe une photo, un PDF, un Excel ou un audio contenant des élèves/notes et demande de les ajouter ou remplir, extrais chaque ligne fidèlement et remplis tout proprement (et active \`set_show_matricule\` si des matricules sont présents).
+4. **Format de réponse propre et naturel** :
+   - Rédige d'abord ta réponse naturelle, courte et claire dans la langue choisie (${langObj.name}), SANS jamais montrer de JSON, de code ou de réflexion interne (\`<think>\`).
+   - Ensuite, UNIQUEMENT si des actions doivent être exécutées sur le tableau, place à la TOUTE FIN de ta réponse ce bloc exact (qui sera exécuté silencieusement et jamais affiché) :
+<delmas_actions>
+[ { "type": "...", ... } ]
+</delmas_actions>
+
+${contextBlock}
+
+${actionsCatalog}`;
+}
+
+function sanitizeActionList(rawList: any): TeacherDelmasAction[] {
+  if (!Array.isArray(rawList)) return [];
+  return rawList.filter(
+    (a: any) =>
+      a &&
+      typeof a === 'object' &&
+      typeof a.type === 'string' &&
+      VALID_TEACHER_DELMAS_ACTION_TYPES.has(a.type)
+  );
+}
+
+function parseJsonPayloadWithArrays(raw: string): any {
+  const cleaned = String(raw || '')
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+    .trim();
+  if (!cleaned) return null;
+
+  // 1. Essai direct JSON.parse (préserve intact les tableaux JSON [...] !)
+  try {
+    return JSON.parse(cleaned);
+  } catch {}
+
+  // 2. Suppression des virgules traînantes éventuelles + extraction du tableau [...]
+  const noTrailingCommas = cleaned.replace(/,\s*([\]}])/g, '$1');
+  try {
+    return JSON.parse(noTrailingCommas);
+  } catch {}
+
+  const firstBracket = noTrailingCommas.indexOf('[');
+  const lastBracket = noTrailingCommas.lastIndexOf(']');
+  const firstBrace = noTrailingCommas.indexOf('{');
+  if (
+    firstBracket !== -1 &&
+    lastBracket > firstBracket &&
+    (firstBrace === -1 || firstBracket < firstBrace)
+  ) {
+    try {
+      return JSON.parse(noTrailingCommas.slice(firstBracket, lastBracket + 1));
+    } catch {}
+  }
+
+  // 3. Repli vers safeJsonParse pour les objets JSON { ... }
+  return safeJsonParse<any>(noTrailingCommas);
+}
+
+/**
+ * Extrait proprement { chatResponse, actions } de la réponse brute du LLM (Kimi) :
+ * - Supprime tout scratchpad de réflexion (<think>...</think>)
+ * - Extrait les actions depuis <delmas_actions>...</delmas_actions> (ou fallback JSON)
+ * - Garantit qu'AUCUNE balise ni JSON brut n'apparaît jamais dans le texte visible
+ * - Bloque strictement toute action si allowActions === false (modes 'chat' et 'inspect')
+ */
+export function parseTeacherDelmasAiResponse(
+  rawText: string,
+  options?: { allowActions?: boolean }
+): {
   chatResponse: string;
   actions: TeacherDelmasAction[];
 } {
+  const allowActions = options?.allowActions !== false;
   if (!rawText || typeof rawText !== 'string') {
     return { chatResponse: '', actions: [] };
   }
 
-  const trimmed = rawText.trim();
+  let working = stripTeacherDelmasReasoning(rawText);
+  if (!working) {
+    return { chatResponse: '', actions: [] };
+  }
 
-  // 1. Tentative de parsing JSON direct ou via safeJsonParse
-  const parsed = safeJsonParse<any>(trimmed);
-  if (parsed && typeof parsed === 'object') {
-    const candidateText =
-      typeof parsed.chat_response === 'string'
-        ? parsed.chat_response
-        : typeof parsed.chat_message === 'string'
-        ? parsed.chat_message
-        : typeof parsed.response === 'string'
-        ? parsed.response
-        : typeof parsed.message === 'string'
-        ? parsed.message
-        : '';
+  let extractedActions: TeacherDelmasAction[] = [];
 
-    const actions = Array.isArray(parsed.actions)
-      ? parsed.actions.filter((a: any) => a && typeof a === 'object' && typeof a.type === 'string')
-      : [];
-
-    if (candidateText.trim()) {
-      return {
-        chatResponse: candidateText.trim(),
-        actions,
-      };
-    }
-
-    if (actions.length > 0) {
-      return {
-        chatResponse: '✓ Modifications appliquées directement dans votre tableau.',
-        actions,
-      };
+  // 1. Extraction prioritaire des blocs <delmas_actions>...</delmas_actions>
+  const tagRegex = /<delmas_actions>([\s\S]*?)<\/delmas_actions>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = tagRegex.exec(working)) !== null) {
+    const inner = (match[1] || '').trim();
+    if (inner) {
+      const parsedInner = parseJsonPayloadWithArrays(inner);
+      if (Array.isArray(parsedInner)) {
+        extractedActions.push(...sanitizeActionList(parsedInner));
+      } else if (parsedInner && typeof parsedInner === 'object') {
+        if (Array.isArray(parsedInner.actions)) {
+          extractedActions.push(...sanitizeActionList(parsedInner.actions));
+        } else if (typeof parsedInner.type === 'string') {
+          extractedActions.push(...sanitizeActionList([parsedInner]));
+        }
+      }
     }
   }
 
-  // 2. Fallback : s'il y a un bloc ```json ... ``` au milieu d'un texte libre
-  let cleanText = trimmed;
-  let extractedActions: TeacherDelmasAction[] = [];
+  if (/<delmas_actions>/i.test(working)) {
+    working = working
+      .replace(/<delmas_actions>[\s\S]*?<\/delmas_actions>/gi, '')
+      .replace(/<delmas_actions>[\s\S]*$/gi, '')
+      .trim();
 
-  const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (codeBlockMatch) {
-    const innerParsed = safeJsonParse<any>(codeBlockMatch[1]);
-    if (innerParsed && typeof innerParsed === 'object') {
-      if (Array.isArray(innerParsed.actions)) {
-        extractedActions = innerParsed.actions.filter(
-          (a: any) => a && typeof a === 'object' && typeof a.type === 'string'
-        );
-      }
-      if (typeof innerParsed.chat_response === 'string' && innerParsed.chat_response.trim()) {
+    const finalActions = allowActions ? extractedActions : [];
+    return {
+      chatResponse:
+        working ||
+        (finalActions.length > 0
+          ? 'C’est fait, les modifications ont été appliquées dans votre tableau.'
+          : 'Je suis à votre écoute.'),
+      actions: finalActions,
+    };
+  }
+
+  // 2. Compatibilité fallback si le modèle a renvoyé un objet JSON direct { "chat_response": ..., "actions": [...] }
+  const trimmed = working.trim();
+  if (trimmed.startsWith('{') || trimmed.startsWith('```json')) {
+    const parsed = safeJsonParse<any>(trimmed);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      const candidateText =
+        typeof parsed.chat_response === 'string'
+          ? parsed.chat_response
+          : typeof parsed.chat_message === 'string'
+          ? parsed.chat_message
+          : typeof parsed.response === 'string'
+          ? parsed.response
+          : typeof parsed.message === 'string'
+          ? parsed.message
+          : '';
+      const actionsFromJson = sanitizeActionList(parsed.actions);
+
+      if (candidateText.trim()) {
         return {
-          chatResponse: innerParsed.chat_response.trim(),
-          actions: extractedActions,
+          chatResponse: stripTeacherDelmasReasoning(candidateText),
+          actions: allowActions ? actionsFromJson : [],
+        };
+      }
+      if (actionsFromJson.length > 0) {
+        return {
+          chatResponse: 'C’est fait, les modifications ont été appliquées dans votre tableau.',
+          actions: allowActions ? actionsFromJson : [],
         };
       }
     }
-    cleanText = trimmed.replace(/```(?:json)?\s*[\s\S]*?\s*```/gi, '').trim();
+  }
+
+  // 3. Fallback : bloc ```json ... ``` contenant des actions au milieu d'un texte libre
+  let cleanText = trimmed;
+  const codeBlockMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (codeBlockMatch) {
+    const innerParsed = parseJsonPayloadWithArrays(codeBlockMatch[1]);
+    if (innerParsed && typeof innerParsed === 'object') {
+      const hasActionPayload =
+        Array.isArray(innerParsed)
+          ? sanitizeActionList(innerParsed).length > 0
+          : Array.isArray(innerParsed.actions) ||
+            (typeof innerParsed.type === 'string' &&
+              VALID_TEACHER_DELMAS_ACTION_TYPES.has(innerParsed.type));
+
+      if (hasActionPayload) {
+        extractedActions = Array.isArray(innerParsed)
+          ? sanitizeActionList(innerParsed)
+          : Array.isArray(innerParsed.actions)
+          ? sanitizeActionList(innerParsed.actions)
+          : sanitizeActionList([innerParsed]);
+
+        if (typeof innerParsed.chat_response === 'string' && innerParsed.chat_response.trim()) {
+          return {
+            chatResponse: stripTeacherDelmasReasoning(innerParsed.chat_response),
+            actions: allowActions ? extractedActions : [],
+          };
+        }
+        cleanText = trimmed.replace(/```(?:json)?\s*[\s\S]*?\s*```/gi, '').trim();
+      }
+    }
   }
 
   return {
-    chatResponse: cleanText || 'Je suis à votre disposition pour votre tableau.',
-    actions: extractedActions,
+    chatResponse: cleanText || 'Je suis à votre écoute.',
+    actions: allowActions ? extractedActions : [],
   };
 }
