@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="fr">
   <head>
     <meta charset="UTF-8" />
@@ -226,27 +226,27 @@
         )) {
           e.preventDefault(); // Bloque toute tentative de déformation par le navigateur
         }
-      }, { passive: false });
+      }, { passive: false, capture: true });
 
       // 3. Bloquer le zoom molette de souris du navigateur
       window.addEventListener('wheel', function(e) {
-        if (e.ctrlKey) {
+        if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
         }
-      }, { passive: false });
+      }, { passive: false, capture: true });
 
       // 4. Bloquer le zoom par pincement tactile multi-touch (Touchpad, Écrans tactiles, Mobiles)
       window.addEventListener('touchstart', function(e) {
         if (e.touches && e.touches.length > 1) {
           e.preventDefault();
         }
-      }, { passive: false });
+      }, { passive: false, capture: true });
 
       // 5. Bloquer les gestes de zoom Safari / WebKit
       ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(event) {
         window.addEventListener(event, function(e) {
           e.preventDefault();
-        }, { passive: false });
+        }, { passive: false, capture: true });
       });
 
       // 6. Bloquer le double-tap to zoom sur mobile
@@ -261,7 +261,7 @@
           }
         }
         lastTouchEnd = now;
-      }, { passive: false });
+      }, { passive: false, capture: true });
 
       if (window.visualViewport) {
         const initialHeight = window.visualViewport.height;

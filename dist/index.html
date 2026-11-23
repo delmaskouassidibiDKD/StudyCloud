@@ -187,7 +187,7 @@
       }
     </script>
     <script src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async defer></script>
-    <script type="module" crossorigin src="/assets/index-lTToZj2L.js"></script>
+    <script type="module" crossorigin src="/assets/index-BpHxZj5W.js"></script>
     <link rel="modulepreload" crossorigin href="/assets/vendor-react-DQyCuIb2.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-icons-De0ODqTJ.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-pdf-B5tYFR6d.js">
@@ -196,7 +196,7 @@
     <link rel="modulepreload" crossorigin href="/assets/vendor-calendar-BLx5pBbz.js">
     <link rel="modulepreload" crossorigin href="/assets/vendor-charts-D7EJoZef.js">
     <link rel="stylesheet" crossorigin href="/assets/vendor-math-BOvhZl6_.css">
-    <link rel="stylesheet" crossorigin href="/assets/index-DLBJ6Ry1.css">
+    <link rel="stylesheet" crossorigin href="/assets/index-BCrIj1Zf.css">
   </head>
   <body>
     <div id="google_translate_element" style="display:none !important; visibility:hidden !important; position:absolute !important; top:-9999px !important;"></div>
@@ -235,27 +235,27 @@
         )) {
           e.preventDefault(); // Bloque toute tentative de déformation par le navigateur
         }
-      }, { passive: false });
+      }, { passive: false, capture: true });
 
       // 3. Bloquer le zoom molette de souris du navigateur
       window.addEventListener('wheel', function(e) {
-        if (e.ctrlKey) {
+        if (e.ctrlKey || e.metaKey) {
           e.preventDefault();
         }
-      }, { passive: false });
+      }, { passive: false, capture: true });
 
       // 4. Bloquer le zoom par pincement tactile multi-touch (Touchpad, Écrans tactiles, Mobiles)
       window.addEventListener('touchstart', function(e) {
         if (e.touches && e.touches.length > 1) {
           e.preventDefault();
         }
-      }, { passive: false });
+      }, { passive: false, capture: true });
 
       // 5. Bloquer les gestes de zoom Safari / WebKit
       ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(event) {
         window.addEventListener(event, function(e) {
           e.preventDefault();
-        }, { passive: false });
+        }, { passive: false, capture: true });
       });
 
       // 6. Bloquer le double-tap to zoom sur mobile
@@ -270,7 +270,7 @@
           }
         }
         lastTouchEnd = now;
-      }, { passive: false });
+      }, { passive: false, capture: true });
 
       if (window.visualViewport) {
         const initialHeight = window.visualViewport.height;

@@ -1270,61 +1270,32 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     };
   }, []);
 
-  // Gestion du zoom avec touchpad (Ctrl + wheel) et tactile 2 doigts
+  // Protection contre tout zoom accidentel au touchpad (Ctrl + molette / pincement) :
+  // Le zoom du tableur se règle uniquement via les boutons dédiés (-, %, +) et le curseur en bas.
   useEffect(() => {
     const container = gridContainerRef.current;
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
+      if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
-        const delta = -e.deltaY * 0.12;
-        setZoomPercent(prev => Math.min(200, Math.max(30, Math.round(prev + delta))));
-      }
-    };
-
-    let initialDistance: number | null = null;
-    let initialZoom: number = zoomPercent;
-
-    const handleTouchStart = (e: TouchEvent) => {
-      if (e.touches.length === 2) {
-        initialDistance = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        initialZoom = zoomPercent;
       }
     };
 
     const handleTouchMove = (e: TouchEvent) => {
-      if (e.touches.length === 2 && initialDistance !== null) {
+      if (e.touches.length >= 2) {
         e.preventDefault();
-        const currentDistance = Math.hypot(
-          e.touches[0].clientX - e.touches[1].clientX,
-          e.touches[0].clientY - e.touches[1].clientY
-        );
-        const factor = currentDistance / initialDistance;
-        const newZoom = Math.min(200, Math.max(30, Math.round(initialZoom * factor)));
-        setZoomPercent(newZoom);
       }
     };
 
-    const handleTouchEnd = () => {
-      initialDistance = null;
-    };
-
     container.addEventListener('wheel', handleWheel, { passive: false });
-    container.addEventListener('touchstart', handleTouchStart, { passive: true });
     container.addEventListener('touchmove', handleTouchMove, { passive: false });
-    container.addEventListener('touchend', handleTouchEnd, { passive: true });
 
     return () => {
       container.removeEventListener('wheel', handleWheel);
-      container.removeEventListener('touchstart', handleTouchStart);
       container.removeEventListener('touchmove', handleTouchMove);
-      container.removeEventListener('touchend', handleTouchEnd);
     };
-  }, [zoomPercent]);
+  }, []);
 
   // Calcul automatique de la mention pédagogique selon les seuils exacts :
   // < 10: Insuffisant | 10..12: Passable | 12..14: Assez bien | 14..16: Bien | >= 16: Très bien | null: —
@@ -2650,7 +2621,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   return (
     <div 
       ref={gradebookContainerRef}
-      className={`gradebook-gray-selection w-full flex flex-col bg-[#eef2f6] dark:bg-[#0b1120] text-slate-800 dark:text-slate-100 font-sans select-none overflow-hidden transition-all duration-300 ${
+      className={`gradebook-gray-selection w-full flex flex-col bg-[#eef2f6] dark:bg-[#0b1120] text-slate-800 dark:text-slate-100 font-sans select-none overflow-hidden transition-colors duration-200 ${
         viewerExpandLevel >= 2
           ? 'fixed inset-0 z-[60] w-screen h-screen min-h-screen'
           : 'relative w-full h-full min-h-0 flex-1'
@@ -2681,6 +2652,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         }
         .dark .gradebook-gray-selection > div.flex-1.overflow-auto {
           background-color: #0b1120 !important;
+        }
+        .dark .gradebook-gray-selection .gb-excel-hdr,
+        .dark .gradebook-gray-selection .gb-excel-gutter {
+          background-color: #111827 !important;
+          border-color: #334155 !important;
+          color: #94a3b8 !important;
+        }
+        .dark .gradebook-gray-selection .gb-excel-margin {
+          background-color: #0f172a !important;
+          border-color: #1e293b !important;
         }
       `}</style>
       <input
@@ -3807,47 +3788,47 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           if (blockedNoteTarget) setBlockedNoteTarget(null);
         }}
         className="flex-1 overflow-auto bg-[#fafbfc] relative p-0 touch-pan-x touch-pan-y"
-        style={{
-          zoom: `${zoomPercent}%`
-        }}
       >
-        <div className="inline-block min-w-full pb-20 pr-20">
-          {/* Ligne d'en-tête de colonnes Excel (A, B, C, ... AV) : COLLÉE EN HAUT DIRECTEMENT SOUS LA BARRE FX SANS ESPACE */}
-          <div className="flex items-center mb-0 sticky top-0 z-20 select-none bg-[#f8fafc] border-b border-slate-300 shadow-2xs">
-            <div className="w-9 h-6 bg-[#f1f5f9] border-r border-b border-slate-300 text-[10px] flex items-center justify-center font-mono text-slate-500 shrink-0 sticky left-0 z-30">
+        <div
+          className="inline-block min-w-full pb-20 pr-20"
+          style={{ zoom: `${zoomPercent}%` }}
+        >
+          {/* Ligne d'en-tête de colonnes Excel (A, B, C, ... AV) — toujours strictement au-dessus de la grille */}
+          <div className="gb-excel-hdr flex items-center mb-0 sticky top-0 z-30 select-none bg-[#f8fafc] border-b border-slate-300 shadow-2xs">
+            <div className="gb-excel-hdr w-9 h-6 bg-[#f1f5f9] border-r border-b border-slate-300 text-[10px] flex items-center justify-center font-mono text-slate-500 shrink-0 sticky left-0 z-40">
               ◢
             </div>
             {Array.from({ length: backgroundColCount }).map((_, c) => (
               <div 
                 key={`excel-col-letter-${c}`} 
-                className="w-16 h-6 border-r border-b border-slate-300 bg-[#f8fafc] text-slate-500 font-mono text-[10.5px] font-semibold flex items-center justify-center shrink-0"
+                className="gb-excel-hdr w-16 h-6 border-r border-b border-slate-300 bg-[#f8fafc] text-slate-500 font-mono text-[10.5px] font-semibold flex items-center justify-center shrink-0"
               >
                 {getExcelColumnLabel(c)}
               </div>
             ))}
           </div>
 
-          <div className="flex items-start">
-            {/* Colonne de numéros de lignes Excel à gauche (1, 2, 3...) */}
-            <div className="flex flex-col shrink-0 select-none sticky left-0 z-10">
+          <div className="flex items-stretch">
+            {/* Colonne de numéros de lignes Excel à gauche (1, 2, 3...) — toujours strictement au-dessus du tableau */}
+            <div className="gb-excel-gutter flex flex-col shrink-0 self-stretch select-none sticky left-0 z-20 bg-[#f8fafc] border-r border-slate-300 shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]">
               {Array.from({ length: backgroundRowCount }).map((_, r) => (
                 <div 
                   key={`excel-row-num-${r}`} 
-                  className="w-9 h-11 border-b border-r border-slate-300 bg-[#f8fafc] text-slate-500 font-mono text-[10px] font-semibold flex items-center justify-center shrink-0"
+                  className="gb-excel-hdr w-9 h-11 border-b border-slate-300 bg-[#f8fafc] text-slate-500 font-mono text-[10px] font-semibold flex items-center justify-center shrink-0"
                 >
                   {r + 1}
                 </div>
               ))}
             </div>
 
-            {/* Zone principale contenant le tableau et la grille environnante */}
-            <div className="relative shrink-0">
+            {/* Zone principale isolée à z-0 pour qu'aucun élément du tableau ne passe au-dessus de 1, 2, 3... ou A, B, C... */}
+            <div className="relative shrink-0 z-0 isolate">
               {/* Petites cases de fond au-dessus du tableau (Ligne 1) */}
               <div className="flex">
                 {Array.from({ length: backgroundColCount }).map((_, c) => (
                   <div 
                     key={`top-grid-${c}`} 
-                    className="w-16 h-6 border-r border-b border-slate-300 bg-white"
+                    className="gb-excel-margin w-16 h-6 border-r border-b border-slate-300 bg-white"
                   />
                 ))}
               </div>
@@ -3858,7 +3839,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   {Array.from({ length: studentsWithStats.length + 3 }).map((_, r) => (
                     <div 
                       key={`left-grid-${r}`} 
-                      className="w-16 h-11 border-b border-r border-slate-300 bg-white"
+                      className="gb-excel-margin w-16 h-11 border-b border-r border-slate-300 bg-white"
                     />
                   ))}
                 </div>

@@ -191,9 +191,18 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
   const viewerExpandLevel = useViewerExpandLevel();
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
 
+  // Hydratation synchrone immédiate depuis le cache local isolé au compte (évite tout saut visuel / zoom brusque à l'ouverture)
+  const initialCachedSheet = useMemo(
+    () => (userId ? readUserClassAverageCache(userId, averageCard.id) : null),
+    [userId, averageCard.id]
+  );
+
   // Données serveur (matières + notes des tableurs du trimestre)
-  const [subjects, setSubjects] = useState<TermAverageSubject[]>(() =>
-    initialSubjects.map((s) => ({
+  const [subjects, setSubjects] = useState<TermAverageSubject[]>(() => {
+    if (initialCachedSheet?.subjects && initialCachedSheet.subjects.length > 0) {
+      return initialCachedSheet.subjects;
+    }
+    return initialSubjects.map((s) => ({
       id: s.id,
       name: s.name,
       coefficient: s.coefficient ?? null,
@@ -205,31 +214,40 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       textColor: s.textColor,
       borderColor: s.borderColor,
       borderDarkColor: s.borderDarkColor,
-    }))
-  );
+    }));
+  });
   const [subjectGradebooks, setSubjectGradebooks] = useState<
     Record<string, GradebookStudentSnapshot[]>
-  >({});
-  const [liveTerm, setLiveTerm] = useState<TermItem | null>(term || null);
+  >(() => initialCachedSheet?.subjectGradebooks || {});
+  const [liveTerm, setLiveTerm] = useState<TermItem | null>(
+    () => initialCachedSheet?.term || term || null
+  );
 
   // États persistés dans D1 (teacher_class_averages)
-  const [layout, setLayout] = useState<TermAverageLayoutState>({});
-  const [styles, setStyles] = useState<TermAverageStylesState>({
-    cellColors: {},
-    rowColors: {},
-    cellCustomStyles: {},
-  });
-  const [overrides, setOverrides] = useState<TermAverageOverrides>({
-    manualStudents: [],
-    subjectOverrides: {},
-    mergedLinks: [],
-    distinctPairs: [],
-  });
+  const [layout, setLayout] = useState<TermAverageLayoutState>(
+    () => initialCachedSheet?.card?.layout || {}
+  );
+  const [styles, setStyles] = useState<TermAverageStylesState>(() => ({
+    cellColors: initialCachedSheet?.card?.styles?.cellColors || {},
+    rowColors: initialCachedSheet?.card?.styles?.rowColors || {},
+    cellCustomStyles: initialCachedSheet?.card?.styles?.cellCustomStyles || {},
+  }));
+  const [overrides, setOverrides] = useState<TermAverageOverrides>(() => ({
+    manualStudents: initialCachedSheet?.card?.overrides?.manualStudents || [],
+    subjectOverrides: initialCachedSheet?.card?.overrides?.subjectOverrides || {},
+    mergedLinks: initialCachedSheet?.card?.overrides?.mergedLinks || [],
+    distinctPairs: initialCachedSheet?.card?.overrides?.distinctPairs || [],
+  }));
   const [isDuplicatesModalOpen, setIsDuplicatesModalOpen] = useState(false);
   const [manualMergePrimaryKey, setManualMergePrimaryKey] = useState('');
   const [manualMergeSecondaryKey, setManualMergeSecondaryKey] = useState('');
-  const [sortMode, setSortMode] = useState<TermAverageSortMode>('merit');
-  const [zoomPercent, setZoomPercent] = useState<number>(80);
+  const [sortMode, setSortMode] = useState<TermAverageSortMode>(
+    () => initialCachedSheet?.card?.sortMode || 'merit'
+  );
+  const [zoomPercent, setZoomPercent] = useState<number>(() => {
+    const z = initialCachedSheet?.card?.layout?.zoomPercent;
+    return typeof z === 'number' && z >= 40 && z <= 180 ? Math.round(z) : 80;
+  });
 
   // Statut de synchronisation cloud
   const [cloudStatus, setCloudStatus] = useState<
@@ -338,8 +356,12 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         if (!opts.showSpinner || !isDirtyRef.current) {
           const loadedLayout = res.card?.layout || {};
           setLayout(loadedLayout);
-          if (typeof loadedLayout.zoomPercent === 'number' && loadedLayout.zoomPercent >= 30 && loadedLayout.zoomPercent <= 200) {
-            setZoomPercent(loadedLayout.zoomPercent);
+          if (
+            typeof loadedLayout.zoomPercent === 'number' &&
+            loadedLayout.zoomPercent >= 40 &&
+            loadedLayout.zoomPercent <= 180
+          ) {
+            setZoomPercent(Math.round(loadedLayout.zoomPercent));
           }
           setStyles({
             cellColors: res.card?.styles?.cellColors || {},
@@ -1150,8 +1172,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     colWidthMention;
 
   const backgroundColCount = Math.max(
-    24,
-    Math.ceil((totalTableWidth + 240) / 64)
+    36,
+    Math.ceil((totalTableWidth + 320) / 64)
   );
   const backgroundRowCount = Math.max(22, computed.students.length + 10);
 
@@ -1163,7 +1185,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
   return (
     <div
-      className={`term-avg-sheet flex flex-col bg-[#f3f5f8] dark:bg-[#0b1120] text-slate-800 dark:text-slate-100 select-none overflow-hidden transition-all duration-200 ${
+      className={`term-avg-sheet flex flex-col bg-[#f3f5f8] dark:bg-[#0b1120] text-slate-800 dark:text-slate-100 select-none overflow-hidden transition-colors duration-200 ${
         viewerExpandLevel >= 2
           ? 'fixed inset-0 z-[60] w-screen h-screen'
           : 'relative w-full h-full min-h-0 flex-1'
@@ -1191,7 +1213,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         .dark .term-avg-sheet .term-avg-grid-canvas {
           background-color: #0b1120 !important;
         }
-        .dark .term-avg-sheet .term-avg-excel-hdr {
+        .dark .term-avg-sheet .term-avg-excel-hdr,
+        .dark .term-avg-sheet .term-avg-excel-gutter {
           background-color: #111827 !important;
           border-color: #334155 !important;
           color: #94a3b8 !important;
@@ -1837,7 +1860,6 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       {/* ========================================================================= */}
       <div
         className="term-avg-grid-canvas flex-1 min-h-0 overflow-auto bg-[#fafbfc] relative p-0 touch-pan-x touch-pan-y"
-        style={{ zoom: `${zoomPercent}%` }}
         onClick={(e) => {
           if (
             (e.target as HTMLElement)?.closest(
@@ -1849,10 +1871,13 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
           setOpenMenu(null);
         }}
       >
-        <div className="inline-block min-w-full pb-24 pr-24">
-          {/* En-têtes de colonnes Excel (A, B, C...) */}
-          <div className="term-avg-excel-hdr flex items-center sticky top-0 z-20 bg-[#f8fafc] border-b border-slate-300 shadow-2xs">
-            <div className="term-avg-excel-hdr w-9 h-6 bg-[#f1f5f9] border-r border-b border-slate-300 text-[10px] flex items-center justify-center font-mono text-slate-500 shrink-0 sticky left-0 z-30">
+        <div
+          className="inline-block min-w-full pb-24 pr-24"
+          style={{ zoom: `${zoomPercent}%` }}
+        >
+          {/* En-têtes de colonnes Excel (A, B, C...) — toujours strictement au-dessus de la grille */}
+          <div className="term-avg-excel-hdr flex items-center sticky top-0 z-30 bg-[#f8fafc] border-b border-slate-300 shadow-2xs">
+            <div className="term-avg-excel-hdr w-9 h-6 bg-[#f1f5f9] border-r border-b border-slate-300 text-[10px] flex items-center justify-center font-mono text-slate-500 shrink-0 sticky left-0 z-40">
               ◢
             </div>
             {Array.from({ length: backgroundColCount }).map((_, c) => (
@@ -1865,21 +1890,21 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
             ))}
           </div>
 
-          <div className="flex items-start">
-            {/* Numéros de lignes Excel (1, 2, 3...) */}
-            <div className="flex flex-col shrink-0 sticky left-0 z-10">
+          <div className="flex items-stretch">
+            {/* Numéros de lignes Excel (1, 2, 3...) — toujours strictement au-dessus du tableau qui défile dessous */}
+            <div className="term-avg-excel-gutter flex flex-col shrink-0 self-stretch sticky left-0 z-20 bg-[#f8fafc] border-r border-slate-300 shadow-[2px_0_4px_-2px_rgba(15,23,42,0.18)]">
               {Array.from({ length: backgroundRowCount }).map((_, r) => (
                 <div
                   key={`row-num-${r}`}
-                  className="term-avg-excel-hdr w-9 h-11 border-b border-r border-slate-300 bg-[#f8fafc] text-slate-500 font-mono text-[10px] font-semibold flex items-center justify-center shrink-0"
+                  className="term-avg-excel-hdr w-9 h-11 border-b border-slate-300 bg-[#f8fafc] text-slate-500 font-mono text-[10px] font-semibold flex items-center justify-center shrink-0"
                 >
                   {r + 1}
                 </div>
               ))}
             </div>
 
-            {/* Zone principale contenant le tableau encadré sur la grille */}
-            <div className="relative shrink-0">
+            {/* Zone principale isolée à z-0 pour qu'aucun élément du tableau ne passe au-dessus de 1, 2, 3... ou A, B, C... */}
+            <div className="relative shrink-0 z-0 isolate">
               {/* Ligne 1 de marge Excel au-dessus */}
               <div className="flex">
                 {Array.from({ length: backgroundColCount }).map((_, c) => (
@@ -1904,7 +1929,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                 {/* ========================================================= */}
                 {/* TABLEAU PRINCIPAL DE MOYENNE GÉNÉRALE DU TRIMESTRE        */}
                 {/* ========================================================= */}
-                <div className="term-avg-table-card bg-white border-2 border-slate-800 shadow-md relative z-10">
+                <div className="term-avg-table-card bg-white border-2 border-slate-800 shadow-md relative">
                   {cloudStatus === 'loading' &&
                   computed.subjects.length === 0 &&
                   computed.students.length === 0 ? (
