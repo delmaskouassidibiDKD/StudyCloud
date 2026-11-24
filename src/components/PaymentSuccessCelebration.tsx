@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowRight, Check, Printer, Download } from 'lucide-react';
 import { getCurrentLanguage } from '../services/languageService';
+import { getLegalPortalUrl } from '../services/api';
 import { formatCurrencyAmount, PaymentProductType } from '../services/paystackBillingApi';
 
 export interface PaymentSuccessCelebrationProps {
@@ -27,6 +28,8 @@ interface SuccessCopy {
   downloadBtn: string;
   downloadedToast: string;
   receiptTitle: string;
+  termsPrefix: string;
+  termsLink: string;
 }
 
 const COPY_BY_LANG: Record<string, SuccessCopy> = {
@@ -42,6 +45,8 @@ const COPY_BY_LANG: Record<string, SuccessCopy> = {
     downloadBtn: 'Reçu',
     downloadedToast: 'Reçu téléchargé',
     receiptTitle: 'Reçu de paiement StudyCloud',
+    termsPrefix: 'En continuant, vous acceptez nos',
+    termsLink: "Conditions d'utilisation",
   },
   en: {
     title: 'Payment Successful!',
@@ -55,6 +60,8 @@ const COPY_BY_LANG: Record<string, SuccessCopy> = {
     downloadBtn: 'Save Receipt',
     downloadedToast: 'Receipt saved',
     receiptTitle: 'StudyCloud Payment Receipt',
+    termsPrefix: 'By continuing, you agree to our',
+    termsLink: 'Terms of Service',
   },
   es: {
     title: '¡Pago exitoso!',
@@ -68,6 +75,8 @@ const COPY_BY_LANG: Record<string, SuccessCopy> = {
     downloadBtn: 'Recibo',
     downloadedToast: 'Recibo guardado',
     receiptTitle: 'Recibo de pago StudyCloud',
+    termsPrefix: 'Al continuar, aceptas nuestros',
+    termsLink: 'Términos de uso',
   },
   pt: {
     title: 'Pagamento concluído!',
@@ -81,6 +90,8 @@ const COPY_BY_LANG: Record<string, SuccessCopy> = {
     downloadBtn: 'Recibo',
     downloadedToast: 'Recibo salvo',
     receiptTitle: 'Recibo de pagamento StudyCloud',
+    termsPrefix: 'Ao continuar, você concorda com nossos',
+    termsLink: 'Termos de Uso',
   },
 };
 
@@ -315,6 +326,19 @@ export const PaymentSuccessCelebration: React.FC<PaymentSuccessCelebrationProps>
             </span>
           </div>
         </div>
+
+        <p className="text-[11px] text-stone-600 dark:text-emerald-100/75 pt-1">
+          {t.termsPrefix}{' '}
+          <a
+            href={getLegalPortalUrl('cgu')}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="font-bold text-emerald-800 dark:text-emerald-300 underline underline-offset-2 hover:opacity-80"
+          >
+            {t.termsLink}
+          </a>
+          .
+        </p>
       </div>
     </div>
   );

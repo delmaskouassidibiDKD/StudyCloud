@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { PaymentSuccessCelebration } from './PaymentSuccessCelebration';
+import { getLegalPortalUrl } from '../services/api';
 import {
   chargeMobileMoneyWithPaystack,
   ClientBillingMode,
@@ -498,18 +499,21 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
               <span>Retour</span>
             </button>
 
-            <div className="notranslate flex items-center gap-2" translate="no">
-              <DnaLogo className="w-9 h-9 shrink-0" variant="colored" />
-              <div className="flex flex-col justify-center leading-none">
-                <span className="font-black tracking-tight text-xl leading-tight flex items-center select-none">
+            <div className="notranslate flex items-center gap-2.5" translate="no">
+              <DnaLogo
+                className="w-9 h-9 shrink-0 drop-shadow-[0_0_2px_rgba(0,0,0,0.9)]"
+                glow={true}
+              />
+              <div className="flex flex-col justify-center">
+                <span className="font-black tracking-tight text-[24px] leading-tight flex items-center select-none">
                   <span className="font-black text-orange-500">Study</span>
-                  <span className="font-black text-sky-500 dark:text-sky-400">Cloud</span>
+                  <span className="font-black text-sky-400 dark:text-blue-400">Cloud</span>
                 </span>
                 <span
-                  className="text-[9px] font-black uppercase mt-0.5"
+                  className="text-[10.5px] font-black uppercase tracking-widest mt-0.5"
                   style={{ letterSpacing: '0.14em', color: '#f59e0b' }}
                 >
-                  DKD-TECHNOLOGIES
+                  DKD TECHNOLOGIES
                 </span>
               </div>
             </div>
@@ -806,6 +810,19 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
                       <span>Payer {formattedFcfa}</span>
                     )}
                   </button>
+
+                  <p className="text-center text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                    En continuant, vous acceptez nos{' '}
+                    <a
+                      href={getLegalPortalUrl('cgu')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold text-orange-600 dark:text-orange-400 underline underline-offset-2 hover:text-orange-700 dark:hover:text-orange-300"
+                    >
+                      Conditions d&apos;utilisation
+                    </a>
+                    .
+                  </p>
                 </form>
               ) : (
                 <div className="space-y-5">
@@ -846,6 +863,19 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
                       <span>Payer {formattedFcfa}</span>
                     )}
                   </button>
+
+                  <p className="text-center text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                    En continuant, vous acceptez nos{' '}
+                    <a
+                      href={getLegalPortalUrl('cgu')}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="font-bold text-orange-600 dark:text-orange-400 underline underline-offset-2 hover:text-orange-700 dark:hover:text-orange-300"
+                    >
+                      Conditions d&apos;utilisation
+                    </a>
+                    .
+                  </p>
                 </div>
               )}
             </>
@@ -857,7 +887,7 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
                   <KeyRound className="w-5 h-5 text-orange-600 dark:text-orange-400" />
                 </div>
                 <div>
-                  <h2 className="text-lg font-black">Code de validation</h2>
+                  <h2 className="text-lg font-black">Confirmez votre paiement</h2>
                   <p className="text-xs text-stone-500 dark:text-stone-400">
                     {displayText || 'Entrez le code reçu sur votre téléphone.'}
                   </p>
@@ -916,7 +946,7 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
               </div>
 
               <div className="space-y-2">
-                <h2 className="text-xl font-black">Confirmez sur votre téléphone</h2>
+                <h2 className="text-xl font-black">Confirmez votre paiement sur votre téléphone</h2>
                 <p className="text-sm text-stone-600 dark:text-stone-300 leading-relaxed">
                   {displayText || 'Validez la demande sur votre téléphone pour finaliser.'}
                 </p>
