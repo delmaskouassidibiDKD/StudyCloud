@@ -2907,3 +2907,135 @@ test('Facturation stockage R2 + D1 Assistant Delmas : messages, fichiers multipa
   assert.equal(afterDelConv.delmasD1EstimatedBytes, 0);
   assert.equal(afterDelConv.totalBytes, 0);
 });
+
+test('Plafonds backend stricts Assistant Delmas : formats interdits, 10 Mo image/audio, 15 Mo document et max 20 fichiers/discussion', async () => {
+  const { callApi } = createHarness();
+  const MB = 1024 * 1024;
+  const convPath = '/api/teacher/delmas/conversations/tdconv-limits-1/files';
+
+  // 1. Formats refusés : vidéo, archive .zip, exécutable .exe/.apk -> 400
+  for (const forbidden of [
+    { fileName: 'cours.mp4', mimeType: 'video/mp4', fileType: 'video' },
+    { fileName: 'notes.zip', mimeType: 'application/zip', fileType: 'document' },
+    { fileName: 'install.exe', mimeType: 'application/x-msdownload', fileType: 'document' },
+    { fileName: 'app.apk', mimeType: 'application/vnd.android.package-archive', fileType: 'document' },
+  ]) {
+    const res = await callApi(convPath, {
+      method: 'POST',
+      token: 'token-alice',
+      body: { ...forbidden, originalSizeBytes: 5000, sizeBytes: 5000 },
+    });
+    assert.equal(res.status, 400, `${forbidden.fileName} doit être bloqué en HTTP 400 côté serveur`);
+  }
+
+  // 2. Plafond 10 Mo pour image et audio -> 11 Mo refusé (400)
+  const bigImg = await callApi(convPath, {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      fileName: 'photo_geante.jpg',
+      mimeType: 'image/jpeg',
+      fileType: 'image',
+      dataUrl: VALID_PNG_DATA_URL,
+      originalSizeBytes: 11 * MB,
+      sizeBytes: 11 * MB,
+    },
+  });
+  assert.equal(bigImg.status, 400);
+
+  const bigAudio = await callApi(convPath, {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      fileName: 'vocal_long.mp3',
+      mimeType: 'audio/mpeg',
+      fileType: 'audio',
+      originalSizeBytes: 11 * MB,
+      sizeBytes: 11 * MB,
+    },
+  });
+  assert.equal(bigAudio.status, 400);
+
+  // 3. Plafond 15 Mo pour document -> 16 Mo refusé (400), 14 Mo accepté (200)
+  const bigPdf = await callApi(convPath, {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      fileName: 'rapport_lourd.pdf',
+      mimeType: 'application/pdf',
+      fileType: 'pdf',
+      originalSizeBytes: 16 * MB,
+      sizeBytes: 16 * MB,
+    },
+  });
+  assert.equal(bigPdf.status, 400);
+
+  const okPdf = await callApi(convPath, {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      fileName: 'bulletin_valide.pdf',
+      mimeType: 'application/pdf',
+      fileType: 'pdf',
+      originalSizeBytes: 14 * MB,
+      sizeBytes: 14 * MB,
+      extractedText: 'KOUASSI 15/20',
+    },
+  });
+  assert.equal(okPdf.status, 200);
+  const { file: firstUploaded } = await okPdf.json();
+
+  // 4. Max 20 fichiers dans le dossier d'une même conversation : 19 autres réussissent, le 21e est refusé en 400
+  for (let i = 2; i <= 20; i++) {
+    const r = await callApi(convPath, {
+      method: 'POST',
+      token: 'token-alice',
+      body: {
+        fileName: `releve_${i}.jpg`,
+        mimeType: 'image/png',
+        fileType: 'image',
+        dataUrl: VALID_PNG_DATA_URL,
+        originalSizeBytes: 100 * 1024,
+        sizeBytes: 100 * 1024,
+      },
+    });
+    assert.equal(r.status, 200, `Le fichier ${i}/20 doit être accepté`);
+  }
+
+  const file21 = await callApi(convPath, {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      fileName: 'releve_21.jpg',
+      mimeType: 'image/png',
+      fileType: 'image',
+      dataUrl: VALID_PNG_DATA_URL,
+      originalSizeBytes: 100 * 1024,
+      sizeBytes: 100 * 1024,
+    },
+  });
+  assert.equal(file21.status, 400, 'Le 21e fichier dans la même discussion doit être bloqué en 400');
+  const file21Err = await file21.json();
+  assert.match(String(file21Err.error || ''), /maximum 20 fichiers par discussion/i);
+
+  // 5. Supprimer 1 fichier libère un emplacement -> le nouvel envoi repasse en 200
+  const delOne = await callApi(`/api/teacher/delmas/files/${firstUploaded.id}`, {
+    method: 'DELETE',
+    token: 'token-alice',
+  });
+  assert.equal(delOne.status, 200);
+
+  const afterDel = await callApi(convPath, {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      fileName: 'releve_remplacement.jpg',
+      mimeType: 'image/png',
+      fileType: 'image',
+      dataUrl: VALID_PNG_DATA_URL,
+      originalSizeBytes: 100 * 1024,
+      sizeBytes: 100 * 1024,
+    },
+  });
+  assert.equal(afterDel.status, 200);
+});

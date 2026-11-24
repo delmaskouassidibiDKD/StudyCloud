@@ -7,6 +7,207 @@ import type {
 
 export const DEFAULT_TEACHER_DELMAS_KIMI_MODEL = '@cf/moonshotai/kimi-k2.7-code';
 
+/**
+ * Plafonds officiels d'envoi de fichiers vers Assistant Delmas (identiques frontend & backend) :
+ * - Max 4 fichiers par envoi (dont max 1 audio)
+ * - Max 20 fichiers dans le dossier d'une conversation
+ * - Max 10 Mo / image, 10 Mo / audio, 15 Mo / document (PDF, Word, Excel, CSV, PPTX, TXT)
+ * - Max 25 Mo cumulés par envoi
+ * - Formats refusés : vidéos, archives (.zip/.rar/.7z...), exécutables (.exe/.apk...)
+ */
+export const DELMAS_UPLOAD_LIMITS = {
+  MAX_FILES_PER_SEND: 4,
+  MAX_AUDIO_PER_SEND: 1,
+  MAX_FILES_PER_CONVERSATION: 20,
+  MAX_IMAGE_BYTES: 10 * 1024 * 1024,
+  MAX_AUDIO_BYTES: 10 * 1024 * 1024,
+  MAX_DOCUMENT_BYTES: 15 * 1024 * 1024,
+  MAX_TOTAL_BATCH_BYTES: 25 * 1024 * 1024,
+} as const;
+
+const DELMAS_FORBIDDEN_VIDEO_EXT_RE = /\.(?:mp4|mov|avi|mkv|webm|3gp|wmv|flv|m4v|mpeg|mpg)$/i;
+const DELMAS_FORBIDDEN_ARCHIVE_EXT_RE = /\.(?:zip|rar|7z|tar|gz|bz2|xz|iso)$/i;
+const DELMAS_FORBIDDEN_EXEC_EXT_RE = /\.(?:exe|apk|dmg|msi|bat|cmd|sh|dll|com|scr|vbs|ps1|jar|deb|rpm|appimage)$/i;
+const DELMAS_ALLOWED_IMAGE_EXT_RE = /\.(?:jpe?g|png|webp|gif|bmp)$/i;
+const DELMAS_ALLOWED_AUDIO_EXT_RE = /\.(?:mp3|wav|ogg|m4a|aac|flac|opus)$/i;
+const DELMAS_ALLOWED_DOC_EXT_RE = /\.(?:pdf|docx?|xlsx?|csv|pptx?|odt|ods|rtf|txt|md|json|xml)$/i;
+
+export type DelmasUploadCategory = 'image' | 'audio' | 'document';
+
+export function classifyDelmasUploadFile(
+  fileName: string,
+  mimeType: string
+): { category: DelmasUploadCategory | null; forbiddenReason?: string } {
+  const name = String(fileName || '').trim();
+  const mime = String(mimeType || '').trim().toLowerCase();
+
+  if (mime.startsWith('video/') || DELMAS_FORBIDDEN_VIDEO_EXT_RE.test(name)) {
+    return {
+      category: null,
+      forbiddenReason: `« ${name || 'Fichier'} » : les vidéos ne sont pas prises en charge dans Assistant Delmas.`,
+    };
+  }
+  if (
+    DELMAS_FORBIDDEN_ARCHIVE_EXT_RE.test(name) ||
+    /zip|rar|7z|tar|gzip|compressed/i.test(mime)
+  ) {
+    return {
+      category: null,
+      forbiddenReason: `« ${name || 'Fichier'} » : les archives (.zip, .rar, .7z…) ne sont pas autorisées.`,
+    };
+  }
+  if (
+    DELMAS_FORBIDDEN_EXEC_EXT_RE.test(name) ||
+    /x-msdownload|x-sh|android\.package-archive|x-executable|x-dosexec/i.test(mime)
+  ) {
+    return {
+      category: null,
+      forbiddenReason: `« ${name || 'Fichier'} » : les fichiers exécutables ne sont pas autorisés.`,
+    };
+  }
+  if (mime === 'image/svg+xml' || /\.svg$/i.test(name)) {
+    return {
+      category: null,
+      forbiddenReason: `« ${name || 'Fichier'} » : les fichiers SVG ne sont pas acceptés (utilisez JPG, PNG ou WebP).`,
+    };
+  }
+
+  if (
+    (mime.startsWith('image/') && !mime.includes('svg')) ||
+    DELMAS_ALLOWED_IMAGE_EXT_RE.test(name)
+  ) {
+    return { category: 'image' };
+  }
+  if (mime.startsWith('audio/') || DELMAS_ALLOWED_AUDIO_EXT_RE.test(name)) {
+    return { category: 'audio' };
+  }
+  if (
+    DELMAS_ALLOWED_DOC_EXT_RE.test(name) ||
+    /pdf|msword|wordprocessingml|excel|spreadsheetml|powerpoint|presentationml|text\/|csv|opendocument/i.test(
+      mime
+    )
+  ) {
+    return { category: 'document' };
+  }
+
+  return {
+    category: null,
+    forbiddenReason: `« ${name || 'Fichier'} » : format non pris en charge (acceptés : images, audio, PDF, Word, Excel, CSV, PowerPoint, texte).`,
+  };
+}
+
+function formatMbShort(bytes: number): string {
+  return `${(bytes / (1024 * 1024)).toFixed(1).replace('.', ',')} Mo`;
+}
+
+/**
+ * Valide un lot de fichiers sélectionnés pour Assistant Delmas selon les 7 plafonds officiels.
+ * Retourne les indices acceptés et la liste précise des motifs de refus en français.
+ */
+export function validateDelmasFileSelection(params: {
+  incomingFiles: Array<{ name: string; type: string; size: number }>;
+  existingPendingFiles: Array<{ fileName?: string; fileType?: string; sizeBytes?: number }>;
+  existingConversationFilesCount: number;
+}): {
+  acceptedIndices: number[];
+  rejectedReasons: string[];
+} {
+  const acceptedIndices: number[] = [];
+  const rejectedReasons: string[] = [];
+
+  let pendingCount = params.existingPendingFiles.length;
+  let pendingAudioCount = params.existingPendingFiles.filter(
+    (f) => String(f.fileType || '').toLowerCase() === 'audio'
+  ).length;
+  let pendingTotalBytes = params.existingPendingFiles.reduce(
+    (sum, f) => sum + Math.max(0, Number(f.sizeBytes) || 0),
+    0
+  );
+  let convCount = Math.max(0, Number(params.existingConversationFilesCount) || 0);
+
+  let hitSendCountLimit = false;
+  let hitConvLimit = false;
+
+  for (let i = 0; i < params.incomingFiles.length; i++) {
+    const f = params.incomingFiles[i];
+    const name = String(f?.name || 'Fichier');
+    const size = Math.max(0, Number(f?.size) || 0);
+
+    // 1. Format autorisé / interdit
+    const { category, forbiddenReason } = classifyDelmasUploadFile(name, f?.type || '');
+    if (!category) {
+      rejectedReasons.push(forbiddenReason || `« ${name} » : format non pris en charge.`);
+      continue;
+    }
+
+    // 2. Plafond individuel par type (10 Mo image/audio, 15 Mo document)
+    const maxAllowedBytes =
+      category === 'document'
+        ? DELMAS_UPLOAD_LIMITS.MAX_DOCUMENT_BYTES
+        : category === 'audio'
+        ? DELMAS_UPLOAD_LIMITS.MAX_AUDIO_BYTES
+        : DELMAS_UPLOAD_LIMITS.MAX_IMAGE_BYTES;
+    const maxAllowedMb = Math.round(maxAllowedBytes / (1024 * 1024));
+
+    if (size > maxAllowedBytes) {
+      rejectedReasons.push(
+        `« ${name} » fait ${formatMbShort(size)} (limite : ${maxAllowedMb} Mo max pour ${
+          category === 'image' ? 'une image' : category === 'audio' ? 'un audio' : 'un document'
+        }).`
+      );
+      continue;
+    }
+
+    // 3. Max 1 fichier audio par envoi
+    if (category === 'audio' && pendingAudioCount >= DELMAS_UPLOAD_LIMITS.MAX_AUDIO_PER_SEND) {
+      rejectedReasons.push(
+        `« ${name} » ignoré : maximum ${DELMAS_UPLOAD_LIMITS.MAX_AUDIO_PER_SEND} fichier audio par envoi.`
+      );
+      continue;
+    }
+
+    // 4. Max 4 fichiers par envoi
+    if (pendingCount >= DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_SEND) {
+      if (!hitSendCountLimit) {
+        rejectedReasons.push(
+          `Maximum ${DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_SEND} fichiers par envoi atteint (les fichiers supplémentaires ont été ignorés).`
+        );
+        hitSendCountLimit = true;
+      }
+      continue;
+    }
+
+    // 5. Max 25 Mo cumulés par envoi
+    if (pendingTotalBytes + size > DELMAS_UPLOAD_LIMITS.MAX_TOTAL_BATCH_BYTES) {
+      rejectedReasons.push(
+        `« ${name} » ignoré : poids total maximum de ${Math.round(
+          DELMAS_UPLOAD_LIMITS.MAX_TOTAL_BATCH_BYTES / (1024 * 1024)
+        )} Mo par envoi dépassé.`
+      );
+      continue;
+    }
+
+    // 6. Max 20 fichiers dans le dossier d'une conversation
+    if (convCount >= DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION) {
+      if (!hitConvLimit) {
+        rejectedReasons.push(
+          `Dossier plein : maximum ${DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION} fichiers par discussion (supprimez d'anciens fichiers ou ouvrez une nouvelle discussion).`
+        );
+        hitConvLimit = true;
+      }
+      continue;
+    }
+
+    acceptedIndices.push(i);
+    pendingCount += 1;
+    if (category === 'audio') pendingAudioCount += 1;
+    pendingTotalBytes += size;
+    convCount += 1;
+  }
+
+  return { acceptedIndices, rejectedReasons };
+}
+
 export interface SupportedDelmasLanguage {
   code: string;
   name: string;

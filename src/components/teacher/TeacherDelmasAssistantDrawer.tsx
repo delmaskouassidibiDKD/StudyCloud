@@ -27,6 +27,7 @@ import {
   Coins,
   Zap,
   ArrowRight,
+  AlertCircle,
 } from 'lucide-react';
 import { DelmasRobot } from '../DelmasRobot';
 import { DnaLogo } from '../DnaLogo';
@@ -59,12 +60,14 @@ import {
 } from '../../services/teacherGradebookApi';
 import {
   DEFAULT_TEACHER_DELMAS_KIMI_MODEL,
+  DELMAS_UPLOAD_LIMITS,
   SUPPORTED_DELMAS_LANGUAGES,
   buildTeacherDelmasSystemPrompt,
   classifyTeacherDelmasIntent,
   filterSafeTeacherDelmasActions,
   parseTeacherDelmasAiResponse,
   pickPreferredKimiModel,
+  validateDelmasFileSelection,
   type ResolvedBackgroundModel,
   type TeacherDelmasSheetBridge,
 } from '../../utils/teacherDelmasActionEngine';
@@ -347,6 +350,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
   const [pendingAttachments, setPendingAttachments] = useState<TeacherDelmasFileRecord[]>([]);
   const [isFilesFolderOpen, setIsFilesFolderOpen] = useState(false);
   const [isImportingFiles, setIsImportingFiles] = useState(false);
+  const [fileUploadWarning, setFileUploadWarning] = useState<string | null>(null);
 
   // État d'envoi IA & écriture en direct
   const [inputValue, setInputValue] = useState('');
@@ -722,6 +726,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     setMessages([]);
     setConversationFiles([]);
     setPendingAttachments([]);
+    setFileUploadWarning(null);
     setIsFilesFolderOpen(false);
     setIsHistoryDrawerOpen(false);
     setOpenConvMenuId(null);
@@ -751,6 +756,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       setChatLanguage(conv.language);
     }
     setPendingAttachments([]);
+    setFileUploadWarning(null);
     isUserScrolledUpRef.current = false;
 
     if (!getTeacherAuthToken()) return;
@@ -813,13 +819,32 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     }
   };
 
-  // Importation de fichiers & images de tout type (réutilise documentTextExtractor du Menu Création)
+  // Importation de fichiers & images (avec plafonds officiels : max 4/envoi, 1 audio/envoi, 10 Mo img/audio, 15 Mo doc, 25 Mo/envoi, 20/discussion)
   const processImportedFiles = async (fileList: File[]) => {
     if (!fileList || fileList.length === 0) return;
+
+    const { acceptedIndices, rejectedReasons } = validateDelmasFileSelection({
+      incomingFiles: fileList.map((f) => ({
+        name: f.name,
+        type: f.type || '',
+        size: Number(f.size) || 0,
+      })),
+      existingPendingFiles: pendingAttachments,
+      existingConversationFilesCount: conversationFiles.length,
+    });
+
+    if (rejectedReasons.length > 0) {
+      setFileUploadWarning(rejectedReasons.join(' '));
+    } else {
+      setFileUploadWarning(null);
+    }
+
+    if (acceptedIndices.length === 0) return;
+    const validFiles = acceptedIndices.map((idx) => fileList[idx]);
     setIsImportingFiles(true);
 
     try {
-      for (const file of fileList) {
+      for (const file of validFiles) {
         const origSize = Math.max(0, Number(file.size) || 0);
         const mime = file.type || 'application/octet-stream';
         const isImg =
@@ -940,6 +965,13 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
             // Si le stockage de l'utilisateur est saturé (HTTP 413), le modal d'alerte s'ouvre automatiquement
             if (uploadErr?.isStorageLimitExceeded || uploadErr?.status === 413) {
               throw uploadErr;
+            }
+            if (uploadErr?.status === 400) {
+              setFileUploadWarning(
+                uploadErr?.message ||
+                  `« ${file.name} » a été refusé par les limites d'envoi.`
+              );
+              continue;
             }
           }
         }
@@ -1137,6 +1169,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     setMessages([...messages, userMessage]);
     setInputValue('');
     setPendingAttachments([]);
+    setFileUploadWarning(null);
 
     const liveContext = sheetBridge ? sheetBridge.getContext() : null;
     const allConvFiles = [
@@ -1667,12 +1700,12 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         }
       `}</style>
 
-      {/* Input fichier caché pour le bouton + d'importation (Images, PDF, Excel, Word, Audio, Texte...) */}
+      {/* Input fichier caché pour le bouton + d'importation (Images, PDF, Excel, Word, Audio, Texte — max 4/envoi, 10 Mo img/audio, 15 Mo doc) */}
       <input
         ref={fileInputRef}
         type="file"
         multiple
-        accept="image/*,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.ppt,.pptx,audio/*"
+        accept=".jpg,.jpeg,.png,.webp,.gif,.bmp,.pdf,.doc,.docx,.xls,.xlsx,.csv,.txt,.md,.ppt,.pptx,.odt,.ods,.rtf,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus"
         onChange={handleFileInputChange}
         className="hidden"
       />
@@ -1885,13 +1918,26 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-1.5 text-xs font-bold text-orange-300">
                 <FolderOpen className="w-3.5 h-3.5 text-orange-400" />
-                <span>Dossier de la conversation ({conversationFiles.length})</span>
+                <span>
+                  Dossier de la conversation ({conversationFiles.length} /{' '}
+                  {DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION})
+                </span>
               </div>
               <div className="flex items-center gap-1.5">
                 <button
                   type="button"
+                  disabled={
+                    conversationFiles.length >=
+                    DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION
+                  }
                   onClick={() => fileInputRef.current?.click()}
-                  className="px-2 py-0.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 border border-orange-500/40 text-orange-300 text-[10.5px] font-bold flex items-center gap-1 cursor-pointer"
+                  className="px-2 py-0.5 rounded-lg bg-orange-500/20 hover:bg-orange-500/30 disabled:opacity-40 disabled:cursor-not-allowed border border-orange-500/40 text-orange-300 text-[10.5px] font-bold flex items-center gap-1 cursor-pointer"
+                  title={
+                    conversationFiles.length >=
+                    DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION
+                      ? `Maximum ${DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION} fichiers atteint`
+                      : 'Ajouter un fichier (max 4/envoi, 10 Mo img/audio, 15 Mo doc)'
+                  }
                 >
                   <Plus className="w-3 h-3" />
                   <span>Ajouter</span>
@@ -2475,6 +2521,24 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         {/* 4. ZONE BASSE : CHAMP DE SAISIE + BOUTON + D'IMPORTATION FICHIERS   */}
         {/* =================================================================== */}
         <div className="px-2.5 sm:px-5 pt-1.5 pb-4 sm:pb-6 shrink-0 relative z-30">
+          {/* BANDEAU D'ALERTE PLAFONDS D'ENVOI FICHIERS (taille / nombre / format) */}
+          {fileUploadWarning && (
+            <div className="mx-1 sm:mx-2 mb-2 px-3 py-2 rounded-xl bg-amber-950/85 border border-amber-500/45 text-amber-200 text-[11px] flex items-start justify-between gap-2 animate-fadeIn">
+              <div className="flex items-start gap-2 min-w-0">
+                <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                <span className="leading-snug break-words">{fileUploadWarning}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFileUploadWarning(null)}
+                className="p-0.5 rounded hover:bg-amber-500/20 text-amber-300 hover:text-white cursor-pointer shrink-0"
+                title="Fermer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {/* BANDEAU CRÉDIT IA INSUFFISANT (blocage + accès direct à « Mes Crédits IA ») */}
           {isCreditInsufficient && (
             <div className="mx-1 sm:mx-2 mb-2.5 px-3.5 py-2.5 rounded-2xl bg-[#1e1315]/95 border-2 border-rose-500/50 shadow-[0_4px_20px_rgba(244,63,94,0.25)] flex items-center justify-between gap-2.5 animate-fadeIn z-20">
@@ -2543,10 +2607,14 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                   {/* Bouton + pour importer images, photos de notes, Excel, PDF, Word, Audio */}
                   <button
                     type="button"
-                    disabled={isImportingFiles}
+                    disabled={
+                      isImportingFiles ||
+                      pendingAttachments.length >= DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_SEND ||
+                      conversationFiles.length >= DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION
+                    }
                     onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center justify-center w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-600/80 text-orange-400 hover:text-orange-300 transition-all cursor-pointer active:scale-95 shrink-0"
-                    title="Importer une image ou un fichier (Photo de liste/notes, Excel, PDF, Word, Audio...)"
+                    className="flex items-center justify-center w-7 h-7 rounded-lg bg-zinc-800 hover:bg-zinc-700 disabled:opacity-40 disabled:cursor-not-allowed border border-zinc-600/80 text-orange-400 hover:text-orange-300 transition-all cursor-pointer active:scale-95 shrink-0"
+                    title="Importer des fichiers (max 4/envoi • 10 Mo image/audio • 15 Mo PDF/Word/Excel • 25 Mo/envoi • 20/discussion)"
                   >
                     {isImportingFiles ? (
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400" />
@@ -2557,14 +2625,24 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
 
                   {pendingAttachments.length === 0 ? (
                     <div
-                      onClick={() => fileInputRef.current?.click()}
+                      onClick={() => {
+                        if (conversationFiles.length >= DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION) {
+                          setFileUploadWarning(
+                            `Dossier plein : maximum ${DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION} fichiers par discussion (supprimez d'anciens fichiers ou ouvrez une nouvelle discussion).`
+                          );
+                          return;
+                        }
+                        fileInputRef.current?.click();
+                      }}
                       className="flex items-center gap-1.5 px-2.5 py-1 bg-zinc-800/60 hover:bg-zinc-800 border border-zinc-700/60 rounded-lg text-zinc-400 hover:text-zinc-200 text-[10px] sm:text-[11px] font-medium shrink-0 select-none cursor-pointer transition"
-                      title="Cliquer pour importer un fichier ou une image"
+                      title="Cliquer pour importer un fichier ou une image (max 4/envoi • 10 Mo image/audio • 15 Mo doc • 25 Mo/envoi • 20/discussion)"
                     >
                       <FileText className="w-3 h-3 text-zinc-500 shrink-0" />
                       <span>
                         {isImportingFiles
                           ? 'Lecture du fichier...'
+                          : conversationFiles.length >= DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION
+                          ? `Dossier plein (${DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION}/${DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION})`
                           : 'Aucun fichier sélectionné'}
                       </span>
                     </div>

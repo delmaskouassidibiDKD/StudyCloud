@@ -2,7 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   DEFAULT_TEACHER_DELMAS_KIMI_MODEL,
+  DELMAS_UPLOAD_LIMITS,
   buildTeacherDelmasSystemPrompt,
+  classifyDelmasUploadFile,
   classifyTeacherDelmasIntent,
   filterSafeTeacherDelmasActions,
   hasRealExplicitMatriculeBatch,
@@ -11,6 +13,7 @@ import {
   parseTeacherDelmasAiResponse,
   pickPreferredKimiModel,
   stripTeacherDelmasReasoning,
+  validateDelmasFileSelection,
   type TeacherDelmasActiveContext,
 } from './teacherDelmasActionEngine';
 import { DEFAULT_CUSTOM_MENTION_RULES } from './gradebookCalculations';
@@ -544,4 +547,101 @@ test('filterSafeTeacherDelmasActions supprime les faux matricules 1..10 / invent
   assert.equal(explicitHideAndClear.length, 2);
   assert.equal(explicitHideAndClear[0].show, false);
   assert.equal(explicitHideAndClear[1].updates[0].matricule, '');
+});
+
+test('validateDelmasFileSelection & classifyDelmasUploadFile appliquent strictement les 7 plafonds officiels', () => {
+  const MB = 1024 * 1024;
+
+  // Vérification des constantes officielles
+  assert.equal(DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_SEND, 4);
+  assert.equal(DELMAS_UPLOAD_LIMITS.MAX_AUDIO_PER_SEND, 1);
+  assert.equal(DELMAS_UPLOAD_LIMITS.MAX_FILES_PER_CONVERSATION, 20);
+  assert.equal(DELMAS_UPLOAD_LIMITS.MAX_IMAGE_BYTES, 10 * MB);
+  assert.equal(DELMAS_UPLOAD_LIMITS.MAX_AUDIO_BYTES, 10 * MB);
+  assert.equal(DELMAS_UPLOAD_LIMITS.MAX_DOCUMENT_BYTES, 15 * MB);
+  assert.equal(DELMAS_UPLOAD_LIMITS.MAX_TOTAL_BATCH_BYTES, 25 * MB);
+
+  // 1. Formats refusés : vidéos, archives, exécutables, SVG
+  for (const bad of [
+    { name: 'cours.mp4', type: 'video/mp4' },
+    { name: 'archive.zip', type: 'application/zip' },
+    { name: 'pack.rar', type: 'application/x-rar-compressed' },
+    { name: 'setup.exe', type: 'application/x-msdownload' },
+    { name: 'app.apk', type: 'application/vnd.android.package-archive' },
+    { name: 'piege.svg', type: 'image/svg+xml' },
+  ]) {
+    const cls = classifyDelmasUploadFile(bad.name, bad.type);
+    assert.equal(cls.category, null, `${bad.name} doit être refusé`);
+    assert.ok(cls.forbiddenReason && cls.forbiddenReason.length > 0);
+  }
+
+  // 2. Max 4 fichiers par envoi : 6 images -> seules les 4 premières sont acceptées
+  const batch6 = validateDelmasFileSelection({
+    incomingFiles: Array.from({ length: 6 }, (_, i) => ({
+      name: `page_${i + 1}.jpg`,
+      type: 'image/jpeg',
+      size: 2 * MB,
+    })),
+    existingPendingFiles: [],
+    existingConversationFilesCount: 0,
+  });
+  assert.deepEqual(batch6.acceptedIndices, [0, 1, 2, 3]);
+  assert.equal(batch6.rejectedReasons.length, 1);
+  assert.match(batch6.rejectedReasons[0], /Maximum 4 fichiers par envoi/i);
+
+  // 3. Max 1 audio par envoi
+  const twoAudios = validateDelmasFileSelection({
+    incomingFiles: [
+      { name: 'note_vocale_1.mp3', type: 'audio/mpeg', size: 3 * MB },
+      { name: 'note_vocale_2.m4a', type: 'audio/mp4', size: 2 * MB },
+    ],
+    existingPendingFiles: [],
+    existingConversationFilesCount: 0,
+  });
+  assert.deepEqual(twoAudios.acceptedIndices, [0]);
+  assert.equal(twoAudios.rejectedReasons.length, 1);
+  assert.match(twoAudios.rejectedReasons[0], /maximum 1 fichier audio par envoi/i);
+
+  // 4. Plafonds individuels : 10 Mo image/audio, 15 Mo document
+  const sizeChecks = validateDelmasFileSelection({
+    incomingFiles: [
+      { name: 'img_trop_grosse.png', type: 'image/png', size: 11 * MB },
+      { name: 'audio_trop_gros.mp3', type: 'audio/mpeg', size: 10.5 * MB },
+      { name: 'bulletin_ok.pdf', type: 'application/pdf', size: 14 * MB },
+      { name: 'scan_trop_gros.pdf', type: 'application/pdf', size: 16 * MB },
+    ],
+    existingPendingFiles: [],
+    existingConversationFilesCount: 0,
+  });
+  assert.deepEqual(sizeChecks.acceptedIndices, [2]);
+  assert.equal(sizeChecks.rejectedReasons.length, 3);
+  assert.match(sizeChecks.rejectedReasons[0], /10 Mo max pour une image/i);
+  assert.match(sizeChecks.rejectedReasons[1], /10 Mo max pour un audio/i);
+  assert.match(sizeChecks.rejectedReasons[2], /15 Mo max pour un document/i);
+
+  // 5. Poids cumulé max 25 Mo par envoi : 2 PDF de 14 Mo -> 1er accepté, 2e refusé (28 Mo > 25 Mo)
+  const heavyBatch = validateDelmasFileSelection({
+    incomingFiles: [
+      { name: 'doc1.pdf', type: 'application/pdf', size: 14 * MB },
+      { name: 'doc2.pdf', type: 'application/pdf', size: 14 * MB },
+    ],
+    existingPendingFiles: [],
+    existingConversationFilesCount: 0,
+  });
+  assert.deepEqual(heavyBatch.acceptedIndices, [0]);
+  assert.equal(heavyBatch.rejectedReasons.length, 1);
+  assert.match(heavyBatch.rejectedReasons[0], /25 Mo par envoi/i);
+
+  // 6. Max 20 fichiers dans le dossier d'une conversation (déjà 19 -> seul 1 accepté)
+  const convAlmostFull = validateDelmasFileSelection({
+    incomingFiles: [
+      { name: 'img20.jpg', type: 'image/jpeg', size: 1 * MB },
+      { name: 'img21.jpg', type: 'image/jpeg', size: 1 * MB },
+    ],
+    existingPendingFiles: [],
+    existingConversationFilesCount: 19,
+  });
+  assert.deepEqual(convAlmostFull.acceptedIndices, [0]);
+  assert.equal(convAlmostFull.rejectedReasons.length, 1);
+  assert.match(convAlmostFull.rejectedReasons[0], /maximum 20 fichiers par discussion/i);
 });

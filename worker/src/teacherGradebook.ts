@@ -6812,9 +6812,28 @@ async function dispatchTeacherGradebookRoutes(
       return errorResponse('Accès refusé à cette discussion.', 403, origin);
     }
 
+    const DELMAS_MAX_FILES_PER_CONV = 20;
+    const DELMAS_MAX_IMAGE_OR_AUDIO_BYTES = 10 * 1024 * 1024;
+    const DELMAS_MAX_DOCUMENT_BYTES = 15 * 1024 * 1024;
+
+    // 1. Contrôle strict du plafond de 20 fichiers par discussion
+    const existingConvFilesCountRow: any = await db
+      .prepare('SELECT COUNT(*) as cnt FROM teacher_delmas_files WHERE user_id = ? AND conversation_id = ?')
+      .bind(userId, convId)
+      .first()
+      .catch(() => ({ cnt: 0 }));
+    if (Number(existingConvFilesCountRow?.cnt || 0) >= DELMAS_MAX_FILES_PER_CONV) {
+      return errorResponse(
+        `Dossier plein : maximum ${DELMAS_MAX_FILES_PER_CONV} fichiers par discussion. Supprimez un ancien fichier ou ouvrez une nouvelle discussion.`,
+        400,
+        origin
+      );
+    }
+
     const contentTypeHeader = String(request.headers.get('Content-Type') || '').toLowerCase();
     let body: Record<string, any> = {};
     let fileBytes: Uint8Array | null = null;
+    let multipartTooLarge = false;
 
     if (contentTypeHeader.includes('multipart/form-data')) {
       const form = await request.formData().catch(() => null);
@@ -6822,7 +6841,9 @@ async function dispatchTeacherGradebookRoutes(
         const uploadedFile = form.get('file');
         if (uploadedFile && typeof uploadedFile !== 'string' && typeof (uploadedFile as any).arrayBuffer === 'function') {
           const buf = await (uploadedFile as any).arrayBuffer();
-          if (buf && buf.byteLength > 0 && buf.byteLength <= 25 * 1024 * 1024) {
+          if (buf && buf.byteLength > DELMAS_MAX_DOCUMENT_BYTES) {
+            multipartTooLarge = true;
+          } else if (buf && buf.byteLength > 0) {
             fileBytes = new Uint8Array(buf);
           }
           body.fileName = String(form.get('fileName') || (uploadedFile as any).name || 'fichier');
@@ -6845,9 +6866,61 @@ async function dispatchTeacherGradebookRoutes(
     }
 
     const fileName = String(body?.fileName || 'fichier').trim().slice(0, 180) || 'fichier';
+    const rawMimeLower = String(body?.mimeType || '').trim().toLowerCase();
+
+    // 2. Refus strict des vidéos, archives et exécutables (inutiles et lourds pour Assistant Delmas)
+    if (
+      rawMimeLower.startsWith('video/') ||
+      /\.(?:mp4|mov|avi|mkv|webm|3gp|wmv|flv|m4v|mpeg|mpg)$/i.test(fileName)
+    ) {
+      return errorResponse(
+        'Les fichiers vidéo ne sont pas pris en charge dans Assistant Delmas.',
+        400,
+        origin
+      );
+    }
+    if (
+      /\.(?:zip|rar|7z|tar|gz|bz2|xz|iso)$/i.test(fileName) ||
+      /zip|rar|7z|tar|gzip|compressed/i.test(rawMimeLower)
+    ) {
+      return errorResponse(
+        'Les archives (.zip, .rar, .7z…) ne sont pas autorisées dans Assistant Delmas.',
+        400,
+        origin
+      );
+    }
+    if (
+      /\.(?:exe|apk|dmg|msi|bat|cmd|sh|dll|com|scr|vbs|ps1|jar|deb|rpm|appimage)$/i.test(fileName) ||
+      /x-msdownload|x-sh|android\.package-archive|x-executable|x-dosexec/i.test(rawMimeLower)
+    ) {
+      return errorResponse(
+        'Les fichiers exécutables ne sont pas autorisés dans Assistant Delmas.',
+        400,
+        origin
+      );
+    }
+
     const sanitizedUpload = sanitizeUploadedMimeAndExt(body?.mimeType || '', fileName);
     const mimeType = sanitizedUpload.mimeType;
     const fileType = String(body?.fileType || 'document').trim().slice(0, 40);
+    const isImageOrAudio =
+      fileType === 'image' ||
+      fileType === 'audio' ||
+      rawMimeLower.startsWith('image/') ||
+      rawMimeLower.startsWith('audio/') ||
+      /\.(?:jpe?g|png|webp|gif|bmp|mp3|wav|ogg|m4a|aac|flac|opus)$/i.test(fileName);
+    const maxSingleFileBytes = isImageOrAudio
+      ? DELMAS_MAX_IMAGE_OR_AUDIO_BYTES
+      : DELMAS_MAX_DOCUMENT_BYTES;
+
+    if (multipartTooLarge) {
+      return errorResponse(
+        `Ce fichier dépasse la limite maximale de ${Math.round(maxSingleFileBytes / (1024 * 1024))} Mo autorisée.`,
+        400,
+        origin
+      );
+    }
+
     const extractedText = String(body?.extractedText || '').slice(0, 180000);
     const previewDataUrl = isSafeRasterPreviewDataUrl(body?.previewDataUrl)
       ? body.previewDataUrl.slice(0, 120000)
@@ -6855,10 +6928,14 @@ async function dispatchTeacherGradebookRoutes(
     const rawDataUrl = typeof body?.dataUrl === 'string' ? body.dataUrl : '';
 
     // Décodage binaire si dataUrl JSON fourni (compatibilité descendante)
+    let dataUrlTooLarge = false;
     if (!fileBytes && rawDataUrl) {
       const b64Idx = rawDataUrl.indexOf(';base64,');
       const cleanB64 = (b64Idx >= 0 ? rawDataUrl.slice(b64Idx + 8) : rawDataUrl).replace(/\s+/g, '');
-      if (cleanB64.length > 0 && cleanB64.length <= 12 * 1024 * 1024 * 1.4) {
+      const estimatedDecodedBytes = Math.floor((cleanB64.length * 3) / 4);
+      if (estimatedDecodedBytes > maxSingleFileBytes) {
+        dataUrlTooLarge = true;
+      } else if (cleanB64.length > 0) {
         try {
           const bin = atob(cleanB64);
           fileBytes = new Uint8Array(bin.length);
@@ -6873,9 +6950,27 @@ async function dispatchTeacherGradebookRoutes(
 
     const compressedBytesLen = fileBytes ? fileBytes.byteLength : utf8ByteLength(extractedText);
     const requestedOriginalSize = Number(body?.originalSizeBytes);
+    const requestedDeclaredSize = Number(body?.sizeBytes);
+    const maxDeclaredOrActual = Math.max(
+      fileBytes ? fileBytes.byteLength : 0,
+      Number.isFinite(requestedOriginalSize) ? requestedOriginalSize : 0,
+      Number.isFinite(requestedDeclaredSize) ? requestedDeclaredSize : 0
+    );
+
+    // 3. Contrôle strict des plafonds individuels (10 Mo image/audio, 15 Mo document)
+    if (dataUrlTooLarge || maxDeclaredOrActual > maxSingleFileBytes) {
+      return errorResponse(
+        `Ce fichier dépasse la limite de ${Math.round(maxSingleFileBytes / (1024 * 1024))} Mo autorisée pour ${
+          isImageOrAudio ? 'une image ou un audio' : 'un document'
+        }.`,
+        400,
+        origin
+      );
+    }
+
     const billedSizeBytes =
       Number.isFinite(requestedOriginalSize) && requestedOriginalSize > compressedBytesLen
-        ? Math.min(Math.round(requestedOriginalSize), 50 * 1024 * 1024)
+        ? Math.min(Math.round(requestedOriginalSize), maxSingleFileBytes)
         : Math.max(compressedBytesLen, Number(body?.sizeBytes) || 0);
 
     const incomingD1AndR2Bytes =
