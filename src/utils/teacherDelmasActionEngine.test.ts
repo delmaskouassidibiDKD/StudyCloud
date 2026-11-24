@@ -12,6 +12,7 @@ import {
   isLikelyFakeSequentialMatriculeBatch,
   parseTeacherDelmasAiResponse,
   pickPreferredKimiModel,
+  resolveDelmasColorHex,
   stripTeacherDelmasReasoning,
   validateDelmasFileSelection,
   type TeacherDelmasActiveContext,
@@ -644,4 +645,130 @@ test('validateDelmasFileSelection & classifyDelmasUploadFile appliquent strictem
   assert.deepEqual(convAlmostFull.acceptedIndices, [0]);
   assert.equal(convAlmostFull.rejectedReasons.length, 1);
   assert.match(convAlmostFull.rejectedReasons[0], /maximum 20 fichiers par discussion/i);
+});
+
+test('classifyTeacherDelmasIntent route TOUS les outils manuels (couleurs, polices, redimensionnement, exports, plein écran) vers action', () => {
+  const manualToolPrompts = [
+    'Agrandis la colonne Nom',
+    'Élargis toutes les colonnes de 40 pixels',
+    'Réduis la colonne Note 2',
+    'Augmente la hauteur des lignes',
+    "Change l'écriture en Times New Roman taille 16",
+    'Grossis le texte des noms',
+    'Colore les en-têtes en bleu avec texte blanc',
+    'Mets une ligne sur deux en gris clair',
+    'Souligne et barre les notes de DKD',
+    'Mets la colonne Mention en vert',
+    'Aligner les noms à gauche',
+    'Remets les couleurs par défaut',
+    'Télécharge le tableau en PDF',
+    'Exporte en Word',
+    'Copie tout le tableau',
+    'Mets en plein écran',
+    'Quitte le plein écran',
+    'Déplace la colonne Note 3 en première position',
+    'Remplis la colonne Note 2 avec 12 pour tout le monde',
+    'Trie les élèves de Z à A',
+  ];
+
+  for (const msg of manualToolPrompts) {
+    const res = classifyTeacherDelmasIntent({
+      message: msg,
+      hasNewAttachments: false,
+      hasConversationFiles: false,
+      activeContext: sampleContext,
+    });
+    assert.equal(
+      res.intent,
+      'action',
+      `Attendu 'action' pour "${msg}", obtenu '${res.intent}' (${res.reason})`
+    );
+  }
+});
+
+test('resolveDelmasColorHex convertit les noms français/anglais en hex lisibles et bloque les injections CSS', () => {
+  assert.equal(resolveDelmasColorHex('rouge', 'text'), '#dc2626');
+  assert.equal(resolveDelmasColorHex('rouge', 'bg'), '#fee2e2');
+  assert.equal(resolveDelmasColorHex('bleu', 'text'), '#2563eb');
+  assert.equal(resolveDelmasColorHex('bleu ciel', 'bg'), '#bae6fd');
+  assert.equal(resolveDelmasColorHex('vert', 'bg'), '#bbf7d0');
+  assert.equal(resolveDelmasColorHex('violet', 'text'), '#7c3aed');
+  assert.equal(resolveDelmasColorHex('jaune', 'bg'), '#fef08a');
+  assert.equal(resolveDelmasColorHex('aucun', 'bg'), '');
+  assert.equal(resolveDelmasColorHex('transparent', 'bg'), '');
+  assert.equal(resolveDelmasColorHex('#1e3a8a', 'text'), '#1e3a8a');
+  assert.equal(resolveDelmasColorHex('url(javascript:alert(1))', 'bg'), undefined);
+  assert.equal(resolveDelmasColorHex('red; position:fixed', 'text'), undefined);
+});
+
+test('filterSafeTeacherDelmasActions autorise et assainit tous les nouveaux outils manuels (resize, couleurs FR, fontSizeDelta, exports, plein écran, fill/move)', () => {
+  const batch: any[] = [
+    {
+      type: 'format_cells',
+      target: 'header',
+      style: {
+        bgColor: 'bleu',
+        textColor: 'blanc',
+        fontFamily: 'Times New Roman',
+        fontSizeDelta: 4,
+        bold: true,
+        underline: true,
+      },
+    },
+    { type: 'resize_columns', column: 'name', widthPx: 380 },
+    { type: 'resize_rows', target: 'all', heightPx: 64 },
+    { type: 'set_expand_level', level: 2 },
+    { type: 'export_pdf' },
+    { type: 'export_word' },
+    { type: 'copy_table' },
+    { type: 'fill_note_column', colNumber: 2, value: '12', onlyEmpty: true },
+    { type: 'move_note_column', fromColNumber: 2, toColNumber: 1 },
+    { type: 'move_student', studentName: 'DKD', direction: 'down' },
+  ];
+
+  const safe = filterSafeTeacherDelmasActions(
+    batch,
+    'Mets les en-têtes en bleu, agrandis la colonne nom, augmente la hauteur des lignes, mets en plein écran, exporte en PDF et Word et copie le tableau'
+  );
+  assert.equal(safe.length, 10);
+  assert.equal(safe[0].style.bgColor, '#bfdbfe');
+  assert.equal(safe[0].style.textColor, '#ffffff');
+  assert.equal(safe[0].style.fontFamily, 'Times New Roman');
+  assert.equal(safe[0].style.fontSizeDelta, 4);
+  assert.equal(safe[1].widthPx, 380);
+  assert.equal(safe[2].heightPx, 64);
+  assert.equal(safe[3].level, 2);
+
+  // clear_formatting accepté sur expressions naturelles ("par défaut", "enlève les couleurs")
+  const clearDefault = filterSafeTeacherDelmasActions(
+    [{ type: 'clear_formatting' }],
+    'Remets les couleurs par défaut'
+  );
+  assert.equal(clearDefault.length, 1);
+  assert.equal(clearDefault[0].type, 'clear_formatting');
+
+  // clear_formatting toujours bloqué si non demandé
+  const clearBlocked = filterSafeTeacherDelmasActions(
+    [{ type: 'clear_formatting' }],
+    'Ajoute un élève nommé Kouassi'
+  );
+  assert.equal(clearBlocked.length, 0);
+});
+
+test('buildTeacherDelmasSystemPrompt expose format_cells, resize_columns, resize_rows et exports sur les 3 types de tableaux', () => {
+  for (const sheetKind of ['subject', 'term_average', 'annual_average'] as const) {
+    const prompt = buildTeacherDelmasSystemPrompt({
+      languageCode: 'fr',
+      activeContext: { ...sampleContext, sheetKind },
+      intent: 'action',
+    });
+    assert.ok(prompt.includes('format_cells'), `format_cells absent pour ${sheetKind}`);
+    assert.ok(prompt.includes('resize_columns'), `resize_columns absent pour ${sheetKind}`);
+    assert.ok(prompt.includes('resize_rows'), `resize_rows absent pour ${sheetKind}`);
+    assert.ok(prompt.includes('set_expand_level'), `set_expand_level absent pour ${sheetKind}`);
+    assert.ok(prompt.includes('export_pdf'), `export_pdf absent pour ${sheetKind}`);
+    assert.ok(prompt.includes('export_word'), `export_word absent pour ${sheetKind}`);
+    assert.ok(prompt.includes('copy_table'), `copy_table absent pour ${sheetKind}`);
+    assert.ok(prompt.includes('Times New Roman'), `liste des polices absente pour ${sheetKind}`);
+  }
 });

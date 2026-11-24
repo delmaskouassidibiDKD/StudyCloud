@@ -61,7 +61,12 @@ import {
   TeacherDelmasAssistantDrawer,
 } from './TeacherDelmasAssistantDrawer';
 import { GradebookDownloadMenu } from './GradebookDownloadMenu';
-import type { GradebookExportDataset } from '../../utils/gradebookExportUtils';
+import {
+  exportGradebookToPdf,
+  exportGradebookToWord,
+  copyGradebookToClipboard,
+  type GradebookExportDataset,
+} from '../../utils/gradebookExportUtils';
 import {
   hasRealExplicitMatriculeBatch,
   type TeacherDelmasAction,
@@ -2424,6 +2429,27 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     };
   };
 
+  const getHeaderVisualStyles = (headerKey: string, defaultBg?: string) => {
+    const custom = cellCustomStyles[headerKey];
+    const resolved = custom ? getResolvedCellStyle(headerKey, 'center') : null;
+    const containerBg = custom?.bgColor || defaultBg || undefined;
+    const textStyle: React.CSSProperties | undefined = custom
+      ? {
+          fontWeight: custom.bold !== undefined ? (custom.bold ? '900' : '400') : undefined,
+          fontStyle: custom.italic ? 'italic' : undefined,
+          textDecoration:
+            resolved && resolved.textDecoration && resolved.textDecoration !== 'none'
+              ? resolved.textDecoration
+              : undefined,
+          fontFamily: custom.fontFamily || undefined,
+          fontSize: custom.fontSize ? `${custom.fontSize}px` : undefined,
+          color: custom.color || undefined,
+          textAlign: custom.textAlign || undefined,
+        }
+      : undefined;
+    return { containerBg, textStyle, custom };
+  };
+
   const activeFormatKeys = getTargetKeysForFormatting();
   const hasActiveFormatTarget = activeFormatKeys.length > 0;
   const activeFormatKey = activeFormatKeys[0] || '';
@@ -3246,9 +3272,88 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       let workingColCount = noteColumnCount;
       let workingColMetas: { [idx: number]: GradebookColumnMeta } = { ...columnMetas };
       let workingCellStyles: { [key: string]: CellCustomStyle } = { ...cellCustomStyles };
+      let workingCellColors: { [key: string]: string } = { ...cellColors };
+      let workingRowColors: { [rowId: string]: string } = { ...rowColors };
+      let workingColWidthRank = colWidthRank;
+      let workingColWidthPhoto = colWidthPhoto;
+      let workingColWidthMatricule = colWidthMatricule;
+      let workingColWidthName = colWidthName;
+      let workingNoteColWidth = noteColWidth;
+      let workingCustomNoteWidths: { [index: number]: number } = { ...customNoteWidths };
+      let workingColWidthAverage = colWidthAverage;
+      let workingColWidthMention = colWidthMention;
+      let workingCustomRowHeights: { [index: number]: number } = { ...customRowHeights };
       let studentsMutated = false;
       let colsMutated = false;
       let stylesMutated = false;
+      let cellColorsMutated = false;
+      let rowColorsMutated = false;
+      let layoutMutated = false;
+
+      const swapWorkingNoteColumns = (idxA: number, idxB: number) => {
+        if (
+          idxA < 0 ||
+          idxA >= workingColCount ||
+          idxB < 0 ||
+          idxB >= workingColCount ||
+          idxA === idxB
+        ) {
+          return;
+        }
+        workingStudents = workingStudents.map((s) => {
+          const copyNotes = [...s.notes];
+          while (copyNotes.length < workingColCount) copyNotes.push('');
+          const tmp = copyNotes[idxA];
+          copyNotes[idxA] = copyNotes[idxB];
+          copyNotes[idxB] = tmp;
+          return { ...s, notes: copyNotes };
+        });
+        const metaA = workingColMetas[idxA];
+        const metaB = workingColMetas[idxB];
+        if (metaB !== undefined) workingColMetas[idxA] = metaB;
+        else delete workingColMetas[idxA];
+        if (metaA !== undefined) workingColMetas[idxB] = metaA;
+        else delete workingColMetas[idxB];
+
+        const wA = workingCustomNoteWidths[idxA];
+        const wB = workingCustomNoteWidths[idxB];
+        if (wB !== undefined) workingCustomNoteWidths[idxA] = wB;
+        else delete workingCustomNoteWidths[idxA];
+        if (wA !== undefined) workingCustomNoteWidths[idxB] = wA;
+        else delete workingCustomNoteWidths[idxB];
+
+        const hdrKeyA = `header_note_${idxA}`;
+        const hdrKeyB = `header_note_${idxB}`;
+        const hdrStA = workingCellStyles[hdrKeyA];
+        const hdrStB = workingCellStyles[hdrKeyB];
+        if (hdrStB !== undefined) workingCellStyles[hdrKeyA] = hdrStB;
+        else delete workingCellStyles[hdrKeyA];
+        if (hdrStA !== undefined) workingCellStyles[hdrKeyB] = hdrStA;
+        else delete workingCellStyles[hdrKeyB];
+
+        for (const s of workingStudents) {
+          const kA = `${s.id}_${idxA}`;
+          const kB = `${s.id}_${idxB}`;
+          const stA = workingCellStyles[kA];
+          const stB = workingCellStyles[kB];
+          if (stB !== undefined) workingCellStyles[kA] = stB;
+          else delete workingCellStyles[kA];
+          if (stA !== undefined) workingCellStyles[kB] = stA;
+          else delete workingCellStyles[kB];
+
+          const cA = workingCellColors[kA];
+          const cB = workingCellColors[kB];
+          if (cB !== undefined) workingCellColors[kA] = cB;
+          else delete workingCellColors[kA];
+          if (cA !== undefined) workingCellColors[kB] = cA;
+          else delete workingCellColors[kB];
+        }
+        studentsMutated = true;
+        colsMutated = true;
+        stylesMutated = true;
+        cellColorsMutated = true;
+        layoutMutated = true;
+      };
 
       const isRowEmpty = (r: StudentGradeRow) =>
         !(r.name || '').trim() &&
@@ -3679,8 +3784,135 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               idx2 < workingColCount &&
               idx1 !== idx2
             ) {
-              handleSwapColumns(idx1, idx2);
-              summaries.push(`✓ Colonnes ${idx1 + 1} et ${idx2 + 1} déplacées`);
+              swapWorkingNoteColumns(idx1, idx2);
+              summaries.push(`✓ Colonnes ${idx1 + 1} et ${idx2 + 1} permutées`);
+            }
+            break;
+          }
+
+          case 'move_note_column': {
+            const fromIdx =
+              action.fromColNumber !== undefined
+                ? Number(action.fromColNumber) - 1
+                : action.colNumber !== undefined
+                ? Number(action.colNumber) - 1
+                : -1;
+            if (fromIdx >= 0 && fromIdx < workingColCount) {
+              let toIdx = fromIdx;
+              if (action.toColNumber !== undefined) {
+                toIdx = Math.max(0, Math.min(workingColCount - 1, Number(action.toColNumber) - 1));
+              } else if (action.direction === 'left') {
+                const steps = Math.max(1, Math.round(Number(action.steps) || 1));
+                toIdx = Math.max(0, fromIdx - steps);
+              } else if (action.direction === 'right') {
+                const steps = Math.max(1, Math.round(Number(action.steps) || 1));
+                toIdx = Math.min(workingColCount - 1, fromIdx + steps);
+              }
+              if (toIdx !== fromIdx) {
+                if (fromIdx < toIdx) {
+                  for (let cur = fromIdx; cur < toIdx; cur++) {
+                    swapWorkingNoteColumns(cur, cur + 1);
+                  }
+                } else {
+                  for (let cur = fromIdx; cur > toIdx; cur--) {
+                    swapWorkingNoteColumns(cur, cur - 1);
+                  }
+                }
+                summaries.push(`✓ Colonne ${fromIdx + 1} déplacée en position ${toIdx + 1}`);
+              }
+            }
+            break;
+          }
+
+          case 'fill_note_column': {
+            const colIdx =
+              action.colNumber !== undefined
+                ? Number(action.colNumber) - 1
+                : action.colIndex !== undefined
+                ? Number(action.colIndex)
+                : 0;
+            if (colIdx >= 0 && colIdx < workingColCount) {
+              const rawVal = String(action.value ?? '').trim();
+              const onlyEmpty = Boolean(action.onlyEmpty);
+              const maxS = workingColMetas[colIdx]?.maxScore || 20;
+              let formatted = '';
+              if (rawVal && rawVal !== '-') {
+                if (rawVal.includes('/')) {
+                  const [sc, mx] = rawVal.split('/');
+                  formatted = formatStudentNote(
+                    sanitizeDecimalInput(sc),
+                    Number(mx) > 0 ? Number(mx) : maxS
+                  );
+                } else {
+                  formatted = formatStudentNote(sanitizeDecimalInput(rawVal), maxS);
+                }
+              }
+              let filledCount = 0;
+              workingStudents = workingStudents.map((s) => {
+                if (!(s.name || '').trim()) return s;
+                const copyNotes = [...s.notes];
+                while (copyNotes.length < workingColCount) copyNotes.push('');
+                if (onlyEmpty && parseStudentNote(copyNotes[colIdx] || '', maxS).scoreStr.length > 0) {
+                  return s;
+                }
+                copyNotes[colIdx] = formatted;
+                filledCount++;
+                return { ...s, notes: copyNotes };
+              });
+              if (filledCount > 0) {
+                studentsMutated = true;
+                summaries.push(
+                  `✓ Colonne ${colIdx + 1} remplie (${formatted || 'vidée'}) pour ${filledCount} élève(s)`
+                );
+              }
+            }
+            break;
+          }
+
+          case 'move_student': {
+            const displayedIds = studentsWithStats.map((s) => s.id);
+            let srcIdx = -1;
+            const searchName = String(action.studentName || action.name || '').trim();
+            if (searchName) {
+              const normSearch = normalizeStudentNameKey(searchName);
+              const bagSearch = canonicalWordBagKey(normSearch);
+              srcIdx = workingStudents.findIndex((s) => {
+                const sn = normalizeStudentNameKey(s.name || '');
+                return Boolean(sn) && (sn === normSearch || (bagSearch && canonicalWordBagKey(sn) === bagSearch));
+              });
+              if (srcIdx === -1) {
+                srcIdx = workingStudents.findIndex((s) => {
+                  const sn = normalizeStudentNameKey(s.name || '');
+                  return Boolean(sn) && (sn.includes(normSearch) || normSearch.includes(sn));
+                });
+              }
+            }
+            if (srcIdx === -1 && typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
+              const dispId = displayedIds[action.rowIndex - 1];
+              if (dispId) srcIdx = workingStudents.findIndex((s) => s.id === dispId);
+              else if (action.rowIndex - 1 < workingStudents.length) srcIdx = action.rowIndex - 1;
+            }
+            if (srcIdx >= 0 && srcIdx < workingStudents.length) {
+              let destIdx = srcIdx;
+              if (typeof action.toRowIndex === 'number' && action.toRowIndex >= 1) {
+                destIdx = Math.max(0, Math.min(workingStudents.length - 1, Math.round(action.toRowIndex) - 1));
+              } else if (action.direction === 'up') {
+                const steps = Math.max(1, Math.round(Number(action.steps) || 1));
+                destIdx = Math.max(0, srcIdx - steps);
+              } else if (action.direction === 'down') {
+                const steps = Math.max(1, Math.round(Number(action.steps) || 1));
+                destIdx = Math.min(workingStudents.length - 1, srcIdx + steps);
+              }
+              if (destIdx !== srcIdx) {
+                const [moved] = workingStudents.splice(srcIdx, 1);
+                workingStudents.splice(destIdx, 0, moved);
+                setLockedOrderIds(null);
+                setSortMode('order');
+                studentsMutated = true;
+                summaries.push(
+                  `✓ Élève « ${moved.name || `#${srcIdx + 1}`} » déplacé à la ligne ${destIdx + 1}`
+                );
+              }
             }
             break;
           }
@@ -3738,10 +3970,27 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           }
 
           case 'set_sort_mode': {
+            const rawMode = String(action.sortMode || action.mode || 'order');
+            if (rawMode === 'alpha_desc') {
+              workingStudents = [...workingStudents].sort((a, b) => {
+                const an = (a.name || '').trim();
+                const bn = (b.name || '').trim();
+                if (!an && !bn) return 0;
+                if (!an) return 1;
+                if (!bn) return -1;
+                return bn.localeCompare(an, 'fr', { sensitivity: 'base' });
+              });
+              studentsMutated = true;
+              setLockedOrderIds(null);
+              setSortMode('order');
+              setIsSaved(false);
+              summaries.push(`✓ Classement : Ordre alphabétique inversé (Z → A)`);
+              break;
+            }
             const mode: GradebookSortMode =
-              action.sortMode === 'merit' || action.mode === 'merit'
+              rawMode === 'merit'
                 ? 'merit'
-                : action.sortMode === 'alpha' || action.mode === 'alpha'
+                : rawMode === 'alpha'
                 ? 'alpha'
                 : 'order';
             setLockedOrderIds(null);
@@ -3875,12 +4124,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             if (typeof st.underline === 'boolean') stylePatch.underline = st.underline;
             if (typeof st.strikethrough === 'boolean')
               stylePatch.strikethrough = st.strikethrough;
-            if (st.textColor || st.color)
-              stylePatch.color = String(st.textColor || st.color);
+            if (st.textColor !== undefined || st.color !== undefined) {
+              const rawC = String(st.textColor ?? st.color ?? '');
+              stylePatch.color = rawC;
+            }
             if (st.bgColor !== undefined) stylePatch.bgColor = String(st.bgColor);
             if (st.fontFamily) stylePatch.fontFamily = String(st.fontFamily);
             if (Number(st.fontSize) >= 8)
-              stylePatch.fontSize = Math.min(48, Number(st.fontSize));
+              stylePatch.fontSize = Math.min(48, Math.round(Number(st.fontSize)));
             if (
               st.textAlign === 'left' ||
               st.textAlign === 'center' ||
@@ -3888,46 +4139,147 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             ) {
               stylePatch.textAlign = st.textAlign;
             }
+            const fontSizeDelta =
+              typeof st.fontSizeDelta === 'number' &&
+              Number.isFinite(st.fontSizeDelta) &&
+              st.fontSizeDelta !== 0
+                ? Math.max(-24, Math.min(24, Math.round(st.fontSizeDelta)))
+                : 0;
 
-            const applyToStudentRow = (stdId: string, onlyCol?: string, noteIdx?: number) => {
+            const applyStylePatchToKey = (k: string, defaultFs = 12) => {
+              const prev = workingCellStyles[k] || {};
+              const next: CellCustomStyle = { ...prev, ...stylePatch };
+              if (fontSizeDelta !== 0 && stylePatch.fontSize === undefined) {
+                const baseFs = typeof prev.fontSize === 'number' ? prev.fontSize : defaultFs;
+                next.fontSize = Math.min(48, Math.max(8, baseFs + fontSizeDelta));
+              }
+              if (stylePatch.color === '') {
+                delete next.color;
+              }
+              if (stylePatch.bgColor === '') {
+                delete next.bgColor;
+                if (workingCellColors[k] !== undefined) {
+                  delete workingCellColors[k];
+                  cellColorsMutated = true;
+                }
+              }
+              workingCellStyles[k] = next;
+            };
+
+            const resolvedNoteIndices: number[] = [];
+            if (Array.isArray(action.colNumbers) && action.colNumbers.length > 0) {
+              for (const n of action.colNumbers) {
+                const idx = Number(n) - 1;
+                if (idx >= 0 && idx < workingColCount && !resolvedNoteIndices.includes(idx)) {
+                  resolvedNoteIndices.push(idx);
+                }
+              }
+            } else if (action.colNumber !== undefined) {
+              const idx = Number(action.colNumber) - 1;
+              if (idx >= 0 && idx < workingColCount) resolvedNoteIndices.push(idx);
+            } else if (action.colIndex !== undefined) {
+              const idx = Number(action.colIndex);
+              if (idx >= 0 && idx < workingColCount) resolvedNoteIndices.push(idx);
+            }
+
+            const applyToHeaders = (onlyCol?: string) => {
+              const headerKeys: string[] = [];
+              if (!onlyCol || onlyCol === 'all') {
+                headerKeys.push(
+                  'header_rank',
+                  'header_photo',
+                  'header_matricule',
+                  'header_name',
+                  'header_avg',
+                  'header_mention'
+                );
+                for (let c = 0; c < workingColCount; c++) headerKeys.push(`header_note_${c}`);
+              } else if (onlyCol === 'rank') headerKeys.push('header_rank');
+              else if (onlyCol === 'photo') headerKeys.push('header_photo');
+              else if (onlyCol === 'matricule') headerKeys.push('header_matricule');
+              else if (onlyCol === 'name') headerKeys.push('header_name');
+              else if (onlyCol === 'average') headerKeys.push('header_avg');
+              else if (onlyCol === 'mention') headerKeys.push('header_mention');
+              else if (onlyCol === 'all_notes') {
+                for (let c = 0; c < workingColCount; c++) headerKeys.push(`header_note_${c}`);
+              } else if (onlyCol === 'note') {
+                const cols =
+                  resolvedNoteIndices.length > 0
+                    ? resolvedNoteIndices
+                    : Array.from({ length: workingColCount }, (_, c) => c);
+                cols.forEach((c) => headerKeys.push(`header_note_${c}`));
+              }
+
+              for (const hk of headerKeys) {
+                applyStylePatchToKey(hk, 13);
+                if (hk.startsWith('header_note_') && stylePatch.bgColor !== undefined) {
+                  const cIdx = parseInt(hk.replace('header_note_', ''), 10);
+                  if (!Number.isNaN(cIdx) && cIdx >= 0 && cIdx < workingColCount) {
+                    const prevMeta = workingColMetas[cIdx] || { maxScore: 20 };
+                    workingColMetas[cIdx] = {
+                      ...prevMeta,
+                      headerBgColor: stylePatch.bgColor || undefined,
+                    };
+                    colsMutated = true;
+                  }
+                }
+              }
+            };
+
+            const applyToStudentRow = (stdId: string, onlyCol?: string) => {
               const keys: string[] = [];
               if (!onlyCol || onlyCol === 'all') {
                 keys.push(
                   `${stdId}_rank`,
+                  `${stdId}_photo`,
                   `${stdId}_matricule`,
                   `${stdId}_name`,
                   `${stdId}_avg`,
                   `${stdId}_mention`
                 );
                 for (let c = 0; c < workingColCount; c++) keys.push(`${stdId}_${c}`);
+                if (stylePatch.bgColor !== undefined) {
+                  if (stylePatch.bgColor === '') {
+                    if (workingRowColors[stdId] !== undefined) {
+                      delete workingRowColors[stdId];
+                      rowColorsMutated = true;
+                    }
+                  } else {
+                    workingRowColors[stdId] = stylePatch.bgColor;
+                    rowColorsMutated = true;
+                  }
+                }
               } else if (onlyCol === 'name') keys.push(`${stdId}_name`);
               else if (onlyCol === 'matricule') keys.push(`${stdId}_matricule`);
               else if (onlyCol === 'average') keys.push(`${stdId}_avg`);
               else if (onlyCol === 'mention') keys.push(`${stdId}_mention`);
               else if (onlyCol === 'rank') keys.push(`${stdId}_rank`);
-              else if (onlyCol === 'note' && typeof noteIdx === 'number')
-                keys.push(`${stdId}_${noteIdx}`);
+              else if (onlyCol === 'photo') keys.push(`${stdId}_photo`);
+              else if (onlyCol === 'all_notes') {
+                for (let c = 0; c < workingColCount; c++) keys.push(`${stdId}_${c}`);
+              } else if (onlyCol === 'note') {
+                const cols =
+                  resolvedNoteIndices.length > 0
+                    ? resolvedNoteIndices
+                    : Array.from({ length: workingColCount }, (_, c) => c);
+                cols.forEach((c) => keys.push(`${stdId}_${c}`));
+              }
 
               for (const k of keys) {
-                workingCellStyles[k] = { ...workingCellStyles[k], ...stylePatch };
+                applyStylePatchToKey(k, 12);
               }
             };
-
-            const noteIdx =
-              action.colNumber !== undefined
-                ? Number(action.colNumber) - 1
-                : action.colIndex !== undefined
-                ? Number(action.colIndex)
-                : undefined;
 
             const evaluatedRows =
               studentsMutated || colsMutated
                 ? workingStudents.map((s) => {
+                    const parsedScores: (number | null)[] = [];
                     const evals: EvaluationInput[] = Array.from(
                       { length: workingColCount },
                       (_, c) => {
                         const meta = workingColMetas[c] || { maxScore: 20, coeffEval: 1 };
                         const parsed = parseStudentNote(s.notes[c] || '', meta.maxScore);
+                        parsedScores.push(parsed.scoreNum);
                         return {
                           valeur: parsed.scoreNum,
                           max: parsed.maxScore || meta.maxScore || 20,
@@ -3938,61 +4290,161 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     const res = calculateSubjectAverage(evals, {
                       targetScale: effectiveAverageScale,
                     });
-                    return { id: s.id, name: s.name || '', average: res.moyenneMatiere };
+                    return {
+                      id: s.id,
+                      name: s.name || '',
+                      average: res.moyenneMatiere,
+                      mention: getStudentMention(res.moyenneMatiere).label,
+                      parsedScores,
+                    };
                   })
                 : studentsWithStats.map((s) => ({
                     id: s.id,
                     name: s.name || '',
                     average: s.average,
+                    mention: s.mention || '',
+                    parsedScores: Array.from({ length: workingColCount }, (_, c) => {
+                      const meta = workingColMetas[c] || { maxScore: 20 };
+                      return parseStudentNote(s.notes[c] || '', meta.maxScore).scoreNum;
+                    }),
                   }));
 
-            if (action.target === 'student') {
-              const searchName = normalizeStudentNameKey(String(action.studentName || ''));
-              const rIdx = typeof action.rowIndex === 'number' ? action.rowIndex - 1 : -1;
+            if (action.target === 'header') {
+              applyToHeaders(action.column);
+            } else if (action.target === 'student') {
+              const nameTargets: string[] = [];
+              if (typeof action.studentName === 'string' && action.studentName.trim()) {
+                nameTargets.push(normalizeStudentNameKey(action.studentName));
+              }
+              if (Array.isArray(action.studentNames)) {
+                for (const n of action.studentNames) {
+                  const norm = normalizeStudentNameKey(String(n || ''));
+                  if (norm) nameTargets.push(norm);
+                }
+              }
+              const rowTargets = new Set<number>();
+              if (typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
+                rowTargets.add(Math.round(action.rowIndex) - 1);
+              }
+              if (Array.isArray(action.rowIndices)) {
+                for (const r of action.rowIndices) {
+                  if (Number(r) >= 1) rowTargets.add(Math.round(Number(r)) - 1);
+                }
+              }
+
               evaluatedRows.forEach((s, i) => {
-                if (
-                  (searchName &&
-                    normalizeStudentNameKey(s.name).includes(searchName)) ||
-                  (!searchName && i === rIdx)
-                ) {
-                  applyToStudentRow(s.id, action.column, noteIdx);
+                const sn = normalizeStudentNameKey(s.name);
+                const matchesName =
+                  nameTargets.length > 0 &&
+                  Boolean(sn) &&
+                  nameTargets.some(
+                    (t) =>
+                      sn === t ||
+                      sn.includes(t) ||
+                      t.includes(sn) ||
+                      (canonicalWordBagKey(t) && canonicalWordBagKey(sn) === canonicalWordBagKey(t))
+                  );
+                const matchesRow = rowTargets.has(i);
+                if (matchesName || matchesRow) {
+                  applyToStudentRow(s.id, action.column);
                 }
               });
             } else if (action.target === 'column') {
               evaluatedRows.forEach((s) =>
-                applyToStudentRow(s.id, action.column || 'all', noteIdx)
+                applyToStudentRow(s.id, action.column || 'all')
               );
+              if (stylePatch.bgColor === '' && (action.column === 'note' || action.column === 'all_notes' || !action.column || action.column === 'all')) {
+                const clearCols =
+                  action.column === 'note' && resolvedNoteIndices.length > 0
+                    ? resolvedNoteIndices
+                    : Array.from({ length: workingColCount }, (_, c) => c);
+                for (const cIdx of clearCols) {
+                  if (workingColMetas[cIdx]?.columnBgColor) {
+                    workingColMetas[cIdx] = { ...workingColMetas[cIdx], columnBgColor: undefined };
+                    colsMutated = true;
+                  }
+                }
+              }
+              if (action.includeHeader) {
+                applyToHeaders(action.column || 'all');
+              }
             } else if (action.target === 'condition') {
               const thresh =
                 action.threshold !== undefined
                   ? Number(action.threshold)
                   : effectiveAverageScale / 2;
-              const rankedOrder =
-                action.condition === 'rank_top'
-                  ? [...evaluatedRows]
-                      .filter((r) => r.average !== null)
-                      .sort((a, b) => (b.average ?? -Infinity) - (a.average ?? -Infinity))
-                      .slice(0, Math.max(1, Number(action.threshold) || 3))
-                  : [];
-              const topIds = new Set(rankedOrder.map((r) => r.id));
+              const minT =
+                action.minThreshold !== undefined ? Number(action.minThreshold) : 0;
+              const maxT =
+                action.maxThreshold !== undefined
+                  ? Number(action.maxThreshold)
+                  : effectiveAverageScale;
 
-              evaluatedRows.forEach((s) => {
+              const sortedGraded = [...evaluatedRows]
+                .filter((r) => r.average !== null)
+                .sort((a, b) => (b.average ?? -Infinity) - (a.average ?? -Infinity));
+              const topCount = Math.max(1, Number(action.threshold) || 3);
+              const topIds = new Set(sortedGraded.slice(0, topCount).map((r) => r.id));
+              const bottomIds = new Set(sortedGraded.slice(-topCount).map((r) => r.id));
+              const targetMentionNorm = normalizeStudentNameKey(String(action.mentionLabel || ''));
+
+              evaluatedRows.forEach((s, idx) => {
                 if (action.condition === 'average_below' && s.average !== null && s.average < thresh) {
-                  applyToStudentRow(s.id, action.column, noteIdx);
+                  applyToStudentRow(s.id, action.column);
                 } else if (
                   action.condition === 'average_above' &&
                   s.average !== null &&
                   s.average >= thresh
                 ) {
-                  applyToStudentRow(s.id, action.column, noteIdx);
+                  applyToStudentRow(s.id, action.column);
+                } else if (
+                  action.condition === 'average_between' &&
+                  s.average !== null &&
+                  s.average >= minT &&
+                  s.average <= maxT
+                ) {
+                  applyToStudentRow(s.id, action.column);
                 } else if (action.condition === 'rank_top' && topIds.has(s.id)) {
-                  applyToStudentRow(s.id, action.column, noteIdx);
+                  applyToStudentRow(s.id, action.column);
+                } else if (action.condition === 'rank_bottom' && bottomIds.has(s.id)) {
+                  applyToStudentRow(s.id, action.column);
+                } else if (
+                  action.condition === 'mention_equals' &&
+                  targetMentionNorm &&
+                  normalizeStudentNameKey(s.mention).includes(targetMentionNorm)
+                ) {
+                  applyToStudentRow(s.id, action.column);
+                } else if (action.condition === 'alternating_rows' && idx % 2 === 1) {
+                  applyToStudentRow(s.id, action.column);
+                } else if (
+                  action.condition === 'note_below' ||
+                  action.condition === 'note_above'
+                ) {
+                  const targetCols =
+                    resolvedNoteIndices.length > 0
+                      ? resolvedNoteIndices
+                      : Array.from({ length: workingColCount }, (_, c) => c);
+                  const matchingCols = targetCols.filter((c) => {
+                    const sc = s.parsedScores[c];
+                    if (sc === null) return false;
+                    return action.condition === 'note_below' ? sc < thresh : sc >= thresh;
+                  });
+                  if (matchingCols.length > 0) {
+                    if (action.column && action.column !== 'note' && action.column !== 'all_notes') {
+                      applyToStudentRow(s.id, action.column);
+                    } else {
+                      matchingCols.forEach((c) => applyStylePatchToKey(`${s.id}_${c}`, 12));
+                    }
+                  }
                 }
               });
             } else {
               evaluatedRows.forEach((s) =>
-                applyToStudentRow(s.id, action.column, noteIdx)
+                applyToStudentRow(s.id, action.column)
               );
+              if (action.includeHeader) {
+                applyToHeaders(action.column);
+              }
             }
             stylesMutated = true;
             summaries.push(`✓ Mise en forme appliquée dans ${subject.name}`);
@@ -4001,10 +4453,145 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
           case 'clear_formatting': {
             workingCellStyles = {};
-            setCellColors({});
-            setRowColors({});
+            workingCellColors = {};
+            workingRowColors = {};
+            Object.keys(workingColMetas).forEach((k) => {
+              const idx = parseInt(k, 10);
+              const meta = workingColMetas[idx];
+              if (meta && (meta.headerBgColor || meta.columnBgColor)) {
+                const { headerBgColor: _h, columnBgColor: _c, ...rest } = meta;
+                workingColMetas[idx] = rest;
+                colsMutated = true;
+              }
+            });
             stylesMutated = true;
+            cellColorsMutated = true;
+            rowColorsMutated = true;
             summaries.push(`✓ Mise en forme réinitialisée`);
+            break;
+          }
+
+          case 'resize_columns': {
+            const targetCol = String(action.column || 'all').toLowerCase();
+            const computeNextWidth = (current: number, minW: number, maxW = 600): number => {
+              if (typeof action.widthPx === 'number' && Number.isFinite(action.widthPx)) {
+                return Math.round(Math.max(minW, Math.min(maxW, action.widthPx)));
+              }
+              if (typeof action.scaleFactor === 'number' && Number.isFinite(action.scaleFactor)) {
+                return Math.round(Math.max(minW, Math.min(maxW, current * action.scaleFactor)));
+              }
+              if (typeof action.deltaPx === 'number' && Number.isFinite(action.deltaPx)) {
+                return Math.round(Math.max(minW, Math.min(maxW, current + action.deltaPx)));
+              }
+              return current;
+            };
+
+            const resolvedNoteCols: number[] = [];
+            if (Array.isArray(action.colNumbers) && action.colNumbers.length > 0) {
+              for (const n of action.colNumbers) {
+                const idx = Number(n) - 1;
+                if (idx >= 0 && idx < workingColCount && !resolvedNoteCols.includes(idx)) {
+                  resolvedNoteCols.push(idx);
+                }
+              }
+            } else if (action.colNumber !== undefined) {
+              const idx = Number(action.colNumber) - 1;
+              if (idx >= 0 && idx < workingColCount) resolvedNoteCols.push(idx);
+            } else if (action.colIndex !== undefined) {
+              const idx = Number(action.colIndex);
+              if (idx >= 0 && idx < workingColCount) resolvedNoteCols.push(idx);
+            }
+
+            if (targetCol === 'all' || targetCol === 'rank') {
+              workingColWidthRank = computeNextWidth(workingColWidthRank, 55);
+            }
+            if (targetCol === 'all' || targetCol === 'photo') {
+              workingColWidthPhoto = computeNextWidth(workingColWidthPhoto, 60);
+            }
+            if (targetCol === 'all' || targetCol === 'matricule') {
+              workingColWidthMatricule = computeNextWidth(workingColWidthMatricule, 90);
+            }
+            if (targetCol === 'all' || targetCol === 'name') {
+              workingColWidthName = computeNextWidth(workingColWidthName, 150);
+            }
+            if (targetCol === 'all' || targetCol === 'average') {
+              workingColWidthAverage = computeNextWidth(workingColWidthAverage, 80);
+            }
+            if (targetCol === 'all' || targetCol === 'mention') {
+              workingColWidthMention = computeNextWidth(workingColWidthMention, 80);
+            }
+            if (targetCol === 'all' || targetCol === 'all_notes' || targetCol === 'note') {
+              const colsToResize =
+                targetCol === 'note' && resolvedNoteCols.length > 0
+                  ? resolvedNoteCols
+                  : Array.from({ length: workingColCount }, (_, i) => i);
+              for (const idx of colsToResize) {
+                const curW = workingCustomNoteWidths[idx] || workingNoteColWidth;
+                workingCustomNoteWidths[idx] = computeNextWidth(curW, 96, 420);
+              }
+              if (targetCol === 'all' || targetCol === 'all_notes' || resolvedNoteCols.length === 0) {
+                workingNoteColWidth = computeNextWidth(workingNoteColWidth, 96, 240);
+              }
+            }
+            layoutMutated = true;
+            summaries.push(`✓ Largeur des colonnes ajustée dans ${subject.name}`);
+            break;
+          }
+
+          case 'resize_rows': {
+            const target = String(action.target || 'all');
+            const displayList = studentsMutated ? workingStudents : studentsWithStats;
+            const targetRowIndices: number[] = [];
+
+            if (target === 'all') {
+              for (let i = 0; i < displayList.length; i++) targetRowIndices.push(i);
+            } else {
+              const nameTargets: string[] = [];
+              if (typeof action.studentName === 'string' && action.studentName.trim()) {
+                nameTargets.push(normalizeStudentNameKey(action.studentName));
+              }
+              if (Array.isArray(action.studentNames)) {
+                for (const n of action.studentNames) {
+                  const norm = normalizeStudentNameKey(String(n || ''));
+                  if (norm) nameTargets.push(norm);
+                }
+              }
+              const rowTargets = new Set<number>();
+              if (typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
+                rowTargets.add(Math.round(action.rowIndex) - 1);
+              }
+              if (Array.isArray(action.rowIndices)) {
+                for (const r of action.rowIndices) {
+                  if (Number(r) >= 1) rowTargets.add(Math.round(Number(r)) - 1);
+                }
+              }
+
+              displayList.forEach((s, idx) => {
+                const sn = normalizeStudentNameKey(s.name || '');
+                const matchesName =
+                  nameTargets.length > 0 &&
+                  Boolean(sn) &&
+                  nameTargets.some((t) => sn === t || sn.includes(t) || t.includes(sn));
+                if (matchesName || rowTargets.has(idx)) {
+                  targetRowIndices.push(idx);
+                }
+              });
+            }
+
+            for (const rIdx of targetRowIndices) {
+              const curH = workingCustomRowHeights[rIdx] || 44;
+              let nextH = curH;
+              if (typeof action.heightPx === 'number' && Number.isFinite(action.heightPx)) {
+                nextH = Math.round(Math.max(28, Math.min(180, action.heightPx)));
+              } else if (typeof action.deltaPx === 'number' && Number.isFinite(action.deltaPx)) {
+                nextH = Math.round(Math.max(28, Math.min(180, curH + action.deltaPx)));
+              }
+              workingCustomRowHeights[rIdx] = nextH;
+            }
+            if (targetRowIndices.length > 0) {
+              layoutMutated = true;
+              summaries.push(`✓ Hauteur de ${targetRowIndices.length} ligne(s) ajustée`);
+            }
             break;
           }
 
@@ -4091,15 +4678,32 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           }
 
           case 'reset_column_widths': {
-            setColWidthRank(64);
-            setColWidthPhoto(68);
-            setColWidthMatricule(118);
-            setColWidthName(190);
-            setNoteColWidth(96);
-            setCustomNoteWidths({});
-            setCustomRowHeights({});
-            setIsSaved(false);
-            summaries.push(`✓ Largeurs des colonnes réinitialisées`);
+            workingColWidthRank = 68;
+            workingColWidthPhoto = 76;
+            workingColWidthMatricule = 124;
+            workingColWidthName = 280;
+            workingNoteColWidth = 96;
+            workingCustomNoteWidths = {};
+            workingColWidthAverage = 104;
+            workingColWidthMention = 108;
+            workingCustomRowHeights = {};
+            layoutMutated = true;
+            summaries.push(`✓ Largeurs des colonnes et hauteurs de lignes réinitialisées`);
+            break;
+          }
+
+          case 'set_expand_level': {
+            const lvl: 0 | 1 | 2 =
+              Number(action.level) === 2 ? 2 : Number(action.level) === 1 ? 1 : 0;
+            setViewerExpandLevel(lvl);
+            setIsViewerMaximized(lvl >= 1);
+            summaries.push(
+              lvl === 2
+                ? `✓ Plein écran total activé`
+                : lvl === 1
+                ? `✓ Affichage agrandi activé`
+                : `✓ Affichage normal rétabli`
+            );
             break;
           }
 
@@ -4118,6 +4722,26 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           case 'export_excel': {
             handleExportExcel();
             summaries.push(`✓ Export Excel (.xlsx) téléchargé`);
+            break;
+          }
+
+          case 'export_pdf': {
+            await exportGradebookToPdf(buildSubjectExportDataset());
+            summaries.push(`✓ Export PDF téléchargé`);
+            break;
+          }
+
+          case 'export_word': {
+            await exportGradebookToWord(buildSubjectExportDataset());
+            summaries.push(`✓ Export Word (.docx) téléchargé`);
+            break;
+          }
+
+          case 'copy_table': {
+            await copyGradebookToClipboard(buildSubjectExportDataset());
+            setCopiedTableSuccess(true);
+            setTimeout(() => setCopiedTableSuccess(false), 2500);
+            summaries.push(`✓ Tableau copié dans le presse-papiers`);
             break;
           }
 
@@ -4140,10 +4764,35 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       if (stylesMutated) {
         setCellCustomStyles(workingCellStyles);
       }
+      if (cellColorsMutated) {
+        setCellColors(workingCellColors);
+      }
+      if (rowColorsMutated) {
+        setRowColors(workingRowColors);
+      }
+      if (layoutMutated) {
+        setColWidthRank(workingColWidthRank);
+        setColWidthPhoto(workingColWidthPhoto);
+        setColWidthMatricule(workingColWidthMatricule);
+        setColWidthName(workingColWidthName);
+        setNoteColWidth(workingNoteColWidth);
+        setCustomNoteWidths(workingCustomNoteWidths);
+        setColWidthAverage(workingColWidthAverage);
+        setColWidthMention(workingColWidthMention);
+        setCustomRowHeights(workingCustomRowHeights);
+      }
       if (pendingAutoShowMatricule && !explicitMatriculeToggleSeen) {
         setSheetShowMatricule(true);
       }
-      if (colsMutated || studentsMutated || stylesMutated || (pendingAutoShowMatricule && !explicitMatriculeToggleSeen)) {
+      if (
+        colsMutated ||
+        studentsMutated ||
+        stylesMutated ||
+        cellColorsMutated ||
+        rowColorsMutated ||
+        layoutMutated ||
+        (pendingAutoShowMatricule && !explicitMatriculeToggleSeen)
+      ) {
         setIsSaved(false);
         setTimeout(() => {
           flushCloudSave({ force: true });
@@ -5520,10 +6169,18 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 {/* =================================================================== */}
                 <div className="relative shrink-0 border-2 border-slate-900 bg-white shadow-xl w-fit">
                   {/* EN-TÊTE DU TABLEAU : MOTS EN GRAND CARACTÈRE, BIEN CENTRÉS */}
+                  {(() => {
+                    const hdrRank = getHeaderVisualStyles('header_rank');
+                    const hdrPhoto = getHeaderVisualStyles('header_photo');
+                    const hdrMatricule = getHeaderVisualStyles('header_matricule');
+                    const hdrName = getHeaderVisualStyles('header_name');
+                    const hdrAvg = getHeaderVisualStyles('header_avg');
+                    const hdrMention = getHeaderVisualStyles('header_mention');
+                    return (
                   <div className="flex bg-[#f1f5f9] border-b-2 border-slate-900 select-none items-stretch text-slate-900 w-fit">
                     {/* 1. RANG */}
                     <div 
-                      style={{ width: `${effectiveColWidthRank}px`, minWidth: `${effectiveColWidthRank}px`, maxWidth: `${effectiveColWidthRank}px` }}
+                      style={{ width: `${effectiveColWidthRank}px`, minWidth: `${effectiveColWidthRank}px`, maxWidth: `${effectiveColWidthRank}px`, backgroundColor: hdrRank.containerBg }}
                       onClick={() => {
                         setActiveCellInfo({
                           id: 'header-rank',
@@ -5536,10 +6193,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-rank') ? null : { type: 'col', id: 'col-rank' });
                       }}
-                      className={`h-12 border-r ${isColActive('col-rank') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
+                      className={`min-h-12 border-r ${isColActive('col-rank') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} flex items-center justify-center p-1 text-center ${hdrRank.containerBg ? '' : 'bg-[#f1f5f9]'} shrink-0 relative cursor-pointer`}
                       title="Rang de l'élève (Double-cliquer pour sélectionner le trait vertical)"
                     >
-                      <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
+                      <span style={hdrRank.textStyle} className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         RANG
                       </span>
                       {renderColHandle('col-rank')}
@@ -5547,7 +6204,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                     {/* 2. PROFIL / PHOTO */}
                     <div 
-                      style={{ width: `${colWidthPhoto}px`, minWidth: `${colWidthPhoto}px`, maxWidth: `${colWidthPhoto}px` }}
+                      style={{ width: `${colWidthPhoto}px`, minWidth: `${colWidthPhoto}px`, maxWidth: `${colWidthPhoto}px`, backgroundColor: hdrPhoto.containerBg }}
                       onClick={() => {
                         setActiveCellInfo({
                           id: 'header-photo',
@@ -5560,10 +6217,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-photo') ? null : { type: 'col', id: 'col-photo' });
                       }}
-                      className={`h-12 border-r ${isColActive('col-photo') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
+                      className={`min-h-12 border-r ${isColActive('col-photo') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} flex items-center justify-center p-1 text-center ${hdrPhoto.containerBg ? '' : 'bg-[#f1f5f9]'} shrink-0 relative cursor-pointer`}
                       title="Profil / Photo (Double-cliquer pour sélectionner le trait vertical)"
                     >
-                      <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
+                      <span style={hdrPhoto.textStyle} className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         PROFIL
                       </span>
                       {renderColHandle('col-photo')}
@@ -5576,6 +6233,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           width: `${effectiveColWidthMatricule}px`,
                           minWidth: `${effectiveColWidthMatricule}px`,
                           maxWidth: `${effectiveColWidthMatricule}px`,
+                          backgroundColor: hdrMatricule.containerBg,
                         }}
                         onClick={() => {
                           setActiveCellInfo({
@@ -5589,10 +6247,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                           e.stopPropagation();
                           setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-matricule') ? null : { type: 'col', id: 'col-matricule' });
                         }}
-                        className={`h-12 border-r ${isColActive('col-matricule') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative cursor-pointer`}
+                        className={`min-h-12 border-r ${isColActive('col-matricule') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} flex items-center justify-center p-1 text-center ${hdrMatricule.containerBg ? '' : 'bg-[#f1f5f9]'} shrink-0 relative cursor-pointer`}
                         title="Matricule de l'étudiant (Double-cliquer pour sélectionner le trait vertical)"
                       >
-                        <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
+                        <span style={hdrMatricule.textStyle} className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                           MATRICULE
                         </span>
                         {renderColHandle('col-matricule')}
@@ -5601,7 +6259,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                     {/* 3. NOM & PRÉNOM */}
                     <div 
-                      style={{ width: `${effectiveColWidthName}px`, minWidth: `${effectiveColWidthName}px`, maxWidth: `${effectiveColWidthName}px` }}
+                      style={{ width: `${effectiveColWidthName}px`, minWidth: `${effectiveColWidthName}px`, maxWidth: `${effectiveColWidthName}px`, backgroundColor: hdrName.containerBg }}
                       onClick={() => {
                         setActiveCellInfo({
                           id: 'header-name',
@@ -5614,10 +6272,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-name') ? null : { type: 'col', id: 'col-name' });
                       }}
-                      className={`h-12 border-r ${isColActive('col-name') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} flex items-center justify-center p-1 text-center bg-[#f1f5f9] shrink-0 relative group cursor-pointer`}
+                      className={`min-h-12 border-r ${isColActive('col-name') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} flex items-center justify-center p-1 text-center ${hdrName.containerBg ? '' : 'bg-[#f1f5f9]'} shrink-0 relative group cursor-pointer`}
                       title="Nom et Prénom (Double-cliquer pour sélectionner le trait vertical)"
                     >
-                      <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
+                      <span style={hdrName.textStyle} className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase">
                         NOM & PRÉNOM
                       </span>
 
@@ -5759,7 +6417,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {Array.from({ length: noteColumnCount }).map((_, i) => {
                       const colMeta = columnMetas[i] || { maxScore: 20 };
                       const colTitle = colMeta.title || 'NOTE';
-                      const headerBg = colMeta.headerBgColor || colMeta.columnBgColor || '#f1f5f9';
+                      const hdrNote = getHeaderVisualStyles(
+                        `header_note_${i}`,
+                        colMeta.headerBgColor || colMeta.columnBgColor || '#f1f5f9'
+                      );
+                      const headerBg = hdrNote.containerBg || '#f1f5f9';
                       const isMovingThis = movingColIndex === i;
                       const isMenuOpen = activeMenuCol === i;
                       const thisColWidth = getColWidth(`col-note-${i}`);
@@ -5786,7 +6448,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             e.stopPropagation();
                             setSelectedLine(prev => (prev?.type === 'col' && prev.id === `col-note-${i}`) ? null : { type: 'col', id: `col-note-${i}` });
                           }}
-                          className={`h-12 border-r ${isColActive(`col-note-${i}`) ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors cursor-pointer ${
+                          className={`min-h-12 border-r ${isColActive(`col-note-${i}`) ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} flex flex-col items-center justify-center p-1 text-center relative group shrink-0 transition-colors cursor-pointer ${
                             isMovingThis ? 'ring-2 ring-blue-500 bg-blue-50' : ''
                           }`}
                           title={`${colTitle} ${i + 1} (Double-cliquer pour sélectionner le trait vertical)`}
@@ -5841,10 +6503,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                           {/* TITRE ET NUMÉRO AUTOMATIQUE CENTRÉS SANS CHEVAUCHEMENT */}
                           <div className="w-full flex flex-col items-center justify-center px-4 select-none">
-                            <span className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase truncate text-center w-full leading-tight">
+                            <span style={hdrNote.textStyle} className="font-black text-xs sm:text-sm text-slate-900 tracking-wider uppercase truncate text-center w-full leading-tight">
                               {colTitle} {i + 1}
                             </span>
-                            <span className="text-[9.5px] font-bold text-slate-500 text-center w-full leading-tight mt-0.5">
+                            <span
+                              style={hdrNote.custom?.color ? { color: hdrNote.custom.color, opacity: 0.85 } : undefined}
+                              className="text-[9.5px] font-bold text-slate-500 text-center w-full leading-tight mt-0.5"
+                            >
                               /{colMeta.maxScore}{colMeta.coeffEval && colMeta.coeffEval !== 1 ? ` · c.${colMeta.coeffEval}` : ''}
                             </span>
                           </div>
@@ -6026,7 +6691,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     {/* 5. BOUTON [+] AJOUTER UNE NOUVELLE NOTE */}
                     <div 
                       style={{ width: '48px', minWidth: '48px', maxWidth: '48px' }}
-                      className="h-12 border-r border-slate-700 flex items-center justify-center bg-slate-200/70 hover:bg-blue-100 transition cursor-pointer shrink-0 relative"
+                      className="min-h-12 border-r border-slate-700 flex items-center justify-center bg-slate-200/70 hover:bg-blue-100 transition cursor-pointer shrink-0 relative"
                       onClick={handleAddNoteColumn}
                       title="Ajouter une colonne de note (Note suivante)"
                     >
@@ -6040,7 +6705,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                     {/* 6. MOYENNE */}
                     <div 
-                      style={{ width: `${effectiveColWidthAverage}px`, minWidth: `${effectiveColWidthAverage}px`, maxWidth: `${effectiveColWidthAverage}px` }}
+                      style={{ width: `${effectiveColWidthAverage}px`, minWidth: `${effectiveColWidthAverage}px`, maxWidth: `${effectiveColWidthAverage}px`, backgroundColor: hdrAvg.containerBg }}
                       onClick={() => {
                         setActiveCellInfo({
                           id: 'header-average',
@@ -6053,15 +6718,18 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' });
                       }}
-                      className={`h-12 border-r ${
+                      className={`min-h-12 border-r ${
                         isColActive('col-moyenne') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'
-                      } flex flex-col items-center justify-center p-1 text-center bg-blue-100/70 shrink-0 relative cursor-pointer`}
+                      } flex flex-col items-center justify-center p-1 text-center ${hdrAvg.containerBg ? '' : 'bg-blue-100/70'} shrink-0 relative cursor-pointer`}
                       title={`Moyenne ramenée sur /${effectiveScaleLabel} (Double-cliquer pour sélectionner le trait vertical)`}
                     >
-                      <span className="font-black text-xs sm:text-sm text-blue-950 tracking-wider uppercase leading-none">
+                      <span style={hdrAvg.textStyle} className="font-black text-xs sm:text-sm text-blue-950 tracking-wider uppercase leading-none">
                         MOYENNE
                       </span>
-                      <span className="text-[9.5px] font-extrabold text-blue-700 leading-none mt-0.5">
+                      <span
+                        style={hdrAvg.custom?.color ? { color: hdrAvg.custom.color, opacity: 0.85 } : undefined}
+                        className="text-[9.5px] font-extrabold text-blue-700 leading-none mt-0.5"
+                      >
                         /{effectiveScaleLabel}
                       </span>
                       {renderColHandle('col-moyenne')}
@@ -6069,7 +6737,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                     {/* 7. MENTION */}
                     <div 
-                      style={{ width: `${effectiveColWidthMention}px`, minWidth: `${effectiveColWidthMention}px`, maxWidth: `${effectiveColWidthMention}px` }}
+                      style={{ width: `${effectiveColWidthMention}px`, minWidth: `${effectiveColWidthMention}px`, maxWidth: `${effectiveColWidthMention}px`, backgroundColor: hdrMention.containerBg }}
                       onClick={() => {
                         setActiveCellInfo({
                           id: 'header-mention',
@@ -6082,17 +6750,19 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         e.stopPropagation();
                         setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-mention') ? null : { type: 'col', id: 'col-mention' });
                       }}
-                      className={`h-12 border-r ${
+                      className={`min-h-12 border-r ${
                         isColActive('col-mention') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'
-                      } flex items-center justify-center p-1 text-center bg-emerald-100/70 shrink-0 relative cursor-pointer`}
+                      } flex items-center justify-center p-1 text-center ${hdrMention.containerBg ? '' : 'bg-emerald-100/70'} shrink-0 relative cursor-pointer`}
                       title="Mention pédagogique (Double-cliquer pour sélectionner le trait vertical)"
                     >
-                      <span className="font-black text-xs sm:text-sm text-emerald-950 tracking-wider uppercase">
+                      <span style={hdrMention.textStyle} className="font-black text-xs sm:text-sm text-emerald-950 tracking-wider uppercase">
                         MENTION
                       </span>
                       {renderColHandle('col-mention')}
                     </div>
                   </div>
+                    );
+                  })()}
 
                   {/* ================================================================= */}
                   {/* CORPS DU TABLEAU : LIGNES D'ÉLÈVES BIEN TRACÉES                   */}
@@ -6109,7 +6779,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       const nameCellBg = nameCellStyle.backgroundColor || cellColors[`${std.id}_name`] || rowBg || undefined;
                       const rankCustom = cellCustomStyles[`${std.id}_rank`];
                       const rankCellStyle = getResolvedCellStyle(`${std.id}_rank`, 'center');
-                      const rankCellBg = rankCellStyle.backgroundColor || rowBg || undefined;
+                      const rankCellBg = rankCellStyle.backgroundColor || cellColors[`${std.id}_rank`] || rowBg || undefined;
+                      const photoCellBg = cellCustomStyles[`${std.id}_photo`]?.bgColor || cellColors[`${std.id}_photo`] || rowBg || undefined;
+                      const avgCustom = cellCustomStyles[`${std.id}_avg`];
+                      const avgCellStyle = getResolvedCellStyle(`${std.id}_avg`, 'center');
+                      const avgCellBg = avgCustom?.bgColor || cellColors[`${std.id}_avg`] || rowBg || undefined;
+                      const mentionCustom = cellCustomStyles[`${std.id}_mention`];
+                      const mentionCellStyle = getResolvedCellStyle(`${std.id}_mention`, 'center');
+                      const mentionCellBg = mentionCustom?.bgColor || cellColors[`${std.id}_mention`] || rowBg || undefined;
                       const isRowMenuOpen = activeMenuRow === std.id || activeMenuPhoto === std.id || activeMenuCell?.studentId === std.id;
 
                       return (
@@ -6185,7 +6862,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               minWidth: `${colWidthPhoto}px`,
                               maxWidth: `${colWidthPhoto}px`,
                               height: `${rowHeight}px`,
-                              backgroundColor: rowBg || undefined
+                              backgroundColor: photoCellBg
                             }}
                             className={`border-r ${isColActive('col-photo') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} border-b ${isRowLineActive ? 'border-b-sky-400 z-10' : 'border-b-slate-600'} flex items-center justify-center p-0 relative group shrink-0 ${
                               activeCellInfo.id === `cell-photo-${rIdx}` ? 'outline-2 outline-[#107c41] -outline-offset-2 z-10 bg-blue-50/30' : ''
@@ -6296,7 +6973,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               <button
                                 type="button"
                                 onClick={() => handleTriggerPhotoUpload(std.id)}
-                                className="w-full h-full flex flex-col items-center justify-center bg-slate-50 hover:bg-blue-50/70 text-slate-400 hover:text-blue-600 transition cursor-pointer p-0.5"
+                                className={`w-full h-full flex flex-col items-center justify-center ${photoCellBg ? 'bg-transparent' : 'bg-slate-50'} hover:bg-blue-50/70 text-slate-400 hover:text-blue-600 transition cursor-pointer p-0.5`}
                                 title="Cliquer pour importer une photo carrée"
                               >
                                 <div className="w-7 h-7 rounded-md bg-white border border-slate-300 flex items-center justify-center shadow-xs">
@@ -7042,7 +7719,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               minWidth: `${effectiveColWidthAverage}px`,
                               maxWidth: `${effectiveColWidthAverage}px`,
                               height: `${rowHeight}px`,
-                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : (rowBg || undefined)
+                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : avgCellBg
                             }}
                             onMouseDown={(e) => {
                               // Empêcher toute sélection de texte ou de case dans la colonne Moyenne
@@ -7055,7 +7732,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             } flex items-center justify-between px-2 select-none cursor-default relative shrink-0 transition-colors ${
                               std.hasInvalidNote
                                 ? 'bg-slate-200 text-slate-400 border border-slate-300'
-                                : rowBg ? '' : 'bg-blue-50/40'
+                                : avgCellBg ? '' : 'bg-blue-50/40'
                             }`}
                             title={
                               std.hasInvalidNote
@@ -7064,7 +7741,22 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             }
                           >
                             <span
-                              className={`w-full text-center text-xs font-black tracking-tight flex items-center justify-center gap-1 select-none pointer-events-none ${
+                              style={avgCustom ? {
+                                fontWeight: avgCustom.bold !== undefined ? (avgCustom.bold ? '900' : '400') : undefined,
+                                fontStyle: avgCustom.italic ? 'italic' : undefined,
+                                textDecoration: avgCellStyle.textDecoration !== 'none' ? avgCellStyle.textDecoration : undefined,
+                                fontFamily: avgCustom.fontFamily || undefined,
+                                fontSize: avgCustom.fontSize ? `${avgCustom.fontSize}px` : undefined,
+                                color: avgCustom.color || undefined,
+                                textAlign: avgCustom.textAlign || undefined,
+                              } : undefined}
+                              className={`w-full text-xs font-black tracking-tight flex items-center gap-1 select-none pointer-events-none ${
+                                avgCustom?.textAlign === 'left'
+                                  ? 'justify-start text-left'
+                                  : avgCustom?.textAlign === 'right'
+                                  ? 'justify-end text-right'
+                                  : 'justify-center text-center'
+                              } ${
                                 std.hasInvalidNote
                                   ? 'text-slate-400 font-mono text-sm tracking-widest'
                                   : std.average === null
@@ -7111,7 +7803,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               minWidth: `${effectiveColWidthMention}px`,
                               maxWidth: `${effectiveColWidthMention}px`,
                               height: `${rowHeight}px`,
-                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : (rowBg || undefined)
+                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : mentionCellBg
                             }}
                             onMouseDown={(e) => {
                               // Empêcher toute sélection de texte ou de case dans la colonne Mention
@@ -7121,15 +7813,30 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             }}
                             className={`border-r ${isColActive('col-mention') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} border-b ${
                               isRowLineActive ? 'border-b-sky-400 z-10' : 'border-b-slate-600'
-                            } flex items-center justify-center px-2 select-none cursor-default relative shrink-0 transition-colors ${
+                            } flex items-center ${
+                              mentionCustom?.textAlign === 'left'
+                                ? 'justify-start'
+                                : mentionCustom?.textAlign === 'right'
+                                ? 'justify-end'
+                                : 'justify-center'
+                            } px-2 select-none cursor-default relative shrink-0 transition-colors ${
                               std.hasInvalidNote
                                 ? 'bg-slate-200 text-slate-400 border border-slate-300'
-                                : rowBg ? '' : 'bg-emerald-50/20'
+                                : mentionCellBg ? '' : 'bg-emerald-50/20'
                             }`}
                             title="Mention pédagogique calculée automatiquement (case bloquée)"
                           >
                             {std.mention && std.mention !== '-' && std.mention !== '—' ? (
                               <span
+                                style={mentionCustom ? {
+                                  fontWeight: mentionCustom.bold !== undefined ? (mentionCustom.bold ? '900' : '400') : undefined,
+                                  fontStyle: mentionCustom.italic ? 'italic' : undefined,
+                                  textDecoration: mentionCellStyle.textDecoration !== 'none' ? mentionCellStyle.textDecoration : undefined,
+                                  fontFamily: mentionCustom.fontFamily || undefined,
+                                  fontSize: mentionCustom.fontSize ? `${mentionCustom.fontSize}px` : undefined,
+                                  color: mentionCustom.color || undefined,
+                                  textAlign: mentionCustom.textAlign || undefined,
+                                } : undefined}
                                 className={`select-none pointer-events-none px-2 py-0.5 rounded-md text-[11px] sm:text-xs border shadow-2xs whitespace-nowrap tracking-tight ${std.mentionClass}`}
                               >
                                 {std.mention}

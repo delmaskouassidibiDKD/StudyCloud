@@ -361,6 +361,9 @@ export type TeacherDelmasActionType =
   | 'update_note_column'
   | 'delete_note_column'
   | 'swap_note_columns'
+  | 'move_note_column'
+  | 'fill_note_column'
+  | 'move_student'
   | 'adjust_grades'
   | 'set_sort_mode'
   | 'set_show_matricule'
@@ -369,11 +372,17 @@ export type TeacherDelmasActionType =
   | 'set_mention_rules'
   | 'format_cells'
   | 'clear_formatting'
-  | 'set_zoom'
+  | 'resize_columns'
+  | 'resize_rows'
   | 'reset_column_widths'
+  | 'set_zoom'
+  | 'set_expand_level'
   | 'undo'
   | 'redo'
   | 'export_excel'
+  | 'export_pdf'
+  | 'export_word'
+  | 'copy_table'
   | 'save_gradebook'
   | 'set_subject_coefficient'
   | 'set_term_coefficient'
@@ -389,6 +398,9 @@ export const VALID_TEACHER_DELMAS_ACTION_TYPES: ReadonlySet<string> = new Set<Te
   'update_note_column',
   'delete_note_column',
   'swap_note_columns',
+  'move_note_column',
+  'fill_note_column',
+  'move_student',
   'adjust_grades',
   'set_sort_mode',
   'set_show_matricule',
@@ -397,11 +409,17 @@ export const VALID_TEACHER_DELMAS_ACTION_TYPES: ReadonlySet<string> = new Set<Te
   'set_mention_rules',
   'format_cells',
   'clear_formatting',
-  'set_zoom',
+  'resize_columns',
+  'resize_rows',
   'reset_column_widths',
+  'set_zoom',
+  'set_expand_level',
   'undo',
   'redo',
   'export_excel',
+  'export_pdf',
+  'export_word',
+  'copy_table',
   'save_gradebook',
   'set_subject_coefficient',
   'set_term_coefficient',
@@ -699,7 +717,7 @@ export function classifyTeacherDelmasIntent(params: {
   );
 
   const tableDomainRegex =
-    /\b(tableau|tableaux|tableur|tableurs|feuille|feuilles|cellule|cellules|case|cases|ligne|lignes|colonne|colonnes|eleve|eleves|etudiant|etudiants|apprenant|apprenants|note|notes|moyenne|moyennes|bareme|baremes|mention|mentions|rang|rangs|classement|classements|matricule|matricules|coeff|coeffs|coefficient|coefficients|devoir|devoirs|interro|interros|interrogation|interrogations|compo|compos|composition|examen|examens|evaluation|evaluations|point|points|pt|pts|classe|classes|matiere|matieres|trimestre|trimestres|semestre|semestres|annuel|annuelle|ordre de merite|merite|alphabetique|ordre initial|zoom|largeur|largeurs|excel|xlsx|export|exporter|annule|annuler|retablis|retablir|undo|redo|gras|italique|souligne|couleur|couleurs|rouge|vert|bleu|jaune|orange|gris|surligne|mise en forme|style|styles|aligne|centrer|police|table|tables|sheet|sheets|student|students|grade|grades|score|scores|average|averages|rank|sort|column|columns|row|rows)\b/i;
+    /\b(tableau|tableaux|tableur|tableurs|feuille|feuilles|cellule|cellules|case|cases|ligne|lignes|colonne|colonnes|eleve|eleves|etudiant|etudiants|apprenant|apprenants|noms|prenom|prenoms|note|notes|moyenne|moyennes|bareme|baremes|mention|mentions|rang|rangs|classement|classements|matricule|matricules|coeff|coeffs|coefficient|coefficients|devoir|devoirs|interro|interros|interrogation|interrogations|compo|compos|composition|examen|examens|evaluation|evaluations|point|points|pt|pts|classe|classes|matiere|matieres|trimestre|trimestres|semestre|semestres|annuel|annuelle|ordre de merite|merite|alphabetique|ordre initial|zoom|largeur|largeurs|hauteur|hauteurs|taille|tailles|excel|xlsx|pdf|word|docx|export|exporter|telecharge|telecharger|copier|presse-papiers|annule|annuler|retablis|retablir|undo|redo|gras|italique|souligne|soulignee|barre|barree|couleur|couleurs|rouge|vert|verte|bleu|bleue|jaune|orange|gris|grise|violet|violette|rose|noir|noire|blanc|blanche|cyan|marron|dore|doree|pastel|fond|arriere-plan|surligne|mise en forme|style|styles|aligne|alignement|centrer|gauche|droite|police|polices|ecriture|ecritures|typographie|caracteres|en-tete|entete|entetes|titre|titres|plein ecran|ecran|affichage|agrandis|agrandir|elargis|elargir|reduis|reduire|retrecis|retrecir|grossis|grossir|rapetisse|rapetisser|photo|profil|total|decision|outil|outils|table|tables|sheet|sheets|student|students|grade|grades|score|scores|average|averages|rank|sort|column|columns|row|rows|font|width|height|color|fullscreen)\b/i;
 
   const mentionsTableDomain =
     tableDomainRegex.test(norm) ||
@@ -826,15 +844,15 @@ export function classifyTeacherDelmasIntent(params: {
 
   // Commandes explicites d'action sur le tableau ou les fonctionnalités de l'interface
   const strongActionVerbRegex =
-    /\b(ajoute|ajouter|rajoute|rajouter|insere|inserer|saisis|saisir|entre|entrer|remplis|remplir|ecris|ecrire|mets|met|mettre|attribue|attribuer|noter|importe|importer|cree|creer|modifie|modifier|change|changer|remplace|remplacer|corrige|corriger|renomme|renommer|actualise|passe|passer|ramene|ramener|convertis|convertir|regle|regler|configure|configurer|definis|definir|personnalise|personnaliser|ajuste|ajuster|augmente|augmenter|diminue|diminuer|baisse|baisser|retire|retirer|enleve|enlever|bonus|malus|supprime|supprimer|efface|effacer|vide|vider|nettoie|nettoyer|trie|trier|classe|classer|ordonne|ordonner|cache|cacher|masque|masquer|colore|colorer|colorie|colorier|surligne|surligner|formate|formater|aligne|aligner|centre|centrer|deplace|deplacer|inverse|inverser|echange|echanger|copie|copier|exporte|exporter|telecharge|telecharger|enregistre|enregistrer|sauvegarde|sauvegarder|save|annule|annuler|retablis|retablir|undo|redo|zoome|dezoome|reinitialise|reinitialiser|add|insert|fill|write|put|set|update|edit|modify|replace|rename|fix|adjust|increase|decrease|convert|delete|remove|clear|clean|sort|hide|color|highlight|bold|italic|underline|format|align|copy|export|reset)\b/i;
+    /\b(ajoute|ajouter|rajoute|rajouter|insere|inserer|saisis|saisir|entre|entrer|remplis|remplir|ecris|ecrire|mets|met|mettre|remets|remet|remettre|restaure|restaurer|attribue|attribuer|noter|importe|importer|cree|creer|modifie|modifier|change|changer|remplace|remplacer|corrige|corriger|renomme|renommer|actualise|passe|passer|ramene|ramener|convertis|convertir|regle|regler|configure|configurer|definis|definir|personnalise|personnaliser|ajuste|ajuster|augmente|augmenter|diminue|diminuer|baisse|baisser|agrandis|agrandir|elargis|elargir|reduis|reduire|retrecis|retrecir|grossis|grossir|rapetisse|rapetisser|allonge|allonger|rehausse|rehausser|retire|retirer|enleve|enlever|bonus|malus|supprime|supprimer|efface|effacer|vide|vider|nettoie|nettoyer|trie|trier|classe|classer|ordonne|ordonner|cache|cacher|masque|masquer|active|activer|desactive|desactiver|colore|colorer|colorie|colorier|peins|peindre|decolore|decolorer|surligne|surligner|souligne|souligner|barre|barrer|formate|formater|applique|appliquer|utilise|utiliser|aligne|aligner|centre|centrer|deplace|deplacer|monte|monter|descends|descendre|remonte|remonter|inverse|inverser|echange|echanger|copie|copier|recopie|recopier|duplique|dupliquer|exporte|exporter|telecharge|telecharger|imprime|imprimer|enregistre|enregistrer|sauvegarde|sauvegarder|save|annule|annuler|retablis|retablir|undo|redo|zoome|dezoome|reinitialise|reinitialiser|quitte|quitter|add|insert|fill|write|put|set|update|edit|modify|replace|rename|fix|adjust|increase|decrease|enlarge|widen|shrink|resize|convert|delete|remove|clear|clean|sort|hide|color|highlight|bold|italic|underline|strike|strikethrough|format|align|center|copy|export|download|reset|restore)\b/i;
 
-  // Raccourcis de saisie ou de réglage directs (ex: "+1 pt à tous", "moyenne sur 40", "DKD : 15, 14", "ordre de mérite", "zoom 80%")
+  // Raccourcis de saisie ou de réglage directs (ex: "+1 pt à tous", "moyenne sur 40", "DKD : 15, 14", "ordre de mérite", "zoom 80%", "en gras", "en rouge", "plein écran", "en pdf")
   const shorthandActionRegex =
-    /([+-]\s*\d+(?:[.,]\d+)?\s*(?:pt|pts|point|points)\b)|(\b(?:moyenne|notes?|toutes les notes|note\s*\d+)\s+sur\s+\d+\b)|(\b(?:ordre de merite|ordre alphabetique|ordre initial)\b)|(\bzoom\s*(?:a\s*)?\d+\s*%?)|(\b\d+(?:[.,]\d+)?\s*\/\s*\d+\b)/i;
+    /([+-]\s*\d+(?:[.,]\d+)?\s*(?:pt|pts|point|points)\b)|(\b(?:moyenne|notes?|toutes les notes|note\s*\d+)\s+sur\s+\d+\b)|(\b(?:ordre de merite|ordre alphabetique|ordre initial|z\s*(?:a|->|vers)\s*a|a\s*(?:a|->|vers)\s*z)\b)|(\bzoom\s*(?:a\s*)?\d+\s*%?)|(\b\d+(?:[.,]\d+)?\s*\/\s*\d+\b)|(\b(?:en\s+gras|en\s+italique|en\s+rouge|en\s+bleu|en\s+vert|en\s+jaune|en\s+orange|en\s+violet|en\s+rose|en\s+gris|en\s+noir|en\s+pdf|en\s+word|en\s+excel|plein\s+ecran|une\s+ligne\s+sur\s+deux)\b)/i;
 
   // Questions de pure lecture (qui, combien, quel, dans quelle classe, bilan, résumé, liste, compare...)
   const readOnlyQueryRegex =
-    /^(qui\b|combien\b|quel\b|quelle\b|quels\b|quelles\b|ou\b|dans quelle\b|suis-je\b|je suis dans\b|est-ce que\b|y a-t-il\b|a-t-il\b|ont-ils\b|fais(?:-moi)?\s+(?:un|le)\s+(?:bilan|resume|point|rapport|recap)|donne(?:-moi)?\s+(?:la moyenne|les moyennes|le rang|le classement|le bilan|la liste|les notes|les statistiques|le taux)|montre(?:-moi)?\s+(?:qui|les eleves|les notes|la moyenne|le classement)|liste(?:-moi)?\b|compare\b|analyse\b|calcule(?:-moi)?\s+(?:juste|la moyenne|le taux)|verifie\b|que vois-tu|qu'est-ce que|who\b|how many\b|what is\b|which\b|where am i)/i;
+    /^(qui\b|combien\b|quel\b|quelle\b|quels\b|quelles\b|ou\b|dans quelle\b|suis-je\b|je suis dans\b|est-ce que\b|y a-t-il\b|a-t-il\b|ont-ils\b|fais(?:-moi)?\s+(?:un|le)\s+(?:bilan|resume|point|rapport|recap)|donne(?:-moi)?\s+(?:la moyenne|les moyennes|le rang|le classement|le bilan|la liste|les notes|les statistiques|le taux)|(?:montre|affiche)(?:-moi|\s+moi)?\s+(?:qui|les eleves|les notes|la moyenne|les moyennes|le rang|le classement|le bilan|la liste)|liste(?:-moi)?\b|compare\b|analyse\b|calcule(?:-moi)?\s+(?:juste|la moyenne|le taux)|verifie\b|que vois-tu|qu'est-ce que|who\b|how many\b|what is\b|which\b|where am i)/i;
 
   const hasStrongActionVerb = strongActionVerbRegex.test(norm);
   const hasShorthandAction = shorthandActionRegex.test(norm);
@@ -1108,24 +1126,36 @@ function buildActiveSheetContextBlock(params: {
 }
 
 /**
- * Catalogue d'actions adapté exactement au type de tableau ouvert.
+ * Catalogue d'actions adapté exactement au type de tableau ouvert — parité 100 % avec TOUS les outils manuels du ruban.
  */
 function buildActionsCatalogForSheet(sheetKind: TeacherDelmasActiveContext['sheetKind']): string {
-  const commonActions = `
-- Trier le classement : \`{ "type": "set_sort_mode", "sortMode": "merit" | "alpha" | "order" }\`
-- Afficher/masquer Matricule : \`{ "type": "set_show_matricule", "show": true | false, "scope": "sheet" | "class" }\`
-- Changer le barème de la moyenne (/20, /40, /100...) : \`{ "type": "set_average_scale", "scale": 40, "scope": "sheet" | "class" }\`
-- Personnaliser les mentions : \`{ "type": "set_mention_rules", "scope": "sheet" | "class", "rules": [ { "min": 16, "label": "Très Bien" }, ... ] }\`
-- Zoom / Enregistrer / Annuler / Rétablir / Export Excel : \`{ "type": "set_zoom", "zoomPercent": 80 }\` | \`{ "type": "save_gradebook" }\` | \`{ "type": "undo" }\` | \`{ "type": "redo" }\` | \`{ "type": "export_excel" }\``;
+  const formattingAndTools = `
+- **Mise en forme complète (polices, tailles, gras/italique/souligné/barré, couleurs texte & fond, alignement)** — fonctionne sur tout le tableau, les en-têtes, une ou plusieurs colonnes, un ou plusieurs élèves, une ligne sur deux ou selon condition :
+  \`{ "type": "format_cells", "target": "all" | "header" | "student" | "column" | "condition", "studentName": "DKD", "studentNames": ["A", "B"], "rowIndex": 1, "rowIndices": [1, 2], "column": "all" | "rank" | "photo" | "matricule" | "name" | "note" | "subject" | "term" | "total" | "average" | "mention", "colNumber": 1, "colNumbers": [1, 2], "subjectName": "Mathématiques", "termName": "Trimestre 1", "includeHeader": false, "condition": "average_below" | "average_above" | "average_between" | "note_below" | "note_above" | "rank_top" | "rank_bottom" | "mention_equals" | "alternating_rows", "threshold": 10, "minThreshold": 10, "maxThreshold": 14, "mentionLabel": "Très bien", "style": { "bold": true, "italic": false, "underline": false, "strikethrough": false, "textColor": "#dc2626", "bgColor": "#fee2e2", "fontFamily": "Arial", "fontSize": 14, "fontSizeDelta": 2, "textAlign": "center" } }\`
+  * Polices disponibles : \`Calibri\`, \`Arial\`, \`Arial Black\`, \`Bahnschrift\`, \`Cambria\`, \`Candara\`, \`Comic Sans MS\`, \`Consolas\`, \`Constantia\`, \`Corbel\`, \`Courier New\`, \`Georgia\`, \`Impact\`, \`Palatino Linotype\`, \`Segoe UI\`, \`Tahoma\`, \`Times New Roman\`, \`Trebuchet MS\`, \`Verdana\`, \`Amiri\`.
+  * Pour agrandir ou réduire la taille d'écriture sans connaître la taille exacte : utilise \`"fontSizeDelta": 2\` (ou \`-2\`), ou fixe \`"fontSize": 16\`.
+  * Pour retirer une couleur de fond : \`"bgColor": ""\`. Pour tout remettre à zéro : \`{ "type": "clear_formatting" }\`.
+- **Agrandir / réduire la largeur des colonnes** (en px exact, en delta relatif ou en multiplicateur) :
+  \`{ "type": "resize_columns", "column": "all" | "rank" | "photo" | "matricule" | "name" | "note" | "all_notes" | "subject" | "term" | "total" | "average" | "mention", "colNumber": 1, "subjectName": "Mathématiques", "termName": "Trimestre 1", "widthPx": 260, "deltaPx": 40, "scaleFactor": 1.25 }\`
+- **Agrandir / réduire la hauteur des lignes** (toutes les lignes ou des élèves/lignes précis) :
+  \`{ "type": "resize_rows", "target": "all" | "student" | "row", "studentName": "DKD", "rowIndex": 1, "rowIndices": [1, 2], "heightPx": 58, "deltaPx": 12 }\`
+- **Réinitialiser les largeurs & hauteurs** : \`{ "type": "reset_column_widths" }\`
+- **Trier le classement** (mérite, A→Z, Z→A, ordre initial) : \`{ "type": "set_sort_mode", "sortMode": "merit" | "alpha" | "alpha_desc" | "order" }\`
+- **Afficher/masquer Matricule** : \`{ "type": "set_show_matricule", "show": true | false, "scope": "sheet" | "class" }\`
+- **Changer le barème de la moyenne (/20, /40, /100...)** : \`{ "type": "set_average_scale", "scale": 40, "scope": "sheet" | "class" }\`
+- **Personnaliser les mentions** : \`{ "type": "set_mention_rules", "scope": "sheet" | "class", "rules": [ { "min": 16, "label": "Très Bien" }, ... ] }\`
+- **Zoom & Plein écran** : \`{ "type": "set_zoom", "zoomPercent": 100 }\` | \`{ "type": "set_expand_level", "level": 0 | 1 | 2 }\` (0=normal, 1=agrandi, 2=plein écran total)
+- **Historique & Enregistrement** : \`{ "type": "undo" }\` | \`{ "type": "redo" }\` | \`{ "type": "save_gradebook" }\`
+- **Télécharger / Exporter / Copier** : \`{ "type": "export_pdf" }\` | \`{ "type": "export_word" }\` | \`{ "type": "export_excel" }\` | \`{ "type": "copy_table" }\``;
 
   if (sheetKind === 'term_average') {
     return `[ACTIONS DISPONIBLES SUR CE TABLEAU DE MOYENNE GÉNÉRALE DU TRIMESTRE] :
-- Modifier le coefficient d'une matière : \`{ "type": "set_subject_coefficient", "subjectName": "Mathématiques", "coefficient": 4 }\`${commonActions}`;
+- Modifier le coefficient d'une matière : \`{ "type": "set_subject_coefficient", "subjectName": "Mathématiques", "coefficient": 4 }\`${formattingAndTools}`;
   }
 
   if (sheetKind === 'annual_average') {
     return `[ACTIONS DISPONIBLES SUR CE TABLEAU DE MOYENNE GÉNÉRALE ANNUELLE] :
-- Modifier le coefficient d'un trimestre : \`{ "type": "set_term_coefficient", "termName": "Trimestre 1", "coefficient": 2 }\`${commonActions}`;
+- Modifier le coefficient d'un trimestre : \`{ "type": "set_term_coefficient", "termName": "Trimestre 1", "coefficient": 2 }\`${formattingAndTools}`;
   }
 
   return `[ACTIONS DISPONIBLES SUR CE TABLEAU DE MATIÈRE] :
@@ -1134,20 +1164,19 @@ function buildActionsCatalogForSheet(sheetKind: TeacherDelmasActiveContext['shee
 - Modifier un ou plusieurs élèves EXISTANTS (préserve leurs autres notes non mentionnées ; n'inclus \`"matricule"\` QUE si demandé ou présent dans le fichier) :
   \`{ "type": "update_students", "updates": [ { "studentId": "...", "matchName": "DKD", "newName": "Nouveau Nom", "notes": { "1": "16", "2": "17.5" } } ] }\`
 - Remplacer toute la liste des élèves : \`{ "type": "set_students", "students": [ { "name": "...", "notes": ["12"] } ] }\`
+- Déplacer un élève (monter/descendre ou placer à une ligne précise) : \`{ "type": "move_student", "studentName": "DKD", "rowIndex": 3, "direction": "up" | "down", "toRowIndex": 1 }\`
 - Supprimer des élèves ou les lignes vides : \`{ "type": "remove_students", "names": ["Nom"], "rowIndices": [3], "removeEmpty": false }\`
 - Effacer des notes : \`{ "type": "clear_notes", "mode": "all" | "specific", "colNumber": 1 }\`
-- Ajouter / modifier / supprimer / échanger des colonnes de notes :
+- Remplir toute une colonne de notes d'un coup (ex: recopier une note vers le bas) : \`{ "type": "fill_note_column", "colNumber": 2, "value": "15", "onlyEmpty": false }\`
+- Ajouter / modifier / supprimer / échanger / déplacer des colonnes de notes :
   \`{ "type": "add_note_column", "title": "DEVOIR", "maxScore": 20, "coeffEval": 1, "count": 1 }\`
   \`{ "type": "update_note_column", "colNumber": 1, "title": "DEVOIR", "maxScore": 40, "coeffEval": 2 }\`
   \`{ "type": "delete_note_column", "colNumber": 7 }\`
   \`{ "type": "swap_note_columns", "colNumber1": 1, "colNumber2": 2 }\`
+  \`{ "type": "move_note_column", "fromColNumber": 3, "toColNumber": 1, "direction": "left" | "right" }\`
 - Ajuster les notes (± points) : \`{ "type": "adjust_grades", "mode": "all" | "specific", "colNumber": 1, "delta": 1.5 }\`
 - Changer d'un coup le max de toutes les notes ou d'une note : \`{ "type": "bulk_update_note_max", "mode": "all" | "specific", "colNumber": 1, "maxScore": 40, "convertExisting": false }\`
-- Mise en forme des cases :
-  \`{ "type": "format_cells", "target": "all" | "student" | "column" | "condition", "studentName": "DKD", "column": "name" | "matricule" | "note" | "average" | "mention" | "rank", "colNumber": 1, "condition": "average_below" | "average_above" | "rank_top", "threshold": 10, "style": { "bold": true, "italic": false, "underline": false, "textColor": "#dc2626", "bgColor": "#fee2e2", "fontFamily": "Calibri", "fontSize": 12, "textAlign": "center" } }\`
-- Effacer la mise en forme : \`{ "type": "clear_formatting" }\`
-- Copier les élèves d'une autre matière dans ce tableau : \`{ "type": "copy_students_from_subject", "sourceSubjectName": "Physique", "includeNotes": false }\`
-- Réinitialiser les largeurs de colonnes : \`{ "type": "reset_column_widths" }\`${commonActions}`;
+- Copier les élèves d'une autre matière dans ce tableau : \`{ "type": "copy_students_from_subject", "sourceSubjectName": "Physique", "includeNotes": false }\`${formattingAndTools}`;
 }
 
 /**
@@ -1197,19 +1226,22 @@ export function buildTeacherDelmasSystemPrompt(params: {
 
   const realCapabilitiesSummary =
     activeContext.sheetKind === 'subject'
-      ? `• Saisir, ajouter, renommer, corriger ou supprimer des élèves, matricules et notes directement dans ce tableau
+      ? `• Saisir, ajouter, renommer, déplacer, corriger ou supprimer des élèves, matricules et notes directement dans ce tableau
 • Importer et remplir automatiquement des élèves/notes à partir d'une image/photo, d'un PDF, d'un fichier Excel/CSV, Word ou d'un audio
-• Créer, renommer, supprimer, déplacer des colonnes de notes, ou modifier leur barème (/20, /40...) et coefficient d'évaluation
+• Créer, renommer, supprimer, déplacer ou remplir d'un coup des colonnes de notes, et modifier leur barème (/20, /40...) et coefficient d'évaluation
 • Ajuster les notes d'un coup (± points sur toutes les notes ou sur une colonne précise)
 • Changer le barème de la moyenne (/20, /40, /100...) ou le barème max des notes (sur ce tableau ou toute la classe)
-• Trier le classement (ordre de mérite, alphabétique A→Z, ordre initial), afficher ou masquer la colonne Matricule, personnaliser les Mentions
-• Mettre en forme / colorer des cases (gras, italique, couleurs, surlignage conditionnel selon la moyenne ou le rang) et réinitialiser les largeurs
-• Copier la liste des élèves depuis une autre matière de votre compte, régler le zoom, annuler/rétablir, exporter en Excel (.xlsx)
+• Trier le classement (ordre de mérite, alphabétique A→Z ou Z→A, ordre initial), afficher ou masquer Matricule, personnaliser les Mentions
+• Utiliser TOUS les outils de mise en forme manuels : polices d'écriture (Arial, Times New Roman, Calibri, Georgia, Verdana…), taille de texte (A+/A- ou taille précise), gras, italique, souligné, barré, alignement gauche/centre/droite, couleurs de texte et de fond (en-têtes, colonnes, élèves, Moyenne, Mention, une ligne sur deux ou selon condition)
+• Agrandir ou réduire la largeur des colonnes, la hauteur des lignes, régler le zoom ou passer en plein écran, et réinitialiser les largeurs
+• Copier la liste des élèves depuis une autre matière, annuler/rétablir, télécharger en PDF, Word (.docx), Excel (.xlsx) ou copier le tableau
 • Analyser et comparer vos résultats (classements, statistiques, moyennes dans les autres matières/trimestres)`
       : `• Modifier les coefficients des ${activeContext.sheetKind === 'annual_average' ? 'trimestres' : 'matières'} directement dans ce tableau
 • Trier le classement (ordre de mérite, alphabétique A→Z, ordre initial)
-• Afficher ou masquer la colonne Matricule, changer le barème de la moyenne (/20, /40, /100...) et personnaliser les Mentions (sur ce tableau ou toute la classe)
-• Régler le zoom, annuler/rétablir, exporter en Excel (.xlsx)
+• Afficher ou masquer Matricule, changer le barème de la moyenne (/20, /40, /100...) et personnaliser les Mentions (sur ce tableau ou toute la classe)
+• Utiliser TOUS les outils de mise en forme manuels : polices d'écriture, taille de texte (A+/A-), gras, italique, souligné, barré, alignement, couleurs de texte et de fond (colonnes, lignes, une ligne sur deux, seuils de moyenne ou top/derniers rangs)
+• Agrandir ou réduire la largeur des colonnes et la hauteur des lignes, régler le zoom, passer en plein écran, annuler/rétablir
+• Télécharger en PDF, Word (.docx), Excel (.xlsx) ou copier tout le tableau dans le presse-papiers
 • Analyser et comparer les moyennes, taux de réussite et classements de vos élèves`;
 
   // =========================================================================
@@ -1328,16 +1360,132 @@ const DESTRUCTIVE_ACTION_TYPES: ReadonlySet<string> = new Set([
   'clear_formatting',
 ]);
 
-function isSafeCssColorValue(val: unknown): val is string {
-  if (typeof val !== 'string') return false;
+const FRENCH_TEXT_COLOR_MAP: Record<string, string> = {
+  noir: '#0f172a',
+  noire: '#0f172a',
+  black: '#0f172a',
+  blanc: '#ffffff',
+  blanche: '#ffffff',
+  white: '#ffffff',
+  rouge: '#dc2626',
+  red: '#dc2626',
+  bleu: '#2563eb',
+  bleue: '#2563eb',
+  blue: '#2563eb',
+  'bleu nuit': '#1e3a8a',
+  'bleu marine': '#1e3a8a',
+  'bleu fonce': '#1e3a8a',
+  navy: '#1e3a8a',
+  cyan: '#0891b2',
+  turquoise: '#0891b2',
+  vert: '#15803d',
+  verte: '#15803d',
+  green: '#15803d',
+  'vert fonce': '#15803d',
+  emeraude: '#059669',
+  jaune: '#b45309',
+  yellow: '#b45309',
+  or: '#b45309',
+  dore: '#b45309',
+  gold: '#b45309',
+  orange: '#ea580c',
+  ambre: '#b45309',
+  rose: '#db2777',
+  pink: '#db2777',
+  violet: '#7c3aed',
+  violette: '#7c3aed',
+  purple: '#7c3aed',
+  pourpre: '#9333ea',
+  gris: '#475569',
+  grise: '#475569',
+  gray: '#475569',
+  grey: '#475569',
+  marron: '#78350f',
+  brun: '#78350f',
+  brown: '#78350f',
+};
+
+const FRENCH_BG_COLOR_MAP: Record<string, string> = {
+  aucun: '',
+  aucune: '',
+  transparent: '',
+  none: '',
+  blanc: '#ffffff',
+  blanche: '#ffffff',
+  white: '#ffffff',
+  noir: '#1e293b',
+  noire: '#1e293b',
+  black: '#1e293b',
+  rouge: '#fee2e2',
+  red: '#fee2e2',
+  'rouge clair': '#fee2e2',
+  'rouge fonce': '#fca5a5',
+  bleu: '#bfdbfe',
+  bleue: '#bfdbfe',
+  blue: '#bfdbfe',
+  'bleu ciel': '#bae6fd',
+  'bleu clair': '#dbeafe',
+  'bleu nuit': '#1e3a8a',
+  'bleu marine': '#1e3a8a',
+  'bleu fonce': '#1d4ed8',
+  navy: '#1e3a8a',
+  cyan: '#a5f3fc',
+  turquoise: '#a5f3fc',
+  vert: '#bbf7d0',
+  verte: '#bbf7d0',
+  green: '#bbf7d0',
+  'vert clair': '#dcfce7',
+  'vert menthe': '#a7f3d0',
+  'vert fonce': '#15803d',
+  jaune: '#fef08a',
+  yellow: '#fef08a',
+  'jaune clair': '#fef9c3',
+  or: '#fef08a',
+  dore: '#fef3c7',
+  gold: '#fef08a',
+  orange: '#fed7aa',
+  ambre: '#fed7aa',
+  peche: '#ffedd5',
+  rose: '#fbcfe8',
+  pink: '#fbcfe8',
+  violet: '#e9d5ff',
+  violette: '#e9d5ff',
+  purple: '#e9d5ff',
+  lilas: '#e9d5ff',
+  lavande: '#c7d2fe',
+  gris: '#f1f5f9',
+  grise: '#f1f5f9',
+  'gris clair': '#f1f5f9',
+  'gris fonce': '#cbd5e1',
+  gray: '#f1f5f9',
+  grey: '#f1f5f9',
+  marron: '#fde68a',
+  beige: '#fef3c7',
+};
+
+export function resolveDelmasColorHex(
+  val: unknown,
+  role: 'text' | 'bg'
+): string | undefined {
+  if (typeof val !== 'string') return undefined;
   const trimmed = val.trim();
-  if (!trimmed || trimmed.length > 40) return false;
-  if (/[;{}<>()"'\\]|url\s*\(|expression\s*\(/i.test(trimmed)) return false;
-  return (
+  if (!trimmed) return role === 'bg' ? '' : undefined;
+  if (trimmed.length > 40) return undefined;
+  if (/[;{}<>()"'\\]|url\s*\(|expression\s*\(/i.test(trimmed)) return undefined;
+
+  const norm = normalizeForMatch(trimmed);
+  const map = role === 'bg' ? FRENCH_BG_COLOR_MAP : FRENCH_TEXT_COLOR_MAP;
+  if (norm in map) {
+    return map[norm];
+  }
+  if (
     /^#[0-9a-fA-F]{3,8}$/.test(trimmed) ||
     /^rgba?\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}(?:\s*,\s*(?:0|1|0?\.\d+))?\s*\)$/.test(trimmed) ||
     /^[a-zA-Z]{3,24}$/.test(trimmed)
-  );
+  ) {
+    return trimmed;
+  }
+  return undefined;
 }
 
 function sanitizeFontFamilyValue(val: unknown): string | undefined {
@@ -1453,10 +1601,16 @@ export function filterSafeTeacherDelmasActions(
   const rawUserLower = rawUserMsg.toLowerCase();
 
   const userExplicitlyRequestedDestructive =
-    /\b(supprime|supprimer|retire|retirer|enleve|enlever|efface|effacer|vide|vider|nettoie|nettoyer|remplace|remplacer|ecrase|ecraser|reinitialise|reinitialiser|reset|delete|remove|clear|erase|clean|replace|wipe|quitar|eliminar|borrar|loschen|entfernen)\b/i.test(
+    /\b(supprime|supprimer|retire|retirer|enleve|enlever|efface|effacer|vide|vider|nettoie|nettoyer|remplace|remplacer|ecrase|ecraser|reinitialise|reinitialiser|decolore|decolorer|reset|delete|remove|clear|erase|clean|replace|wipe|quitar|eliminar|borrar|loschen|entfernen)\b/i.test(
       normUser
     ) ||
     /[\u0600-\u06FF\u4E00-\u9FFF\u3040-\u30FF\u0400-\u04FF]/.test(rawUserMsg);
+
+  const userExplicitlyRequestedClearFormatting =
+    userExplicitlyRequestedDestructive ||
+    /\b(par defaut|sans couleur|sans fond|aucune couleur|aucun fond|style normal|remets normal|normal)\b/i.test(
+      normUser
+    );
 
   const userExplicitlyMentionedMatricule =
     /\b(matricule|matricules|numero\s+matricule|n°\s*matricule|colonne\s+matricule|code\s+eleve|codes?\s+eleves?|code\s+etudiant|codes?\s+etudiants?|student\s+id|id\s+eleve)\b/i.test(
@@ -1541,7 +1695,9 @@ export function filterSafeTeacherDelmasActions(
       continue;
     }
 
-    if (DESTRUCTIVE_ACTION_TYPES.has(rawAct.type) && !userExplicitlyRequestedDestructive) {
+    if (rawAct.type === 'clear_formatting') {
+      if (!userExplicitlyRequestedClearFormatting) continue;
+    } else if (DESTRUCTIVE_ACTION_TYPES.has(rawAct.type) && !userExplicitlyRequestedDestructive) {
       continue;
     }
 
@@ -1590,15 +1746,23 @@ export function filterSafeTeacherDelmasActions(
       if (typeof act.style.italic === 'boolean') nextStyle.italic = act.style.italic;
       if (typeof act.style.underline === 'boolean') nextStyle.underline = act.style.underline;
       if (typeof act.style.strikethrough === 'boolean') nextStyle.strikethrough = act.style.strikethrough;
-      if (isSafeCssColorValue(act.style.textColor)) nextStyle.textColor = act.style.textColor.trim();
-      if (isSafeCssColorValue(act.style.color)) nextStyle.color = act.style.color.trim();
-      if (act.style.bgColor === '' || isSafeCssColorValue(act.style.bgColor)) {
-        nextStyle.bgColor = typeof act.style.bgColor === 'string' ? act.style.bgColor.trim() : '';
+      const resolvedTextColor = resolveDelmasColorHex(act.style.textColor, 'text');
+      if (resolvedTextColor) nextStyle.textColor = resolvedTextColor;
+      const resolvedColor = resolveDelmasColorHex(act.style.color, 'text');
+      if (resolvedColor) nextStyle.color = resolvedColor;
+      if (act.style.bgColor !== undefined) {
+        const resolvedBg = resolveDelmasColorHex(act.style.bgColor, 'bg');
+        if (resolvedBg !== undefined) {
+          nextStyle.bgColor = resolvedBg;
+        }
       }
       const safeFont = sanitizeFontFamilyValue(act.style.fontFamily);
       if (safeFont) nextStyle.fontFamily = safeFont;
-      if (Number.isFinite(Number(act.style.fontSize))) {
-        nextStyle.fontSize = Math.min(48, Math.max(8, Number(act.style.fontSize)));
+      if (Number.isFinite(Number(act.style.fontSize)) && Number(act.style.fontSize) > 0) {
+        nextStyle.fontSize = Math.min(48, Math.max(8, Math.round(Number(act.style.fontSize))));
+      }
+      if (Number.isFinite(Number(act.style.fontSizeDelta)) && Number(act.style.fontSizeDelta) !== 0) {
+        nextStyle.fontSizeDelta = Math.min(24, Math.max(-24, Math.round(Number(act.style.fontSizeDelta))));
       }
       if (
         act.style.textAlign === 'left' ||
@@ -1608,6 +1772,32 @@ export function filterSafeTeacherDelmasActions(
         nextStyle.textAlign = act.style.textAlign;
       }
       act.style = nextStyle;
+    }
+
+    if (act.type === 'resize_columns') {
+      if (Number.isFinite(Number(act.widthPx))) {
+        act.widthPx = Math.min(600, Math.max(44, Math.round(Number(act.widthPx))));
+      }
+      if (Number.isFinite(Number(act.deltaPx))) {
+        act.deltaPx = Math.min(250, Math.max(-250, Math.round(Number(act.deltaPx))));
+      }
+      if (Number.isFinite(Number(act.scaleFactor))) {
+        act.scaleFactor = Math.min(2.5, Math.max(0.4, Number(act.scaleFactor)));
+      }
+    }
+
+    if (act.type === 'resize_rows') {
+      if (Number.isFinite(Number(act.heightPx))) {
+        act.heightPx = Math.min(180, Math.max(28, Math.round(Number(act.heightPx))));
+      }
+      if (Number.isFinite(Number(act.deltaPx))) {
+        act.deltaPx = Math.min(100, Math.max(-60, Math.round(Number(act.deltaPx))));
+      }
+    }
+
+    if (act.type === 'set_expand_level') {
+      const lvl = Math.round(Number(act.level));
+      act.level = lvl >= 2 ? 2 : lvl === 1 ? 1 : 0;
     }
 
     provisionalActions.push(act);

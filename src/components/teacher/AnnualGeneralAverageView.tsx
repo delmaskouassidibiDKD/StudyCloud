@@ -60,7 +60,12 @@ import {
   TeacherDelmasAssistantDrawer,
 } from './TeacherDelmasAssistantDrawer';
 import { GradebookDownloadMenu } from './GradebookDownloadMenu';
-import type { GradebookExportDataset } from '../../utils/gradebookExportUtils';
+import {
+  exportGradebookToPdf,
+  exportGradebookToWord,
+  copyGradebookToClipboard,
+  type GradebookExportDataset,
+} from '../../utils/gradebookExportUtils';
 import type {
   TeacherDelmasAction,
   TeacherDelmasActiveContext,
@@ -1118,7 +1123,8 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
 
   const getCellInlineStyle = (
     cellKey: string,
-    rowKey?: string
+    rowKey?: string,
+    rowHeightPx?: number
   ): React.CSSProperties => {
     const custom: CellCustomStyle = styles.cellCustomStyles?.[cellKey] || {};
     const rowBg = rowKey ? styles.rowColors?.[rowKey] : undefined;
@@ -1128,7 +1134,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       color: custom.color || undefined,
       fontFamily: custom.fontFamily || undefined,
       fontSize: custom.fontSize ? `${custom.fontSize}px` : undefined,
-      fontWeight: custom.bold ? 700 : undefined,
+      fontWeight: custom.bold !== undefined ? (custom.bold ? 700 : 400) : undefined,
       fontStyle: custom.italic ? 'italic' : undefined,
       textDecoration:
         [
@@ -1137,6 +1143,35 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
         ]
           .filter(Boolean)
           .join(' ') || undefined,
+      textAlign: custom.textAlign || undefined,
+      height: rowHeightPx ? `${rowHeightPx}px` : undefined,
+    };
+  };
+
+  const getHeaderInlineStyle = (
+    headerKey: string,
+    extra?: React.CSSProperties
+  ): React.CSSProperties => ({
+    ...extra,
+    ...getCellInlineStyle(headerKey),
+  });
+
+  const getCellTextOverrideStyle = (cellKey: string): React.CSSProperties | undefined => {
+    const custom: CellCustomStyle | undefined = styles.cellCustomStyles?.[cellKey];
+    if (!custom) return undefined;
+    const dec = [
+      custom.underline ? 'underline' : '',
+      custom.strikethrough ? 'line-through' : '',
+    ]
+      .filter(Boolean)
+      .join(' ');
+    return {
+      color: custom.color || undefined,
+      fontFamily: custom.fontFamily || undefined,
+      fontSize: custom.fontSize ? `${custom.fontSize}px` : undefined,
+      fontWeight: custom.bold !== undefined ? (custom.bold ? 800 : 400) : undefined,
+      fontStyle: custom.italic ? 'italic' : undefined,
+      textDecoration: dec || undefined,
       textAlign: custom.textAlign || undefined,
     };
   };
@@ -1655,20 +1690,65 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
 
     executeActions: async (actions: TeacherDelmasAction[]): Promise<string[]> => {
       const summaries: string[] = [];
+      if (!Array.isArray(actions) || actions.length === 0) return summaries;
+
+      const normKey = (v: unknown) =>
+        String(v || '')
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .toLowerCase()
+          .replace(/\s+/g, ' ')
+          .trim();
+
+      const workingStyles: TermAverageStylesState = {
+        cellColors: { ...(styles.cellColors || {}) },
+        rowColors: { ...(styles.rowColors || {}) },
+        cellCustomStyles: { ...(styles.cellCustomStyles || {}) },
+      };
+      const workingLayout: TermAverageLayoutState = {
+        ...layout,
+        customSubjectMoyWidths: { ...(layout.customSubjectMoyWidths || {}) },
+        customSubjectWeightedWidths: { ...(layout.customSubjectWeightedWidths || {}) },
+        customRowHeights: { ...(layout.customRowHeights || {}) },
+      };
+      let workingZoom = zoomPercent;
+      let stylesMutated = false;
+      let layoutMutated = false;
+      let zoomMutated = false;
+      let undoPushed = false;
+      const ensureUndoSnapshot = () => {
+        if (!undoPushed) {
+          pushUndoState();
+          undoPushed = true;
+        }
+      };
+
+      const findMatchingTermIds = (rawName?: unknown): string[] => {
+        const search = normKey(rawName);
+        if (!search) return computed.terms.map((t) => t.id);
+        const exact = computed.terms.filter((t) => normKey(t.name) === search);
+        if (exact.length > 0) return exact.map((t) => t.id);
+        const partial = computed.terms.filter((t) => {
+          const tn = normKey(t.name);
+          return tn.includes(search) || search.includes(tn);
+        });
+        return partial.map((t) => t.id);
+      };
+
       for (const action of actions) {
         if (!action || typeof action !== 'object') continue;
         switch (action.type) {
           case 'set_term_coefficient': {
             const coeffNum = Number(String(action.coefficient ?? '').replace(',', '.'));
-            const searchName = String(action.termName || '').trim().toLowerCase();
+            const searchName = normKey(action.termName);
             if (Number.isFinite(coeffNum) && coeffNum >= 0.25 && coeffNum <= 100) {
               const targetTerm =
                 computed.terms.find((t) => t.id === action.termId) ||
                 computed.terms.find(
                   (t) =>
                     searchName &&
-                    (t.name.toLowerCase() === searchName ||
-                      t.name.toLowerCase().includes(searchName))
+                    (normKey(t.name) === searchName ||
+                      normKey(t.name).includes(searchName))
                 );
               if (targetTerm && getTeacherAuthToken()) {
                 await TeacherGradebookAPI.updateTerm(targetTerm.id, {
@@ -1719,10 +1799,387 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             }
             break;
           }
+          case 'format_cells': {
+            ensureUndoSnapshot();
+            const st = action.style || {};
+            const stylePatch: Partial<CellCustomStyle> = {};
+            if (typeof st.bold === 'boolean') stylePatch.bold = st.bold;
+            if (typeof st.italic === 'boolean') stylePatch.italic = st.italic;
+            if (typeof st.underline === 'boolean') stylePatch.underline = st.underline;
+            if (typeof st.strikethrough === 'boolean') stylePatch.strikethrough = st.strikethrough;
+            if (st.textColor !== undefined || st.color !== undefined) {
+              stylePatch.color = String(st.textColor ?? st.color ?? '');
+            }
+            if (st.bgColor !== undefined) stylePatch.bgColor = String(st.bgColor);
+            if (st.fontFamily) stylePatch.fontFamily = String(st.fontFamily);
+            if (Number(st.fontSize) >= 8) {
+              stylePatch.fontSize = Math.min(48, Math.round(Number(st.fontSize)));
+            }
+            if (
+              st.textAlign === 'left' ||
+              st.textAlign === 'center' ||
+              st.textAlign === 'right'
+            ) {
+              stylePatch.textAlign = st.textAlign;
+            }
+            const fontSizeDelta =
+              typeof st.fontSizeDelta === 'number' &&
+              Number.isFinite(st.fontSizeDelta) &&
+              st.fontSizeDelta !== 0
+                ? Math.max(-24, Math.min(24, Math.round(st.fontSizeDelta)))
+                : 0;
+
+            const applyPatchToKey = (k: string, defaultFs = 12) => {
+              const prev = (workingStyles.cellCustomStyles?.[k] || {}) as CellCustomStyle;
+              const next: CellCustomStyle = { ...prev, ...stylePatch };
+              if (fontSizeDelta !== 0 && stylePatch.fontSize === undefined) {
+                const baseFs = typeof prev.fontSize === 'number' ? prev.fontSize : defaultFs;
+                next.fontSize = Math.min(48, Math.max(8, baseFs + fontSizeDelta));
+              }
+              if (stylePatch.color === '') delete next.color;
+              if (stylePatch.bgColor === '') {
+                delete next.bgColor;
+                if (workingStyles.cellColors && workingStyles.cellColors[k] !== undefined) {
+                  delete workingStyles.cellColors[k];
+                }
+              }
+              workingStyles.cellCustomStyles![k] = next;
+            };
+
+            const matchedTermIds = findMatchingTermIds(action.termName || action.subjectName);
+
+            const applyToHeaders = (onlyCol?: string) => {
+              const hKeys: string[] = [];
+              if (!onlyCol || onlyCol === 'all') {
+                hKeys.push(
+                  'header_rank',
+                  'header_photo',
+                  'header_matricule',
+                  'header_name',
+                  'header_total',
+                  'header_avg',
+                  'header_mention'
+                );
+                for (const t of computed.terms) {
+                  hKeys.push(`header_item_${t.id}`, `header_moy_${t.id}`, `header_tot_${t.id}`);
+                }
+              } else if (onlyCol === 'rank') hKeys.push('header_rank');
+              else if (onlyCol === 'photo') hKeys.push('header_photo');
+              else if (onlyCol === 'matricule') hKeys.push('header_matricule');
+              else if (onlyCol === 'name') hKeys.push('header_name');
+              else if (onlyCol === 'total') hKeys.push('header_total');
+              else if (onlyCol === 'average') hKeys.push('header_avg');
+              else if (onlyCol === 'mention') hKeys.push('header_mention');
+              else if (
+                onlyCol === 'term' ||
+                onlyCol === 'subject' ||
+                onlyCol === 'note' ||
+                onlyCol === 'all_notes'
+              ) {
+                for (const tid of matchedTermIds) {
+                  hKeys.push(`header_item_${tid}`, `header_moy_${tid}`, `header_tot_${tid}`);
+                }
+              }
+              hKeys.forEach((hk) => applyPatchToKey(hk, 11));
+            };
+
+            const applyToRow = (rowKey: string, onlyCol?: string) => {
+              const keys: string[] = [];
+              if (!onlyCol || onlyCol === 'all') {
+                keys.push(
+                  `${rowKey}_rank`,
+                  `${rowKey}_photo`,
+                  `${rowKey}_matricule`,
+                  `${rowKey}_name`,
+                  `${rowKey}_total`,
+                  `${rowKey}_avg`,
+                  `${rowKey}_mention`
+                );
+                for (const t of computed.terms) {
+                  keys.push(`${rowKey}_moy_${t.id}`, `${rowKey}_tot_${t.id}`);
+                }
+                if (stylePatch.bgColor !== undefined) {
+                  if (stylePatch.bgColor === '') {
+                    delete workingStyles.rowColors![rowKey];
+                  } else {
+                    workingStyles.rowColors![rowKey] = stylePatch.bgColor;
+                  }
+                }
+              } else if (onlyCol === 'rank') keys.push(`${rowKey}_rank`);
+              else if (onlyCol === 'photo') keys.push(`${rowKey}_photo`);
+              else if (onlyCol === 'matricule') keys.push(`${rowKey}_matricule`);
+              else if (onlyCol === 'name') keys.push(`${rowKey}_name`);
+              else if (onlyCol === 'total') keys.push(`${rowKey}_total`);
+              else if (onlyCol === 'average') keys.push(`${rowKey}_avg`);
+              else if (onlyCol === 'mention') keys.push(`${rowKey}_mention`);
+              else if (
+                onlyCol === 'term' ||
+                onlyCol === 'subject' ||
+                onlyCol === 'note' ||
+                onlyCol === 'all_notes'
+              ) {
+                for (const tid of matchedTermIds) {
+                  keys.push(`${rowKey}_moy_${tid}`, `${rowKey}_tot_${tid}`);
+                }
+              }
+              keys.forEach((k) => applyPatchToKey(k, 12));
+            };
+
+            if (action.target === 'header') {
+              applyToHeaders(action.column);
+            } else if (action.target === 'student') {
+              const nameTargets: string[] = [];
+              if (typeof action.studentName === 'string' && action.studentName.trim()) {
+                nameTargets.push(normKey(action.studentName));
+              }
+              if (Array.isArray(action.studentNames)) {
+                action.studentNames.forEach((n: unknown) => {
+                  const nk = normKey(n);
+                  if (nk) nameTargets.push(nk);
+                });
+              }
+              const rowTargets = new Set<number>();
+              if (typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
+                rowTargets.add(Math.round(action.rowIndex) - 1);
+              }
+              if (Array.isArray(action.rowIndices)) {
+                action.rowIndices.forEach((r: unknown) => {
+                  if (Number(r) >= 1) rowTargets.add(Math.round(Number(r)) - 1);
+                });
+              }
+              computed.students.forEach((st, idx) => {
+                const sn = normKey(st.name);
+                const matchesName =
+                  nameTargets.length > 0 &&
+                  Boolean(sn) &&
+                  nameTargets.some((t) => sn === t || sn.includes(t) || t.includes(sn));
+                if (matchesName || rowTargets.has(idx)) {
+                  applyToRow(st.key, action.column);
+                }
+              });
+            } else if (action.target === 'column') {
+              computed.students.forEach((st) => applyToRow(st.key, action.column || 'all'));
+              if (action.includeHeader) applyToHeaders(action.column || 'all');
+            } else if (action.target === 'condition') {
+              const thresh =
+                action.threshold !== undefined
+                  ? Number(action.threshold)
+                  : effectiveAverageScale / 2;
+              const minT =
+                action.minThreshold !== undefined ? Number(action.minThreshold) : 0;
+              const maxT =
+                action.maxThreshold !== undefined
+                  ? Number(action.maxThreshold)
+                  : effectiveAverageScale;
+              const sortedGraded = [...computed.students]
+                .filter((s) => s.annualAverage !== null)
+                .sort((a, b) => (b.annualAverage ?? -Infinity) - (a.annualAverage ?? -Infinity));
+              const topCount = Math.max(1, Number(action.threshold) || 3);
+              const topKeys = new Set(sortedGraded.slice(0, topCount).map((s) => s.key));
+              const bottomKeys = new Set(sortedGraded.slice(-topCount).map((s) => s.key));
+              const mentionTarget = normKey(action.mentionLabel);
+
+              computed.students.forEach((st, idx) => {
+                if (
+                  action.condition === 'average_below' &&
+                  st.annualAverage !== null &&
+                  st.annualAverage < thresh
+                ) {
+                  applyToRow(st.key, action.column);
+                } else if (
+                  action.condition === 'average_above' &&
+                  st.annualAverage !== null &&
+                  st.annualAverage >= thresh
+                ) {
+                  applyToRow(st.key, action.column);
+                } else if (
+                  action.condition === 'average_between' &&
+                  st.annualAverage !== null &&
+                  st.annualAverage >= minT &&
+                  st.annualAverage <= maxT
+                ) {
+                  applyToRow(st.key, action.column);
+                } else if (action.condition === 'rank_top' && topKeys.has(st.key)) {
+                  applyToRow(st.key, action.column);
+                } else if (action.condition === 'rank_bottom' && bottomKeys.has(st.key)) {
+                  applyToRow(st.key, action.column);
+                } else if (
+                  action.condition === 'mention_equals' &&
+                  mentionTarget &&
+                  (normKey(st.mention).includes(mentionTarget) ||
+                    normKey(st.decision).includes(mentionTarget))
+                ) {
+                  applyToRow(st.key, action.column);
+                } else if (action.condition === 'alternating_rows' && idx % 2 === 1) {
+                  applyToRow(st.key, action.column);
+                }
+              });
+            } else {
+              computed.students.forEach((st) => applyToRow(st.key, action.column));
+              if (action.includeHeader) applyToHeaders(action.column);
+            }
+            stylesMutated = true;
+            summaries.push(`✓ Mise en forme appliquée dans Moyenne Annuelle`);
+            break;
+          }
+          case 'clear_formatting': {
+            ensureUndoSnapshot();
+            workingStyles.cellColors = {};
+            workingStyles.rowColors = {};
+            workingStyles.cellCustomStyles = {};
+            stylesMutated = true;
+            summaries.push(`✓ Mise en forme réinitialisée`);
+            break;
+          }
+          case 'resize_columns': {
+            const targetCol = String(action.column || 'all').toLowerCase();
+            const computeNext = (current: number, minW: number, maxW = 520): number => {
+              if (typeof action.widthPx === 'number' && Number.isFinite(action.widthPx)) {
+                return Math.round(Math.max(minW, Math.min(maxW, action.widthPx)));
+              }
+              if (typeof action.scaleFactor === 'number' && Number.isFinite(action.scaleFactor)) {
+                return Math.round(Math.max(minW, Math.min(maxW, current * action.scaleFactor)));
+              }
+              if (typeof action.deltaPx === 'number' && Number.isFinite(action.deltaPx)) {
+                return Math.round(Math.max(minW, Math.min(maxW, current + action.deltaPx)));
+              }
+              return current;
+            };
+            if (targetCol === 'all' || targetCol === 'rank') {
+              workingLayout.colWidthRank = computeNext(workingLayout.colWidthRank ?? 68, 52);
+            }
+            if (targetCol === 'all' || targetCol === 'photo') {
+              workingLayout.colWidthPhoto = computeNext(workingLayout.colWidthPhoto ?? 64, 52);
+            }
+            if (targetCol === 'all' || targetCol === 'matricule') {
+              workingLayout.colWidthMatricule = computeNext(workingLayout.colWidthMatricule ?? 124, 90);
+            }
+            if (targetCol === 'all' || targetCol === 'name') {
+              workingLayout.colWidthName = computeNext(workingLayout.colWidthName ?? 220, 140);
+            }
+            if (targetCol === 'all' || targetCol === 'total') {
+              workingLayout.colWidthTotalGeneral = computeNext(workingLayout.colWidthTotalGeneral ?? 120, 92);
+            }
+            if (targetCol === 'all' || targetCol === 'average') {
+              workingLayout.colWidthGeneralAvg = computeNext(workingLayout.colWidthGeneralAvg ?? 124, 92);
+            }
+            if (targetCol === 'all' || targetCol === 'mention') {
+              workingLayout.colWidthMention = computeNext(workingLayout.colWidthMention ?? 116, 86);
+            }
+            if (
+              targetCol === 'all' ||
+              targetCol === 'term' ||
+              targetCol === 'subject' ||
+              targetCol === 'note' ||
+              targetCol === 'all_notes'
+            ) {
+              const targetIds = findMatchingTermIds(action.termName || action.subjectName);
+              for (const tid of targetIds) {
+                const curM =
+                  workingLayout.customSubjectMoyWidths?.[tid] ??
+                  workingLayout.colWidthSubjectMoy ??
+                  82;
+                const curW =
+                  workingLayout.customSubjectWeightedWidths?.[tid] ??
+                  workingLayout.colWidthSubjectWeighted ??
+                  90;
+                workingLayout.customSubjectMoyWidths![tid] = computeNext(curM, 60, 320);
+                workingLayout.customSubjectWeightedWidths![tid] = computeNext(curW, 68, 320);
+              }
+            }
+            layoutMutated = true;
+            summaries.push(`✓ Largeur des colonnes ajustée`);
+            break;
+          }
+          case 'resize_rows': {
+            const target = String(action.target || 'all');
+            const matchedStudents: typeof computed.students = [];
+            if (target === 'all') {
+              matchedStudents.push(...computed.students);
+            } else {
+              const nameTargets: string[] = [];
+              if (typeof action.studentName === 'string' && action.studentName.trim()) {
+                nameTargets.push(normKey(action.studentName));
+              }
+              if (Array.isArray(action.studentNames)) {
+                action.studentNames.forEach((n: unknown) => {
+                  const nk = normKey(n);
+                  if (nk) nameTargets.push(nk);
+                });
+              }
+              const rowTargets = new Set<number>();
+              if (typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
+                rowTargets.add(Math.round(action.rowIndex) - 1);
+              }
+              if (Array.isArray(action.rowIndices)) {
+                action.rowIndices.forEach((r: unknown) => {
+                  if (Number(r) >= 1) rowTargets.add(Math.round(Number(r)) - 1);
+                });
+              }
+              computed.students.forEach((st, idx) => {
+                const sn = normKey(st.name);
+                const matchesName =
+                  nameTargets.length > 0 &&
+                  Boolean(sn) &&
+                  nameTargets.some((t) => sn === t || sn.includes(t) || t.includes(sn));
+                if (matchesName || rowTargets.has(idx)) {
+                  matchedStudents.push(st);
+                }
+              });
+            }
+            for (const st of matchedStudents) {
+              const curH = workingLayout.customRowHeights?.[st.key] ?? 44;
+              let nextH = curH;
+              if (typeof action.heightPx === 'number' && Number.isFinite(action.heightPx)) {
+                nextH = Math.round(Math.max(28, Math.min(180, action.heightPx)));
+              } else if (typeof action.deltaPx === 'number' && Number.isFinite(action.deltaPx)) {
+                nextH = Math.round(Math.max(28, Math.min(180, curH + action.deltaPx)));
+              }
+              workingLayout.customRowHeights![st.key] = nextH;
+            }
+            if (matchedStudents.length > 0) {
+              layoutMutated = true;
+              summaries.push(`✓ Hauteur de ${matchedStudents.length} ligne(s) ajustée`);
+            }
+            break;
+          }
+          case 'reset_column_widths': {
+            delete workingLayout.colWidthRank;
+            delete workingLayout.colWidthPhoto;
+            delete workingLayout.colWidthMatricule;
+            delete workingLayout.colWidthName;
+            delete workingLayout.colWidthSubjectMoy;
+            delete workingLayout.colWidthSubjectWeighted;
+            delete workingLayout.colWidthTotalGeneral;
+            delete workingLayout.colWidthGeneralAvg;
+            delete workingLayout.colWidthMention;
+            workingLayout.customSubjectMoyWidths = {};
+            workingLayout.customSubjectWeightedWidths = {};
+            workingLayout.customRowHeights = {};
+            layoutMutated = true;
+            summaries.push(`✓ Largeurs des colonnes et hauteurs de lignes réinitialisées`);
+            break;
+          }
+          case 'set_expand_level': {
+            const lvl: 0 | 1 | 2 =
+              Number(action.level) === 2 ? 2 : Number(action.level) === 1 ? 1 : 0;
+            setViewerExpandLevel(lvl);
+            setIsViewerMaximized(lvl >= 1);
+            summaries.push(
+              lvl === 2
+                ? `✓ Plein écran total activé`
+                : lvl === 1
+                ? `✓ Affichage agrandi activé`
+                : `✓ Affichage normal rétabli`
+            );
+            break;
+          }
           case 'set_zoom': {
             const z = Math.min(180, Math.max(40, Math.round(Number(action.zoomPercent) || 80)));
-            setZoomPercent(z);
-            setIsDirty(true);
+            workingZoom = z;
+            workingLayout.zoomPercent = z;
+            zoomMutated = true;
+            layoutMutated = true;
             summaries.push(`✓ Zoom réglé à ${z}%`);
             break;
           }
@@ -1741,7 +2198,48 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             summaries.push(`✓ Export Excel (.xlsx) téléchargé`);
             break;
           }
+          case 'export_pdf': {
+            await exportGradebookToPdf(buildAnnualExportDataset());
+            summaries.push(`✓ Export PDF téléchargé`);
+            break;
+          }
+          case 'export_word': {
+            await exportGradebookToWord(buildAnnualExportDataset());
+            summaries.push(`✓ Export Word (.docx) téléchargé`);
+            break;
+          }
+          case 'copy_table': {
+            await copyGradebookToClipboard(buildAnnualExportDataset());
+            setCopiedTableSuccess(true);
+            setTimeout(() => setCopiedTableSuccess(false), 2500);
+            summaries.push(`✓ Tableau copié dans le presse-papiers`);
+            break;
+          }
+          case 'save_gradebook': {
+            summaries.push(`✓ Tableau enregistré dans le cloud`);
+            break;
+          }
         }
+      }
+
+      const explicitSaveRequested = actions.some((a) => a?.type === 'save_gradebook');
+      if (stylesMutated) setStyles(workingStyles);
+      if (layoutMutated) setLayout(workingLayout);
+      if (zoomMutated) setZoomPercent(workingZoom);
+
+      if (stylesMutated || layoutMutated || zoomMutated) {
+        latestPayloadRef.current = {
+          layout: { ...workingLayout, zoomPercent: workingZoom },
+          styles: workingStyles,
+          overrides,
+          sortMode,
+        };
+        setIsDirty(true);
+        setTimeout(() => {
+          saveToCloud({ force: true });
+        }, 220);
+      } else if (explicitSaveRequested) {
+        await saveToCloud({ force: true });
       }
       return summaries;
     },
@@ -1757,6 +2255,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       }`}
     >
       <style>{`
+        .term-avg-sheet tr[data-custom-height="1"] > td {
+          height: inherit !important;
+        }
         .dark .term-avg-sheet > header,
         .dark .term-avg-sheet > section,
         .dark .term-avg-sheet > footer {
@@ -2499,7 +3000,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                           {/* RANG */}
                           <th
                             rowSpan={2}
-                            style={{ width: `${colWidthRank}px` }}
+                            style={getHeaderInlineStyle('header_rank', { width: `${colWidthRank}px` })}
                             className="relative border-r border-b-2 border-slate-800 px-1.5 py-2 text-center font-black text-[11px] tracking-wide uppercase align-middle bg-[#eef2f6]"
                           >
                             RANG
@@ -2516,7 +3017,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                           {/* PROFIL */}
                           <th
                             rowSpan={2}
-                            style={{ width: `${colWidthPhoto}px` }}
+                            style={getHeaderInlineStyle('header_photo', { width: `${colWidthPhoto}px` })}
                             className="relative border-r border-b-2 border-slate-800 px-1.5 py-2 text-center font-black text-[11px] tracking-wide uppercase align-middle bg-[#eef2f6]"
                           >
                             PROFIL
@@ -2534,7 +3035,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                           {effectiveShowMatricule && (
                             <th
                               rowSpan={2}
-                              style={{ width: `${colWidthMatricule}px` }}
+                              style={getHeaderInlineStyle('header_matricule', { width: `${colWidthMatricule}px` })}
                               className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center font-black text-[11px] tracking-wide uppercase align-middle bg-[#eef2f6]"
                             >
                               MATRICULE
@@ -2552,7 +3053,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                           {/* NOM & PRÉNOM */}
                           <th
                             rowSpan={2}
-                            style={{ width: `${colWidthName}px` }}
+                            style={getHeaderInlineStyle('header_name', { width: `${colWidthName}px` })}
                             className="relative border-r-2 border-b-2 border-slate-800 px-3 py-2 text-left font-black text-[11px] tracking-wide uppercase align-middle bg-[#eef2f6]"
                           >
                             NOM & PRÉNOM
@@ -2580,12 +3081,12 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                               <th
                                 key={`grp-${termCol.id}`}
                                 colSpan={2}
-                                style={{
+                                style={getHeaderInlineStyle(`header_item_${termCol.id}`, {
                                   width: `${
                                     getTermMoyWidth(termCol.id) +
                                     getTermWeightedWidth(termCol.id)
                                   }px`,
-                                }}
+                                })}
                                 className="relative border-r-2 border-b border-slate-400 px-2 py-1.5 text-center align-middle bg-white group"
                               >
                                 <div
@@ -2594,6 +3095,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                 />
                                 <div className="flex items-center justify-center gap-1 pt-0.5">
                                   <span
+                                    style={getCellTextOverrideStyle(`header_item_${termCol.id}`)}
                                     className="font-black text-[11px] text-slate-900 dark:text-slate-100 uppercase leading-tight truncate"
                                     title={termCol.name}
                                   >
@@ -2656,10 +3158,13 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                           {/* TOTAL ANNUEL */}
                           <th
                             rowSpan={2}
-                            style={{ width: `${colWidthTotalAnnual}px` }}
+                            style={getHeaderInlineStyle('header_total', { width: `${colWidthTotalAnnual}px` })}
                             className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center align-middle bg-indigo-50/70"
                           >
-                            <div className="font-black text-[11px] text-indigo-950 dark:text-indigo-200 uppercase leading-tight">
+                            <div
+                              style={getCellTextOverrideStyle('header_total')}
+                              className="font-black text-[11px] text-indigo-950 dark:text-indigo-200 uppercase leading-tight"
+                            >
                               TOTAL ANNUEL
                             </div>
                             <div className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
@@ -2679,10 +3184,13 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                           {/* MOYENNE ANNUELLE */}
                           <th
                             rowSpan={2}
-                            style={{ width: `${colWidthAnnualAvg}px` }}
+                            style={getHeaderInlineStyle('header_avg', { width: `${colWidthAnnualAvg}px` })}
                             className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center align-middle bg-emerald-50/80"
                           >
-                            <div className="font-black text-[11px] text-emerald-950 dark:text-emerald-200 uppercase leading-tight">
+                            <div
+                              style={getCellTextOverrideStyle('header_avg')}
+                              className="font-black text-[11px] text-emerald-950 dark:text-emerald-200 uppercase leading-tight"
+                            >
                               MOYENNE ANNUELLE
                             </div>
                             <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">
@@ -2701,7 +3209,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                           {/* MENTION */}
                           <th
                             rowSpan={2}
-                            style={{ width: `${colWidthMention}px` }}
+                            style={getHeaderInlineStyle('header_mention', { width: `${colWidthMention}px` })}
                             className="relative border-b-2 border-slate-800 px-2 py-2 text-center font-black text-[11px] tracking-wide uppercase align-middle bg-[#eef2f6]"
                           >
                             MENTION
@@ -2721,7 +3229,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                           {computed.terms.map((termCol) => (
                             <React.Fragment key={`subhdr-${termCol.id}`}>
                               <th
-                                style={{ width: `${getTermMoyWidth(termCol.id)}px` }}
+                                style={getHeaderInlineStyle(`header_moy_${termCol.id}`, { width: `${getTermMoyWidth(termCol.id)}px` })}
                                 className="relative border-r border-b-2 border-slate-800 px-1 py-1 text-center text-[10px] font-extrabold uppercase tracking-tight text-slate-700 bg-white"
                                 title={`Moyenne générale sur ${effectiveScaleLabel} au ${termCol.name}`}
                               >
@@ -2746,7 +3254,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                 />
                               </th>
                               <th
-                                style={{ width: `${getTermWeightedWidth(termCol.id)}px` }}
+                                style={getHeaderInlineStyle(`header_tot_${termCol.id}`, { width: `${getTermWeightedWidth(termCol.id)}px` })}
                                 className="relative border-r-2 border-b-2 border-slate-800 px-1 py-1 text-center text-[10px] font-extrabold uppercase tracking-tight text-indigo-800 bg-slate-50/90"
                                 title={`Moyenne × Coeff ${formatCoeffDisplay(
                                   termCol.effectiveCoeff
@@ -2796,10 +3304,15 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                           computed.students.map((student, rIdx) => {
                             const rowNum = rIdx + 1;
                             const rowKey = student.key;
+                            const rowCustomHeight =
+                              layout.customRowHeights?.[rowKey] ??
+                              layout.customRowHeights?.[String(rIdx)];
 
                             return (
                               <tr
                                 key={student.key}
+                                data-custom-height={rowCustomHeight ? '1' : undefined}
+                                style={rowCustomHeight ? { height: `${rowCustomHeight}px` } : undefined}
                                 className="group hover:bg-blue-50/25 transition-colors"
                               >
                                 {/* 1. RANG */}
@@ -2975,6 +3488,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                           e.stopPropagation();
                                           setPreviewStudent(student);
                                         }}
+                                        style={getCellTextOverrideStyle(cellKey)}
                                         className="text-left text-xs font-bold text-slate-800 dark:text-slate-100 hover:text-blue-700 dark:hover:text-blue-300 transition truncate cursor-pointer w-full"
                                         title="Ouvrir la fiche bilan annuelle de l'élève"
                                       >
@@ -3190,7 +3704,10 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                         isSel ? 'ring-2 ring-inset ring-blue-500' : ''
                                       }`}
                                     >
-                                      <div className="text-xs font-black text-indigo-950 dark:text-indigo-200 leading-tight">
+                                      <div
+                                        style={getCellTextOverrideStyle(cellKey)}
+                                        className="text-xs font-black text-indigo-950 dark:text-indigo-200 leading-tight"
+                                      >
                                         {formatFrenchNumber(student.totalAnnual)}
                                       </div>
                                       {isPartial && (
@@ -3267,6 +3784,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                       }`}
                                     >
                                       <span
+                                        style={getCellTextOverrideStyle(cellKey)}
                                         className={`inline-block px-2 py-0.5 rounded-full border text-[10.5px] font-extrabold whitespace-nowrap ${getMentionBadgeStyle(
                                           student.annualAverage,
                                           effectiveMentionRules,
