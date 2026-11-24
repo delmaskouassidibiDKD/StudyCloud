@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback } from 'react';
+import React, { useEffect, useState, useRef, useCallback, useMemo } from 'react';
 import {
   ArrowLeft,
   Check,
@@ -10,6 +10,8 @@ import {
   Clock,
   Smartphone,
   KeyRound,
+  ChevronDown,
+  Search,
 } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import {
@@ -20,7 +22,6 @@ import {
   initializePaystackPayment,
   loadPaystackInlinePop,
   MobileMoneyProvider,
-  normalizeClientCiPhone,
   PaymentGatewayConfig,
   PaymentProductType,
   savePendingPaystackReturnContext,
@@ -28,6 +29,15 @@ import {
   verifyPaystackPayment,
   VerifyPaystackResponse,
 } from '../services/paystackBillingApi';
+import {
+  COUNTRIES_PHONE_LIST,
+  CountryPhoneRule,
+  DEFAULT_COUNTRY_RULE,
+  detectCountryAndNational,
+  formatNationalPhoneInput,
+  getCountryFlagUrl,
+  validateCountryPhone,
+} from '../utils/countryPhoneRules';
 
 export interface StudyCloudPaymentTarget {
   productType: PaymentProductType;
@@ -97,19 +107,23 @@ function getMethodLabel(method: PaymentMethodChoice): string {
   return found ? found.label : 'Wave';
 }
 
-function readInitialUserPhone(): string {
+function readInitialUserPhoneAndCountry(): { country: CountryPhoneRule; formattedPhone: string } {
   try {
     const raw = localStorage.getItem('sc_auth_user');
     if (raw) {
       const parsed = JSON.parse(raw);
       if (parsed?.phone) {
-        return normalizeClientCiPhone(String(parsed.phone));
+        const det = detectCountryAndNational(String(parsed.phone));
+        return {
+          country: det.country,
+          formattedPhone: formatNationalPhoneInput(det.nationalDigits, det.country),
+        };
       }
     }
   } catch {
     // Ignore
   }
-  return '';
+  return { country: DEFAULT_COUNTRY_RULE, formattedPhone: '' };
 }
 
 export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
@@ -117,10 +131,45 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
   onBack,
   onSuccess,
 }) => {
+  const initialPhoneState = useMemo(() => readInitialUserPhoneAndCountry(), []);
   const [method, setMethod] = useState<PaymentMethodChoice>('wave');
-  const [phone, setPhone] = useState<string>(() => readInitialUserPhone());
+  const [selectedCountry, setSelectedCountry] = useState<CountryPhoneRule>(initialPhoneState.country);
+  const [phone, setPhone] = useState<string>(initialPhoneState.formattedPhone);
+  const [countryDropdownOpen, setCountryDropdownOpen] = useState<boolean>(false);
+  const [countrySearch, setCountrySearch] = useState<string>('');
+  const countryPickerRef = useRef<HTMLDivElement | null>(null);
   const [otpCode, setOtpCode] = useState<string>('');
   const [preferAutoCard, setPreferAutoCard] = useState<boolean>(target.billingMode === 'auto');
+
+  // Fermer le menu déroulant pays en cliquant dehors ou avec Échap
+  useEffect(() => {
+    if (!countryDropdownOpen) return;
+    const handleOutsideClick = (ev: MouseEvent) => {
+      if (countryPickerRef.current && !countryPickerRef.current.contains(ev.target as Node)) {
+        setCountryDropdownOpen(false);
+      }
+    };
+    const handleKey = (ev: KeyboardEvent) => {
+      if (ev.key === 'Escape') setCountryDropdownOpen(false);
+    };
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [countryDropdownOpen]);
+
+  const filteredCountries = useMemo(() => {
+    const q = countrySearch.trim().toLowerCase();
+    if (!q) return COUNTRIES_PHONE_LIST;
+    return COUNTRIES_PHONE_LIST.filter(
+      (c) =>
+        c.name.toLowerCase().includes(q) ||
+        c.dialCode.includes(q) ||
+        c.iso.toLowerCase().includes(q)
+    );
+  }, [countrySearch]);
 
   const [step, setStep] = useState<PaymentStep>('select');
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -224,9 +273,9 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
     e.preventDefault();
     if (submitting || method === 'card') return;
 
-    const cleanPhone = normalizeClientCiPhone(phone);
-    if (!cleanPhone || cleanPhone.length < 8) {
-      setErrorMsg('Veuillez saisir un numéro valide (ex : 07 00 00 00 00).');
+    const validation = validateCountryPhone(phone, selectedCountry);
+    if (!validation.valid) {
+      setErrorMsg(validation.error || `Numéro ${selectedCountry.name} invalide.`);
       return;
     }
 
@@ -240,7 +289,8 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
         productId: target.productId,
         billingCycle: target.billingCycle,
         provider: method as MobileMoneyProvider,
-        phone: cleanPhone,
+        phone: validation.paystackPhone,
+        countryIso: selectedCountry.iso,
       });
 
       if (!res.success) {
@@ -652,23 +702,131 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
               {/* Formulaire selon le moyen sélectionné */}
               {method !== 'card' ? (
                 <form onSubmit={handleStartMobileCharge} className="space-y-5">
-                  <div className="space-y-2">
-                    <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 dark:text-stone-400">
-                      Numéro {selectedOption.label}
-                    </label>
-                    <div className="flex items-center rounded-2xl border-2 border-orange-200/80 dark:border-stone-700 bg-white dark:bg-[#1B1511] focus-within:border-orange-500 focus-within:ring-4 focus-within:ring-orange-500/15 overflow-hidden transition">
-                      <span className="px-4 py-3.5 bg-orange-50/90 dark:bg-stone-900 border-r border-orange-200/70 dark:border-stone-800 text-sm font-extrabold text-stone-700 dark:text-stone-200 shrink-0">
-                        +225
+                  <div className="space-y-2" ref={countryPickerRef}>
+                    <div className="flex items-center justify-between gap-2">
+                      <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 dark:text-stone-400">
+                        Numéro {selectedOption.label}
+                      </label>
+                      <span className="text-[11px] font-semibold text-stone-500 dark:text-stone-400">
+                        {selectedCountry.minDigits === selectedCountry.maxDigits
+                          ? `${selectedCountry.maxDigits} chiffres`
+                          : `${selectedCountry.minDigits}-${selectedCountry.maxDigits} chiffres`}
                       </span>
-                      <input
-                        type="tel"
-                        inputMode="tel"
-                        required
-                        value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
-                        placeholder={selectedOption.placeholder || '07 00 00 00 00'}
-                        className="flex-1 px-4 py-3.5 bg-transparent text-base font-bold tracking-wide text-stone-950 dark:text-white outline-none"
-                      />
+                    </div>
+
+                    <div className="relative">
+                      <div className="flex items-center rounded-2xl border-2 border-orange-200/80 dark:border-stone-700 bg-white dark:bg-[#1B1511] focus-within:border-orange-500 focus-within:ring-4 focus-within:ring-orange-500/15 transition">
+                        {/* Bouton sélecteur de pays avec drapeau réel + indicatif */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCountryDropdownOpen((prev) => !prev);
+                            setCountrySearch('');
+                          }}
+                          className="flex items-center gap-2 px-3.5 py-3.5 bg-orange-50/90 hover:bg-orange-100/90 dark:bg-stone-900 dark:hover:bg-stone-800 border-r border-orange-200/70 dark:border-stone-800 rounded-l-[14px] text-sm font-extrabold text-stone-800 dark:text-stone-100 shrink-0 transition cursor-pointer"
+                          title={`Changer de pays (${selectedCountry.name})`}
+                        >
+                          <img
+                            src={getCountryFlagUrl(selectedCountry.iso)}
+                            alt={selectedCountry.iso}
+                            className="w-6 h-4 rounded-[3px] object-cover shadow-xs border border-stone-300/60 shrink-0"
+                            onError={(ev) => {
+                              (ev.currentTarget as HTMLImageElement).style.display = 'none';
+                            }}
+                          />
+                          <span className="tabular-nums">{selectedCountry.dialCode}</span>
+                          <ChevronDown
+                            className={`w-3.5 h-3.5 text-stone-500 transition-transform ${
+                              countryDropdownOpen ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </button>
+
+                        <input
+                          type="tel"
+                          inputMode="tel"
+                          required
+                          value={phone}
+                          onChange={(e) => {
+                            const formatted = formatNationalPhoneInput(
+                              e.target.value,
+                              selectedCountry
+                            );
+                            setPhone(formatted);
+                            if (errorMsg) setErrorMsg(null);
+                          }}
+                          placeholder={selectedCountry.placeholder}
+                          className="flex-1 min-w-0 px-4 py-3.5 bg-transparent text-base font-bold tracking-wide text-stone-950 dark:text-white outline-none"
+                        />
+                      </div>
+
+                      {/* Liste déroulante de tous les pays avec drapeaux et recherche */}
+                      {countryDropdownOpen && (
+                        <div className="absolute left-0 right-0 top-full mt-2 z-50 rounded-2xl bg-white dark:bg-[#1B1511] border-2 border-orange-200 dark:border-stone-700 shadow-2xl overflow-hidden animate-fadeIn">
+                          <div className="p-2.5 border-b border-orange-100 dark:border-stone-800 bg-orange-50/50 dark:bg-stone-900/60">
+                            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-white dark:bg-[#120E0B] border border-orange-200/80 dark:border-stone-700 focus-within:border-orange-500">
+                              <Search className="w-4 h-4 text-stone-400 shrink-0" />
+                              <input
+                                type="text"
+                                autoFocus
+                                value={countrySearch}
+                                onChange={(e) => setCountrySearch(e.target.value)}
+                                placeholder="Rechercher un pays ou indicatif (+221, France...)"
+                                className="flex-1 bg-transparent text-xs font-semibold text-stone-900 dark:text-white outline-none"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="max-h-64 overflow-y-auto divide-y divide-orange-100/60 dark:divide-stone-800/70">
+                            {filteredCountries.length === 0 ? (
+                              <div className="p-4 text-center text-xs text-stone-500">
+                                Aucun pays trouvé.
+                              </div>
+                            ) : (
+                              filteredCountries.map((c) => {
+                                const isSel = c.iso === selectedCountry.iso;
+                                return (
+                                  <button
+                                    key={c.iso}
+                                    type="button"
+                                    onClick={() => {
+                                      setSelectedCountry(c);
+                                      setPhone((prev) => formatNationalPhoneInput(prev, c));
+                                      setCountryDropdownOpen(false);
+                                      setErrorMsg(null);
+                                    }}
+                                    className={`w-full px-3.5 py-2.5 flex items-center justify-between gap-3 text-left transition cursor-pointer ${
+                                      isSel
+                                        ? 'bg-orange-500/15 text-orange-950 dark:text-orange-200'
+                                        : 'hover:bg-orange-50/80 dark:hover:bg-stone-800/80 text-stone-800 dark:text-stone-200'
+                                    }`}
+                                  >
+                                    <div className="flex items-center gap-2.5 min-w-0">
+                                      <img
+                                        src={getCountryFlagUrl(c.iso)}
+                                        alt={c.iso}
+                                        loading="lazy"
+                                        className="w-6 h-4 rounded-[3px] object-cover border border-stone-300/60 shrink-0"
+                                      />
+                                      <span className="text-xs sm:text-sm font-bold truncate">
+                                        {c.name}
+                                      </span>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                      <span className="text-xs font-mono font-extrabold text-stone-500 dark:text-stone-400">
+                                        {c.dialCode}
+                                      </span>
+                                      {isSel && (
+                                        <Check className="w-4 h-4 text-orange-500 stroke-[3]" />
+                                      )}
+                                    </div>
+                                  </button>
+                                );
+                              })
+                            )}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
 

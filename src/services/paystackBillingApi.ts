@@ -100,6 +100,7 @@ export interface ChargeMobilePayload {
   billingCycle?: 'monthly' | 'annual' | 'one_time' | 'infinite';
   provider: MobileMoneyProvider;
   phone: string;
+  countryIso?: string;
 }
 
 export interface ChargeMobileResponse {
@@ -484,12 +485,16 @@ export function normalizeClientCiPhone(raw: string): string {
 export async function chargeMobileMoneyWithPaystack(
   payload: ChargeMobilePayload
 ): Promise<ChargeMobileResponse> {
+  const cleanPhone =
+    !payload.countryIso || payload.countryIso.toUpperCase() === 'CI'
+      ? normalizeClientCiPhone(payload.phone)
+      : String(payload.phone || '').replace(/[^\d+]/g, '');
   const resp = await fetch(`${getBaseApi()}/api/payments/paystack/charge-mobile`, {
     method: 'POST',
     headers: getAuthHeaders(),
     body: JSON.stringify({
       ...payload,
-      phone: normalizeClientCiPhone(payload.phone),
+      phone: cleanPhone,
     }),
   });
   const json = await resp.json().catch(() => null);

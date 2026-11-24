@@ -119,18 +119,26 @@ export function getMobileProviderLabel(provider: MobileMoneyProviderCode): strin
 }
 
 /**
- * Normalise un numéro Côte d'Ivoire pour la Charge API Paystack CIV (ex: "+225 07 00 00 00 00" -> "0700000000").
+ * Normalise un numéro Mobile Money pour la Charge API Paystack :
+ * - Côte d'Ivoire (+225) : format local 10 chiffres (ex: "+225 07 00 00 00 00" -> "0700000000").
+ * - Autres pays : conserve le format E.164 international propre (ex: "+221771234567").
  */
-export function normalizeIvoryCoastPhone(raw: unknown): string {
-  const digits = String(raw || '').replace(/[^\d]/g, '');
+export function normalizeIvoryCoastPhone(raw: unknown, countryIso?: unknown): string {
+  const str = String(raw || '').trim();
+  const digits = str.replace(/[^\d]/g, '');
   if (!digits) return '';
-  // Retirer préfixe international 00225 ou 225 si 10 chiffres suivent
-  if (digits.startsWith('00225') && digits.length === 15) {
-    return digits.slice(5);
+  const iso = String(countryIso || '').trim().toUpperCase();
+
+  // Côte d'Ivoire explicite ou préfixe 225 / 00225
+  if (iso === 'CI' || (!iso && (digits.startsWith('00225') || digits.startsWith('225') || (digits.length === 10 && digits.startsWith('0'))))) {
+    if (digits.startsWith('00225') && digits.length === 15) return digits.slice(5);
+    if (digits.startsWith('225') && digits.length === 13) return digits.slice(3);
+    return digits;
   }
-  if (digits.startsWith('225') && digits.length === 13) {
-    return digits.slice(3);
-  }
+
+  // Autres pays : conserver l'indicatif international `+...`
+  if (str.startsWith('+')) return `+${digits}`;
+  if (digits.startsWith('00')) return `+${digits.slice(2)}`;
   return digits;
 }
 
@@ -2230,7 +2238,8 @@ export async function handlePaystackBillingRoutes(
     const productType = String(body.productType || '').trim().toLowerCase() as PaymentProductType;
     const productId = String(body.productId || '').trim();
     const provider = normalizeMobileMoneyProvider(body.provider);
-    const normalizedPhone = normalizeIvoryCoastPhone(body.phone);
+    const countryIso = String(body.countryIso || '').trim().toUpperCase();
+    const normalizedPhone = normalizeIvoryCoastPhone(body.phone, countryIso);
     const billingCycle = (
       body.billingCycle === 'annual'
         ? 'annual'
