@@ -310,6 +310,70 @@ function getWelcomeCopyForLanguage(langCode: string): {
   }
 }
 
+const DELMAS_CONVS_CACHE_PREFIX = 'studycloud_teacher_delmas_convs_v1_';
+
+function getDelmasCachedUserId(): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const uid =
+      localStorage.getItem('unifolder_user_id') ||
+      localStorage.getItem('studycloud_user_id') ||
+      '';
+    return uid && uid !== 'default-user' ? uid : null;
+  } catch {
+    return null;
+  }
+}
+
+function readCachedDelmasConversations(
+  uid: string | null
+): TeacherDelmasConversationSummary[] | null {
+  if (!uid || typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(`${DELMAS_CONVS_CACHE_PREFIX}${uid}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedDelmasConversations(
+  uid: string | null,
+  list: TeacherDelmasConversationSummary[]
+): void {
+  if (!uid || typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(
+      `${DELMAS_CONVS_CACHE_PREFIX}${uid}`,
+      JSON.stringify(list.slice(0, 100))
+    );
+  } catch {}
+}
+
+// Cache mémoire par compte pour ouvrir instantanément une discussion déjà consultée
+const delmasConvDetailsMemCache = new Map<
+  string,
+  { messages: UiChatMessage[]; files: TeacherDelmasFileRecord[] }
+>();
+
+function cacheDelmasConvDetails(
+  uid: string | null,
+  convId: string,
+  messages: UiChatMessage[],
+  files: TeacherDelmasFileRecord[]
+): void {
+  if (!uid || !convId) return;
+  const key = `${uid}::${convId}`;
+  delmasConvDetailsMemCache.delete(key);
+  delmasConvDetailsMemCache.set(key, { messages, files });
+  if (delmasConvDetailsMemCache.size > 25) {
+    const oldestKey = delmasConvDetailsMemCache.keys().next().value;
+    if (oldestKey) delmasConvDetailsMemCache.delete(oldestKey);
+  }
+}
+
 /**
  * Menu latéral droit coulissant de manière fluide pour l'espace de discussion Assistant Delmas :
  * - Modèle Kimi imposé automatiquement en arrière-plan (aucun sélecteur de modèle affiché)
@@ -338,8 +402,17 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
   const [historySearch, setHistorySearch] = useState('');
   const [openConvMenuId, setOpenConvMenuId] = useState<string | null>(null);
 
-  // Conversations & dossier de fichiers liés à la conversation active
-  const [conversations, setConversations] = useState<TeacherDelmasConversationSummary[]>([]);
+  // Conversations & dossier de fichiers liés à la conversation active (initialisés depuis le cache local du compte pour un affichage instantané)
+  const [conversations, setConversations] = useState<TeacherDelmasConversationSummary[]>(() => {
+    const uid = getDelmasCachedUserId();
+    return readCachedDelmasConversations(uid) || [];
+  });
+  const [isLoadingConversations, setIsLoadingConversations] = useState<boolean>(false);
+  const [hasLoadedConversationsOnce, setHasLoadedConversationsOnce] = useState<boolean>(() => {
+    const uid = getDelmasCachedUserId();
+    return Boolean(readCachedDelmasConversations(uid));
+  });
+  const [isLoadingConversationMessages, setIsLoadingConversationMessages] = useState<boolean>(false);
   const [currentConversationId, setCurrentConversationId] = useState<string>(() =>
     generateTeacherEntityId('tdconv')
   );
@@ -657,37 +730,80 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isMainLangMenuOpen, isDrawerLangMenuOpen]);
 
-  // Chargement silencieux du modèle Kimi actif + conversations + contexte D1 à l'ouverture
-  const refreshConversationsAndWorkspace = useCallback(async () => {
+  const hasLoadedModelConfigRef = useRef<boolean>(false);
+
+  // Chargement rapide et indépendant de la liste des discussions (ne jamais bloquer sur le contexte workspace ou la config modèle)
+  const refreshConversationsOnly = useCallback(async () => {
     const token = getTeacherAuthToken();
+    if (!token) {
+      setHasLoadedConversationsOnce(true);
+      setIsLoadingConversations(false);
+      return;
+    }
+    setIsLoadingConversations(true);
     try {
-      const [convRes, wsRes, modelCfg] = await Promise.all([
-        token ? TeacherGradebookAPI.listDelmasConversations().catch(() => null) : Promise.resolve(null),
-        token ? TeacherGradebookAPI.getDelmasWorkspaceContext().catch(() => null) : Promise.resolve(null),
-        StudyCloudAPI.getRobotRougeConfig().catch(() => null),
-      ]);
+      const convRes = await TeacherGradebookAPI.listDelmasConversations().catch(() => null);
       if (convRes?.conversations) {
         setConversations(convRes.conversations);
-      }
-      if (wsRes?.workspace) {
-        setWorkspaceSnapshot(wsRes.workspace);
-      }
-      if (modelCfg?.success && Array.isArray(modelCfg.models)) {
-        resolvedKimiModelRef.current = pickPreferredKimiModel(
-          modelCfg.models,
-          modelCfg.config?.default_model
-        );
+        writeCachedDelmasConversations(resolveActiveUserId() || null, convRes.conversations);
       }
     } catch {
       // Silencieux hors ligne
+    } finally {
+      setHasLoadedConversationsOnce(true);
+      setIsLoadingConversations(false);
     }
-  }, []);
+  }, [resolveActiveUserId]);
+
+  // Chargement découplé : les conversations s'affichent immédiatement sans attendre le workspace complet ni le modèle Kimi
+  const refreshConversationsAndWorkspace = useCallback(() => {
+    const token = getTeacherAuthToken();
+    refreshConversationsOnly();
+
+    if (token) {
+      TeacherGradebookAPI.getDelmasWorkspaceContext()
+        .then((wsRes) => {
+          if (wsRes?.workspace) {
+            setWorkspaceSnapshot(wsRes.workspace);
+          }
+        })
+        .catch(() => {});
+    }
+
+    if (!hasLoadedModelConfigRef.current) {
+      StudyCloudAPI.getRobotRougeConfig()
+        .then((modelCfg) => {
+          if (modelCfg?.success && Array.isArray(modelCfg.models)) {
+            resolvedKimiModelRef.current = pickPreferredKimiModel(
+              modelCfg.models,
+              modelCfg.config?.default_model
+            );
+            hasLoadedModelConfigRef.current = true;
+          }
+        })
+        .catch(() => {});
+    }
+  }, [refreshConversationsOnly]);
+
+  // Préchargement silencieux des discussions dès le montage pour une ouverture instantanée
+  useEffect(() => {
+    if (getTeacherAuthToken()) {
+      refreshConversationsOnly();
+    }
+  }, [refreshConversationsOnly]);
 
   useEffect(() => {
     if (isOpen) {
       refreshConversationsAndWorkspace();
     }
   }, [isOpen, refreshConversationsAndWorkspace]);
+
+  // Rafraîchir rapidement la liste dès qu'on ouvre le tiroir "Discussions récentes"
+  useEffect(() => {
+    if (isOpen && isHistoryDrawerOpen) {
+      refreshConversationsOnly();
+    }
+  }, [isOpen, isHistoryDrawerOpen, refreshConversationsOnly]);
 
   const handleSelectLanguage = (code: string) => {
     setChatLanguage(code);
@@ -727,6 +843,8 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     setConversationFiles([]);
     setPendingAttachments([]);
     setFileUploadWarning(null);
+    setOpenCreditsMsgIds(new Set());
+    setIsLoadingConversationMessages(false);
     setIsFilesFolderOpen(false);
     setIsHistoryDrawerOpen(false);
     setOpenConvMenuId(null);
@@ -757,14 +875,27 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     }
     setPendingAttachments([]);
     setFileUploadWarning(null);
+    setOpenCreditsMsgIds(new Set());
     isUserScrolledUpRef.current = false;
+
+    const uid = resolveActiveUserId() || null;
+    const cachedDetail = uid ? delmasConvDetailsMemCache.get(`${uid}::${conv.id}`) : undefined;
+    if (cachedDetail) {
+      setMessages(cachedDetail.messages);
+      setConversationFiles(cachedDetail.files);
+      setIsLoadingConversationMessages(false);
+    } else {
+      setMessages([]);
+      setConversationFiles([]);
+      setIsLoadingConversationMessages(Boolean(getTeacherAuthToken()));
+    }
 
     if (!getTeacherAuthToken()) return;
     try {
       const res = await TeacherGradebookAPI.getDelmasConversation(conv.id);
       if (res?.success && currentConversationIdRef.current === conv.id) {
-        setMessages(
-          (res.messages || []).map((m: TeacherDelmasMessageRecord) => ({
+        const mappedMessages: UiChatMessage[] = (res.messages || []).map(
+          (m: TeacherDelmasMessageRecord) => ({
             id: m.id,
             sender: m.sender,
             content: m.content,
@@ -781,36 +912,54 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
             credits_deducted: Number(m.credits) || 0,
             isStreaming: false,
             createdAt: m.createdAt,
-          }))
+          })
         );
-        setConversationFiles(res.files || []);
+        const mappedFiles = res.files || [];
+        setMessages(mappedMessages);
+        setConversationFiles(mappedFiles);
+        cacheDelmasConvDetails(uid, conv.id, mappedMessages, mappedFiles);
       }
     } catch {
       // Silencieux en cas d'erreur réseau
+    } finally {
+      if (currentConversationIdRef.current === conv.id) {
+        setIsLoadingConversationMessages(false);
+      }
     }
   };
 
   // Épingler / Désépingler une discussion
   const handleTogglePinConversation = async (conv: TeacherDelmasConversationSummary) => {
     const nextPinned = !conv.isPinned;
-    setConversations((prev) =>
-      prev.map((c) =>
+    const uid = resolveActiveUserId() || null;
+    setConversations((prev) => {
+      const next = prev.map((c) =>
         c.id === conv.id
           ? { ...c, isPinned: nextPinned, pinnedAt: nextPinned ? Date.now() : null }
           : c
-      )
-    );
+      );
+      writeCachedDelmasConversations(uid, next);
+      return next;
+    });
     if (getTeacherAuthToken()) {
       await TeacherGradebookAPI.updateDelmasConversation(conv.id, {
         isPinned: nextPinned,
       }).catch(() => {});
-      refreshConversationsAndWorkspace();
+      refreshConversationsOnly();
     }
   };
 
   // Supprimer une discussion et son dossier de fichiers R2
   const handleDeleteConversation = async (convId: string) => {
-    setConversations((prev) => prev.filter((c) => c.id !== convId));
+    const uid = resolveActiveUserId() || null;
+    if (uid) {
+      delmasConvDetailsMemCache.delete(`${uid}::${convId}`);
+    }
+    setConversations((prev) => {
+      const next = prev.filter((c) => c.id !== convId);
+      writeCachedDelmasConversations(uid, next);
+      return next;
+    });
     if (convId === currentConversationId) {
       handleStartNewConversation();
     }
@@ -980,7 +1129,11 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         setPendingAttachments((prev) => [...prev, savedRecord]);
       }
 
-      refreshConversationsAndWorkspace();
+      const uid = resolveActiveUserId() || null;
+      if (uid) {
+        delmasConvDetailsMemCache.delete(`${uid}::${currentConversationId}`);
+      }
+      refreshConversationsOnly();
     } catch (err: any) {
       if (err?.isStorageLimitExceeded || err?.status === 413) {
         const quotaMsg: UiChatMessage = {
@@ -1031,7 +1184,11 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     setPendingAttachments((prev) => prev.filter((f) => f.id !== fileId));
     if (getTeacherAuthToken()) {
       await TeacherGradebookAPI.deleteDelmasConversationFile(fileId).catch(() => {});
-      refreshConversationsAndWorkspace();
+      const uid = resolveActiveUserId() || null;
+      if (uid) {
+        delmasConvDetailsMemCache.delete(`${uid}::${currentConversationId}`);
+      }
+      refreshConversationsOnly();
     }
   };
 
@@ -1097,9 +1254,13 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         }
       }
 
-      refreshConversationsAndWorkspace();
+      const uid = resolveActiveUserId() || null;
+      if (uid) {
+        delmasConvDetailsMemCache.delete(`${uid}::${meta.conversationId}`);
+      }
+      refreshConversationsOnly();
     },
-    [refreshConversationsAndWorkspace]
+    [refreshConversationsOnly, resolveActiveUserId]
   );
 
   // Arrêter la génération ou l'écriture en direct (conserve proprement le texte déjà écrit)
@@ -1560,12 +1721,6 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                 : m
             );
           });
-          // Afficher automatiquement la consommation dès la fin de la réponse/action
-          setOpenCreditsMsgIds((prev) => {
-            const next = new Set(prev);
-            next.add(aiMsgId);
-            return next;
-          });
         }
         persistStreamedExchangeToD1(finalText);
       };
@@ -1697,6 +1852,27 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         @keyframes rainbowBorderSpin {
           from { transform: rotate(0deg); }
           to { transform: rotate(360deg); }
+        }
+        @keyframes delmasShimmerWave {
+          0% { transform: translateX(-100%); }
+          100% { transform: translateX(200%); }
+        }
+        .delmas-shimmer-wave {
+          position: relative;
+          overflow: hidden;
+        }
+        .delmas-shimmer-wave::after {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background: linear-gradient(
+            90deg,
+            transparent 0%,
+            rgba(255, 255, 255, 0.08) 45%,
+            rgba(251, 146, 60, 0.14) 55%,
+            transparent 100%
+          );
+          animation: delmasShimmerWave 1.35s ease-in-out infinite;
         }
       `}</style>
 
@@ -2039,7 +2215,11 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
               <div className="flex flex-col gap-1.5 pb-3 border-b border-zinc-700/60 mb-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                    {isLoadingConversations ? (
+                      <Loader2 className="w-3.5 h-3.5 text-orange-400 animate-spin shrink-0" />
+                    ) : (
+                      <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+                    )}
                     <h3 className="text-xs sm:text-[13px] font-bold text-white whitespace-nowrap truncate">
                       Discussions récentes
                     </h3>
@@ -2154,7 +2334,34 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
               </div>
 
               <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1.5 pr-1">
-                {filteredConversations.length === 0 ? (
+                {(isLoadingConversations || !hasLoadedConversationsOnce) &&
+                conversations.length === 0 &&
+                !historySearch.trim() ? (
+                  <div className="space-y-2 py-1" aria-label="Chargement des discussions">
+                    <div className="flex items-center justify-center gap-2 py-1.5 text-[11px] font-semibold text-orange-300/90">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-orange-400 shrink-0" />
+                      <span>Chargement des discussions…</span>
+                    </div>
+                    {[0, 1, 2, 3, 4].map((idx) => (
+                      <div
+                        key={`conv-skel-${idx}`}
+                        className="delmas-shimmer-wave p-2.5 rounded-xl bg-[#26282d] border border-zinc-800/90 flex items-center gap-2.5"
+                      >
+                        <div className="w-4 h-4 rounded-md bg-zinc-700/70 shrink-0" />
+                        <div className="flex-1 min-w-0 space-y-1.5">
+                          <div
+                            className="h-2.5 rounded-full bg-zinc-700/75"
+                            style={{ width: `${72 - (idx % 3) * 12}%` }}
+                          />
+                          <div
+                            className="h-2 rounded-full bg-zinc-800"
+                            style={{ width: `${42 + (idx % 2) * 14}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : filteredConversations.length === 0 ? (
                   <div className="text-center text-zinc-500 text-xs py-8">
                     Aucune discussion trouvée
                   </div>
@@ -2269,7 +2476,27 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           onScroll={handleMessagesScroll}
           className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-5 flex flex-col select-text"
         >
-          {messages.length === 0 && !isGenerating ? (
+          {isLoadingConversationMessages && messages.length === 0 ? (
+            <div className="flex-1 flex flex-col justify-center gap-4 px-2 py-6" aria-label="Chargement de la conversation">
+              <div className="flex items-center justify-center gap-2 text-xs font-semibold text-orange-300/90">
+                <Loader2 className="w-4 h-4 animate-spin text-orange-400 shrink-0" />
+                <span>Chargement de la discussion…</span>
+              </div>
+              <div className="space-y-3 max-w-md w-full mx-auto">
+                <div className="flex justify-end">
+                  <div className="delmas-shimmer-wave w-2/3 h-10 rounded-2xl rounded-tr-xs bg-[#2a2b2f] border border-zinc-800" />
+                </div>
+                <div className="space-y-2">
+                  <div className="delmas-shimmer-wave w-4/5 h-3.5 rounded-full bg-zinc-800" />
+                  <div className="delmas-shimmer-wave w-full h-3.5 rounded-full bg-zinc-800" />
+                  <div className="delmas-shimmer-wave w-3/5 h-3.5 rounded-full bg-zinc-800" />
+                </div>
+                <div className="flex justify-end">
+                  <div className="delmas-shimmer-wave w-1/2 h-9 rounded-2xl rounded-tr-xs bg-[#2a2b2f] border border-zinc-800" />
+                </div>
+              </div>
+            </div>
+          ) : messages.length === 0 && !isGenerating ? (
             <div className="flex-1 flex flex-col items-center justify-center text-center max-h-full my-auto pb-8 px-3">
               {/* Logo ADN officiel lumineux */}
               <div className="mb-3.5 relative group">
