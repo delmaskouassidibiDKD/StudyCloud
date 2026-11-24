@@ -430,12 +430,12 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
               <span>Retour</span>
             </button>
 
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 flex items-center justify-center">
-                <DnaLogo className="w-7 h-7" />
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-stone-950 border border-orange-500/40 shadow-md flex items-center justify-center shrink-0">
+                <DnaLogo className="w-6 h-6" glow />
               </div>
-              <span className="text-sm font-black tracking-tight text-stone-900 dark:text-white">
-                StudyCloud
+              <span className="text-base font-black tracking-tight text-stone-950 dark:text-white">
+                Study<span className="text-orange-600 dark:text-orange-400">Cloud</span>
               </span>
             </div>
           </div>
