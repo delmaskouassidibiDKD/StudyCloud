@@ -1,17 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Check, HardDrive, Bot, RotateCw } from 'lucide-react';
+import { ArrowLeft, Check, HardDrive, Bot, RotateCw, Loader2, Receipt, AlertCircle } from 'lucide-react';
 import { SubscriptionFormView, SelectedPlan } from './SubscriptionFormView';
 import { RenewalFormView } from './RenewalFormView';
 import { RenewalSectionView } from './RenewalSectionView';
-import { PaystackCheckoutModal } from './PaystackCheckoutModal';
 import { getSubscriptionPlans, SubscriptionPlan } from '../services/api';
 import {
   ClientBillingMode,
   DEFAULT_PAYMENT_GATEWAY_CONFIG,
   formatBillingDurationBadge,
   getPaymentGatewayConfig,
+  initializePaystackPayment,
   normalizeClientBillingMode,
   PaymentGatewayConfig,
+  savePendingPaystackReturnContext,
+  shouldShowManualReceiptButton,
 } from '../services/paystackBillingApi';
 
 interface PricingViewProps {
@@ -180,16 +182,52 @@ export const PricingView: React.FC<PricingViewProps> = ({
 
   // Configuration passerelle Paystack + Bouton « Payer manuellement » pilotés par l'admin
   const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>(DEFAULT_PAYMENT_GATEWAY_CONFIG);
-  const [paystackCheckoutTarget, setPaystackCheckoutTarget] = useState<{
-    plan: SubscriptionPlan;
-    type: 'storage' | 'ai';
-    billingMode: ClientBillingMode;
-    durationDays: number;
-    billingCycle: 'monthly' | 'annual' | 'one_time' | 'infinite';
-    priceDisplay: string;
-    secondaryPriceDisplay?: string;
-    manualPlan: SelectedPlan;
-  } | null>(null);
+  const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
+  const [paymentError, setPaymentError] = useState<{ planId: string; message: string } | null>(null);
+
+  const handleDirectPaystackCheckout = async (
+    plan: SubscriptionPlan,
+    type: 'storage' | 'ai',
+    billingMode: ClientBillingMode,
+    resolvedCycle: 'monthly' | 'annual' | 'one_time' | 'infinite'
+  ) => {
+    if (payingPlanId) return;
+    setPaymentError(null);
+    setPayingPlanId(plan.id);
+    try {
+      const res = await initializePaystackPayment({
+        productType: type,
+        productId: plan.id,
+        billingCycle: billingMode === 'infinite' ? 'infinite' : resolvedCycle,
+        currency: 'XOF',
+        preferAutoCard: false,
+      });
+
+      if (!res.success || !res.authorizationUrl) {
+        setPaymentError({
+          planId: plan.id,
+          message: res.error || "Impossible d'ouvrir la page de paiement Paystack.",
+        });
+        setPayingPlanId(null);
+        return;
+      }
+
+      savePendingPaystackReturnContext({
+        productType: type,
+        productId: plan.id,
+        productName: `${plan.name} (${type === 'ai' ? 'Crédits IA' : 'Stockage Cloud'})`,
+        createdAt: Date.now(),
+      });
+
+      window.location.href = res.authorizationUrl;
+    } catch (err: any) {
+      setPaymentError({
+        planId: plan.id,
+        message: err?.message || 'Erreur réseau lors de la connexion à Paystack.',
+      });
+      setPayingPlanId(null);
+    }
+  };
 
   // État pour afficher le menu complet de renouvellement
   const [selectedPlanForRenewal, setSelectedPlanForRenewal] = useState<any | null>(null);
@@ -482,57 +520,113 @@ export const PricingView: React.FC<PricingViewProps> = ({
           </ul>
         </div>
 
-        {/* Bouton d'action : Ouvre PaystackCheckoutModal (avec bouton Payer manuellement contrôlé par l'admin) */}
-        <button
-          onClick={() => {
-            const formattedPrimary = `${getCurrencySymbol(pricing.primaryCurr)} ${
-              pricing.primaryCurr === 'XOF'
-                ? pricing.activePrice.toLocaleString('fr-FR')
-                : pricing.activePrice
-            }`;
-            const manualPlanObj: SelectedPlan = {
-              name: `${plan.name} ${type === 'ai' ? 'IA' : 'Stockage'}`,
-              type: type,
-              storageDisplay: lockedPerkText,
-              priceDisplay:
-                isOneTime || isInfinite
-                  ? `${formattedPrimary} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`
-                  : `${formattedPrimary} / ${isAnnual ? 'an' : 'mois'} ${
-                      pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''
-                    }`,
-              price: pricing.activePrice,
-              priceFcfa: pricing.priceFcfa,
-              currency: getCurrencySymbol(pricing.primaryCurr),
-              billingCycle: isOneTime || isInfinite ? 'one_time' : billingCycle,
-              mb: plan.storage_mb,
-              words: plan.credits_count,
-            };
+        {/* Boutons d'action directement sur la carte : Paiement Paystack direct + Payer manuellement en dessous (si activé par l'admin) */}
+        {(() => {
+          const formattedPrimary = `${getCurrencySymbol(pricing.primaryCurr)} ${
+            pricing.primaryCurr === 'XOF'
+              ? pricing.activePrice.toLocaleString('fr-FR')
+              : pricing.activePrice
+          }`;
+          const manualPlanObj: SelectedPlan = {
+            name: `${plan.name} ${type === 'ai' ? 'IA' : 'Stockage'}`,
+            type: type,
+            storageDisplay: lockedPerkText,
+            priceDisplay:
+              isOneTime || isInfinite
+                ? `${formattedPrimary} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`
+                : `${formattedPrimary} / ${isAnnual ? 'an' : 'mois'} ${
+                    pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''
+                  }`,
+            price: pricing.activePrice,
+            priceFcfa: pricing.priceFcfa,
+            currency: getCurrencySymbol(pricing.primaryCurr),
+            billingCycle: isOneTime || isInfinite ? 'one_time' : billingCycle,
+            mb: plan.storage_mb,
+            words: plan.credits_count,
+          };
 
-            if (!paymentConfig.paystackEnabled && paymentConfig.manualReceiptEnabled) {
-              setSelectedPlanForSubscription(manualPlanObj);
-              return;
-            }
+          const isPaystackAvailable =
+            paymentConfig.paystackEnabled && paymentConfig.mode !== 'unconfigured';
+          const showManualUnderneath = shouldShowManualReceiptButton(paymentConfig, true);
+          const isThisCardLoading = payingPlanId === plan.id;
+          const cardError = paymentError?.planId === plan.id ? paymentError.message : null;
+          const resolvedCycle: 'monthly' | 'annual' | 'one_time' | 'infinite' = isInfinite
+            ? 'infinite'
+            : isOneTime
+            ? 'one_time'
+            : billingCycle;
 
-            setPaystackCheckoutTarget({
-              plan,
-              type,
-              billingMode,
-              durationDays,
-              billingCycle: isInfinite ? 'infinite' : isOneTime ? 'one_time' : billingCycle,
-              priceDisplay: `${Math.round(pricing.priceFcfa).toLocaleString('fr-FR')} FCFA`,
-              secondaryPriceDisplay:
-                pricing.primaryCurr !== 'XOF' ? formattedPrimary : pricing.secondaryString || undefined,
-              manualPlan: manualPlanObj,
-            });
-          }}
-          className={`w-full py-2.5 sm:py-3 font-semibold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shadow-xs text-center active:scale-[0.98] ${
-            isPopular
-              ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-950/30'
-              : 'bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white'
-          }`}
-        >
-          {isInfinite ? 'Obtenir à vie' : isAuto ? "S'abonner" : 'Choisir cette offre'}
-        </button>
+          return (
+            <div className="space-y-2">
+              {cardError && (
+                <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-[11px] text-rose-600 dark:text-rose-300 flex items-start gap-1.5 text-left">
+                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>{cardError}</span>
+                </div>
+              )}
+
+              {isPaystackAvailable ? (
+                <button
+                  type="button"
+                  disabled={Boolean(payingPlanId)}
+                  onClick={() =>
+                    handleDirectPaystackCheckout(plan, type, billingMode, resolvedCycle)
+                  }
+                  className={`w-full py-2.5 sm:py-3 font-semibold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shadow-xs text-center active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-65 ${
+                    isPopular
+                      ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-950/30'
+                      : 'bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white'
+                  }`}
+                >
+                  {isThisCardLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Redirection vers le paiement...</span>
+                    </>
+                  ) : (
+                    <span>
+                      {isInfinite ? 'Obtenir à vie' : isAuto ? "S'abonner" : 'Choisir cette offre'}
+                    </span>
+                  )}
+                </button>
+              ) : showManualUnderneath ? (
+                <button
+                  type="button"
+                  onClick={() => setSelectedPlanForSubscription(manualPlanObj)}
+                  className={`w-full py-2.5 sm:py-3 font-semibold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shadow-xs text-center active:scale-[0.98] flex items-center justify-center gap-2 ${
+                    isPopular
+                      ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-950/30'
+                      : 'bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white'
+                  }`}
+                >
+                  <Receipt className="w-4 h-4" />
+                  <span>Payer manuellement (reçu)</span>
+                </button>
+              ) : (
+                <div className="w-full py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 text-xs font-semibold text-center">
+                  Paiement temporairement indisponible
+                </div>
+              )}
+
+              {/* Bouton secondaire « Payer manuellement » directement sous le bouton principal (contrôlé par le Tableau de bord) */}
+              {isPaystackAvailable && showManualUnderneath && (
+                <button
+                  type="button"
+                  disabled={Boolean(payingPlanId)}
+                  onClick={() => setSelectedPlanForSubscription(manualPlanObj)}
+                  className={`w-full py-2 px-3 rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border disabled:opacity-50 ${
+                    isPopular
+                      ? 'bg-white/5 hover:bg-white/10 text-slate-200 border-white/15'
+                      : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+                  }`}
+                >
+                  <Receipt className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <span>Payer manuellement (envoyer un reçu)</span>
+                </button>
+              )}
+            </div>
+          );
+        })()}
       </div>
     );
   };
@@ -695,32 +789,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
           )}
         </div>
       </div>
-
-      {/* Modale de paiement Paystack + bouton « Payer manuellement » contrôlé par l'admin */}
-      {paystackCheckoutTarget && (
-        <PaystackCheckoutModal
-          isOpen={Boolean(paystackCheckoutTarget)}
-          onClose={() => setPaystackCheckoutTarget(null)}
-          productType={paystackCheckoutTarget.type}
-          productId={paystackCheckoutTarget.plan.id}
-          productName={`${paystackCheckoutTarget.plan.name} (${
-            paystackCheckoutTarget.type === 'ai' ? 'Crédits IA' : 'Stockage Cloud'
-          })`}
-          subtitle={paystackCheckoutTarget.manualPlan.storageDisplay}
-          priceDisplay={paystackCheckoutTarget.priceDisplay}
-          secondaryPriceDisplay={paystackCheckoutTarget.secondaryPriceDisplay}
-          billingCycle={paystackCheckoutTarget.billingCycle}
-          billingMode={paystackCheckoutTarget.billingMode}
-          durationDays={paystackCheckoutTarget.durationDays}
-          currency="XOF"
-          initialConfig={paymentConfig}
-          onFallbackManual={() => {
-            const targetManual = paystackCheckoutTarget.manualPlan;
-            setPaystackCheckoutTarget(null);
-            setSelectedPlanForSubscription(targetManual);
-          }}
-        />
-      )}
 
     </div>
   );
