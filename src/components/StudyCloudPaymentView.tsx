@@ -64,7 +64,7 @@ interface StudyCloudPaymentViewProps {
 }
 
 type PaymentMethodChoice = 'wave' | 'orange' | 'mtn' | 'card';
-type PaymentStep = 'select' | 'otp' | 'waiting' | 'success';
+type PaymentStep = 'select' | 'confirm' | 'otp' | 'waiting' | 'success';
 
 const PAYMENT_OPTIONS: Array<{
   id: PaymentMethodChoice;
@@ -269,13 +269,36 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
     return () => clearTimers();
   }, [step, activeReference, checkTransactionOnce, clearTimers]);
 
-  const handleStartMobileCharge = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (submitting || method === 'card') return;
+  // Étape 1 -> Étape 2 (écran récapitulatif « Confirmez votre paiement » avant de lancer le débit)
+  const handleProceedToConfirm = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (submitting) return;
+    setErrorMsg(null);
+    setShowPopupFallback(false);
+
+    if (method !== 'card') {
+      const validation = validateCountryPhone(phone, selectedCountry);
+      if (!validation.valid) {
+        setErrorMsg(validation.error || `Numéro ${selectedCountry.name} invalide.`);
+        return;
+      }
+    }
+
+    setStep('confirm');
+  };
+
+  // Étape 2 -> Exécution réelle du paiement après clic sur « Confirmer et payer »
+  const handleExecuteConfirmedPayment = async () => {
+    if (submitting) return;
+    if (method === 'card') {
+      await handleOpenInlinePaystack('card');
+      return;
+    }
 
     const validation = validateCountryPhone(phone, selectedCountry);
     if (!validation.valid) {
       setErrorMsg(validation.error || `Numéro ${selectedCountry.name} invalide.`);
+      setStep('select');
       return;
     }
 
@@ -667,7 +690,7 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
 
               {/* Formulaire selon le moyen sélectionné */}
               {method !== 'card' ? (
-                <form onSubmit={handleStartMobileCharge} className="space-y-5">
+                <form onSubmit={handleProceedToConfirm} className="space-y-5">
                   <div className="space-y-2" ref={countryPickerRef}>
                     <div className="flex items-center justify-between gap-2">
                       <label className="block text-xs font-bold uppercase tracking-wider text-stone-600 dark:text-stone-400">
@@ -801,28 +824,8 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
                     disabled={submitting}
                     className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-[#FF7A2F] to-[#EA580C] hover:from-[#F97316] hover:to-[#DC4B08] text-white font-extrabold text-sm sm:text-base shadow-lg shadow-orange-500/25 transition active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2.5 disabled:opacity-65"
                   >
-                    {submitting ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Traitement en cours...</span>
-                      </>
-                    ) : (
-                      <span>Payer {formattedFcfa}</span>
-                    )}
+                    <span>Payer {formattedFcfa}</span>
                   </button>
-
-                  <p className="text-center text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
-                    En continuant, vous acceptez nos{' '}
-                    <a
-                      href={getLegalPortalUrl('cgu')}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-bold text-orange-600 dark:text-orange-400 underline underline-offset-2 hover:text-orange-700 dark:hover:text-orange-300"
-                    >
-                      Conditions d&apos;utilisation
-                    </a>
-                    .
-                  </p>
                 </form>
               ) : (
                 <div className="space-y-5">
@@ -851,34 +854,135 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
                   <button
                     type="button"
                     disabled={submitting || checkingStatus}
-                    onClick={() => handleOpenInlinePaystack('card')}
+                    onClick={() => handleProceedToConfirm()}
                     className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-[#FF7A2F] to-[#EA580C] hover:from-[#F97316] hover:to-[#DC4B08] text-white font-extrabold text-sm sm:text-base shadow-lg shadow-orange-500/25 transition active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2.5 disabled:opacity-65"
                   >
-                    {submitting || checkingStatus ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        <span>Chargement...</span>
-                      </>
-                    ) : (
-                      <span>Payer {formattedFcfa}</span>
-                    )}
+                    <span>Payer {formattedFcfa}</span>
                   </button>
-
-                  <p className="text-center text-[11px] sm:text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
-                    En continuant, vous acceptez nos{' '}
-                    <a
-                      href={getLegalPortalUrl('cgu')}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="font-bold text-orange-600 dark:text-orange-400 underline underline-offset-2 hover:text-orange-700 dark:hover:text-orange-300"
-                    >
-                      Conditions d&apos;utilisation
-                    </a>
-                    .
-                  </p>
                 </div>
               )}
             </>
+          ) : step === 'confirm' ? (
+            /* ÉTAPE INTERMÉDIAIRE : RÉCAPITULATIF & CONFIRMATION AVANT DÉBIT + CONDITIONS D'UTILISATION */
+            <div className="space-y-6 animate-fadeIn">
+              <div className="text-center space-y-2">
+                <div className="w-14 h-14 mx-auto rounded-2xl overflow-hidden bg-white border-2 border-orange-200 dark:border-stone-700 shadow-sm flex items-center justify-center">
+                  <img
+                    src={selectedOption.logo}
+                    alt={selectedOption.label}
+                    className={`w-full h-full ${selectedOption.logoFit}`}
+                  />
+                </div>
+                <h2 className="text-xl sm:text-2xl font-black text-stone-950 dark:text-white">
+                  Confirmez votre paiement
+                </h2>
+                {target.subtitle && (
+                  <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-400">
+                    {target.subtitle}
+                  </p>
+                )}
+              </div>
+
+              {errorMsg && (
+                <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300 space-y-2.5">
+                  <div className="flex items-start gap-2">
+                    <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{errorMsg}</span>
+                  </div>
+                  {showPopupFallback && (
+                    <button
+                      type="button"
+                      disabled={submitting}
+                      onClick={() => handleOpenInlinePaystack('mobile_money')}
+                      className="w-full py-2.5 px-3 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs flex items-center justify-center gap-1.5 cursor-pointer"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      <span>Continuer le paiement</span>
+                    </button>
+                  )}
+                </div>
+              )}
+
+              <div className="divide-y divide-orange-200/70 dark:divide-stone-800 border-y border-orange-200/70 dark:border-stone-800 text-sm">
+                <div className="py-3.5 flex items-center justify-between gap-3">
+                  <span className="text-stone-500 dark:text-stone-400">Forfait</span>
+                  <span className="font-extrabold text-stone-950 dark:text-white text-right">
+                    {target.productName}
+                  </span>
+                </div>
+                <div className="py-3.5 flex items-center justify-between gap-3">
+                  <span className="text-stone-500 dark:text-stone-400">Montant</span>
+                  <span className="font-black text-orange-600 dark:text-orange-400 tabular-nums">
+                    {formattedFcfa}
+                  </span>
+                </div>
+                <div className="py-3.5 flex items-center justify-between gap-3">
+                  <span className="text-stone-500 dark:text-stone-400">Moyen</span>
+                  <span className="font-bold text-stone-900 dark:text-white">
+                    {selectedOption.label}
+                  </span>
+                </div>
+                {method !== 'card' && (
+                  <div className="py-3.5 flex items-center justify-between gap-3">
+                    <span className="text-stone-500 dark:text-stone-400">Numéro</span>
+                    <span className="font-mono font-bold text-stone-900 dark:text-white flex items-center gap-1.5">
+                      <img
+                        src={getCountryFlagUrl(selectedCountry.iso)}
+                        alt={selectedCountry.iso}
+                        className="w-5 h-3.5 rounded-[2px] object-cover border border-stone-300/60"
+                      />
+                      <span>
+                        {selectedCountry.dialCode} {phone}
+                      </span>
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div className="space-y-3">
+                <button
+                  type="button"
+                  disabled={submitting || checkingStatus}
+                  onClick={handleExecuteConfirmedPayment}
+                  className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-[#FF7A2F] to-[#EA580C] hover:from-[#F97316] hover:to-[#DC4B08] text-white font-extrabold text-sm sm:text-base shadow-lg shadow-orange-500/25 transition active:scale-[0.99] cursor-pointer flex items-center justify-center gap-2.5 disabled:opacity-65"
+                >
+                  {submitting || checkingStatus ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Traitement en cours...</span>
+                    </>
+                  ) : (
+                    <span>Confirmer et payer {formattedFcfa}</span>
+                  )}
+                </button>
+
+                <p className="text-center text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+                  En continuant, vous acceptez nos{' '}
+                  <a
+                    href={getLegalPortalUrl('cgu')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-orange-600 dark:text-orange-400 underline underline-offset-2 hover:text-orange-700 dark:hover:text-orange-300"
+                  >
+                    Conditions d&apos;utilisation
+                  </a>
+                  .
+                </p>
+
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => {
+                    setErrorMsg(null);
+                    setShowPopupFallback(false);
+                    setStep('select');
+                  }}
+                  className="w-full py-2 text-xs font-bold text-stone-500 hover:text-stone-900 dark:hover:text-white cursor-pointer disabled:opacity-50"
+                >
+                  ← Modifier le moyen de paiement
+                </button>
+              </div>
+            </div>
           ) : step === 'otp' ? (
             /* ÉTAPE OTP */
             <form onSubmit={handleSubmitOtp} className="space-y-5 animate-fadeIn">

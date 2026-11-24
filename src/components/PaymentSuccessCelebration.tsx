@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { ArrowRight, Check, Printer, Download } from 'lucide-react';
 import { getCurrentLanguage } from '../services/languageService';
-import { getLegalPortalUrl } from '../services/api';
 import { formatCurrencyAmount, PaymentProductType } from '../services/paystackBillingApi';
 
 export interface PaymentSuccessCelebrationProps {
@@ -23,13 +22,13 @@ interface SuccessCopy {
   subtitleApp: string;
   orderLabel: string;
   totalLabel: string;
-  continueBtn: string;
+  ctaStorage: string;
+  ctaAi: string;
+  ctaApp: string;
   printBtn: string;
   downloadBtn: string;
   downloadedToast: string;
   receiptTitle: string;
-  termsPrefix: string;
-  termsLink: string;
 }
 
 const COPY_BY_LANG: Record<string, SuccessCopy> = {
@@ -40,13 +39,13 @@ const COPY_BY_LANG: Record<string, SuccessCopy> = {
     subtitleApp: 'Votre accès StudyCloud est activé — profitez-en dès maintenant !',
     orderLabel: 'Commande',
     totalLabel: 'Total',
-    continueBtn: 'Continuer',
+    ctaStorage: 'Accéder à mon stockage',
+    ctaAi: 'Utiliser mes crédits',
+    ctaApp: "Ouvrir l'application",
     printBtn: 'Imprimer',
     downloadBtn: 'Reçu',
     downloadedToast: 'Reçu téléchargé',
     receiptTitle: 'Reçu de paiement StudyCloud',
-    termsPrefix: 'En continuant, vous acceptez nos',
-    termsLink: "Conditions d'utilisation",
   },
   en: {
     title: 'Payment Successful!',
@@ -55,13 +54,13 @@ const COPY_BY_LANG: Record<string, SuccessCopy> = {
     subtitleApp: 'Your StudyCloud access is now unlocked — enjoy!',
     orderLabel: 'Order',
     totalLabel: 'Total',
-    continueBtn: 'Continue',
+    ctaStorage: 'Go to my storage',
+    ctaAi: 'Use my credits',
+    ctaApp: 'Open application',
     printBtn: 'Print Receipt',
     downloadBtn: 'Save Receipt',
     downloadedToast: 'Receipt saved',
     receiptTitle: 'StudyCloud Payment Receipt',
-    termsPrefix: 'By continuing, you agree to our',
-    termsLink: 'Terms of Service',
   },
   es: {
     title: '¡Pago exitoso!',
@@ -70,13 +69,13 @@ const COPY_BY_LANG: Record<string, SuccessCopy> = {
     subtitleApp: 'Tu acceso a StudyCloud ya está desbloqueado.',
     orderLabel: 'Pedido',
     totalLabel: 'Total',
-    continueBtn: 'Continuar',
+    ctaStorage: 'Ver mi almacenamiento',
+    ctaAi: 'Usar mis créditos',
+    ctaApp: 'Abrir aplicación',
     printBtn: 'Imprimir',
     downloadBtn: 'Recibo',
     downloadedToast: 'Recibo guardado',
     receiptTitle: 'Recibo de pago StudyCloud',
-    termsPrefix: 'Al continuar, aceptas nuestros',
-    termsLink: 'Términos de uso',
   },
   pt: {
     title: 'Pagamento concluído!',
@@ -85,13 +84,13 @@ const COPY_BY_LANG: Record<string, SuccessCopy> = {
     subtitleApp: 'Seu acesso ao StudyCloud foi desbloqueado!',
     orderLabel: 'Pedido',
     totalLabel: 'Total',
-    continueBtn: 'Continuar',
+    ctaStorage: 'Ver meu armazenamento',
+    ctaAi: 'Usar meus créditos',
+    ctaApp: 'Abrir aplicativo',
     printBtn: 'Imprimir',
     downloadBtn: 'Recibo',
     downloadedToast: 'Recibo salvo',
     receiptTitle: 'Recibo de pagamento StudyCloud',
-    termsPrefix: 'Ao continuar, você concorda com nossos',
-    termsLink: 'Termos de Uso',
   },
 };
 
@@ -216,6 +215,10 @@ export const PaymentSuccessCelebration: React.FC<PaymentSuccessCelebrationProps>
     }
   };
 
+  const resolvedCtaLabel =
+    ctaLabel ||
+    (productType === 'ai' ? t.ctaAi : productType === 'app' ? t.ctaApp : t.ctaStorage);
+
   return (
     <div className="relative w-full min-h-full flex flex-col items-center justify-center px-5 py-10 overflow-hidden bg-gradient-to-b from-[#BCECD9] via-[#DCF5EA] to-[#CBEFD9] dark:from-[#081C15] dark:via-[#0D2B20] dark:to-[#071812] text-stone-900 dark:text-white select-none">
       {/* Halos lumineux & étincelles douces en arrière-plan */}
@@ -285,15 +288,15 @@ export const PaymentSuccessCelebration: React.FC<PaymentSuccessCelebrationProps>
           </div>
         </div>
 
-        {/* Barre d'actions inférieure : Bouton Continuer + Imprimer + Télécharger reçu */}
+        {/* Barre d'actions inférieure : Bouton accès direct + Imprimer + Télécharger reçu (sans conditions d'utilisation) */}
         <div className="w-full flex items-start justify-center gap-3 pt-1">
           <button
             type="button"
             onClick={onContinue}
-            className="flex-1 max-w-[230px] py-3.5 px-6 rounded-full bg-white hover:bg-stone-50 dark:bg-emerald-500 dark:hover:bg-emerald-400 text-stone-950 dark:text-stone-950 font-extrabold text-sm shadow-[0_8px_24px_rgba(0,0,0,0.08)] flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer"
+            className="flex-1 max-w-[260px] py-3.5 px-6 rounded-full bg-white hover:bg-stone-50 dark:bg-emerald-500 dark:hover:bg-emerald-400 text-stone-950 dark:text-stone-950 font-extrabold text-sm shadow-[0_8px_24px_rgba(0,0,0,0.08)] flex items-center justify-center gap-2 transition active:scale-[0.98] cursor-pointer whitespace-nowrap"
           >
-            <ArrowRight className="w-4 h-4 text-emerald-600 dark:text-stone-950" />
-            <span>{ctaLabel || t.continueBtn}</span>
+            <ArrowRight className="w-4 h-4 text-emerald-600 dark:text-stone-950 shrink-0" />
+            <span>{resolvedCtaLabel}</span>
           </button>
 
           <div className="flex flex-col items-center gap-1">
@@ -326,19 +329,6 @@ export const PaymentSuccessCelebration: React.FC<PaymentSuccessCelebrationProps>
             </span>
           </div>
         </div>
-
-        <p className="text-[11px] text-stone-600 dark:text-emerald-100/75 pt-1">
-          {t.termsPrefix}{' '}
-          <a
-            href={getLegalPortalUrl('cgu')}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-bold text-emerald-800 dark:text-emerald-300 underline underline-offset-2 hover:opacity-80"
-          >
-            {t.termsLink}
-          </a>
-          .
-        </p>
       </div>
     </div>
   );
