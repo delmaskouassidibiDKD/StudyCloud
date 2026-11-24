@@ -3,7 +3,6 @@ import {
   ArrowLeft,
   Check,
   Loader2,
-  CheckCircle2,
   AlertCircle,
   ExternalLink,
   RefreshCw,
@@ -14,10 +13,10 @@ import {
   Search,
 } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
+import { PaymentSuccessCelebration } from './PaymentSuccessCelebration';
 import {
   chargeMobileMoneyWithPaystack,
   ClientBillingMode,
-  formatBillingDurationBadge,
   formatCurrencyAmount,
   initializePaystackPayment,
   loadPaystackInlinePop,
@@ -436,7 +435,6 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
     }
   };
 
-  const badge = formatBillingDurationBadge(target.billingMode, target.durationDays);
   const formattedFcfa = formatCurrencyAmount(target.amountFcfa, 'XOF');
   const minutesStr = String(Math.floor(countdownSec / 60)).padStart(2, '0');
   const secondsStr = String(countdownSec % 60).padStart(2, '0');
@@ -457,6 +455,26 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
 
   const selectedOption = PAYMENT_OPTIONS.find((o) => o.id === method) || PAYMENT_OPTIONS[0];
 
+  // ÉCRAN PLEINE PAGE DE CÉLÉBRATION QUAND LE PAIEMENT EST CONFIRMÉ
+  if (step === 'success') {
+    return (
+      <PaymentSuccessCelebration
+        productName={target.productName}
+        productType={target.productType}
+        amount={
+          verifiedResult?.transaction
+            ? verifiedResult.transaction.paid_amount || verifiedResult.transaction.expected_amount
+            : target.amountFcfa
+        }
+        currency={verifiedResult?.transaction?.currency || 'XOF'}
+        reference={verifiedResult?.transaction?.reference || activeReference}
+        networkLabel={verifiedResult?.transaction?.network_label || getMethodLabel(method)}
+        deliverySummary={verifiedResult?.deliverySummary}
+        onContinue={() => onSuccess(verifiedResult || undefined)}
+      />
+    );
+  }
+
   return (
     <div className="w-full min-h-full grid grid-cols-1 lg:grid-cols-2 bg-gradient-to-br from-[#FFF1E5] via-[#FFE6D0] to-[#FFD6B5] dark:from-[#16110E] dark:via-[#1B1410] dark:to-[#211711] text-stone-900 dark:text-stone-100">
       {/* ===================================================================== */}
@@ -464,7 +482,7 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
       {/* ===================================================================== */}
       <div className="flex flex-col justify-between px-6 sm:px-10 lg:px-14 xl:px-16 py-7 sm:py-10 lg:border-r lg:border-orange-400/30 dark:lg:border-orange-500/20">
         <div className="space-y-8">
-          {/* Barre Retour + Marque StudyCloud */}
+          {/* Barre Retour + Marque officielle StudyCloud / DKD TECHNOLOGIES (sans cadre noir) */}
           <div className="flex items-center justify-between gap-3">
             <button
               type="button"
@@ -480,24 +498,25 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
               <span>Retour</span>
             </button>
 
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-stone-950 border border-orange-500/40 shadow-md flex items-center justify-center shrink-0">
-                <DnaLogo className="w-6 h-6" glow />
+            <div className="notranslate flex items-center gap-2" translate="no">
+              <DnaLogo className="w-9 h-9 shrink-0" variant="colored" />
+              <div className="flex flex-col justify-center leading-none">
+                <span className="font-black tracking-tight text-xl leading-tight flex items-center select-none">
+                  <span className="font-black text-orange-500">Study</span>
+                  <span className="font-black text-sky-500 dark:text-sky-400">Cloud</span>
+                </span>
+                <span
+                  className="text-[9px] font-black uppercase mt-0.5"
+                  style={{ letterSpacing: '0.14em', color: '#f59e0b' }}
+                >
+                  DKD-TECHNOLOGIES
+                </span>
               </div>
-              <span className="text-base font-black tracking-tight text-stone-950 dark:text-white">
-                Study<span className="text-orange-600 dark:text-orange-400">Cloud</span>
-              </span>
             </div>
           </div>
 
-          {/* En-tête de la carte : Nom, durée, description */}
+          {/* En-tête de la carte : Nom & description */}
           <div className="space-y-3 pt-2">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <span className="px-3 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wider bg-orange-500/15 text-orange-800 dark:bg-orange-500/20 dark:text-orange-300 border border-orange-400/35">
-                {badge.shortLabel}
-              </span>
-            </div>
-
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black tracking-tight text-stone-950 dark:text-white leading-tight">
               {target.productName}
             </h1>
@@ -573,64 +592,7 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
       {/* ===================================================================== */}
       <div className="flex flex-col justify-center px-6 sm:px-10 lg:px-14 xl:px-16 py-8 sm:py-12 bg-white/75 dark:bg-[#120E0B]/85 backdrop-blur-sm">
         <div className="w-full max-w-lg mx-auto space-y-7">
-          {/* ÉCRAN SUCCÈS */}
-          {step === 'success' ? (
-            <div className="space-y-6 text-center animate-fadeIn">
-              <div className="w-16 h-16 mx-auto rounded-full bg-emerald-500/15 border border-emerald-500/35 flex items-center justify-center">
-                <CheckCircle2 className="w-9 h-9 text-emerald-600 dark:text-emerald-400" />
-              </div>
-
-              <div className="space-y-1.5">
-                <h2 className="text-2xl font-black text-stone-950 dark:text-white">
-                  Paiement confirmé
-                </h2>
-                {verifiedResult?.deliverySummary && (
-                  <p className="text-sm text-stone-600 dark:text-stone-300">
-                    {verifiedResult.deliverySummary}
-                  </p>
-                )}
-              </div>
-
-              <div className="text-left divide-y divide-orange-200/70 dark:divide-stone-800 border-y border-orange-200/70 dark:border-stone-800 text-sm">
-                <div className="py-3 flex justify-between gap-3">
-                  <span className="text-stone-500 dark:text-stone-400">Forfait</span>
-                  <span className="font-bold text-right">{target.productName}</span>
-                </div>
-                <div className="py-3 flex justify-between gap-3">
-                  <span className="text-stone-500 dark:text-stone-400">Montant</span>
-                  <span className="font-black text-orange-600 dark:text-orange-400">
-                    {verifiedResult?.transaction
-                      ? formatCurrencyAmount(
-                          verifiedResult.transaction.paid_amount ||
-                            verifiedResult.transaction.expected_amount,
-                          verifiedResult.transaction.currency
-                        )
-                      : formattedFcfa}
-                  </span>
-                </div>
-                <div className="py-3 flex justify-between gap-3">
-                  <span className="text-stone-500 dark:text-stone-400">Moyen</span>
-                  <span className="font-bold">
-                    {verifiedResult?.transaction?.network_label || getMethodLabel(method)}
-                  </span>
-                </div>
-                <div className="py-3 flex justify-between gap-3">
-                  <span className="text-stone-500 dark:text-stone-400">Référence</span>
-                  <span className="font-mono text-xs">
-                    {verifiedResult?.transaction?.reference || activeReference}
-                  </span>
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => onSuccess(verifiedResult || undefined)}
-                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-sm shadow-lg shadow-orange-500/25 transition cursor-pointer"
-              >
-                Continuer
-              </button>
-            </div>
-          ) : step === 'select' ? (
+          {step === 'select' ? (
             /* ÉTAPE 1 : CHOIX DU MOYEN DE PAIEMENT */
             <>
               <h2 className="text-xl sm:text-2xl font-black tracking-tight text-stone-950 dark:text-white">

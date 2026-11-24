@@ -16,7 +16,6 @@ import {
   AppSubscriptionPlanRecord,
   checkAppAccess,
   DEFAULT_PAYMENT_GATEWAY_CONFIG,
-  formatBillingDurationBadge,
   formatCurrencyAmount,
   shouldShowManualReceiptButton,
   startAppFreeTrial,
@@ -396,11 +395,6 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch">
             {plans.map((plan) => {
               const isHighlighted = Boolean(plan.badge && plan.badge.trim());
-              const badge = formatBillingDurationBadge(
-                plan.billing_mode,
-                plan.duration_days,
-                plan.is_auto_billing
-              );
               const features = parseFeaturesList(plan.features);
 
               return (
@@ -437,17 +431,6 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
                       <div className="text-3xl font-black tabular-nums">
                         {formatCurrencyAmount(plan.price, plan.primary_currency)}
                       </div>
-                      <span
-                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold border ${
-                          badge.tone === 'amber'
-                            ? 'bg-amber-500/15 text-amber-500 dark:text-amber-300 border-amber-500/30'
-                            : badge.tone === 'emerald'
-                            ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30'
-                            : 'bg-sky-500/15 text-sky-600 dark:text-sky-300 border-sky-500/30'
-                        }`}
-                      >
-                        {badge.label}
-                      </span>
                     </div>
 
                     {features.length > 0 && (

@@ -1,13 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { CheckCircle2, AlertTriangle, Loader2, RefreshCw, ShieldCheck, X } from 'lucide-react';
+import { AlertTriangle, Loader2, RefreshCw, ShieldCheck, X } from 'lucide-react';
 import {
   consumePendingPaystackReturnContext,
   extractPaystackReturnReference,
-  formatCurrencyAmount,
   PendingPaystackReturnContext,
   verifyPaystackPayment,
   VerifyPaystackResponse,
 } from '../services/paystackBillingApi';
+import { PaymentSuccessCelebration } from './PaymentSuccessCelebration';
 
 interface PaystackReturnHandlerProps {
   isAuthenticated: boolean;
@@ -57,7 +57,6 @@ export const PaystackReturnHandler: React.FC<PaystackReturnHandlerProps> = ({
     const ctx = consumePendingPaystackReturnContext();
     if (ctx) setReturnCtx(ctx);
 
-    // Nettoyer l'URL proprement pour éviter une revérification en boucle si l'utilisateur recharge
     try {
       const url = new URL(window.location.href);
       url.searchParams.delete('payment');
@@ -84,19 +83,36 @@ export const PaystackReturnHandler: React.FC<PaystackReturnHandlerProps> = ({
     setReference(null);
   };
 
+  if (isSuccess) {
+    return (
+      <div className="fixed inset-0 z-[99995] overflow-y-auto animate-fadeIn">
+        <PaymentSuccessCelebration
+          productName={tx?.product_name || returnCtx?.productName || 'StudyCloud'}
+          productType={tx?.product_type || returnCtx?.productType || 'storage'}
+          amount={tx ? tx.paid_amount || tx.expected_amount : 0}
+          currency={tx?.currency || 'XOF'}
+          reference={tx?.reference || reference}
+          networkLabel={tx?.network_label || 'Paystack'}
+          deliverySummary={result?.deliverySummary}
+          onContinue={handleClose}
+        />
+      </div>
+    );
+  }
+
   return (
-    <div className="fixed inset-0 z-[99995] bg-slate-950/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
-      <div className="w-full max-w-md bg-white dark:bg-[#0f172a] border border-slate-200 dark:border-slate-700 rounded-2xl shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100">
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
+    <div className="fixed inset-0 z-[99995] bg-stone-950/75 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+      <div className="w-full max-w-md bg-white dark:bg-[#16110E] border border-orange-200 dark:border-stone-700 rounded-2xl shadow-2xl overflow-hidden text-stone-900 dark:text-stone-100">
+        <div className="px-5 py-4 border-b border-orange-100 dark:border-stone-800 flex items-center justify-between">
           <div className="flex items-center gap-2 font-extrabold text-sm">
-            <ShieldCheck className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-            <span>Confirmation de paiement Paystack</span>
+            <ShieldCheck className="w-5 h-5 text-orange-500" />
+            <span>Confirmation de paiement</span>
           </div>
           {!loading && (
             <button
               type="button"
               onClick={handleClose}
-              className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
+              className="w-7 h-7 rounded-lg bg-stone-100 dark:bg-stone-800 text-stone-500 hover:text-stone-800 dark:hover:text-white flex items-center justify-center cursor-pointer"
               aria-label="Fermer"
             >
               <X className="w-4 h-4" />
@@ -107,64 +123,15 @@ export const PaystackReturnHandler: React.FC<PaystackReturnHandlerProps> = ({
         <div className="p-6 text-center space-y-4">
           {loading ? (
             <>
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-blue-500/15 flex items-center justify-center">
-                <Loader2 className="w-8 h-8 text-blue-600 dark:text-blue-400 animate-spin" />
+              <div className="w-14 h-14 mx-auto rounded-2xl bg-orange-500/15 flex items-center justify-center">
+                <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
               </div>
               <div className="space-y-1">
                 <h3 className="text-base font-extrabold">Vérification en cours...</h3>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  StudyCloud confirme votre règlement auprès de Paystack et active votre accès.
+                <p className="text-xs text-stone-500 dark:text-stone-400">
+                  Confirmation de votre règlement...
                 </p>
               </div>
-            </>
-          ) : isSuccess ? (
-            <>
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-                <CheckCircle2 className="w-8 h-8 text-emerald-500" />
-              </div>
-              <div className="space-y-1">
-                <h3 className="text-lg font-black text-emerald-600 dark:text-emerald-400">
-                  Paiement confirmé !
-                </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-300">
-                  {result?.deliverySummary ||
-                    result?.message ||
-                    'Votre achat a été validé et appliqué immédiatement à votre compte.'}
-                </p>
-              </div>
-
-              {tx && (
-                <div className="text-left p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5 text-xs">
-                  <div className="flex justify-between gap-2">
-                    <span className="text-slate-500 dark:text-slate-400">Offre</span>
-                    <span className="font-bold text-right">{tx.product_name}</span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <span className="text-slate-500 dark:text-slate-400">Montant payé</span>
-                    <span className="font-black text-emerald-600 dark:text-emerald-400">
-                      {formatCurrencyAmount(tx.paid_amount || tx.expected_amount, tx.currency)}
-                    </span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <span className="text-slate-500 dark:text-slate-400">Réseau utilisé</span>
-                    <span className="font-bold">{tx.network_label || 'Paystack'}</span>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <span className="text-slate-500 dark:text-slate-400">Référence</span>
-                    <span className="font-mono text-[11px]">{tx.reference}</span>
-                  </div>
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handleClose}
-                className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-sm shadow-lg transition cursor-pointer"
-              >
-                {returnCtx?.appKey === 'moyennes' || tx?.app_key === 'moyennes'
-                  ? 'Ouvrir Moyennes maintenant'
-                  : 'Continuer sur StudyCloud'}
-              </button>
             </>
           ) : (
             <>
@@ -173,26 +140,26 @@ export const PaystackReturnHandler: React.FC<PaystackReturnHandlerProps> = ({
               </div>
               <div className="space-y-1">
                 <h3 className="text-base font-black text-amber-600 dark:text-amber-400">
-                  Paiement non encore confirmé
+                  Paiement en attente
                 </h3>
-                <p className="text-xs text-slate-600 dark:text-slate-300">
+                <p className="text-xs text-stone-600 dark:text-stone-300">
                   {result?.error ||
                     "Si vous venez de valider sur Mobile Money, cliquez sur « Revérifier » dans quelques secondes."}
                 </p>
-                <div className="text-[11px] font-mono text-slate-400 pt-1">Réf. {reference}</div>
+                <div className="text-[11px] font-mono text-stone-400 pt-1">Réf. {reference}</div>
               </div>
               <div className="flex items-center gap-2 pt-1">
                 <button
                   type="button"
                   onClick={handleClose}
-                  className="flex-1 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-xs font-bold cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 dark:hover:bg-stone-700 text-xs font-bold cursor-pointer"
                 >
                   Fermer
                 </button>
                 <button
                   type="button"
                   onClick={() => runVerification(reference)}
-                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer"
+                  className="flex-1 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-extrabold flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>Revérifier</span>

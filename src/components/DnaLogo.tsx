@@ -4,14 +4,17 @@ import { cn } from '@/lib/utils';
 interface DnaLogoProps extends React.SVGProps<SVGSVGElement> {
   className?: string;
   glow?: boolean;
+  variant?: 'default' | 'colored';
 }
 
-export function DnaLogo({ className, glow = false, ...props }: DnaLogoProps) {
+export function DnaLogo({ className, glow = false, variant = 'default', ...props }: DnaLogoProps) {
   const reactId = React.useId();
   // Absolute sanitization for CSS/SVG compatibility
   const sanitizedId = reactId.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '');
   const filterId = `filter-${sanitizedId}`;
   const gradientId = `gradient-${sanitizedId}`;
+  const strandEdgeColor = variant === 'colored' ? '#0284C7' : 'white';
+  const rungColor = variant === 'colored' ? '#0EA5E9' : 'white';
 
   return (
     <svg
@@ -25,9 +28,9 @@ export function DnaLogo({ className, glow = false, ...props }: DnaLogoProps) {
     >
       <defs>
         <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="white" />
+          <stop offset="0%" stopColor={strandEdgeColor} />
           <stop offset="50%" stopColor="#F38020" />
-          <stop offset="100%" stopColor="white" />
+          <stop offset="100%" stopColor={strandEdgeColor} />
         </linearGradient>
         {glow && (
           <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
@@ -49,11 +52,11 @@ export function DnaLogo({ className, glow = false, ...props }: DnaLogoProps) {
           strokeLinecap="round"
           style={{ stroke: `url(#${gradientId})` }}
         />
-        <line x1="10" y1="6" x2="14" y2="6" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.8" />
-        <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
+        <line x1="10" y1="6" x2="14" y2="6" stroke={rungColor} strokeWidth="1.5" strokeLinecap="round" opacity="0.85" />
+        <line x1="10.5" y1="9" x2="13.5" y2="9" stroke={rungColor} strokeWidth="1.5" strokeLinecap="round" opacity="0.95" />
         <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" strokeWidth="3" strokeLinecap="round" />
-        <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
-        <line x1="10" y1="18" x2="14" y2="18" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.8" />
+        <line x1="10.5" y1="15" x2="13.5" y2="15" stroke={rungColor} strokeWidth="1.5" strokeLinecap="round" opacity="0.95" />
+        <line x1="10" y1="18" x2="14" y2="18" stroke={rungColor} strokeWidth="1.5" strokeLinecap="round" opacity="0.85" />
       </g>
     </svg>
   );

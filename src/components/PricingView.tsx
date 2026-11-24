@@ -7,7 +7,6 @@ import { StudyCloudPaymentView, StudyCloudPaymentTarget } from './StudyCloudPaym
 import { getSubscriptionPlans, SubscriptionPlan } from '../services/api';
 import {
   DEFAULT_PAYMENT_GATEWAY_CONFIG,
-  formatBillingDurationBadge,
   getPaymentGatewayConfig,
   normalizeClientBillingMode,
   PaymentGatewayConfig,
@@ -372,7 +371,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
     const isInfinite = billingMode === 'infinite';
     const isAuto = billingMode === 'auto';
     const durationDays = isInfinite ? 0 : Math.max(1, Number(plan.duration_days || 30));
-    const durationBadge = formatBillingDurationBadge(billingMode, durationDays, plan.is_auto_billing, plan.pricing_model);
 
     return (
       <div 
@@ -389,24 +387,13 @@ export const PricingView: React.FC<PricingViewProps> = ({
             <h3 className={`text-lg sm:text-xl font-extrabold tracking-tight uppercase ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
               {plan.name}
             </h3>
-            <div className="flex items-center gap-1.5 flex-wrap justify-end">
-              <span
-                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                  durationBadge.tone === 'amber'
-                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'
-                    : durationBadge.tone === 'emerald'
-                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30'
-                    : 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30'
-                }`}
-              >
-                {durationBadge.shortLabel}
-              </span>
-              {isPopular && (
+            {isPopular && (
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
                 <span className="bg-blue-500/20 text-blue-200 border border-blue-400/30 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                   {plan.badge}
                 </span>
-              )}
-            </div>
+              </div>
+            )}
           </div>
 
           {/* Description */}
