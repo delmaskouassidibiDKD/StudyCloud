@@ -110,11 +110,26 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
   useEffect(() => {
     loadAccess(Boolean(access));
     const onPaymentVerified = () => {
+      setPayingPlanId(null);
       loadAccess(true);
     };
+    const resetLoading = () => {
+      setPayingPlanId(null);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        setPayingPlanId(null);
+      }
+    };
     window.addEventListener('studycloud_payment_verified', onPaymentVerified);
+    window.addEventListener('pageshow', resetLoading);
+    window.addEventListener('focus', resetLoading);
+    document.addEventListener('visibilitychange', handleVisibility);
     return () => {
       window.removeEventListener('studycloud_payment_verified', onPaymentVerified);
+      window.removeEventListener('pageshow', resetLoading);
+      window.removeEventListener('focus', resetLoading);
+      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [loadAccess]);
 
@@ -165,6 +180,9 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
         createdAt: Date.now(),
       });
 
+      window.setTimeout(() => {
+        setPayingPlanId(null);
+      }, 3000);
       window.location.href = res.authorizationUrl;
     } catch (err: any) {
       setError(err?.message || 'Erreur réseau lors de la connexion à Paystack.');

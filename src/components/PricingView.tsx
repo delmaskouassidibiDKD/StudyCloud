@@ -185,6 +185,28 @@ export const PricingView: React.FC<PricingViewProps> = ({
   const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
   const [paymentError, setPaymentError] = useState<{ planId: string; message: string } | null>(null);
 
+  // Réinitialiser immédiatement le bouton si l'utilisateur revient via le bouton Précédent (bfcache) ou change d'onglet
+  useEffect(() => {
+    const resetPaymentState = () => {
+      setPayingPlanId(null);
+    };
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        setPayingPlanId(null);
+      }
+    };
+    window.addEventListener('pageshow', resetPaymentState);
+    window.addEventListener('focus', resetPaymentState);
+    window.addEventListener('studycloud_payment_verified', resetPaymentState);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      window.removeEventListener('pageshow', resetPaymentState);
+      window.removeEventListener('focus', resetPaymentState);
+      window.removeEventListener('studycloud_payment_verified', resetPaymentState);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, []);
+
   const handleDirectPaystackCheckout = async (
     plan: SubscriptionPlan,
     type: 'storage' | 'ai',
@@ -219,6 +241,10 @@ export const PricingView: React.FC<PricingViewProps> = ({
         createdAt: Date.now(),
       });
 
+      // Sécurité anti-blocage si le navigateur restaure la page depuis le cache (bfcache) ou bloque la redirection
+      window.setTimeout(() => {
+        setPayingPlanId(null);
+      }, 3000);
       window.location.href = res.authorizationUrl;
     } catch (err: any) {
       setPaymentError({
