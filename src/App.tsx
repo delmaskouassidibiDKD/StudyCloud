@@ -37,6 +37,8 @@ import { GoogleSecuritySetupPage } from './components/auth/GoogleSecuritySetupPa
 import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 import { AppUpdatePrompt } from './components/AppUpdatePrompt';
 import { StorageAlertNotificationModal } from './components/StorageAlertNotificationModal';
+import { AppAccessGate } from './components/AppAccessGate';
+import { PaystackReturnHandler } from './components/PaystackReturnHandler';
 import { WallpaperSelectorDrawer } from './components/WallpaperSelectorDrawer';
 import { UploadQueueWidget } from './components/UploadQueueWidget';
 import { checkAndPerformWallpaperAutoRotation } from './utils/wallpaperHelper';
@@ -2041,12 +2043,18 @@ export default function App() {
           ) : currentTab === 'settings' ? (
             <SettingsView />
           ) : currentTab === 'teacher-classes' ? (
-            <React.Suspense fallback={<div className="w-full h-full min-h-[60vh] flex items-center justify-center"><div className="w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>}>
-              <TeacherClassesView
-                onBack={() => handleSetTab('folders')}
-                user={user}
-              />
-            </React.Suspense>
+            <AppAccessGate
+              appKey="moyennes"
+              fallbackTitle="Moyennes (Espace Enseignant)"
+              onBack={() => handleSetTab('folders')}
+            >
+              <React.Suspense fallback={<div className="w-full h-full min-h-[60vh] flex items-center justify-center"><div className="w-10 h-10 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin"></div></div>}>
+                <TeacherClassesView
+                  onBack={() => handleSetTab('folders')}
+                  user={user}
+                />
+              </React.Suspense>
+            </AppAccessGate>
           ) : currentTab === 'ai-subscriptions' ? (
             <AiSubscriptionsView
               onBack={() => handleSetTab('folders')}
@@ -2820,6 +2828,21 @@ export default function App() {
 
       {/* Modal d'alerte et de blocage de saturation de stockage (50%, 75%, 85%, 95%, >=96%) */}
       <StorageAlertNotificationModal />
+
+      {/* Vérification automatique au retour de paiement Paystack (?payment=paystack-return) */}
+      <PaystackReturnHandler
+        isAuthenticated={isAuthenticated}
+        onNavigateAfterPayment={(ctx, res) => {
+          const targetApp = ctx?.appKey || res?.transaction?.app_key;
+          if (targetApp === 'moyennes') {
+            handleSetTab('teacher-classes');
+          } else if (ctx?.productType === 'storage' || res?.transaction?.product_type === 'storage') {
+            handleSetTab('storage-menu');
+          } else if (ctx?.productType === 'ai' || res?.transaction?.product_type === 'ai') {
+            handleSetTab('ai-subscriptions');
+          }
+        }}
+      />
 
       {/* Panneau latéral gauche de choix des fonds d'écran du tableau de bord */}
       <WallpaperSelectorDrawer />

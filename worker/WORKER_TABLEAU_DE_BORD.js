@@ -792,10 +792,168 @@ async function ensureStorageTables(db) {
       )
     `).run();
 
-    // Migration pour pricing_model si table existante
-    try {
-      await db.prepare("ALTER TABLE ai_subscription_plans ADD COLUMN pricing_model TEXT DEFAULT 'subscription'").run();
-    } catch (e) {}
+    // Migration pour pricing_model, billing_mode, duration_days et paystack_plan_code
+    for (const migSql of [
+      "ALTER TABLE ai_subscription_plans ADD COLUMN pricing_model TEXT DEFAULT 'subscription'",
+      "ALTER TABLE ai_subscription_plans ADD COLUMN billing_mode TEXT DEFAULT 'manual'",
+      "ALTER TABLE ai_subscription_plans ADD COLUMN duration_days INTEGER DEFAULT 30",
+      "ALTER TABLE ai_subscription_plans ADD COLUMN paystack_plan_code TEXT DEFAULT ''",
+      "ALTER TABLE storage_subscription_plans ADD COLUMN billing_mode TEXT DEFAULT 'manual'",
+      "ALTER TABLE storage_subscription_plans ADD COLUMN duration_days INTEGER DEFAULT 30",
+      "ALTER TABLE storage_subscription_plans ADD COLUMN paystack_plan_code TEXT DEFAULT ''"
+    ]) {
+      try { await db.prepare(migSql).run(); } catch (e) {}
+    }
+
+    // 8b. Tables Paystack, Configuration passerelle & Monétisation multi-applications
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS payment_gateway_config (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        provider TEXT DEFAULT 'paystack',
+        paystack_enabled INTEGER DEFAULT 1,
+        manual_receipt_enabled INTEGER DEFAULT 1,
+        default_currency TEXT DEFAULT 'XOF',
+        callback_url TEXT DEFAULT 'https://studycloud.dkd-technologies.com/?payment=paystack-return',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      INSERT OR IGNORE INTO payment_gateway_config (
+        id, provider, paystack_enabled, manual_receipt_enabled, default_currency, callback_url
+      ) VALUES ('default', 'paystack', 1, 1, 'XOF', 'https://studycloud.dkd-technologies.com/?payment=paystack-return')
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS monetized_apps (
+        app_key TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        icon TEXT DEFAULT '📱',
+        description TEXT DEFAULT '',
+        is_paid INTEGER DEFAULT 0,
+        trial_days INTEGER DEFAULT 0,
+        grace_period_days INTEGER DEFAULT 5,
+        is_active INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      INSERT OR IGNORE INTO monetized_apps (
+        app_key, name, icon, description, is_paid, trial_days, grace_period_days, is_active, sort_order
+      ) VALUES (
+        'moyennes',
+        'Moyennes (Espace Enseignant)',
+        '📊',
+        'Gestion complète des écoles, classes, trimestres, relevés de notes, moyennes générales automatiques, exports PDF/Word/Excel et Assistant Delmas.',
+        0, 0, 5, 1, 1
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS app_subscription_plans (
+        id TEXT PRIMARY KEY,
+        app_key TEXT NOT NULL,
+        name TEXT NOT NULL,
+        badge TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        price REAL NOT NULL,
+        primary_currency TEXT DEFAULT 'XOF',
+        currencies_enabled TEXT DEFAULT '["XOF","USD","EUR"]',
+        currency_conversions TEXT DEFAULT '{}',
+        yearly_price REAL DEFAULT 0,
+        yearly_discount_pct REAL DEFAULT 0,
+        billing_mode TEXT DEFAULT 'manual',
+        duration_days INTEGER DEFAULT 30,
+        is_auto_billing INTEGER DEFAULT 0,
+        paystack_plan_code TEXT DEFAULT '',
+        features TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_app_entitlements (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        app_key TEXT NOT NULL,
+        plan_id TEXT DEFAULT '',
+        plan_name TEXT DEFAULT '',
+        status TEXT DEFAULT 'active',
+        access_type TEXT DEFAULT 'manual',
+        starts_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        expires_at TEXT DEFAULT NULL,
+        grace_until TEXT DEFAULT NULL,
+        auto_renew INTEGER DEFAULT 0,
+        paystack_subscription_code TEXT DEFAULT '',
+        paystack_email_token TEXT DEFAULT '',
+        last_transaction_ref TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, app_key)
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS payment_transactions (
+        id TEXT PRIMARY KEY,
+        reference TEXT UNIQUE NOT NULL,
+        user_id TEXT NOT NULL,
+        user_name TEXT DEFAULT '',
+        user_email TEXT DEFAULT '',
+        user_phone TEXT DEFAULT '',
+        product_type TEXT NOT NULL,
+        product_id TEXT NOT NULL,
+        product_name TEXT NOT NULL,
+        app_key TEXT DEFAULT '',
+        app_name TEXT DEFAULT '',
+        billing_mode TEXT DEFAULT 'manual',
+        billing_cycle TEXT DEFAULT 'monthly',
+        duration_days INTEGER DEFAULT 30,
+        expected_amount REAL NOT NULL,
+        expected_amount_minor INTEGER NOT NULL,
+        paid_amount REAL DEFAULT 0,
+        paid_amount_minor INTEGER DEFAULT 0,
+        currency TEXT DEFAULT 'XOF',
+        provider TEXT DEFAULT 'paystack',
+        channel TEXT DEFAULT '',
+        network_label TEXT DEFAULT '',
+        paystack_tx_id TEXT DEFAULT '',
+        paystack_access_code TEXT DEFAULT '',
+        paystack_authorization_code TEXT DEFAULT '',
+        paystack_subscription_code TEXT DEFAULT '',
+        reusable INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        fulfilled_at TEXT DEFAULT NULL,
+        granted_storage_mb REAL DEFAULT 0,
+        granted_ai_credits REAL DEFAULT 0,
+        entitlement_expires_at TEXT DEFAULT NULL,
+        failure_reason TEXT DEFAULT '',
+        raw_verify_json TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS payment_webhook_events (
+        id TEXT PRIMARY KEY,
+        provider TEXT DEFAULT 'paystack',
+        event_type TEXT NOT NULL,
+        reference TEXT DEFAULT '',
+        signature_valid INTEGER DEFAULT 0,
+        processed INTEGER DEFAULT 0,
+        processing_note TEXT DEFAULT '',
+        payload_json TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
 
     // Nettoyer uniquement les anciens faux plans de démonstration codés en dur
     try {
@@ -3247,12 +3405,33 @@ function renderDashboardHtml(data) {
       </button>
 
       <button 
+        onclick="switchView('apps-monetization')" 
+        id="nav-btn-apps-monetization"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
+      >
+        <span class="text-base text-sky-400 group-hover:scale-110 transition-transform">📱</span>
+        <div class="flex-1 overflow-hidden">
+          <div class="text-xs font-bold text-white flex items-center gap-1.5">
+            <span>Applications &amp; Tarifs</span>
+            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-sky-500/20 text-sky-400 border border-sky-500/30 font-mono">Paystack</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Moyennes, futures apps &amp; cartes prix</div>
+        </div>
+      </button>
+
+      <button 
         onclick="switchView('abonnements')" 
         id="nav-btn-abonnements"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
       >
-        <span class="text-base">💳</span>
-        <span>Abonnements & Forfaits</span>
+        <span class="text-base text-emerald-400 group-hover:scale-110 transition-transform">💳</span>
+        <div class="flex-1 overflow-hidden">
+          <div class="text-xs font-bold text-white flex items-center gap-1.5">
+            <span>Transactions &amp; Paiements</span>
+            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Live</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Achats, réseaux, Paystack &amp; reçu manuel</div>
+        </div>
       </button>
 
       <button 
@@ -3763,34 +3942,321 @@ function renderDashboardHtml(data) {
     </div>
 
     <!-- ================================================================== -->
-    <!-- VUE 6 : ABONNEMENTS & FORFAITS -->
+    <!-- VUE 6 : TRANSACTIONS, PAIEMENTS PAYSTACK & PARAMÈTRES PASSERELLE   -->
     <!-- ================================================================== -->
     <div id="view-abonnements" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
-      <div class="flex-1 overflow-y-auto p-4 space-y-4">
-        <div class="neo-card p-6 flex flex-col items-center justify-center text-center text-slate-500 min-h-[300px]">
-          <div class="w-20 h-20 rounded-2xl bg-purple-500/10 text-4xl flex items-center justify-center mb-4">💳</div>
-          <h3 class="text-base font-bold text-slate-200 mb-1">Abonnements & Forfaits</h3>
-          <p class="text-xs text-slate-500 max-w-sm mt-1">Gérez ici les forfaits payants, les abonnements actifs et les transactions des étudiants. Fonctionnalité en cours de développement.</p>
-          <div class="mt-4 px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold">🚧 En développement</div>
+      <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4 pb-20">
+        <!-- En-tête + Interrupteurs Passerelle (Paystack & Bouton Payer manuellement) -->
+        <div class="neo-card p-4 border-l-4 border-l-emerald-500 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <div class="flex items-center gap-2 flex-wrap">
+              <span class="text-xl">💳</span>
+              <h2 class="text-base font-black text-white">Centre des Transactions &amp; Paiements</h2>
+              <span id="paystack-mode-badge" class="px-2 py-0.5 rounded-full text-[10px] font-black uppercase bg-sky-500/20 text-sky-300 border border-sky-500/30">Paystack</span>
+            </div>
+            <p class="text-[11px] text-slate-400 mt-1">
+              Suivez chaque paiement en temps réel (Stockage, Crédits IA, Moyennes &amp; futures apps) avec le réseau exact utilisé et contrôlez les moyens de paiement visibles dans StudyCloud.
+            </p>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2.5">
+            <!-- Interrupteur Paystack -->
+            <label class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 cursor-pointer select-none hover:border-emerald-500/50 transition">
+              <input type="checkbox" id="toggle-paystack-enabled" onchange="savePaymentGatewayConfigAdmin()" class="w-4 h-4 accent-emerald-500 cursor-pointer" checked />
+              <div>
+                <div class="text-[11px] font-extrabold text-white leading-tight">Paiement Paystack</div>
+                <div class="text-[9.5px] text-slate-400">Wave · Orange · MTN · Carte</div>
+              </div>
+            </label>
+
+            <!-- Interrupteur Bouton Payer manuellement dans l'application -->
+            <label class="flex items-center gap-2.5 px-3 py-2 rounded-xl bg-slate-900/90 border border-amber-500/40 cursor-pointer select-none hover:border-amber-400 transition">
+              <input type="checkbox" id="toggle-manual-receipt-enabled" onchange="savePaymentGatewayConfigAdmin()" class="w-4 h-4 accent-amber-500 cursor-pointer" checked />
+              <div>
+                <div class="text-[11px] font-extrabold text-amber-300 leading-tight">Bouton « Payer manuellement »</div>
+                <div id="manual-receipt-status-hint" class="text-[9.5px] text-slate-400">Affiché dans StudyCloud</div>
+              </div>
+            </label>
+
+            <button type="button" onclick="loadAdminPaymentsOverview()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold border border-slate-700 cursor-pointer">
+              🔄 Actualiser
+            </button>
+            <button type="button" onclick="exportAdminTransactionsCsv()" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-extrabold cursor-pointer">
+              ⬇️ Exporter CSV
+            </button>
+          </div>
         </div>
 
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          <div class="neo-card p-4 border-l-4 border-l-purple-500">
-            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Abonnés Actifs</div>
-            <div class="text-2xl font-black text-purple-400">0</div>
-            <div class="text-[10px] text-slate-500 mt-1">Aucun abonnement payant actif</div>
-          </div>
+        <!-- KPIs Financiers -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <div class="neo-card p-4 border-l-4 border-l-emerald-500">
-            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Revenus (Mois)</div>
-            <div class="text-2xl font-black text-emerald-400">0 FCFA</div>
-            <div class="text-[10px] text-slate-500 mt-1">Aucune transaction ce mois</div>
+            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Revenus du mois</div>
+            <div id="kpi-pay-month-rev" class="text-xl sm:text-2xl font-black text-emerald-400">0 FCFA</div>
+            <div id="kpi-pay-month-count" class="text-[10px] text-slate-500 mt-1">0 paiement(s) confirmé(s)</div>
           </div>
-          <div class="neo-card p-4 border-l-4 border-l-orange-500">
-            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Utilisateurs Gratuits</div>
-            <div class="text-2xl font-black text-orange-400">${data.users.length}</div>
-            <div class="text-[10px] text-slate-500 mt-1">Sur le plan gratuit</div>
+          <div class="neo-card p-4 border-l-4 border-l-sky-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Revenus cumulés</div>
+            <div id="kpi-pay-total-rev" class="text-xl sm:text-2xl font-black text-sky-400">0 FCFA</div>
+            <div id="kpi-pay-total-count" class="text-[10px] text-slate-500 mt-1">0 transaction(s) réussie(s)</div>
+          </div>
+          <div class="neo-card p-4 border-l-4 border-l-purple-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Accès Apps &amp; Abonnés actifs</div>
+            <div id="kpi-pay-active-subs" class="text-xl sm:text-2xl font-black text-purple-400">0</div>
+            <div id="kpi-pay-active-detail" class="text-[10px] text-slate-500 mt-1">Stockage + Applications</div>
+          </div>
+          <div class="neo-card p-4 border-l-4 border-l-amber-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">En attente / Échouées</div>
+            <div id="kpi-pay-pending-count" class="text-xl sm:text-2xl font-black text-amber-400">0</div>
+            <div class="text-[10px] text-slate-500 mt-1">Vérifiables en 1 clic sur Paystack</div>
           </div>
         </div>
+
+        <!-- Répartition par réseau utilisé -->
+        <div class="neo-card p-4 space-y-2.5">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <h3 class="text-xs font-black text-white uppercase tracking-wider">📡 Répartition par réseau de paiement</h3>
+            <span class="text-[10px] text-slate-400">Wave · Orange Money · MTN MoMo · Cartes · Manuel</span>
+          </div>
+          <div id="pay-network-breakdown" class="flex flex-wrap gap-2 text-xs text-slate-400">
+            <span>Aucune transaction enregistrée pour le moment.</span>
+          </div>
+        </div>
+
+        <!-- Filtres + Table complète des transactions -->
+        <div class="neo-card p-4 space-y-3">
+          <div class="flex flex-wrap items-center justify-between gap-2.5">
+            <div class="flex flex-wrap items-center gap-2">
+              <input id="tx-filter-search" type="text" oninput="renderAdminTransactionsTable()" placeholder="Rechercher nom, email, référence, réseau..." class="w-60 sm:w-72 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white outline-none focus:border-emerald-500" />
+              <select id="tx-filter-category" onchange="renderAdminTransactionsTable()" class="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs font-bold text-slate-200 outline-none">
+                <option value="all">Toutes catégories</option>
+                <option value="app">Applications</option>
+                <option value="storage">Stockage</option>
+                <option value="ai">Crédits IA</option>
+              </select>
+              <select id="tx-filter-status" onchange="renderAdminTransactionsTable()" class="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs font-bold text-slate-200 outline-none">
+                <option value="all">Tous statuts</option>
+                <option value="paid">✅ Payé</option>
+                <option value="pending">⏳ En attente</option>
+                <option value="failed">❌ Échoué</option>
+              </select>
+            </div>
+            <div id="tx-table-counter" class="text-[11px] font-bold text-slate-400">0 transaction</div>
+          </div>
+
+          <div class="overflow-x-auto rounded-xl border border-slate-800">
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="bg-slate-900/90 text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                  <th class="px-3 py-2.5 font-extrabold">Date &amp; Heure</th>
+                  <th class="px-3 py-2.5 font-extrabold">Utilisateur</th>
+                  <th class="px-3 py-2.5 font-extrabold">Application / Fonctionnalité</th>
+                  <th class="px-3 py-2.5 font-extrabold">Mode &amp; Durée</th>
+                  <th class="px-3 py-2.5 font-extrabold">Prix</th>
+                  <th class="px-3 py-2.5 font-extrabold">Réseau</th>
+                  <th class="px-3 py-2.5 font-extrabold">Statut</th>
+                  <th class="px-3 py-2.5 font-extrabold text-right">Action</th>
+                </tr>
+              </thead>
+              <tbody id="admin-transactions-tbody" class="divide-y divide-slate-800/70 text-slate-200">
+                <tr>
+                  <td colspan="8" class="px-4 py-8 text-center text-slate-500">Chargement des transactions...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- VUE 6b : APPLICATIONS MONÉTISÉES & CARTES DE PRIX (SCALABLE)       -->
+    <!-- ================================================================== -->
+    <div id="view-apps-monetization" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
+      <div class="flex-1 overflow-y-auto p-3 sm:p-4 space-y-4 pb-20">
+        <!-- Bannière supérieure -->
+        <div class="neo-card p-4 border-l-4 border-l-sky-500 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-black text-white flex items-center gap-2">
+              <span>📱</span>
+              <span>Monétisation des Applications StudyCloud</span>
+            </h2>
+            <p class="text-[11px] text-slate-400 mt-0.5">
+              Ajoutez n'importe quelle application (Moyennes, futures apps...), basculez Gratuit ↔ Payant, créez plusieurs cartes de prix (Automatique, Manuel ou Infini) et gérez les accès utilisateurs.
+            </p>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <button type="button" onclick="loadMonetizedAppsAdmin()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold border border-slate-700 cursor-pointer">
+              🔄 Actualiser
+            </button>
+            <button type="button" onclick="openMonetizedAppModal()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-xs font-black shadow-lg cursor-pointer">
+              + Ajouter une application
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+          <!-- Colonne gauche : Liste des applications -->
+          <div class="lg:col-span-4 space-y-2.5">
+            <div class="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 px-1">
+              Applications enregistrées
+            </div>
+            <div id="monetized-apps-list" class="space-y-2">
+              <div class="neo-card p-4 text-xs text-slate-400">Chargement des applications...</div>
+            </div>
+          </div>
+
+          <!-- Colonne droite : Configuration, Cartes de prix & Accès de l'application sélectionnée -->
+          <div id="monetized-app-detail-panel" class="lg:col-span-8 space-y-4">
+            <div class="neo-card p-8 text-center text-slate-400 text-xs">
+              Sélectionnez une application à gauche pour gérer ses cartes d'abonnement et ses accès.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODALE : AJOUTER / MODIFIER UNE APPLICATION MONÉTISABLE -->
+    <div id="monetized-app-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-3" onclick="if(event.target===this) closeMonetizedAppModal()">
+      <div class="max-w-lg w-full bg-[#0f172a] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+          <h3 id="monetized-app-modal-title" class="text-sm font-black text-white">Ajouter une application</h3>
+          <button type="button" onclick="closeMonetizedAppModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer">✕</button>
+        </div>
+        <form onsubmit="saveMonetizedAppForm(event)" class="p-5 space-y-3.5 text-xs">
+          <input type="hidden" id="ma-edit-mode" value="create" />
+          <div class="grid grid-cols-3 gap-3">
+            <div class="col-span-2">
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Nom de l'application *</label>
+              <input id="ma-name" type="text" required placeholder="Ex: Moyennes, Création Studio..." class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none focus:border-sky-500" />
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Icône</label>
+              <input id="ma-icon" type="text" value="📱" maxlength="8" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-center text-base outline-none focus:border-sky-500" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Identifiant technique (app_key) *</label>
+            <input id="ma-key" type="text" required placeholder="Ex: moyennes, creation_studio..." class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sky-300 font-mono font-bold outline-none focus:border-sky-500" />
+            <p class="text-[10px] text-slate-500 mt-0.5">Lettres minuscules sans espace. Pour l'application Moyennes : <code class="text-sky-400">moyennes</code>.</p>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Description affichée sur l'écran de paiement</label>
+            <textarea id="ma-desc" rows="2" placeholder="Avantages clés de cette application..." class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white outline-none focus:border-sky-500"></textarea>
+          </div>
+          <div class="grid grid-cols-3 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Mode d'accès</label>
+              <select id="ma-is-paid" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none">
+                <option value="0">🔓 Gratuit</option>
+                <option value="1">🔒 Payant (Paywall)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Essai gratuit (jours)</label>
+              <input id="ma-trial-days" type="number" min="0" max="90" value="0" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none" />
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Grâce (jours)</label>
+              <input id="ma-grace-days" type="number" min="0" max="30" value="5" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none" />
+            </div>
+          </div>
+          <div class="pt-3 border-t border-slate-800 flex justify-end gap-2">
+            <button type="button" onclick="closeMonetizedAppModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold cursor-pointer">Annuler</button>
+            <button type="submit" class="px-5 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-black cursor-pointer">Enregistrer l'application</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODALE : CRÉER / MODIFIER UNE CARTE DE PRIX POUR UNE APPLICATION -->
+    <div id="app-plan-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-3" onclick="if(event.target===this) closeAppPlanModal()">
+      <div class="max-w-xl w-full max-h-[90vh] overflow-y-auto bg-[#0f172a] border border-slate-700 rounded-2xl shadow-2xl">
+        <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between sticky top-0 bg-[#0f172a] z-10">
+          <h3 id="app-plan-modal-title" class="text-sm font-black text-white">Créer une carte de prix</h3>
+          <button type="button" onclick="closeAppPlanModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer">✕</button>
+        </div>
+        <form onsubmit="saveAppPlanModalForm(event)" class="p-5 space-y-3.5 text-xs">
+          <input type="hidden" id="ap-id" value="" />
+          <input type="hidden" id="ap-app-key" value="" />
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Nom de l'offre *</label>
+              <input id="ap-name" type="text" required placeholder="Ex: Pass Mensuel, Pass Trimestriel, Accès à vie..." class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none focus:border-sky-500" />
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Badge (optionnel)</label>
+              <input id="ap-badge" type="text" placeholder="Ex: Populaire, Meilleure offre" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-amber-300 font-bold outline-none focus:border-sky-500" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Description courte</label>
+            <input id="ap-desc" type="text" placeholder="Ex: Accès complet sans limite pour tous vos tableaux de notes" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white outline-none focus:border-sky-500" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Prix *</label>
+              <input id="ap-price" type="number" step="any" min="1" required value="2000" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-emerald-300 font-mono font-black outline-none focus:border-emerald-500" />
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Devise principale</label>
+              <select id="ap-currency" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none">
+                <option value="XOF">XOF (FCFA)</option>
+                <option value="USD">USD ($)</option>
+                <option value="EUR">EUR (€)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Choix 3 modes : Automatique / Manuel / Infini + Durée libre en jours -->
+          <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-700 space-y-2.5">
+            <label class="block text-[10px] font-extrabold uppercase text-sky-300">Mode d'abonnement &amp; durée</label>
+            <div class="grid grid-cols-3 gap-2">
+              <label class="p-2 rounded-lg border border-slate-700 bg-slate-950/70 cursor-pointer flex items-center gap-1.5 hover:border-sky-500">
+                <input type="radio" name="ap-billing-mode" id="ap-mode-manual" value="manual" checked onchange="toggleAppPlanDurationVisibility()" class="accent-sky-500" />
+                <div>
+                  <div class="font-bold text-white text-[11px]">🔄 Manuel</div>
+                  <div class="text-[9px] text-slate-400">Durée fixe</div>
+                </div>
+              </label>
+              <label class="p-2 rounded-lg border border-slate-700 bg-slate-950/70 cursor-pointer flex items-center gap-1.5 hover:border-emerald-500">
+                <input type="radio" name="ap-billing-mode" id="ap-mode-auto" value="auto" onchange="toggleAppPlanDurationVisibility()" class="accent-emerald-500" />
+                <div>
+                  <div class="font-bold text-white text-[11px]">⚡ Automatique</div>
+                  <div class="text-[9px] text-slate-400">Renouvellement</div>
+                </div>
+              </label>
+              <label class="p-2 rounded-lg border border-slate-700 bg-slate-950/70 cursor-pointer flex items-center gap-1.5 hover:border-amber-500">
+                <input type="radio" name="ap-billing-mode" id="ap-mode-infinite" value="infinite" onchange="toggleAppPlanDurationVisibility()" class="accent-amber-500" />
+                <div>
+                  <div class="font-bold text-white text-[11px]">♾️ Infini</div>
+                  <div class="text-[9px] text-slate-400">Accès à vie</div>
+                </div>
+              </label>
+            </div>
+
+            <div id="ap-duration-wrap" class="space-y-1.5 pt-1">
+              <label class="block text-[10px] font-bold text-slate-300">Durée de validité (en jours)</label>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <input id="ap-duration-days" type="number" min="1" max="3650" value="30" class="w-24 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-amber-300 font-mono font-bold outline-none" />
+                <button type="button" onclick="document.getElementById('ap-duration-days').value=7" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">7j</button>
+                <button type="button" onclick="document.getElementById('ap-duration-days').value=30" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">30j (1 mois)</button>
+                <button type="button" onclick="document.getElementById('ap-duration-days').value=90" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">90j (Trim.)</button>
+                <button type="button" onclick="document.getElementById('ap-duration-days').value=180" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">180j (6 mois)</button>
+                <button type="button" onclick="document.getElementById('ap-duration-days').value=365" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">365j (1 an)</button>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Avantages inclus (1 ligne par avantage)</label>
+            <textarea id="ap-features" rows="4" placeholder="Classes & matières illimitées&#10;Moyennes trimestrielles & annuelles automatiques&#10;Exports PDF, Word & Excel illimités&#10;Assistant Delmas intégré" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white outline-none focus:border-sky-500"></textarea>
+          </div>
+
+          <div class="pt-3 border-t border-slate-800 flex justify-end gap-2">
+            <button type="button" onclick="closeAppPlanModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold cursor-pointer">Annuler</button>
+            <button type="submit" class="px-5 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-black cursor-pointer">Enregistrer la carte</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -6543,20 +7009,40 @@ function renderDashboardHtml(data) {
           <label class="text-[11px] font-bold text-slate-300 block">Mode de déclenchement dans l'application :</label>
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <label class="flex items-start gap-2.5 p-2 rounded-lg border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-slate-600">
-              <input type="radio" name="sub-plan-billing-mode" value="manual" id="sub-billing-manual" checked class="mt-0.5 text-orange-500" />
+              <input type="radio" name="sub-plan-billing-mode" value="manual" id="sub-billing-manual" checked onchange="toggleSubPlanDurationVisibility()" class="mt-0.5 text-orange-500" />
               <div>
-                <span class="font-bold text-white block">Paiement Manuel (Bouton "Commencer")</span>
-                <span class="text-[10px] text-slate-400 block">L'étudiant effectue un transfert Wave / Orange / MTN / Moov et joint son reçu.</span>
+                <span class="font-bold text-white block">🔄 Durée fixe / Manuel</span>
+                <span class="text-[10px] text-slate-400 block">Paiement unique valable X jours (Paystack Mobile Money / Carte, renouvelable quand l'utilisateur veut).</span>
               </div>
             </label>
 
             <label class="flex items-start gap-2.5 p-2 rounded-lg border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-slate-600">
-              <input type="radio" name="sub-plan-billing-mode" value="auto" id="sub-billing-auto" class="mt-0.5 text-orange-500" />
+              <input type="radio" name="sub-plan-billing-mode" value="auto" id="sub-billing-auto" onchange="toggleSubPlanDurationVisibility()" class="mt-0.5 text-orange-500" />
               <div>
-                <span class="font-bold text-white block">Abonnement Automatique (Bouton "S'abonner")</span>
-                <span class="text-[10px] text-slate-400 block">Demande au Worker d'afficher les options cartes de crédit / prélèvement automatique.</span>
+                <span class="font-bold text-white block">⚡ Abonnement Automatique</span>
+                <span class="text-[10px] text-slate-400 block">Prélèvement automatique Paystack (Carte Visa/Mastercard) + renouvellement assisté (Wave/Orange/MTN) selon la durée choisie.</span>
               </div>
             </label>
+
+            <label class="flex items-start gap-2.5 p-2 rounded-lg border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-amber-500/60">
+              <input type="radio" name="sub-plan-billing-mode" value="infinite" id="sub-billing-infinite" onchange="toggleSubPlanDurationVisibility()" class="mt-0.5 text-amber-500" />
+              <div>
+                <span class="font-bold text-amber-300 block">♾️ Infini (À vie / Sans expiration)</span>
+                <span class="text-[10px] text-slate-400 block">L'utilisateur paie une seule fois et conserve son quota ou accès définitivement sans échéance.</span>
+              </div>
+            </label>
+
+            <div id="sub-plan-duration-container" class="p-2.5 rounded-lg bg-slate-950/70 border border-slate-700/80 space-y-1.5">
+              <label class="block text-[10px] font-bold uppercase text-slate-300">Durée de l'abonnement (en jours)</label>
+              <div class="flex flex-wrap items-center gap-1.5">
+                <input type="number" id="sub-plan-duration-days" min="1" max="3650" value="30" class="w-24 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 font-mono font-bold text-xs outline-none" />
+                <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=7" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">7j</button>
+                <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=30" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">30j (1 mois)</button>
+                <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=90" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">90j (Trim.)</button>
+                <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=180" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">180j</button>
+                <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=365" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">365j (1 an)</button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -7381,8 +7867,8 @@ function renderDashboardHtml(data) {
 
     function switchView(viewName) {
       currentView = viewName;
-      const flexViews = ['users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'dkd-store'];
-      ['global', 'users', 'demandes', 'demandes-ia', 'robot-rouge', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro', 'alertes-stockage', 'facturation-ia', 'dkd-store'].forEach(v => {
+      const flexViews = ['users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'abonnements', 'apps-monetization', 'statistiques', 'dkd-store'];
+      ['global', 'users', 'demandes', 'demandes-ia', 'robot-rouge', 'distribution', 'messages', 'signalements', 'abonnements', 'apps-monetization', 'statistiques', 'profil-pro', 'alertes-stockage', 'facturation-ia', 'dkd-store'].forEach(v => {
         const el = document.getElementById('view-' + v);
         const navBtn = document.getElementById('nav-btn-' + v);
         if (!el) return;
@@ -7412,7 +7898,8 @@ function renderDashboardHtml(data) {
           distribution: 'Distribution de Stockage',
           messages: 'Messages',
           signalements: 'Signalements & Retours',
-          abonnements: 'Abonnements & Forfaits',
+          abonnements: 'Transactions & Paiements Paystack',
+          'apps-monetization': 'Applications Monétisées & Cartes de Prix',
           statistiques: 'Statistiques & Métriques',
           'profil-pro': 'Informations professionnelles',
           'alertes-stockage': 'Planification Alertes Stockage',
@@ -7476,6 +7963,14 @@ function renderDashboardHtml(data) {
           }
         } catch(e) {
           console.warn('Erreur chargement Robot Rouge:', e);
+        }
+      } else if (viewName === 'abonnements') {
+        if (typeof loadAdminPaymentsOverview === 'function') {
+          loadAdminPaymentsOverview();
+        }
+      } else if (viewName === 'apps-monetization') {
+        if (typeof loadMonetizedAppsAdmin === 'function') {
+          loadMonetizedAppsAdmin();
         }
       } else if (viewName === 'dkd-store') {
         if (typeof renderDkdStoreView === 'function') {
@@ -12668,28 +13163,36 @@ function renderDashboardHtml(data) {
         const footerDiv = document.createElement('div');
         footerDiv.className = 'pt-4 mt-3 border-t border-slate-800 space-y-2.5';
 
-        // VRAI BOUTON ERGONOMIQUE DE BASCULE AUTOMATIQUE / MANUEL
+        // VRAI BOUTON ERGONOMIQUE DE BASCULE MODE & DURÉE
+        const planBillingMode = String(plan.billing_mode || (isAuto ? 'auto' : 'manual')).toLowerCase();
+        const planDurationDays = Number(plan.duration_days || 30);
+        const isInfiniteMode = planBillingMode === 'infinite';
+        const isAutoMode = planBillingMode === 'auto' || (!isInfiniteMode && isAuto);
+        const durationTag = isInfiniteMode ? 'Accès à vie' : (planDurationDays + ' jours');
+
         const autoBillingBtn = document.createElement('button');
         autoBillingBtn.type = 'button';
         autoBillingBtn.className = 'w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-between transition-all duration-200 cursor-pointer shadow-md ' +
-          (isAuto 
-            ? 'bg-cyan-950/80 hover:bg-cyan-900/90 text-cyan-200 border-2 border-cyan-500/50 hover:border-cyan-400' 
-            : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-2 border-slate-700 hover:border-slate-500');
-        autoBillingBtn.innerHTML = 
+          (isInfiniteMode
+            ? 'bg-amber-950/60 hover:bg-amber-900/70 text-amber-200 border-2 border-amber-500/50 hover:border-amber-400'
+            : (isAutoMode
+              ? 'bg-cyan-950/80 hover:bg-cyan-900/90 text-cyan-200 border-2 border-cyan-500/50 hover:border-cyan-400'
+              : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-2 border-slate-700 hover:border-slate-500'));
+        autoBillingBtn.innerHTML =
           '<div class="flex items-center gap-2.5 text-left">' +
-            '<span class="text-base select-none">' + (isAuto ? '⚡' : '🔄') + '</span>' +
+            '<span class="text-base select-none">' + (isInfiniteMode ? '♾️' : (isAutoMode ? '⚡' : '🔄')) + '</span>' +
             '<div>' +
-              '<div class="text-[10px] text-slate-400 uppercase font-black tracking-wider">Mode bouton étudiant :</div>' +
-              '<div class="text-xs font-black ' + (isAuto ? 'text-cyan-300' : 'text-amber-300') + '">' +
-                (isAuto ? '« S’abonner » (Paiement Auto)' : '« Commencer » (Paiement Manuel)') +
+              '<div class="text-[10px] text-slate-400 uppercase font-black tracking-wider">Mode &amp; Durée (' + durationTag + ') :</div>' +
+              '<div class="text-xs font-black ' + (isInfiniteMode ? 'text-amber-300' : (isAutoMode ? 'text-cyan-300' : 'text-amber-300')) + '">' +
+                (isInfiniteMode ? 'Infini (Sans expiration)' : (isAutoMode ? 'Automatique · ' + planDurationDays + 'j' : 'Manuel · ' + planDurationDays + 'j')) +
               '</div>' +
             '</div>' +
           '</div>' +
           '<span class="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all shadow-sm shrink-0 ' +
-            (isAuto ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'bg-amber-500 text-slate-950 hover:bg-amber-400') + '">' +
-            (isAuto ? 'Passer en Manuel ➔' : 'Passer en Auto ➔') +
+            (isAutoMode ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'bg-amber-500 text-slate-950 hover:bg-amber-400') + '">' +
+            (isAutoMode ? 'Passer en Manuel ➔' : 'Passer en Auto ➔') +
           '</span>';
-        
+
         autoBillingBtn.onclick = function() {
           toggleSubscriptionPlanAutoBilling(targetCat, plan.id);
         };
@@ -12803,13 +13306,15 @@ function renderDashboardHtml(data) {
           });
         }
 
-        const isAuto = existing.is_auto_billing === 1;
+        const resolvedMode = String(existing.billing_mode || (existing.is_auto_billing === 1 ? 'auto' : 'manual')).toLowerCase();
         const bAuto = document.getElementById('sub-billing-auto');
         const bManual = document.getElementById('sub-billing-manual');
-        if (bAuto && bManual) {
-          bAuto.checked = isAuto;
-          bManual.checked = !isAuto;
-        }
+        const bInfinite = document.getElementById('sub-billing-infinite');
+        if (bAuto) bAuto.checked = resolvedMode === 'auto';
+        if (bInfinite) bInfinite.checked = resolvedMode === 'infinite';
+        if (bManual) bManual.checked = (resolvedMode !== 'auto' && resolvedMode !== 'infinite');
+        const durEl = document.getElementById('sub-plan-duration-days');
+        if (durEl) durEl.value = existing.duration_days ? String(existing.duration_days) : '30';
       } else {
         document.getElementById('sub-modal-title').textContent = targetCat === 'ai' ? "Créer une offre / carte IA" : "Créer une carte d'abonnement Stockage";
         document.getElementById('sub-plan-id').value = '';
@@ -12846,8 +13351,11 @@ function renderDashboardHtml(data) {
 
         const bManual = document.getElementById('sub-billing-manual');
         if (bManual) bManual.checked = true;
+        const durEl = document.getElementById('sub-plan-duration-days');
+        if (durEl) durEl.value = '30';
       }
 
+      toggleSubPlanDurationVisibility();
       updateSubscriptionPricingCalculations();
       if (modal) {
         modal.classList.remove('hidden');
@@ -12896,6 +13404,16 @@ function renderDashboardHtml(data) {
     }
     window.addSubscriptionFeatureLine = addSubscriptionFeatureLine;
 
+    function toggleSubPlanDurationVisibility() {
+      const bInf = document.getElementById('sub-billing-infinite');
+      const wrap = document.getElementById('sub-plan-duration-container');
+      if (wrap) {
+        if (bInf && bInf.checked) wrap.classList.add('hidden');
+        else wrap.classList.remove('hidden');
+      }
+    }
+    window.toggleSubPlanDurationVisibility = toggleSubPlanDurationVisibility;
+
     async function saveSubscriptionPlanModal() {
       const category = document.getElementById('sub-plan-category').value || 'storage';
       const planId = document.getElementById('sub-plan-id').value;
@@ -12919,7 +13437,11 @@ function renderDashboardHtml(data) {
       const yearlyPrice = Math.round(price * 12 * (1 - (discountPct / 100)) * 100) / 100;
 
       const bAuto = document.getElementById('sub-billing-auto');
-      const isAuto = bAuto && bAuto.checked ? 1 : 0;
+      const bInfinite = document.getElementById('sub-billing-infinite');
+      const billingMode = (bInfinite && bInfinite.checked) ? 'infinite' : ((bAuto && bAuto.checked) ? 'auto' : 'manual');
+      const isAuto = billingMode === 'auto' ? 1 : 0;
+      const rawDurationDays = parseInt(document.getElementById('sub-plan-duration-days')?.value || '30', 10);
+      const durationDays = billingMode === 'infinite' ? 0 : Math.max(1, Math.min(3650, isFinite(rawDurationDays) ? rawDurationDays : 30));
 
       // Rassembler les avantages
       const features = [];
@@ -12956,6 +13478,8 @@ function renderDashboardHtml(data) {
         yearly_discount_pct: isOneTime ? 0 : discountPct,
         features,
         is_auto_billing: isAuto,
+        billing_mode: billingMode,
+        duration_days: durationDays,
         is_active: 1,
         pricing_model: pricingModel
       };
@@ -17004,6 +17528,807 @@ function renderDashboardHtml(data) {
     }, 50);
 
 
+    // =========================================================================
+    // CENTRE DES TRANSACTIONS, CONFIGURATION PAYSTACK & MONÉTISATION DES APPS
+    // =========================================================================
+    let adminPaymentTransactions = [];
+    let adminPaymentConfig = { paystack_enabled: 1, manual_receipt_enabled: 1, default_currency: 'XOF' };
+    let adminMonetizedApps = [];
+    let adminAppPlansByKey = {};
+    let adminAppEntitlementsByKey = {};
+    let selectedMonetizedAppKey = 'moyennes';
+
+    function formatMoneyXof(amount, currency) {
+      const num = Math.round(Number(amount || 0));
+      const formatted = num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+      const cur = String(currency || 'XOF').toUpperCase();
+      if (cur === 'XOF' || cur === 'FCFA') return formatted + ' FCFA';
+      if (cur === 'EUR') return Number(amount || 0).toFixed(2) + ' €';
+      if (cur === 'USD') return '$' + Number(amount || 0).toFixed(2);
+      return formatted + ' ' + cur;
+    }
+
+    function formatBillingBadgeHtml(mode, durationDays) {
+      const m = String(mode || 'manual').toLowerCase();
+      const d = Number(durationDays || 30);
+      if (m === 'infinite') {
+        return '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">♾️ Infini (À vie)</span>';
+      }
+      if (m === 'auto') {
+        return '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">⚡ Auto · ' + d + 'j</span>';
+      }
+      return '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/40">🔄 Manuel · ' + d + 'j</span>';
+    }
+
+    function formatAdminDateTime(isoStr) {
+      if (!isoStr) return '—';
+      try {
+        const d = new Date(isoStr.indexOf('T') >= 0 ? isoStr : isoStr.replace(' ', 'T') + 'Z');
+        if (isNaN(d.getTime())) return String(isoStr);
+        return d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+          ' ' + d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      } catch (e) {
+        return String(isoStr);
+      }
+    }
+
+    async function loadAdminPaymentsOverview() {
+      const tbody = document.getElementById('admin-transactions-tbody');
+      if (tbody && adminPaymentTransactions.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-slate-400">Chargement des transactions depuis D1...</td></tr>';
+      }
+      try {
+        const resp = await fetch('/api/admin/payments/overview?_t=' + Date.now());
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur chargement transactions');
+
+        adminPaymentConfig = data.config || adminPaymentConfig;
+        adminPaymentTransactions = Array.isArray(data.transactions) ? data.transactions : [];
+
+        // Mettre à jour les interrupteurs passerelle
+        const paystackCb = document.getElementById('toggle-paystack-enabled');
+        const manualCb = document.getElementById('toggle-manual-receipt-enabled');
+        const manualHint = document.getElementById('manual-receipt-status-hint');
+        if (paystackCb) paystackCb.checked = Number(adminPaymentConfig.paystack_enabled) !== 0;
+        const manualOn = Number(adminPaymentConfig.manual_receipt_enabled) !== 0;
+        if (manualCb) manualCb.checked = manualOn;
+        if (manualHint) {
+          manualHint.textContent = manualOn ? 'Visible dans StudyCloud' : 'Masqué dans StudyCloud';
+          manualHint.className = 'text-[9.5px] font-bold ' + (manualOn ? 'text-emerald-400' : 'text-rose-400');
+        }
+
+        // KPIs
+        const stats = data.stats || {};
+        const elMonthRev = document.getElementById('kpi-pay-month-rev');
+        const elMonthCnt = document.getElementById('kpi-pay-month-count');
+        const elTotalRev = document.getElementById('kpi-pay-total-rev');
+        const elTotalCnt = document.getElementById('kpi-pay-total-count');
+        const elActiveSubs = document.getElementById('kpi-pay-active-subs');
+        const elActiveDetail = document.getElementById('kpi-pay-active-detail');
+        const elPending = document.getElementById('kpi-pay-pending-count');
+
+        if (elMonthRev) elMonthRev.textContent = formatMoneyXof(stats.monthRevenueXof || 0, 'XOF');
+        if (elMonthCnt) elMonthCnt.textContent = (stats.monthPaidCount || 0) + ' paiement(s) confirmé(s) ce mois';
+        if (elTotalRev) elTotalRev.textContent = formatMoneyXof(stats.totalRevenueXof || 0, 'XOF');
+        if (elTotalCnt) elTotalCnt.textContent = (stats.totalPaidCount || 0) + ' transaction(s) réussie(s)';
+        if (elActiveSubs) elActiveSubs.textContent = String(stats.activeEntitlementsCount || 0);
+        if (elActiveDetail) elActiveDetail.textContent = (stats.activeAppAccessCount || 0) + ' accès app · ' + (stats.activeStorageSubsCount || 0) + ' abonnements';
+        if (elPending) elPending.textContent = String(stats.pendingOrFailedCount || 0);
+
+        // Répartition par réseau
+        const netBox = document.getElementById('pay-network-breakdown');
+        if (netBox) {
+          const nets = Array.isArray(data.networkBreakdown) ? data.networkBreakdown : [];
+          if (nets.length === 0) {
+            netBox.innerHTML = '<span class="text-slate-500">Aucune transaction payée enregistrée pour le moment.</span>';
+          } else {
+            let html = '';
+            nets.forEach(function(n) {
+              html += '<div class="px-3 py-2 rounded-xl bg-slate-900/90 border border-slate-700 flex items-center gap-2">' +
+                '<span class="font-extrabold text-white">' + escapeHtml(n.network || 'Paystack') + '</span>' +
+                '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-black">' + (n.count || 0) + '</span>' +
+                '<span class="text-[11px] font-mono text-sky-300 font-bold">' + escapeHtml(formatMoneyXof(n.total_xof || 0, 'XOF')) + '</span>' +
+              '</div>';
+            });
+            netBox.innerHTML = html;
+          }
+        }
+
+        renderAdminTransactionsTable();
+      } catch (err) {
+        console.error('[AdminPayments] Erreur:', err);
+        if (tbody) {
+          tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-rose-400">Erreur : ' + escapeHtml(err.message || String(err)) + '</td></tr>';
+        }
+      }
+    }
+    window.loadAdminPaymentsOverview = loadAdminPaymentsOverview;
+
+    async function savePaymentGatewayConfigAdmin() {
+      const paystackOn = document.getElementById('toggle-paystack-enabled')?.checked ? 1 : 0;
+      const manualOn = document.getElementById('toggle-manual-receipt-enabled')?.checked ? 1 : 0;
+      const manualHint = document.getElementById('manual-receipt-status-hint');
+      if (manualHint) {
+        manualHint.textContent = manualOn ? 'Visible dans StudyCloud' : 'Masqué dans StudyCloud';
+        manualHint.className = 'text-[9.5px] font-bold ' + (manualOn ? 'text-emerald-400' : 'text-rose-400');
+      }
+      try {
+        const resp = await fetch('/api/admin/payments/config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            paystack_enabled: paystackOn,
+            manual_receipt_enabled: manualOn
+          })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Échec enregistrement');
+        adminPaymentConfig = data.config || adminPaymentConfig;
+        showToast(manualOn
+          ? '✓ Bouton « Payer manuellement » ACTIVÉ dans StudyCloud'
+          : '✓ Bouton « Payer manuellement » DÉSACTIVÉ dans StudyCloud (Paystack seul)');
+      } catch (err) {
+        showToast('⚠️ Erreur config passerelle : ' + (err.message || err));
+      }
+    }
+    window.savePaymentGatewayConfigAdmin = savePaymentGatewayConfigAdmin;
+
+    function renderAdminTransactionsTable() {
+      const tbody = document.getElementById('admin-transactions-tbody');
+      const counter = document.getElementById('tx-table-counter');
+      if (!tbody) return;
+
+      const q = String(document.getElementById('tx-filter-search')?.value || '').trim().toLowerCase();
+      const cat = String(document.getElementById('tx-filter-category')?.value || 'all');
+      const st = String(document.getElementById('tx-filter-status')?.value || 'all');
+
+      const filtered = (adminPaymentTransactions || []).filter(function(tx) {
+        if (cat !== 'all' && String(tx.category || '') !== cat) return false;
+        if (st !== 'all') {
+          const s = String(tx.status || '').toLowerCase();
+          if (st === 'paid' && s !== 'paid' && s !== 'completed' && s !== 'approved') return false;
+          if (st === 'pending' && s !== 'pending' && s !== 'initialized') return false;
+          if (st === 'failed' && s !== 'failed' && s !== 'abandoned' && s !== 'cancelled' && s !== 'rejected') return false;
+        }
+        if (q) {
+          const hay = [
+            tx.reference, tx.user_name, tx.user_email, tx.user_id,
+            tx.plan_name, tx.app_key, tx.network_label, tx.provider, tx.category
+          ].join(' ').toLowerCase();
+          if (hay.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+
+      if (counter) {
+        counter.textContent = filtered.length + ' transaction' + (filtered.length > 1 ? 's' : '');
+      }
+
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="8" class="px-4 py-8 text-center text-slate-500">Aucune transaction ne correspond aux filtres.</td></tr>';
+        return;
+      }
+
+      let rowsHtml = '';
+      filtered.forEach(function(tx) {
+        const statusRaw = String(tx.status || 'pending').toLowerCase();
+        const isPaid = statusRaw === 'paid' || statusRaw === 'completed' || statusRaw === 'approved';
+        const isPending = statusRaw === 'pending' || statusRaw === 'initialized';
+        const statusBadge = isPaid
+          ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">✅ Payé</span>'
+          : (isPending
+            ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">⏳ En attente</span>'
+            : '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-rose-500/20 text-rose-300 border border-rose-500/40">❌ ' + escapeHtml(statusRaw) + '</span>');
+
+        const catLabel = tx.category === 'app'
+          ? ('📱 App : ' + escapeHtml(tx.app_key || 'application'))
+          : (tx.category === 'ai' ? '🤖 Crédits IA' : '💾 Stockage Cloud');
+
+        const networkStr = tx.network_label || (tx.provider === 'manual_receipt' ? 'Reçu manuel' : 'Paystack');
+        const safeRef = escapeHtml(tx.reference || '');
+        const canReverify = tx.provider === 'paystack' && !isPaid && safeRef;
+
+        rowsHtml += '<tr class="hover:bg-slate-900/60 transition">' +
+          '<td class="px-3 py-2.5 whitespace-nowrap text-[11px] text-slate-300">' +
+            '<div class="font-bold text-white">' + escapeHtml(formatAdminDateTime(tx.paid_at || tx.created_at)) + '</div>' +
+            '<div class="text-[9.5px] font-mono text-slate-500 truncate max-w-[140px]" title="' + safeRef + '">' + safeRef + '</div>' +
+          '</td>' +
+          '<td class="px-3 py-2.5">' +
+            '<div class="font-bold text-white truncate max-w-[170px]">' + escapeHtml(tx.user_name || tx.user_id || 'Utilisateur') + '</div>' +
+            '<div class="text-[10px] text-slate-400 truncate max-w-[170px]">' + escapeHtml(tx.user_email || '') + '</div>' +
+          '</td>' +
+          '<td class="px-3 py-2.5">' +
+            '<div class="text-[10px] font-bold text-sky-300">' + catLabel + '</div>' +
+            '<div class="font-bold text-white">' + escapeHtml(tx.plan_name || tx.plan_id || 'Forfait') + '</div>' +
+          '</td>' +
+          '<td class="px-3 py-2.5 whitespace-nowrap">' +
+            formatBillingBadgeHtml(tx.billing_mode, tx.duration_days) +
+          '</td>' +
+          '<td class="px-3 py-2.5 whitespace-nowrap font-mono font-black text-emerald-300">' +
+            escapeHtml(formatMoneyXof(tx.amount_major, tx.currency)) +
+          '</td>' +
+          '<td class="px-3 py-2.5 whitespace-nowrap">' +
+            '<span class="px-2 py-0.5 rounded-lg bg-slate-800 border border-slate-700 text-[10.5px] font-bold text-slate-200">' + escapeHtml(networkStr) + '</span>' +
+          '</td>' +
+          '<td class="px-3 py-2.5 whitespace-nowrap">' + statusBadge + '</td>' +
+          '<td class="px-3 py-2.5 text-right whitespace-nowrap">' +
+            (canReverify
+              ? '<button type="button" onclick="reverifyAdminTransaction(&quot;' + safeRef + '&quot;)" class="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-black cursor-pointer">🔍 Revérifier</button>'
+              : '<span class="text-[10px] text-slate-500">' + (tx.fulfilled_at ? 'Livré' : '—') + '</span>') +
+          '</td>' +
+        '</tr>';
+      });
+
+      tbody.innerHTML = rowsHtml;
+    }
+    window.renderAdminTransactionsTable = renderAdminTransactionsTable;
+
+    async function reverifyAdminTransaction(reference) {
+      if (!reference) return;
+      showToast('🔍 Vérification en cours sur Paystack...');
+      try {
+        const resp = await fetch('https://api-worker.dkd-technologies.com/api/payments/admin/reverify', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ reference: reference })
+        });
+        const data = await resp.json();
+        if (data && (data.verified || data.paid)) {
+          const netLabel = (data.transaction && data.transaction.network_label) || data.networkLabel || 'Paystack';
+          showToast('✅ Paiement confirmé et livré ! Réseau : ' + netLabel);
+        } else {
+          showToast('ℹ️ Statut Paystack : ' + ((data && (data.status || data.reason || data.error)) || 'non payé'));
+        }
+        await loadAdminPaymentsOverview();
+      } catch (err) {
+        showToast('⚠️ Erreur revérification : ' + (err.message || err));
+      }
+    }
+    window.reverifyAdminTransaction = reverifyAdminTransaction;
+
+    function exportAdminTransactionsCsv() {
+      const rows = adminPaymentTransactions || [];
+      if (rows.length === 0) {
+        showToast('Aucune transaction à exporter.');
+        return;
+      }
+      const headers = ['Date', 'Reference', 'Utilisateur', 'Email', 'Categorie', 'Application', 'Offre', 'Mode', 'Duree_jours', 'Montant', 'Devise', 'Reseau', 'Statut'];
+      const esc = function(v) { return '"' + String(v === undefined || v === null ? '' : v).replace(/"/g, '""') + '"'; };
+      const lines = [headers.join(',')];
+      rows.forEach(function(tx) {
+        lines.push([
+          tx.paid_at || tx.created_at || '',
+          tx.reference || '',
+          tx.user_name || tx.user_id || '',
+          tx.user_email || '',
+          tx.category || '',
+          tx.app_key || '',
+          tx.plan_name || '',
+          tx.billing_mode || '',
+          tx.duration_days || 0,
+          tx.amount_major || 0,
+          tx.currency || 'XOF',
+          tx.network_label || tx.provider || '',
+          tx.status || ''
+        ].map(esc).join(','));
+      });
+      const blob = new Blob([lines.join(String.fromCharCode(10))], { type: 'text/csv;charset=utf-8;' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = 'studycloud-transactions-' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+    window.exportAdminTransactionsCsv = exportAdminTransactionsCsv;
+
+    // -------------------------------------------------------------------------
+    // GESTION DES APPLICATIONS MONÉTISÉES & CARTES DE PRIX (SCALABLE)
+    // -------------------------------------------------------------------------
+    async function loadMonetizedAppsAdmin() {
+      try {
+        const resp = await fetch('/api/admin/monetized-apps?_t=' + Date.now());
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur chargement apps');
+
+        adminMonetizedApps = Array.isArray(data.apps) ? data.apps : [];
+        adminAppPlansByKey = {};
+        adminAppEntitlementsByKey = {};
+
+        (data.plans || []).forEach(function(p) {
+          if (!adminAppPlansByKey[p.app_key]) adminAppPlansByKey[p.app_key] = [];
+          adminAppPlansByKey[p.app_key].push(p);
+        });
+        (data.entitlements || []).forEach(function(e) {
+          if (!adminAppEntitlementsByKey[e.app_key]) adminAppEntitlementsByKey[e.app_key] = [];
+          adminAppEntitlementsByKey[e.app_key].push(e);
+        });
+
+        if (adminMonetizedApps.length > 0) {
+          const exists = adminMonetizedApps.some(function(a) { return a.app_key === selectedMonetizedAppKey; });
+          if (!exists) selectedMonetizedAppKey = adminMonetizedApps[0].app_key;
+        }
+
+        renderMonetizedAppsList();
+        renderMonetizedAppDetail();
+      } catch (err) {
+        console.error('[MonetizedApps] Erreur:', err);
+        const listEl = document.getElementById('monetized-apps-list');
+        if (listEl) listEl.innerHTML = '<div class="neo-card p-4 text-xs text-rose-400">Erreur : ' + escapeHtml(err.message || String(err)) + '</div>';
+      }
+    }
+    window.loadMonetizedAppsAdmin = loadMonetizedAppsAdmin;
+
+    function selectMonetizedApp(appKey) {
+      selectedMonetizedAppKey = appKey;
+      renderMonetizedAppsList();
+      renderMonetizedAppDetail();
+    }
+    window.selectMonetizedApp = selectMonetizedApp;
+
+    function renderMonetizedAppsList() {
+      const listEl = document.getElementById('monetized-apps-list');
+      if (!listEl) return;
+      if (adminMonetizedApps.length === 0) {
+        listEl.innerHTML = '<div class="neo-card p-4 text-xs text-slate-400">Aucune application enregistrée. Cliquez sur « + Ajouter une application ».</div>';
+        return;
+      }
+      let html = '';
+      adminMonetizedApps.forEach(function(app) {
+        const isSel = app.app_key === selectedMonetizedAppKey;
+        const isPaid = Number(app.is_paid) === 1;
+        const planCount = (adminAppPlansByKey[app.app_key] || []).length;
+        const entCount = (adminAppEntitlementsByKey[app.app_key] || []).filter(function(e) { return e.status === 'active' || e.status === 'trial'; }).length;
+        const safeKey = escapeHtml(app.app_key);
+
+        html += '<div onclick="selectMonetizedApp(&quot;' + safeKey + '&quot;)" class="neo-card p-3.5 cursor-pointer transition border ' +
+          (isSel ? 'border-sky-500 bg-sky-950/30 shadow-lg shadow-sky-950/30' : 'border-slate-800 hover:border-slate-600') + '">' +
+          '<div class="flex items-start justify-between gap-2">' +
+            '<div class="flex items-center gap-2.5 min-w-0">' +
+              '<div class="w-9 h-9 rounded-xl bg-slate-900 border border-slate-700 flex items-center justify-center text-lg shrink-0">' + escapeHtml(app.icon || '📱') + '</div>' +
+              '<div class="min-w-0">' +
+                '<div class="text-xs font-black text-white truncate">' + escapeHtml(app.name) + '</div>' +
+                '<div class="text-[10px] font-mono text-slate-400 truncate">' + safeKey + '</div>' +
+              '</div>' +
+            '</div>' +
+            '<span class="px-2 py-0.5 rounded-full text-[9.5px] font-black shrink-0 ' +
+              (isPaid ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40') + '">' +
+              (isPaid ? '🔒 Payant' : '🔓 Gratuit') +
+            '</span>' +
+          '</div>' +
+          '<div class="mt-2.5 flex items-center justify-between text-[10px] text-slate-400">' +
+            '<span>' + planCount + ' carte(s) de prix</span>' +
+            '<span>' + entCount + ' accès actif(s)</span>' +
+          '</div>' +
+        '</div>';
+      });
+      listEl.innerHTML = html;
+    }
+
+    function renderMonetizedAppDetail() {
+      const panel = document.getElementById('monetized-app-detail-panel');
+      if (!panel) return;
+      const app = adminMonetizedApps.find(function(a) { return a.app_key === selectedMonetizedAppKey; });
+      if (!app) {
+        panel.innerHTML = '<div class="neo-card p-8 text-center text-slate-400 text-xs">Sélectionnez une application à gauche.</div>';
+        return;
+      }
+
+      const isPaid = Number(app.is_paid) === 1;
+      const safeKey = escapeHtml(app.app_key);
+      const plans = adminAppPlansByKey[app.app_key] || [];
+      const entitlements = adminAppEntitlementsByKey[app.app_key] || [];
+
+      let plansHtml = '';
+      if (plans.length === 0) {
+        plansHtml = '<div class="p-6 rounded-xl border border-dashed border-slate-700 text-center text-xs text-slate-400">' +
+          'Aucune carte de prix pour cette application. Cliquez sur <strong>« + Créer une carte de prix »</strong> pour ajouter vos offres (mensuelle, trimestrielle, annuelle ou à vie).' +
+        '</div>';
+      } else {
+        plansHtml = '<div class="grid grid-cols-1 md:grid-cols-2 gap-3">';
+        plans.forEach(function(p) {
+          const safePlanId = escapeHtml(p.id);
+          const isActive = Number(p.is_active) !== 0;
+          let feats = [];
+          try { feats = typeof p.features === 'string' ? JSON.parse(p.features) : (p.features || []); } catch (e) {}
+          let featItems = '';
+          (Array.isArray(feats) ? feats : []).slice(0, 5).forEach(function(f) {
+            const txt = typeof f === 'string' ? f : (f && f.text);
+            if (txt) featItems += '<li class="text-[11px] text-slate-300 flex items-start gap-1.5"><span class="text-emerald-400">✓</span><span>' + escapeHtml(txt) + '</span></li>';
+          });
+
+          plansHtml += '<div class="p-4 rounded-2xl bg-slate-900/90 border ' + (isActive ? 'border-slate-700' : 'border-slate-800 opacity-60') + ' flex flex-col justify-between gap-3">' +
+            '<div class="space-y-2">' +
+              '<div class="flex items-start justify-between gap-2">' +
+                '<div>' +
+                  '<div class="flex items-center gap-1.5 flex-wrap">' +
+                    '<span class="text-sm font-black text-white">' + escapeHtml(p.name) + '</span>' +
+                    (p.badge ? '<span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 text-[9.5px] font-black">' + escapeHtml(p.badge) + '</span>' : '') +
+                  '</div>' +
+                  (p.description ? '<div class="text-[11px] text-slate-400 mt-0.5">' + escapeHtml(p.description) + '</div>' : '') +
+                '</div>' +
+                formatBillingBadgeHtml(p.billing_mode, p.duration_days) +
+              '</div>' +
+              '<div class="text-xl font-black font-mono text-emerald-400">' + escapeHtml(formatMoneyXof(p.price, p.primary_currency)) + '</div>' +
+              (featItems ? '<ul class="space-y-1 pt-1">' + featItems + '</ul>' : '') +
+            '</div>' +
+            '<div class="pt-2.5 border-t border-slate-800 flex items-center justify-between gap-2">' +
+              '<button type="button" onclick="toggleAppPlanActive(&quot;' + safePlanId + '&quot;)" class="px-2.5 py-1.5 rounded-lg text-[10px] font-black cursor-pointer ' +
+                (isActive ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' : 'bg-slate-800 text-slate-400 border border-slate-700') + '">' +
+                (isActive ? '● Active' : '○ Masquée') +
+              '</button>' +
+              '<div class="flex items-center gap-1.5">' +
+                '<button type="button" onclick="openAppPlanModal(&quot;' + safeKey + '&quot;, &quot;' + safePlanId + '&quot;)" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-[10.5px] font-bold cursor-pointer">✏️ Modifier</button>' +
+                '<button type="button" onclick="deleteAppPlan(&quot;' + safePlanId + '&quot;)" class="px-2.5 py-1.5 rounded-lg bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-[10.5px] font-bold cursor-pointer">🗑️</button>' +
+              '</div>' +
+            '</div>' +
+          '</div>';
+        });
+        plansHtml += '</div>';
+      }
+
+      let entRows = '';
+      if (entitlements.length === 0) {
+        entRows = '<tr><td colspan="5" class="px-3 py-5 text-center text-slate-500">Aucun accès enregistré pour cette application.</td></tr>';
+      } else {
+        entitlements.forEach(function(e) {
+          const expTxt = e.expires_at ? formatAdminDateTime(e.expires_at) : '♾️ À vie (Infini)';
+          const stClass = e.status === 'active' ? 'bg-emerald-500/20 text-emerald-300' : (e.status === 'trial' ? 'bg-sky-500/20 text-sky-300' : 'bg-rose-500/20 text-rose-300');
+          entRows += '<tr class="border-t border-slate-800/70">' +
+            '<td class="px-3 py-2 font-bold text-white">' + escapeHtml(e.user_name || e.user_id) + '<div class="text-[10px] text-slate-400 font-normal">' + escapeHtml(e.user_email || e.user_id) + '</div></td>' +
+            '<td class="px-3 py-2">' + formatBillingBadgeHtml(e.access_type || e.billing_mode || 'manual', 30) + '</td>' +
+            '<td class="px-3 py-2 text-[11px] text-slate-300">' + escapeHtml(expTxt) + '</td>' +
+            '<td class="px-3 py-2"><span class="px-2 py-0.5 rounded-full text-[10px] font-black ' + stClass + '">' + escapeHtml(e.status) + '</span></td>' +
+            '<td class="px-3 py-2 text-right">' +
+              (e.status !== 'revoked'
+                ? '<button type="button" onclick="revokeAppEntitlement(&quot;' + escapeHtml(e.user_id) + '&quot;, &quot;' + safeKey + '&quot;)" class="px-2 py-1 rounded bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-[10px] font-bold cursor-pointer">Révoquer</button>'
+                : '<span class="text-[10px] text-slate-500">Révoqué</span>') +
+            '</td>' +
+          '</tr>';
+        });
+      }
+
+      panel.innerHTML =
+        '<div class="neo-card p-4 space-y-3">' +
+          '<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">' +
+            '<div class="flex items-center gap-3">' +
+              '<div class="w-11 h-11 rounded-2xl bg-slate-900 border border-slate-700 flex items-center justify-center text-2xl">' + escapeHtml(app.icon || '📱') + '</div>' +
+              '<div>' +
+                '<div class="flex items-center gap-2 flex-wrap">' +
+                  '<h3 class="text-base font-black text-white">' + escapeHtml(app.name) + '</h3>' +
+                  '<code class="px-1.5 py-0.5 rounded bg-slate-900 text-sky-300 text-[10px] font-bold">' + safeKey + '</code>' +
+                '</div>' +
+                '<p class="text-[11px] text-slate-400 mt-0.5">' + escapeHtml(app.description || 'Aucune description.') + '</p>' +
+              '</div>' +
+            '</div>' +
+            '<div class="flex flex-wrap items-center gap-2">' +
+              '<button type="button" onclick="toggleMonetizedAppPaid(&quot;' + safeKey + '&quot;, ' + (isPaid ? 0 : 1) + ')" class="px-3 py-2 rounded-xl text-xs font-black cursor-pointer ' +
+                (isPaid ? 'bg-amber-500 text-slate-950 hover:bg-amber-400' : 'bg-emerald-600 text-white hover:bg-emerald-500') + '">' +
+                (isPaid ? '🔒 Paywall ACTIF (Passer Gratuit)' : '🔓 Gratuit (Activer le Paywall)') +
+              '</button>' +
+              '<button type="button" onclick="openMonetizedAppModal(&quot;' + safeKey + '&quot;)" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold cursor-pointer">✏️ Modifier</button>' +
+              (app.app_key !== 'moyennes'
+                ? '<button type="button" onclick="deleteMonetizedApp(&quot;' + safeKey + '&quot;)" class="px-3 py-2 rounded-xl bg-rose-950/60 hover:bg-rose-900 text-rose-300 text-xs font-bold cursor-pointer">🗑️</button>'
+                : '') +
+            '</div>' +
+          '</div>' +
+          '<div class="flex flex-wrap gap-3 text-[11px] text-slate-400 pt-2 border-t border-slate-800">' +
+            '<span>🎁 Essai gratuit : <strong class="text-white">' + (Number(app.trial_days) || 0) + ' jour(s)</strong></span>' +
+            '<span>🛡️ Période de grâce : <strong class="text-white">' + (Number(app.grace_period_days) || 5) + ' jour(s)</strong></span>' +
+          '</div>' +
+        '</div>' +
+
+        '<div class="neo-card p-4 space-y-3">' +
+          '<div class="flex items-center justify-between gap-2 flex-wrap">' +
+            '<div>' +
+              '<h4 class="text-xs font-black text-white uppercase tracking-wider">💳 Cartes de prix &amp; abonnements</h4>' +
+              '<p class="text-[10.5px] text-slate-400">Créez autant de tarifs que voulu (Auto, Manuel ou Infini).</p>' +
+            '</div>' +
+            '<button type="button" onclick="openAppPlanModal(&quot;' + safeKey + '&quot;)" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-xs font-black cursor-pointer">+ Créer une carte de prix</button>' +
+          '</div>' +
+          plansHtml +
+        '</div>' +
+
+        '<div class="neo-card p-4 space-y-3">' +
+          '<div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">' +
+            '<div>' +
+              '<h4 class="text-xs font-black text-white uppercase tracking-wider">🔑 Utilisateurs ayant accès à ' + escapeHtml(app.name) + '</h4>' +
+              '<p class="text-[10.5px] text-slate-400">Accès payés via Paystack ou accordés manuellement par l&apos;administrateur.</p>' +
+            '</div>' +
+          '</div>' +
+          '<div class="flex flex-wrap items-center gap-2 p-2.5 rounded-xl bg-slate-900/70 border border-slate-800">' +
+            '<input id="grant-ent-user-input" type="text" placeholder="Email ou ID utilisateur..." class="flex-1 min-w-[180px] px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs text-white outline-none" />' +
+            '<select id="grant-ent-mode" class="px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs font-bold text-white outline-none">' +
+              '<option value="manual">🔄 Durée (jours)</option>' +
+              '<option value="infinite">♾️ Infini (À vie)</option>' +
+            '</select>' +
+            '<input id="grant-ent-days" type="number" min="1" max="3650" value="30" class="w-20 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-xs font-mono font-bold text-amber-300 outline-none" />' +
+            '<button type="button" onclick="grantManualAppEntitlement(&quot;' + safeKey + '&quot;)" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black cursor-pointer">+ Accorder accès</button>' +
+          '</div>' +
+          '<div class="overflow-x-auto rounded-xl border border-slate-800">' +
+            '<table class="w-full text-left text-xs">' +
+              '<thead><tr class="bg-slate-900 text-[10px] uppercase text-slate-400">' +
+                '<th class="px-3 py-2">Utilisateur</th><th class="px-3 py-2">Mode</th><th class="px-3 py-2">Expiration</th><th class="px-3 py-2">Statut</th><th class="px-3 py-2 text-right">Action</th>' +
+              '</tr></thead>' +
+              '<tbody>' + entRows + '</tbody>' +
+            '</table>' +
+          '</div>' +
+        '</div>';
+    }
+    window.renderMonetizedAppDetail = renderMonetizedAppDetail;
+
+    function openMonetizedAppModal(appKey) {
+      const modal = document.getElementById('monetized-app-modal');
+      const existing = appKey ? adminMonetizedApps.find(function(a) { return a.app_key === appKey; }) : null;
+      document.getElementById('monetized-app-modal-title').textContent = existing ? "Modifier l'application" : 'Ajouter une application';
+      document.getElementById('ma-edit-mode').value = existing ? 'edit' : 'create';
+      document.getElementById('ma-name').value = existing ? (existing.name || '') : '';
+      document.getElementById('ma-icon').value = existing ? (existing.icon || '📱') : '📱';
+      const keyInput = document.getElementById('ma-key');
+      keyInput.value = existing ? (existing.app_key || '') : '';
+      keyInput.readOnly = !!existing;
+      document.getElementById('ma-desc').value = existing ? (existing.description || '') : '';
+      document.getElementById('ma-is-paid').value = existing ? String(Number(existing.is_paid) === 1 ? 1 : 0) : '0';
+      document.getElementById('ma-trial-days').value = existing ? String(Number(existing.trial_days) || 0) : '0';
+      document.getElementById('ma-grace-days').value = existing ? String(Number(existing.grace_period_days) || 5) : '5';
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+      }
+    }
+    window.openMonetizedAppModal = openMonetizedAppModal;
+
+    function closeMonetizedAppModal() {
+      const modal = document.getElementById('monetized-app-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+    }
+    window.closeMonetizedAppModal = closeMonetizedAppModal;
+
+    async function saveMonetizedAppForm(e) {
+      if (e) e.preventDefault();
+      const payload = {
+        app_key: String(document.getElementById('ma-key').value || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_'),
+        name: String(document.getElementById('ma-name').value || '').trim(),
+        icon: String(document.getElementById('ma-icon').value || '📱').trim(),
+        description: String(document.getElementById('ma-desc').value || '').trim(),
+        is_paid: Number(document.getElementById('ma-is-paid').value) === 1 ? 1 : 0,
+        trial_days: Math.max(0, parseInt(document.getElementById('ma-trial-days').value || '0', 10) || 0),
+        grace_period_days: Math.max(0, parseInt(document.getElementById('ma-grace-days').value || '5', 10) || 5)
+      };
+      if (!payload.app_key || !payload.name) {
+        showToast('⚠️ Veuillez renseigner le nom et la clé technique.');
+        return;
+      }
+      try {
+        const resp = await fetch('/api/admin/monetized-apps/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur sauvegarde');
+        selectedMonetizedAppKey = payload.app_key;
+        closeMonetizedAppModal();
+        showToast('✓ Application enregistrée dans D1 !');
+        await loadMonetizedAppsAdmin();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.saveMonetizedAppForm = saveMonetizedAppForm;
+
+    async function toggleMonetizedAppPaid(appKey, nextPaid) {
+      try {
+        const resp = await fetch('/api/admin/monetized-apps/toggle-paid', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app_key: appKey, is_paid: nextPaid ? 1 : 0 })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+        showToast(nextPaid ? '🔒 Paywall ACTIVÉ pour ' + appKey : '🔓 Application ' + appKey + ' repassée en Gratuit');
+        await loadMonetizedAppsAdmin();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.toggleMonetizedAppPaid = toggleMonetizedAppPaid;
+
+    async function deleteMonetizedApp(appKey) {
+      if (!confirm('Supprimer définitivement cette application et ses cartes de prix ?')) return;
+      try {
+        const resp = await fetch('/api/admin/monetized-apps/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app_key: appKey })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+        showToast('✓ Application supprimée');
+        await loadMonetizedAppsAdmin();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.deleteMonetizedApp = deleteMonetizedApp;
+
+    function toggleAppPlanDurationVisibility() {
+      const inf = document.getElementById('ap-mode-infinite');
+      const wrap = document.getElementById('ap-duration-wrap');
+      if (wrap) {
+        if (inf && inf.checked) wrap.classList.add('hidden');
+        else wrap.classList.remove('hidden');
+      }
+    }
+    window.toggleAppPlanDurationVisibility = toggleAppPlanDurationVisibility;
+
+    function openAppPlanModal(appKey, planId) {
+      const modal = document.getElementById('app-plan-modal');
+      const list = adminAppPlansByKey[appKey] || [];
+      const existing = planId ? list.find(function(p) { return p.id === planId; }) : null;
+
+      document.getElementById('app-plan-modal-title').textContent = existing ? 'Modifier la carte de prix' : 'Créer une carte de prix';
+      document.getElementById('ap-id').value = existing ? existing.id : '';
+      document.getElementById('ap-app-key').value = appKey;
+      document.getElementById('ap-name').value = existing ? (existing.name || '') : '';
+      document.getElementById('ap-badge').value = existing ? (existing.badge || '') : '';
+      document.getElementById('ap-desc').value = existing ? (existing.description || '') : '';
+      document.getElementById('ap-price').value = existing ? String(existing.price || 0) : '2000';
+      document.getElementById('ap-currency').value = existing ? (existing.primary_currency || 'XOF') : 'XOF';
+
+      const mode = existing ? String(existing.billing_mode || 'manual').toLowerCase() : 'manual';
+      document.getElementById('ap-mode-manual').checked = (mode !== 'auto' && mode !== 'infinite');
+      document.getElementById('ap-mode-auto').checked = (mode === 'auto');
+      document.getElementById('ap-mode-infinite').checked = (mode === 'infinite');
+      document.getElementById('ap-duration-days').value = existing && existing.duration_days ? String(existing.duration_days) : '30';
+
+      let feats = [];
+      if (existing) {
+        try { feats = typeof existing.features === 'string' ? JSON.parse(existing.features) : (existing.features || []); } catch (e) {}
+      }
+      const featLines = (Array.isArray(feats) ? feats : []).map(function(f) { return typeof f === 'string' ? f : (f && f.text ? f.text : ''); }).filter(Boolean);
+      document.getElementById('ap-features').value = featLines.join(String.fromCharCode(10));
+
+      toggleAppPlanDurationVisibility();
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+      }
+    }
+    window.openAppPlanModal = openAppPlanModal;
+
+    function closeAppPlanModal() {
+      const modal = document.getElementById('app-plan-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+    }
+    window.closeAppPlanModal = closeAppPlanModal;
+
+    async function saveAppPlanModalForm(e) {
+      if (e) e.preventDefault();
+      const appKey = document.getElementById('ap-app-key').value;
+      const mode = document.getElementById('ap-mode-infinite').checked
+        ? 'infinite'
+        : (document.getElementById('ap-mode-auto').checked ? 'auto' : 'manual');
+      const durDays = mode === 'infinite' ? 0 : Math.max(1, parseInt(document.getElementById('ap-duration-days').value || '30', 10) || 30);
+      const price = Number(document.getElementById('ap-price').value) || 0;
+      const primaryCurrency = document.getElementById('ap-currency').value || 'XOF';
+      const rawFeatures = String(document.getElementById('ap-features').value || '').split(String.fromCharCode(10)).map(function(l) { return l.trim(); }).filter(Boolean);
+
+      const payload = {
+        id: document.getElementById('ap-id').value || ('app_plan_' + appKey + '_' + Date.now()),
+        app_key: appKey,
+        name: String(document.getElementById('ap-name').value || '').trim(),
+        badge: String(document.getElementById('ap-badge').value || '').trim(),
+        description: String(document.getElementById('ap-desc').value || '').trim(),
+        price: price,
+        primary_currency: primaryCurrency,
+        currencies_enabled: ['XOF', 'USD', 'EUR'],
+        currency_conversions: calculateConversions(price, primaryCurrency),
+        billing_mode: mode,
+        duration_days: durDays,
+        features: rawFeatures.map(function(t) { return { text: t, enabled: true }; }),
+        is_active: 1
+      };
+
+      try {
+        const resp = await fetch('/api/admin/monetized-apps/plans/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur sauvegarde carte');
+        closeAppPlanModal();
+        showToast('✓ Carte de prix enregistrée !');
+        await loadMonetizedAppsAdmin();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.saveAppPlanModalForm = saveAppPlanModalForm;
+
+    async function toggleAppPlanActive(planId) {
+      try {
+        const resp = await fetch('/api/admin/monetized-apps/plans/toggle-active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: planId })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+        await loadMonetizedAppsAdmin();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.toggleAppPlanActive = toggleAppPlanActive;
+
+    async function deleteAppPlan(planId) {
+      if (!confirm('Supprimer définitivement cette carte de prix ?')) return;
+      try {
+        const resp = await fetch('/api/admin/monetized-apps/plans/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ id: planId })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+        showToast('✓ Carte supprimée');
+        await loadMonetizedAppsAdmin();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.deleteAppPlan = deleteAppPlan;
+
+    async function grantManualAppEntitlement(appKey) {
+      const userQuery = String(document.getElementById('grant-ent-user-input')?.value || '').trim();
+      const mode = String(document.getElementById('grant-ent-mode')?.value || 'manual');
+      const days = Math.max(1, parseInt(document.getElementById('grant-ent-days')?.value || '30', 10) || 30);
+      if (!userQuery) {
+        showToast('⚠️ Saisissez un email ou un identifiant utilisateur.');
+        return;
+      }
+      try {
+        const resp = await fetch('/api/admin/monetized-apps/entitlements/grant', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app_key: appKey, user_query: userQuery, billing_mode: mode, duration_days: mode === 'infinite' ? 0 : days })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Utilisateur introuvable');
+        showToast('✅ Accès accordé avec succès !');
+        await loadMonetizedAppsAdmin();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.grantManualAppEntitlement = grantManualAppEntitlement;
+
+    async function revokeAppEntitlement(userId, appKey) {
+      if (!confirm("Révoquer l'accès de cet utilisateur ?")) return;
+      try {
+        const resp = await fetch('/api/admin/monetized-apps/entitlements/revoke', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId, app_key: appKey })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+        showToast('✓ Accès révoqué');
+        await loadMonetizedAppsAdmin();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.revokeAppEntitlement = revokeAppEntitlement;
+
     window.addEventListener('focus', () => {
       smartAutoRefresh();
     });
@@ -20176,7 +21501,12 @@ export default {
         const yearlyPrice = Number(plan.yearly_price) || 0;
         const yearlyDiscountPct = Number(plan.yearly_discount_pct) || 10;
         const features = typeof plan.features === 'string' ? plan.features : JSON.stringify(plan.features || []);
-        const isAutoBilling = plan.is_auto_billing ? 1 : 0;
+        const rawMode = String(plan.billing_mode || (plan.is_auto_billing ? 'auto' : 'manual')).trim().toLowerCase();
+        const billingMode = (rawMode === 'auto' || rawMode === 'infinite') ? rawMode : 'manual';
+        const isAutoBilling = billingMode === 'auto' ? 1 : 0;
+        const durationDays = billingMode === 'infinite'
+          ? 0
+          : Math.max(1, Math.min(3650, parseInt(plan.duration_days || 30, 10) || 30));
         const isActive = plan.is_active !== undefined ? (plan.is_active ? 1 : 0) : 1;
         const sortOrder = Number(plan.sort_order) || 1;
 
@@ -20188,8 +21518,8 @@ export default {
             INSERT INTO ai_subscription_plans (
               id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
               currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-              is_auto_billing, is_active, sort_order, pricing_model, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              is_auto_billing, billing_mode, duration_days, is_active, sort_order, pricing_model, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -20204,6 +21534,8 @@ export default {
               yearly_discount_pct = excluded.yearly_discount_pct,
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
+              billing_mode = excluded.billing_mode,
+              duration_days = excluded.duration_days,
               is_active = excluded.is_active,
               sort_order = excluded.sort_order,
               pricing_model = excluded.pricing_model,
@@ -20211,7 +21543,7 @@ export default {
           `).bind(
             planId, name, badge, description, creditsOrWords, creditsCount, price, primaryCurrency,
             currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
-            isAutoBilling, isActive, sortOrder, pricingModel
+            isAutoBilling, billingMode, durationDays, isActive, sortOrder, pricingModel
           ).run();
 
           const updatedPlan = await db.prepare("SELECT * FROM ai_subscription_plans WHERE id = ?").bind(planId).first();
@@ -20226,8 +21558,8 @@ export default {
             INSERT INTO storage_subscription_plans (
               id, name, badge, description, storage_amount, storage_mb, price, primary_currency,
               currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-              is_auto_billing, is_active, sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              is_auto_billing, billing_mode, duration_days, is_active, sort_order, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -20242,13 +21574,15 @@ export default {
               yearly_discount_pct = excluded.yearly_discount_pct,
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
+              billing_mode = excluded.billing_mode,
+              duration_days = excluded.duration_days,
               is_active = excluded.is_active,
               sort_order = excluded.sort_order,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             planId, name, badge, description, storageAmount, storageMb, price, primaryCurrency,
             currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
-            isAutoBilling, isActive, sortOrder
+            isAutoBilling, billingMode, durationDays, isActive, sortOrder
           ).run();
 
           const updatedPlan = await db.prepare("SELECT * FROM storage_subscription_plans WHERE id = ?").bind(planId).first();
@@ -20333,12 +21667,13 @@ export default {
 
         if (body.is_auto_billing !== undefined) {
           const newVal = body.is_auto_billing ? 1 : 0;
-          await db.prepare(`UPDATE ${tableName} SET is_auto_billing = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, planId).run();
+          const newMode = newVal === 1 ? 'auto' : 'manual';
+          await db.prepare(`UPDATE ${tableName} SET is_auto_billing = ?, billing_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, newMode, planId).run();
         } else {
-          await db.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+          await db.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, billing_mode = CASE WHEN is_auto_billing = 1 THEN 'manual' ELSE 'auto' END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
         }
-        const row = await db.prepare(`SELECT is_auto_billing FROM ${tableName} WHERE id = ?`).bind(planId).first();
-        return new Response(JSON.stringify({ success: true, is_auto_billing: row ? row.is_auto_billing : 0 }), {
+        const row = await db.prepare(`SELECT is_auto_billing, billing_mode FROM ${tableName} WHERE id = ?`).bind(planId).first();
+        return new Response(JSON.stringify({ success: true, is_auto_billing: row ? row.is_auto_billing : 0, billing_mode: row ? row.billing_mode : 'manual' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
@@ -20362,6 +21697,500 @@ export default {
 
         await db.prepare(`UPDATE ${tableName} SET badge = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(badge, planId).run();
         return new Response(JSON.stringify({ success: true, id: planId, badge }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTES ADMIN : TRANSACTIONS PAYSTACK & CONFIGURATION PASSERELLE
+      // ----------------------------------------------------------------------
+      if (request.method === 'GET' && path === '/api/admin/payments/overview') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const cfg = await safeFirst(db, `SELECT * FROM payment_gateway_config WHERE id = 'default'`) || {
+          id: 'default',
+          provider: 'paystack',
+          paystack_enabled: 1,
+          manual_receipt_enabled: 1,
+          default_currency: 'XOF',
+          callback_url: 'https://studycloud.dkd-technologies.com/?payment=paystack-return'
+        };
+
+        const txRowsRes = await safeQuery(db, `
+          SELECT t.*, COALESCE(NULLIF(t.user_name, ''), u.name, t.user_id) AS resolved_user_name,
+                 COALESCE(NULLIF(t.user_email, ''), u.email, '') AS resolved_user_email
+          FROM payment_transactions t
+          LEFT JOIN users u ON u.id = t.user_id
+          ORDER BY t.created_at DESC
+          LIMIT 300
+        `, [], { results: [] });
+
+        const mappedTx = (txRowsRes.results || []).map(r => ({
+          id: r.id,
+          reference: r.reference,
+          user_id: r.user_id,
+          user_name: r.resolved_user_name || r.user_name || r.user_id,
+          user_email: r.resolved_user_email || r.user_email || '',
+          category: r.product_type || 'storage',
+          app_key: r.app_key || '',
+          app_name: r.app_name || '',
+          plan_id: r.product_id || '',
+          plan_name: r.product_name || '',
+          billing_mode: r.billing_mode || 'manual',
+          duration_days: Number(r.duration_days || 0),
+          amount_major: Number(r.paid_amount > 0 ? r.paid_amount : r.expected_amount) || 0,
+          currency: r.currency || 'XOF',
+          provider: r.provider || 'paystack',
+          channel: r.channel || '',
+          network_label: r.network_label || (r.provider === 'manual_receipt' ? 'Reçu manuel' : 'Paystack'),
+          status: r.status || 'pending',
+          fulfilled_at: r.fulfilled_at || null,
+          paid_at: r.fulfilled_at || r.updated_at || r.created_at,
+          created_at: r.created_at
+        }));
+
+        // Fusionner également les validations manuelles historiques (storage_upgrade_requests approuvées) si non déjà présentes
+        const existingRefs = new Set(mappedTx.map(t => t.reference));
+        const manualReqsRes = await safeQuery(db, `
+          SELECT r.*, COALESCE(u.name, r.user_name, r.user_id) AS resolved_user_name,
+                 COALESCE(u.email, r.user_email, '') AS resolved_user_email
+          FROM storage_upgrade_requests r
+          LEFT JOIN users u ON u.id = r.user_id
+          ORDER BY r.created_at DESC
+          LIMIT 150
+        `, [], { results: [] });
+
+        for (const mr of (manualReqsRes.results || [])) {
+          const ref = 'MANUAL_' + mr.id;
+          if (existingRefs.has(ref)) continue;
+          const st = String(mr.status || 'pending').toLowerCase();
+          const mappedStatus = (st === 'approved' || st === 'completed' || st === 'paid') ? 'paid' : (st === 'rejected' ? 'failed' : 'pending');
+          const reqCat = String(mr.category || mr.plan_type || '').toLowerCase().includes('ai') ? 'ai' : 'storage';
+          const amt = Number(mr.amount || mr.price || 0);
+          mappedTx.push({
+            id: ref,
+            reference: ref,
+            user_id: mr.user_id || '',
+            user_name: mr.resolved_user_name || mr.user_id || 'Utilisateur',
+            user_email: mr.resolved_user_email || '',
+            category: reqCat,
+            app_key: '',
+            app_name: '',
+            plan_id: mr.plan_id || '',
+            plan_name: mr.plan_name || (reqCat === 'ai' ? 'Forfait IA (Manuel)' : 'Forfait Stockage (Manuel)'),
+            billing_mode: 'manual',
+            duration_days: 30,
+            amount_major: amt,
+            currency: mr.currency || 'XOF',
+            provider: 'manual_receipt',
+            channel: mr.payment_method || 'manual',
+            network_label: mr.payment_method ? ('Manuel · ' + mr.payment_method) : 'Reçu manuel',
+            status: mappedStatus,
+            fulfilled_at: mappedStatus === 'paid' ? (mr.updated_at || mr.created_at) : null,
+            paid_at: mr.updated_at || mr.created_at,
+            created_at: mr.created_at
+          });
+        }
+
+        mappedTx.sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
+
+        const nowMonthPrefix = new Date().toISOString().slice(0, 7);
+        const toXof = (amt, cur) => {
+          const c = String(cur || 'XOF').toUpperCase();
+          if (c === 'USD') return Math.round(amt * 650);
+          if (c === 'EUR') return Math.round(amt * 655.957);
+          return Math.round(amt);
+        };
+
+        let monthRevenueXof = 0;
+        let monthPaidCount = 0;
+        let totalRevenueXof = 0;
+        let totalPaidCount = 0;
+        let pendingOrFailedCount = 0;
+        const netMap = {};
+
+        for (const tx of mappedTx) {
+          const st = String(tx.status || '').toLowerCase();
+          const isPaid = st === 'paid' || st === 'completed' || st === 'approved';
+          if (isPaid) {
+            const xof = toXof(tx.amount_major, tx.currency);
+            totalRevenueXof += xof;
+            totalPaidCount += 1;
+            const dateStr = String(tx.paid_at || tx.created_at || '');
+            if (dateStr.startsWith(nowMonthPrefix)) {
+              monthRevenueXof += xof;
+              monthPaidCount += 1;
+            }
+            const netKey = tx.network_label || 'Paystack';
+            if (!netMap[netKey]) netMap[netKey] = { network: netKey, count: 0, total_xof: 0 };
+            netMap[netKey].count += 1;
+            netMap[netKey].total_xof += xof;
+          } else {
+            pendingOrFailedCount += 1;
+          }
+        }
+
+        const activeAppEntRow = await safeFirst(db, `SELECT COUNT(*) AS cnt FROM user_app_entitlements WHERE status IN ('active', 'trial')`);
+        const activeSubRow = await safeFirst(db, `SELECT COUNT(*) AS cnt FROM user_subscriptions WHERE status = 'active'`);
+        const activeAppAccessCount = Number(activeAppEntRow?.cnt || 0);
+        const activeStorageSubsCount = Number(activeSubRow?.cnt || 0);
+
+        return new Response(JSON.stringify({
+          success: true,
+          config: cfg,
+          transactions: mappedTx,
+          networkBreakdown: Object.values(netMap).sort((a, b) => b.total_xof - a.total_xof),
+          stats: {
+            monthRevenueXof,
+            monthPaidCount,
+            totalRevenueXof,
+            totalPaidCount,
+            pendingOrFailedCount,
+            activeAppAccessCount,
+            activeStorageSubsCount,
+            activeEntitlementsCount: activeAppAccessCount + activeStorageSubsCount
+          }
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/payments/config') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const paystackEnabled = body.paystack_enabled !== undefined ? (body.paystack_enabled ? 1 : 0) : 1;
+        const manualReceiptEnabled = body.manual_receipt_enabled !== undefined ? (body.manual_receipt_enabled ? 1 : 0) : 1;
+        const defaultCurrency = String(body.default_currency || 'XOF').toUpperCase();
+
+        await db.prepare(`
+          INSERT INTO payment_gateway_config (id, provider, paystack_enabled, manual_receipt_enabled, default_currency, updated_at)
+          VALUES ('default', 'paystack', ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET
+            paystack_enabled = excluded.paystack_enabled,
+            manual_receipt_enabled = excluded.manual_receipt_enabled,
+            default_currency = excluded.default_currency,
+            updated_at = CURRENT_TIMESTAMP
+        `).bind(paystackEnabled, manualReceiptEnabled, defaultCurrency).run();
+
+        const updatedCfg = await safeFirst(db, `SELECT * FROM payment_gateway_config WHERE id = 'default'`);
+        return new Response(JSON.stringify({ success: true, config: updatedCfg }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTES ADMIN : APPLICATIONS MONÉTISÉES, CARTES DE PRIX & ACCÈS
+      // ----------------------------------------------------------------------
+      if (request.method === 'GET' && path === '/api/admin/monetized-apps') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const appsRes = await safeQuery(db, `SELECT * FROM monetized_apps ORDER BY sort_order ASC, created_at ASC`, [], { results: [] });
+        const plansRes = await safeQuery(db, `SELECT * FROM app_subscription_plans ORDER BY sort_order ASC, price ASC`, [], { results: [] });
+        const entRes = await safeQuery(db, `
+          SELECT e.*, COALESCE(u.name, e.user_id) AS user_name, COALESCE(u.email, '') AS user_email
+          FROM user_app_entitlements e
+          LEFT JOIN users u ON u.id = e.user_id
+          ORDER BY e.updated_at DESC
+          LIMIT 250
+        `, [], { results: [] });
+
+        return new Response(JSON.stringify({
+          success: true,
+          apps: appsRes.results || [],
+          plans: plansRes.results || [],
+          entitlements: entRes.results || []
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/monetized-apps/save') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const appKey = String(body.app_key || '').trim().toLowerCase().replace(/[^a-z0-9_-]/g, '_');
+        const name = String(body.name || '').trim();
+        if (!appKey || !name) {
+          return new Response(JSON.stringify({ success: false, error: 'app_key et name requis' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        const icon = String(body.icon || '📱').trim() || '📱';
+        const description = String(body.description || '').trim();
+        const isPaid = body.is_paid ? 1 : 0;
+        const trialDays = Math.max(0, parseInt(body.trial_days !== undefined ? body.trial_days : (body.free_trial_days || 0), 10) || 0);
+        const graceDays = Math.max(0, parseInt(body.grace_period_days !== undefined ? body.grace_period_days : 5, 10) || 5);
+        const sortOrder = Number(body.sort_order) || 10;
+
+        await db.prepare(`
+          INSERT INTO monetized_apps (
+            app_key, name, icon, description, is_paid, trial_days, grace_period_days, is_active, sort_order, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(app_key) DO UPDATE SET
+            name = excluded.name,
+            icon = excluded.icon,
+            description = excluded.description,
+            is_paid = excluded.is_paid,
+            trial_days = excluded.trial_days,
+            grace_period_days = excluded.grace_period_days,
+            updated_at = CURRENT_TIMESTAMP
+        `).bind(appKey, name, icon, description, isPaid, trialDays, graceDays, sortOrder).run();
+
+        const appRow = await safeFirst(db, `SELECT * FROM monetized_apps WHERE app_key = ?`, [appKey]);
+        return new Response(JSON.stringify({ success: true, app: appRow }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/monetized-apps/toggle-paid') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const appKey = String(body.app_key || '').trim();
+        const isPaid = body.is_paid ? 1 : 0;
+        await db.prepare(`UPDATE monetized_apps SET is_paid = ?, updated_at = CURRENT_TIMESTAMP WHERE app_key = ?`).bind(isPaid, appKey).run();
+        return new Response(JSON.stringify({ success: true, app_key: appKey, is_paid: isPaid }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/monetized-apps/delete') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const appKey = String(body.app_key || '').trim();
+        if (!appKey || appKey === 'moyennes') {
+          return new Response(JSON.stringify({ success: false, error: "L'application système Moyennes ne peut pas être supprimée (passez-la simplement en Gratuit)." }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await db.prepare(`DELETE FROM app_subscription_plans WHERE app_key = ?`).bind(appKey).run();
+        await db.prepare(`DELETE FROM monetized_apps WHERE app_key = ?`).bind(appKey).run();
+        return new Response(JSON.stringify({ success: true, app_key: appKey }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/monetized-apps/plans/save') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const appKey = String(body.app_key || '').trim();
+        const name = String(body.name || '').trim();
+        if (!appKey || !name) {
+          return new Response(JSON.stringify({ success: false, error: 'app_key et name requis' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        const planId = String(body.id || ('app_plan_' + appKey + '_' + Date.now())).trim();
+        const badge = String(body.badge || '').trim();
+        const description = String(body.description || '').trim();
+        const price = Math.max(0, Number(body.price) || 0);
+        const primaryCurrency = String(body.primary_currency || 'XOF').toUpperCase();
+        const currenciesEnabled = typeof body.currencies_enabled === 'string' ? body.currencies_enabled : JSON.stringify(body.currencies_enabled || ['XOF', 'USD', 'EUR']);
+        const currencyConversions = typeof body.currency_conversions === 'string' ? body.currency_conversions : JSON.stringify(body.currency_conversions || {});
+        const rawMode = String(body.billing_mode || 'manual').trim().toLowerCase();
+        const billingMode = (rawMode === 'auto' || rawMode === 'infinite') ? rawMode : 'manual';
+        const isAutoBilling = billingMode === 'auto' ? 1 : 0;
+        const durationDays = billingMode === 'infinite' ? 0 : Math.max(1, Math.min(3650, parseInt(body.duration_days || 30, 10) || 30));
+        const features = typeof body.features === 'string' ? body.features : JSON.stringify(body.features || []);
+        const isActive = body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1;
+        const sortOrder = Number(body.sort_order) || 1;
+
+        await db.prepare(`
+          INSERT INTO app_subscription_plans (
+            id, app_key, name, badge, description, price, primary_currency,
+            currencies_enabled, currency_conversions, billing_mode, duration_days,
+            is_auto_billing, features, is_active, sort_order, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET
+            name = excluded.name,
+            badge = excluded.badge,
+            description = excluded.description,
+            price = excluded.price,
+            primary_currency = excluded.primary_currency,
+            currencies_enabled = excluded.currencies_enabled,
+            currency_conversions = excluded.currency_conversions,
+            billing_mode = excluded.billing_mode,
+            duration_days = excluded.duration_days,
+            is_auto_billing = excluded.is_auto_billing,
+            features = excluded.features,
+            is_active = excluded.is_active,
+            sort_order = excluded.sort_order,
+            updated_at = CURRENT_TIMESTAMP
+        `).bind(
+          planId, appKey, name, badge, description, price, primaryCurrency,
+          currenciesEnabled, currencyConversions, billingMode, durationDays,
+          isAutoBilling, features, isActive, sortOrder
+        ).run();
+
+        const planRow = await safeFirst(db, `SELECT * FROM app_subscription_plans WHERE id = ?`, [planId]);
+        return new Response(JSON.stringify({ success: true, plan: planRow }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/monetized-apps/plans/toggle-active') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const planId = String(body.id || '').trim();
+        await db.prepare(`UPDATE app_subscription_plans SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        return new Response(JSON.stringify({ success: true, id: planId }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/monetized-apps/plans/delete') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const planId = String(body.id || '').trim();
+        await db.prepare(`DELETE FROM app_subscription_plans WHERE id = ?`).bind(planId).run();
+        return new Response(JSON.stringify({ success: true, id: planId }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/monetized-apps/entitlements/grant') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const appKey = String(body.app_key || '').trim();
+        const userQuery = String(body.user_query || '').trim();
+        const mode = String(body.billing_mode || 'manual').toLowerCase() === 'infinite' ? 'infinite' : 'manual';
+        const days = mode === 'infinite' ? 0 : Math.max(1, parseInt(body.duration_days || 30, 10) || 30);
+
+        const userRow = await safeFirst(
+          db,
+          `SELECT id, name, email FROM users WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 1`,
+          [userQuery, userQuery]
+        );
+        const targetUserId = userRow ? userRow.id : userQuery;
+        if (!appKey || !targetUserId) {
+          return new Response(JSON.stringify({ success: false, error: 'Utilisateur ou application invalide' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+
+        const nowMs = Date.now();
+        const expiresAt = mode === 'infinite' ? null : new Date(nowMs + days * 86400000).toISOString();
+        const graceUntil = expiresAt ? new Date(nowMs + (days + 5) * 86400000).toISOString() : null;
+        const entId = 'ent_' + appKey + '_' + targetUserId;
+
+        await db.prepare(`
+          INSERT INTO user_app_entitlements (
+            id, user_id, app_key, plan_id, plan_name, status, access_type,
+            starts_at, expires_at, grace_until, auto_renew, notes, updated_at
+          ) VALUES (?, ?, ?, 'admin_grant', ?, 'active', ?, CURRENT_TIMESTAMP, ?, ?, 0, 'Accordé par administrateur', CURRENT_TIMESTAMP)
+          ON CONFLICT(user_id, app_key) DO UPDATE SET
+            plan_id = 'admin_grant',
+            plan_name = excluded.plan_name,
+            status = 'active',
+            access_type = excluded.access_type,
+            starts_at = CURRENT_TIMESTAMP,
+            expires_at = excluded.expires_at,
+            grace_until = excluded.grace_until,
+            notes = 'Accordé par administrateur',
+            updated_at = CURRENT_TIMESTAMP
+        `).bind(
+          entId,
+          targetUserId,
+          appKey,
+          mode === 'infinite' ? 'Accès à vie (Admin)' : ('Accès ' + days + 'j (Admin)'),
+          mode,
+          expiresAt,
+          graceUntil
+        ).run();
+
+        return new Response(JSON.stringify({ success: true, user_id: targetUserId, app_key: appKey, expires_at: expiresAt }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      if (request.method === 'POST' && path === '/api/admin/monetized-apps/entitlements/revoke') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const userId = String(body.user_id || '').trim();
+        const appKey = String(body.app_key || '').trim();
+        await db.prepare(`
+          UPDATE user_app_entitlements
+          SET status = 'revoked', expires_at = CURRENT_TIMESTAMP, grace_until = NULL, updated_at = CURRENT_TIMESTAMP
+          WHERE user_id = ? AND app_key = ?
+        `).bind(userId, appKey).run();
+        return new Response(JSON.stringify({ success: true, user_id: userId, app_key: appKey }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });

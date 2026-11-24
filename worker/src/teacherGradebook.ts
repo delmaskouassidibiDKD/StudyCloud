@@ -10,6 +10,8 @@
  *  - Nettoyage automatique des objets R2 lors des remplacements et suppressions en cascade
  */
 
+import { checkUserAppAccess } from './paystackBilling';
+
 export interface StorageQuotaCheckResult {
   allowed: boolean;
   totalAllowedBytes: number;
@@ -2037,6 +2039,24 @@ export async function handleTeacherGradebookRoutes(
   const authUser = await getAuthUser(request);
   if (!authUser || !authUser.userId) {
     return errorResponse('Authentification requise. Veuillez vous reconnecter.', 401, origin);
+  }
+
+  // Contrôle d'accès monétisé côté serveur (actif uniquement si l'admin a basculé 'moyennes' en Payant)
+  const moyennesAccess = await checkUserAppAccess(db, String(authUser.userId), 'moyennes');
+  if (!moyennesAccess.allowed) {
+    return jsonResponse(
+      {
+        success: false,
+        code: 'APP_PAYMENT_REQUIRED',
+        appKey: 'moyennes',
+        status: moyennesAccess.status,
+        error:
+          moyennesAccess.reason ||
+          "Un accès ou abonnement actif est requis pour utiliser l'application Moyennes.",
+      },
+      402,
+      origin
+    );
   }
   const userId = String(authUser.userId);
   const apiOrigin = url.origin;

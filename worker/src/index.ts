@@ -7,6 +7,12 @@ import {
   computeTeacherGradebookStorageUsage,
   sanitizeSegment as sanitizeTeacherSegment,
 } from './teacherGradebook';
+import {
+  handlePaystackBillingRoutes,
+  ensurePaystackBillingTables,
+  normalizeBillingMode,
+  normalizeDurationDays,
+} from './paystackBilling';
 
 interface D1PreparedStatement {
   bind(...values: any[]): D1PreparedStatement;
@@ -81,6 +87,7 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   RESEND_API_KEY?: string;
+  STUDYCLOUD_PAYSTACK_SECRET_KEY?: string;
   [key: string]: any;
 }
 
@@ -5815,6 +5822,25 @@ a:hover{transform:translateY(-2px)}
             recalculateAndSaveUserStorage(env.DB, uid, rawEnv),
         });
         if (teacherRes) return teacherRes;
+      }
+
+      // ----------------------------------------------------------------------
+      // MODULE PAIEMENTS PAYSTACK, ABONNEMENTS & APPLICATIONS MONÉTISÉES
+      // ----------------------------------------------------------------------
+      if (
+        path.startsWith('/api/payments/') ||
+        path.startsWith('/api/monetized-apps') ||
+        path.startsWith('/api/apps/access/')
+      ) {
+        const paystackRes = await handlePaystackBillingRoutes(request, url, path, method, {
+          db: env.DB,
+          rawEnv,
+          origin,
+          getAuthUser,
+          jsonResponse,
+          errorResponse,
+        });
+        if (paystackRes) return paystackRes;
       }
 
       // ----------------------------------------------------------------------
@@ -18287,21 +18313,27 @@ a:hover{transform:translateY(-2px)}
         const yearlyPrice = Number(plan.yearly_price) || 0;
         const yearlyDiscountPct = Number(plan.yearly_discount_pct) || 0;
         const features = typeof plan.features === 'string' ? plan.features : JSON.stringify(plan.features || []);
-        const isAutoBilling = plan.is_auto_billing ? 1 : 0;
+        const billingMode = normalizeBillingMode(plan.billing_mode, plan.is_auto_billing, plan.pricing_model);
+        const durationDays = normalizeDurationDays(plan.duration_days, billingMode);
+        const isAutoBilling = billingMode === 'auto' ? 1 : 0;
         const isActive = plan.is_active !== undefined ? (plan.is_active ? 1 : 0) : 1;
         const sortOrder = Number(plan.sort_order) || 1;
+        await ensurePaystackBillingTables(targetDb);
 
         if (category === 'ai') {
           const creditsOrWords = String(plan.credits_or_words || '100 000 crédits IA').trim();
           const creditsCount = Number(plan.credits_count) || 100000;
-          const pricingModel = String(plan.pricing_model || 'one_time').trim();
+          const pricingModel =
+            billingMode === 'infinite'
+              ? 'one_time'
+              : String(plan.pricing_model || 'subscription').trim();
 
           await targetDb.prepare(`
             INSERT INTO ai_subscription_plans (
               id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
               currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-              is_auto_billing, is_active, sort_order, pricing_model, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              is_auto_billing, billing_mode, duration_days, is_active, sort_order, pricing_model, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -18316,6 +18348,8 @@ a:hover{transform:translateY(-2px)}
               yearly_discount_pct = excluded.yearly_discount_pct,
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
+              billing_mode = excluded.billing_mode,
+              duration_days = excluded.duration_days,
               is_active = excluded.is_active,
               sort_order = excluded.sort_order,
               pricing_model = excluded.pricing_model,
@@ -18323,7 +18357,7 @@ a:hover{transform:translateY(-2px)}
           `).bind(
             planId, name, badge, description, creditsOrWords, creditsCount, price, primaryCurrency,
             currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
-            isAutoBilling, isActive, sortOrder, pricingModel
+            isAutoBilling, billingMode, durationDays, isActive, sortOrder, pricingModel
           ).run();
 
           const updatedPlan = await targetDb.prepare("SELECT * FROM ai_subscription_plans WHERE id = ?").bind(planId).first();
@@ -18336,8 +18370,8 @@ a:hover{transform:translateY(-2px)}
             INSERT INTO storage_subscription_plans (
               id, name, badge, description, storage_amount, storage_mb, price, primary_currency,
               currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-              is_auto_billing, is_active, sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              is_auto_billing, billing_mode, duration_days, is_active, sort_order, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -18352,13 +18386,15 @@ a:hover{transform:translateY(-2px)}
               yearly_discount_pct = excluded.yearly_discount_pct,
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
+              billing_mode = excluded.billing_mode,
+              duration_days = excluded.duration_days,
               is_active = excluded.is_active,
               sort_order = excluded.sort_order,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             planId, name, badge, description, storageAmount, storageMb, price, primaryCurrency,
             currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
-            isAutoBilling, isActive, sortOrder
+            isAutoBilling, billingMode, durationDays, isActive, sortOrder
           ).run();
 
           const updatedPlan = await targetDb.prepare("SELECT * FROM storage_subscription_plans WHERE id = ?").bind(planId).first();

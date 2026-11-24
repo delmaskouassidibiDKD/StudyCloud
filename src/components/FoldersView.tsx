@@ -25,6 +25,7 @@ import { StorageMenuView } from './StorageMenuView';
 import { Page1FilesMenuView } from './Page1FilesMenuView';
 import { RedRobotMenuView } from './RedRobotMenuView';
 import { TeacherClassesView } from './teacher/TeacherClassesView';
+import { AppAccessGate } from './AppAccessGate';
 import { DkdStoreView } from './DkdStoreView';
 import { DkdStore3DIcon } from './DkdStore3DIcon';
 import { NavigationTab } from '../types';
@@ -2328,13 +2329,22 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'teacher-classes-menu' && (
         <div className={`fixed inset-x-0 ${viewerExpandLevel >= 2 ? 'md:left-0 md:w-full z-[60]' : viewerExpandLevel >= 1 ? 'md:left-64 md:w-[calc(100%-16rem)] z-50' : 'md:left-64 md:w-[calc(100%-16rem)] z-30'} md:right-0 bottom-0 ${viewerExpandLevel >= 1 ? 'top-0' : 'top-[64px] md:top-[68px]'} overflow-hidden transition-all duration-300`}>
-          <TeacherClassesView
+          <AppAccessGate
+            appKey="moyennes"
+            fallbackTitle="Moyennes (Espace Enseignant)"
             onBack={() => {
               resetViewerExpand();
               setViewMode('home');
             }}
-            user={user}
-          />
+          >
+            <TeacherClassesView
+              onBack={() => {
+                resetViewerExpand();
+                setViewMode('home');
+              }}
+              user={user}
+            />
+          </AppAccessGate>
         </div>
       )}
       {viewMode === 'storage-menu' && (

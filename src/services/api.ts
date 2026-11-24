@@ -3269,6 +3269,9 @@ export interface SubscriptionPlan {
   yearly_discount_pct: number;
   features: string | Array<{ text: string; enabled: boolean }>;
   is_auto_billing: number;
+  billing_mode?: 'auto' | 'manual' | 'infinite';
+  duration_days?: number;
+  paystack_plan_code?: string;
   is_active: number;
   sort_order?: number;
   pricing_model?: 'subscription' | 'one_time' | 'pack';

@@ -3,7 +3,16 @@ import { ArrowLeft, Check, HardDrive, Bot, RotateCw } from 'lucide-react';
 import { SubscriptionFormView, SelectedPlan } from './SubscriptionFormView';
 import { RenewalFormView } from './RenewalFormView';
 import { RenewalSectionView } from './RenewalSectionView';
+import { PaystackCheckoutModal } from './PaystackCheckoutModal';
 import { getSubscriptionPlans, SubscriptionPlan } from '../services/api';
+import {
+  ClientBillingMode,
+  DEFAULT_PAYMENT_GATEWAY_CONFIG,
+  formatBillingDurationBadge,
+  getPaymentGatewayConfig,
+  normalizeClientBillingMode,
+  PaymentGatewayConfig,
+} from '../services/paystackBillingApi';
 
 interface PricingViewProps {
   onBack: () => void;
@@ -166,8 +175,21 @@ export const PricingView: React.FC<PricingViewProps> = ({
   const [dbAiPlans, setDbAiPlans] = useState<SubscriptionPlan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState<boolean>(true);
 
-  // État du plan sélectionné pour afficher le menu de souscription
+  // État du plan sélectionné pour afficher le menu de souscription (reçu manuel)
   const [selectedPlanForSubscription, setSelectedPlanForSubscription] = useState<SelectedPlan | null>(null);
+
+  // Configuration passerelle Paystack + Bouton « Payer manuellement » pilotés par l'admin
+  const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>(DEFAULT_PAYMENT_GATEWAY_CONFIG);
+  const [paystackCheckoutTarget, setPaystackCheckoutTarget] = useState<{
+    plan: SubscriptionPlan;
+    type: 'storage' | 'ai';
+    billingMode: ClientBillingMode;
+    durationDays: number;
+    billingCycle: 'monthly' | 'annual' | 'one_time' | 'infinite';
+    priceDisplay: string;
+    secondaryPriceDisplay?: string;
+    manualPlan: SelectedPlan;
+  } | null>(null);
 
   // État pour afficher le menu complet de renouvellement
   const [selectedPlanForRenewal, setSelectedPlanForRenewal] = useState<any | null>(null);
@@ -177,6 +199,12 @@ export const PricingView: React.FC<PricingViewProps> = ({
   useEffect(() => {
     let isMounted = true;
     setLoadingPlans(true);
+
+    getPaymentGatewayConfig(true)
+      .then((cfg) => {
+        if (isMounted) setPaymentConfig(cfg);
+      })
+      .catch(() => {});
 
     getSubscriptionPlans()
       .then((res) => {
@@ -323,7 +351,11 @@ export const PricingView: React.FC<PricingViewProps> = ({
       return true;
     });
 
-    const isAuto = plan.is_auto_billing === 1;
+    const billingMode = normalizeClientBillingMode(plan.billing_mode, plan.is_auto_billing, plan.pricing_model);
+    const isInfinite = billingMode === 'infinite';
+    const isAuto = billingMode === 'auto';
+    const durationDays = isInfinite ? 0 : Math.max(1, Number(plan.duration_days || 30));
+    const durationBadge = formatBillingDurationBadge(billingMode, durationDays, plan.is_auto_billing, plan.pricing_model);
 
     return (
       <div 
@@ -341,11 +373,17 @@ export const PricingView: React.FC<PricingViewProps> = ({
               {plan.name}
             </h3>
             <div className="flex items-center gap-1.5 flex-wrap justify-end">
-              {isOneTime && (
-                <span className="bg-sky-500/15 text-sky-700 dark:text-sky-300 border border-sky-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  ⚡ Pack
-                </span>
-              )}
+              <span
+                className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                  durationBadge.tone === 'amber'
+                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-300 border-amber-500/30'
+                    : durationBadge.tone === 'emerald'
+                    ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 border-emerald-500/30'
+                    : 'bg-sky-500/15 text-sky-700 dark:text-sky-300 border-sky-500/30'
+                }`}
+              >
+                {durationBadge.shortLabel}
+              </span>
               {isPopular && (
                 <span className="bg-blue-500/20 text-blue-200 border border-blue-400/30 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
                   {plan.badge}
@@ -444,29 +482,56 @@ export const PricingView: React.FC<PricingViewProps> = ({
           </ul>
         </div>
 
-        {/* Bouton d'action : Commencer (Paiement Manuel) OU S'abonner (Abonnement Automatique) */}
+        {/* Bouton d'action : Ouvre PaystackCheckoutModal (avec bouton Payer manuellement contrôlé par l'admin) */}
         <button
-          onClick={() => setSelectedPlanForSubscription({
-            name: `${plan.name} ${type === 'ai' ? 'IA' : 'Stockage'}`,
-            type: type,
-            storageDisplay: lockedPerkText,
-            priceDisplay: isOneTime 
-              ? `${getCurrencySymbol(pricing.primaryCurr)} ${pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`
-              : `${getCurrencySymbol(pricing.primaryCurr)} ${pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice} / ${isAnnual ? 'an' : 'mois'} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`,
-            price: pricing.activePrice,
-            priceFcfa: pricing.priceFcfa,
-            currency: getCurrencySymbol(pricing.primaryCurr),
-            billingCycle: isOneTime ? 'one_time' : billingCycle,
-            mb: plan.storage_mb,
-            words: plan.credits_count
-          })}
+          onClick={() => {
+            const formattedPrimary = `${getCurrencySymbol(pricing.primaryCurr)} ${
+              pricing.primaryCurr === 'XOF'
+                ? pricing.activePrice.toLocaleString('fr-FR')
+                : pricing.activePrice
+            }`;
+            const manualPlanObj: SelectedPlan = {
+              name: `${plan.name} ${type === 'ai' ? 'IA' : 'Stockage'}`,
+              type: type,
+              storageDisplay: lockedPerkText,
+              priceDisplay:
+                isOneTime || isInfinite
+                  ? `${formattedPrimary} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`
+                  : `${formattedPrimary} / ${isAnnual ? 'an' : 'mois'} ${
+                      pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''
+                    }`,
+              price: pricing.activePrice,
+              priceFcfa: pricing.priceFcfa,
+              currency: getCurrencySymbol(pricing.primaryCurr),
+              billingCycle: isOneTime || isInfinite ? 'one_time' : billingCycle,
+              mb: plan.storage_mb,
+              words: plan.credits_count,
+            };
+
+            if (!paymentConfig.paystackEnabled && paymentConfig.manualReceiptEnabled) {
+              setSelectedPlanForSubscription(manualPlanObj);
+              return;
+            }
+
+            setPaystackCheckoutTarget({
+              plan,
+              type,
+              billingMode,
+              durationDays,
+              billingCycle: isInfinite ? 'infinite' : isOneTime ? 'one_time' : billingCycle,
+              priceDisplay: `${Math.round(pricing.priceFcfa).toLocaleString('fr-FR')} FCFA`,
+              secondaryPriceDisplay:
+                pricing.primaryCurr !== 'XOF' ? formattedPrimary : pricing.secondaryString || undefined,
+              manualPlan: manualPlanObj,
+            });
+          }}
           className={`w-full py-2.5 sm:py-3 font-semibold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shadow-xs text-center active:scale-[0.98] ${
             isPopular
               ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-950/30'
               : 'bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white'
           }`}
         >
-          {isAuto ? "S'abonner" : "Commencer"}
+          {isInfinite ? 'Obtenir à vie' : isAuto ? "S'abonner" : 'Choisir cette offre'}
         </button>
       </div>
     );
@@ -630,6 +695,32 @@ export const PricingView: React.FC<PricingViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Modale de paiement Paystack + bouton « Payer manuellement » contrôlé par l'admin */}
+      {paystackCheckoutTarget && (
+        <PaystackCheckoutModal
+          isOpen={Boolean(paystackCheckoutTarget)}
+          onClose={() => setPaystackCheckoutTarget(null)}
+          productType={paystackCheckoutTarget.type}
+          productId={paystackCheckoutTarget.plan.id}
+          productName={`${paystackCheckoutTarget.plan.name} (${
+            paystackCheckoutTarget.type === 'ai' ? 'Crédits IA' : 'Stockage Cloud'
+          })`}
+          subtitle={paystackCheckoutTarget.manualPlan.storageDisplay}
+          priceDisplay={paystackCheckoutTarget.priceDisplay}
+          secondaryPriceDisplay={paystackCheckoutTarget.secondaryPriceDisplay}
+          billingCycle={paystackCheckoutTarget.billingCycle}
+          billingMode={paystackCheckoutTarget.billingMode}
+          durationDays={paystackCheckoutTarget.durationDays}
+          currency="XOF"
+          initialConfig={paymentConfig}
+          onFallbackManual={() => {
+            const targetManual = paystackCheckoutTarget.manualPlan;
+            setPaystackCheckoutTarget(null);
+            setSelectedPlanForSubscription(targetManual);
+          }}
+        />
+      )}
 
     </div>
   );
