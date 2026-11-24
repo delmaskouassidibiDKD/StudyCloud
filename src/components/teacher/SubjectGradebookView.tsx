@@ -2202,6 +2202,42 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         }
       };
     });
+    // Retirer tout bgColor figé (ex. appliqué par Assistant Delmas) pour que le choix manuel prenne immédiatement le dessus
+    setCellCustomStyles(prev => {
+      let changed = false;
+      const next = { ...prev };
+      const stripBg = (k: string) => {
+        if (next[k]?.bgColor !== undefined) {
+          const { bgColor: _removed, ...rest } = next[k];
+          if (Object.keys(rest).length === 0) delete next[k];
+          else next[k] = rest;
+          changed = true;
+        }
+      };
+      if (mode === 'cell') {
+        stripBg(`header_note_${colIndex}`);
+      } else {
+        stripBg(`header_note_${colIndex}`);
+        for (const s of students) {
+          stripBg(`${s.id}_${colIndex}`);
+        }
+      }
+      return changed ? next : prev;
+    });
+    if (mode === 'column') {
+      setCellColors(prev => {
+        let changed = false;
+        const next = { ...prev };
+        for (const s of students) {
+          const k = `${s.id}_${colIndex}`;
+          if (next[k] !== undefined) {
+            delete next[k];
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }
     setIsSaved(false);
   };
 
@@ -2214,6 +2250,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       else next[key] = color;
       return next;
     });
+    // Toujours nettoyer/synchroniser cellCustomStyles[key].bgColor pour que le remplacement manuel prenne immédiatement effet
+    setCellCustomStyles(prev => {
+      const existing = prev[key];
+      if (!existing || existing.bgColor === undefined) return prev;
+      const { bgColor: _removed, ...rest } = existing;
+      const next = { ...prev };
+      if (Object.keys(rest).length === 0) delete next[key];
+      else next[key] = rest;
+      return next;
+    });
     setIsSaved(false);
   };
 
@@ -2224,6 +2270,32 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       if (!color) delete next[studentId];
       else next[studentId] = color;
       return next;
+    });
+    const rowPrefix = `${studentId}_`;
+    // Retirer les couleurs de cellules individuelles (manuelles ou IA) sur cette ligne pour que la couleur de ligne choisie s'applique partout
+    setCellColors(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const k of Object.keys(next)) {
+        if (k.startsWith(rowPrefix)) {
+          delete next[k];
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setCellCustomStyles(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const k of Object.keys(next)) {
+        if (k.startsWith(rowPrefix) && next[k]?.bgColor !== undefined) {
+          const { bgColor: _removed, ...rest } = next[k];
+          if (Object.keys(rest).length === 0) delete next[k];
+          else next[k] = rest;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
     });
     setIsSaved(false);
   };
@@ -2539,6 +2611,25 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const applyBgColor = (color: string) => {
     const target = getLiveTargetForAction();
     if (!target) return;
+    if (!color) {
+      setCellColors(prev => {
+        if (prev[target.cellKey] === undefined) return prev;
+        const next = { ...prev };
+        delete next[target.cellKey];
+        return next;
+      });
+      setCellCustomStyles(prev => {
+        const existing = prev[target.cellKey];
+        if (!existing || existing.bgColor === undefined) return prev;
+        const { bgColor: _removed, ...rest } = existing;
+        const next = { ...prev };
+        if (Object.keys(rest).length === 0) delete next[target.cellKey];
+        else next[target.cellKey] = rest;
+        return next;
+      });
+      setIsSaved(false);
+      return;
+    }
     updateCellStyleByKey(target.cellKey, { bgColor: color });
   };
 

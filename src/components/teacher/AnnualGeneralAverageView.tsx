@@ -1098,11 +1098,18 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
     pushUndoState();
     setStyles((prev) => {
       const curr = prev.cellCustomStyles?.[activeCell.cellKey] || {};
+      const nextCellStyle: CellCustomStyle = { ...curr, ...patch };
+      const nextCellColors = { ...(prev.cellColors || {}) };
+      if (patch.bgColor === '') {
+        delete nextCellStyle.bgColor;
+        delete nextCellColors[activeCell.cellKey];
+      }
       return {
         ...prev,
+        cellColors: nextCellColors,
         cellCustomStyles: {
           ...(prev.cellCustomStyles || {}),
-          [activeCell.cellKey]: { ...curr, ...patch },
+          [activeCell.cellKey]: nextCellStyle,
         },
       };
     });
@@ -1111,12 +1118,33 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
 
   const applyRowColor = (color: string) => {
     if (!activeCell.rowKey) return;
+    const rowPrefix = `${activeCell.rowKey}_`;
     pushUndoState();
     setStyles((prev) => {
       const nextRows = { ...(prev.rowColors || {}) };
       if (!color) delete nextRows[activeCell.rowKey!];
       else nextRows[activeCell.rowKey!] = color;
-      return { ...prev, rowColors: nextRows };
+
+      const nextCellColors = { ...(prev.cellColors || {}) };
+      for (const k of Object.keys(nextCellColors)) {
+        if (k.startsWith(rowPrefix)) delete nextCellColors[k];
+      }
+
+      const nextCustom = { ...(prev.cellCustomStyles || {}) };
+      for (const k of Object.keys(nextCustom)) {
+        if (k.startsWith(rowPrefix) && nextCustom[k]?.bgColor !== undefined) {
+          const { bgColor: _removed, ...rest } = nextCustom[k];
+          if (Object.keys(rest).length === 0) delete nextCustom[k];
+          else nextCustom[k] = rest;
+        }
+      }
+
+      return {
+        ...prev,
+        rowColors: nextRows,
+        cellColors: nextCellColors,
+        cellCustomStyles: nextCustom,
+      };
     });
     setIsDirty(true);
   };
