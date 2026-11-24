@@ -35,11 +35,13 @@ import type {
 } from '../utils/termGeneralAverage';
 import type { AnnualTermData } from '../utils/annualGeneralAverage';
 import type { CustomMentionRule } from '../utils/gradebookCalculations';
+import type { GradebookColumnOrder } from '../utils/gradebookColumnLayout';
 
 export interface ClassSheetSettings {
   mentionRules: CustomMentionRule[] | null;
   showMatricule: boolean;
   averageScale: number;
+  columnOrder?: GradebookColumnOrder | null;
 }
 
 export interface ClassAverageSheetCardPayload extends ClassAverageCardItem {
@@ -101,6 +103,7 @@ export interface GradebookLayoutState {
   mentionRules?: CustomMentionRule[] | null;
   showMatricule?: boolean;
   averageScale?: number;
+  columnOrder?: GradebookColumnOrder | null;
 }
 
 export interface GradebookStylesState {
@@ -846,6 +849,7 @@ export const TeacherGradebookAPI = {
       mentionRules?: CustomMentionRule[] | null;
       showMatricule?: boolean;
       averageScale?: number;
+      columnOrder?: GradebookColumnOrder | null;
     }
   ) =>
     teacherFetchJson<{ success: boolean; classId: string; classSettings: ClassSheetSettings }>(

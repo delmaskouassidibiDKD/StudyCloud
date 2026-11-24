@@ -3039,3 +3039,137 @@ test('Plafonds backend stricts Assistant Delmas : formats interdits, 10 Mo image
   });
   assert.equal(afterDel.status, 200);
 });
+
+test('Disposition des colonnes (columnOrder) persistée par tableau ou pour toute la classe (nettoyage surcharges + Anti-IDOR)', async () => {
+  const { callApi } = createHarness();
+
+  const { year } = await (await callApi('/api/teacher/years', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { label: '2026 - 2027' },
+  })).json();
+  const { school } = await (await callApi('/api/teacher/schools', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { yearId: year.id, name: 'Lycée Technique' },
+  })).json();
+  const { level } = await (await callApi('/api/teacher/levels', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { schoolId: school.id, name: 'Terminale D' },
+  })).json();
+  const { classItem, terms, classAverages } = await (await callApi('/api/teacher/classes', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { levelId: level.id, name: 'TD 1', teacherName: 'Prof Alice' },
+  })).json();
+  const t1 = terms[0];
+  const t1Avg = classAverages.find((c: any) => c.kind === 'term' && c.termId === t1.id);
+  const annualAvg = classAverages.find((c: any) => c.kind === 'annual');
+  assert.ok(t1Avg && annualAvg);
+
+  const { subject: sMath } = await (await callApi('/api/teacher/subjects', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { classId: classItem.id, termId: t1.id, name: 'Mathématiques', coefficient: 4 },
+  })).json();
+
+  // 1. Surcharge locale sur le tableau Matière + surcharge locale sur le tableau Moyenne Générale
+  const localSheetOrder = {
+    left: ['name', 'photo', 'matricule'],
+    right: ['average', 'mention', 'rank'],
+  };
+  const putGb = await callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      noteColumnCount: 2,
+      columnMetas: { 0: { maxScore: 20 }, 1: { maxScore: 20 } },
+      layout: { columnOrder: localSheetOrder },
+      styles: {},
+      students: [{ id: 's-1', name: 'DIALLO Fatoumata', notes: ['17', '18'] }],
+    },
+  });
+  assert.equal(putGb.status, 200);
+
+  const putAvg = await callApi(`/api/teacher/class-average-sheet/${t1Avg.id}`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: {
+      layout: {
+        columnOrder: {
+          left: ['matricule', 'name', 'photo'],
+          right: ['total', 'average', 'rank', 'mention'],
+        },
+      },
+      styles: {},
+      overrides: { manualStudents: [], subjectOverrides: {} },
+      sortMode: 'merit',
+    },
+  });
+  assert.equal(putAvg.status, 200);
+
+  const loadedGb1 = await (await callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, {
+    token: 'token-alice',
+  })).json();
+  assert.deepEqual(loadedGb1.layout.columnOrder, localSheetOrder);
+  assert.equal(loadedGb1.classSettings.columnOrder, null);
+
+  // 2. Anti-IDOR : Bob ne peut pas modifier la disposition de la classe d'Alice
+  const bobPut = await callApi(`/api/teacher/classes/${classItem.id}/sheet-settings`, {
+    method: 'PUT',
+    token: 'token-bob',
+    body: {
+      columnOrder: { left: ['matricule', 'photo', 'name'], right: ['average', 'rank', 'mention'] },
+    },
+  });
+  assert.equal(bobPut.status, 404);
+
+  // 3. Validation : un payload invalide est rejeté en 400
+  const invalidPut = await callApi(`/api/teacher/classes/${classItem.id}/sheet-settings`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { columnOrder: { left: [], right: [] } },
+  });
+  assert.equal(invalidPut.status, 400);
+
+  // 4. Appliquer à toute la classe : enregistre column_order_json ET nettoie les surcharges locales
+  const classWideOrder = {
+    left: ['matricule', 'photo', 'name'],
+    right: ['average', 'rank', 'mention'],
+  };
+  const classPut = await callApi(`/api/teacher/classes/${classItem.id}/sheet-settings`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { columnOrder: classWideOrder },
+  });
+  assert.equal(classPut.status, 200);
+  const classPutJson = await classPut.json();
+  assert.deepEqual(classPutJson.classSettings.columnOrder, classWideOrder);
+
+  // Vérifier que le tableau matière, le trimestre, l'annuel ET le bootstrap reçoivent tous le nouveau réglage
+  // et que les surcharges locales `layout.columnOrder` ont été nettoyées !
+  const [loadedGb2, loadedTermAvg, loadedAnnualAvg, bootstrapRes] = await Promise.all([
+    callApi(`/api/teacher/gradebook/${sMath.id}/${t1.id}`, { token: 'token-alice' }).then((r) => r.json()),
+    callApi(`/api/teacher/class-average-sheet/${t1Avg.id}`, { token: 'token-alice' }).then((r) => r.json()),
+    callApi(`/api/teacher/class-average-sheet/${annualAvg.id}`, { token: 'token-alice' }).then((r) => r.json()),
+    callApi('/api/teacher/bootstrap', { token: 'token-alice' }).then((r) => r.json()),
+  ]);
+  assert.equal(loadedGb2.layout.columnOrder, undefined, 'La surcharge locale matière doit être nettoyée');
+  assert.deepEqual(loadedGb2.classSettings.columnOrder, classWideOrder);
+  assert.equal(loadedTermAvg.card.layout.columnOrder, undefined, 'La surcharge locale trimestre doit être nettoyée');
+  assert.deepEqual(loadedTermAvg.classSettings.columnOrder, classWideOrder);
+  assert.deepEqual(loadedAnnualAvg.classSettings.columnOrder, classWideOrder);
+  const bootClass = bootstrapRes.classes.find((c: any) => c.id === classItem.id);
+  assert.deepEqual(bootClass.columnOrder, classWideOrder);
+
+  // 5. Réinitialisation par défaut (columnOrder: null)
+  const resetRes = await callApi(`/api/teacher/classes/${classItem.id}/sheet-settings`, {
+    method: 'PUT',
+    token: 'token-alice',
+    body: { columnOrder: null },
+  });
+  assert.equal(resetRes.status, 200);
+  const resetJson = await resetRes.json();
+  assert.equal(resetJson.classSettings.columnOrder, null);
+});

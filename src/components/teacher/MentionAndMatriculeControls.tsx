@@ -1,10 +1,18 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
   Award,
   Check,
   ChevronDown,
+  Columns3,
+  EyeOff,
+  GripVertical,
   Hash,
   Loader2,
+  Lock,
   Plus,
   RotateCcw,
   SlidersHorizontal,
@@ -22,6 +30,19 @@ import {
   scaleMentionRulesToTarget,
   type CustomMentionRule,
 } from '../../utils/gradebookCalculations';
+import {
+  COLUMN_LAYOUT_PRESETS,
+  detectMatchingPresetId,
+  getDefaultColumnOrder,
+  getPresetColumnOrder,
+  GRADEBOOK_COLUMN_META,
+  isDefaultColumnOrder,
+  moveColumnToSide,
+  moveColumnWithinSide,
+  sanitizeGradebookColumnOrder,
+  type GradebookColumnOrder,
+  type GradebookPeripheralColumnKey,
+} from '../../utils/gradebookColumnLayout';
 
 export type SheetSettingScope = 'sheet' | 'class';
 
@@ -78,6 +99,19 @@ export interface MentionAndMatriculeControlsProps {
   onBulkUpdateNoteMax?: (
     input: BulkNoteMaxUpdateInput
   ) => Promise<void> | void;
+  /** Disposition effective des colonnes périphériques (gauche/droite des notes/matières/trimestres) */
+  effectiveColumnOrder?: GradebookColumnOrder;
+  /** True si une disposition personnalisée (non défaut) est active */
+  hasCustomColumnOrder?: boolean;
+  /** True sur les tableaux Moyenne Générale (inclut la colonne Total Général / Annuel) */
+  includeTotalColumn?: boolean;
+  /** Libellé du bloc central verrouillé (ex: "NOTES 1…N", "MATIÈRES", "TRIMESTRES") */
+  centerBlockLabel?: string;
+  /** Enregistrement de la disposition des colonnes (null = réinitialiser par défaut) */
+  onSaveColumnOrder?: (
+    order: GradebookColumnOrder | null,
+    scope: SheetSettingScope
+  ) => Promise<void> | void;
 }
 
 interface DraftRuleRow {
@@ -112,6 +146,11 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
   onSaveShowMatricule,
   onSaveAverageScale,
   onBulkUpdateNoteMax,
+  effectiveColumnOrder,
+  hasCustomColumnOrder = false,
+  includeTotalColumn = false,
+  centerBlockLabel,
+  onSaveColumnOrder,
 }) => {
   const activeScale = sanitizeAverageScale(averageScale) ?? DEFAULT_AVERAGE_SCALE;
   const activeScaleLabel = formatScaleValue(activeScale);
@@ -119,11 +158,33 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
   const supportsNoteMaxBulk = Boolean(
     noteColumns && noteColumns.length > 0 && onBulkUpdateNoteMax
   );
+  const resolvedCenterLabel =
+    centerBlockLabel || (includeTotalColumn ? 'MATIÈRES' : 'NOTES 1…N');
+  const resolvedCenterNoun =
+    resolvedCenterLabel.toLowerCase().includes('trimestre')
+      ? 'les trimestres'
+      : resolvedCenterLabel.toLowerCase().includes('matière')
+      ? 'les matières'
+      : 'les notes';
 
-  const [openMenu, setOpenMenu] = useState<'mentions' | 'matricule' | 'scale' | null>(null);
+  const [openMenu, setOpenMenu] = useState<
+    'mentions' | 'matricule' | 'scale' | 'layout' | null
+  >(null);
   const mentionBtnRef = useRef<HTMLButtonElement>(null);
   const matriculeBtnRef = useRef<HTMLButtonElement>(null);
   const scaleBtnRef = useRef<HTMLButtonElement>(null);
+  const layoutBtnRef = useRef<HTMLButtonElement>(null);
+
+  // État local du menu Disposition des colonnes
+  const [draftColumnOrder, setDraftColumnOrder] = useState<GradebookColumnOrder>(() =>
+    sanitizeGradebookColumnOrder(effectiveColumnOrder, {
+      includeTotal: includeTotalColumn,
+    }) || getDefaultColumnOrder({ includeTotal: includeTotalColumn })
+  );
+  const [layoutError, setLayoutError] = useState<string | null>(null);
+  const [savingLayoutScope, setSavingLayoutScope] = useState<SheetSettingScope | null>(null);
+  const [draggedColKey, setDraggedColKey] = useState<GradebookPeripheralColumnKey | null>(null);
+  const [dragOverZone, setDragOverZone] = useState<'left' | 'right' | null>(null);
 
   // État local du menu Mentions
   const [draftRows, setDraftRows] = useState<DraftRuleRow[]>([]);
@@ -225,6 +286,105 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
     } else {
       setOpenMenu(null);
     }
+  };
+
+  const openLayoutPopover = (e: React.MouseEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    const next = openMenu === 'layout' ? null : 'layout';
+    onWillOpen?.();
+    if (next === 'layout') {
+      setDraftColumnOrder(
+        sanitizeGradebookColumnOrder(effectiveColumnOrder, {
+          includeTotal: includeTotalColumn,
+        }) || getDefaultColumnOrder({ includeTotal: includeTotalColumn })
+      );
+      setLayoutError(null);
+      setDraggedColKey(null);
+      setDragOverZone(null);
+      setOpenMenu('layout');
+    } else {
+      setOpenMenu(null);
+    }
+  };
+
+  const activeDraftPresetId = useMemo(
+    () =>
+      detectMatchingPresetId(draftColumnOrder, {
+        includeTotal: includeTotalColumn,
+      }),
+    [draftColumnOrder, includeTotalColumn]
+  );
+
+  const isDraftDefaultLayout = useMemo(
+    () =>
+      isDefaultColumnOrder(draftColumnOrder, {
+        includeTotal: includeTotalColumn,
+      }),
+    [draftColumnOrder, includeTotalColumn]
+  );
+
+  const handleApplyColumnOrder = async (scope: SheetSettingScope) => {
+    if (!onSaveColumnOrder) return;
+    setLayoutError(null);
+    setSavingLayoutScope(scope);
+    try {
+      const sanitized =
+        sanitizeGradebookColumnOrder(draftColumnOrder, {
+          includeTotal: includeTotalColumn,
+        }) || getDefaultColumnOrder({ includeTotal: includeTotalColumn });
+      const payloadToSave = isDefaultColumnOrder(sanitized, {
+        includeTotal: includeTotalColumn,
+      })
+        ? null
+        : sanitized;
+      await onSaveColumnOrder(payloadToSave, scope);
+      setOpenMenu(null);
+      showTempFeedback(
+        payloadToSave === null
+          ? scope === 'class'
+            ? 'Disposition par défaut rétablie pour toute la classe'
+            : 'Disposition par défaut rétablie sur ce tableau'
+          : scope === 'class'
+          ? 'Disposition appliquée à toute la classe'
+          : 'Disposition appliquée à ce tableau'
+      );
+    } catch (err: any) {
+      setLayoutError(
+        err?.message || "Erreur lors de l'enregistrement de la disposition des colonnes."
+      );
+    } finally {
+      setSavingLayoutScope(null);
+    }
+  };
+
+  const handleDropOnZone = (
+    targetSide: 'left' | 'right',
+    targetKey?: GradebookPeripheralColumnKey
+  ) => {
+    if (!draggedColKey) return;
+    setDraftColumnOrder((prev) => {
+      const base =
+        sanitizeGradebookColumnOrder(prev, {
+          includeTotal: includeTotalColumn,
+        }) || getDefaultColumnOrder({ includeTotal: includeTotalColumn });
+      if (targetKey && targetKey === draggedColKey) return base;
+      const left = base.left.filter((k) => k !== draggedColKey);
+      const right = base.right.filter((k) => k !== draggedColKey);
+      const list = targetSide === 'left' ? left : right;
+      if (targetKey) {
+        const idx = list.indexOf(targetKey);
+        if (idx >= 0) {
+          list.splice(idx, 0, draggedColKey);
+        } else {
+          list.push(draggedColKey);
+        }
+      } else {
+        list.push(draggedColKey);
+      }
+      return { left, right };
+    });
+    setDraggedColKey(null);
+    setDragOverZone(null);
   };
 
   // Aperçu temps réel des plages calculées pour chaque ligne (ex: "16 – 20", "32 – 40")
@@ -558,6 +718,43 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
           </button>
         )}
 
+        {/* 4. BOUTON DISPOSITION DES COLONNES (À DROITE DE SUR /20) */}
+        {onSaveColumnOrder && (
+          <button
+            ref={layoutBtnRef}
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={openLayoutPopover}
+            className={`gb-menu-trigger h-7 px-2.5 rounded-md border flex items-center gap-1.5 text-[11px] font-bold transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none whitespace-nowrap ${
+              openMenu === 'layout'
+                ? 'bg-slate-900 text-white border-slate-900 dark:bg-sky-600 dark:border-sky-500'
+                : hasCustomColumnOrder
+                ? 'bg-sky-50 text-sky-800 border-sky-300 hover:bg-sky-100 dark:bg-sky-950/60 dark:text-sky-200 dark:border-sky-700'
+                : 'bg-white text-slate-800 border-slate-300 hover:border-blue-500 hover:bg-slate-50 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-600'
+            }`}
+            title="Réorganiser l'emplacement du Rang, Profil, Matricule, Nom & Prénom, Moyenne et Mention (devant ou derrière les notes)"
+          >
+            <Columns3
+              className={`w-3.5 h-3.5 shrink-0 ${
+                openMenu === 'layout'
+                  ? 'text-sky-300'
+                  : hasCustomColumnOrder
+                  ? 'text-sky-600 dark:text-sky-300'
+                  : 'text-violet-600 dark:text-violet-400'
+              }`}
+            />
+            <span>Disposition</span>
+            {hasCustomColumnOrder && (
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-600 dark:bg-sky-400 shrink-0" />
+            )}
+            <ChevronDown
+              className={`w-3 h-3 shrink-0 ${
+                openMenu === 'layout' ? 'text-white' : 'text-slate-400'
+              }`}
+            />
+          </button>
+        )}
+
         {feedbackToast && openMenu === null && (
           <div className="absolute top-full left-1/2 -translate-x-1/2 mt-1.5 px-2.5 py-1 bg-emerald-600 text-white text-[10px] font-bold rounded-md shadow-lg whitespace-nowrap z-[100] pointer-events-none">
             {feedbackToast}
@@ -565,7 +762,13 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
         )}
       </div>
       <span className="text-[9px] text-slate-500 dark:text-slate-400 font-medium leading-none mb-0.5">
-        {onSaveAverageScale ? 'Mentions · Matricule · Barème' : 'Mentions & Matricule'}
+        {onSaveAverageScale && onSaveColumnOrder
+          ? 'Mentions · Matricule · Barème · Disposition'
+          : onSaveAverageScale
+          ? 'Mentions · Matricule · Barème'
+          : onSaveColumnOrder
+          ? 'Mentions · Matricule · Disposition'
+          : 'Mentions & Matricule'}
       </span>
 
       {/* ===================================================================== */}
@@ -1419,6 +1622,394 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
                 </button>
               </div>
             )}
+          </div>
+        </SmartFloatingPopover>
+      )}
+
+      {/* ===================================================================== */}
+      {/* POPOVER 4 : DISPOSITION DES COLONNES (AVANT / APRÈS LES NOTES)        */}
+      {/* ===================================================================== */}
+      {onSaveColumnOrder && (
+        <SmartFloatingPopover
+          open={openMenu === 'layout'}
+          anchorEl={layoutBtnRef.current}
+          boundaryEl={boundaryEl}
+          preferredSide="bottom"
+          preferredAlign="end"
+          gap={8}
+          onClose={() => setOpenMenu(null)}
+          ignoreOutsideSelector=".gb-menu-trigger"
+          dataPopoverId="gb-column-layout-menu"
+          className="w-[480px] max-w-[calc(100vw-24px)] rounded-2xl"
+        >
+          <div
+            className="p-4 text-xs select-none space-y-3.5 bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-700 max-h-[82vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* En-tête */}
+            <div className="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-200 dark:border-slate-700">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <Columns3 className="w-4 h-4 text-violet-600 dark:text-violet-400 shrink-0" />
+                  <h3 className="text-[13px] font-black text-slate-900 dark:text-white tracking-tight">
+                    Disposition des colonnes
+                  </h3>
+                  {!isDraftDefaultLayout && (
+                    <span className="px-1.5 py-0.5 rounded bg-sky-100 dark:bg-sky-900/50 border border-sky-200 dark:border-sky-700 text-[9.5px] font-extrabold text-sky-700 dark:text-sky-300">
+                      Personnalisée
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+                  Placez librement chaque colonne avant ou après{' '}
+                  <strong className="text-slate-700 dark:text-slate-200">{resolvedCenterNoun}</strong>{' '}
+                  et choisissez son ordre exact.
+                </p>
+              </div>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setDraftColumnOrder(
+                      getDefaultColumnOrder({ includeTotal: includeTotalColumn })
+                    )
+                  }
+                  disabled={isDraftDefaultLayout}
+                  className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10.5px] font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                  title="Réinitialiser à la disposition par défaut StudyCloud"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                  <span>Par défaut</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOpenMenu(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  title="Fermer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* 1. Barre d'aperçu visuel en direct */}
+            <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 space-y-1.5">
+              <div className="flex items-center justify-between text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <span>Aperçu en direct de l&apos;en-tête</span>
+                <span className="font-semibold normal-case text-slate-400">
+                  Exports PDF · Word · Excel inclus
+                </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1">
+                {draftColumnOrder.left.map((colKey) => {
+                  const isHiddenMatricule = colKey === 'matricule' && !showMatricule;
+                  return (
+                    <span
+                      key={`prev-l-${colKey}`}
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-extrabold border ${
+                        isHiddenMatricule
+                          ? 'bg-slate-100/70 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border-dashed border-slate-300 dark:border-slate-600'
+                          : 'bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 border-slate-300 dark:border-slate-600 shadow-2xs'
+                      }`}
+                      title={
+                        isHiddenMatricule
+                          ? 'Colonne Matricule actuellement masquée — sa position est mémorisée'
+                          : GRADEBOOK_COLUMN_META[colKey].label
+                      }
+                    >
+                      {isHiddenMatricule && <EyeOff className="w-2.5 h-2.5 shrink-0" />}
+                      {GRADEBOOK_COLUMN_META[colKey].shortLabel}
+                    </span>
+                  );
+                })}
+
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-[10px] font-black bg-blue-600 text-white shadow-xs">
+                  <Lock className="w-2.5 h-2.5 shrink-0" />
+                  <span>{resolvedCenterLabel}</span>
+                </span>
+
+                {draftColumnOrder.right.map((colKey) => {
+                  const isHiddenMatricule = colKey === 'matricule' && !showMatricule;
+                  return (
+                    <span
+                      key={`prev-r-${colKey}`}
+                      className={`inline-flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-extrabold border ${
+                        isHiddenMatricule
+                          ? 'bg-slate-100/70 dark:bg-slate-900/50 text-slate-400 dark:text-slate-500 border-dashed border-slate-300 dark:border-slate-600'
+                          : 'bg-indigo-50 dark:bg-indigo-950/60 text-indigo-800 dark:text-indigo-200 border-indigo-200 dark:border-indigo-700 shadow-2xs'
+                      }`}
+                      title={
+                        isHiddenMatricule
+                          ? 'Colonne Matricule actuellement masquée — sa position est mémorisée'
+                          : GRADEBOOK_COLUMN_META[colKey].label
+                      }
+                    >
+                      {isHiddenMatricule && <EyeOff className="w-2.5 h-2.5 shrink-0" />}
+                      {GRADEBOOK_COLUMN_META[colKey].shortLabel}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Modèles rapides (1 clic) */}
+            <div className="space-y-1.5">
+              <div className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Modèles rapides (1 clic)
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {COLUMN_LAYOUT_PRESETS.map((preset) => {
+                  const isActive = activeDraftPresetId === preset.id;
+                  return (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => {
+                        setDraftColumnOrder(
+                          getPresetColumnOrder(preset.id, {
+                            includeTotal: includeTotalColumn,
+                          })
+                        );
+                        setLayoutError(null);
+                      }}
+                      className={`px-2.5 py-2 rounded-xl border text-left transition cursor-pointer ${
+                        isActive
+                          ? 'bg-slate-900 text-white border-slate-900 dark:bg-sky-600 dark:border-sky-500 shadow-xs'
+                          : 'bg-slate-50 dark:bg-slate-800/70 text-slate-800 dark:text-slate-100 border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-sky-500'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[11px] font-extrabold truncate">
+                          {preset.name}
+                        </span>
+                        {isActive && <Check className="w-3 h-3 shrink-0" />}
+                      </div>
+                      <p
+                        className={`text-[9.5px] mt-0.5 leading-snug truncate ${
+                          isActive ? 'text-slate-200' : 'text-slate-500 dark:text-slate-400'
+                        }`}
+                      >
+                        {preset.description}
+                      </p>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 3. Éditeur libre 2 zones : Avant (Gauche) / Après (Droite) */}
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  Personnalisation libre (↑ ↓ ordre · ← → côté · glisser-déposer)
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                {(['left', 'right'] as const).map((side) => {
+                  const items = draftColumnOrder[side];
+                  const isLeft = side === 'left';
+                  return (
+                    <div
+                      key={side}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        if (dragOverZone !== side) setDragOverZone(side);
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverZone === side) setDragOverZone(null);
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        handleDropOnZone(side);
+                      }}
+                      className={`rounded-xl border p-2 space-y-1.5 min-h-[140px] transition ${
+                        dragOverZone === side
+                          ? 'bg-blue-50/70 dark:bg-sky-950/40 border-blue-400 dark:border-sky-500'
+                          : 'bg-slate-50/80 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-200/80 dark:border-slate-700/80">
+                        <span className="text-[10px] font-black uppercase tracking-wide text-slate-600 dark:text-slate-300">
+                          {isLeft
+                            ? `Avant ${resolvedCenterNoun}`
+                            : `Après ${resolvedCenterNoun}`}
+                        </span>
+                        <span className="text-[9.5px] font-bold text-slate-400">
+                          {items.length}
+                        </span>
+                      </div>
+
+                      {items.length === 0 ? (
+                        <div className="h-[92px] rounded-lg border border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center text-center px-2 text-[10px] font-semibold text-slate-400">
+                          Aucune colonne de ce côté
+                        </div>
+                      ) : (
+                        <div className="space-y-1">
+                          {items.map((colKey, idx) => {
+                            const isHiddenMatricule = colKey === 'matricule' && !showMatricule;
+                            return (
+                              <div
+                                key={colKey}
+                                draggable
+                                onDragStart={() => setDraggedColKey(colKey)}
+                                onDragEnd={() => {
+                                  setDraggedColKey(null);
+                                  setDragOverZone(null);
+                                }}
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                }}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  handleDropOnZone(side, colKey);
+                                }}
+                                className={`flex items-center justify-between gap-1 px-1.5 py-1.5 rounded-lg border transition cursor-grab active:cursor-grabbing ${
+                                  draggedColKey === colKey
+                                    ? 'opacity-50 border-blue-400 bg-blue-50 dark:bg-sky-950/60'
+                                    : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 shadow-2xs'
+                                }`}
+                              >
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <GripVertical className="w-3 h-3 text-slate-300 dark:text-slate-600 shrink-0" />
+                                  <span
+                                    className={`text-[11px] font-extrabold truncate ${
+                                      isHiddenMatricule
+                                        ? 'text-slate-400 dark:text-slate-500'
+                                        : 'text-slate-800 dark:text-slate-100'
+                                    }`}
+                                  >
+                                    {GRADEBOOK_COLUMN_META[colKey].label}
+                                  </span>
+                                  {isHiddenMatricule && (
+                                    <span
+                                      className="px-1 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-[8.5px] font-bold text-slate-500 dark:text-slate-400 shrink-0"
+                                      title="Actuellement masquée — sa place reste sauvegardée"
+                                    >
+                                      Masquée
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center gap-0.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    disabled={idx === 0}
+                                    onClick={() =>
+                                      setDraftColumnOrder((prev) =>
+                                        moveColumnWithinSide(prev, colKey, 'up', {
+                                          includeTotal: includeTotalColumn,
+                                        })
+                                      )
+                                    }
+                                    className="w-5 h-5 rounded flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-25 disabled:cursor-not-allowed cursor-pointer"
+                                    title="Monter (placer devant)"
+                                  >
+                                    <ArrowUp className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={idx === items.length - 1}
+                                    onClick={() =>
+                                      setDraftColumnOrder((prev) =>
+                                        moveColumnWithinSide(prev, colKey, 'down', {
+                                          includeTotal: includeTotalColumn,
+                                        })
+                                      )
+                                    }
+                                    className="w-5 h-5 rounded flex items-center justify-center text-slate-500 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-25 disabled:cursor-not-allowed cursor-pointer"
+                                    title="Descendre (placer derrière)"
+                                  >
+                                    <ArrowDown className="w-3 h-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setDraftColumnOrder((prev) =>
+                                        moveColumnToSide(
+                                          prev,
+                                          colKey,
+                                          isLeft ? 'right' : 'left',
+                                          { includeTotal: includeTotalColumn }
+                                        )
+                                      )
+                                    }
+                                    className={`h-5 px-1.5 rounded flex items-center gap-0.5 text-[9.5px] font-extrabold transition cursor-pointer ${
+                                      isLeft
+                                        ? 'bg-indigo-50 text-indigo-700 hover:bg-indigo-100 dark:bg-indigo-950/70 dark:text-indigo-300 dark:hover:bg-indigo-900/70'
+                                        : 'bg-sky-50 text-sky-700 hover:bg-sky-100 dark:bg-sky-950/70 dark:text-sky-300 dark:hover:bg-sky-900/70'
+                                    }`}
+                                    title={
+                                      isLeft
+                                        ? `Passer après ${resolvedCenterNoun}`
+                                        : `Ramener avant ${resolvedCenterNoun}`
+                                    }
+                                  >
+                                    {isLeft ? (
+                                      <ArrowRight className="w-2.5 h-2.5" />
+                                    ) : (
+                                      <ArrowLeft className="w-2.5 h-2.5" />
+                                    )}
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {layoutError && (
+              <div className="px-3 py-2 rounded-xl bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 text-[11px] font-bold">
+                {layoutError}
+              </div>
+            )}
+
+            {/* 4. Boutons d'application (Ce tableau vs Toute la classe) */}
+            <div className="pt-2.5 border-t border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={savingLayoutScope !== null}
+                onClick={() => handleApplyColumnOrder('sheet')}
+                className="px-3 py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 dark:bg-slate-700 dark:hover:bg-slate-600 disabled:opacity-60 text-white text-left transition active:scale-[0.99] cursor-pointer shadow-xs"
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[11px] font-extrabold">Ce tableau uniquement</span>
+                  {savingLayoutScope === 'sheet' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                </div>
+                <p className="text-[9.5px] text-slate-300 mt-0.5 leading-tight">
+                  Sauvegardé pour cette feuille
+                </p>
+              </button>
+
+              <button
+                type="button"
+                disabled={savingLayoutScope !== null}
+                onClick={() => handleApplyColumnOrder('class')}
+                className="px-3 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-left transition active:scale-[0.99] cursor-pointer shadow-xs"
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-[11px] font-extrabold">Toute la classe</span>
+                  {savingLayoutScope === 'class' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin shrink-0" />
+                  ) : (
+                    <Check className="w-3.5 h-3.5 shrink-0" />
+                  )}
+                </div>
+                <p className="text-[9.5px] text-blue-100 mt-0.5 leading-tight truncate">
+                  Matières, trimestres &amp; annuel ({classLabel})
+                </p>
+              </button>
+            </div>
           </div>
         </SmartFloatingPopover>
       )}

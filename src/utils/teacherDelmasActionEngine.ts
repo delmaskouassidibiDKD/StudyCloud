@@ -368,6 +368,7 @@ export type TeacherDelmasActionType =
   | 'set_sort_mode'
   | 'set_show_matricule'
   | 'set_average_scale'
+  | 'set_column_order'
   | 'bulk_update_note_max'
   | 'set_mention_rules'
   | 'format_cells'
@@ -405,6 +406,7 @@ export const VALID_TEACHER_DELMAS_ACTION_TYPES: ReadonlySet<string> = new Set<Te
   'set_sort_mode',
   'set_show_matricule',
   'set_average_scale',
+  'set_column_order',
   'bulk_update_note_max',
   'set_mention_rules',
   'format_cells',
@@ -717,7 +719,7 @@ export function classifyTeacherDelmasIntent(params: {
   );
 
   const tableDomainRegex =
-    /\b(tableau|tableaux|tableur|tableurs|feuille|feuilles|cellule|cellules|case|cases|ligne|lignes|colone|colones|colonne|colonnes|eleve|eleves|etudiant|etudiants|apprenant|apprenants|nom|noms|prenom|prenoms|premier|premiere|1er|1ere|deuxieme|2e|2eme|troisieme|3e|3eme|dernier|derniere|meilleur|meilleure|major|note|notes|moyenne|moyennes|bareme|baremes|mention|mentions|rang|rangs|classement|classements|matricule|matricules|coeff|coeffs|coefficient|coefficients|devoir|devoirs|interro|interros|interrogation|interrogations|compo|compos|composition|examen|examens|evaluation|evaluations|point|points|pt|pts|classe|classes|matiere|matieres|trimestre|trimestres|semestre|semestres|annuel|annuelle|ordre de merite|merite|alphabetique|ordre initial|zoom|largeur|largeurs|hauteur|hauteurs|taille|tailles|excel|xlsx|pdf|word|docx|export|exporter|telecharge|telecharger|copier|presse-papiers|annule|annuler|retablis|retablir|undo|redo|gras|italique|souligne|soulignee|barre|barree|couleur|couleurs|couleure|rouge|rouges|vert|verte|verts|vertes|bleu|bleue|bleus|bleues|jaune|jaunes|orange|gris|grise|violet|violette|rose|noir|noire|blanc|blanche|cyan|marron|dore|doree|pastel|fond|arriere-plan|surligne|mise en forme|style|styles|aligne|alignement|centrer|gauche|droite|police|polices|ecriture|ecritures|typographie|caracteres|en-tete|entete|entetes|titre|titres|plein ecran|ecran|affichage|agrandi|agrandis|agrandir|grandis|grandir|elargis|elargir|reduis|reduire|retrecis|retrecir|grossis|grossir|rapetisse|rapetisser|gros|grosse|grand|grande|petit|petite|defaut|transparent|vierge|photo|profil|total|decision|outil|outils|table|tables|sheet|sheets|student|students|grade|grades|score|scores|average|averages|rank|sort|column|columns|row|rows|font|width|height|color|fullscreen)\b/i;
+    /\b(tableau|tableaux|tableur|tableurs|feuille|feuilles|cellule|cellules|case|cases|ligne|lignes|colone|colones|colonne|colonnes|disposition|emplacement|reorganise|reorganiser|deplace|deplacer|derriere|devant|eleve|eleves|etudiant|etudiants|apprenant|apprenants|nom|noms|prenom|prenoms|premier|premiere|1er|1ere|deuxieme|2e|2eme|troisieme|3e|3eme|dernier|derniere|meilleur|meilleure|major|note|notes|moyenne|moyennes|bareme|baremes|mention|mentions|rang|rangs|classement|classements|matricule|matricules|coeff|coeffs|coefficient|coefficients|devoir|devoirs|interro|interros|interrogation|interrogations|compo|compos|composition|examen|examens|evaluation|evaluations|point|points|pt|pts|classe|classes|matiere|matieres|trimestre|trimestres|semestre|semestres|annuel|annuelle|ordre de merite|merite|alphabetique|ordre initial|zoom|largeur|largeurs|hauteur|hauteurs|taille|tailles|excel|xlsx|pdf|word|docx|export|exporter|telecharge|telecharger|copier|presse-papiers|annule|annuler|retablis|retablir|undo|redo|gras|italique|souligne|soulignee|barre|barree|couleur|couleurs|couleure|rouge|rouges|vert|verte|verts|vertes|bleu|bleue|bleus|bleues|jaune|jaunes|orange|gris|grise|violet|violette|rose|noir|noire|blanc|blanche|cyan|marron|dore|doree|pastel|fond|arriere-plan|surligne|mise en forme|style|styles|aligne|alignement|centrer|gauche|droite|police|polices|ecriture|ecritures|typographie|caracteres|en-tete|entete|entetes|titre|titres|plein ecran|ecran|affichage|agrandi|agrandis|agrandir|grandis|grandir|elargis|elargir|reduis|reduire|retrecis|retrecir|grossis|grossir|rapetisse|rapetisser|gros|grosse|grand|grande|petit|petite|defaut|transparent|vierge|photo|profil|total|decision|outil|outils|table|tables|sheet|sheets|student|students|grade|grades|score|scores|average|averages|rank|sort|column|columns|row|rows|font|width|height|color|fullscreen)\b/i;
 
   const mentionsTableDomain =
     tableDomainRegex.test(norm) ||
@@ -1184,6 +1186,11 @@ function buildActionsCatalogForSheet(sheetKind: TeacherDelmasActiveContext['shee
 - **Trier le classement** (mérite, A→Z, Z→A, ordre initial) : \`{ "type": "set_sort_mode", "sortMode": "merit" | "alpha" | "alpha_desc" | "order" }\`
 - **Afficher/masquer Matricule** : \`{ "type": "set_show_matricule", "show": true | false, "scope": "sheet" | "class" }\`
 - **Changer le barème de la moyenne (/20, /40, /100...)** : \`{ "type": "set_average_scale", "scale": 40, "scope": "sheet" | "class" }\`
+- **Réorganiser la disposition des colonnes (devant ou derrière les notes/matières/trimestres)** :
+  \`{ "type": "set_column_order", "moveColumn": "rank" | "photo" | "matricule" | "name" | "total" | "average" | "mention", "relation": "before" | "after" | "start" | "end", "anchor": "notes" | "average" | "mention" | "name" | "rank" | "photo" | "matricule" | "total", "scope": "sheet" | "class" }\`
+  * Ou par modèle prêt : \`{ "type": "set_column_order", "preset": "classic" | "official" | "admin" | "synthesis_left", "scope": "sheet" | "class" }\`
+  * Ou ordre explicite : \`{ "type": "set_column_order", "left": ["matricule", "photo", "name"], "right": ["average", "rank", "mention"], "scope": "sheet" | "class" }\`
+  * Ou réinitialiser : \`{ "type": "set_column_order", "reset": true, "scope": "sheet" | "class" }\`
 - **Personnaliser les mentions** : \`{ "type": "set_mention_rules", "scope": "sheet" | "class", "rules": [ { "min": 16, "label": "Très Bien" }, ... ] }\`
 - **Zoom & Plein écran** : \`{ "type": "set_zoom", "zoomPercent": 100 }\` | \`{ "type": "set_expand_level", "level": 0 | 1 | 2 }\` (0=normal, 1=agrandi, 2=plein écran total)
 - **Historique & Enregistrement** : \`{ "type": "undo" }\` | \`{ "type": "redo" }\` | \`{ "type": "save_gradebook" }\`
@@ -1272,14 +1279,14 @@ export function buildTeacherDelmasSystemPrompt(params: {
 • Créer, renommer, supprimer, déplacer ou remplir d'un coup des colonnes de notes, et modifier leur barème (/20, /40...) et coefficient d'évaluation
 • Ajuster les notes d'un coup (± points sur toutes les notes ou sur une colonne précise)
 • Changer le barème de la moyenne (/20, /40, /100...) ou le barème max des notes (sur ce tableau ou toute la classe)
-• Trier le classement (ordre de mérite, alphabétique A→Z ou Z→A, ordre initial), afficher ou masquer Matricule, personnaliser les Mentions
+• Trier le classement (ordre de mérite, alphabétique A→Z ou Z→A, ordre initial), afficher ou masquer Matricule, personnaliser les Mentions, réorganiser la disposition des colonnes (Rang, Profil, Matricule, Nom & Prénom, Moyenne, Mention devant ou derrière les notes)
 • Utiliser TOUS les outils de mise en forme manuels : polices d'écriture (Arial, Times New Roman, Calibri, Georgia, Verdana…), taille de texte (A+/A- ou taille précise), gras, italique, souligné, barré, alignement gauche/centre/droite, couleurs de texte et de fond (en-têtes, colonnes, élèves, Moyenne, Mention, une ligne sur deux ou selon condition)
 • Agrandir ou réduire la largeur des colonnes, la hauteur des lignes, régler le zoom ou passer en plein écran, et réinitialiser les largeurs
 • Copier la liste des élèves depuis une autre matière, annuler/rétablir, télécharger en PDF, Word (.docx), Excel (.xlsx) ou copier le tableau
 • Analyser et comparer vos résultats (classements, statistiques, moyennes dans les autres matières/trimestres)`
       : `• Modifier les coefficients des ${activeContext.sheetKind === 'annual_average' ? 'trimestres' : 'matières'} directement dans ce tableau
 • Trier le classement (ordre de mérite, alphabétique A→Z, ordre initial)
-• Afficher ou masquer Matricule, changer le barème de la moyenne (/20, /40, /100...) et personnaliser les Mentions (sur ce tableau ou toute la classe)
+• Afficher ou masquer Matricule, changer le barème de la moyenne (/20, /40, /100...), personnaliser les Mentions et réorganiser la disposition des colonnes (sur ce tableau ou toute la classe)
 • Utiliser TOUS les outils de mise en forme manuels : polices d'écriture, taille de texte (A+/A-), gras, italique, souligné, barré, alignement, couleurs de texte et de fond (colonnes, lignes, une ligne sur deux, seuils de moyenne ou top/derniers rangs)
 • Agrandir ou réduire la largeur des colonnes et la hauteur des lignes, régler le zoom, passer en plein écran, annuler/rétablir
 • Télécharger en PDF, Word (.docx), Excel (.xlsx) ou copier tout le tableau dans le presse-papiers

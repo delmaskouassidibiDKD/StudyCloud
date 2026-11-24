@@ -96,6 +96,15 @@ import {
   type CustomMentionRule,
 } from '../../utils/gradebookCalculations';
 import {
+  getVisibleColumnOrder,
+  isDefaultColumnOrder,
+  resolveColumnOrderFromDelmasAction,
+  resolveEffectiveColumnOrder,
+  sanitizeGradebookColumnOrder,
+  type GradebookColumnOrder,
+  type GradebookPeripheralColumnKey,
+} from '../../utils/gradebookColumnLayout';
+import {
   computeTermGeneralAverageTable,
   formatCoeffDisplay,
   formatFrenchNumber,
@@ -280,7 +289,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     mergedLinks: initialCachedSheet?.card?.overrides?.mergedLinks || [],
     distinctPairs: initialCachedSheet?.card?.overrides?.distinctPairs || [],
   }));
-  // Paramètres globaux de classe (mentions personnalisées + colonne Matricule + moyenne max)
+  // Paramètres globaux de classe (mentions personnalisées + colonne Matricule + moyenne max + disposition)
   const [classSettings, setClassSettings] = useState<ClassSheetSettings>(() => ({
     mentionRules:
       initialCachedSheet?.classSettings?.mentionRules ??
@@ -293,6 +302,9 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       sanitizeAverageScale(initialCachedSheet?.classSettings?.averageScale) ??
       sanitizeAverageScale(schoolClass.averageScale) ??
       DEFAULT_AVERAGE_SCALE,
+    columnOrder:
+      initialCachedSheet?.classSettings?.columnOrder ??
+      ((schoolClass.columnOrder as GradebookColumnOrder | null | undefined) ?? null),
   }));
   const [closeMentionMatriculeSignal, setCloseMentionMatriculeSignal] = useState(0);
   const [editingMatriculeCell, setEditingMatriculeCell] = useState<{
@@ -394,6 +406,25 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     DEFAULT_AVERAGE_SCALE;
   const effectiveScaleLabel = formatScaleValue(effectiveAverageScale);
   const passThreshold = effectiveAverageScale / 2;
+  const effectiveColumnOrder = useMemo(
+    () =>
+      resolveEffectiveColumnOrder(layout.columnOrder, classSettings.columnOrder, {
+        includeTotal: true,
+      }),
+    [layout.columnOrder, classSettings.columnOrder]
+  );
+  const hasCustomColumnOrder = useMemo(
+    () => !isDefaultColumnOrder(effectiveColumnOrder, { includeTotal: true }),
+    [effectiveColumnOrder]
+  );
+  const visibleColumnOrder = useMemo(
+    () =>
+      getVisibleColumnOrder(effectiveColumnOrder, {
+        showMatricule: effectiveShowMatricule,
+        includeTotal: true,
+      }),
+    [effectiveColumnOrder, effectiveShowMatricule]
+  );
 
   // Largeurs effectives des colonnes (avec valeurs par défaut harmonieuses)
   const colWidthRank = layout.colWidthRank ?? 68;
@@ -792,6 +823,93 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         ...layout,
         zoomPercent,
         averageScale: cleanScale,
+      };
+      setLayout(nextLayout);
+      const nextPayload: ClassAverageSheetSavePayload = {
+        layout: nextLayout,
+        styles,
+        overrides,
+        sortMode,
+      };
+      latestPayloadRef.current = nextPayload;
+      if (token) {
+        await TeacherGradebookAPI.saveClassAverageSheet(averageCard.id, nextPayload);
+        setIsDirty(false);
+        setHasSavedAtLeastOnce(true);
+        setCloudStatus('saved');
+      } else {
+        setIsDirty(true);
+      }
+    },
+    [
+      schoolClass.id,
+      classSettings,
+      userId,
+      averageCard.id,
+      onClassSettingsUpdated,
+      layout,
+      zoomPercent,
+      styles,
+      overrides,
+      sortMode,
+    ]
+  );
+
+  // Enregistrer la disposition des colonnes (ce tableau ou toute la classe)
+  const handleSaveColumnOrder = useCallback(
+    async (order: GradebookColumnOrder | null, scope: SheetSettingScope) => {
+      const normalized =
+        order === null
+          ? null
+          : sanitizeGradebookColumnOrder(order, { includeTotal: true });
+      const token = getTeacherAuthToken();
+      if (scope === 'class') {
+        if (token) {
+          const res = await TeacherGradebookAPI.updateClassSheetSettings(schoolClass.id, {
+            columnOrder: normalized,
+          });
+          setClassSettings(res.classSettings);
+          setLayout((prev) => {
+            if (!('columnOrder' in prev)) return prev;
+            const next = { ...prev };
+            delete next.columnOrder;
+            return next;
+          });
+          if (userId) {
+            const cached = readUserClassAverageCache(userId, averageCard.id);
+            if (cached) {
+              const nextCardLayout = { ...(cached.card?.layout || {}) };
+              delete nextCardLayout.columnOrder;
+              writeUserClassAverageCache(userId, averageCard.id, {
+                ...cached,
+                classSettings: res.classSettings,
+                card: { ...cached.card, layout: nextCardLayout },
+              });
+            }
+          }
+          onClassSettingsUpdated?.(schoolClass.id, res.classSettings);
+          setHasSavedAtLeastOnce(true);
+          setCloudStatus('saved');
+          return;
+        }
+        const nextSettings: ClassSheetSettings = {
+          ...classSettings,
+          columnOrder: normalized,
+        };
+        setClassSettings(nextSettings);
+        setLayout((prev) => {
+          const next = { ...prev };
+          delete next.columnOrder;
+          return next;
+        });
+        onClassSettingsUpdated?.(schoolClass.id, nextSettings);
+        return;
+      }
+
+      const nextLayout: TermAverageLayoutState = {
+        ...layout,
+        zoomPercent,
+        columnOrder: normalized,
       };
       setLayout(nextLayout);
       const nextPayload: ClassAverageSheetSavePayload = {
@@ -1402,23 +1520,74 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
   // Copier tout le tableau (TSV compatible Excel / WPS)
   const handleCopyEntireTable = async () => {
     try {
+      const exportLeftCols = visibleColumnOrder.left.filter((k) => k !== 'photo');
+      const exportRightCols = visibleColumnOrder.right.filter((k) => k !== 'photo');
+      const pHeader = (k: GradebookPeripheralColumnKey): string => {
+        switch (k) {
+          case 'rank':
+            return 'RANG';
+          case 'matricule':
+            return 'MATRICULE';
+          case 'name':
+            return 'NOM & PRÉNOM';
+          case 'total':
+            return `TOTAL GÉNÉRAL (Total Coeff : ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`;
+          case 'average':
+            return `MOYENNE GÉNÉRALE (/${effectiveScaleLabel})`;
+          case 'mention':
+            return 'MENTION';
+          default:
+            return '';
+        }
+      };
+      const pBody = (k: GradebookPeripheralColumnKey, st: ComputedTermAverageStudent): string => {
+        switch (k) {
+          case 'rank':
+            return st.rankLabel;
+          case 'matricule':
+            return st.matricule || '';
+          case 'name':
+            return st.name || 'Élève sans nom';
+          case 'total':
+            return formatFrenchNumber(st.totalGeneral);
+          case 'average':
+            return formatFrenchNumber(st.generalAverage);
+          case 'mention':
+            return st.mention;
+          default:
+            return '';
+        }
+      };
+      const pFooter = (k: GradebookPeripheralColumnKey): string => {
+        switch (k) {
+          case 'rank':
+            return '—';
+          case 'name':
+            return 'MOYENNE DE LA CLASSE';
+          case 'total':
+            return formatFrenchNumber(computed.classSummary.classTotalGeneralAvg);
+          case 'average':
+            return formatFrenchNumber(computed.classSummary.classGeneralAverage);
+          case 'mention':
+            return computed.classSummary.passRatePercent !== null
+              ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
+              : '—';
+          default:
+            return '';
+        }
+      };
+
       const row1 = [
-        'RANG',
-        ...(effectiveShowMatricule ? ['MATRICULE'] : []),
-        'NOM & PRÉNOM',
+        ...exportLeftCols.map(pHeader),
         ...computed.subjects.flatMap((s) => [
           `${s.name} (Coeff ${formatCoeffDisplay(s.effectiveCoeff)}) - Moy. /${effectiveScaleLabel}`,
           `${s.name} - Moy. × Coeff`,
         ]),
-        `TOTAL GÉNÉRAL (Total Coeff : ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`,
-        `MOYENNE GÉNÉRALE (/${effectiveScaleLabel})`,
-        'MENTION',
+        ...exportRightCols.map(pHeader),
       ];
 
       const bodyRows = computed.students.map((st) => [
-        st.rankLabel,
-        ...(effectiveShowMatricule ? [st.matricule || ''] : []),
-        st.name || 'Élève sans nom',
+        ...exportLeftCols.map((k) => pBody(k, st)),
         ...computed.subjects.flatMap((s) => {
           const cell = st.cellsBySubject[s.id];
           return [
@@ -1426,15 +1595,11 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
             formatFrenchNumber(cell?.weightedValue),
           ];
         }),
-        formatFrenchNumber(st.totalGeneral),
-        formatFrenchNumber(st.generalAverage),
-        st.mention,
+        ...exportRightCols.map((k) => pBody(k, st)),
       ]);
 
       const footerRow = [
-        '—',
-        ...(effectiveShowMatricule ? [''] : []),
-        'MOYENNE DE LA CLASSE',
+        ...exportLeftCols.map(pFooter),
         ...computed.subjects.flatMap((s) => {
           const stat = computed.classSummary.bySubject[s.id];
           return [
@@ -1442,11 +1607,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
             formatFrenchNumber(stat?.classWeightedAverage),
           ];
         }),
-        formatFrenchNumber(computed.classSummary.classTotalGeneralAvg),
-        formatFrenchNumber(computed.classSummary.classGeneralAverage),
-        computed.classSummary.passRatePercent !== null
-          ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
-          : '—',
+        ...exportRightCols.map(pFooter),
       ];
 
       const tsv = [row1, ...bodyRows, footerRow]
@@ -1470,23 +1631,77 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
 
     const termLabel = liveTerm?.name || term?.name || 'Trimestre';
 
-    // Ligne 1 : En-têtes groupés
-    const headerRow1: any[] = effectiveShowMatricule
-      ? ['RANG', 'MATRICULE', 'NOM & PRÉNOM']
-      : ['RANG', 'NOM & PRÉNOM'];
-    const headerRow2: any[] = effectiveShowMatricule ? ['', '', ''] : ['', ''];
-    const merges: XLSX.Range[] = effectiveShowMatricule
-      ? [
-          { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, // RANG
-          { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, // MATRICULE
-          { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } }, // NOM & PRÉNOM
-        ]
-      : [
-          { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } }, // RANG
-          { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } }, // NOM & PRÉNOM
-        ];
+    const exportLeftCols = visibleColumnOrder.left.filter((k) => k !== 'photo');
+    const exportRightCols = visibleColumnOrder.right.filter((k) => k !== 'photo');
+    const pHeader = (k: GradebookPeripheralColumnKey): string => {
+      switch (k) {
+        case 'rank':
+          return 'RANG';
+        case 'matricule':
+          return 'MATRICULE';
+        case 'name':
+          return 'NOM & PRÉNOM';
+        case 'total':
+          return `TOTAL GÉNÉRAL (Coeff ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`;
+        case 'average':
+          return `MOYENNE GÉNÉRALE (/${effectiveScaleLabel})`;
+        case 'mention':
+          return 'MENTION';
+        default:
+          return '';
+      }
+    };
+    const pBodyExcel = (k: GradebookPeripheralColumnKey, st: ComputedTermAverageStudent): any => {
+      switch (k) {
+        case 'rank':
+          return st.rankLabel;
+        case 'matricule':
+          return st.matricule || '';
+        case 'name':
+          return st.name || 'Élève sans nom';
+        case 'total':
+          return st.totalGeneral !== null ? Number(st.totalGeneral.toFixed(2)) : '';
+        case 'average':
+          return st.generalAverage !== null ? Number(st.generalAverage.toFixed(2)) : '';
+        case 'mention':
+          return st.mention;
+        default:
+          return '';
+      }
+    };
+    const pFooterExcel = (k: GradebookPeripheralColumnKey): any => {
+      switch (k) {
+        case 'name':
+          return 'MOYENNE DE LA CLASSE';
+        case 'total':
+          return computed.classSummary.classTotalGeneralAvg !== null
+            ? Number(computed.classSummary.classTotalGeneralAvg.toFixed(2))
+            : '';
+        case 'average':
+          return computed.classSummary.classGeneralAverage !== null
+            ? Number(computed.classSummary.classGeneralAverage.toFixed(2))
+            : '';
+        case 'mention':
+          return computed.classSummary.passRatePercent !== null
+            ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
+            : '';
+        default:
+          return '';
+      }
+    };
 
-    let colCursor = effectiveShowMatricule ? 3 : 2;
+    const headerRow1: any[] = [];
+    const headerRow2: any[] = [];
+    const merges: XLSX.Range[] = [];
+    let colCursor = 0;
+
+    for (const k of exportLeftCols) {
+      headerRow1.push(pHeader(k));
+      headerRow2.push('');
+      merges.push({ s: { r: 0, c: colCursor }, e: { r: 1, c: colCursor } });
+      colCursor += 1;
+    }
+
     for (const subj of computed.subjects) {
       headerRow1.push(
         `${subj.name.toUpperCase()} (Coeff ${formatCoeffDisplay(subj.effectiveCoeff)})`,
@@ -1500,22 +1715,15 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       colCursor += 2;
     }
 
-    headerRow1.push(
-      `TOTAL GÉNÉRAL (Coeff ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`,
-      `MOYENNE GÉNÉRALE (/${effectiveScaleLabel})`,
-      'MENTION'
-    );
-    headerRow2.push('', '', '');
-    merges.push(
-      { s: { r: 0, c: colCursor }, e: { r: 1, c: colCursor } },
-      { s: { r: 0, c: colCursor + 1 }, e: { r: 1, c: colCursor + 1 } },
-      { s: { r: 0, c: colCursor + 2 }, e: { r: 1, c: colCursor + 2 } }
-    );
+    for (const k of exportRightCols) {
+      headerRow1.push(pHeader(k));
+      headerRow2.push('');
+      merges.push({ s: { r: 0, c: colCursor }, e: { r: 1, c: colCursor } });
+      colCursor += 1;
+    }
 
     const studentRows = computed.students.map((st) => [
-      st.rankLabel,
-      ...(effectiveShowMatricule ? [st.matricule || ''] : []),
-      st.name || 'Élève sans nom',
+      ...exportLeftCols.map((k) => pBodyExcel(k, st)),
       ...computed.subjects.flatMap((s) => {
         const cell = st.cellsBySubject[s.id];
         return [
@@ -1527,15 +1735,11 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
             : '',
         ];
       }),
-      st.totalGeneral !== null ? Number(st.totalGeneral.toFixed(2)) : '',
-      st.generalAverage !== null ? Number(st.generalAverage.toFixed(2)) : '',
-      st.mention,
+      ...exportRightCols.map((k) => pBodyExcel(k, st)),
     ]);
 
     const footerRow = [
-      '',
-      ...(effectiveShowMatricule ? [''] : []),
-      'MOYENNE DE LA CLASSE',
+      ...exportLeftCols.map(pFooterExcel),
       ...computed.subjects.flatMap((s) => {
         const stat = computed.classSummary.bySubject[s.id];
         return [
@@ -1548,15 +1752,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
             : '',
         ];
       }),
-      computed.classSummary.classTotalGeneralAvg !== null
-        ? Number(computed.classSummary.classTotalGeneralAvg.toFixed(2))
-        : '',
-      computed.classSummary.classGeneralAverage !== null
-        ? Number(computed.classSummary.classGeneralAverage.toFixed(2))
-        : '',
-      computed.classSummary.passRatePercent !== null
-        ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
-        : '',
+      ...exportRightCols.map(pFooterExcel),
     ];
 
     const ws = XLSX.utils.aoa_to_sheet([
@@ -1587,53 +1783,103 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         : `${schoolClass.level}_${schoolClass.name.trim()}`
       : schoolClass.level;
 
+    const exportLeftCols = visibleColumnOrder.left.filter((k) => k !== 'photo');
+    const exportRightCols = visibleColumnOrder.right.filter((k) => k !== 'photo');
+    const pHeader = (k: GradebookPeripheralColumnKey): string => {
+      switch (k) {
+        case 'rank':
+          return 'Rang';
+        case 'matricule':
+          return 'Matricule';
+        case 'name':
+          return 'Nom & Prénom';
+        case 'total':
+          return 'Total';
+        case 'average':
+          return `Moy. /${effectiveScaleLabel}`;
+        case 'mention':
+          return 'Mention';
+        default:
+          return '';
+      }
+    };
+    const pRow = (k: GradebookPeripheralColumnKey, st: ComputedTermAverageStudent): string => {
+      switch (k) {
+        case 'rank':
+          return st.rankLabel || '-';
+        case 'matricule':
+          return st.matricule || '-';
+        case 'name':
+          return st.name || 'Élève sans nom';
+        case 'total':
+          return st.totalGeneral !== null ? st.totalGeneral.toFixed(2) : '-';
+        case 'average':
+          return st.generalAverage !== null ? st.generalAverage.toFixed(2) : '-';
+        case 'mention':
+          return st.mention || '-';
+        default:
+          return '';
+      }
+    };
+    const pFooter = (k: GradebookPeripheralColumnKey): string => {
+      switch (k) {
+        case 'name':
+          return 'MOYENNE DE LA CLASSE';
+        case 'total':
+          return computed.classSummary.classTotalGeneralAvg !== null
+            ? computed.classSummary.classTotalGeneralAvg.toFixed(2)
+            : '-';
+        case 'average':
+          return computed.classSummary.classGeneralAverage !== null
+            ? computed.classSummary.classGeneralAverage.toFixed(2)
+            : '-';
+        case 'mention':
+          return computed.classSummary.passRatePercent !== null
+            ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
+            : '';
+        default:
+          return '';
+      }
+    };
+
     const headers: string[] = [
-      'Rang',
-      ...(effectiveShowMatricule ? ['Matricule'] : []),
-      'Nom & Prénom',
+      ...exportLeftCols.map(pHeader),
       ...computed.subjects.map(
         (s) => `${s.name} (c${formatCoeffDisplay(s.effectiveCoeff)})`
       ),
-      `Total`,
-      `Moy. /${effectiveScaleLabel}`,
-      'Mention',
+      ...exportRightCols.map(pHeader),
     ];
 
     const rows: string[][] = computed.students.map((st) => [
-      st.rankLabel || '-',
-      ...(effectiveShowMatricule ? [st.matricule || '-'] : []),
-      st.name || 'Élève sans nom',
+      ...exportLeftCols.map((k) => pRow(k, st)),
       ...computed.subjects.map((s) => {
         const cell = st.cellsBySubject[s.id];
         return cell?.effectiveAverage !== null && cell?.effectiveAverage !== undefined
           ? cell.effectiveAverage.toFixed(2)
           : '-';
       }),
-      st.totalGeneral !== null ? st.totalGeneral.toFixed(2) : '-',
-      st.generalAverage !== null ? st.generalAverage.toFixed(2) : '-',
-      st.mention || '-',
+      ...exportRightCols.map((k) => pRow(k, st)),
     ]);
 
     const footerRow: string[] = [
-      '',
-      ...(effectiveShowMatricule ? [''] : []),
-      'MOYENNE DE LA CLASSE',
+      ...exportLeftCols.map(pFooter),
       ...computed.subjects.map((s) => {
         const stat = computed.classSummary.bySubject[s.id];
         return stat?.classAverage20 !== null && stat?.classAverage20 !== undefined
           ? stat.classAverage20.toFixed(2)
           : '-';
       }),
-      computed.classSummary.classTotalGeneralAvg !== null
-        ? computed.classSummary.classTotalGeneralAvg.toFixed(2)
-        : '-',
-      computed.classSummary.classGeneralAverage !== null
-        ? computed.classSummary.classGeneralAverage.toFixed(2)
-        : '-',
-      computed.classSummary.passRatePercent !== null
-        ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
-        : '',
+      ...exportRightCols.map(pFooter),
     ];
+
+    const leftNameIdx = exportLeftCols.indexOf('name');
+    const rightNameIdx = exportRightCols.indexOf('name');
+    const dynamicNameColIndex =
+      leftNameIdx >= 0
+        ? leftNameIdx
+        : rightNameIdx >= 0
+        ? exportLeftCols.length + computed.subjects.length + rightNameIdx
+        : 0;
 
     const metaBadges: string[] = [
       `Total Coeff ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)}`,
@@ -1657,7 +1903,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         computed.classSummary.classGeneralAverage !== null
           ? `Moyenne générale de classe : ${computed.classSummary.classGeneralAverage.toFixed(2)}/${effectiveScaleLabel}`
           : undefined,
-      nameColumnIndex: effectiveShowMatricule ? 2 : 1,
+      nameColumnIndex: dynamicNameColIndex,
     };
   };
 
@@ -1828,7 +2074,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                 : action.sortMode === 'alpha' || action.mode === 'alpha'
                 ? 'alpha'
                 : 'order';
-            handleSortChange(mode);
+            setSortMode(mode);
+            setIsDirty(true);
             summaries.push(`✓ Classement : ${sortLabelMap[mode]}`);
             break;
           }
@@ -1846,6 +2093,28 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
               action.scope === 'class' ? 'class' : 'sheet';
             await handleSaveAverageScale(scale, scope);
             summaries.push(`✓ Barème de la moyenne passé sur /${scale}`);
+            break;
+          }
+          case 'set_column_order': {
+            const resolvedOrder = resolveColumnOrderFromDelmasAction(
+              action,
+              effectiveColumnOrder,
+              { includeTotal: true }
+            );
+            if (resolvedOrder !== undefined) {
+              const scope: SheetSettingScope =
+                action.scope === 'class' ? 'class' : 'sheet';
+              await handleSaveColumnOrder(resolvedOrder, scope);
+              summaries.push(
+                resolvedOrder === null
+                  ? `✓ Disposition des colonnes réinitialisée par défaut (${
+                      scope === 'class' ? 'toute la classe' : 'ce tableau'
+                    })`
+                  : `✓ Disposition des colonnes mise à jour (${
+                      scope === 'class' ? 'toute la classe' : 'ce tableau'
+                    })`
+              );
+            }
             break;
           }
           case 'set_mention_rules': {
@@ -2938,6 +3207,11 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
           onSaveMentionRules={handleSaveMentionRules}
           onSaveShowMatricule={handleSaveShowMatricule}
           onSaveAverageScale={handleSaveAverageScale}
+          effectiveColumnOrder={effectiveColumnOrder}
+          hasCustomColumnOrder={hasCustomColumnOrder}
+          includeTotalColumn={true}
+          centerBlockLabel="MATIÈRES"
+          onSaveColumnOrder={handleSaveColumnOrder}
         />
 
         {/* Bouton Assistant Delmas (Robot bleu animé + "Assistant Delmas" écrit en bas, placé tout à droite du ruban) */}
@@ -3137,9 +3411,12 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                       style={{ width: `${totalTableWidth}px` }}
                     >
                       <thead>
-                        {/* LIGNE D'EN-TÊTE 1 : COLONNES FIXES + MATIÈRES GROUPÉES (2 SOUS-COLONNES) + RÉSULTATS */}
-                        <tr className="bg-[#f1f5f9] text-slate-800">
-                          {/* RANG */}
+                        {/* LIGNE D'EN-TÊTE 1 : COLONNES PÉRIPHÉRIQUES + MATIÈRES GROUPÉES (2 SOUS-COLONNES) + COLONNES PÉRIPHÉRIQUES */}
+                        {(() => {
+                          const peripheralHeaders: Partial<
+                            Record<GradebookPeripheralColumnKey, React.ReactNode>
+                          > = {
+                            rank: (
                           <th
                             rowSpan={2}
                             style={getHeaderInlineStyle('header_rank', { width: `${colWidthRank}px` })}
@@ -3155,8 +3432,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                               className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
                             />
                           </th>
-
-                          {/* PROFIL */}
+                            ),
+                            photo: (
                           <th
                             rowSpan={2}
                             style={getHeaderInlineStyle('header_photo', { width: `${colWidthPhoto}px` })}
@@ -3172,9 +3449,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                               className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
                             />
                           </th>
-
-                          {/* MATRICULE (optionnel — derrière PROFIL) */}
-                          {effectiveShowMatricule && (
+                            ),
+                            matricule: effectiveShowMatricule ? (
                             <th
                               rowSpan={2}
                               style={getHeaderInlineStyle('header_matricule', { width: `${colWidthMatricule}px` })}
@@ -3190,9 +3466,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                 className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
                               />
                             </th>
-                          )}
-
-                          {/* NOM & PRÉNOM */}
+                            ) : null,
+                            name: (
                           <th
                             rowSpan={2}
                             style={getHeaderInlineStyle('header_name', { width: `${colWidthName}px` })}
@@ -3208,6 +3483,102 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                               className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
                             />
                           </th>
+                            ),
+                            total: (
+                          <th
+                            rowSpan={2}
+                            style={getHeaderInlineStyle('header_total', { width: `${colWidthTotalGeneral}px` })}
+                            className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center align-middle bg-indigo-50/70"
+                          >
+                            <div
+                              style={getCellTextOverrideStyle('header_total')}
+                              className="font-black text-[11px] text-indigo-950 uppercase leading-tight"
+                            >
+                              TOTAL GÉNÉRAL
+                            </div>
+                            <div className="text-[10px] font-bold text-indigo-700 mt-0.5">
+                              Total Coeff :{' '}
+                              {formatCoeffDisplay(
+                                computed.classSummary.totalClassCoeff
+                              )}
+                            </div>
+                            <div
+                              onMouseDown={(e) =>
+                                startColumnResize(
+                                  e,
+                                  colWidthTotalGeneral,
+                                  88,
+                                  (w) =>
+                                    setLayout((p) => ({
+                                      ...p,
+                                      colWidthTotalGeneral: w,
+                                    }))
+                                )
+                              }
+                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
+                            />
+                          </th>
+                            ),
+                            average: (
+                          <th
+                            rowSpan={2}
+                            style={getHeaderInlineStyle('header_avg', { width: `${colWidthGeneralAvg}px` })}
+                            className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center align-middle bg-emerald-50/80"
+                          >
+                            <div
+                              style={getCellTextOverrideStyle('header_avg')}
+                              className="font-black text-[11px] text-emerald-950 uppercase leading-tight"
+                            >
+                              MOYENNE GÉNÉRALE
+                            </div>
+                            <div className="text-[10px] font-bold text-emerald-700 mt-0.5">
+                              / {effectiveScaleLabel}
+                            </div>
+                            <div
+                              onMouseDown={(e) =>
+                                startColumnResize(
+                                  e,
+                                  colWidthGeneralAvg,
+                                  88,
+                                  (w) =>
+                                    setLayout((p) => ({
+                                      ...p,
+                                      colWidthGeneralAvg: w,
+                                    }))
+                                )
+                              }
+                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
+                            />
+                          </th>
+                            ),
+                            mention: (
+                          <th
+                            rowSpan={2}
+                            style={getHeaderInlineStyle('header_mention', { width: `${colWidthMention}px` })}
+                            className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center font-black text-[11px] tracking-wide uppercase align-middle bg-[#eef2f6]"
+                          >
+                            MENTION
+                            <div
+                              onMouseDown={(e) =>
+                                startColumnResize(e, colWidthMention, 86, (w) =>
+                                  setLayout((p) => ({
+                                    ...p,
+                                    colWidthMention: w,
+                                  }))
+                                )
+                              }
+                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
+                            />
+                          </th>
+                            ),
+                          };
+                          return (
+                        <tr className="bg-[#f1f5f9] text-slate-800">
+                          {visibleColumnOrder.left.map((colKey) => (
+                            <React.Fragment key={`th-l-${colKey}`}>
+                              {peripheralHeaders[colKey]}
+                            </React.Fragment>
+                          ))}
 
                           {/* EN-TÊTES GROUPÉS DES MATIÈRES (COLSPAN = 2 : MOY. /20 | MOY. × COEFF) */}
                           {computed.subjects.map((subject) => {
@@ -3290,93 +3661,14 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                             );
                           })}
 
-                          {/* TOTAL GÉNÉRAL (Somme des Moy. × Coeff) */}
-                          <th
-                            rowSpan={2}
-                            style={getHeaderInlineStyle('header_total', { width: `${colWidthTotalGeneral}px` })}
-                            className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center align-middle bg-indigo-50/70"
-                          >
-                            <div
-                              style={getCellTextOverrideStyle('header_total')}
-                              className="font-black text-[11px] text-indigo-950 uppercase leading-tight"
-                            >
-                              TOTAL GÉNÉRAL
-                            </div>
-                            <div className="text-[10px] font-bold text-indigo-700 mt-0.5">
-                              Total Coeff :{' '}
-                              {formatCoeffDisplay(
-                                computed.classSummary.totalClassCoeff
-                              )}
-                            </div>
-                            <div
-                              onMouseDown={(e) =>
-                                startColumnResize(
-                                  e,
-                                  colWidthTotalGeneral,
-                                  88,
-                                  (w) =>
-                                    setLayout((p) => ({
-                                      ...p,
-                                      colWidthTotalGeneral: w,
-                                    }))
-                                )
-                              }
-                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
-                            />
-                          </th>
-
-                          {/* MOYENNE GÉNÉRALE */}
-                          <th
-                            rowSpan={2}
-                            style={getHeaderInlineStyle('header_avg', { width: `${colWidthGeneralAvg}px` })}
-                            className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center align-middle bg-emerald-50/80"
-                          >
-                            <div
-                              style={getCellTextOverrideStyle('header_avg')}
-                              className="font-black text-[11px] text-emerald-950 uppercase leading-tight"
-                            >
-                              MOYENNE GÉNÉRALE
-                            </div>
-                            <div className="text-[10px] font-bold text-emerald-700 mt-0.5">
-                              / {effectiveScaleLabel}
-                            </div>
-                            <div
-                              onMouseDown={(e) =>
-                                startColumnResize(
-                                  e,
-                                  colWidthGeneralAvg,
-                                  88,
-                                  (w) =>
-                                    setLayout((p) => ({
-                                      ...p,
-                                      colWidthGeneralAvg: w,
-                                    }))
-                                )
-                              }
-                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
-                            />
-                          </th>
-
-                          {/* MENTION */}
-                          <th
-                            rowSpan={2}
-                            style={getHeaderInlineStyle('header_mention', { width: `${colWidthMention}px` })}
-                            className="relative border-b-2 border-slate-800 px-2 py-2 text-center font-black text-[11px] tracking-wide uppercase align-middle bg-[#eef2f6]"
-                          >
-                            MENTION
-                            <div
-                              onMouseDown={(e) =>
-                                startColumnResize(e, colWidthMention, 86, (w) =>
-                                  setLayout((p) => ({
-                                    ...p,
-                                    colWidthMention: w,
-                                  }))
-                                )
-                              }
-                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
-                            />
-                          </th>
+                          {visibleColumnOrder.right.map((colKey) => (
+                            <React.Fragment key={`th-r-${colKey}`}>
+                              {peripheralHeaders[colKey]}
+                            </React.Fragment>
+                          ))}
                         </tr>
+                          );
+                        })()}
 
                         {/* LIGNE D'EN-TÊTE 2 : SOUS-COLONNES MOY. /20 ET MOY. × COEFF POUR CHAQUE MATIÈRE */}
                         <tr className="bg-[#f8fafc] text-slate-600">
@@ -3467,15 +3759,10 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                               layout.customRowHeights?.[rowKey] ??
                               layout.customRowHeights?.[String(rIdx)];
 
-                            return (
-                              <tr
-                                key={student.key}
-                                data-custom-height={rowCustomHeight ? '1' : undefined}
-                                style={rowCustomHeight ? { height: `${rowCustomHeight}px` } : undefined}
-                                className="group hover:bg-blue-50/25 transition-colors"
-                              >
-                                {/* 1. RANG */}
-                                {(() => {
+                            const peripheralBodyCells: Partial<
+                              Record<GradebookPeripheralColumnKey, React.ReactNode>
+                            > = {
+                              rank: (() => {
                                   const cellKey = `${rowKey}_rank`;
                                   const isSel = activeCell.cellKey === cellKey;
                                   const rankBadge =
@@ -3520,10 +3807,8 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                       )}
                                     </td>
                                   );
-                                })()}
-
-                                {/* 2. PROFIL (PHOTO) */}
-                                {(() => {
+                                })(),
+                              photo: (() => {
                                   const cellKey = `${rowKey}_photo`;
                                   return (
                                     <td
@@ -3546,11 +3831,9 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                       </div>
                                     </td>
                                   );
-                                })()}
-
-                                {/* 2bis. MATRICULE (optionnel — derrière PROFIL) */}
-                                {effectiveShowMatricule &&
-                                  (() => {
+                                })(),
+                              matricule: effectiveShowMatricule
+                                ? (() => {
                                     const cellKey = `${rowKey}_matricule`;
                                     const isSel = activeCell.cellKey === cellKey;
                                     const isEditingMat =
@@ -3617,10 +3900,9 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                         )}
                                       </td>
                                     );
-                                  })()}
-
-                                {/* 3. NOM & PRÉNOM */}
-                                {(() => {
+                                  })()
+                                : null,
+                              name: (() => {
                                   const cellKey = `${rowKey}_name`;
                                   const isSel = activeCell.cellKey === cellKey;
                                   return (
@@ -3697,7 +3979,164 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                       </div>
                                     </td>
                                   );
-                                })()}
+                                })(),
+                              total: (() => {
+                                  const cellKey = `${rowKey}_total`;
+                                  const isSel = activeCell.cellKey === cellKey;
+                                  const partialCoeff =
+                                    student.totalCoeffCounted > 0 &&
+                                    Math.abs(
+                                      student.totalCoeffCounted -
+                                        computed.classSummary.totalClassCoeff
+                                    ) > 1e-6;
+                                  return (
+                                    <td
+                                      data-cell-key={cellKey}
+                                      onClick={() => {
+                                        const parts = computed.subjects
+                                          .map((s) => {
+                                            const c =
+                                              student.cellsBySubject[s.id];
+                                            return c?.weightedValue !== null &&
+                                              c?.weightedValue !== undefined
+                                              ? formatFrenchNumber(
+                                                  c.weightedValue
+                                                )
+                                              : null;
+                                          })
+                                          .filter(Boolean);
+                                        setActiveCell({
+                                          cellKey,
+                                          rowKey,
+                                          coordDisplay: `TOT${rowNum}`,
+                                          formulaText:
+                                            student.totalGeneral !== null
+                                              ? `Total Général = ${parts.join(
+                                                  ' + '
+                                                )} = ${formatFrenchNumber(
+                                                  student.totalGeneral
+                                                )} (Total des coefficients comptés : ${formatCoeffDisplay(
+                                                  student.totalCoeffCounted
+                                                )})`
+                                              : 'Total Général : aucune matière notée',
+                                        });
+                                      }}
+                                      style={getCellInlineStyle(cellKey, rowKey)}
+                                      className={`h-11 border-r border-b border-slate-300 bg-indigo-50/75 dark:bg-indigo-950/50 px-2 text-center align-middle cursor-pointer ${
+                                        isSel
+                                          ? 'ring-2 ring-inset ring-blue-500'
+                                          : ''
+                                      }`}
+                                    >
+                                      <div
+                                        style={getCellTextOverrideStyle(cellKey)}
+                                        className="text-xs font-black text-indigo-950 dark:text-indigo-200 leading-tight"
+                                      >
+                                        {formatFrenchNumber(student.totalGeneral)}
+                                      </div>
+                                      {partialCoeff && (
+                                        <div className="text-[9px] font-bold text-indigo-600 dark:text-indigo-300 leading-none mt-0.5">
+                                          Coeff{' '}
+                                          {formatCoeffDisplay(
+                                            student.totalCoeffCounted
+                                          )}
+                                        </div>
+                                      )}
+                                    </td>
+                                  );
+                                })(),
+                              average: (() => {
+                                  const cellKey = `${rowKey}_avg`;
+                                  const isSel = activeCell.cellKey === cellKey;
+                                  const isPassing =
+                                    student.generalAverage !== null &&
+                                    student.generalAverage + 1e-9 >= passThreshold;
+                                  return (
+                                    <td
+                                      data-cell-key={cellKey}
+                                      onClick={() =>
+                                        setActiveCell({
+                                          cellKey,
+                                          rowKey,
+                                          coordDisplay: `MOY${rowNum}`,
+                                          formulaText:
+                                            student.generalAverage !== null &&
+                                            student.totalGeneral !== null
+                                              ? `Moyenne Générale = ${formatFrenchNumber(
+                                                  student.totalGeneral
+                                                )} ÷ ${formatCoeffDisplay(
+                                                  student.totalCoeffCounted
+                                                )} = ${formatFrenchNumber(
+                                                  student.generalAverage
+                                                )} / ${effectiveScaleLabel}`
+                                              : 'Moyenne Générale : aucune matière notée',
+                                        })
+                                      }
+                                      style={getCellInlineStyle(cellKey, rowKey)}
+                                      className={`h-11 border-r border-b border-slate-300 px-2 text-center align-middle text-[13px] font-black cursor-pointer ${
+                                        isSel
+                                          ? 'ring-2 ring-inset ring-blue-500'
+                                          : ''
+                                      } ${
+                                        student.generalAverage === null
+                                          ? 'bg-slate-50 dark:bg-[#162033] text-slate-400 dark:text-slate-500'
+                                          : isPassing
+                                          ? 'bg-emerald-50 dark:bg-emerald-950/45 text-emerald-800 dark:text-emerald-300'
+                                          : 'bg-red-50 dark:bg-red-950/45 text-red-700 dark:text-red-300'
+                                      }`}
+                                    >
+                                      {formatFrenchNumber(student.generalAverage)}
+                                    </td>
+                                  );
+                                })(),
+                              mention: (() => {
+                                  const cellKey = `${rowKey}_mention`;
+                                  const isSel = activeCell.cellKey === cellKey;
+                                  return (
+                                    <td
+                                      data-cell-key={cellKey}
+                                      onClick={() =>
+                                        setActiveCell({
+                                          cellKey,
+                                          rowKey,
+                                          coordDisplay: `MEN${rowNum}`,
+                                          formulaText: `Mention : ${student.mention}`,
+                                        })
+                                      }
+                                      style={getCellInlineStyle(cellKey, rowKey)}
+                                      className={`h-11 border-r border-b border-slate-300 px-1.5 text-center align-middle cursor-pointer ${
+                                        isSel
+                                          ? 'ring-2 ring-inset ring-blue-500'
+                                          : ''
+                                      }`}
+                                    >
+                                      <span
+                                        style={getCellTextOverrideStyle(cellKey)}
+                                        className={`inline-block px-2 py-0.5 rounded-full border text-[10.5px] font-extrabold whitespace-nowrap ${getMentionBadgeStyle(
+                                          student.generalAverage,
+                                          effectiveMentionRules,
+                                          effectiveAverageScale
+                                        )}`}
+                                      >
+                                        {student.mention}
+                                      </span>
+                                    </td>
+                                  );
+                                })(),
+                            };
+
+                            return (
+                              <tr
+                                key={student.key}
+                                data-custom-height={rowCustomHeight ? '1' : undefined}
+                                style={rowCustomHeight ? { height: `${rowCustomHeight}px` } : undefined}
+                                className="group hover:bg-blue-50/25 transition-colors"
+                              >
+                                {visibleColumnOrder.left.map((colKey) => (
+                                  <React.Fragment key={`td-l-${student.key}-${colKey}`}>
+                                    {peripheralBodyCells[colKey]}
+                                  </React.Fragment>
+                                ))}
 
                                 {/* 4. POUR CHAQUE MATIÈRE : MOY. /20 + MOY. × COEFF */}
                                 {computed.subjects.map((subject, sIdx) => {
@@ -3876,167 +4315,78 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                                   );
                                 })}
 
-                                {/* 5. TOTAL GÉNÉRAL */}
-                                {(() => {
-                                  const cellKey = `${rowKey}_total`;
-                                  const isSel = activeCell.cellKey === cellKey;
-                                  const partialCoeff =
-                                    student.totalCoeffCounted > 0 &&
-                                    Math.abs(
-                                      student.totalCoeffCounted -
-                                        computed.classSummary.totalClassCoeff
-                                    ) > 1e-6;
-                                  return (
-                                    <td
-                                      data-cell-key={cellKey}
-                                      onClick={() => {
-                                        const parts = computed.subjects
-                                          .map((s) => {
-                                            const c =
-                                              student.cellsBySubject[s.id];
-                                            return c?.weightedValue !== null &&
-                                              c?.weightedValue !== undefined
-                                              ? formatFrenchNumber(
-                                                  c.weightedValue
-                                                )
-                                              : null;
-                                          })
-                                          .filter(Boolean);
-                                        setActiveCell({
-                                          cellKey,
-                                          rowKey,
-                                          coordDisplay: `TOT${rowNum}`,
-                                          formulaText:
-                                            student.totalGeneral !== null
-                                              ? `Total Général = ${parts.join(
-                                                  ' + '
-                                                )} = ${formatFrenchNumber(
-                                                  student.totalGeneral
-                                                )} (Total des coefficients comptés : ${formatCoeffDisplay(
-                                                  student.totalCoeffCounted
-                                                )})`
-                                              : 'Total Général : aucune matière notée',
-                                        });
-                                      }}
-                                      style={getCellInlineStyle(cellKey, rowKey)}
-                                      className={`h-11 border-r border-b border-slate-300 bg-indigo-50/75 dark:bg-indigo-950/50 px-2 text-center align-middle cursor-pointer ${
-                                        isSel
-                                          ? 'ring-2 ring-inset ring-blue-500'
-                                          : ''
-                                      }`}
-                                    >
-                                      <div
-                                        style={getCellTextOverrideStyle(cellKey)}
-                                        className="text-xs font-black text-indigo-950 dark:text-indigo-200 leading-tight"
-                                      >
-                                        {formatFrenchNumber(student.totalGeneral)}
-                                      </div>
-                                      {partialCoeff && (
-                                        <div className="text-[9px] font-bold text-indigo-600 dark:text-indigo-300 leading-none mt-0.5">
-                                          Coeff{' '}
-                                          {formatCoeffDisplay(
-                                            student.totalCoeffCounted
-                                          )}
-                                        </div>
-                                      )}
-                                    </td>
-                                  );
-                                })()}
-
-                                {/* 6. MOYENNE GÉNÉRALE */}
-                                {(() => {
-                                  const cellKey = `${rowKey}_avg`;
-                                  const isSel = activeCell.cellKey === cellKey;
-                                  const isPassing =
-                                    student.generalAverage !== null &&
-                                    student.generalAverage + 1e-9 >= passThreshold;
-                                  return (
-                                    <td
-                                      data-cell-key={cellKey}
-                                      onClick={() =>
-                                        setActiveCell({
-                                          cellKey,
-                                          rowKey,
-                                          coordDisplay: `MOY${rowNum}`,
-                                          formulaText:
-                                            student.generalAverage !== null &&
-                                            student.totalGeneral !== null
-                                              ? `Moyenne Générale = ${formatFrenchNumber(
-                                                  student.totalGeneral
-                                                )} ÷ ${formatCoeffDisplay(
-                                                  student.totalCoeffCounted
-                                                )} = ${formatFrenchNumber(
-                                                  student.generalAverage
-                                                )} / ${effectiveScaleLabel}`
-                                              : 'Moyenne Générale : aucune matière notée',
-                                        })
-                                      }
-                                      style={getCellInlineStyle(cellKey, rowKey)}
-                                      className={`h-11 border-r border-b border-slate-300 px-2 text-center align-middle text-[13px] font-black cursor-pointer ${
-                                        isSel
-                                          ? 'ring-2 ring-inset ring-blue-500'
-                                          : ''
-                                      } ${
-                                        student.generalAverage === null
-                                          ? 'bg-slate-50 dark:bg-[#162033] text-slate-400 dark:text-slate-500'
-                                          : isPassing
-                                          ? 'bg-emerald-50 dark:bg-emerald-950/45 text-emerald-800 dark:text-emerald-300'
-                                          : 'bg-red-50 dark:bg-red-950/45 text-red-700 dark:text-red-300'
-                                      }`}
-                                    >
-                                      {formatFrenchNumber(student.generalAverage)}
-                                    </td>
-                                  );
-                                })()}
-
-                                {/* 7. MENTION */}
-                                {(() => {
-                                  const cellKey = `${rowKey}_mention`;
-                                  const isSel = activeCell.cellKey === cellKey;
-                                  return (
-                                    <td
-                                      data-cell-key={cellKey}
-                                      onClick={() =>
-                                        setActiveCell({
-                                          cellKey,
-                                          rowKey,
-                                          coordDisplay: `MEN${rowNum}`,
-                                          formulaText: `Mention : ${student.mention}`,
-                                        })
-                                      }
-                                      style={getCellInlineStyle(cellKey, rowKey)}
-                                      className={`h-11 border-b border-slate-300 px-1.5 text-center align-middle cursor-pointer ${
-                                        isSel
-                                          ? 'ring-2 ring-inset ring-blue-500'
-                                          : ''
-                                      }`}
-                                    >
-                                      <span
-                                        style={getCellTextOverrideStyle(cellKey)}
-                                        className={`inline-block px-2 py-0.5 rounded-full border text-[10.5px] font-extrabold whitespace-nowrap ${getMentionBadgeStyle(
-                                          student.generalAverage,
-                                          effectiveMentionRules,
-                                          effectiveAverageScale
-                                        )}`}
-                                      >
-                                        {student.mention}
-                                      </span>
-                                    </td>
-                                  );
-                                })()}
+                                {visibleColumnOrder.right.map((colKey) => (
+                                  <React.Fragment key={`td-r-${student.key}-${colKey}`}>
+                                    {peripheralBodyCells[colKey]}
+                                  </React.Fragment>
+                                ))}
                               </tr>
                             );
                           })
                         )}
 
-                        {/* LIGNE DE SYNTHÈSE : MOYENNE DE LA CLASSE */}
+                        {/* LIGNE DE SYNTHÈSE : MOYENNE DE LA CLASSE (DYNAMIQUE SELON LA DISPOSITION) */}
+                        {(() => {
+                          const renderFooterPeripheral = (colKey: GradebookPeripheralColumnKey) => {
+                            switch (colKey) {
+                              case 'name':
+                                return (
+                                  <td
+                                    key={`ft-${colKey}`}
+                                    className="h-11 border-r-2 border-b border-slate-800 px-3 text-right text-[11px] uppercase tracking-wide bg-slate-200/70"
+                                  >
+                                    Moyenne de la classe
+                                  </td>
+                                );
+                              case 'total':
+                                return (
+                                  <td
+                                    key={`ft-${colKey}`}
+                                    className="h-11 border-r border-b border-slate-400 px-2 text-center text-xs font-black text-indigo-950 bg-indigo-100/70"
+                                  >
+                                    {formatFrenchNumber(
+                                      computed.classSummary.classTotalGeneralAvg
+                                    )}
+                                  </td>
+                                );
+                              case 'average':
+                                return (
+                                  <td
+                                    key={`ft-${colKey}`}
+                                    className="h-11 border-r border-b border-slate-400 px-2 text-center text-[13px] font-black text-emerald-900 bg-emerald-100/80"
+                                  >
+                                    {formatFrenchNumber(
+                                      computed.classSummary.classGeneralAverage
+                                    )}
+                                  </td>
+                                );
+                              case 'mention':
+                                return (
+                                  <td
+                                    key={`ft-${colKey}`}
+                                    className="h-11 border-r border-b border-slate-400 px-2 text-center text-[10.5px] font-extrabold text-slate-700 bg-slate-100"
+                                  >
+                                    {computed.classSummary.passRatePercent !== null
+                                      ? `Réussite : ${Math.round(
+                                          computed.classSummary.passRatePercent
+                                        )} %`
+                                      : '—'}
+                                  </td>
+                                );
+                              default:
+                                return (
+                                  <td
+                                    key={`ft-${colKey}`}
+                                    className="h-11 border-r border-b border-slate-400 px-1.5 text-center text-[11px] text-slate-400 bg-slate-200/70"
+                                  >
+                                    —
+                                  </td>
+                                );
+                            }
+                          };
+                          return (
                         <tr className="term-avg-footer-row bg-slate-100 border-t-2 border-slate-800 font-black text-slate-900">
-                          <td
-                            colSpan={effectiveShowMatricule ? 4 : 3}
-                            className="h-11 border-r-2 border-b border-slate-800 px-3 text-right text-[11px] uppercase tracking-wide bg-slate-200/70"
-                          >
-                            Moyenne de la classe
-                          </td>
+                          {visibleColumnOrder.left.map(renderFooterPeripheral)}
 
                           {computed.subjects.map((subject) => {
                             const stat = computed.classSummary.bySubject[subject.id];
@@ -4052,26 +4402,10 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
                             );
                           })}
 
-                          <td className="h-11 border-r border-b border-slate-400 px-2 text-center text-xs font-black text-indigo-950 bg-indigo-100/70">
-                            {formatFrenchNumber(
-                              computed.classSummary.classTotalGeneralAvg
-                            )}
-                          </td>
-
-                          <td className="h-11 border-r border-b border-slate-400 px-2 text-center text-[13px] font-black text-emerald-900 bg-emerald-100/80">
-                            {formatFrenchNumber(
-                              computed.classSummary.classGeneralAverage
-                            )}
-                          </td>
-
-                          <td className="h-11 border-b border-slate-400 px-2 text-center text-[10.5px] font-extrabold text-slate-700 bg-slate-100">
-                            {computed.classSummary.passRatePercent !== null
-                              ? `Réussite : ${Math.round(
-                                  computed.classSummary.passRatePercent
-                                )} %`
-                              : '—'}
-                          </td>
+                          {visibleColumnOrder.right.map(renderFooterPeripheral)}
                         </tr>
+                          );
+                        })()}
                       </tbody>
                     </table>
                   )}

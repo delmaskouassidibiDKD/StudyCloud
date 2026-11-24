@@ -96,6 +96,15 @@ import {
   type CustomMentionRule,
 } from '../../utils/gradebookCalculations';
 import {
+  getVisibleColumnOrder,
+  isDefaultColumnOrder,
+  resolveColumnOrderFromDelmasAction,
+  resolveEffectiveColumnOrder,
+  sanitizeGradebookColumnOrder,
+  type GradebookColumnOrder,
+  type GradebookPeripheralColumnKey,
+} from '../../utils/gradebookColumnLayout';
+import {
   formatCoeffDisplay,
   formatFrenchNumber,
   makeSortedPairKey,
@@ -286,7 +295,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
     mergedLinks: initialCachedSheet?.card?.overrides?.mergedLinks || [],
     distinctPairs: initialCachedSheet?.card?.overrides?.distinctPairs || [],
   }));
-  // Paramètres globaux de classe (mentions personnalisées + colonne Matricule + moyenne max)
+  // Paramètres globaux de classe (mentions personnalisées + colonne Matricule + moyenne max + disposition)
   const [classSettings, setClassSettings] = useState<ClassSheetSettings>(() => ({
     mentionRules:
       initialCachedSheet?.classSettings?.mentionRules ??
@@ -299,6 +308,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       sanitizeAverageScale(initialCachedSheet?.classSettings?.averageScale) ??
       sanitizeAverageScale(schoolClass.averageScale) ??
       DEFAULT_AVERAGE_SCALE,
+    columnOrder:
+      initialCachedSheet?.classSettings?.columnOrder ??
+      ((schoolClass.columnOrder as GradebookColumnOrder | null | undefined) ?? null),
   }));
   const [closeMentionMatriculeSignal, setCloseMentionMatriculeSignal] = useState(0);
   const [editingMatriculeCell, setEditingMatriculeCell] = useState<{
@@ -400,6 +412,25 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
     DEFAULT_AVERAGE_SCALE;
   const effectiveScaleLabel = formatScaleValue(effectiveAverageScale);
   const passThreshold = effectiveAverageScale / 2;
+  const effectiveColumnOrder = useMemo(
+    () =>
+      resolveEffectiveColumnOrder(layout.columnOrder, classSettings.columnOrder, {
+        includeTotal: true,
+      }),
+    [layout.columnOrder, classSettings.columnOrder]
+  );
+  const hasCustomColumnOrder = useMemo(
+    () => !isDefaultColumnOrder(effectiveColumnOrder, { includeTotal: true }),
+    [effectiveColumnOrder]
+  );
+  const visibleColumnOrder = useMemo(
+    () =>
+      getVisibleColumnOrder(effectiveColumnOrder, {
+        showMatricule: effectiveShowMatricule,
+        includeTotal: true,
+      }),
+    [effectiveColumnOrder, effectiveShowMatricule]
+  );
 
   // Largeurs effectives des colonnes
   const colWidthRank = layout.colWidthRank ?? 68;
@@ -798,6 +829,93 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
         ...layout,
         zoomPercent,
         averageScale: cleanScale,
+      };
+      setLayout(nextLayout);
+      const nextPayload: ClassAverageSheetSavePayload = {
+        layout: nextLayout,
+        styles,
+        overrides,
+        sortMode,
+      };
+      latestPayloadRef.current = nextPayload;
+      if (token) {
+        await TeacherGradebookAPI.saveClassAverageSheet(averageCard.id, nextPayload);
+        setIsDirty(false);
+        setHasSavedAtLeastOnce(true);
+        setCloudStatus('saved');
+      } else {
+        setIsDirty(true);
+      }
+    },
+    [
+      schoolClass.id,
+      classSettings,
+      userId,
+      averageCard.id,
+      onClassSettingsUpdated,
+      layout,
+      zoomPercent,
+      styles,
+      overrides,
+      sortMode,
+    ]
+  );
+
+  // Enregistrer la disposition des colonnes (ce tableau ou toute la classe)
+  const handleSaveColumnOrder = useCallback(
+    async (order: GradebookColumnOrder | null, scope: SheetSettingScope) => {
+      const normalized =
+        order === null
+          ? null
+          : sanitizeGradebookColumnOrder(order, { includeTotal: true });
+      const token = getTeacherAuthToken();
+      if (scope === 'class') {
+        if (token) {
+          const res = await TeacherGradebookAPI.updateClassSheetSettings(schoolClass.id, {
+            columnOrder: normalized,
+          });
+          setClassSettings(res.classSettings);
+          setLayout((prev) => {
+            if (!('columnOrder' in prev)) return prev;
+            const next = { ...prev };
+            delete next.columnOrder;
+            return next;
+          });
+          if (userId) {
+            const cached = readUserClassAverageCache(userId, averageCard.id);
+            if (cached) {
+              const nextCardLayout = { ...(cached.card?.layout || {}) };
+              delete nextCardLayout.columnOrder;
+              writeUserClassAverageCache(userId, averageCard.id, {
+                ...cached,
+                classSettings: res.classSettings,
+                card: { ...cached.card, layout: nextCardLayout },
+              });
+            }
+          }
+          onClassSettingsUpdated?.(schoolClass.id, res.classSettings);
+          setHasSavedAtLeastOnce(true);
+          setCloudStatus('saved');
+          return;
+        }
+        const nextSettings: ClassSheetSettings = {
+          ...classSettings,
+          columnOrder: normalized,
+        };
+        setClassSettings(nextSettings);
+        setLayout((prev) => {
+          const next = { ...prev };
+          delete next.columnOrder;
+          return next;
+        });
+        onClassSettingsUpdated?.(schoolClass.id, nextSettings);
+        return;
+      }
+
+      const nextLayout: TermAverageLayoutState = {
+        ...layout,
+        zoomPercent,
+        columnOrder: normalized,
       };
       setLayout(nextLayout);
       const nextPayload: ClassAverageSheetSavePayload = {
@@ -1375,24 +1493,75 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
   // Copier tout le tableau (TSV compatible Excel / WPS)
   const handleCopyEntireTable = async () => {
     try {
+      const exportLeftCols = visibleColumnOrder.left.filter((k) => k !== 'photo');
+      const exportRightCols = visibleColumnOrder.right.filter((k) => k !== 'photo');
+      const pHeader = (k: GradebookPeripheralColumnKey): string => {
+        switch (k) {
+          case 'rank':
+            return 'RANG';
+          case 'matricule':
+            return 'MATRICULE';
+          case 'name':
+            return 'NOM & PRÉNOM';
+          case 'total':
+            return `TOTAL ANNUEL (Total Coeff : ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`;
+          case 'average':
+            return `MOYENNE ANNUELLE (/${effectiveScaleLabel})`;
+          case 'mention':
+            return 'MENTION';
+          default:
+            return '';
+        }
+      };
+      const pBody = (k: GradebookPeripheralColumnKey, st: ComputedAnnualStudent): string => {
+        switch (k) {
+          case 'rank':
+            return st.rankLabel;
+          case 'matricule':
+            return st.matricule || '';
+          case 'name':
+            return st.name || 'Élève sans nom';
+          case 'total':
+            return formatFrenchNumber(st.totalAnnual);
+          case 'average':
+            return formatFrenchNumber(st.annualAverage);
+          case 'mention':
+            return st.mention;
+          default:
+            return '';
+        }
+      };
+      const pFooter = (k: GradebookPeripheralColumnKey): string => {
+        switch (k) {
+          case 'rank':
+            return '—';
+          case 'name':
+            return 'MOYENNE DE LA CLASSE';
+          case 'total':
+            return formatFrenchNumber(computed.classSummary.classTotalAnnualAvg);
+          case 'average':
+            return formatFrenchNumber(computed.classSummary.classAnnualAverage);
+          case 'mention':
+            return computed.classSummary.passRatePercent !== null
+              ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
+              : '—';
+          default:
+            return '';
+        }
+      };
+
       const row1 = [
-        'RANG',
-        ...(effectiveShowMatricule ? ['MATRICULE'] : []),
-        'NOM & PRÉNOM',
+        ...exportLeftCols.map(pHeader),
         ...computed.terms.flatMap((t) => [
           `${t.name} (Coeff ${formatCoeffDisplay(t.effectiveCoeff)}) - Moy. /${effectiveScaleLabel}`,
           `${t.name} - Moy. × Coeff`,
         ]),
-        `TOTAL ANNUEL (Total Coeff : ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`,
-        `MOYENNE ANNUELLE (/${effectiveScaleLabel})`,
-        'MENTION',
+        ...exportRightCols.map(pHeader),
         'DÉCISION',
       ];
 
       const bodyRows = computed.students.map((st) => [
-        st.rankLabel,
-        ...(effectiveShowMatricule ? [st.matricule || ''] : []),
-        st.name || 'Élève sans nom',
+        ...exportLeftCols.map((k) => pBody(k, st)),
         ...computed.terms.flatMap((t) => {
           const cell = st.cellsByTerm[t.id];
           return [
@@ -1400,16 +1569,12 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             formatFrenchNumber(cell?.weightedValue),
           ];
         }),
-        formatFrenchNumber(st.totalAnnual),
-        formatFrenchNumber(st.annualAverage),
-        st.mention,
+        ...exportRightCols.map((k) => pBody(k, st)),
         st.decision,
       ]);
 
       const footerRow = [
-        '—',
-        ...(effectiveShowMatricule ? [''] : []),
-        'MOYENNE DE LA CLASSE',
+        ...exportLeftCols.map(pFooter),
         ...computed.terms.flatMap((t) => {
           const stat = computed.classSummary.byTerm[t.id];
           return [
@@ -1417,11 +1582,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             formatFrenchNumber(stat?.classWeightedAverage),
           ];
         }),
-        formatFrenchNumber(computed.classSummary.classTotalAnnualAvg),
-        formatFrenchNumber(computed.classSummary.classAnnualAverage),
-        computed.classSummary.passRatePercent !== null
-          ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
-          : '—',
+        ...exportRightCols.map(pFooter),
         `${computed.classSummary.passCount}/${computed.classSummary.gradedStudentCount} admis`,
       ];
 
@@ -1446,22 +1607,77 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
 
     const yearLabel = schoolYear?.label || 'Annee';
 
-    const headerRow1: any[] = effectiveShowMatricule
-      ? ['RANG', 'MATRICULE', 'NOM & PRÉNOM']
-      : ['RANG', 'NOM & PRÉNOM'];
-    const headerRow2: any[] = effectiveShowMatricule ? ['', '', ''] : ['', ''];
-    const merges: XLSX.Range[] = effectiveShowMatricule
-      ? [
-          { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
-          { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
-          { s: { r: 0, c: 2 }, e: { r: 1, c: 2 } },
-        ]
-      : [
-          { s: { r: 0, c: 0 }, e: { r: 1, c: 0 } },
-          { s: { r: 0, c: 1 }, e: { r: 1, c: 1 } },
-        ];
+    const exportLeftCols = visibleColumnOrder.left.filter((k) => k !== 'photo');
+    const exportRightCols = visibleColumnOrder.right.filter((k) => k !== 'photo');
+    const pHeader = (k: GradebookPeripheralColumnKey): string => {
+      switch (k) {
+        case 'rank':
+          return 'RANG';
+        case 'matricule':
+          return 'MATRICULE';
+        case 'name':
+          return 'NOM & PRÉNOM';
+        case 'total':
+          return `TOTAL ANNUEL (Coeff ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`;
+        case 'average':
+          return `MOYENNE ANNUELLE (/${effectiveScaleLabel})`;
+        case 'mention':
+          return 'MENTION';
+        default:
+          return '';
+      }
+    };
+    const pBodyExcel = (k: GradebookPeripheralColumnKey, st: ComputedAnnualStudent): any => {
+      switch (k) {
+        case 'rank':
+          return st.rankLabel;
+        case 'matricule':
+          return st.matricule || '';
+        case 'name':
+          return st.name || 'Élève sans nom';
+        case 'total':
+          return st.totalAnnual !== null ? Number(st.totalAnnual.toFixed(2)) : '';
+        case 'average':
+          return st.annualAverage !== null ? Number(st.annualAverage.toFixed(2)) : '';
+        case 'mention':
+          return st.mention;
+        default:
+          return '';
+      }
+    };
+    const pFooterExcel = (k: GradebookPeripheralColumnKey): any => {
+      switch (k) {
+        case 'name':
+          return 'MOYENNE DE LA CLASSE';
+        case 'total':
+          return computed.classSummary.classTotalAnnualAvg !== null
+            ? Number(computed.classSummary.classTotalAnnualAvg.toFixed(2))
+            : '';
+        case 'average':
+          return computed.classSummary.classAnnualAverage !== null
+            ? Number(computed.classSummary.classAnnualAverage.toFixed(2))
+            : '';
+        case 'mention':
+          return computed.classSummary.passRatePercent !== null
+            ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
+            : '';
+        default:
+          return '';
+      }
+    };
 
-    let colCursor = effectiveShowMatricule ? 3 : 2;
+    const headerRow1: any[] = [];
+    const headerRow2: any[] = [];
+    const merges: XLSX.Range[] = [];
+    let colCursor = 0;
+
+    for (const k of exportLeftCols) {
+      headerRow1.push(pHeader(k));
+      headerRow2.push('');
+      merges.push({ s: { r: 0, c: colCursor }, e: { r: 1, c: colCursor } });
+      colCursor += 1;
+    }
+
     for (const termCol of computed.terms) {
       headerRow1.push(
         `${termCol.name.toUpperCase()} (Coeff ${formatCoeffDisplay(termCol.effectiveCoeff)})`,
@@ -1475,24 +1691,19 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       colCursor += 2;
     }
 
-    headerRow1.push(
-      `TOTAL ANNUEL (Coeff ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)})`,
-      `MOYENNE ANNUELLE (/${effectiveScaleLabel})`,
-      'MENTION',
-      'DÉCISION'
-    );
-    headerRow2.push('', '', '', '');
-    merges.push(
-      { s: { r: 0, c: colCursor }, e: { r: 1, c: colCursor } },
-      { s: { r: 0, c: colCursor + 1 }, e: { r: 1, c: colCursor + 1 } },
-      { s: { r: 0, c: colCursor + 2 }, e: { r: 1, c: colCursor + 2 } },
-      { s: { r: 0, c: colCursor + 3 }, e: { r: 1, c: colCursor + 3 } }
-    );
+    for (const k of exportRightCols) {
+      headerRow1.push(pHeader(k));
+      headerRow2.push('');
+      merges.push({ s: { r: 0, c: colCursor }, e: { r: 1, c: colCursor } });
+      colCursor += 1;
+    }
+
+    headerRow1.push('DÉCISION');
+    headerRow2.push('');
+    merges.push({ s: { r: 0, c: colCursor }, e: { r: 1, c: colCursor } });
 
     const studentRows = computed.students.map((st) => [
-      st.rankLabel,
-      ...(effectiveShowMatricule ? [st.matricule || ''] : []),
-      st.name || 'Élève sans nom',
+      ...exportLeftCols.map((k) => pBodyExcel(k, st)),
       ...computed.terms.flatMap((t) => {
         const cell = st.cellsByTerm[t.id];
         return [
@@ -1504,16 +1715,12 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             : '',
         ];
       }),
-      st.totalAnnual !== null ? Number(st.totalAnnual.toFixed(2)) : '',
-      st.annualAverage !== null ? Number(st.annualAverage.toFixed(2)) : '',
-      st.mention,
+      ...exportRightCols.map((k) => pBodyExcel(k, st)),
       st.decision,
     ]);
 
     const footerRow = [
-      '',
-      ...(effectiveShowMatricule ? [''] : []),
-      'MOYENNE DE LA CLASSE',
+      ...exportLeftCols.map(pFooterExcel),
       ...computed.terms.flatMap((t) => {
         const stat = computed.classSummary.byTerm[t.id];
         return [
@@ -1525,15 +1732,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             : '',
         ];
       }),
-      computed.classSummary.classTotalAnnualAvg !== null
-        ? Number(computed.classSummary.classTotalAnnualAvg.toFixed(2))
-        : '',
-      computed.classSummary.classAnnualAverage !== null
-        ? Number(computed.classSummary.classAnnualAverage.toFixed(2))
-        : '',
-      computed.classSummary.passRatePercent !== null
-        ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
-        : '',
+      ...exportRightCols.map(pFooterExcel),
       `${computed.classSummary.passCount}/${computed.classSummary.gradedStudentCount} admis`,
     ];
 
@@ -1564,56 +1763,106 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
         : `${schoolClass.level}_${schoolClass.name.trim()}`
       : schoolClass.level;
 
+    const exportLeftCols = visibleColumnOrder.left.filter((k) => k !== 'photo');
+    const exportRightCols = visibleColumnOrder.right.filter((k) => k !== 'photo');
+    const pHeader = (k: GradebookPeripheralColumnKey): string => {
+      switch (k) {
+        case 'rank':
+          return 'Rang';
+        case 'matricule':
+          return 'Matricule';
+        case 'name':
+          return 'Nom & Prénom';
+        case 'total':
+          return 'Total Annuel';
+        case 'average':
+          return `Moy. /${effectiveScaleLabel}`;
+        case 'mention':
+          return 'Mention';
+        default:
+          return '';
+      }
+    };
+    const pRow = (k: GradebookPeripheralColumnKey, st: ComputedAnnualStudent): string => {
+      switch (k) {
+        case 'rank':
+          return st.rankLabel || '-';
+        case 'matricule':
+          return st.matricule || '-';
+        case 'name':
+          return st.name || 'Élève sans nom';
+        case 'total':
+          return st.totalAnnual !== null ? st.totalAnnual.toFixed(2) : '-';
+        case 'average':
+          return st.annualAverage !== null ? st.annualAverage.toFixed(2) : '-';
+        case 'mention':
+          return st.mention || '-';
+        default:
+          return '';
+      }
+    };
+    const pFooter = (k: GradebookPeripheralColumnKey): string => {
+      switch (k) {
+        case 'name':
+          return 'MOYENNE DE LA CLASSE';
+        case 'total':
+          return computed.classSummary.classTotalAnnualAvg !== null
+            ? computed.classSummary.classTotalAnnualAvg.toFixed(2)
+            : '-';
+        case 'average':
+          return computed.classSummary.classAnnualAverage !== null
+            ? computed.classSummary.classAnnualAverage.toFixed(2)
+            : '-';
+        case 'mention':
+          return computed.classSummary.passRatePercent !== null
+            ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
+            : '';
+        default:
+          return '';
+      }
+    };
+
     const headers: string[] = [
-      'Rang',
-      ...(effectiveShowMatricule ? ['Matricule'] : []),
-      'Nom & Prénom',
+      ...exportLeftCols.map(pHeader),
       ...computed.terms.map(
         (t) => `${t.name} (c${formatCoeffDisplay(t.effectiveCoeff)})`
       ),
-      'Total Annuel',
-      `Moy. /${effectiveScaleLabel}`,
-      'Mention',
+      ...exportRightCols.map(pHeader),
       'Décision',
     ];
 
     const rows: string[][] = computed.students.map((st) => [
-      st.rankLabel || '-',
-      ...(effectiveShowMatricule ? [st.matricule || '-'] : []),
-      st.name || 'Élève sans nom',
+      ...exportLeftCols.map((k) => pRow(k, st)),
       ...computed.terms.map((t) => {
         const cell = st.cellsByTerm[t.id];
         return cell?.effectiveAverage !== null && cell?.effectiveAverage !== undefined
           ? cell.effectiveAverage.toFixed(2)
           : '-';
       }),
-      st.totalAnnual !== null ? st.totalAnnual.toFixed(2) : '-',
-      st.annualAverage !== null ? st.annualAverage.toFixed(2) : '-',
-      st.mention || '-',
+      ...exportRightCols.map((k) => pRow(k, st)),
       st.decision || '-',
     ]);
 
     const footerRow: string[] = [
-      '',
-      ...(effectiveShowMatricule ? [''] : []),
-      'MOYENNE DE LA CLASSE',
+      ...exportLeftCols.map(pFooter),
       ...computed.terms.map((t) => {
         const stat = computed.classSummary.byTerm[t.id];
         return stat?.classAverage20 !== null && stat?.classAverage20 !== undefined
           ? stat.classAverage20.toFixed(2)
           : '-';
       }),
-      computed.classSummary.classTotalAnnualAvg !== null
-        ? computed.classSummary.classTotalAnnualAvg.toFixed(2)
-        : '-',
-      computed.classSummary.classAnnualAverage !== null
-        ? computed.classSummary.classAnnualAverage.toFixed(2)
-        : '-',
-      computed.classSummary.passRatePercent !== null
-        ? `Réussite : ${Math.round(computed.classSummary.passRatePercent)} %`
-        : '',
+      ...exportRightCols.map(pFooter),
       `${computed.classSummary.passCount}/${computed.classSummary.gradedStudentCount} admis`,
     ];
+
+    const leftNameIdx = exportLeftCols.indexOf('name');
+    const rightNameIdx = exportRightCols.indexOf('name');
+    const dynamicNameColIndex =
+      leftNameIdx >= 0
+        ? leftNameIdx
+        : rightNameIdx >= 0
+        ? exportLeftCols.length + computed.terms.length + rightNameIdx
+        : 0;
 
     const metaBadges: string[] = [
       `Total Coeff ${formatCoeffDisplay(computed.classSummary.totalClassCoeff)}`,
@@ -1637,7 +1886,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
         computed.classSummary.classAnnualAverage !== null
           ? `Moyenne annuelle de classe : ${computed.classSummary.classAnnualAverage.toFixed(2)}/${effectiveScaleLabel} • ${computed.classSummary.passCount}/${computed.classSummary.gradedStudentCount} admis`
           : undefined,
-      nameColumnIndex: effectiveShowMatricule ? 2 : 1,
+      nameColumnIndex: dynamicNameColIndex,
     };
   };
 
@@ -1798,7 +2047,8 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                 : action.sortMode === 'alpha' || action.mode === 'alpha'
                 ? 'alpha'
                 : 'order';
-            handleSortChange(mode);
+            setSortMode(mode);
+            setIsDirty(true);
             summaries.push(`✓ Classement : ${sortLabelMap[mode]}`);
             break;
           }
@@ -1816,6 +2066,28 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
               action.scope === 'class' ? 'class' : 'sheet';
             await handleSaveAverageScale(scale, scope);
             summaries.push(`✓ Barème de la moyenne passé sur /${scale}`);
+            break;
+          }
+          case 'set_column_order': {
+            const resolvedOrder = resolveColumnOrderFromDelmasAction(
+              action,
+              effectiveColumnOrder,
+              { includeTotal: true }
+            );
+            if (resolvedOrder !== undefined) {
+              const scope: SheetSettingScope =
+                action.scope === 'class' ? 'class' : 'sheet';
+              await handleSaveColumnOrder(resolvedOrder, scope);
+              summaries.push(
+                resolvedOrder === null
+                  ? `✓ Disposition des colonnes réinitialisée par défaut (${
+                      scope === 'class' ? 'toute la classe' : 'ce tableau'
+                    })`
+                  : `✓ Disposition des colonnes mise à jour (${
+                      scope === 'class' ? 'toute la classe' : 'ce tableau'
+                    })`
+              );
+            }
             break;
           }
           case 'set_mention_rules': {
@@ -2860,6 +3132,11 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
           onSaveMentionRules={handleSaveMentionRules}
           onSaveShowMatricule={handleSaveShowMatricule}
           onSaveAverageScale={handleSaveAverageScale}
+          effectiveColumnOrder={effectiveColumnOrder}
+          hasCustomColumnOrder={hasCustomColumnOrder}
+          includeTotalColumn={true}
+          centerBlockLabel="TRIMESTRES"
+          onSaveColumnOrder={handleSaveColumnOrder}
         />
 
         {/* Bouton Assistant Delmas (Robot bleu animé + "Assistant Delmas" écrit en bas, placé tout à droite du ruban) */}
@@ -3053,8 +3330,11 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                       style={{ width: `${totalTableWidth}px` }}
                     >
                       <thead>
-                        <tr className="bg-[#f1f5f9] text-slate-800">
-                          {/* RANG */}
+                        {(() => {
+                          const peripheralHeaders: Partial<
+                            Record<GradebookPeripheralColumnKey, React.ReactNode>
+                          > = {
+                            rank: (
                           <th
                             rowSpan={2}
                             style={getHeaderInlineStyle('header_rank', { width: `${colWidthRank}px` })}
@@ -3070,8 +3350,8 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                               className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
                             />
                           </th>
-
-                          {/* PROFIL */}
+                            ),
+                            photo: (
                           <th
                             rowSpan={2}
                             style={getHeaderInlineStyle('header_photo', { width: `${colWidthPhoto}px` })}
@@ -3087,9 +3367,8 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                               className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
                             />
                           </th>
-
-                          {/* MATRICULE (optionnel — derrière PROFIL) */}
-                          {effectiveShowMatricule && (
+                            ),
+                            matricule: effectiveShowMatricule ? (
                             <th
                               rowSpan={2}
                               style={getHeaderInlineStyle('header_matricule', { width: `${colWidthMatricule}px` })}
@@ -3105,9 +3384,8 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                 className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
                               />
                             </th>
-                          )}
-
-                          {/* NOM & PRÉNOM */}
+                            ) : null,
+                            name: (
                           <th
                             rowSpan={2}
                             style={getHeaderInlineStyle('header_name', { width: `${colWidthName}px` })}
@@ -3123,6 +3401,83 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                               className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
                             />
                           </th>
+                            ),
+                            total: (
+                          <th
+                            rowSpan={2}
+                            style={getHeaderInlineStyle('header_total', { width: `${colWidthTotalAnnual}px` })}
+                            className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center align-middle bg-indigo-50/70"
+                          >
+                            <div
+                              style={getCellTextOverrideStyle('header_total')}
+                              className="font-black text-[11px] text-indigo-950 dark:text-indigo-200 uppercase leading-tight"
+                            >
+                              TOTAL ANNUEL
+                            </div>
+                            <div className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
+                              Total Coeff :{' '}
+                              {formatCoeffDisplay(computed.classSummary.totalClassCoeff)}
+                            </div>
+                            <div
+                              onMouseDown={(e) =>
+                                startColumnResize(e, colWidthTotalAnnual, 92, (w) =>
+                                  setLayout((p) => ({ ...p, colWidthTotalGeneral: w }))
+                                )
+                              }
+                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
+                            />
+                          </th>
+                            ),
+                            average: (
+                          <th
+                            rowSpan={2}
+                            style={getHeaderInlineStyle('header_avg', { width: `${colWidthAnnualAvg}px` })}
+                            className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center align-middle bg-emerald-50/80"
+                          >
+                            <div
+                              style={getCellTextOverrideStyle('header_avg')}
+                              className="font-black text-[11px] text-emerald-950 dark:text-emerald-200 uppercase leading-tight"
+                            >
+                              MOYENNE ANNUELLE
+                            </div>
+                            <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">
+                              / {effectiveScaleLabel}
+                            </div>
+                            <div
+                              onMouseDown={(e) =>
+                                startColumnResize(e, colWidthAnnualAvg, 92, (w) =>
+                                  setLayout((p) => ({ ...p, colWidthGeneralAvg: w }))
+                                )
+                              }
+                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
+                            />
+                          </th>
+                            ),
+                            mention: (
+                          <th
+                            rowSpan={2}
+                            style={getHeaderInlineStyle('header_mention', { width: `${colWidthMention}px` })}
+                            className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center font-black text-[11px] tracking-wide uppercase align-middle bg-[#eef2f6]"
+                          >
+                            MENTION
+                            <div
+                              onMouseDown={(e) =>
+                                startColumnResize(e, colWidthMention, 86, (w) =>
+                                  setLayout((p) => ({ ...p, colWidthMention: w }))
+                                )
+                              }
+                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
+                            />
+                          </th>
+                            ),
+                          };
+                          return (
+                        <tr className="bg-[#f1f5f9] text-slate-800">
+                          {visibleColumnOrder.left.map((colKey) => (
+                            <React.Fragment key={`th-l-${colKey}`}>
+                              {peripheralHeaders[colKey]}
+                            </React.Fragment>
+                          ))}
 
                           {/* EN-TÊTES GROUPÉS DES TRIMESTRES */}
                           {computed.terms.map((termCol, tIdx) => {
@@ -3212,74 +3567,14 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                             );
                           })}
 
-                          {/* TOTAL ANNUEL */}
-                          <th
-                            rowSpan={2}
-                            style={getHeaderInlineStyle('header_total', { width: `${colWidthTotalAnnual}px` })}
-                            className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center align-middle bg-indigo-50/70"
-                          >
-                            <div
-                              style={getCellTextOverrideStyle('header_total')}
-                              className="font-black text-[11px] text-indigo-950 dark:text-indigo-200 uppercase leading-tight"
-                            >
-                              TOTAL ANNUEL
-                            </div>
-                            <div className="text-[10px] font-bold text-indigo-700 dark:text-indigo-300 mt-0.5">
-                              Total Coeff :{' '}
-                              {formatCoeffDisplay(computed.classSummary.totalClassCoeff)}
-                            </div>
-                            <div
-                              onMouseDown={(e) =>
-                                startColumnResize(e, colWidthTotalAnnual, 92, (w) =>
-                                  setLayout((p) => ({ ...p, colWidthTotalGeneral: w }))
-                                )
-                              }
-                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
-                            />
-                          </th>
-
-                          {/* MOYENNE ANNUELLE */}
-                          <th
-                            rowSpan={2}
-                            style={getHeaderInlineStyle('header_avg', { width: `${colWidthAnnualAvg}px` })}
-                            className="relative border-r border-b-2 border-slate-800 px-2 py-2 text-center align-middle bg-emerald-50/80"
-                          >
-                            <div
-                              style={getCellTextOverrideStyle('header_avg')}
-                              className="font-black text-[11px] text-emerald-950 dark:text-emerald-200 uppercase leading-tight"
-                            >
-                              MOYENNE ANNUELLE
-                            </div>
-                            <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 mt-0.5">
-                              / {effectiveScaleLabel}
-                            </div>
-                            <div
-                              onMouseDown={(e) =>
-                                startColumnResize(e, colWidthAnnualAvg, 92, (w) =>
-                                  setLayout((p) => ({ ...p, colWidthGeneralAvg: w }))
-                                )
-                              }
-                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
-                            />
-                          </th>
-
-                          {/* MENTION */}
-                          <th
-                            rowSpan={2}
-                            style={getHeaderInlineStyle('header_mention', { width: `${colWidthMention}px` })}
-                            className="relative border-b-2 border-slate-800 px-2 py-2 text-center font-black text-[11px] tracking-wide uppercase align-middle bg-[#eef2f6]"
-                          >
-                            MENTION
-                            <div
-                              onMouseDown={(e) =>
-                                startColumnResize(e, colWidthMention, 86, (w) =>
-                                  setLayout((p) => ({ ...p, colWidthMention: w }))
-                                )
-                              }
-                              className="absolute top-0 right-0 w-1.5 h-full cursor-col-resize hover:bg-blue-400/60"
-                            />
-                          </th>
+                          {visibleColumnOrder.right.map((colKey) => (
+                            <React.Fragment key={`th-r-${colKey}`}>
+                              {peripheralHeaders[colKey]}
+                            </React.Fragment>
+                          ))}
                         </tr>
+                          );
+                        })()}
 
                         {/* LIGNE D'EN-TÊTE 2 : SOUS-COLONNES MOY. /20 ET MOY. × COEFF */}
                         <tr className="bg-[#f8fafc] text-slate-600">
@@ -3365,15 +3660,10 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                               layout.customRowHeights?.[rowKey] ??
                               layout.customRowHeights?.[String(rIdx)];
 
-                            return (
-                              <tr
-                                key={student.key}
-                                data-custom-height={rowCustomHeight ? '1' : undefined}
-                                style={rowCustomHeight ? { height: `${rowCustomHeight}px` } : undefined}
-                                className="group hover:bg-blue-50/25 transition-colors"
-                              >
-                                {/* 1. RANG */}
-                                {(() => {
+                            const peripheralBodyCells: Partial<
+                              Record<GradebookPeripheralColumnKey, React.ReactNode>
+                            > = {
+                              rank: (() => {
                                   const cellKey = `${rowKey}_rank`;
                                   const isSel = activeCell.cellKey === cellKey;
                                   const rankBadge =
@@ -3418,10 +3708,8 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                       )}
                                     </td>
                                   );
-                                })()}
-
-                                {/* 2. PROFIL */}
-                                {(() => {
+                                })(),
+                              photo: (() => {
                                   const cellKey = `${rowKey}_photo`;
                                   return (
                                     <td
@@ -3444,11 +3732,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                       </div>
                                     </td>
                                   );
-                                })()}
-
-                                {/* 2bis. MATRICULE (optionnel — derrière PROFIL) */}
-                                {effectiveShowMatricule &&
-                                  (() => {
+                                })(),
+                              matricule: effectiveShowMatricule
+                                ? (() => {
                                     const cellKey = `${rowKey}_matricule`;
                                     const isSel = activeCell.cellKey === cellKey;
                                     const isEditingMat =
@@ -3515,10 +3801,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                         )}
                                       </td>
                                     );
-                                  })()}
-
-                                {/* 3. NOM & PRÉNOM */}
-                                {(() => {
+                                  })()
+                                : null,
+                              name: (() => {
                                   const cellKey = `${rowKey}_name`;
                                   const isSel = activeCell.cellKey === cellKey;
                                   return (
@@ -3553,7 +3838,149 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                       </button>
                                     </td>
                                   );
-                                })()}
+                                })(),
+                              total: (() => {
+                                  const cellKey = `${rowKey}_total`;
+                                  const isSel = activeCell.cellKey === cellKey;
+                                  const isPartial =
+                                    student.gradedTermsCount > 0 &&
+                                    student.gradedTermsCount < student.totalTermsCount;
+                                  return (
+                                    <td
+                                      data-cell-key={cellKey}
+                                      onClick={() => {
+                                        const parts = computed.terms
+                                          .map((t) => {
+                                            const c = student.cellsByTerm[t.id];
+                                            return c?.weightedValue !== null &&
+                                              c?.weightedValue !== undefined
+                                              ? formatFrenchNumber(c.weightedValue)
+                                              : null;
+                                          })
+                                          .filter(Boolean);
+                                        setActiveCell({
+                                          cellKey,
+                                          rowKey,
+                                          coordDisplay: `TOT${rowNum}`,
+                                          formulaText:
+                                            student.totalAnnual !== null
+                                              ? `Total Annuel = ${parts.join(
+                                                  ' + '
+                                                )} = ${formatFrenchNumber(
+                                                  student.totalAnnual
+                                                )} (Coefficients comptés : ${formatCoeffDisplay(
+                                                  student.totalCoeffCounted
+                                                )} sur ${student.gradedTermsCount}/${student.totalTermsCount} trim.)`
+                                              : 'Total Annuel : aucun trimestre noté',
+                                        });
+                                      }}
+                                      style={getCellInlineStyle(cellKey, rowKey)}
+                                      className={`h-11 border-r border-b border-slate-300 bg-indigo-50/75 dark:bg-indigo-950/50 px-2 text-center align-middle cursor-pointer ${
+                                        isSel ? 'ring-2 ring-inset ring-blue-500' : ''
+                                      }`}
+                                    >
+                                      <div
+                                        style={getCellTextOverrideStyle(cellKey)}
+                                        className="text-xs font-black text-indigo-950 dark:text-indigo-200 leading-tight"
+                                      >
+                                        {formatFrenchNumber(student.totalAnnual)}
+                                      </div>
+                                      {isPartial && (
+                                        <div className="text-[9px] font-bold text-indigo-600 dark:text-indigo-300 leading-none mt-0.5">
+                                          {student.gradedTermsCount}/{student.totalTermsCount} trim.
+                                        </div>
+                                      )}
+                                    </td>
+                                  );
+                                })(),
+                              average: (() => {
+                                  const cellKey = `${rowKey}_avg`;
+                                  const isSel = activeCell.cellKey === cellKey;
+                                  const isPassing =
+                                    student.annualAverage !== null &&
+                                    student.annualAverage + 1e-9 >= passThreshold;
+                                  return (
+                                    <td
+                                      data-cell-key={cellKey}
+                                      onClick={() =>
+                                        setActiveCell({
+                                          cellKey,
+                                          rowKey,
+                                          coordDisplay: `ANN${rowNum}`,
+                                          formulaText:
+                                            student.annualAverage !== null &&
+                                            student.totalAnnual !== null
+                                              ? `Moyenne Annuelle = ${formatFrenchNumber(
+                                                  student.totalAnnual
+                                                )} ÷ ${formatCoeffDisplay(
+                                                  student.totalCoeffCounted
+                                                )} = ${formatFrenchNumber(
+                                                  student.annualAverage
+                                                )} / ${effectiveScaleLabel} — ${student.decision}`
+                                              : 'Moyenne Annuelle : aucun trimestre noté',
+                                        })
+                                      }
+                                      style={getCellInlineStyle(cellKey, rowKey)}
+                                      className={`h-11 border-r border-b border-slate-300 px-2 text-center align-middle text-[13px] font-black cursor-pointer ${
+                                        isSel ? 'ring-2 ring-inset ring-blue-500' : ''
+                                      } ${
+                                        student.annualAverage === null
+                                          ? 'bg-slate-50 dark:bg-[#162033] text-slate-400 dark:text-slate-500'
+                                          : isPassing
+                                          ? 'bg-emerald-50 dark:bg-emerald-950/45 text-emerald-800 dark:text-emerald-300'
+                                          : 'bg-red-50 dark:bg-red-950/45 text-red-700 dark:text-red-300'
+                                      }`}
+                                    >
+                                      {formatFrenchNumber(student.annualAverage)}
+                                    </td>
+                                  );
+                                })(),
+                              mention: (() => {
+                                  const cellKey = `${rowKey}_mention`;
+                                  const isSel = activeCell.cellKey === cellKey;
+                                  return (
+                                    <td
+                                      data-cell-key={cellKey}
+                                      onClick={() =>
+                                        setActiveCell({
+                                          cellKey,
+                                          rowKey,
+                                          coordDisplay: `MEN${rowNum}`,
+                                          formulaText: `Mention annuelle : ${student.mention} (${student.decision})`,
+                                        })
+                                      }
+                                      style={getCellInlineStyle(cellKey, rowKey)}
+                                      className={`h-11 border-r border-b border-slate-300 px-1.5 text-center align-middle cursor-pointer ${
+                                        isSel ? 'ring-2 ring-inset ring-blue-500' : ''
+                                      }`}
+                                    >
+                                      <span
+                                        style={getCellTextOverrideStyle(cellKey)}
+                                        className={`inline-block px-2 py-0.5 rounded-full border text-[10.5px] font-extrabold whitespace-nowrap ${getMentionBadgeStyle(
+                                          student.annualAverage,
+                                          effectiveMentionRules,
+                                          effectiveAverageScale
+                                        )}`}
+                                      >
+                                        {student.mention}
+                                      </span>
+                                    </td>
+                                  );
+                                })(),
+                            };
+
+                            return (
+                              <tr
+                                key={student.key}
+                                data-custom-height={rowCustomHeight ? '1' : undefined}
+                                style={rowCustomHeight ? { height: `${rowCustomHeight}px` } : undefined}
+                                className="group hover:bg-blue-50/25 transition-colors"
+                              >
+                                {visibleColumnOrder.left.map((colKey) => (
+                                  <React.Fragment key={`td-l-${student.key}-${colKey}`}>
+                                    {peripheralBodyCells[colKey]}
+                                  </React.Fragment>
+                                ))}
 
                                 {/* 4. POUR CHAQUE TRIMESTRE : MOY. /20 + MOY. × COEFF */}
                                 {computed.terms.map((termCol, tIdx) => {
@@ -3720,152 +4147,74 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                                   );
                                 })}
 
-                                {/* 5. TOTAL ANNUEL */}
-                                {(() => {
-                                  const cellKey = `${rowKey}_total`;
-                                  const isSel = activeCell.cellKey === cellKey;
-                                  const isPartial =
-                                    student.gradedTermsCount > 0 &&
-                                    student.gradedTermsCount < student.totalTermsCount;
-                                  return (
-                                    <td
-                                      data-cell-key={cellKey}
-                                      onClick={() => {
-                                        const parts = computed.terms
-                                          .map((t) => {
-                                            const c = student.cellsByTerm[t.id];
-                                            return c?.weightedValue !== null &&
-                                              c?.weightedValue !== undefined
-                                              ? formatFrenchNumber(c.weightedValue)
-                                              : null;
-                                          })
-                                          .filter(Boolean);
-                                        setActiveCell({
-                                          cellKey,
-                                          rowKey,
-                                          coordDisplay: `TOT${rowNum}`,
-                                          formulaText:
-                                            student.totalAnnual !== null
-                                              ? `Total Annuel = ${parts.join(
-                                                  ' + '
-                                                )} = ${formatFrenchNumber(
-                                                  student.totalAnnual
-                                                )} (Coefficients comptés : ${formatCoeffDisplay(
-                                                  student.totalCoeffCounted
-                                                )} sur ${student.gradedTermsCount}/${student.totalTermsCount} trim.)`
-                                              : 'Total Annuel : aucun trimestre noté',
-                                        });
-                                      }}
-                                      style={getCellInlineStyle(cellKey, rowKey)}
-                                      className={`h-11 border-r border-b border-slate-300 bg-indigo-50/75 dark:bg-indigo-950/50 px-2 text-center align-middle cursor-pointer ${
-                                        isSel ? 'ring-2 ring-inset ring-blue-500' : ''
-                                      }`}
-                                    >
-                                      <div
-                                        style={getCellTextOverrideStyle(cellKey)}
-                                        className="text-xs font-black text-indigo-950 dark:text-indigo-200 leading-tight"
-                                      >
-                                        {formatFrenchNumber(student.totalAnnual)}
-                                      </div>
-                                      {isPartial && (
-                                        <div className="text-[9px] font-bold text-indigo-600 dark:text-indigo-300 leading-none mt-0.5">
-                                          {student.gradedTermsCount}/{student.totalTermsCount} trim.
-                                        </div>
-                                      )}
-                                    </td>
-                                  );
-                                })()}
-
-                                {/* 6. MOYENNE ANNUELLE */}
-                                {(() => {
-                                  const cellKey = `${rowKey}_avg`;
-                                  const isSel = activeCell.cellKey === cellKey;
-                                  const isPassing =
-                                    student.annualAverage !== null &&
-                                    student.annualAverage + 1e-9 >= passThreshold;
-                                  return (
-                                    <td
-                                      data-cell-key={cellKey}
-                                      onClick={() =>
-                                        setActiveCell({
-                                          cellKey,
-                                          rowKey,
-                                          coordDisplay: `ANN${rowNum}`,
-                                          formulaText:
-                                            student.annualAverage !== null &&
-                                            student.totalAnnual !== null
-                                              ? `Moyenne Annuelle = ${formatFrenchNumber(
-                                                  student.totalAnnual
-                                                )} ÷ ${formatCoeffDisplay(
-                                                  student.totalCoeffCounted
-                                                )} = ${formatFrenchNumber(
-                                                  student.annualAverage
-                                                )} / ${effectiveScaleLabel} — ${student.decision}`
-                                              : 'Moyenne Annuelle : aucun trimestre noté',
-                                        })
-                                      }
-                                      style={getCellInlineStyle(cellKey, rowKey)}
-                                      className={`h-11 border-r border-b border-slate-300 px-2 text-center align-middle text-[13px] font-black cursor-pointer ${
-                                        isSel ? 'ring-2 ring-inset ring-blue-500' : ''
-                                      } ${
-                                        student.annualAverage === null
-                                          ? 'bg-slate-50 dark:bg-[#162033] text-slate-400 dark:text-slate-500'
-                                          : isPassing
-                                          ? 'bg-emerald-50 dark:bg-emerald-950/45 text-emerald-800 dark:text-emerald-300'
-                                          : 'bg-red-50 dark:bg-red-950/45 text-red-700 dark:text-red-300'
-                                      }`}
-                                    >
-                                      {formatFrenchNumber(student.annualAverage)}
-                                    </td>
-                                  );
-                                })()}
-
-                                {/* 7. MENTION */}
-                                {(() => {
-                                  const cellKey = `${rowKey}_mention`;
-                                  const isSel = activeCell.cellKey === cellKey;
-                                  return (
-                                    <td
-                                      data-cell-key={cellKey}
-                                      onClick={() =>
-                                        setActiveCell({
-                                          cellKey,
-                                          rowKey,
-                                          coordDisplay: `MEN${rowNum}`,
-                                          formulaText: `Mention annuelle : ${student.mention} (${student.decision})`,
-                                        })
-                                      }
-                                      style={getCellInlineStyle(cellKey, rowKey)}
-                                      className={`h-11 border-b border-slate-300 px-1.5 text-center align-middle cursor-pointer ${
-                                        isSel ? 'ring-2 ring-inset ring-blue-500' : ''
-                                      }`}
-                                    >
-                                      <span
-                                        style={getCellTextOverrideStyle(cellKey)}
-                                        className={`inline-block px-2 py-0.5 rounded-full border text-[10.5px] font-extrabold whitespace-nowrap ${getMentionBadgeStyle(
-                                          student.annualAverage,
-                                          effectiveMentionRules,
-                                          effectiveAverageScale
-                                        )}`}
-                                      >
-                                        {student.mention}
-                                      </span>
-                                    </td>
-                                  );
-                                })()}
+                                {visibleColumnOrder.right.map((colKey) => (
+                                  <React.Fragment key={`td-r-${student.key}-${colKey}`}>
+                                    {peripheralBodyCells[colKey]}
+                                  </React.Fragment>
+                                ))}
                               </tr>
                             );
                           })
                         )}
 
-                        {/* LIGNE DE SYNTHÈSE : MOYENNE DE LA CLASSE */}
+                        {/* LIGNE DE SYNTHÈSE : MOYENNE DE LA CLASSE (DYNAMIQUE SELON LA DISPOSITION) */}
+                        {(() => {
+                          const renderFooterPeripheral = (colKey: GradebookPeripheralColumnKey) => {
+                            switch (colKey) {
+                              case 'name':
+                                return (
+                                  <td
+                                    key={`ft-${colKey}`}
+                                    className="h-11 border-r-2 border-b border-slate-800 px-3 text-right text-[11px] uppercase tracking-wide bg-slate-200/70"
+                                  >
+                                    Moyenne de la classe
+                                  </td>
+                                );
+                              case 'total':
+                                return (
+                                  <td
+                                    key={`ft-${colKey}`}
+                                    className="h-11 border-r border-b border-slate-400 px-2 text-center text-xs font-black text-indigo-950 bg-indigo-100/70"
+                                  >
+                                    {formatFrenchNumber(computed.classSummary.classTotalAnnualAvg)}
+                                  </td>
+                                );
+                              case 'average':
+                                return (
+                                  <td
+                                    key={`ft-${colKey}`}
+                                    className="h-11 border-r border-b border-slate-400 px-2 text-center text-[13px] font-black text-emerald-900 bg-emerald-100/80"
+                                  >
+                                    {formatFrenchNumber(computed.classSummary.classAnnualAverage)}
+                                  </td>
+                                );
+                              case 'mention':
+                                return (
+                                  <td
+                                    key={`ft-${colKey}`}
+                                    className="h-11 border-r border-b border-slate-400 px-2 text-center text-[10.5px] font-extrabold text-slate-700 bg-slate-100"
+                                  >
+                                    {computed.classSummary.passRatePercent !== null
+                                      ? `Réussite : ${Math.round(
+                                          computed.classSummary.passRatePercent
+                                        )} %`
+                                      : '—'}
+                                  </td>
+                                );
+                              default:
+                                return (
+                                  <td
+                                    key={`ft-${colKey}`}
+                                    className="h-11 border-r border-b border-slate-400 px-1.5 text-center text-[11px] text-slate-400 bg-slate-200/70"
+                                  >
+                                    —
+                                  </td>
+                                );
+                            }
+                          };
+                          return (
                         <tr className="term-avg-footer-row bg-slate-100 border-t-2 border-slate-800 font-black text-slate-900">
-                          <td
-                            colSpan={effectiveShowMatricule ? 4 : 3}
-                            className="h-11 border-r-2 border-b border-slate-800 px-3 text-right text-[11px] uppercase tracking-wide bg-slate-200/70"
-                          >
-                            Moyenne de la classe
-                          </td>
+                          {visibleColumnOrder.left.map(renderFooterPeripheral)}
 
                           {computed.terms.map((termCol) => {
                             const stat = computed.classSummary.byTerm[termCol.id];
@@ -3881,22 +4230,10 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                             );
                           })}
 
-                          <td className="h-11 border-r border-b border-slate-400 px-2 text-center text-xs font-black text-indigo-950 bg-indigo-100/70">
-                            {formatFrenchNumber(computed.classSummary.classTotalAnnualAvg)}
-                          </td>
-
-                          <td className="h-11 border-r border-b border-slate-400 px-2 text-center text-[13px] font-black text-emerald-900 bg-emerald-100/80">
-                            {formatFrenchNumber(computed.classSummary.classAnnualAverage)}
-                          </td>
-
-                          <td className="h-11 border-b border-slate-400 px-2 text-center text-[10.5px] font-extrabold text-slate-700 bg-slate-100">
-                            {computed.classSummary.passRatePercent !== null
-                              ? `Réussite : ${Math.round(
-                                  computed.classSummary.passRatePercent
-                                )} %`
-                              : '—'}
-                          </td>
+                          {visibleColumnOrder.right.map(renderFooterPeripheral)}
                         </tr>
+                          );
+                        })()}
                       </tbody>
                     </table>
                   )}

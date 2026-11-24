@@ -160,6 +160,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
       mention_rules_json TEXT DEFAULT NULL,
       show_matricule INTEGER NOT NULL DEFAULT 0,
       average_scale REAL NOT NULL DEFAULT 20,
+      column_order_json TEXT DEFAULT NULL,
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL,
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -392,7 +393,7 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
     }
   }
 
-  // Migration idempotente : s'assurer que teacher_classes possède mention_rules_json, show_matricule et average_scale
+  // Migration idempotente : s'assurer que teacher_classes possède mention_rules_json, show_matricule, average_scale et column_order_json
   try {
     const clsInfo = await db.prepare('PRAGMA table_info(teacher_classes)').all();
     const clsCols = new Set((clsInfo.results || []).map((c: any) => String(c.name)));
@@ -404,6 +405,9 @@ export async function ensureTeacherGradebookTables(db: any): Promise<void> {
     }
     if (!clsCols.has('average_scale')) {
       await db.prepare('ALTER TABLE teacher_classes ADD COLUMN average_scale REAL NOT NULL DEFAULT 20').run();
+    }
+    if (!clsCols.has('column_order_json')) {
+      await db.prepare('ALTER TABLE teacher_classes ADD COLUMN column_order_json TEXT DEFAULT NULL').run();
     }
   } catch {
     // Ignorer si déjà migré
@@ -1132,7 +1136,7 @@ export async function computeTeacherGradebookStorageUsage(
       db
         .prepare(
           `SELECT COUNT(*) as cnt,
-                  COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(level_id AS BLOB)) + LENGTH(CAST(school_id AS BLOB)) + LENGTH(CAST(year_id AS BLOB)) + LENGTH(CAST(COALESCE(level_name, '') AS BLOB)) + LENGTH(CAST(COALESCE(name, '') AS BLOB)) + LENGTH(CAST(COALESCE(slogan, '') AS BLOB)) + LENGTH(CAST(COALESCE(teacher_name, '') AS BLOB)) + LENGTH(CAST(COALESCE(subject_label, '') AS BLOB)) + LENGTH(CAST(COALESCE(color, '') AS BLOB)) + LENGTH(CAST(COALESCE(text_color, '') AS BLOB)) + LENGTH(CAST(COALESCE(border_color, '') AS BLOB)) + LENGTH(CAST(COALESCE(border_dark_color, '') AS BLOB)) + LENGTH(CAST(COALESCE(color_style, '') AS BLOB)) + LENGTH(CAST(COALESCE(icon_gradient, '') AS BLOB)) + LENGTH(CAST(COALESCE(mention_rules_json, '') AS BLOB))), 0) as textBytes
+                  COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(level_id AS BLOB)) + LENGTH(CAST(school_id AS BLOB)) + LENGTH(CAST(year_id AS BLOB)) + LENGTH(CAST(COALESCE(level_name, '') AS BLOB)) + LENGTH(CAST(COALESCE(name, '') AS BLOB)) + LENGTH(CAST(COALESCE(slogan, '') AS BLOB)) + LENGTH(CAST(COALESCE(teacher_name, '') AS BLOB)) + LENGTH(CAST(COALESCE(subject_label, '') AS BLOB)) + LENGTH(CAST(COALESCE(color, '') AS BLOB)) + LENGTH(CAST(COALESCE(text_color, '') AS BLOB)) + LENGTH(CAST(COALESCE(border_color, '') AS BLOB)) + LENGTH(CAST(COALESCE(border_dark_color, '') AS BLOB)) + LENGTH(CAST(COALESCE(color_style, '') AS BLOB)) + LENGTH(CAST(COALESCE(icon_gradient, '') AS BLOB)) + LENGTH(CAST(COALESCE(mention_rules_json, '') AS BLOB)) + LENGTH(CAST(COALESCE(column_order_json, '') AS BLOB))), 0) as textBytes
            FROM teacher_classes WHERE user_id = ?`
         )
         .bind(userId)
@@ -1420,21 +1424,86 @@ function sanitizeMentionRulesWorker(raw: any): WorkerMentionRule[] | null {
   return cleaned;
 }
 
+type WorkerPeripheralColumnKey = 'rank' | 'photo' | 'matricule' | 'name' | 'total' | 'average' | 'mention';
+interface WorkerColumnOrder {
+  left: WorkerPeripheralColumnKey[];
+  right: WorkerPeripheralColumnKey[];
+}
+
+const VALID_WORKER_COLUMN_KEYS = new Set<WorkerPeripheralColumnKey>([
+  'rank',
+  'photo',
+  'matricule',
+  'name',
+  'total',
+  'average',
+  'mention',
+]);
+const CORE_LEFT_DEFAULTS: WorkerPeripheralColumnKey[] = ['rank', 'photo', 'matricule', 'name'];
+const CORE_RIGHT_DEFAULTS: WorkerPeripheralColumnKey[] = ['average', 'mention'];
+
+function sanitizeColumnOrderWorker(raw: unknown): WorkerColumnOrder | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const obj = raw as { left?: unknown; right?: unknown };
+  if (!Array.isArray(obj.left) || !Array.isArray(obj.right)) return null;
+
+  const seen = new Set<WorkerPeripheralColumnKey>();
+  const left: WorkerPeripheralColumnKey[] = [];
+  const right: WorkerPeripheralColumnKey[] = [];
+
+  for (const item of obj.left) {
+    if (typeof item !== 'string') continue;
+    const key = item.trim() as WorkerPeripheralColumnKey;
+    if (!VALID_WORKER_COLUMN_KEYS.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    left.push(key);
+  }
+  for (const item of obj.right) {
+    if (typeof item !== 'string') continue;
+    const key = item.trim() as WorkerPeripheralColumnKey;
+    if (!VALID_WORKER_COLUMN_KEYS.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    right.push(key);
+  }
+
+  if (left.length + right.length === 0) return null;
+
+  for (const key of CORE_LEFT_DEFAULTS) {
+    if (!seen.has(key)) {
+      seen.add(key);
+      left.push(key);
+    }
+  }
+  for (const key of CORE_RIGHT_DEFAULTS) {
+    if (!seen.has(key)) {
+      seen.add(key);
+      right.push(key);
+    }
+  }
+
+  return { left, right };
+}
+
 function extractClassSheetSettings(classRow: any): {
   mentionRules: WorkerMentionRule[] | null;
   showMatricule: boolean;
   averageScale: number;
+  columnOrder: WorkerColumnOrder | null;
 } {
   if (!classRow) {
-    return { mentionRules: null, showMatricule: false, averageScale: 20 };
+    return { mentionRules: null, showMatricule: false, averageScale: 20, columnOrder: null };
   }
   const parsedRules = classRow.mention_rules_json
     ? sanitizeMentionRulesWorker(safeParseJson<any>(classRow.mention_rules_json, null))
+    : null;
+  const parsedOrder = classRow.column_order_json
+    ? sanitizeColumnOrderWorker(safeParseJson<any>(classRow.column_order_json, null))
     : null;
   return {
     mentionRules: parsedRules,
     showMatricule: Number(classRow.show_matricule) === 1,
     averageScale: sanitizeAverageScaleWorker(classRow.average_scale) ?? 20,
+    columnOrder: parsedOrder,
   };
 }
 
@@ -1820,6 +1889,7 @@ async function buildBootstrapPayload(db: any, userId: string, origin: string, jw
       mentionRules: sheetSettings.mentionRules,
       showMatricule: sheetSettings.showMatricule,
       averageScale: sheetSettings.averageScale,
+      columnOrder: sheetSettings.columnOrder,
       createdAt: Number(r.created_at) || Date.now(),
     };
   });
@@ -2765,12 +2835,12 @@ async function dispatchTeacherGradebookRoutes(
     }, 200, origin);
   }
 
-  // Paramètres de tableaux appliqués à toute une classe (mentions personnalisées + colonne Matricule + moyenne max)
+  // Paramètres de tableaux appliqués à toute une classe (mentions personnalisées + colonne Matricule + moyenne max + disposition colonnes)
   const classSheetSettingsMatch = path.match(/^\/api\/teacher\/classes\/([^/]+)\/sheet-settings$/);
   if (classSheetSettingsMatch && method === 'PUT') {
     const classId = decodeURIComponent(classSheetSettingsMatch[1]);
     const existing: any = await db
-      .prepare('SELECT id, mention_rules_json, show_matricule, average_scale FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
+      .prepare('SELECT id, mention_rules_json, show_matricule, average_scale, column_order_json FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
       .bind(classId, userId)
       .first();
     if (!existing) return errorResponse('Classe introuvable ou non autorisée.', 404, origin);
@@ -2779,6 +2849,7 @@ async function dispatchTeacherGradebookRoutes(
     const hasMentionUpdate = Object.prototype.hasOwnProperty.call(body, 'mentionRules');
     const hasMatriculeUpdate = Object.prototype.hasOwnProperty.call(body, 'showMatricule');
     const hasScaleUpdate = Object.prototype.hasOwnProperty.call(body, 'averageScale');
+    const hasColumnOrderUpdate = Object.prototype.hasOwnProperty.call(body, 'columnOrder');
     const now = Date.now();
 
     let nextMentionRulesJson: string | null = existing.mention_rules_json ?? null;
@@ -2808,9 +2879,24 @@ async function dispatchTeacherGradebookRoutes(
       nextAverageScale = parsedScale;
     }
 
+    let nextColumnOrderJson: string | null = existing.column_order_json ?? null;
+    if (hasColumnOrderUpdate) {
+      if (body.columnOrder === null) {
+        nextColumnOrderJson = null;
+      } else {
+        const sanitizedOrder = sanitizeColumnOrderWorker(body.columnOrder);
+        if (!sanitizedOrder) {
+          return errorResponse('La disposition des colonnes est invalide.', 400, origin);
+        }
+        nextColumnOrderJson = JSON.stringify(sanitizedOrder);
+      }
+    }
+
     const incomingSettingsDelta = Math.max(
       1,
-      utf8ByteLength(nextMentionRulesJson || '') - utf8ByteLength(existing.mention_rules_json || '')
+      utf8ByteLength(nextMentionRulesJson || '') -
+        utf8ByteLength(existing.mention_rules_json || '') +
+        (utf8ByteLength(nextColumnOrderJson || '') - utf8ByteLength(existing.column_order_json || ''))
     );
     const quotaBlocked = await enforceStorageQuota(incomingSettingsDelta);
     if (quotaBlocked) return quotaBlocked;
@@ -2819,15 +2905,15 @@ async function dispatchTeacherGradebookRoutes(
       db
         .prepare(
           `UPDATE teacher_classes
-           SET mention_rules_json = ?, show_matricule = ?, average_scale = ?, updated_at = ?
+           SET mention_rules_json = ?, show_matricule = ?, average_scale = ?, column_order_json = ?, updated_at = ?
            WHERE id = ? AND user_id = ?`
         )
-        .bind(nextMentionRulesJson, nextShowMatricule, nextAverageScale, now, classId, userId),
+        .bind(nextMentionRulesJson, nextShowMatricule, nextAverageScale, nextColumnOrderJson, now, classId, userId),
     ];
 
     // Nettoyer les surcharges locales obsolètes sur tous les tableaux existants de la classe
     // afin que le choix "Appliquer à toute la classe" prenne immédiatement effet partout.
-    if (hasMentionUpdate || hasMatriculeUpdate || hasScaleUpdate) {
+    if (hasMentionUpdate || hasMatriculeUpdate || hasScaleUpdate || hasColumnOrderUpdate) {
       const [gbsRes, avgsRes] = await Promise.all([
         db
           .prepare('SELECT id, layout_json FROM teacher_gradebooks WHERE user_id = ? AND class_id = ?')
@@ -2854,6 +2940,10 @@ async function dispatchTeacherGradebookRoutes(
           delete parsed.averageScale;
           changed = true;
         }
+        if (hasColumnOrderUpdate && Object.prototype.hasOwnProperty.call(parsed, 'columnOrder')) {
+          delete parsed.columnOrder;
+          changed = true;
+        }
         if (changed) {
           stmts.push(
             db
@@ -2878,6 +2968,10 @@ async function dispatchTeacherGradebookRoutes(
           delete parsed.averageScale;
           changed = true;
         }
+        if (hasColumnOrderUpdate && Object.prototype.hasOwnProperty.call(parsed, 'columnOrder')) {
+          delete parsed.columnOrder;
+          changed = true;
+        }
         if (changed) {
           stmts.push(
             db
@@ -2894,6 +2988,7 @@ async function dispatchTeacherGradebookRoutes(
       mention_rules_json: nextMentionRulesJson,
       show_matricule: nextShowMatricule,
       average_scale: nextAverageScale,
+      column_order_json: nextColumnOrderJson,
     });
 
     return jsonResponse(
@@ -3266,7 +3361,7 @@ async function dispatchTeacherGradebookRoutes(
         .bind(userId, subjectId, termId)
         .first(),
       db
-        .prepare('SELECT mention_rules_json, show_matricule, average_scale FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
+        .prepare('SELECT mention_rules_json, show_matricule, average_scale, column_order_json FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
         .bind(ownSubject.class_id, userId)
         .first(),
     ]);
@@ -3791,7 +3886,7 @@ async function dispatchTeacherGradebookRoutes(
     };
 
     const cardClassRow: any = await db
-      .prepare('SELECT mention_rules_json, show_matricule, average_scale FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
+      .prepare('SELECT mention_rules_json, show_matricule, average_scale, column_order_json FROM teacher_classes WHERE id = ? AND user_id = ? LIMIT 1')
       .bind(cardRow.class_id, userId)
       .first();
     const classSettings = extractClassSheetSettings(cardClassRow);
@@ -7159,7 +7254,7 @@ async function dispatchTeacherGradebookRoutes(
         db.prepare('SELECT id, label FROM teacher_school_years WHERE user_id = ? ORDER BY created_at ASC').bind(userId).all(),
         db.prepare('SELECT id, year_id, name FROM teacher_schools WHERE user_id = ? ORDER BY created_at ASC').bind(userId).all(),
         db.prepare('SELECT id, school_id, year_id, name FROM teacher_study_levels WHERE user_id = ? ORDER BY sort_order ASC, created_at ASC').bind(userId).all(),
-        db.prepare('SELECT id, level_id, school_id, year_id, level_name, name, teacher_name, show_matricule, average_scale FROM teacher_classes WHERE user_id = ? ORDER BY created_at ASC').bind(userId).all(),
+        db.prepare('SELECT id, level_id, school_id, year_id, level_name, name, teacher_name, show_matricule, average_scale, column_order_json FROM teacher_classes WHERE user_id = ? ORDER BY created_at ASC').bind(userId).all(),
         db.prepare('SELECT id, class_id, school_id, year_id, number, name, coefficient FROM teacher_terms WHERE user_id = ? ORDER BY number ASC').bind(userId).all(),
         db.prepare('SELECT id, class_id, term_id, school_id, year_id, name, coefficient FROM teacher_subjects WHERE user_id = ? ORDER BY created_at ASC').bind(userId).all(),
         db.prepare('SELECT id, subject_id, term_id, class_id, note_col_count, col_metas_json, layout_json FROM teacher_gradebooks WHERE user_id = ?').bind(userId).all(),
@@ -7209,6 +7304,7 @@ async function dispatchTeacherGradebookRoutes(
             teacherName: String(c.teacher_name || ''),
             showMatricule: Boolean(c.show_matricule),
             averageScale: Number(c.average_scale) || 20,
+            columnOrder: c.column_order_json ? sanitizeColumnOrderWorker(safeParseJson<any>(c.column_order_json, null)) : null,
           })),
           terms: (termsRes.results || []).map((t: any) => ({
             id: String(t.id),

@@ -7,6 +7,7 @@ import {
   type CustomMentionRule,
   type SubjectForGeneralAverage,
 } from './gradebookCalculations';
+import type { GradebookColumnOrder } from './gradebookColumnLayout';
 
 export type TermAverageSortMode = 'merit' | 'alpha' | 'order';
 
@@ -72,6 +73,7 @@ export interface TermAverageLayoutState {
   mentionRules?: CustomMentionRule[] | null;
   showMatricule?: boolean;
   averageScale?: number;
+  columnOrder?: GradebookColumnOrder | null;
 }
 
 export interface TermAverageStylesState {

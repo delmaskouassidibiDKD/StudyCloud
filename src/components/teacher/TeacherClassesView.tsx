@@ -124,6 +124,7 @@ export interface ClassItem {
   mentionRules?: Array<{ min: number; label: string; scale?: number }> | null;
   showMatricule?: boolean;
   averageScale?: number;
+  columnOrder?: { left: string[]; right: string[] } | null;
   createdAt: number;
 }
 
@@ -3318,6 +3319,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     mentionRules: settings.mentionRules,
                     showMatricule: settings.showMatricule,
                     averageScale: settings.averageScale,
+                    columnOrder: settings.columnOrder ?? null,
                   }
                 : c
             )
@@ -3349,6 +3351,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     mentionRules: settings.mentionRules,
                     showMatricule: settings.showMatricule,
                     averageScale: settings.averageScale,
+                    columnOrder: settings.columnOrder ?? null,
                   }
                 : c
             )

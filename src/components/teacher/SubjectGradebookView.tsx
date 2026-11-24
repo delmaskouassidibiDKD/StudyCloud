@@ -91,6 +91,15 @@ import {
   type GradebookSortMode
 } from '../../utils/gradebookCalculations';
 import {
+  getVisibleColumnOrder,
+  isDefaultColumnOrder,
+  resolveColumnOrderFromDelmasAction,
+  resolveEffectiveColumnOrder,
+  sanitizeGradebookColumnOrder,
+  type GradebookColumnOrder,
+  type GradebookPeripheralColumnKey,
+} from '../../utils/gradebookColumnLayout';
+import {
   normalizeStudentNameKey,
   canonicalWordBagKey,
 } from '../../utils/termGeneralAverage';
@@ -424,11 +433,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     const saved = initialCachedSheet?.layout?.sortMode;
     return saved === 'merit' || saved === 'alpha' || saved === 'order' ? saved : 'order';
   });
-  // Paramètres de classe (mentions personnalisées + colonne Matricule + moyenne max) et éventuelles surcharges propres à ce tableau
+  // Paramètres de classe (mentions personnalisées + colonne Matricule + moyenne max + disposition) et éventuelles surcharges propres à ce tableau
   const [classSettings, setClassSettings] = useState<ClassSheetSettings>(() => ({
     mentionRules: schoolClass.mentionRules ?? null,
     showMatricule: Boolean(schoolClass.showMatricule),
     averageScale: sanitizeAverageScale(schoolClass.averageScale) ?? DEFAULT_AVERAGE_SCALE,
+    columnOrder: (schoolClass.columnOrder as GradebookColumnOrder | null | undefined) ?? null,
   }));
   const [sheetMentionRules, setSheetMentionRules] = useState<CustomMentionRule[] | null | undefined>(
     () => initialCachedSheet?.layout?.mentionRules
@@ -440,6 +450,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     const s = sanitizeAverageScale(initialCachedSheet?.layout?.averageScale);
     return s !== null ? s : undefined;
   });
+  const [sheetColumnOrder, setSheetColumnOrder] = useState<GradebookColumnOrder | null | undefined>(
+    () => initialCachedSheet?.layout?.columnOrder
+  );
 
   const effectiveMentionRules = useMemo<readonly CustomMentionRule[]>(() => {
     if (sheetMentionRules === null) return DEFAULT_CUSTOM_MENTION_RULES;
@@ -462,6 +475,25 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     sanitizeAverageScale(classSettings.averageScale) ??
     DEFAULT_AVERAGE_SCALE;
   const effectiveScaleLabel = formatScaleValue(effectiveAverageScale);
+  const effectiveColumnOrder = useMemo(
+    () =>
+      resolveEffectiveColumnOrder(sheetColumnOrder, classSettings.columnOrder, {
+        includeTotal: false,
+      }),
+    [sheetColumnOrder, classSettings.columnOrder]
+  );
+  const hasCustomColumnOrder = useMemo(
+    () => !isDefaultColumnOrder(effectiveColumnOrder, { includeTotal: false }),
+    [effectiveColumnOrder]
+  );
+  const visibleColumnOrder = useMemo(
+    () =>
+      getVisibleColumnOrder(effectiveColumnOrder, {
+        showMatricule: effectiveShowMatricule,
+        includeTotal: false,
+      }),
+    [effectiveColumnOrder, effectiveShowMatricule]
+  );
 
   // Verrouillage temporaire de l'ordre visuel pendant la frappe dans une cellule (évite que la ligne saute sous le curseur)
   const [lockedOrderIds, setLockedOrderIds] = useState<string[] | null>(null);
@@ -699,6 +731,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       ...(sheetMentionRules !== undefined ? { mentionRules: sheetMentionRules } : {}),
       ...(typeof sheetShowMatricule === 'boolean' ? { showMatricule: sheetShowMatricule } : {}),
       ...(typeof sheetAverageScale === 'number' ? { averageScale: sheetAverageScale } : {}),
+      ...(sheetColumnOrder !== undefined ? { columnOrder: sheetColumnOrder } : {}),
     },
     styles: {
       cellColors,
@@ -723,6 +756,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     sheetMentionRules,
     sheetShowMatricule,
     sheetAverageScale,
+    sheetColumnOrder,
     cellColors,
     rowColors,
     cellCustomStyles,
@@ -876,6 +910,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             showMatricule: Boolean(res.classSettings.showMatricule),
             averageScale:
               sanitizeAverageScale(res.classSettings.averageScale) ?? DEFAULT_AVERAGE_SCALE,
+            columnOrder: res.classSettings.columnOrder ?? null,
           });
         }
         if (res && res.exists) {
@@ -935,6 +970,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           );
           const loadedAvgScale = sanitizeAverageScale(res.layout?.averageScale);
           setSheetAverageScale(loadedAvgScale !== null ? loadedAvgScale : undefined);
+          setSheetColumnOrder(res.layout?.columnOrder);
           setCellColors(res.styles?.cellColors || {});
           setRowColors(res.styles?.rowColors || {});
           setCellCustomStyles(res.styles?.cellCustomStyles || {});
@@ -965,6 +1001,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 ...(res.layout?.mentionRules !== undefined ? { mentionRules: res.layout.mentionRules } : {}),
                 ...(typeof res.layout?.showMatricule === 'boolean' ? { showMatricule: res.layout.showMatricule } : {}),
                 ...(loadedAvgScale !== null ? { averageScale: loadedAvgScale } : {}),
+                ...(res.layout?.columnOrder !== undefined ? { columnOrder: res.layout.columnOrder } : {}),
               },
               styles: {
                 cellColors: res.styles?.cellColors || {},
@@ -1790,6 +1827,49 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           layout: {
             ...latestPayloadRef.current.layout,
             averageScale: cleanScale,
+          },
+        };
+      }
+      hasPendingCloudChangesRef.current = true;
+      setIsSaved(false);
+      await flushCloudSave({ force: true });
+    },
+    [disableCloudPersistence, schoolClass.id, classSettings, onClassSettingsUpdated, flushCloudSave]
+  );
+
+  // Enregistrer la disposition des colonnes (ce tableau uniquement ou toute la classe)
+  const handleSaveColumnOrder = useCallback(
+    async (order: GradebookColumnOrder | null, scope: SheetSettingScope) => {
+      const normalized =
+        order === null
+          ? null
+          : sanitizeGradebookColumnOrder(order, { includeTotal: false });
+      if (scope === 'class') {
+        if (!disableCloudPersistence && getTeacherAuthToken()) {
+          const res = await TeacherGradebookAPI.updateClassSheetSettings(schoolClass.id, {
+            columnOrder: normalized,
+          });
+          setClassSettings(res.classSettings);
+          setSheetColumnOrder(undefined);
+          onClassSettingsUpdated?.(schoolClass.id, res.classSettings);
+        } else {
+          const nextSettings: ClassSheetSettings = {
+            ...classSettings,
+            columnOrder: normalized,
+          };
+          setClassSettings(nextSettings);
+          setSheetColumnOrder(undefined);
+          onClassSettingsUpdated?.(schoolClass.id, nextSettings);
+        }
+        return;
+      }
+      setSheetColumnOrder(normalized);
+      if (latestPayloadRef.current) {
+        latestPayloadRef.current = {
+          ...latestPayloadRef.current,
+          layout: {
+            ...latestPayloadRef.current.layout,
+            columnOrder: normalized,
           },
         };
       }
@@ -2641,19 +2721,54 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   const handleCopyEntireTable = async () => {
     try {
+      const exportLeftCols = visibleColumnOrder.left.filter((k) => k !== 'photo');
+      const exportRightCols = visibleColumnOrder.right.filter((k) => k !== 'photo');
+      const peripheralHeader = (k: GradebookPeripheralColumnKey): string => {
+        switch (k) {
+          case 'rank':
+            return 'RANG';
+          case 'matricule':
+            return 'MATRICULE';
+          case 'name':
+            return 'NOM & PRÉNOM';
+          case 'average':
+            return `MOYENNE (/${effectiveScaleLabel})`;
+          case 'mention':
+            return 'MENTION';
+          default:
+            return '';
+        }
+      };
+      const peripheralValue = (
+        k: GradebookPeripheralColumnKey,
+        s: (typeof studentsWithStats)[number]
+      ): string => {
+        switch (k) {
+          case 'rank':
+            return s.rank || '-';
+          case 'matricule':
+            return s.matricule || '-';
+          case 'name':
+            return s.name || 'Élève sans nom';
+          case 'average':
+            return s.averageFormatted ? `${s.averageFormatted}/${effectiveScaleLabel}` : '-';
+          case 'mention':
+            return s.mention || '-';
+          default:
+            return '';
+        }
+      };
+
       const headers = [
-        'RANG',
-        ...(effectiveShowMatricule ? ['MATRICULE'] : []),
-        'NOM & PRÉNOM',
+        ...exportLeftCols.map(peripheralHeader),
         ...Array.from({ length: noteColumnCount }, (_, i) => {
           const meta = columnMetas[i] || { title: 'NOTE', maxScore: 20 };
           return `${meta.title || 'NOTE'} ${i + 1} (/${meta.maxScore})`;
         }),
-        `MOYENNE (/${effectiveScaleLabel})`,
-        'MENTION'
+        ...exportRightCols.map(peripheralHeader),
       ];
 
-      const rows = studentsWithStats.map(s => {
+      const rows = studentsWithStats.map((s) => {
         const studentNotes = Array.from({ length: noteColumnCount }, (_, i) => {
           const noteVal = s.notes[i] || '';
           const meta = columnMetas[i] || { maxScore: 20 };
@@ -2661,18 +2776,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           return parsed.scoreStr ? `${parsed.scoreStr}/${parsed.maxScore}` : '-';
         });
         return [
-          s.rank || '-',
-          ...(effectiveShowMatricule ? [s.matricule || '-'] : []),
-          s.name || 'Élève sans nom',
+          ...exportLeftCols.map((k) => peripheralValue(k, s)),
           ...studentNotes,
-          s.averageFormatted ? `${s.averageFormatted}/${effectiveScaleLabel}` : '-',
-          s.mention || '-'
+          ...exportRightCols.map((k) => peripheralValue(k, s)),
         ];
       });
 
       const tsvContent = [
         headers.join('\t'),
-        ...rows.map(r => r.join('\t'))
+        ...rows.map((r) => r.join('\t')),
       ].join('\n');
 
       await navigator.clipboard.writeText(tsvContent);
@@ -3149,6 +3261,44 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   // Export Excel (.xlsx)
   const handleExportExcel = () => {
     try {
+      const exportLeftCols = visibleColumnOrder.left.filter((k) => k !== 'photo');
+      const exportRightCols = visibleColumnOrder.right.filter((k) => k !== 'photo');
+      const peripheralHeader = (k: GradebookPeripheralColumnKey): string => {
+        switch (k) {
+          case 'rank':
+            return 'Rang';
+          case 'matricule':
+            return 'Matricule';
+          case 'name':
+            return 'Nom & Prénom';
+          case 'average':
+            return `Moyenne (/${effectiveScaleLabel})`;
+          case 'mention':
+            return 'Mention';
+          default:
+            return '';
+        }
+      };
+      const peripheralValue = (
+        k: GradebookPeripheralColumnKey,
+        s: (typeof studentsWithStats)[number]
+      ): string => {
+        switch (k) {
+          case 'rank':
+            return s.rank;
+          case 'matricule':
+            return s.matricule || '';
+          case 'name':
+            return s.name;
+          case 'average':
+            return s.hasInvalidNote ? '...' : s.averageFormatted;
+          case 'mention':
+            return s.mention || '-';
+          default:
+            return '';
+        }
+      };
+
       const noteHeaders = Array.from({ length: noteColumnCount }, (_, i) => {
         const meta = columnMetas[i];
         const title = meta?.title || 'NOTE';
@@ -3156,26 +3306,20 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         return `${title} ${i + 1} (/${max})`;
       });
       const headers = [
-        'Rang',
-        ...(effectiveShowMatricule ? ['Matricule'] : []),
-        'Nom & Prénom',
+        ...exportLeftCols.map(peripheralHeader),
         ...noteHeaders,
-        `Moyenne (/${effectiveScaleLabel})`,
-        'Mention',
+        ...exportRightCols.map(peripheralHeader),
       ];
-      const dataRows = studentsWithStats.map(s => {
+      const dataRows = studentsWithStats.map((s) => {
         const notesFormatted = s.notes.slice(0, noteColumnCount).map((n, i) => {
           const meta = columnMetas[i];
           const parsed = parseStudentNote(n, meta?.maxScore || 20);
           return parsed.scoreStr ? `${parsed.scoreStr}/${parsed.maxScore}` : '';
         });
         return [
-          s.rank,
-          ...(effectiveShowMatricule ? [s.matricule || ''] : []),
-          s.name,
+          ...exportLeftCols.map((k) => peripheralValue(k, s)),
           ...notesFormatted,
-          s.hasInvalidNote ? '...' : s.averageFormatted,
-          s.mention || '-'
+          ...exportRightCols.map((k) => peripheralValue(k, s)),
         ];
       });
 
@@ -3196,6 +3340,44 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   // Jeu de données structuré pour le menu Télécharger (PDF / Word / Copier)
   const buildSubjectExportDataset = (): GradebookExportDataset => {
+    const exportLeftCols = visibleColumnOrder.left.filter((k) => k !== 'photo');
+    const exportRightCols = visibleColumnOrder.right.filter((k) => k !== 'photo');
+    const peripheralHeader = (k: GradebookPeripheralColumnKey): string => {
+      switch (k) {
+        case 'rank':
+          return 'Rang';
+        case 'matricule':
+          return 'Matricule';
+        case 'name':
+          return 'Nom & Prénom';
+        case 'average':
+          return `Moyenne (/${effectiveScaleLabel})`;
+        case 'mention':
+          return 'Mention';
+        default:
+          return '';
+      }
+    };
+    const peripheralValue = (
+      k: GradebookPeripheralColumnKey,
+      s: (typeof studentsWithStats)[number]
+    ): string => {
+      switch (k) {
+        case 'rank':
+          return s.rank || '-';
+        case 'matricule':
+          return s.matricule || '-';
+        case 'name':
+          return s.name || 'Élève sans nom';
+        case 'average':
+          return s.hasInvalidNote ? '...' : s.averageFormatted || '-';
+        case 'mention':
+          return s.mention || '-';
+        default:
+          return '';
+      }
+    };
+
     const noteHeaders = Array.from({ length: noteColumnCount }, (_, i) => {
       const meta = columnMetas[i];
       const title = meta?.title || 'NOTE';
@@ -3203,12 +3385,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       return `${title} ${i + 1} (/${max})`;
     });
     const headers = [
-      'Rang',
-      ...(effectiveShowMatricule ? ['Matricule'] : []),
-      'Nom & Prénom',
+      ...exportLeftCols.map(peripheralHeader),
       ...noteHeaders,
-      `Moyenne (/${effectiveScaleLabel})`,
-      'Mention',
+      ...exportRightCols.map(peripheralHeader),
     ];
     const nonEmptyRows = studentsWithStats.filter(
       (s) =>
@@ -3225,12 +3404,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         return parsed.scoreStr ? `${parsed.scoreStr}/${parsed.maxScore}` : '-';
       });
       return [
-        s.rank || '-',
-        ...(effectiveShowMatricule ? [s.matricule || '-'] : []),
-        s.name || 'Élève sans nom',
+        ...exportLeftCols.map((k) => peripheralValue(k, s)),
         ...notesFormatted,
-        s.hasInvalidNote ? '...' : s.averageFormatted || '-',
-        s.mention || '-',
+        ...exportRightCols.map((k) => peripheralValue(k, s)),
       ];
     });
 
@@ -3242,17 +3418,36 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     const passCount = gradedStudents.filter((s) => (s.average ?? 0) >= effectiveAverageScale / 2).length;
     const passRate = gradedStudents.length > 0 ? Math.round((passCount / gradedStudents.length) * 100) : null;
 
+    const peripheralFooter = (k: GradebookPeripheralColumnKey): string => {
+      switch (k) {
+        case 'name':
+          return 'MOYENNE DE LA CLASSE';
+        case 'average':
+          return classAvg !== null ? `${classAvg.toFixed(2)}/${effectiveScaleLabel}` : '';
+        case 'mention':
+          return passRate !== null ? `Réussite : ${passRate} %` : '';
+        default:
+          return '';
+      }
+    };
+
     const footerRow =
       classAvg !== null
         ? [
-            '',
-            ...(effectiveShowMatricule ? [''] : []),
-            'MOYENNE DE LA CLASSE',
+            ...exportLeftCols.map(peripheralFooter),
             ...Array(noteColumnCount).fill(''),
-            `${classAvg.toFixed(2)}/${effectiveScaleLabel}`,
-            passRate !== null ? `Réussite : ${passRate} %` : '',
+            ...exportRightCols.map(peripheralFooter),
           ]
         : undefined;
+
+    const leftNameIdx = exportLeftCols.indexOf('name');
+    const rightNameIdx = exportRightCols.indexOf('name');
+    const dynamicNameColIndex =
+      leftNameIdx >= 0
+        ? leftNameIdx
+        : rightNameIdx >= 0
+        ? exportLeftCols.length + noteColumnCount + rightNameIdx
+        : 0;
 
     const classLabel = schoolClass.name?.trim()
       ? schoolClass.name.toLowerCase().includes(schoolClass.level.toLowerCase())
@@ -3285,7 +3480,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         classAvg !== null
           ? `Moyenne de la classe : ${classAvg.toFixed(2)}/${effectiveScaleLabel} • ${passCount}/${gradedStudents.length} élèves au-dessus de la moyenne`
           : undefined,
-      nameColumnIndex: effectiveShowMatricule ? 2 : 1,
+      nameColumnIndex: dynamicNameColIndex,
     };
   };
 
@@ -4123,6 +4318,29 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 `✓ Moyenne ramenée sur /${cleanScale} (${
                   scope === 'class' ? 'toute la classe' : 'ce tableau'
                 })`
+              );
+            }
+            break;
+          }
+
+          case 'set_column_order': {
+            const resolvedOrder = resolveColumnOrderFromDelmasAction(
+              action,
+              effectiveColumnOrder,
+              { includeTotal: false }
+            );
+            if (resolvedOrder !== undefined) {
+              const scope: SheetSettingScope =
+                action.scope === 'class' ? 'class' : 'sheet';
+              await handleSaveColumnOrder(resolvedOrder, scope);
+              summaries.push(
+                resolvedOrder === null
+                  ? `✓ Disposition des colonnes réinitialisée par défaut (${
+                      scope === 'class' ? 'toute la classe' : 'ce tableau'
+                    })`
+                  : `✓ Disposition des colonnes mise à jour (${
+                      scope === 'class' ? 'toute la classe' : 'ce tableau'
+                    })`
               );
             }
             break;
@@ -6222,6 +6440,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           onSaveShowMatricule={handleSaveShowMatricule}
           onSaveAverageScale={handleSaveAverageScale}
           onBulkUpdateNoteMax={handleBulkUpdateNoteMax}
+          effectiveColumnOrder={effectiveColumnOrder}
+          hasCustomColumnOrder={hasCustomColumnOrder}
+          includeTotalColumn={false}
+          centerBlockLabel="NOTES 1…N"
+          onSaveColumnOrder={handleSaveColumnOrder}
         />
 
         {/* Bouton Assistant Delmas (Robot bleu animé + "Assistant Delmas" écrit en bas, placé tout à droite du ruban) */}
@@ -6411,9 +6634,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     const hdrName = getHeaderVisualStyles('header_name');
                     const hdrAvg = getHeaderVisualStyles('header_avg');
                     const hdrMention = getHeaderVisualStyles('header_mention');
-                    return (
-                  <div className="flex bg-[#f1f5f9] border-b-2 border-slate-900 select-none items-stretch text-slate-900 w-fit">
-                    {/* 1. RANG */}
+                    const peripheralHeaderCells: Partial<
+                      Record<GradebookPeripheralColumnKey, React.ReactNode>
+                    > = {
+                      rank: (
                     <div 
                       style={{ width: `${effectiveColWidthRank}px`, minWidth: `${effectiveColWidthRank}px`, maxWidth: `${effectiveColWidthRank}px`, backgroundColor: hdrRank.containerBg }}
                       onClick={() => {
@@ -6436,8 +6660,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       </span>
                       {renderColHandle('col-rank')}
                     </div>
-
-                    {/* 2. PROFIL / PHOTO */}
+                      ),
+                      photo: (
                     <div 
                       style={{ width: `${colWidthPhoto}px`, minWidth: `${colWidthPhoto}px`, maxWidth: `${colWidthPhoto}px`, backgroundColor: hdrPhoto.containerBg }}
                       onClick={() => {
@@ -6460,9 +6684,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       </span>
                       {renderColHandle('col-photo')}
                     </div>
-
-                    {/* 2bis. MATRICULE (optionnel — derrière PROFIL) */}
-                    {effectiveShowMatricule && (
+                      ),
+                      matricule: effectiveShowMatricule ? (
                       <div
                         style={{
                           width: `${effectiveColWidthMatricule}px`,
@@ -6490,9 +6713,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                         </span>
                         {renderColHandle('col-matricule')}
                       </div>
-                    )}
-
-                    {/* 3. NOM & PRÉNOM */}
+                      ) : null,
+                      name: (
                     <div 
                       style={{ width: `${effectiveColWidthName}px`, minWidth: `${effectiveColWidthName}px`, maxWidth: `${effectiveColWidthName}px`, backgroundColor: hdrName.containerBg }}
                       onClick={() => {
@@ -6647,6 +6869,74 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
                       {renderColHandle('col-name')}
                     </div>
+                      ),
+                      average: (
+                    <div 
+                      style={{ width: `${effectiveColWidthAverage}px`, minWidth: `${effectiveColWidthAverage}px`, maxWidth: `${effectiveColWidthAverage}px`, backgroundColor: hdrAvg.containerBg }}
+                      onClick={() => {
+                        setActiveCellInfo({
+                          id: 'header-average',
+                          type: 'column',
+                          coordDisplay: 'MOYENNE',
+                          value: 'MOYENNE'
+                        });
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' });
+                      }}
+                      className={`min-h-12 border-r ${
+                        isColActive('col-moyenne') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'
+                      } flex flex-col items-center justify-center p-1 text-center ${hdrAvg.containerBg ? '' : 'bg-blue-100/70'} shrink-0 relative cursor-pointer`}
+                      title={`Moyenne ramenée sur /${effectiveScaleLabel} (Double-cliquer pour sélectionner le trait vertical)`}
+                    >
+                      <span style={hdrAvg.textStyle} className="font-black text-xs sm:text-sm text-blue-950 tracking-wider uppercase leading-none">
+                        MOYENNE
+                      </span>
+                      <span
+                        style={hdrAvg.custom?.color ? { color: hdrAvg.custom.color, opacity: 0.85 } : undefined}
+                        className="text-[9.5px] font-extrabold text-blue-700 leading-none mt-0.5"
+                      >
+                        /{effectiveScaleLabel}
+                      </span>
+                      {renderColHandle('col-moyenne')}
+                    </div>
+                      ),
+                      mention: (
+                    <div 
+                      style={{ width: `${effectiveColWidthMention}px`, minWidth: `${effectiveColWidthMention}px`, maxWidth: `${effectiveColWidthMention}px`, backgroundColor: hdrMention.containerBg }}
+                      onClick={() => {
+                        setActiveCellInfo({
+                          id: 'header-mention',
+                          type: 'column',
+                          coordDisplay: 'MENTION',
+                          value: 'MENTION'
+                        });
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-mention') ? null : { type: 'col', id: 'col-mention' });
+                      }}
+                      className={`min-h-12 border-r ${
+                        isColActive('col-mention') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'
+                      } flex items-center justify-center p-1 text-center ${hdrMention.containerBg ? '' : 'bg-emerald-100/70'} shrink-0 relative cursor-pointer`}
+                      title="Mention pédagogique (Double-cliquer pour sélectionner le trait vertical)"
+                    >
+                      <span style={hdrMention.textStyle} className="font-black text-xs sm:text-sm text-emerald-950 tracking-wider uppercase">
+                        MENTION
+                      </span>
+                      {renderColHandle('col-mention')}
+                    </div>
+                      ),
+                    };
+
+                    return (
+                  <div className="flex bg-[#f1f5f9] border-b-2 border-slate-900 select-none items-stretch text-slate-900 w-fit">
+                    {visibleColumnOrder.left.map((colKey) => (
+                      <React.Fragment key={`hdr-l-${colKey}`}>
+                        {peripheralHeaderCells[colKey]}
+                      </React.Fragment>
+                    ))}
 
                     {/* 4. COLONNES DE NOTES DYNAMIQUES */}
                     {Array.from({ length: noteColumnCount }).map((_, i) => {
@@ -6938,63 +7228,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       </button>
                     </div>
 
-                    {/* 6. MOYENNE */}
-                    <div 
-                      style={{ width: `${effectiveColWidthAverage}px`, minWidth: `${effectiveColWidthAverage}px`, maxWidth: `${effectiveColWidthAverage}px`, backgroundColor: hdrAvg.containerBg }}
-                      onClick={() => {
-                        setActiveCellInfo({
-                          id: 'header-average',
-                          type: 'column',
-                          coordDisplay: 'MOYENNE',
-                          value: 'MOYENNE'
-                        });
-                      }}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-moyenne') ? null : { type: 'col', id: 'col-moyenne' });
-                      }}
-                      className={`min-h-12 border-r ${
-                        isColActive('col-moyenne') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'
-                      } flex flex-col items-center justify-center p-1 text-center ${hdrAvg.containerBg ? '' : 'bg-blue-100/70'} shrink-0 relative cursor-pointer`}
-                      title={`Moyenne ramenée sur /${effectiveScaleLabel} (Double-cliquer pour sélectionner le trait vertical)`}
-                    >
-                      <span style={hdrAvg.textStyle} className="font-black text-xs sm:text-sm text-blue-950 tracking-wider uppercase leading-none">
-                        MOYENNE
-                      </span>
-                      <span
-                        style={hdrAvg.custom?.color ? { color: hdrAvg.custom.color, opacity: 0.85 } : undefined}
-                        className="text-[9.5px] font-extrabold text-blue-700 leading-none mt-0.5"
-                      >
-                        /{effectiveScaleLabel}
-                      </span>
-                      {renderColHandle('col-moyenne')}
-                    </div>
-
-                    {/* 7. MENTION */}
-                    <div 
-                      style={{ width: `${effectiveColWidthMention}px`, minWidth: `${effectiveColWidthMention}px`, maxWidth: `${effectiveColWidthMention}px`, backgroundColor: hdrMention.containerBg }}
-                      onClick={() => {
-                        setActiveCellInfo({
-                          id: 'header-mention',
-                          type: 'column',
-                          coordDisplay: 'MENTION',
-                          value: 'MENTION'
-                        });
-                      }}
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedLine(prev => (prev?.type === 'col' && prev.id === 'col-mention') ? null : { type: 'col', id: 'col-mention' });
-                      }}
-                      className={`min-h-12 border-r ${
-                        isColActive('col-mention') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'
-                      } flex items-center justify-center p-1 text-center ${hdrMention.containerBg ? '' : 'bg-emerald-100/70'} shrink-0 relative cursor-pointer`}
-                      title="Mention pédagogique (Double-cliquer pour sélectionner le trait vertical)"
-                    >
-                      <span style={hdrMention.textStyle} className="font-black text-xs sm:text-sm text-emerald-950 tracking-wider uppercase">
-                        MENTION
-                      </span>
-                      {renderColHandle('col-mention')}
-                    </div>
+                    {visibleColumnOrder.right.map((colKey) => (
+                      <React.Fragment key={`hdr-r-${colKey}`}>
+                        {peripheralHeaderCells[colKey]}
+                      </React.Fragment>
+                    ))}
                   </div>
                     );
                   })()}
@@ -7024,15 +7262,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                       const mentionCellBg = mentionCustom?.bgColor || cellColors[`${std.id}_mention`] || rowBg || undefined;
                       const isRowMenuOpen = activeMenuRow === std.id || activeMenuPhoto === std.id || activeMenuCell?.studentId === std.id;
 
-                      return (
-                        <div 
-                          key={std.id}
-                          style={{ height: `${rowHeight}px` }}
-                          className={`flex items-stretch transition-colors relative w-fit ${isRowMenuOpen ? 'z-50' : 'z-0'} ${
-                            isRowSelected ? 'bg-blue-50/40' : 'hover:bg-slate-50/70'
-                          }`}
-                        >
-                          {/* RANG */}
+                      const peripheralBodyCells: Partial<
+                        Record<GradebookPeripheralColumnKey, React.ReactNode>
+                      > = {
+                        rank: (
                           <div 
                             style={{ 
                               width: `${effectiveColWidthRank}px`, 
@@ -7089,8 +7322,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             )}
                             {renderColHandle('col-rank')}
                           </div>
-
-                          {/* PROFIL / PHOTO : IMAGE CARRÉE OCCUPANT TOUT L'ESPACE AVEC MENU 3 POINTS VISIBLE */}
+                        ),
+                        photo: (
                           <div 
                             style={{ 
                               width: `${colWidthPhoto}px`, 
@@ -7219,9 +7452,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             )}
                             {renderColHandle('col-photo')}
                           </div>
-
-                          {/* MATRICULE (optionnel — derrière PROFIL) */}
-                          {effectiveShowMatricule && (
+                        ),
+                        matricule: effectiveShowMatricule ? (
                             <div
                               style={{
                                 width: `${effectiveColWidthMatricule}px`,
@@ -7295,9 +7527,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                               />
                               {renderColHandle('col-matricule')}
                             </div>
-                          )}
-
-                          {/* NOM & PRÉNOM */}
+                        ) : null,
+                        name: (
                           <div 
                             style={{ 
                               width: `${effectiveColWidthName}px`, 
@@ -7561,6 +7792,157 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             </SmartFloatingPopover>
                             {renderColHandle('col-name')}
                           </div>
+                        ),
+                        average: (
+                          <div 
+                            style={{ 
+                              width: `${effectiveColWidthAverage}px`, 
+                              minWidth: `${effectiveColWidthAverage}px`,
+                              maxWidth: `${effectiveColWidthAverage}px`,
+                              height: `${rowHeight}px`,
+                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : avgCellBg
+                            }}
+                            onMouseDown={(e) => {
+                              // Empêcher toute sélection de texte ou de case dans la colonne Moyenne
+                              if (!(e.target as HTMLElement)?.closest('button, [data-interactive="true"]')) {
+                                e.preventDefault();
+                              }
+                            }}
+                            className={`border-r ${isColActive('col-moyenne') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} border-b ${
+                              isRowLineActive ? 'border-b-sky-400 z-10' : 'border-b-slate-600'
+                            } flex items-center justify-between px-2 select-none cursor-default relative shrink-0 transition-colors ${
+                              std.hasInvalidNote
+                                ? 'bg-slate-200 text-slate-400 border border-slate-300'
+                                : avgCellBg ? '' : 'bg-blue-50/40'
+                            }`}
+                            title={
+                              std.hasInvalidNote
+                                ? 'Moyenne non calculée : une note dépasse le barème maximal'
+                                : 'Moyenne générale calculée automatiquement (case bloquée)'
+                            }
+                          >
+                            <span
+                              style={avgCustom ? {
+                                fontWeight: avgCustom.bold !== undefined ? (avgCustom.bold ? '900' : '400') : undefined,
+                                fontStyle: avgCustom.italic ? 'italic' : undefined,
+                                textDecoration: avgCellStyle.textDecoration !== 'none' ? avgCellStyle.textDecoration : undefined,
+                                fontFamily: avgCustom.fontFamily || undefined,
+                                fontSize: avgCustom.fontSize ? `${avgCustom.fontSize}px` : undefined,
+                                color: avgCustom.color || undefined,
+                                textAlign: avgCustom.textAlign || undefined,
+                              } : undefined}
+                              className={`w-full text-xs font-black tracking-tight flex items-center gap-1 select-none pointer-events-none ${
+                                avgCustom?.textAlign === 'left'
+                                  ? 'justify-start text-left'
+                                  : avgCustom?.textAlign === 'right'
+                                  ? 'justify-end text-right'
+                                  : 'justify-center text-center'
+                              } ${
+                                std.hasInvalidNote
+                                  ? 'text-slate-400 font-mono text-sm tracking-widest'
+                                  : std.average === null
+                                  ? 'text-slate-300'
+                                  : std.average >= effectiveAverageScale * 0.6
+                                  ? 'text-emerald-700 bg-emerald-50/90 py-0.5 px-1.5 rounded border border-emerald-300'
+                                  : std.average >= effectiveAverageScale * 0.5
+                                  ? 'text-blue-700 bg-blue-50/90 py-0.5 px-1.5 rounded border border-blue-300'
+                                  : 'text-rose-700 bg-rose-50/90 py-0.5 px-1.5 rounded border border-rose-300'
+                              }`}
+                            >
+                              {std.hasInvalidNote ? (
+                                '...'
+                              ) : std.average !== null ? (
+                                <>
+                                  <span>{std.averageFormatted}</span>
+                                  <span className="text-[10px] sm:text-[11px] opacity-75">
+                                    / {effectiveScaleLabel}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-slate-300 font-semibold">—</span>
+                              )}
+                            </span>
+
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteStudentRow(std.id);
+                              }}
+                              className="opacity-0 group-hover:opacity-100 hover:text-red-600 p-0.5 rounded text-slate-300 hover:bg-red-50 transition"
+                              title="Supprimer cette ligne d'élève"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                            {renderColHandle('col-moyenne')}
+                          </div>
+                        ),
+                        mention: (
+                          <div 
+                            style={{ 
+                              width: `${effectiveColWidthMention}px`, 
+                              minWidth: `${effectiveColWidthMention}px`,
+                              maxWidth: `${effectiveColWidthMention}px`,
+                              height: `${rowHeight}px`,
+                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : mentionCellBg
+                            }}
+                            onMouseDown={(e) => {
+                              // Empêcher toute sélection de texte ou de case dans la colonne Mention
+                              if (!(e.target as HTMLElement)?.closest('button, [data-interactive="true"]')) {
+                                e.preventDefault();
+                              }
+                            }}
+                            className={`border-r ${isColActive('col-mention') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} border-b ${
+                              isRowLineActive ? 'border-b-sky-400 z-10' : 'border-b-slate-600'
+                            } flex items-center ${
+                              mentionCustom?.textAlign === 'left'
+                                ? 'justify-start'
+                                : mentionCustom?.textAlign === 'right'
+                                ? 'justify-end'
+                                : 'justify-center'
+                            } px-2 select-none cursor-default relative shrink-0 transition-colors ${
+                              std.hasInvalidNote
+                                ? 'bg-slate-200 text-slate-400 border border-slate-300'
+                                : mentionCellBg ? '' : 'bg-emerald-50/20'
+                            }`}
+                            title="Mention pédagogique calculée automatiquement (case bloquée)"
+                          >
+                            {std.mention && std.mention !== '-' && std.mention !== '—' ? (
+                              <span
+                                style={mentionCustom ? {
+                                  fontWeight: mentionCustom.bold !== undefined ? (mentionCustom.bold ? '900' : '400') : undefined,
+                                  fontStyle: mentionCustom.italic ? 'italic' : undefined,
+                                  textDecoration: mentionCellStyle.textDecoration !== 'none' ? mentionCellStyle.textDecoration : undefined,
+                                  fontFamily: mentionCustom.fontFamily || undefined,
+                                  fontSize: mentionCustom.fontSize ? `${mentionCustom.fontSize}px` : undefined,
+                                  color: mentionCustom.color || undefined,
+                                  textAlign: mentionCustom.textAlign || undefined,
+                                } : undefined}
+                                className={`select-none pointer-events-none px-2 py-0.5 rounded-md text-[11px] sm:text-xs border shadow-2xs whitespace-nowrap tracking-tight ${std.mentionClass}`}
+                              >
+                                {std.mention}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300 text-xs font-semibold select-none pointer-events-none">—</span>
+                            )}
+                            {renderColHandle('col-mention')}
+                          </div>
+                        ),
+                      };
+
+                      return (
+                        <div 
+                          key={std.id}
+                          style={{ height: `${rowHeight}px` }}
+                          className={`flex items-stretch transition-colors relative w-fit ${isRowMenuOpen ? 'z-50' : 'z-0'} ${
+                            isRowSelected ? 'bg-blue-50/40' : 'hover:bg-slate-50/70'
+                          }`}
+                        >
+                          {visibleColumnOrder.left.map((colKey) => (
+                            <React.Fragment key={`cell-l-${std.id}-${colKey}`}>
+                              {peripheralBodyCells[colKey]}
+                            </React.Fragment>
+                          ))}
 
                           {/* NOTES DYNAMIQUES */}
                           {Array.from({ length: noteColumnCount }).map((_, cIdx) => {
@@ -7947,140 +8329,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                             <span className="text-slate-200 text-xs">•</span>
                           </div>
 
-                          {/* MOYENNE (CASE BLOQUÉE EN LECTURE SEULE, NON SÉLECTIONNABLE) */}
-                          <div 
-                            style={{ 
-                              width: `${effectiveColWidthAverage}px`, 
-                              minWidth: `${effectiveColWidthAverage}px`,
-                              maxWidth: `${effectiveColWidthAverage}px`,
-                              height: `${rowHeight}px`,
-                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : avgCellBg
-                            }}
-                            onMouseDown={(e) => {
-                              // Empêcher toute sélection de texte ou de case dans la colonne Moyenne
-                              if (!(e.target as HTMLElement)?.closest('button, [data-interactive="true"]')) {
-                                e.preventDefault();
-                              }
-                            }}
-                            className={`border-r ${isColActive('col-moyenne') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} border-b ${
-                              isRowLineActive ? 'border-b-sky-400 z-10' : 'border-b-slate-600'
-                            } flex items-center justify-between px-2 select-none cursor-default relative shrink-0 transition-colors ${
-                              std.hasInvalidNote
-                                ? 'bg-slate-200 text-slate-400 border border-slate-300'
-                                : avgCellBg ? '' : 'bg-blue-50/40'
-                            }`}
-                            title={
-                              std.hasInvalidNote
-                                ? 'Moyenne non calculée : une note dépasse le barème maximal'
-                                : 'Moyenne générale calculée automatiquement (case bloquée)'
-                            }
-                          >
-                            <span
-                              style={avgCustom ? {
-                                fontWeight: avgCustom.bold !== undefined ? (avgCustom.bold ? '900' : '400') : undefined,
-                                fontStyle: avgCustom.italic ? 'italic' : undefined,
-                                textDecoration: avgCellStyle.textDecoration !== 'none' ? avgCellStyle.textDecoration : undefined,
-                                fontFamily: avgCustom.fontFamily || undefined,
-                                fontSize: avgCustom.fontSize ? `${avgCustom.fontSize}px` : undefined,
-                                color: avgCustom.color || undefined,
-                                textAlign: avgCustom.textAlign || undefined,
-                              } : undefined}
-                              className={`w-full text-xs font-black tracking-tight flex items-center gap-1 select-none pointer-events-none ${
-                                avgCustom?.textAlign === 'left'
-                                  ? 'justify-start text-left'
-                                  : avgCustom?.textAlign === 'right'
-                                  ? 'justify-end text-right'
-                                  : 'justify-center text-center'
-                              } ${
-                                std.hasInvalidNote
-                                  ? 'text-slate-400 font-mono text-sm tracking-widest'
-                                  : std.average === null
-                                  ? 'text-slate-300'
-                                  : std.average >= effectiveAverageScale * 0.6
-                                  ? 'text-emerald-700 bg-emerald-50/90 py-0.5 px-1.5 rounded border border-emerald-300'
-                                  : std.average >= effectiveAverageScale * 0.5
-                                  ? 'text-blue-700 bg-blue-50/90 py-0.5 px-1.5 rounded border border-blue-300'
-                                  : 'text-rose-700 bg-rose-50/90 py-0.5 px-1.5 rounded border border-rose-300'
-                              }`}
-                            >
-                              {std.hasInvalidNote ? (
-                                '...'
-                              ) : std.average !== null ? (
-                                <>
-                                  <span>{std.averageFormatted}</span>
-                                  <span className="text-[10px] sm:text-[11px] opacity-75">
-                                    / {effectiveScaleLabel}
-                                  </span>
-                                </>
-                              ) : (
-                                <span className="text-slate-300 font-semibold">—</span>
-                              )}
-                            </span>
-
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteStudentRow(std.id);
-                              }}
-                              className="opacity-0 group-hover:opacity-100 hover:text-red-600 p-0.5 rounded text-slate-300 hover:bg-red-50 transition"
-                              title="Supprimer cette ligne d'élève"
-                            >
-                              <Trash2 className="w-3 h-3" />
-                            </button>
-                            {renderColHandle('col-moyenne')}
-                          </div>
-
-                          {/* MENTION (CASE BLOQUÉE EN LECTURE SEULE, NON SÉLECTIONNABLE) */}
-                          <div 
-                            style={{ 
-                              width: `${effectiveColWidthMention}px`, 
-                              minWidth: `${effectiveColWidthMention}px`,
-                              maxWidth: `${effectiveColWidthMention}px`,
-                              height: `${rowHeight}px`,
-                              backgroundColor: std.hasInvalidNote ? '#f1f5f9' : mentionCellBg
-                            }}
-                            onMouseDown={(e) => {
-                              // Empêcher toute sélection de texte ou de case dans la colonne Mention
-                              if (!(e.target as HTMLElement)?.closest('button, [data-interactive="true"]')) {
-                                e.preventDefault();
-                              }
-                            }}
-                            className={`border-r ${isColActive('col-mention') ? 'border-r-sky-400 z-10' : 'border-r-slate-700'} border-b ${
-                              isRowLineActive ? 'border-b-sky-400 z-10' : 'border-b-slate-600'
-                            } flex items-center ${
-                              mentionCustom?.textAlign === 'left'
-                                ? 'justify-start'
-                                : mentionCustom?.textAlign === 'right'
-                                ? 'justify-end'
-                                : 'justify-center'
-                            } px-2 select-none cursor-default relative shrink-0 transition-colors ${
-                              std.hasInvalidNote
-                                ? 'bg-slate-200 text-slate-400 border border-slate-300'
-                                : mentionCellBg ? '' : 'bg-emerald-50/20'
-                            }`}
-                            title="Mention pédagogique calculée automatiquement (case bloquée)"
-                          >
-                            {std.mention && std.mention !== '-' && std.mention !== '—' ? (
-                              <span
-                                style={mentionCustom ? {
-                                  fontWeight: mentionCustom.bold !== undefined ? (mentionCustom.bold ? '900' : '400') : undefined,
-                                  fontStyle: mentionCustom.italic ? 'italic' : undefined,
-                                  textDecoration: mentionCellStyle.textDecoration !== 'none' ? mentionCellStyle.textDecoration : undefined,
-                                  fontFamily: mentionCustom.fontFamily || undefined,
-                                  fontSize: mentionCustom.fontSize ? `${mentionCustom.fontSize}px` : undefined,
-                                  color: mentionCustom.color || undefined,
-                                  textAlign: mentionCustom.textAlign || undefined,
-                                } : undefined}
-                                className={`select-none pointer-events-none px-2 py-0.5 rounded-md text-[11px] sm:text-xs border shadow-2xs whitespace-nowrap tracking-tight ${std.mentionClass}`}
-                              >
-                                {std.mention}
-                              </span>
-                            ) : (
-                              <span className="text-slate-300 text-xs font-semibold select-none pointer-events-none">—</span>
-                            )}
-                            {renderColHandle('col-mention')}
-                          </div>
+                          {visibleColumnOrder.right.map((colKey) => (
+                            <React.Fragment key={`cell-r-${std.id}-${colKey}`}>
+                              {peripheralBodyCells[colKey]}
+                            </React.Fragment>
+                          ))}
 
                           {/* POIGNÉE DE SÉLECTION & REDIMENSIONNEMENT DE LA LIGNE HORIZONTALE */}
                           {renderRowHandle(rIdx)}

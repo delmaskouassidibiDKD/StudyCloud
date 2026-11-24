@@ -883,3 +883,26 @@ test('Régression capture utilisateur : fautes de frappe (METRE, ENLRVER), suivi
   assert.ok(!polished.startsWith('Je vais maintenant'));
   assert.ok(polished.includes('est désormais'));
 });
+
+test('Assistant Delmas : action set_column_order reconnue, classée en action et validée', () => {
+  const intent = classifyTeacherDelmasIntent({
+    message: 'Mets le Rang derrière la Moyenne pour toute la classe',
+  });
+  assert.equal(intent.intent, 'action');
+
+  const filtered = filterSafeTeacherDelmasActions(
+    [
+      {
+        type: 'set_column_order',
+        moveColumn: 'rank',
+        relation: 'after',
+        anchor: 'average',
+        scope: 'class',
+      },
+    ],
+    'Mets le Rang derrière la Moyenne pour toute la classe'
+  );
+  assert.equal(filtered.length, 1);
+  assert.equal(filtered[0].type, 'set_column_order');
+  assert.equal(filtered[0].scope, 'class');
+});
