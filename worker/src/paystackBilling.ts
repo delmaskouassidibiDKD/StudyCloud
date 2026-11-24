@@ -102,6 +102,38 @@ export function sanitizeAppKey(raw: unknown): string {
     .slice(0, 48);
 }
 
+export type MobileMoneyProviderCode = 'wave' | 'orange' | 'mtn';
+
+export function normalizeMobileMoneyProvider(raw: unknown): MobileMoneyProviderCode | null {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'wave') return 'wave';
+  if (s === 'orange' || s === 'om' || s === 'orange_money') return 'orange';
+  if (s === 'mtn' || s === 'momo' || s === 'mtn_momo') return 'mtn';
+  return null;
+}
+
+export function getMobileProviderLabel(provider: MobileMoneyProviderCode): string {
+  if (provider === 'wave') return 'Wave';
+  if (provider === 'orange') return 'Orange Money';
+  return 'MTN Mobile Money';
+}
+
+/**
+ * Normalise un numéro Côte d'Ivoire pour la Charge API Paystack CIV (ex: "+225 07 00 00 00 00" -> "0700000000").
+ */
+export function normalizeIvoryCoastPhone(raw: unknown): string {
+  const digits = String(raw || '').replace(/[^\d]/g, '');
+  if (!digits) return '';
+  // Retirer préfixe international 00225 ou 225 si 10 chiffres suivent
+  if (digits.startsWith('00225') && digits.length === 15) {
+    return digits.slice(5);
+  }
+  if (digits.startsWith('225') && digits.length === 13) {
+    return digits.slice(3);
+  }
+  return digits;
+}
+
 /**
  * Paystack exige tous les montants en sous-unités (× 100), y compris pour le XOF (FCFA).
  * Exemple : 5 000 FCFA -> 500000.
@@ -1676,6 +1708,13 @@ export async function handlePaystackBillingRoutes(
       },
     };
 
+    const channelOnly =
+      body.channelOnly === 'card'
+        ? 'card'
+        : body.channelOnly === 'mobile_money'
+        ? 'mobile_money'
+        : null;
+
     if (billingMode === 'auto' && preferAutoCard) {
       const planCode = await ensurePaystackNativePlan({
         secretKey,
@@ -1691,8 +1730,10 @@ export async function handlePaystackBillingRoutes(
         initPayload.plan = planCode;
         initPayload.channels = ['card'];
       } else {
-        initPayload.channels = ['card', 'mobile_money'];
+        initPayload.channels = channelOnly ? [channelOnly] : ['card', 'mobile_money'];
       }
+    } else if (channelOnly) {
+      initPayload.channels = [channelOnly];
     } else {
       initPayload.channels = ['mobile_money', 'card'];
     }
@@ -2160,6 +2201,446 @@ export async function handlePaystackBillingRoutes(
       .all();
 
     return jsonResponse({ success: true, transactions: res.results || [] }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 10. POST /api/payments/paystack/charge-mobile — Interface 100 % StudyCloud (Charge API Wave / Orange / MTN)
+  // --------------------------------------------------------------------------
+  if (path === '/api/payments/paystack/charge-mobile' && method === 'POST') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Connexion requise pour effectuer un paiement.', 401, origin);
+    }
+
+    const secretKey = getPaystackSecretKey(rawEnv);
+    if (!secretKey) {
+      return errorResponse(
+        'Passerelle Paystack non configurée sur le serveur (STUDYCLOUD_PAYSTACK_SECRET_KEY manquant).',
+        503,
+        origin
+      );
+    }
+
+    const config = await readPaymentGatewayConfig(db, rawEnv);
+    if (!config.paystackEnabled) {
+      return errorResponse('Le paiement Paystack est temporairement désactivé par l’administrateur.', 503, origin);
+    }
+
+    const body: any = await request.json().catch(() => ({}));
+    const productType = String(body.productType || '').trim().toLowerCase() as PaymentProductType;
+    const productId = String(body.productId || '').trim();
+    const provider = normalizeMobileMoneyProvider(body.provider);
+    const normalizedPhone = normalizeIvoryCoastPhone(body.phone);
+    const billingCycle = (
+      body.billingCycle === 'annual'
+        ? 'annual'
+        : body.billingCycle === 'one_time'
+        ? 'one_time'
+        : body.billingCycle === 'infinite'
+        ? 'infinite'
+        : 'monthly'
+    ) as 'monthly' | 'annual' | 'one_time' | 'infinite';
+
+    if (!['storage', 'ai', 'app'].includes(productType) || !productId) {
+      return errorResponse('Type de produit ou identifiant de forfait manquant.', 400, origin);
+    }
+    if (!provider) {
+      return errorResponse('Opérateur Mobile Money invalide (Wave, Orange Money ou MTN MoMo requis).', 400, origin);
+    }
+    if (!normalizedPhone || normalizedPhone.length < 8 || normalizedPhone.length > 15) {
+      return errorResponse('Veuillez saisir un numéro Mobile Money valide (ex : 07 00 00 00 00).', 400, origin);
+    }
+
+    const userId = String(authUser.userId);
+    const userRow: any = await db
+      .prepare('SELECT id, name, email, phone FROM users WHERE id = ? LIMIT 1')
+      .bind(userId)
+      .first()
+      .catch(() => null);
+
+    const userEmail = String(userRow?.email || authUser.email || '').trim();
+    if (!userEmail || !userEmail.includes('@')) {
+      return errorResponse('Une adresse e-mail valide sur votre compte StudyCloud est requise.', 400, origin);
+    }
+    const userName = String(userRow?.name || authUser.name || 'Utilisateur StudyCloud').trim();
+
+    let planRow: any = null;
+    let appKey = '';
+    let appName = '';
+    let grantedStorageMb = 0;
+    let grantedAiCredits = 0;
+
+    if (productType === 'storage') {
+      planRow = await db
+        .prepare('SELECT * FROM storage_subscription_plans WHERE id = ? AND (is_active = 1 OR is_active IS NULL) LIMIT 1')
+        .bind(productId)
+        .first();
+      appKey = 'storage';
+      appName = 'Stockage Cloud';
+      grantedStorageMb = Math.max(0, Number(planRow?.storage_mb || 0));
+    } else if (productType === 'ai') {
+      planRow = await db
+        .prepare('SELECT * FROM ai_subscription_plans WHERE id = ? AND (is_active = 1 OR is_active IS NULL) LIMIT 1')
+        .bind(productId)
+        .first();
+      appKey = 'ai';
+      appName = 'Crédits IA StudyCloud';
+      grantedAiCredits = Math.max(0, Number(planRow?.credits_count || 0));
+    } else {
+      planRow = await db
+        .prepare('SELECT * FROM app_subscription_plans WHERE id = ? AND is_active = 1 LIMIT 1')
+        .bind(productId)
+        .first();
+      if (planRow) {
+        appKey = sanitizeAppKey(planRow.app_key);
+        const appRow: any = await db
+          .prepare('SELECT * FROM monetized_apps WHERE app_key = ? LIMIT 1')
+          .bind(appKey)
+          .first()
+          .catch(() => null);
+        appName = String(appRow?.name || appKey);
+      }
+    }
+
+    if (!planRow) {
+      return errorResponse('Forfait introuvable ou désactivé.', 404, origin);
+    }
+
+    const billingMode = normalizeBillingMode(
+      planRow.billing_mode,
+      planRow.is_auto_billing,
+      planRow.pricing_model
+    );
+    const { amountMajor, currency, durationDays } = resolvePlanPriceMajor(
+      planRow,
+      billingMode === 'infinite' ? 'infinite' : billingCycle,
+      'XOF'
+    );
+    const amountMinor = toPaystackAmountMinor(amountMajor);
+    if (amountMinor <= 0) {
+      return errorResponse('Montant du forfait invalide.', 400, origin);
+    }
+
+    const reference = `SC-PAY-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+    const txId = `tx_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    const networkLabel = getMobileProviderLabel(provider);
+
+    await db
+      .prepare(
+        `INSERT INTO payment_transactions (
+           id, reference, user_id, user_name, user_email, user_phone,
+           product_type, product_id, product_name, app_key, app_name,
+           billing_mode, billing_cycle, duration_days,
+           expected_amount, expected_amount_minor, currency,
+           provider, channel, network_label, status, granted_storage_mb, granted_ai_credits,
+           created_at, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paystack', 'mobile_money', ?, 'pending', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+      )
+      .bind(
+        txId,
+        reference,
+        userId,
+        userName,
+        userEmail,
+        normalizedPhone,
+        productType,
+        productId,
+        String(planRow.name || 'Forfait StudyCloud'),
+        appKey,
+        appName,
+        billingMode,
+        billingMode === 'infinite' ? 'infinite' : billingCycle,
+        durationDays,
+        amountMajor,
+        amountMinor,
+        currency,
+        networkLabel,
+        grantedStorageMb,
+        grantedAiCredits
+      )
+      .run();
+
+    const chargePayload = {
+      email: userEmail,
+      amount: amountMinor,
+      currency,
+      reference,
+      mobile_money: {
+        phone: normalizedPhone,
+        provider,
+      },
+      metadata: {
+        user_id: userId,
+        user_name: userName,
+        product_type: productType,
+        product_id: productId,
+        product_name: String(planRow.name || ''),
+        app_key: appKey,
+        app_name: appName,
+        billing_mode: billingMode,
+        billing_cycle: billingMode === 'infinite' ? 'infinite' : billingCycle,
+        duration_days: durationDays,
+        mobile_provider: provider,
+      },
+    };
+
+    let psRes: Response;
+    let psJson: any = null;
+    try {
+      psRes = await fetchFn(`${PAYSTACK_API_BASE}/charge`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(chargePayload),
+      });
+      psJson = await psRes.json().catch(() => null);
+    } catch (netErr: any) {
+      await db
+        .prepare(
+          "UPDATE payment_transactions SET status = 'failed', failure_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE reference = ?"
+        )
+        .bind(String(netErr?.message || 'Erreur réseau Paystack Charge'), reference)
+        .run()
+        .catch(() => {});
+      return errorResponse('Impossible de contacter Paystack pour le moment. Réessayez.', 502, origin);
+    }
+
+    if (!psRes.ok || !psJson?.status || !psJson?.data) {
+      const errMsg = String(
+        psJson?.data?.message ||
+          psJson?.message ||
+          `Paystack a refusé l'initialisation ${networkLabel}.`
+      );
+      await db
+        .prepare(
+          "UPDATE payment_transactions SET status = 'failed', failure_reason = ?, raw_verify_json = ?, updated_at = CURRENT_TIMESTAMP WHERE reference = ?"
+        )
+        .bind(errMsg, JSON.stringify(psJson || {}).slice(0, 16000), reference)
+        .run()
+        .catch(() => {});
+      return jsonResponse(
+        {
+          success: false,
+          error: errMsg,
+          reference,
+          provider,
+          fallbackSuggested: true,
+        },
+        200,
+        origin
+      );
+    }
+
+    const data = psJson.data;
+    const chargeStatus = String(data.status || 'pending').toLowerCase();
+    const displayText = String(data.display_text || data.message || '').trim();
+    const openUrl = String(data.url || '').trim();
+
+    if (chargeStatus === 'success') {
+      const txRow: any = await db
+        .prepare('SELECT * FROM payment_transactions WHERE reference = ? LIMIT 1')
+        .bind(reference)
+        .first();
+      const check = validatePaystackVerificationPayload(txRow, data);
+      if (check.ok) {
+        const fulfillment = await fulfillPaidTransaction(db, txRow, data);
+        return jsonResponse(
+          {
+            success: true,
+            chargeStatus: 'success',
+            verified: true,
+            reference,
+            provider,
+            networkLabel,
+            amount: amountMajor,
+            currency,
+            deliverySummary: fulfillment.deliverySummary,
+            transaction: fulfillment.transaction,
+          },
+          200,
+          origin
+        );
+      }
+    }
+
+    if (chargeStatus === 'failed') {
+      const reason = displayText || 'Paiement refusé par votre opérateur Mobile Money.';
+      await db
+        .prepare(
+          "UPDATE payment_transactions SET status = 'failed', failure_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE reference = ?"
+        )
+        .bind(reason, reference)
+        .run()
+        .catch(() => {});
+      return jsonResponse(
+        {
+          success: false,
+          chargeStatus: 'failed',
+          reference,
+          error: reason,
+        },
+        200,
+        origin
+      );
+    }
+
+    return jsonResponse(
+      {
+        success: true,
+        chargeStatus:
+          chargeStatus === 'send_otp'
+            ? 'send_otp'
+            : chargeStatus === 'open_url' || openUrl
+            ? 'open_url'
+            : 'pay_offline',
+        reference,
+        provider,
+        networkLabel,
+        amount: amountMajor,
+        currency,
+        displayText:
+          displayText ||
+          (provider === 'wave'
+            ? 'Ouvrez votre application Wave pour confirmer le paiement.'
+            : `Validez la demande ${networkLabel} sur votre téléphone (${normalizedPhone}).`),
+        openUrl: openUrl || undefined,
+        mode: detectPaystackMode(secretKey),
+      },
+      200,
+      origin
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // 11. POST /api/payments/paystack/submit-otp — Validation du code OTP Mobile Money
+  // --------------------------------------------------------------------------
+  if (path === '/api/payments/paystack/submit-otp' && method === 'POST') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+
+    const secretKey = getPaystackSecretKey(rawEnv);
+    if (!secretKey) {
+      return errorResponse('Passerelle Paystack non configurée.', 503, origin);
+    }
+
+    const body: any = await request.json().catch(() => ({}));
+    const reference = String(body.reference || '').trim();
+    const otp = String(body.otp || '').trim();
+    if (!reference || !otp) {
+      return errorResponse('Référence et code OTP requis.', 400, origin);
+    }
+
+    // Anti-IDOR strict
+    const txRow: any = await db
+      .prepare('SELECT * FROM payment_transactions WHERE reference = ? AND user_id = ? LIMIT 1')
+      .bind(reference, String(authUser.userId))
+      .first();
+    if (!txRow) {
+      return errorResponse('Transaction introuvable ou non autorisée.', 404, origin);
+    }
+
+    if (txRow.status === 'paid' && txRow.fulfilled_at) {
+      return jsonResponse(
+        {
+          success: true,
+          chargeStatus: 'success',
+          verified: true,
+          alreadyFulfilled: true,
+          transaction: txRow,
+        },
+        200,
+        origin
+      );
+    }
+
+    let psRes: Response;
+    let psJson: any = null;
+    try {
+      psRes = await fetchFn(`${PAYSTACK_API_BASE}/charge/submit_otp`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ otp, reference }),
+      });
+      psJson = await psRes.json().catch(() => null);
+    } catch {
+      return errorResponse('Erreur réseau lors de la soumission du code OTP.', 502, origin);
+    }
+
+    if (!psRes.ok || !psJson?.status || !psJson?.data) {
+      return jsonResponse(
+        {
+          success: false,
+          chargeStatus: 'send_otp',
+          error: String(psJson?.data?.message || psJson?.message || 'Code OTP invalide ou expiré.'),
+        },
+        200,
+        origin
+      );
+    }
+
+    const data = psJson.data;
+    const chargeStatus = String(data.status || 'pending').toLowerCase();
+    const displayText = String(data.display_text || data.message || '').trim();
+    const openUrl = String(data.url || '').trim();
+
+    if (chargeStatus === 'success') {
+      const check = validatePaystackVerificationPayload(txRow, data);
+      if (!check.ok) {
+        return jsonResponse({ success: false, verified: false, error: check.reason }, 200, origin);
+      }
+      const fulfillment = await fulfillPaidTransaction(db, txRow, data);
+      return jsonResponse(
+        {
+          success: true,
+          chargeStatus: 'success',
+          verified: true,
+          alreadyFulfilled: fulfillment.alreadyFulfilled,
+          deliverySummary: fulfillment.deliverySummary,
+          transaction: fulfillment.transaction,
+        },
+        200,
+        origin
+      );
+    }
+
+    if (chargeStatus === 'failed') {
+      await db
+        .prepare(
+          "UPDATE payment_transactions SET status = 'failed', failure_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE reference = ? AND status = 'pending'"
+        )
+        .bind(displayText || 'Code OTP refusé', reference)
+        .run()
+        .catch(() => {});
+      return jsonResponse(
+        {
+          success: false,
+          chargeStatus: 'failed',
+          error: displayText || 'Paiement refusé après validation OTP.',
+        },
+        200,
+        origin
+      );
+    }
+
+    return jsonResponse(
+      {
+        success: true,
+        chargeStatus: openUrl || chargeStatus === 'open_url' ? 'open_url' : 'pay_offline',
+        verified: false,
+        reference,
+        displayText: displayText || 'Veuillez finaliser la confirmation sur votre téléphone.',
+        openUrl: openUrl || undefined,
+      },
+      200,
+      origin
+    );
   }
 
   return null;

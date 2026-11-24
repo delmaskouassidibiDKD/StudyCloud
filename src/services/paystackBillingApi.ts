@@ -81,14 +81,44 @@ export interface AppAccessResponse {
   paymentConfig: PaymentGatewayConfig;
 }
 
+export type MobileMoneyProvider = 'wave' | 'orange' | 'mtn';
+
 export interface InitializePaystackPayload {
   productType: PaymentProductType;
   productId: string;
   billingCycle?: 'monthly' | 'annual' | 'one_time' | 'infinite';
   currency?: string;
   preferAutoCard?: boolean;
+  channelOnly?: 'card' | 'mobile_money';
   phone?: string;
   returnOrigin?: string;
+}
+
+export interface ChargeMobilePayload {
+  productType: PaymentProductType;
+  productId: string;
+  billingCycle?: 'monthly' | 'annual' | 'one_time' | 'infinite';
+  provider: MobileMoneyProvider;
+  phone: string;
+}
+
+export interface ChargeMobileResponse {
+  success: boolean;
+  chargeStatus?: 'success' | 'send_otp' | 'open_url' | 'pay_offline' | 'failed';
+  verified?: boolean;
+  alreadyFulfilled?: boolean;
+  reference?: string;
+  provider?: MobileMoneyProvider;
+  networkLabel?: string;
+  amount?: number;
+  currency?: string;
+  displayText?: string;
+  openUrl?: string;
+  deliverySummary?: string;
+  transaction?: VerifyPaystackResponse['transaction'];
+  mode?: 'test' | 'live' | 'unconfigured';
+  fallbackSuggested?: boolean;
+  error?: string;
 }
 
 export interface InitializePaystackResponse {
@@ -439,4 +469,99 @@ export async function getMyPaymentTransactions(): Promise<any[]> {
   const json = await resp.json().catch(() => null);
   if (!resp.ok || !json?.success) return [];
   return Array.isArray(json.transactions) ? json.transactions : [];
+}
+
+/**
+ * Formate et valide côté client un numéro Mobile Money Côte d'Ivoire (+225 / 10 chiffres).
+ */
+export function normalizeClientCiPhone(raw: string): string {
+  const digits = String(raw || '').replace(/[^\d]/g, '');
+  if (digits.startsWith('00225') && digits.length === 15) return digits.slice(5);
+  if (digits.startsWith('225') && digits.length === 13) return digits.slice(3);
+  return digits;
+}
+
+export async function chargeMobileMoneyWithPaystack(
+  payload: ChargeMobilePayload
+): Promise<ChargeMobileResponse> {
+  const resp = await fetch(`${getBaseApi()}/api/payments/paystack/charge-mobile`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({
+      ...payload,
+      phone: normalizeClientCiPhone(payload.phone),
+    }),
+  });
+  const json = await resp.json().catch(() => null);
+  if (!json) {
+    return {
+      success: false,
+      error: 'Réponse serveur invalide lors du lancement Mobile Money.',
+    };
+  }
+  return json as ChargeMobileResponse;
+}
+
+export async function submitPaystackMobileOtp(
+  reference: string,
+  otp: string
+): Promise<ChargeMobileResponse> {
+  const resp = await fetch(`${getBaseApi()}/api/payments/paystack/submit-otp`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ reference, otp: String(otp || '').trim() }),
+  });
+  const json = await resp.json().catch(() => null);
+  if (!json) {
+    return {
+      success: false,
+      error: 'Réponse serveur invalide lors de la vérification du code OTP.',
+    };
+  }
+  return json as ChargeMobileResponse;
+}
+
+let paystackInlineLoaderPromise: Promise<any> | null = null;
+
+/**
+ * Charge dynamiquement Paystack InlineJS V2 (`https://js.paystack.co/v2/inline.js`)
+ * pour ouvrir uniquement le module Carte Bancaire (PCI-DSS) en fenêtre superposée sans quitter StudyCloud.
+ */
+export function loadPaystackInlinePop(): Promise<any> {
+  if (typeof window === 'undefined') {
+    return Promise.reject(new Error('Navigateur requis'));
+  }
+  const win = window as any;
+  if (typeof win.PaystackPop === 'function') {
+    return Promise.resolve(win.PaystackPop);
+  }
+  if (paystackInlineLoaderPromise) return paystackInlineLoaderPromise;
+
+  paystackInlineLoaderPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-studycloud-paystack-inline="1"]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve((window as any).PaystackPop));
+      existing.addEventListener('error', () => reject(new Error('Impossible de charger Paystack InlineJS')));
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://js.paystack.co/v2/inline.js';
+    script.async = true;
+    script.setAttribute('data-studycloud-paystack-inline', '1');
+    script.onload = () => {
+      if (typeof (window as any).PaystackPop === 'function') {
+        resolve((window as any).PaystackPop);
+      } else {
+        paystackInlineLoaderPromise = null;
+        reject(new Error('PaystackPop indisponible après chargement'));
+      }
+    };
+    script.onerror = () => {
+      paystackInlineLoaderPromise = null;
+      reject(new Error('Impossible de charger le module sécurisé Paystack'));
+    };
+    document.head.appendChild(script);
+  });
+
+  return paystackInlineLoaderPromise;
 }

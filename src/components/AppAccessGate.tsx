@@ -15,14 +15,14 @@ import {
   AppAccessResponse,
   AppSubscriptionPlanRecord,
   checkAppAccess,
+  DEFAULT_PAYMENT_GATEWAY_CONFIG,
   formatBillingDurationBadge,
   formatCurrencyAmount,
-  initializePaystackPayment,
-  savePendingPaystackReturnContext,
   shouldShowManualReceiptButton,
   startAppFreeTrial,
 } from '../services/paystackBillingApi';
 import { SubscriptionFormView, SelectedPlan } from './SubscriptionFormView';
+import { StudyCloudPaymentView, StudyCloudPaymentTarget } from './StudyCloudPaymentView';
 
 interface AppAccessGateProps {
   appKey: string;
@@ -61,6 +61,23 @@ function parseFeaturesList(raw: any): string[] {
     .filter(Boolean);
 }
 
+function resolveAppPlanFcfa(plan: AppSubscriptionPlanRecord): number {
+  const cur = String(plan.primary_currency || 'XOF').toUpperCase();
+  if (cur === 'XOF' || cur === 'FCFA') return Math.round(Number(plan.price) || 0);
+  let conv: Record<string, number> = {};
+  try {
+    conv = typeof plan.currency_conversions === 'string'
+      ? JSON.parse(plan.currency_conversions)
+      : (plan.currency_conversions || {});
+  } catch {
+    conv = {};
+  }
+  if (Number(conv.XOF) > 0) return Math.round(Number(conv.XOF));
+  if (cur === 'USD') return Math.round((Number(plan.price) || 0) * 650);
+  if (cur === 'EUR') return Math.round((Number(plan.price) || 0) * 655.957);
+  return Math.round(Number(plan.price) || 0);
+}
+
 export const AppAccessGate: React.FC<AppAccessGateProps> = ({
   appKey,
   onBack,
@@ -82,7 +99,10 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
   const [loading, setLoading] = useState<boolean>(() => !access);
   const [error, setError] = useState<string | null>(null);
   const [startingTrial, setStartingTrial] = useState<boolean>(false);
-  const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
+  const [activeCustomPayment, setActiveCustomPayment] = useState<{
+    target: StudyCloudPaymentTarget;
+    plan: AppSubscriptionPlanRecord;
+  } | null>(null);
   const [manualFallbackPlan, setManualFallbackPlan] = useState<SelectedPlan | null>(null);
 
   const loadAccess = useCallback(
@@ -110,26 +130,11 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
   useEffect(() => {
     loadAccess(Boolean(access));
     const onPaymentVerified = () => {
-      setPayingPlanId(null);
       loadAccess(true);
     };
-    const resetLoading = () => {
-      setPayingPlanId(null);
-    };
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        setPayingPlanId(null);
-      }
-    };
     window.addEventListener('studycloud_payment_verified', onPaymentVerified);
-    window.addEventListener('pageshow', resetLoading);
-    window.addEventListener('focus', resetLoading);
-    document.addEventListener('visibilitychange', handleVisibility);
     return () => {
       window.removeEventListener('studycloud_payment_verified', onPaymentVerified);
-      window.removeEventListener('pageshow', resetLoading);
-      window.removeEventListener('focus', resetLoading);
-      document.removeEventListener('visibilitychange', handleVisibility);
     };
   }, [loadAccess]);
 
@@ -153,41 +158,25 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
     }
   };
 
-  const handleDirectPaystackForApp = async (plan: AppSubscriptionPlanRecord) => {
-    if (payingPlanId) return;
-    setError(null);
-    setPayingPlanId(plan.id);
-    try {
-      const res = await initializePaystackPayment({
-        productType: 'app',
-        productId: plan.id,
-        billingCycle: plan.billing_mode === 'infinite' ? 'infinite' : 'monthly',
-        currency: 'XOF',
-        preferAutoCard: false,
-      });
-
-      if (!res.success || !res.authorizationUrl) {
-        setError(res.error || "Impossible d'ouvrir la page de paiement Paystack.");
-        setPayingPlanId(null);
-        return;
-      }
-
-      savePendingPaystackReturnContext({
+  const openCustomCheckoutForPlan = (plan: AppSubscriptionPlanRecord) => {
+    setActiveCustomPayment({
+      plan,
+      target: {
         productType: 'app',
         productId: plan.id,
         productName: `${access?.app?.name || fallbackTitle} — ${plan.name}`,
+        subtitle: plan.description || access?.app?.description,
         appKey,
-        createdAt: Date.now(),
-      });
-
-      window.setTimeout(() => {
-        setPayingPlanId(null);
-      }, 3000);
-      window.location.href = res.authorizationUrl;
-    } catch (err: any) {
-      setError(err?.message || 'Erreur réseau lors de la connexion à Paystack.');
-      setPayingPlanId(null);
-    }
+        amountFcfa: resolveAppPlanFcfa(plan),
+        secondaryPriceDisplay:
+          String(plan.primary_currency || 'XOF').toUpperCase() !== 'XOF'
+            ? formatCurrencyAmount(plan.price, plan.primary_currency)
+            : undefined,
+        billingCycle: plan.billing_mode === 'infinite' ? 'infinite' : 'monthly',
+        billingMode: plan.billing_mode || 'manual',
+        durationDays: plan.duration_days || 30,
+      },
+    });
   };
 
   const openManualReceiptForPlan = (plan: AppSubscriptionPlanRecord) => {
@@ -197,13 +186,35 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
       storageDisplay: `Accès ${access?.app?.name || fallbackTitle}`,
       priceDisplay: formatCurrencyAmount(plan.price, plan.primary_currency),
       price: plan.price,
-      priceFcfa: plan.price,
+      priceFcfa: resolveAppPlanFcfa(plan),
       currency: plan.primary_currency === 'XOF' ? 'FCFA' : plan.primary_currency,
       billingCycle: plan.billing_mode === 'infinite' ? 'one_time' : 'monthly',
     });
   };
 
-  // Si un utilisateur a choisi le bouton « Payer manuellement » sur la carte (visible uniquement quand l'admin l'autorise)
+  // Écran de paiement 100 % sur mesure StudyCloud (Option 3)
+  if (activeCustomPayment) {
+    return (
+      <div className="w-full h-full overflow-y-auto bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100">
+        <StudyCloudPaymentView
+          target={activeCustomPayment.target}
+          paymentConfig={access?.paymentConfig || DEFAULT_PAYMENT_GATEWAY_CONFIG}
+          onBack={() => setActiveCustomPayment(null)}
+          onSuccess={() => {
+            setActiveCustomPayment(null);
+            loadAccess(false);
+          }}
+          onFallbackManual={() => {
+            const p = activeCustomPayment.plan;
+            setActiveCustomPayment(null);
+            openManualReceiptForPlan(p);
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Si l'utilisateur choisit « Payer manuellement » sur la carte (visible uniquement quand l'admin l'autorise)
   if (manualFallbackPlan) {
     return (
       <div className="w-full h-full overflow-y-auto bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100 pb-20">
@@ -229,7 +240,7 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
     );
   }
 
-  // Si erreur réseau sans réponse serveur
+  // Erreur réseau sans cache
   if (!access && error) {
     return (
       <div className="w-full h-full min-h-[60vh] flex flex-col items-center justify-center gap-3 p-6 text-center bg-slate-50 dark:bg-[#0b0f19]">
@@ -255,7 +266,7 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
     );
   }
 
-  // ACCÈS AUTORISÉ : rendre l'application directement (+ bandeau discret si période de grâce ou fin d'essai)
+  // ACCÈS AUTORISÉ : rendre l'application directement (+ bandeau discret si grâce ou fin d'essai)
   if (access?.allowed) {
     const showGraceNotice =
       access.isPaidApp &&
@@ -277,12 +288,10 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
             {access.plans && access.plans.length > 0 && (
               <button
                 type="button"
-                disabled={Boolean(payingPlanId)}
-                onClick={() => handleDirectPaystackForApp(access.plans[0])}
-                className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[11px] cursor-pointer disabled:opacity-60 flex items-center gap-1.5"
+                onClick={() => openCustomCheckoutForPlan(access.plans[0])}
+                className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-extrabold text-[11px] cursor-pointer"
               >
-                {payingPlanId ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                <span>Renouveler maintenant</span>
+                Renouveler maintenant
               </button>
             )}
           </div>
@@ -344,7 +353,6 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
               )}
             </div>
 
-            {/* Bouton Essai Gratuit si configuré par l'admin */}
             {access?.canStartTrial && (appMeta?.trial_days || 0) > 0 && (
               <button
                 type="button"
@@ -369,7 +377,7 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
           </div>
         )}
 
-        {/* Cartes de prix créées dans le Tableau de Bord (Paiement direct + bouton Payer manuellement en bas si activé) */}
+        {/* Cartes de prix créées dans le Tableau de Bord */}
         {plans.length === 0 ? (
           <div className="p-10 rounded-2xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-slate-800 text-center space-y-2">
             <Sparkles className="w-8 h-8 text-amber-500 mx-auto" />
@@ -388,7 +396,6 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
                 plan.is_auto_billing
               );
               const features = parseFeaturesList(plan.features);
-              const isThisCardLoading = payingPlanId === plan.id;
 
               return (
                 <div
@@ -459,29 +466,21 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
                     )}
                   </div>
 
-                  {/* Bouton principal Paystack direct + bouton secondaire « Payer manuellement » juste en dessous */}
+                  {/* Bouton principal (ouvre StudyCloud Pay 100 % sur mesure) + Payer manuellement en bas si activé */}
                   <div className="mt-6 space-y-2">
                     {isPaystackAvailable ? (
                       <button
                         type="button"
-                        disabled={Boolean(payingPlanId)}
-                        onClick={() => handleDirectPaystackForApp(plan)}
-                        className={`w-full py-3 px-4 rounded-xl font-extrabold text-xs sm:text-sm transition active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2 disabled:opacity-65 ${
+                        onClick={() => openCustomCheckoutForPlan(plan)}
+                        className={`w-full py-3 px-4 rounded-xl font-extrabold text-xs sm:text-sm transition active:scale-[0.98] cursor-pointer flex items-center justify-center gap-2 ${
                           isHighlighted
                             ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-950/40'
                             : 'bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white'
                         }`}
                       >
-                        {isThisCardLoading ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            <span>Redirection vers le paiement...</span>
-                          </>
-                        ) : (
-                          <span>
-                            {plan.billing_mode === 'auto' ? "S'abonner maintenant" : "Débloquer l'accès"}
-                          </span>
-                        )}
+                        <span>
+                          {plan.billing_mode === 'auto' ? "S'abonner maintenant" : "Débloquer l'accès"}
+                        </span>
                       </button>
                     ) : showManualUnderneath ? (
                       <button
@@ -505,9 +504,8 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
                     {isPaystackAvailable && showManualUnderneath && (
                       <button
                         type="button"
-                        disabled={Boolean(payingPlanId)}
                         onClick={() => openManualReceiptForPlan(plan)}
-                        className={`w-full py-2 px-3 rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 border disabled:opacity-50 ${
+                        className={`w-full py-2 px-3 rounded-xl text-[11px] sm:text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1.5 border ${
                           isHighlighted
                             ? 'bg-white/5 hover:bg-white/10 text-slate-200 border-white/15'
                             : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'

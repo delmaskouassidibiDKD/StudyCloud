@@ -9,6 +9,8 @@ import {
   extractPaystackNetworkLabel,
   handlePaystackBillingRoutes,
   normalizeBillingMode,
+  normalizeIvoryCoastPhone,
+  normalizeMobileMoneyProvider,
   resolvePlanPriceMajor,
   toPaystackAmountMinor,
 } from './paystackBilling';
@@ -364,4 +366,169 @@ test('Flux complet Paystack (Stockage + IA + App Moyennes) : prix serveur, HMAC-
   await db.prepare("UPDATE payment_gateway_config SET manual_receipt_enabled = 0 WHERE id = 'default'").run();
   const cfgOff = await (await callApi('/api/payments/config')).json();
   assert.equal(cfgOff.config.manualReceiptEnabled, false);
+});
+
+test('Charge API Mobile Money (Orange OTP + Wave open_url) + Anti-IDOR + channelOnly card', async () => {
+  assert.equal(normalizeIvoryCoastPhone('+225 07 00 00 00 00'), '0700000000');
+  assert.equal(normalizeIvoryCoastPhone('00225 05 12 34 56 78'), '0512345678');
+  assert.equal(normalizeIvoryCoastPhone('070 000 000 0'), '0700000000');
+  assert.equal(normalizeMobileMoneyProvider('wave'), 'wave');
+  assert.equal(normalizeMobileMoneyProvider('orange_money'), 'orange');
+  assert.equal(normalizeMobileMoneyProvider('momo'), 'mtn');
+  assert.equal(normalizeMobileMoneyProvider('unknown'), null);
+
+  const calls: Array<{ url: string; body?: any }> = [];
+  const mockFetch: typeof fetch = async (input: any, init?: any) => {
+    const urlStr = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    calls.push({ url: urlStr, body });
+
+    if (urlStr.endsWith('/charge')) {
+      if (body?.mobile_money?.provider === 'orange') {
+        return new Response(
+          JSON.stringify({
+            status: true,
+            data: {
+              reference: body.reference,
+              status: 'send_otp',
+              display_text: 'Entrez le code OTP reçu sur votre numéro Orange Money.',
+            },
+          }),
+          { status: 200 }
+        );
+      }
+      if (body?.mobile_money?.provider === 'wave') {
+        return new Response(
+          JSON.stringify({
+            status: true,
+            data: {
+              reference: body.reference,
+              status: 'open_url',
+              url: 'https://pay.wave.com/c/test-session',
+              display_text: 'Ouvrez Wave pour autoriser le paiement.',
+            },
+          }),
+          { status: 200 }
+        );
+      }
+    }
+
+    if (urlStr.endsWith('/charge/submit_otp')) {
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            id: 778899,
+            reference: body.reference,
+            status: 'success',
+            amount: 100000,
+            currency: 'XOF',
+            channel: 'mobile_money',
+            authorization: { bank: 'Orange Money CI', reusable: false },
+          },
+        }),
+        { status: 200 }
+      );
+    }
+
+    if (urlStr.endsWith('/transaction/initialize')) {
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            authorization_url: 'https://checkout.paystack.com/card-only-test',
+            access_code: 'acc_card_only_123',
+            reference: body.reference,
+          },
+        }),
+        { status: 200 }
+      );
+    }
+
+    return new Response(JSON.stringify({ status: false, message: 'Unexpected URL' }), { status: 404 });
+  };
+
+  const { db, callApi } = createHarness(mockFetch);
+  await ensurePaystackBillingTables(db);
+  await db
+    .prepare(
+      `INSERT INTO storage_subscription_plans (id, name, storage_amount, storage_mb, price, primary_currency, billing_mode, duration_days, is_auto_billing, is_active)
+       VALUES ('stor_basic', 'Basique', '10 Go', 10240, 1000, 'XOF', 'manual', 30, 0, 1)`
+    )
+    .run();
+
+  // 1. Charge Orange Money -> renvoie send_otp + montant serveur 100000 (1000 FCFA x 100)
+  const orangeRes = await callApi('/api/payments/paystack/charge-mobile', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      productType: 'storage',
+      productId: 'stor_basic',
+      provider: 'orange',
+      phone: '+225 07 00 00 00 00',
+    },
+  });
+  assert.equal(orangeRes.status, 200);
+  const orangeJson = await orangeRes.json();
+  assert.equal(orangeJson.success, true);
+  assert.equal(orangeJson.chargeStatus, 'send_otp');
+  assert.equal(calls[0].body.amount, 100000);
+  assert.equal(calls[0].body.mobile_money.phone, '0700000000');
+  assert.equal(calls[0].body.mobile_money.provider, 'orange');
+
+  // 2. Anti-IDOR : Bob ne peut pas soumettre l'OTP pour la transaction d'Alice
+  const bobOtp = await callApi('/api/payments/paystack/submit-otp', {
+    method: 'POST',
+    token: 'token-bob',
+    body: { reference: orangeJson.reference, otp: '1234' },
+  });
+  assert.equal(bobOtp.status, 404);
+
+  // 3. Alice soumet l'OTP -> paiement immédiatement validé & stockage crédité (+10240 Mo)
+  const aliceOtpRes = await callApi('/api/payments/paystack/submit-otp', {
+    method: 'POST',
+    token: 'token-alice',
+    body: { reference: orangeJson.reference, otp: '1234' },
+  });
+  const aliceOtp = await aliceOtpRes.json();
+  assert.equal(aliceOtp.success, true);
+  assert.equal(aliceOtp.verified, true);
+  assert.equal(aliceOtp.chargeStatus, 'success');
+  const quotaRow: any = await db
+    .prepare('SELECT paid_total_mb FROM user_storage_quotas WHERE user_id = ?')
+    .bind('user-alice')
+    .first();
+  assert.equal(Number(quotaRow.paid_total_mb), 10240);
+
+  // 4. Charge Wave -> renvoie open_url (lien app Wave)
+  const waveRes = await callApi('/api/payments/paystack/charge-mobile', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      productType: 'storage',
+      productId: 'stor_basic',
+      provider: 'wave',
+      phone: '0700000000',
+    },
+  });
+  const waveJson = await waveRes.json();
+  assert.equal(waveJson.success, true);
+  assert.equal(waveJson.chargeStatus, 'open_url');
+  assert.equal(waveJson.openUrl, 'https://pay.wave.com/c/test-session');
+
+  // 5. Initialize Carte uniquement (channelOnly: 'card') pour InlineJS V2
+  const cardRes = await callApi('/api/payments/paystack/initialize', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      productType: 'storage',
+      productId: 'stor_basic',
+      channelOnly: 'card',
+    },
+  });
+  const cardJson = await cardRes.json();
+  assert.equal(cardJson.success, true);
+  assert.equal(cardJson.accessCode, 'acc_card_only_123');
+  const lastCall = calls[calls.length - 1];
+  assert.deepEqual(lastCall.body.channels, ['card']);
 });

@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizeClientBillingMode,
+  normalizeClientCiPhone,
   formatBillingDurationBadge,
   formatCurrencyAmount,
   shouldShowManualReceiptButton,
@@ -59,5 +60,11 @@ describe('paystackBillingApi pure helpers', () => {
     assert.match(formatCurrencyAmount(5000, 'XOF'), /5[\s\u202f]000 FCFA/);
     assert.equal(formatCurrencyAmount(10, 'USD'), '$10');
     assert.equal(formatCurrencyAmount(9.5, 'EUR'), '9.50 €');
+  });
+
+  it('normalizes Côte d’Ivoire Mobile Money phone numbers cleanly', () => {
+    assert.equal(normalizeClientCiPhone('+225 07 00 00 00 00'), '0700000000');
+    assert.equal(normalizeClientCiPhone('225 05 11 22 33 44'), '0511223344');
+    assert.equal(normalizeClientCiPhone('070 000 000 0'), '0700000000');
   });
 });

@@ -1,18 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Check, HardDrive, Bot, RotateCw, Loader2, Receipt, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Check, HardDrive, Bot, RotateCw, Receipt } from 'lucide-react';
 import { SubscriptionFormView, SelectedPlan } from './SubscriptionFormView';
 import { RenewalFormView } from './RenewalFormView';
 import { RenewalSectionView } from './RenewalSectionView';
+import { StudyCloudPaymentView, StudyCloudPaymentTarget } from './StudyCloudPaymentView';
 import { getSubscriptionPlans, SubscriptionPlan } from '../services/api';
 import {
-  ClientBillingMode,
   DEFAULT_PAYMENT_GATEWAY_CONFIG,
   formatBillingDurationBadge,
   getPaymentGatewayConfig,
-  initializePaystackPayment,
   normalizeClientBillingMode,
   PaymentGatewayConfig,
-  savePendingPaystackReturnContext,
   shouldShowManualReceiptButton,
 } from '../services/paystackBillingApi';
 
@@ -182,78 +180,10 @@ export const PricingView: React.FC<PricingViewProps> = ({
 
   // Configuration passerelle Paystack + Bouton « Payer manuellement » pilotés par l'admin
   const [paymentConfig, setPaymentConfig] = useState<PaymentGatewayConfig>(DEFAULT_PAYMENT_GATEWAY_CONFIG);
-  const [payingPlanId, setPayingPlanId] = useState<string | null>(null);
-  const [paymentError, setPaymentError] = useState<{ planId: string; message: string } | null>(null);
-
-  // Réinitialiser immédiatement le bouton si l'utilisateur revient via le bouton Précédent (bfcache) ou change d'onglet
-  useEffect(() => {
-    const resetPaymentState = () => {
-      setPayingPlanId(null);
-    };
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') {
-        setPayingPlanId(null);
-      }
-    };
-    window.addEventListener('pageshow', resetPaymentState);
-    window.addEventListener('focus', resetPaymentState);
-    window.addEventListener('studycloud_payment_verified', resetPaymentState);
-    document.addEventListener('visibilitychange', handleVisibility);
-    return () => {
-      window.removeEventListener('pageshow', resetPaymentState);
-      window.removeEventListener('focus', resetPaymentState);
-      window.removeEventListener('studycloud_payment_verified', resetPaymentState);
-      document.removeEventListener('visibilitychange', handleVisibility);
-    };
-  }, []);
-
-  const handleDirectPaystackCheckout = async (
-    plan: SubscriptionPlan,
-    type: 'storage' | 'ai',
-    billingMode: ClientBillingMode,
-    resolvedCycle: 'monthly' | 'annual' | 'one_time' | 'infinite'
-  ) => {
-    if (payingPlanId) return;
-    setPaymentError(null);
-    setPayingPlanId(plan.id);
-    try {
-      const res = await initializePaystackPayment({
-        productType: type,
-        productId: plan.id,
-        billingCycle: billingMode === 'infinite' ? 'infinite' : resolvedCycle,
-        currency: 'XOF',
-        preferAutoCard: false,
-      });
-
-      if (!res.success || !res.authorizationUrl) {
-        setPaymentError({
-          planId: plan.id,
-          message: res.error || "Impossible d'ouvrir la page de paiement Paystack.",
-        });
-        setPayingPlanId(null);
-        return;
-      }
-
-      savePendingPaystackReturnContext({
-        productType: type,
-        productId: plan.id,
-        productName: `${plan.name} (${type === 'ai' ? 'Crédits IA' : 'Stockage Cloud'})`,
-        createdAt: Date.now(),
-      });
-
-      // Sécurité anti-blocage si le navigateur restaure la page depuis le cache (bfcache) ou bloque la redirection
-      window.setTimeout(() => {
-        setPayingPlanId(null);
-      }, 3000);
-      window.location.href = res.authorizationUrl;
-    } catch (err: any) {
-      setPaymentError({
-        planId: plan.id,
-        message: err?.message || 'Erreur réseau lors de la connexion à Paystack.',
-      });
-      setPayingPlanId(null);
-    }
-  };
+  const [activeCustomPayment, setActiveCustomPayment] = useState<{
+    target: StudyCloudPaymentTarget;
+    manualPlan: SelectedPlan;
+  } | null>(null);
 
   // État pour afficher le menu complet de renouvellement
   const [selectedPlanForRenewal, setSelectedPlanForRenewal] = useState<any | null>(null);
@@ -301,7 +231,30 @@ export const PricingView: React.FC<PricingViewProps> = ({
     };
   }, [activeTab]);
 
-  // Si l'utilisateur clique sur "Commencer" ou choisit un plan, on affiche le formulaire de souscription
+  // Écran de paiement 100 % sur mesure StudyCloud (Option 3 : Wave / Orange / MTN Charge API + Carte sécurisée)
+  if (activeCustomPayment) {
+    return (
+      <div className={`fixed inset-x-0 bottom-0 ${isEmbeddedInSettings ? 'top-0 md:top-0' : 'top-[64px] md:top-[68px]'} left-0 md:left-64 z-50 w-full md:w-[calc(100%-16rem)] h-full bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100 overflow-y-auto animate-fadeIn transition-colors duration-300`}>
+        <StudyCloudPaymentView
+          target={activeCustomPayment.target}
+          paymentConfig={paymentConfig}
+          onBack={() => setActiveCustomPayment(null)}
+          onSuccess={() => {
+            const name = activeCustomPayment.target.productName;
+            setActiveCustomPayment(null);
+            onSelectPlan(name);
+          }}
+          onFallbackManual={() => {
+            const manual = activeCustomPayment.manualPlan;
+            setActiveCustomPayment(null);
+            setSelectedPlanForSubscription(manual);
+          }}
+        />
+      </div>
+    );
+  }
+
+  // Si l'utilisateur clique sur "Payer manuellement (envoyer un reçu)", on affiche le formulaire de reçu manuel
   if (selectedPlanForSubscription) {
     return (
       <div className={`fixed inset-x-0 bottom-0 ${isEmbeddedInSettings ? 'top-0 md:top-0' : 'top-[64px] md:top-[68px]'} left-0 md:left-64 z-50 w-full md:w-[calc(100%-16rem)] h-full bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100 overflow-y-auto animate-fadeIn pb-24 transition-colors duration-300`}>
@@ -546,7 +499,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
           </ul>
         </div>
 
-        {/* Boutons d'action directement sur la carte : Paiement Paystack direct + Payer manuellement en dessous (si activé par l'admin) */}
+        {/* Boutons d'action directement sur la carte : Interface StudyCloud Pay + Payer manuellement en dessous (si activé par l'admin) */}
         {(() => {
           const formattedPrimary = `${getCurrencySymbol(pricing.primaryCurr)} ${
             pricing.primaryCurr === 'XOF'
@@ -574,8 +527,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
           const isPaystackAvailable =
             paymentConfig.paystackEnabled && paymentConfig.mode !== 'unconfigured';
           const showManualUnderneath = shouldShowManualReceiptButton(paymentConfig, true);
-          const isThisCardLoading = payingPlanId === plan.id;
-          const cardError = paymentError?.planId === plan.id ? paymentError.message : null;
           const resolvedCycle: 'monthly' | 'annual' | 'one_time' | 'infinite' = isInfinite
             ? 'infinite'
             : isOneTime
@@ -584,36 +535,37 @@ export const PricingView: React.FC<PricingViewProps> = ({
 
           return (
             <div className="space-y-2">
-              {cardError && (
-                <div className="p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/40 text-[11px] text-rose-600 dark:text-rose-300 flex items-start gap-1.5 text-left">
-                  <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
-                  <span>{cardError}</span>
-                </div>
-              )}
-
               {isPaystackAvailable ? (
                 <button
                   type="button"
-                  disabled={Boolean(payingPlanId)}
                   onClick={() =>
-                    handleDirectPaystackCheckout(plan, type, billingMode, resolvedCycle)
+                    setActiveCustomPayment({
+                      target: {
+                        productType: type,
+                        productId: plan.id,
+                        productName: `${plan.name} (${type === 'ai' ? 'Crédits IA' : 'Stockage Cloud'})`,
+                        subtitle: lockedPerkText,
+                        amountFcfa: Math.round(pricing.priceFcfa),
+                        secondaryPriceDisplay:
+                          pricing.primaryCurr !== 'XOF'
+                            ? formattedPrimary
+                            : pricing.secondaryString || undefined,
+                        billingCycle: resolvedCycle,
+                        billingMode,
+                        durationDays,
+                      },
+                      manualPlan: manualPlanObj,
+                    })
                   }
-                  className={`w-full py-2.5 sm:py-3 font-semibold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shadow-xs text-center active:scale-[0.98] flex items-center justify-center gap-2 disabled:opacity-65 ${
+                  className={`w-full py-2.5 sm:py-3 font-semibold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shadow-xs text-center active:scale-[0.98] flex items-center justify-center gap-2 ${
                     isPopular
                       ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-950/30'
                       : 'bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white'
                   }`}
                 >
-                  {isThisCardLoading ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Redirection vers le paiement...</span>
-                    </>
-                  ) : (
-                    <span>
-                      {isInfinite ? 'Obtenir à vie' : isAuto ? "S'abonner" : 'Choisir cette offre'}
-                    </span>
-                  )}
+                  <span>
+                    {isInfinite ? 'Obtenir à vie' : isAuto ? "S'abonner" : 'Choisir cette offre'}
+                  </span>
                 </button>
               ) : showManualUnderneath ? (
                 <button
@@ -638,9 +590,8 @@ export const PricingView: React.FC<PricingViewProps> = ({
               {isPaystackAvailable && showManualUnderneath && (
                 <button
                   type="button"
-                  disabled={Boolean(payingPlanId)}
                   onClick={() => setSelectedPlanForSubscription(manualPlanObj)}
-                  className={`w-full py-2 px-3 rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border disabled:opacity-50 ${
+                  className={`w-full py-2 px-3 rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
                     isPopular
                       ? 'bg-white/5 hover:bg-white/10 text-slate-200 border-white/15'
                       : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
