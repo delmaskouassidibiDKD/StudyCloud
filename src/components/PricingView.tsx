@@ -234,7 +234,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
   // Écran de paiement 100 % sur mesure StudyCloud (Option 3 : Wave / Orange / MTN Charge API + Carte sécurisée)
   if (activeCustomPayment) {
     return (
-      <div className={`fixed inset-x-0 bottom-0 ${isEmbeddedInSettings ? 'top-0 md:top-0' : 'top-[64px] md:top-[68px]'} left-0 md:left-64 z-50 w-full md:w-[calc(100%-16rem)] h-full bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100 overflow-y-auto animate-fadeIn transition-colors duration-300`}>
+      <div className={`fixed inset-x-0 bottom-0 ${isEmbeddedInSettings ? 'top-0 md:top-0' : 'top-[64px] md:top-[68px]'} left-0 md:left-64 z-50 w-full md:w-[calc(100%-16rem)] overflow-y-auto animate-fadeIn`}>
         <StudyCloudPaymentView
           target={activeCustomPayment.target}
           paymentConfig={paymentConfig}
@@ -543,8 +543,11 @@ export const PricingView: React.FC<PricingViewProps> = ({
                       target: {
                         productType: type,
                         productId: plan.id,
-                        productName: `${plan.name} (${type === 'ai' ? 'Crédits IA' : 'Stockage Cloud'})`,
+                        productName: plan.name,
                         subtitle: lockedPerkText,
+                        description: plan.description || undefined,
+                        features: activeFeatures.map((f) => f.text).filter(Boolean),
+                        periodLabel: isInfinite || isOneTime ? undefined : isAnnual ? '/ an' : '/ mois',
                         amountFcfa: Math.round(pricing.priceFcfa),
                         secondaryPriceDisplay:
                           pricing.primaryCurr !== 'XOF'

@@ -165,7 +165,13 @@ export const AppAccessGate: React.FC<AppAccessGateProps> = ({
         productType: 'app',
         productId: plan.id,
         productName: `${access?.app?.name || fallbackTitle} — ${plan.name}`,
-        subtitle: plan.description || access?.app?.description,
+        subtitle: `Accès complet à ${access?.app?.name || fallbackTitle}`,
+        description: plan.description || access?.app?.description,
+        features: parseFeaturesList(plan.features),
+        periodLabel:
+          plan.billing_mode === 'infinite'
+            ? undefined
+            : `/ ${plan.duration_days || 30} jours`,
         appKey,
         amountFcfa: resolveAppPlanFcfa(plan),
         secondaryPriceDisplay:
