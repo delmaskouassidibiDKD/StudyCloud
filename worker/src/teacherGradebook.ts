@@ -33,6 +33,15 @@ export interface TeacherGradebookStorageUsage {
   studentPhotosCount: number;
   studentPhotosBytes: number;
   studentPhotosCompressedBytes: number;
+  delmasFilesCount: number;
+  delmasFilesBytes: number;
+  delmasFilesCompressedBytes: number;
+  delmasConversationsCount: number;
+  delmasMessagesCount: number;
+  delmasFilesMetaCount: number;
+  delmasD1RowsCount: number;
+  delmasD1TextBytes: number;
+  delmasD1EstimatedBytes: number;
   d1RowsCount: number;
   d1TextBytes: number;
   d1EstimatedBytes: number;
@@ -47,6 +56,9 @@ export interface TeacherGradebookStorageUsage {
     gradebooks: number;
     students: number;
     classAverages: number;
+    delmasConversations: number;
+    delmasMessages: number;
+    delmasFiles: number;
   };
 }
 
@@ -912,6 +924,15 @@ export async function computeTeacherGradebookStorageUsage(
     studentPhotosCount: 0,
     studentPhotosBytes: 0,
     studentPhotosCompressedBytes: 0,
+    delmasFilesCount: 0,
+    delmasFilesBytes: 0,
+    delmasFilesCompressedBytes: 0,
+    delmasConversationsCount: 0,
+    delmasMessagesCount: 0,
+    delmasFilesMetaCount: 0,
+    delmasD1RowsCount: 0,
+    delmasD1TextBytes: 0,
+    delmasD1EstimatedBytes: 0,
     d1RowsCount: 0,
     d1TextBytes: 0,
     d1EstimatedBytes: 0,
@@ -926,6 +947,9 @@ export async function computeTeacherGradebookStorageUsage(
       gradebooks: 0,
       students: 0,
       classAverages: 0,
+      delmasConversations: 0,
+      delmasMessages: 0,
+      delmasFiles: 0,
     },
   };
 
@@ -959,10 +983,10 @@ export async function computeTeacherGradebookStorageUsage(
       }
     }
 
-    // Rattrapage automatique (backfill) des logos & photos déjà dans R2 dont la taille n'avait pas encore été enregistrée en D1
+    // Rattrapage automatique (backfill) des logos, photos & fichiers Assistant Delmas déjà dans R2 dont la taille n'avait pas encore été enregistrée en D1
     if (rawEnv) {
       try {
-        const [missingLogos, missingPhotos] = await Promise.all([
+        const [missingLogos, missingPhotos, missingDelmasFiles] = await Promise.all([
           db
             .prepare(
               `SELECT DISTINCT logo_r2_key FROM teacher_schools
@@ -976,6 +1000,15 @@ export async function computeTeacherGradebookStorageUsage(
             .prepare(
               `SELECT DISTINCT photo_r2_key FROM teacher_gradebook_students
                WHERE user_id = ? AND photo_r2_key IS NOT NULL AND photo_r2_key != '' AND COALESCE(photo_size_bytes, 0) <= 0
+               LIMIT 30`
+            )
+            .bind(userId)
+            .all()
+            .catch(() => ({ results: [] })),
+          db
+            .prepare(
+              `SELECT DISTINCT r2_key FROM teacher_delmas_files
+               WHERE user_id = ? AND r2_key IS NOT NULL AND r2_key != '' AND COALESCE(size_bytes, 0) <= 0
                LIMIT 30`
             )
             .bind(userId)
@@ -1012,6 +1045,29 @@ export async function computeTeacherGradebookStorageUsage(
                 await db
                   .prepare('UPDATE teacher_gradebook_students SET photo_size_bytes = ? WHERE user_id = ? AND photo_r2_key = ?')
                   .bind(size, userId, key)
+                  .run()
+                  .catch(() => {});
+              }
+            })
+          );
+        }
+
+        const delmasFileRows: any[] = missingDelmasFiles?.results || [];
+        if (delmasFileRows.length > 0) {
+          await Promise.all(
+            delmasFileRows.map(async (r) => {
+              const key = String(r.r2_key || '');
+              if (!key) return;
+              const size = await getOwnedR2ObjectSize(rawEnv, key);
+              if (size > 0) {
+                await db
+                  .prepare(
+                    `UPDATE teacher_delmas_files
+                     SET size_bytes = CASE WHEN COALESCE(size_bytes, 0) <= 0 THEN ? ELSE size_bytes END,
+                         compressed_size_bytes = CASE WHEN COALESCE(compressed_size_bytes, 0) <= 0 THEN ? ELSE compressed_size_bytes END
+                     WHERE user_id = ? AND r2_key = ?`
+                  )
+                  .bind(size, size, userId, key)
                   .run()
                   .catch(() => {});
               }
@@ -1192,7 +1248,7 @@ export async function computeTeacherGradebookStorageUsage(
       db
         .prepare(
           `SELECT COUNT(*) as cnt,
-                  COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(conversation_id AS BLOB)) + LENGTH(CAST(COALESCE(file_name, '') AS BLOB)) + LENGTH(CAST(COALESCE(mime_type, '') AS BLOB)) + LENGTH(CAST(COALESCE(file_type, '') AS BLOB)) + LENGTH(CAST(COALESCE(r2_key, '') AS BLOB)) + LENGTH(CAST(COALESCE(extracted_text, '') AS BLOB))), 0) as textBytes
+                  COALESCE(SUM(LENGTH(CAST(id AS BLOB)) + LENGTH(CAST(conversation_id AS BLOB)) + LENGTH(CAST(COALESCE(file_name, '') AS BLOB)) + LENGTH(CAST(COALESCE(mime_type, '') AS BLOB)) + LENGTH(CAST(COALESCE(file_type, '') AS BLOB)) + LENGTH(CAST(COALESCE(r2_key, '') AS BLOB)) + LENGTH(CAST(COALESCE(extracted_text, '') AS BLOB)) + LENGTH(CAST(COALESCE(preview_data_url, '') AS BLOB))), 0) as textBytes
            FROM teacher_delmas_files WHERE user_id = ?`
         )
         .bind(userId)
@@ -1218,6 +1274,10 @@ export async function computeTeacherGradebookStorageUsage(
         .catch(() => zeroR2),
     ]);
 
+    const delmasConversationsCount = Number(delmasConvsStat?.cnt || 0);
+    const delmasMessagesCount = Number(delmasMsgsStat?.cnt || 0);
+    const delmasFilesMetaCount = Number(delmasFilesStat?.cnt || 0);
+
     const entities = {
       years: Number(yearsStat?.cnt || 0),
       schools: Number(schoolsStat?.cnt || 0),
@@ -1228,12 +1288,19 @@ export async function computeTeacherGradebookStorageUsage(
       gradebooks: Number(gradebooksStat?.cnt || 0),
       students: Number(studentsStat?.cnt || 0),
       classAverages: Number(classAveragesStat?.cnt || 0),
+      delmasConversations: delmasConversationsCount,
+      delmasMessages: delmasMessagesCount,
+      delmasFiles: delmasFilesMetaCount,
     };
 
-    const delmasRowsCount =
-      Number(delmasConvsStat?.cnt || 0) +
-      Number(delmasMsgsStat?.cnt || 0) +
-      Number(delmasFilesStat?.cnt || 0);
+    const delmasD1RowsCount =
+      delmasConversationsCount + delmasMessagesCount + delmasFilesMetaCount;
+    const delmasD1TextBytes =
+      Number(delmasConvsStat?.textBytes || 0) +
+      Number(delmasMsgsStat?.textBytes || 0) +
+      Number(delmasFilesStat?.textBytes || 0);
+    const delmasD1EstimatedBytes =
+      delmasD1RowsCount > 0 ? delmasD1TextBytes + delmasD1RowsCount * 160 : 0;
 
     const d1RowsCount =
       entities.years +
@@ -1245,7 +1312,7 @@ export async function computeTeacherGradebookStorageUsage(
       entities.gradebooks +
       entities.students +
       entities.classAverages +
-      delmasRowsCount;
+      delmasD1RowsCount;
 
     const d1TextBytes =
       Number(yearsStat?.textBytes || 0) +
@@ -1257,9 +1324,7 @@ export async function computeTeacherGradebookStorageUsage(
       Number(gradebooksStat?.textBytes || 0) +
       Number(studentsStat?.textBytes || 0) +
       Number(classAveragesStat?.textBytes || 0) +
-      Number(delmasConvsStat?.textBytes || 0) +
-      Number(delmasMsgsStat?.textBytes || 0) +
-      Number(delmasFilesStat?.textBytes || 0);
+      delmasD1TextBytes;
 
     const d1EstimatedBytes = d1RowsCount > 0 ? d1TextBytes + d1RowsCount * 160 : 0;
 
@@ -1286,6 +1351,15 @@ export async function computeTeacherGradebookStorageUsage(
       studentPhotosCount,
       studentPhotosBytes,
       studentPhotosCompressedBytes,
+      delmasFilesCount,
+      delmasFilesBytes,
+      delmasFilesCompressedBytes,
+      delmasConversationsCount,
+      delmasMessagesCount,
+      delmasFilesMetaCount,
+      delmasD1RowsCount,
+      delmasD1TextBytes,
+      delmasD1EstimatedBytes,
       d1RowsCount,
       d1TextBytes,
       d1EstimatedBytes,
@@ -1909,10 +1983,10 @@ export async function handleTeacherGradebookRoutes(
     deps
   );
 
-  // Recalcul immédiat de user_storage_usage (R2 + D1) après toute écriture, upload ou suppression réussie
+  // Recalcul immédiat de user_storage_usage (R2 + D1) après toute écriture, upload, mise à jour ou suppression réussie
   if (
     deps.recalculateUserStorage &&
-    (method === 'POST' || method === 'PUT' || method === 'DELETE') &&
+    (method === 'POST' || method === 'PUT' || method === 'PATCH' || method === 'DELETE') &&
     response.status >= 200 &&
     response.status < 300
   ) {
@@ -6738,7 +6812,37 @@ async function dispatchTeacherGradebookRoutes(
       return errorResponse('Accès refusé à cette discussion.', 403, origin);
     }
 
-    const body = await request.json().catch(() => ({}));
+    const contentTypeHeader = String(request.headers.get('Content-Type') || '').toLowerCase();
+    let body: Record<string, any> = {};
+    let fileBytes: Uint8Array | null = null;
+
+    if (contentTypeHeader.includes('multipart/form-data')) {
+      const form = await request.formData().catch(() => null);
+      if (form) {
+        const uploadedFile = form.get('file');
+        if (uploadedFile && typeof uploadedFile !== 'string' && typeof (uploadedFile as any).arrayBuffer === 'function') {
+          const buf = await (uploadedFile as any).arrayBuffer();
+          if (buf && buf.byteLength > 0 && buf.byteLength <= 25 * 1024 * 1024) {
+            fileBytes = new Uint8Array(buf);
+          }
+          body.fileName = String(form.get('fileName') || (uploadedFile as any).name || 'fichier');
+          body.mimeType = String(form.get('mimeType') || (uploadedFile as any).type || '');
+        } else {
+          body.fileName = String(form.get('fileName') || 'fichier');
+          body.mimeType = String(form.get('mimeType') || '');
+        }
+        if (form.get('id')) body.id = String(form.get('id'));
+        if (form.get('fileType')) body.fileType = String(form.get('fileType'));
+        if (form.get('extractedText') !== null) body.extractedText = String(form.get('extractedText') || '');
+        if (form.get('previewDataUrl')) body.previewDataUrl = String(form.get('previewDataUrl'));
+        if (form.get('originalSizeBytes')) body.originalSizeBytes = Number(form.get('originalSizeBytes'));
+        if (form.get('sizeBytes')) body.sizeBytes = Number(form.get('sizeBytes'));
+        if (form.get('conversationTitle')) body.conversationTitle = String(form.get('conversationTitle'));
+        if (form.get('language')) body.language = String(form.get('language'));
+      }
+    } else {
+      body = (await request.json().catch(() => ({}))) || {};
+    }
 
     const fileName = String(body?.fileName || 'fichier').trim().slice(0, 180) || 'fichier';
     const sanitizedUpload = sanitizeUploadedMimeAndExt(body?.mimeType || '', fileName);
@@ -6750,12 +6854,11 @@ async function dispatchTeacherGradebookRoutes(
       : null;
     const rawDataUrl = typeof body?.dataUrl === 'string' ? body.dataUrl : '';
 
-    // Décodage binaire si dataUrl fourni (pour archivage R2 dans le dossier de la conversation)
-    let fileBytes: Uint8Array | null = null;
-    if (rawDataUrl) {
+    // Décodage binaire si dataUrl JSON fourni (compatibilité descendante)
+    if (!fileBytes && rawDataUrl) {
       const b64Idx = rawDataUrl.indexOf(';base64,');
       const cleanB64 = (b64Idx >= 0 ? rawDataUrl.slice(b64Idx + 8) : rawDataUrl).replace(/\s+/g, '');
-      if (cleanB64.length > 0 && cleanB64.length <= 8 * 1024 * 1024 * 1.4) {
+      if (cleanB64.length > 0 && cleanB64.length <= 12 * 1024 * 1024 * 1.4) {
         try {
           const bin = atob(cleanB64);
           fileBytes = new Uint8Array(bin.length);
@@ -6776,7 +6879,11 @@ async function dispatchTeacherGradebookRoutes(
         : Math.max(compressedBytesLen, Number(body?.sizeBytes) || 0);
 
     const incomingD1AndR2Bytes =
-      billedSizeBytes + 160 + utf8ByteLength(fileName) + utf8ByteLength(extractedText);
+      billedSizeBytes +
+      160 +
+      utf8ByteLength(fileName) +
+      utf8ByteLength(extractedText) +
+      utf8ByteLength(previewDataUrl || '');
 
     const quotaBlocked = await enforceStorageQuota(Math.max(256, incomingD1AndR2Bytes));
     if (quotaBlocked) return quotaBlocked;

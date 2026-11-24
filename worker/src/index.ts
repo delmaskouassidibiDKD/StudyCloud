@@ -4080,7 +4080,7 @@ async function recalculateAndSaveUserStorage(db: any, userId: string, rawEnv?: a
                              Number(downloadStats?.compBytes || 0) + Number(secureStats?.compBytes || 0) + 
                              Number(trashStats?.compBytes || 0) +
                              Number(thumbnailStats?.r2Bytes || 0) + Number(wallpaperStats?.r2Bytes || 0) + Number(studyImportedStats?.compBytes || 0) +
-                             Number(teacherStorage?.r2Bytes || 0);
+                             Number(teacherStorage?.r2CompressedBytes ?? teacherStorage?.r2Bytes ?? 0);
 
     const productCount = Number(productStats?.cnt || 0);
     const totalR2Bytes = totalFileR2Bytes + productImagesR2Bytes;
@@ -4156,8 +4156,24 @@ async function recalculateAndSaveUserStorage(db: any, userId: string, rawEnv?: a
         wallpapers: { count: Number(wallpaperStats?.cnt || 0), bytes: Number(wallpaperStats?.r2Bytes || 0) },
         product_images: { count: productCount, bytes: productImagesR2Bytes },
         study_imported_files: { count: Number(studyImportedStats?.cnt || 0), originalBytes: Number(studyImportedStats?.origBytes || 0), compressedBytes: Number(studyImportedStats?.compBytes || 0) },
-        teacher_school_logos: { count: Number(teacherStorage?.schoolLogosCount || 0), bytes: Number(teacherStorage?.schoolLogosBytes || 0) },
-        teacher_student_photos: { count: Number(teacherStorage?.studentPhotosCount || 0), bytes: Number(teacherStorage?.studentPhotosBytes || 0) }
+        teacher_school_logos: {
+          count: Number(teacherStorage?.schoolLogosCount || 0),
+          bytes: Number(teacherStorage?.schoolLogosBytes || 0),
+          originalBytes: Number(teacherStorage?.schoolLogosBytes || 0),
+          compressedBytes: Number(teacherStorage?.schoolLogosCompressedBytes || teacherStorage?.schoolLogosBytes || 0)
+        },
+        teacher_student_photos: {
+          count: Number(teacherStorage?.studentPhotosCount || 0),
+          bytes: Number(teacherStorage?.studentPhotosBytes || 0),
+          originalBytes: Number(teacherStorage?.studentPhotosBytes || 0),
+          compressedBytes: Number(teacherStorage?.studentPhotosCompressedBytes || teacherStorage?.studentPhotosBytes || 0)
+        },
+        teacher_delmas_files: {
+          count: Number(teacherStorage?.delmasFilesCount || 0),
+          bytes: Number(teacherStorage?.delmasFilesBytes || 0),
+          originalBytes: Number(teacherStorage?.delmasFilesBytes || 0),
+          compressedBytes: Number(teacherStorage?.delmasFilesCompressedBytes || teacherStorage?.delmasFilesBytes || 0)
+        }
       },
       donnees_d1: {
         wallpapers_config: { count: Number(wallpaperStats?.cnt || 0), bytes: Number(wallpaperStats?.textBytes || 0) },
@@ -4173,6 +4189,14 @@ async function recalculateAndSaveUserStorage(db: any, userId: string, rawEnv?: a
           bytes: Number(teacherStorage?.d1EstimatedBytes || 0),
           textBytes: Number(teacherStorage?.d1TextBytes || 0),
           entities: teacherStorage?.entities || {}
+        },
+        teacher_delmas_ai: {
+          count: Number(teacherStorage?.delmasD1RowsCount || 0),
+          conversations: Number(teacherStorage?.delmasConversationsCount || 0),
+          messages: Number(teacherStorage?.delmasMessagesCount || 0),
+          files: Number(teacherStorage?.delmasFilesMetaCount || 0),
+          bytes: Number(teacherStorage?.delmasD1EstimatedBytes || 0),
+          textBytes: Number(teacherStorage?.delmasD1TextBytes || 0)
         }
       }
     };

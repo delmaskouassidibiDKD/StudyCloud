@@ -197,6 +197,16 @@ function notifyStorageQuotaRefreshThrottled(): void {
   }
 }
 
+function notifyStorageQuotaRefreshImmediate(): void {
+  if (typeof window === 'undefined') return;
+  lastStorageQuotaRefreshAt = Date.now();
+  try {
+    window.dispatchEvent(new CustomEvent('studycloud_refresh_storage_quota'));
+  } catch {
+    // Ignore
+  }
+}
+
 function buildStorageExceededError(status: number, data: any): Error & {
   status: number;
   payload: any;
@@ -1117,13 +1127,16 @@ export const TeacherGradebookAPI = {
       body: input,
     }),
 
-  deleteDelmasConversation: (conversationId: string) =>
-    teacherFetchJson<{ success: boolean; deletedId: string }>(
+  deleteDelmasConversation: async (conversationId: string) => {
+    const res = await teacherFetchJson<{ success: boolean; deletedId: string }>(
       `/api/teacher/delmas/conversations/${encodeURIComponent(conversationId)}`,
       { method: 'DELETE' }
-    ),
+    );
+    notifyStorageQuotaRefreshImmediate();
+    return res;
+  },
 
-  saveDelmasMessages: (
+  saveDelmasMessages: async (
     conversationId: string,
     input: {
       title?: string;
@@ -1146,8 +1159,8 @@ export const TeacherGradebookAPI = {
         createdAt?: number;
       }>;
     }
-  ) =>
-    teacherFetchJson<{
+  ) => {
+    const res = await teacherFetchJson<{
       success: boolean;
       conversationId: string;
       title: string;
@@ -1155,15 +1168,19 @@ export const TeacherGradebookAPI = {
     }>(
       `/api/teacher/delmas/conversations/${encodeURIComponent(conversationId)}/messages`,
       { method: 'POST', body: input }
-    ),
+    );
+    notifyStorageQuotaRefreshImmediate();
+    return res;
+  },
 
-  uploadDelmasConversationFile: (
+  uploadDelmasConversationFile: async (
     conversationId: string,
     input: {
       id?: string;
       fileName: string;
       mimeType: string;
       fileType: string;
+      fileBlob?: Blob;
       dataUrl?: string;
       previewDataUrl?: string;
       extractedText?: string;
@@ -1172,20 +1189,62 @@ export const TeacherGradebookAPI = {
       conversationTitle?: string;
       language?: string;
     }
-  ) =>
-    teacherFetchJson<{
+  ): Promise<{ success: boolean; file: TeacherDelmasFileRecord }> => {
+    const path = `/api/teacher/delmas/conversations/${encodeURIComponent(conversationId)}/files`;
+    if (input.fileBlob) {
+      const token = getTeacherAuthToken();
+      if (!token) {
+        throw new Error('Session non connectée (jeton manquant).');
+      }
+      const form = new FormData();
+      form.append('file', input.fileBlob, input.fileName || 'fichier');
+      if (input.id) form.append('id', input.id);
+      form.append('fileName', input.fileName || 'fichier');
+      form.append('mimeType', input.mimeType || 'application/octet-stream');
+      form.append('fileType', input.fileType || 'document');
+      if (input.extractedText) form.append('extractedText', input.extractedText);
+      if (input.previewDataUrl) form.append('previewDataUrl', input.previewDataUrl);
+      if (input.originalSizeBytes !== undefined) {
+        form.append('originalSizeBytes', String(input.originalSizeBytes));
+      }
+      if (input.sizeBytes !== undefined) {
+        form.append('sizeBytes', String(input.sizeBytes));
+      }
+      if (input.conversationTitle) form.append('conversationTitle', input.conversationTitle);
+      if (input.language) form.append('language', input.language);
+
+      const res = await fetch(`${getBaseUrl()}${path}`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: form,
+      });
+      const data: any = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (isStorageLimitErrorResponse(res.status, data)) {
+          throw buildStorageExceededError(res.status, data);
+        }
+        const err: any = new Error(data?.message || data?.error || `Erreur serveur (${res.status})`);
+        err.status = res.status;
+        err.payload = data;
+        throw err;
+      }
+      notifyStorageQuotaRefreshImmediate();
+      return data as { success: boolean; file: TeacherDelmasFileRecord };
+    }
+
+    const res = await teacherFetchJson<{
       success: boolean;
       file: TeacherDelmasFileRecord;
-    }>(
-      `/api/teacher/delmas/conversations/${encodeURIComponent(conversationId)}/files`,
-      { method: 'POST', body: input }
-    ),
+    }>(path, { method: 'POST', body: input });
+    notifyStorageQuotaRefreshImmediate();
+    return res;
+  },
 
-  updateDelmasConversationFile: (
+  updateDelmasConversationFile: async (
     fileId: string,
     input: { extractedText: string }
-  ) =>
-    teacherFetchJson<{
+  ) => {
+    const res = await teacherFetchJson<{
       success: boolean;
       fileId: string;
       conversationId: string;
@@ -1193,13 +1252,19 @@ export const TeacherGradebookAPI = {
     }>(
       `/api/teacher/delmas/files/${encodeURIComponent(fileId)}`,
       { method: 'PUT', body: input }
-    ),
+    );
+    notifyStorageQuotaRefreshImmediate();
+    return res;
+  },
 
-  deleteDelmasConversationFile: (fileId: string) =>
-    teacherFetchJson<{ success: boolean; deletedId: string }>(
+  deleteDelmasConversationFile: async (fileId: string) => {
+    const res = await teacherFetchJson<{ success: boolean; deletedId: string }>(
       `/api/teacher/delmas/files/${encodeURIComponent(fileId)}`,
       { method: 'DELETE' }
-    ),
+    );
+    notifyStorageQuotaRefreshImmediate();
+    return res;
+  },
 
   getDelmasWorkspaceContext: (signal?: AbortSignal) =>
     teacherFetchJson<{

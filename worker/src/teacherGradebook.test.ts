@@ -2709,3 +2709,201 @@ test('Copie inter-matières (Mathématiques -> Français) : réallocation automa
   assert.equal(frGet.styles.cellCustomStyles[`${frSaveData.remappedStudentIds.std_shared_1}_name`]?.bold, true);
   assert.equal(frGet.styles.rowColors[frSaveData.remappedStudentIds.std_shared_1], '#eff6ff');
 });
+
+test('Facturation stockage R2 + D1 Assistant Delmas : messages, fichiers multipart/compressés, preview_data_url, OCR PATCH, blocage 413 et libération complète à la suppression', async () => {
+  const db = createMockD1();
+  const r2Images = createMockR2();
+  const rawEnv = { BUCKET_IMAGES: r2Images };
+  let quotaLimitBytes = 100 * 1024 * 1024;
+  let recalcCalls = 0;
+
+  const callApi = async (
+    path: string,
+    opts: { method?: string; token?: string; body?: any } = {}
+  ) => {
+    const url = new URL(`https://api-worker.dkd-technologies.com${path}`);
+    const headers: Record<string, string> = {};
+    if (opts.token) headers['Authorization'] = `Bearer ${opts.token}`;
+    let reqBody: any;
+    if (opts.body instanceof FormData) {
+      reqBody = opts.body;
+    } else if (opts.body !== undefined) {
+      headers['Content-Type'] = 'application/json';
+      reqBody = JSON.stringify(opts.body);
+    }
+    const req = new Request(url.toString(), {
+      method: opts.method || 'GET',
+      headers,
+      body: reqBody,
+    });
+    const res = await handleTeacherGradebookRoutes(req, url, url.pathname, req.method, {
+      db,
+      rawEnv,
+      origin: 'https://studycloud.dkd-technologies.com',
+      jwtSecret: 'test-super-secret-jwt-key-12345',
+      getAuthUser: async (r: Request) =>
+        (r.headers.get('Authorization') || '').includes('token-alice')
+          ? { userId: 'user-alice', email: 'alice@school.test' }
+          : null,
+      corsHeaders: (o = '*') => ({ 'Access-Control-Allow-Origin': o }),
+      jsonResponse: (data: any, status = 200) =>
+        new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json' } }),
+      errorResponse: (message: string, status = 400) =>
+        new Response(JSON.stringify({ success: false, error: message }), {
+          status,
+          headers: { 'Content-Type': 'application/json' },
+        }),
+      checkStorageQuota: async (uid: string, incomingBytes = 0) => {
+        const cur = await computeTeacherGradebookStorageUsage(db, uid, rawEnv);
+        const totalUsedBytes = cur.totalBytes;
+        const allowed = totalUsedBytes + incomingBytes <= quotaLimitBytes;
+        return {
+          allowed,
+          totalAllowedBytes: quotaLimitBytes,
+          totalUsedBytes,
+          remainingBytes: Math.max(0, quotaLimitBytes - totalUsedBytes),
+          totalAllowedMb: Math.round(quotaLimitBytes / (1024 * 1024)),
+          totalUsedMb: Math.round((totalUsedBytes / (1024 * 1024)) * 100) / 100,
+        };
+      },
+      recalculateUserStorage: async () => {
+        recalcCalls += 1;
+      },
+    });
+    assert.ok(res);
+    return res;
+  };
+
+  // 1. Créer une conversation + enregistrer un échange user/ai
+  const msgSaveRes = await callApi('/api/teacher/delmas/conversations/tdconv-bill-1/messages', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      title: 'Facturation Delmas',
+      language: 'fr',
+      messages: [
+        { id: 'tdmsg-u1', sender: 'user', content: 'Voici la feuille de notes à analyser.' },
+        { id: 'tdmsg-a1', sender: 'ai', content: 'C’est fait ! J’ai enregistré 10 élèves.', tokens: 450, credits: 0.45 },
+      ],
+    },
+  });
+  assert.equal(msgSaveRes.status, 200);
+  assert.equal(recalcCalls, 1, 'POST messages doit déclencher recalculateUserStorage');
+
+  // 2. Upload d'une image compressée (WebP/PNG 68 octets, taille d'origine facturée 2 Mo) + preview_data_url D1
+  const tinyPngB64 =
+    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+  const previewDataUrl = `data:image/png;base64,${tinyPngB64}`;
+  const imgUploadRes = await callApi('/api/teacher/delmas/conversations/tdconv-bill-1/files', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      fileName: 'releve_photo.jpg',
+      mimeType: 'image/png',
+      fileType: 'image',
+      dataUrl: previewDataUrl,
+      previewDataUrl,
+      originalSizeBytes: 2 * 1024 * 1024,
+      sizeBytes: 2 * 1024 * 1024,
+    },
+  });
+  assert.equal(imgUploadRes.status, 200);
+  const { file: imgFile } = await imgUploadRes.json();
+  assert.ok(imgFile.r2Key && r2Images.store.has(imgFile.r2Key));
+  assert.equal(imgFile.sizeBytes, 2 * 1024 * 1024);
+  assert.ok(imgFile.compressedSizeBytes < 500, 'Taille compressée R2 enregistrée distinctement du Mo original');
+
+  // 3. Upload binaire multipart/form-data (PDF de 4096 octets)
+  const pdfBytes = new Uint8Array(4096);
+  pdfBytes.set(Buffer.from('%PDF-1.4\n'), 0);
+  const form = new FormData();
+  form.append('file', new Blob([pdfBytes], { type: 'application/pdf' }), 'bulletin_t1.pdf');
+  form.append('fileName', 'bulletin_t1.pdf');
+  form.append('mimeType', 'application/pdf');
+  form.append('fileType', 'pdf');
+  form.append('originalSizeBytes', String(4096));
+  form.append('extractedText', 'KOUASSI Aya Mariam 16/20');
+
+  const multipartRes = await callApi('/api/teacher/delmas/conversations/tdconv-bill-1/files', {
+    method: 'POST',
+    token: 'token-alice',
+    body: form,
+  });
+  assert.equal(multipartRes.status, 200);
+  const { file: pdfFile } = await multipartRes.json();
+  assert.ok(pdfFile.r2Key && r2Images.store.has(pdfFile.r2Key));
+  assert.equal(pdfFile.sizeBytes, 4096);
+
+  // 4. Mise à jour OCR via PATCH -> déclenche aussi recalculateUserStorage et augmente le poids D1
+  const beforePatchUsage = await computeTeacherGradebookStorageUsage(db, 'user-alice', rawEnv);
+  const recalcBeforePatch = recalcCalls;
+  const patchRes = await callApi(`/api/teacher/delmas/files/${imgFile.id}`, {
+    method: 'PATCH',
+    token: 'token-alice',
+    body: { extractedText: 'TYPE_CONTENU: LISTE_ELEVES_ET_NOTES\n' + 'Ligne OCR détaillée '.repeat(80) },
+  });
+  assert.equal(patchRes.status, 200);
+  assert.equal(recalcCalls, recalcBeforePatch + 1, 'PATCH OCR doit déclencher recalculateUserStorage');
+
+  const usage = await computeTeacherGradebookStorageUsage(db, 'user-alice', rawEnv);
+  assert.equal(usage.delmasFilesCount, 2);
+  assert.equal(usage.delmasFilesBytes, 2 * 1024 * 1024 + 4096, 'Facturation sur les Mo originaux exacts');
+  assert.ok(
+    usage.delmasFilesCompressedBytes < 10000 && usage.delmasFilesCompressedBytes < usage.delmasFilesBytes,
+    'Poids compressé R2 réel strictement inférieur au poids original facturé'
+  );
+  assert.equal(usage.r2Bytes, usage.delmasFilesBytes);
+  assert.equal(usage.r2CompressedBytes, usage.delmasFilesCompressedBytes);
+  assert.equal(usage.delmasConversationsCount, 1);
+  assert.equal(usage.delmasMessagesCount, 2);
+  assert.equal(usage.delmasFilesMetaCount, 2);
+  assert.equal(usage.entities.delmasConversations, 1);
+  assert.equal(usage.entities.delmasMessages, 2);
+  assert.equal(usage.entities.delmasFiles, 2);
+  assert.ok(
+    usage.delmasD1TextBytes > beforePatchUsage.delmasD1TextBytes + 1000,
+    'Mémoire OCR + preview_data_url + messages comptabilisés dans D1'
+  );
+
+  // 5. Blocage strict 413 si le quota est saturé
+  quotaLimitBytes = usage.totalBytes + 50;
+  const blockedRes = await callApi('/api/teacher/delmas/conversations/tdconv-bill-1/files', {
+    method: 'POST',
+    token: 'token-alice',
+    body: {
+      fileName: 'trop_gros.jpg',
+      mimeType: 'image/png',
+      fileType: 'image',
+      dataUrl: previewDataUrl,
+      originalSizeBytes: 512 * 1024,
+    },
+  });
+  assert.equal(blockedRes.status, 413);
+  quotaLimitBytes = 100 * 1024 * 1024;
+
+  // 6. Suppression du fichier PDF -> R2 supprimé et poids décrémenté exactement de 4096 o
+  const delPdf = await callApi(`/api/teacher/delmas/files/${pdfFile.id}`, {
+    method: 'DELETE',
+    token: 'token-alice',
+  });
+  assert.equal(delPdf.status, 200);
+  assert.equal(r2Images.store.has(pdfFile.r2Key), false);
+  const afterDelPdf = await computeTeacherGradebookStorageUsage(db, 'user-alice', rawEnv);
+  assert.equal(afterDelPdf.delmasFilesCount, 1);
+  assert.equal(afterDelPdf.delmasFilesBytes, 2 * 1024 * 1024);
+
+  // 7. Suppression complète de la conversation -> R2 + messages + fichiers à 0 octet !
+  const delConv = await callApi('/api/teacher/delmas/conversations/tdconv-bill-1', {
+    method: 'DELETE',
+    token: 'token-alice',
+  });
+  assert.equal(delConv.status, 200);
+  assert.equal(r2Images.store.has(imgFile.r2Key), false);
+  const afterDelConv = await computeTeacherGradebookStorageUsage(db, 'user-alice', rawEnv);
+  assert.equal(afterDelConv.delmasFilesCount, 0);
+  assert.equal(afterDelConv.delmasFilesBytes, 0);
+  assert.equal(afterDelConv.delmasConversationsCount, 0);
+  assert.equal(afterDelConv.delmasMessagesCount, 0);
+  assert.equal(afterDelConv.delmasD1EstimatedBytes, 0);
+  assert.equal(afterDelConv.totalBytes, 0);
+});

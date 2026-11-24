@@ -836,7 +836,9 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         let documentImages: Array<{ base64: string; mimeType: string; name?: string }> | undefined =
           undefined;
         let fileType = 'document';
+        let fileBlobToUpload: Blob | undefined = undefined;
         let r2DataUrlToUpload: string | undefined = undefined;
+        let uploadMime = mime;
         let previewDataUrl: string | undefined = undefined;
 
         if (isImg) {
@@ -847,10 +849,12 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
             (await resolveImageBase64(file, `${file.name}_${file.size}`));
           // 2. Miniature légère pour l'aperçu rapide
           previewDataUrl = await createSmallImagePreviewDataUrl(file);
-          // 3. Image compressée WebP pour l'enregistrement dans le dossier R2 de la conversation (tout en facturant origSize en Mo !)
+          // 3. Image réellement compressée WebP pour R2 (tout en facturant origSize en Mo dans user_storage_usage !)
           try {
-            const compressedBlob = await compressImageToUpload(file, 960, 0.82);
-            r2DataUrlToUpload = await blobToBase64(compressedBlob);
+            const compressed = await compressImageToUpload(file, 960, 0.82);
+            fileBlobToUpload = compressed.blob;
+            r2DataUrlToUpload = compressed.dataUrl;
+            uploadMime = compressed.blob.type || 'image/webp';
           } catch {
             r2DataUrlToUpload = imageBase64;
           }
@@ -859,8 +863,8 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         } else if (isAud) {
           fileType = 'audio';
           audioBase64 = await blobToBase64(file);
-          if (origSize <= 5 * 1024 * 1024) {
-            r2DataUrlToUpload = audioBase64;
+          if (origSize <= 25 * 1024 * 1024) {
+            fileBlobToUpload = file;
           }
           extractedText = '';
         } else {
@@ -876,10 +880,8 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           extractedText = details.textContent || '';
           documentBase64 = details.documentBase64;
           documentImages = details.documentImages;
-          if (origSize <= 5 * 1024 * 1024) {
-            try {
-              r2DataUrlToUpload = await blobToBase64(file);
-            } catch {}
+          if (origSize <= 25 * 1024 * 1024) {
+            fileBlobToUpload = file;
           }
         }
 
@@ -888,12 +890,12 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           id: tempFileId,
           conversationId: currentConversationId,
           fileName: file.name,
-          mimeType: mime,
+          mimeType: uploadMime,
           fileType,
           url: previewDataUrl || imageBase64,
           previewDataUrl: previewDataUrl || imageBase64,
           sizeBytes: origSize,
-          compressedSizeBytes: origSize,
+          compressedSizeBytes: fileBlobToUpload?.size || origSize,
           extractedText,
           createdAt: Date.now(),
           imageBase64,
@@ -902,7 +904,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           documentImages,
         };
 
-        // Enregistrement dans le dossier R2 + table D1 teacher_delmas_files de cette conversation
+        // Enregistrement dans le dossier R2 + table D1 teacher_delmas_files (facturation R2 + D1 immédiate)
         if (getTeacherAuthToken()) {
           try {
             const uploaded = await TeacherGradebookAPI.uploadDelmasConversationFile(
@@ -910,9 +912,10 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
               {
                 id: tempFileId,
                 fileName: file.name,
-                mimeType: mime,
+                mimeType: uploadMime,
                 fileType,
-                dataUrl: r2DataUrlToUpload,
+                fileBlob: fileBlobToUpload,
+                dataUrl: fileBlobToUpload ? undefined : r2DataUrlToUpload,
                 previewDataUrl,
                 extractedText,
                 originalSizeBytes: origSize,
@@ -1013,34 +1016,54 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         setCurrentConversationTitle(meta.autoTitle);
       }
 
-      await TeacherGradebookAPI.saveDelmasMessages(meta.conversationId, {
-        title: meta.autoTitle,
-        language: meta.language,
-        contextYearId: meta.liveContext?.yearId,
-        contextSchoolId: meta.liveContext?.schoolId,
-        contextClassId: meta.liveContext?.classId,
-        contextTermId: meta.liveContext?.termId,
-        contextSubjectId: meta.liveContext?.subjectId,
-        contextSheetKind: meta.liveContext?.sheetKind || 'subject',
-        messages: [
-          {
-            id: meta.userMsgId,
-            sender: 'user',
-            content: meta.promptText,
-            attachments: meta.attachmentMetaList,
-            createdAt: meta.userCreatedAt,
-          },
-          {
-            id: meta.aiMsgId,
-            sender: 'ai',
-            content: textToSave,
-            actions: meta.appliedSummaries.map((s) => ({ summary: s })),
-            tokens: meta.tokens,
-            credits: meta.credits,
-            createdAt: Date.now(),
-          },
-        ],
-      }).catch(() => {});
+      try {
+        await TeacherGradebookAPI.saveDelmasMessages(meta.conversationId, {
+          title: meta.autoTitle,
+          language: meta.language,
+          contextYearId: meta.liveContext?.yearId,
+          contextSchoolId: meta.liveContext?.schoolId,
+          contextClassId: meta.liveContext?.classId,
+          contextTermId: meta.liveContext?.termId,
+          contextSubjectId: meta.liveContext?.subjectId,
+          contextSheetKind: meta.liveContext?.sheetKind || 'subject',
+          messages: [
+            {
+              id: meta.userMsgId,
+              sender: 'user',
+              content: meta.promptText,
+              attachments: meta.attachmentMetaList,
+              createdAt: meta.userCreatedAt,
+            },
+            {
+              id: meta.aiMsgId,
+              sender: 'ai',
+              content: textToSave,
+              actions: meta.appliedSummaries.map((s) => ({ summary: s })),
+              tokens: meta.tokens,
+              credits: meta.credits,
+              createdAt: Date.now(),
+            },
+          ],
+        });
+      } catch (saveErr: any) {
+        if (
+          (saveErr?.isStorageLimitExceeded || saveErr?.status === 413) &&
+          currentConversationIdRef.current === meta.conversationId
+        ) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: generateTeacherEntityId('tdmsg'),
+              sender: 'ai',
+              content:
+                saveErr?.message ||
+                "Votre espace de stockage est plein : cet échange n'a pas pu être archivé dans votre historique cloud. Libérez de l'espace ou augmentez votre stockage.",
+              isError: true,
+              createdAt: Date.now(),
+            },
+          ]);
+        }
+      }
 
       refreshConversationsAndWorkspace();
     },
