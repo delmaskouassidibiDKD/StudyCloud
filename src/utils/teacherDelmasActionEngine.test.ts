@@ -10,8 +10,10 @@ import {
   hasRealExplicitMatriculeBatch,
   isLikelyFakeRowNumberMatricule,
   isLikelyFakeSequentialMatriculeBatch,
+  looksLikeUnfulfilledActionClaim,
   parseTeacherDelmasAiResponse,
   pickPreferredKimiModel,
+  polishTeacherDelmasReply,
   resolveDelmasColorHex,
   stripTeacherDelmasReasoning,
   validateDelmasFileSelection,
@@ -771,4 +773,113 @@ test('buildTeacherDelmasSystemPrompt expose format_cells, resize_columns, resize
     assert.ok(prompt.includes('copy_table'), `copy_table absent pour ${sheetKind}`);
     assert.ok(prompt.includes('Times New Roman'), `liste des polices absente pour ${sheetKind}`);
   }
+});
+
+test('Régression capture utilisateur : fautes de frappe (METRE, ENLRVER), suivis familiers (JE DIS LA YA SON NOM) et retrait de couleur', () => {
+  // 1. Phrase exacte de la capture avec faute "METRE" -> DOIT être 'action' !
+  const resMetre = classifyTeacherDelmasIntent({
+    message: 'IL FAUT METRE DANS LA CASE DU PREMIER UNE COULEUR VERTE',
+    hasNewAttachments: false,
+    hasConversationFiles: false,
+    activeContext: sampleContext,
+  });
+  assert.equal(resMetre.intent, 'action', `Attendu 'action', obtenu '${resMetre.intent}' (${resMetre.reason})`);
+
+  // 2. Suivi/correction familier "JE DIS LA YA SON NOM" après une action -> DOIT être 'action' !
+  const resFollowUp = classifyTeacherDelmasIntent({
+    message: 'JE DIS LA YA SON NOM',
+    hasNewAttachments: false,
+    hasConversationFiles: false,
+    activeContext: sampleContext,
+    recentMessages: [
+      { sender: 'user', content: 'IL FAUT METRE DANS LA CASE DU PREMIER UNE COULEUR VERTE' },
+      { sender: 'ai', content: "J'ai appliqué un fond vert sur la moyenne de DIALLO Fatoumata." },
+    ],
+  });
+  assert.equal(resFollowUp.intent, 'action', `Attendu 'action', obtenu '${resFollowUp.intent}' (${resFollowUp.reason})`);
+
+  // 3. Demandes de retrait de couleur y compris avec fautes de frappe
+  for (const msg of [
+    'IL FAUT ENLRVER LA COULEUR',
+    'ENLVE LE VERT DU PREMIER',
+    'Retire la couleur sur son nom',
+    'Pas de couleur dans sa case',
+    'Rends son nom plus gros',
+  ]) {
+    const r = classifyTeacherDelmasIntent({
+      message: msg,
+      hasNewAttachments: false,
+      hasConversationFiles: false,
+      activeContext: sampleContext,
+    });
+    assert.equal(r.intent, 'action', `Attendu 'action' pour "${msg}", obtenu '${r.intent}' (${r.reason})`);
+  }
+
+  // 4. Normalisation d'alias LLM (backgroundColor, column:"nom", target:"cell", fontSize:"16px", bgColor:null/"default")
+  const normalized = filterSafeTeacherDelmasActions(
+    [
+      {
+        type: 'format_cells',
+        target: 'cell',
+        student: 'DIALLO Fatoumata',
+        column: 'nom',
+        style: {
+          backgroundColor: 'verte',
+          fontWeight: 'bold',
+          fontSize: '16px',
+          align: 'gauche',
+        },
+      },
+      {
+        type: 'format_cells',
+        target: 'student',
+        studentName: 'DIALLO Fatoumata',
+        column: 'moyenne',
+        style: {
+          bgColor: null,
+          textColor: 'default',
+        },
+      },
+      {
+        type: 'clear_formatting',
+        student: 'DIALLO Fatoumata',
+        column: 'nom',
+      },
+    ],
+    'IL FAUT ENLRVER LA COULEUR ET METRE SON NOM EN VERT'
+  );
+  assert.equal(normalized.length, 3);
+  assert.equal(normalized[0].target, 'student');
+  assert.equal(normalized[0].studentName, 'DIALLO Fatoumata');
+  assert.equal(normalized[0].column, 'name');
+  assert.equal(normalized[0].style.bgColor, '#bbf7d0');
+  assert.equal(normalized[0].style.bold, true);
+  assert.equal(normalized[0].style.fontSize, 16);
+  assert.equal(normalized[0].style.textAlign, 'left');
+
+  assert.equal(normalized[1].column, 'average');
+  assert.equal(normalized[1].style.bgColor, '');
+  assert.equal(normalized[1].style.textColor, '');
+
+  assert.equal(normalized[2].type, 'clear_formatting');
+  assert.equal(normalized[2].studentName, 'DIALLO Fatoumata');
+  assert.equal(normalized[2].column, 'name');
+
+  // 5. Détecteur anti-hallucination & polissage professionnel
+  assert.equal(
+    looksLikeUnfulfilledActionClaim(
+      "Je vais maintenant mettre une couleur verte dans la case de son nom. La case est maintenant remplie d'une couleur verte. C'est fait !"
+    ),
+    true
+  );
+  assert.equal(
+    looksLikeUnfulfilledActionClaim('DIALLO Fatoumata est première avec 17,45/20.'),
+    false
+  );
+  const polished = polishTeacherDelmasReply(
+    "Je vais maintenant mettre une couleur verte dans la case qui contient le nom de DIALLO Fatoumata. La case de son nom devrait maintenant être en vert.",
+    1
+  );
+  assert.ok(!polished.startsWith('Je vais maintenant'));
+  assert.ok(polished.includes('est désormais'));
 });

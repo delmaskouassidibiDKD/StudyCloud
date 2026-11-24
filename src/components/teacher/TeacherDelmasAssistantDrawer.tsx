@@ -65,8 +65,10 @@ import {
   buildTeacherDelmasSystemPrompt,
   classifyTeacherDelmasIntent,
   filterSafeTeacherDelmasActions,
+  looksLikeUnfulfilledActionClaim,
   parseTeacherDelmasAiResponse,
   pickPreferredKimiModel,
+  polishTeacherDelmasReply,
   validateDelmasFileSelection,
   type ResolvedBackgroundModel,
   type TeacherDelmasSheetBridge,
@@ -1596,7 +1598,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         aiRes.raw_response || aiRes.rawResponse || aiRes.response || aiRes.chat_response || '';
 
       // Extraction propre + pare-feu de sécurité (zéro action en mode chat/inspect + anti-injection + zéro faux matricules 1..10 + zéro faux save_gradebook vide)
-      const parsed = parseTeacherDelmasAiResponse(rawAiOutput, {
+      let parsed = parseTeacherDelmasAiResponse(rawAiOutput, {
         allowActions: intentResult.intent === 'action',
       });
       const sourceFileTexts = [
@@ -1605,10 +1607,62 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           .filter((f) => !isPlaceholderMediaText(f.extractedText))
           .map((f) => String(f.extractedText || '')),
       ];
-      const safeActions = filterSafeTeacherDelmasActions(parsed.actions, rawText, {
+      let safeActions = filterSafeTeacherDelmasActions(parsed.actions, rawText, {
         hasAttachedFiles: hasAnyConvFiles && (intentResult.referencesActiveFiles || shouldRunVisionPass),
         sourceFileTexts,
       });
+
+      // Auto-récupération silencieuse (1 essai) si l'IA a affirmé avoir fait l'action mais a oublié le bloc <delmas_actions>
+      const claimedActionWithoutBlock =
+        safeActions.length === 0 &&
+        Boolean(sheetBridge) &&
+        Boolean(liveContext) &&
+        looksLikeUnfulfilledActionClaim(parsed.chatResponse);
+
+      if (claimedActionWithoutBlock && intentResult.intent === 'action') {
+        try {
+          setThinkingLabel('Application sur le tableau...');
+          const recoverySystemPrompt = buildTeacherDelmasSystemPrompt({
+            languageCode: chatLanguage,
+            activeContext: liveContext!,
+            workspaceSnapshot,
+            conversationFiles: allConvFiles,
+            intent: 'action',
+            needsWorkspaceDb: intentResult.needsWorkspaceDb,
+            referencesActiveFiles: intentResult.referencesActiveFiles,
+          });
+          const recoveryPrompt = `Demande exacte de l'utilisateur : « ${promptText} »\nRéponse que tu viens d'écrire sans exécuter l'action : « ${parsed.chatResponse} »\n\nCONSIGNE STRICTE : L'action n'a PAS encore été appliquée car le bloc <delmas_actions> manquait. Renvoie UNIQUEMENT le bloc JSON <delmas_actions>[...]</delmas_actions> valide pour exécuter immédiatement cette demande sur le tableau ouvert (aucune phrase en dehors de la balise).`;
+
+          const recoveryHistory = [
+            { role: 'system', content: recoverySystemPrompt },
+            ...sanitizedTurns.slice(-4),
+            { role: 'assistant', content: parsed.chatResponse },
+            { role: 'user', content: recoveryPrompt },
+          ];
+          const recRes = await sendChatMessageToAi({
+            message: recoveryPrompt,
+            history: recoveryHistory,
+            model: resolvedKimiModelRef.current.modelId,
+            apiKey: resolvedKimiModelRef.current.apiToken || getGeminiApiKey() || undefined,
+            userId: resolveActiveUserId(),
+            assistantContext: 'teacher_gradebook',
+            signal: controller.signal,
+            abortSignal: controller.signal,
+          });
+          const recRaw =
+            recRes.raw_response || recRes.rawResponse || recRes.response || recRes.chat_response || '';
+          const recParsed = parseTeacherDelmasAiResponse(recRaw, { allowActions: true });
+          const recSafe = filterSafeTeacherDelmasActions(recParsed.actions, rawText, {
+            hasAttachedFiles: hasAnyConvFiles && (intentResult.referencesActiveFiles || shouldRunVisionPass),
+            sourceFileTexts,
+          });
+          if (recSafe.length > 0) {
+            safeActions = recSafe;
+          }
+        } catch {
+          // Échec silencieux de la tentative de récupération : le garde-fou d'honnêteté ci-dessous empêchera tout faux "C'est fait !"
+        }
+      }
 
       // Exécution immédiate des actions demandées sur le tableau ouvert
       let appliedSummaries: string[] = [];
@@ -1631,7 +1685,20 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         return;
       }
 
-      const fullResponseText = parsed.chatResponse || 'Je suis à votre écoute.';
+      // Garde-fou d'honnêteté absolue : ne JAMAIS afficher un faux "C'est fait !" si 0 action réelle n'a été appliquée !
+      let fullResponseText = polishTeacherDelmasReply(
+        parsed.chatResponse || 'Je suis à votre écoute.',
+        appliedSummaries.length
+      );
+      if (
+        appliedSummaries.length === 0 &&
+        looksLikeUnfulfilledActionClaim(parsed.chatResponse)
+      ) {
+        const l = (chatLanguage || 'fr').toLowerCase();
+        fullResponseText = l.startsWith('en')
+          ? "No change was applied to the sheet yet. Please specify the exact student or column to update (for example: \"Apply a green background to DIALLO Fatoumata's name cell\") and I will execute it immediately."
+          : "Aucune modification n'a pu être appliquée automatiquement sur le tableau pour cette demande. Précisez simplement l'élève et la colonne visés (par exemple : « Mets un fond vert sur le nom de DIALLO Fatoumata » ou « Retire la couleur de fond du nom de DIALLO Fatoumata ») et je l'exécute immédiatement.";
+      }
       const autoTitle =
         currentConversationTitle === 'Nouvelle discussion'
           ? promptText.replace(/\s+/g, ' ').slice(0, 70)

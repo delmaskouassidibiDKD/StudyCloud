@@ -4146,7 +4146,13 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 ? Math.max(-24, Math.min(24, Math.round(st.fontSizeDelta)))
                 : 0;
 
-            const applyStylePatchToKey = (k: string, defaultFs = 12) => {
+            let touchedCells = 0;
+
+            const applyStylePatchToKey = (
+              k: string,
+              defaultFs = 12,
+              singleCellParentStdId?: string
+            ) => {
               const prev = workingCellStyles[k] || {};
               const next: CellCustomStyle = { ...prev, ...stylePatch };
               if (fontSizeDelta !== 0 && stylePatch.fontSize === undefined) {
@@ -4157,13 +4163,19 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 delete next.color;
               }
               if (stylePatch.bgColor === '') {
-                delete next.bgColor;
+                if (singleCellParentStdId && workingRowColors[singleCellParentStdId]) {
+                  // La ligne entière a une couleur : forcer blanc sur cette cellule précise pour qu'elle perde réellement la couleur !
+                  next.bgColor = '#ffffff';
+                } else {
+                  delete next.bgColor;
+                }
                 if (workingCellColors[k] !== undefined) {
                   delete workingCellColors[k];
                   cellColorsMutated = true;
                 }
               }
               workingCellStyles[k] = next;
+              touchedCells++;
             };
 
             const resolvedNoteIndices: number[] = [];
@@ -4227,8 +4239,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             };
 
             const applyToStudentRow = (stdId: string, onlyCol?: string) => {
+              const isFullRow = !onlyCol || onlyCol === 'all';
               const keys: string[] = [];
-              if (!onlyCol || onlyCol === 'all') {
+              if (isFullRow) {
                 keys.push(
                   `${stdId}_rank`,
                   `${stdId}_photo`,
@@ -4266,7 +4279,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               }
 
               for (const k of keys) {
-                applyStylePatchToKey(k, 12);
+                applyStylePatchToKey(k, 12, isFullRow ? undefined : stdId);
               }
             };
 
@@ -4309,46 +4322,78 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     }),
                   }));
 
-            if (action.target === 'header') {
-              applyToHeaders(action.column);
-            } else if (action.target === 'student') {
-              const nameTargets: string[] = [];
-              if (typeof action.studentName === 'string' && action.studentName.trim()) {
-                nameTargets.push(normalizeStudentNameKey(action.studentName));
+            const rankedByAverage = [...evaluatedRows]
+              .filter((r) => r.average !== null)
+              .sort((a, b) => (b.average ?? -Infinity) - (a.average ?? -Infinity));
+
+            const resolveStudentIdsFromAction = (actObj: any): Set<string> => {
+              const matched = new Set<string>();
+              const rawNames: string[] = [];
+              if (typeof actObj.studentName === 'string' && actObj.studentName.trim()) {
+                rawNames.push(actObj.studentName.trim());
               }
-              if (Array.isArray(action.studentNames)) {
-                for (const n of action.studentNames) {
-                  const norm = normalizeStudentNameKey(String(n || ''));
-                  if (norm) nameTargets.push(norm);
+              if (Array.isArray(actObj.studentNames)) {
+                for (const n of actObj.studentNames) {
+                  if (String(n || '').trim()) rawNames.push(String(n).trim());
                 }
               }
+              const cleanedTargets = rawNames
+                .map((rawN) =>
+                  normalizeStudentNameKey(rawN.replace(/\([^)]*\)/g, ' ').trim())
+                )
+                .filter(Boolean);
+
               const rowTargets = new Set<number>();
-              if (typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
-                rowTargets.add(Math.round(action.rowIndex) - 1);
+              if (typeof actObj.rowIndex === 'number' && actObj.rowIndex >= 1) {
+                rowTargets.add(Math.round(actObj.rowIndex) - 1);
               }
-              if (Array.isArray(action.rowIndices)) {
-                for (const r of action.rowIndices) {
+              if (Array.isArray(actObj.rowIndices)) {
+                for (const r of actObj.rowIndices) {
                   if (Number(r) >= 1) rowTargets.add(Math.round(Number(r)) - 1);
+                }
+              }
+
+              // Support des désignations ordinales ("premier", "1er", "2e", "dernier")
+              for (const t of cleanedTargets) {
+                if (/^(?:le\s+|la\s+)?(?:1er|1ere|premier|premiere|major)$/.test(t)) {
+                  if (rankedByAverage[0]) matched.add(rankedByAverage[0].id);
+                  else if (evaluatedRows[0]) matched.add(evaluatedRows[0].id);
+                } else if (/^(?:le\s+|la\s+)?(?:2e|2eme|deuxieme|second|seconde)$/.test(t)) {
+                  if (rankedByAverage[1]) matched.add(rankedByAverage[1].id);
+                  else if (evaluatedRows[1]) matched.add(evaluatedRows[1].id);
+                } else if (/^(?:le\s+|la\s+)?(?:3e|3eme|troisieme)$/.test(t)) {
+                  if (rankedByAverage[2]) matched.add(rankedByAverage[2].id);
+                  else if (evaluatedRows[2]) matched.add(evaluatedRows[2].id);
+                } else if (/^(?:le\s+|la\s+)?(?:dernier|derniere)$/.test(t)) {
+                  const last = rankedByAverage[rankedByAverage.length - 1];
+                  if (last) matched.add(last.id);
                 }
               }
 
               evaluatedRows.forEach((s, i) => {
                 const sn = normalizeStudentNameKey(s.name);
                 const matchesName =
-                  nameTargets.length > 0 &&
+                  cleanedTargets.length > 0 &&
                   Boolean(sn) &&
-                  nameTargets.some(
+                  cleanedTargets.some(
                     (t) =>
                       sn === t ||
                       sn.includes(t) ||
                       t.includes(sn) ||
                       (canonicalWordBagKey(t) && canonicalWordBagKey(sn) === canonicalWordBagKey(t))
                   );
-                const matchesRow = rowTargets.has(i);
-                if (matchesName || matchesRow) {
-                  applyToStudentRow(s.id, action.column);
+                if (matchesName || rowTargets.has(i)) {
+                  matched.add(s.id);
                 }
               });
+              return matched;
+            };
+
+            if (action.target === 'header') {
+              applyToHeaders(action.column);
+            } else if (action.target === 'student') {
+              const targetIds = resolveStudentIdsFromAction(action);
+              targetIds.forEach((id) => applyToStudentRow(id, action.column));
             } else if (action.target === 'column') {
               evaluatedRows.forEach((s) =>
                 applyToStudentRow(s.id, action.column || 'all')
@@ -4380,12 +4425,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                   ? Number(action.maxThreshold)
                   : effectiveAverageScale;
 
-              const sortedGraded = [...evaluatedRows]
-                .filter((r) => r.average !== null)
-                .sort((a, b) => (b.average ?? -Infinity) - (a.average ?? -Infinity));
               const topCount = Math.max(1, Number(action.threshold) || 3);
-              const topIds = new Set(sortedGraded.slice(0, topCount).map((r) => r.id));
-              const bottomIds = new Set(sortedGraded.slice(-topCount).map((r) => r.id));
+              const topIds = new Set(rankedByAverage.slice(0, topCount).map((r) => r.id));
+              const bottomIds = new Set(rankedByAverage.slice(-topCount).map((r) => r.id));
               const targetMentionNorm = normalizeStudentNameKey(String(action.mentionLabel || ''));
 
               evaluatedRows.forEach((s, idx) => {
@@ -4433,7 +4475,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                     if (action.column && action.column !== 'note' && action.column !== 'all_notes') {
                       applyToStudentRow(s.id, action.column);
                     } else {
-                      matchingCols.forEach((c) => applyStylePatchToKey(`${s.id}_${c}`, 12));
+                      matchingCols.forEach((c) => applyStylePatchToKey(`${s.id}_${c}`, 12, s.id));
                     }
                   }
                 }
@@ -4446,28 +4488,130 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 applyToHeaders(action.column);
               }
             }
-            stylesMutated = true;
-            summaries.push(`✓ Mise en forme appliquée dans ${subject.name}`);
+            if (touchedCells > 0) {
+              stylesMutated = true;
+              summaries.push(
+                stylePatch.bgColor === '' && Object.keys(stylePatch).length === 1
+                  ? `✓ Couleur retirée dans ${subject.name}`
+                  : `✓ Mise en forme appliquée dans ${subject.name}`
+              );
+            }
             break;
           }
 
           case 'clear_formatting': {
-            workingCellStyles = {};
-            workingCellColors = {};
-            workingRowColors = {};
-            Object.keys(workingColMetas).forEach((k) => {
-              const idx = parseInt(k, 10);
-              const meta = workingColMetas[idx];
-              if (meta && (meta.headerBgColor || meta.columnBgColor)) {
-                const { headerBgColor: _h, columnBgColor: _c, ...rest } = meta;
-                workingColMetas[idx] = rest;
-                colsMutated = true;
+            const hasTargetedStudent = Boolean(
+              (typeof action.studentName === 'string' && action.studentName.trim()) ||
+                (Array.isArray(action.studentNames) && action.studentNames.length > 0) ||
+                action.rowIndex !== undefined ||
+                (Array.isArray(action.rowIndices) && action.rowIndices.length > 0)
+            );
+            const hasTargetedColumn = Boolean(
+              typeof action.column === 'string' &&
+                action.column.trim() &&
+                action.column !== 'all'
+            );
+
+            if (hasTargetedStudent || hasTargetedColumn) {
+              const displayList = studentsMutated ? workingStudents : studentsWithStats;
+              const nameTargets: string[] = [];
+              if (typeof action.studentName === 'string' && action.studentName.trim()) {
+                nameTargets.push(
+                  normalizeStudentNameKey(action.studentName.replace(/\([^)]*\)/g, ' ').trim())
+                );
               }
-            });
-            stylesMutated = true;
-            cellColorsMutated = true;
-            rowColorsMutated = true;
-            summaries.push(`✓ Mise en forme réinitialisée`);
+              if (Array.isArray(action.studentNames)) {
+                action.studentNames.forEach((n: unknown) => {
+                  const clean = normalizeStudentNameKey(String(n || '').replace(/\([^)]*\)/g, ' ').trim());
+                  if (clean) nameTargets.push(clean);
+                });
+              }
+              const rowTargets = new Set<number>();
+              if (typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
+                rowTargets.add(Math.round(action.rowIndex) - 1);
+              }
+              if (Array.isArray(action.rowIndices)) {
+                action.rowIndices.forEach((r: unknown) => {
+                  if (Number(r) >= 1) rowTargets.add(Math.round(Number(r)) - 1);
+                });
+              }
+              const targetedStudents = hasTargetedStudent
+                ? displayList.filter((s, idx) => {
+                    const sn = normalizeStudentNameKey(s.name || '');
+                    const matchName =
+                      nameTargets.length > 0 &&
+                      Boolean(sn) &&
+                      nameTargets.some(
+                        (t) =>
+                          sn === t ||
+                          sn.includes(t) ||
+                          t.includes(sn) ||
+                          (/^(?:le\s+|la\s+)?(?:1er|1ere|premier|premiere|major)$/.test(t) && idx === 0)
+                      );
+                    return matchName || rowTargets.has(idx);
+                  })
+                : displayList;
+
+              const colTarget = String(action.column || 'all');
+              for (const s of targetedStudents) {
+                const keysToReset: string[] = [];
+                if (colTarget === 'all') {
+                  keysToReset.push(
+                    `${s.id}_rank`,
+                    `${s.id}_photo`,
+                    `${s.id}_matricule`,
+                    `${s.id}_name`,
+                    `${s.id}_avg`,
+                    `${s.id}_mention`
+                  );
+                  for (let c = 0; c < workingColCount; c++) keysToReset.push(`${s.id}_${c}`);
+                  if (workingRowColors[s.id] !== undefined) {
+                    delete workingRowColors[s.id];
+                    rowColorsMutated = true;
+                  }
+                } else if (colTarget === 'name') keysToReset.push(`${s.id}_name`);
+                else if (colTarget === 'matricule') keysToReset.push(`${s.id}_matricule`);
+                else if (colTarget === 'average') keysToReset.push(`${s.id}_avg`);
+                else if (colTarget === 'mention') keysToReset.push(`${s.id}_mention`);
+                else if (colTarget === 'rank') keysToReset.push(`${s.id}_rank`);
+                else if (colTarget === 'photo') keysToReset.push(`${s.id}_photo`);
+                else if (colTarget === 'note' && action.colNumber !== undefined) {
+                  keysToReset.push(`${s.id}_${Math.max(0, Number(action.colNumber) - 1)}`);
+                } else if (colTarget === 'all_notes' || colTarget === 'note') {
+                  for (let c = 0; c < workingColCount; c++) keysToReset.push(`${s.id}_${c}`);
+                }
+
+                for (const k of keysToReset) {
+                  delete workingCellStyles[k];
+                  if (workingCellColors[k] !== undefined) {
+                    delete workingCellColors[k];
+                    cellColorsMutated = true;
+                  }
+                  if (colTarget !== 'all' && workingRowColors[s.id]) {
+                    workingCellStyles[k] = { bgColor: '#ffffff' };
+                  }
+                }
+              }
+              stylesMutated = true;
+              summaries.push(`✓ Mise en forme retirée sur la sélection`);
+            } else {
+              workingCellStyles = {};
+              workingCellColors = {};
+              workingRowColors = {};
+              Object.keys(workingColMetas).forEach((k) => {
+                const idx = parseInt(k, 10);
+                const meta = workingColMetas[idx];
+                if (meta && (meta.headerBgColor || meta.columnBgColor)) {
+                  const { headerBgColor: _h, columnBgColor: _c, ...rest } = meta;
+                  workingColMetas[idx] = rest;
+                  colsMutated = true;
+                }
+              });
+              stylesMutated = true;
+              cellColorsMutated = true;
+              rowColorsMutated = true;
+              summaries.push(`✓ Mise en forme réinitialisée`);
+            }
             break;
           }
 

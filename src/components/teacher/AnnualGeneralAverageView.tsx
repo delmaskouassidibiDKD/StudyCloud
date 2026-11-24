@@ -1829,7 +1829,13 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                 ? Math.max(-24, Math.min(24, Math.round(st.fontSizeDelta)))
                 : 0;
 
-            const applyPatchToKey = (k: string, defaultFs = 12) => {
+            let touchedCells = 0;
+
+            const applyPatchToKey = (
+              k: string,
+              defaultFs = 12,
+              singleCellParentRowKey?: string
+            ) => {
               const prev = (workingStyles.cellCustomStyles?.[k] || {}) as CellCustomStyle;
               const next: CellCustomStyle = { ...prev, ...stylePatch };
               if (fontSizeDelta !== 0 && stylePatch.fontSize === undefined) {
@@ -1838,12 +1844,17 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
               }
               if (stylePatch.color === '') delete next.color;
               if (stylePatch.bgColor === '') {
-                delete next.bgColor;
+                if (singleCellParentRowKey && workingStyles.rowColors?.[singleCellParentRowKey]) {
+                  next.bgColor = '#ffffff';
+                } else {
+                  delete next.bgColor;
+                }
                 if (workingStyles.cellColors && workingStyles.cellColors[k] !== undefined) {
                   delete workingStyles.cellColors[k];
                 }
               }
               workingStyles.cellCustomStyles![k] = next;
+              touchedCells++;
             };
 
             const matchedTermIds = findMatchingTermIds(action.termName || action.subjectName);
@@ -1884,8 +1895,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             };
 
             const applyToRow = (rowKey: string, onlyCol?: string) => {
+              const isFullRow = !onlyCol || onlyCol === 'all';
               const keys: string[] = [];
-              if (!onlyCol || onlyCol === 'all') {
+              if (isFullRow) {
                 keys.push(
                   `${rowKey}_rank`,
                   `${rowKey}_photo`,
@@ -1922,19 +1934,23 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                   keys.push(`${rowKey}_moy_${tid}`, `${rowKey}_tot_${tid}`);
                 }
               }
-              keys.forEach((k) => applyPatchToKey(k, 12));
+              keys.forEach((k) => applyPatchToKey(k, 12, isFullRow ? undefined : rowKey));
             };
+
+            const rankedByAvg = [...computed.students]
+              .filter((s) => s.annualAverage !== null)
+              .sort((a, b) => (b.annualAverage ?? -Infinity) - (a.annualAverage ?? -Infinity));
 
             if (action.target === 'header') {
               applyToHeaders(action.column);
             } else if (action.target === 'student') {
               const nameTargets: string[] = [];
               if (typeof action.studentName === 'string' && action.studentName.trim()) {
-                nameTargets.push(normKey(action.studentName));
+                nameTargets.push(normKey(action.studentName.replace(/\([^)]*\)/g, ' ')));
               }
               if (Array.isArray(action.studentNames)) {
                 action.studentNames.forEach((n: unknown) => {
-                  const nk = normKey(n);
+                  const nk = normKey(String(n || '').replace(/\([^)]*\)/g, ' '));
                   if (nk) nameTargets.push(nk);
                 });
               }
@@ -1947,13 +1963,23 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                   if (Number(r) >= 1) rowTargets.add(Math.round(Number(r)) - 1);
                 });
               }
+              const matchedKeys = new Set<string>();
+              for (const t of nameTargets) {
+                if (/^(?:le\s+|la\s+)?(?:1er|1ere|premier|premiere|major)$/.test(t) && rankedByAvg[0]) {
+                  matchedKeys.add(rankedByAvg[0].key);
+                } else if (/^(?:le\s+|la\s+)?(?:2e|2eme|deuxieme)$/.test(t) && rankedByAvg[1]) {
+                  matchedKeys.add(rankedByAvg[1].key);
+                } else if (/^(?:le\s+|la\s+)?(?:dernier|derniere)$/.test(t) && rankedByAvg.length > 0) {
+                  matchedKeys.add(rankedByAvg[rankedByAvg.length - 1].key);
+                }
+              }
               computed.students.forEach((st, idx) => {
                 const sn = normKey(st.name);
                 const matchesName =
                   nameTargets.length > 0 &&
                   Boolean(sn) &&
                   nameTargets.some((t) => sn === t || sn.includes(t) || t.includes(sn));
-                if (matchesName || rowTargets.has(idx)) {
+                if (matchesName || rowTargets.has(idx) || matchedKeys.has(st.key)) {
                   applyToRow(st.key, action.column);
                 }
               });
@@ -1971,12 +1997,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                 action.maxThreshold !== undefined
                   ? Number(action.maxThreshold)
                   : effectiveAverageScale;
-              const sortedGraded = [...computed.students]
-                .filter((s) => s.annualAverage !== null)
-                .sort((a, b) => (b.annualAverage ?? -Infinity) - (a.annualAverage ?? -Infinity));
               const topCount = Math.max(1, Number(action.threshold) || 3);
-              const topKeys = new Set(sortedGraded.slice(0, topCount).map((s) => s.key));
-              const bottomKeys = new Set(sortedGraded.slice(-topCount).map((s) => s.key));
+              const topKeys = new Set(rankedByAvg.slice(0, topCount).map((s) => s.key));
+              const bottomKeys = new Set(rankedByAvg.slice(-topCount).map((s) => s.key));
               const mentionTarget = normKey(action.mentionLabel);
 
               computed.students.forEach((st, idx) => {
@@ -2018,8 +2041,14 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
               computed.students.forEach((st) => applyToRow(st.key, action.column));
               if (action.includeHeader) applyToHeaders(action.column);
             }
-            stylesMutated = true;
-            summaries.push(`✓ Mise en forme appliquée dans Moyenne Annuelle`);
+            if (touchedCells > 0) {
+              stylesMutated = true;
+              summaries.push(
+                stylePatch.bgColor === '' && Object.keys(stylePatch).length === 1
+                  ? `✓ Couleur retirée dans Moyenne Annuelle`
+                  : `✓ Mise en forme appliquée dans Moyenne Annuelle`
+              );
+            }
             break;
           }
           case 'clear_formatting': {
