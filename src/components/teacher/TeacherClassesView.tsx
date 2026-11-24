@@ -61,7 +61,11 @@ import {
   readTeacherNavSnapshot,
   writeTeacherNavSnapshot,
   resolveTeacherNavSnapshot,
+  paginateTeacherSchools,
+  getTeacherSchoolPageForIndex,
+  TEACHER_SCHOOLS_PER_PAGE,
   type TeacherNavSnapshot,
+  type TeacherDashboardTab,
 } from '../../utils/teacherNavPersistence';
 
 export type CardColorStyle = 'accent' | 'full';
@@ -646,6 +650,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
   const { user: authUser } = useAuth();
   const authUserId =
     authUser?.id ||
+    (user as any)?.id ||
     (typeof localStorage !== 'undefined'
       ? localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id') || ''
       : '');
@@ -796,8 +801,17 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     }
   }, [authUserId]);
 
-  // 1. Accueil par défaut de cette application : le bouton "Tableau de bord" (comme entouré sur l'image 1)
-  const [activeNavTab, setActiveNavTab] = useState<'dashboard' | 'trainees' | 'classes' | 'discussions' | 'groups' | 'library'>('dashboard');
+  // 1. Accueil par défaut de cette application : le bouton "Tableau de bord" (restauré si quitté ailleurs)
+  const [activeNavTab, setActiveNavTab] = useState<TeacherDashboardTab>(
+    () => initialResolvedNav.activeNavTab
+  );
+
+  // Pagination horizontale des établissements scolaires (3 lignes x 4 colonnes = 12 cases : 1 bouton "+" + 11 écoles / page)
+  const [schoolsPageByYear, setSchoolsPageByYear] = useState<Record<string, number>>(
+    () => initialResolvedNav.schoolsPageByYear
+  );
+  const [searchSchoolsPageIndex, setSearchSchoolsPageIndex] = useState<number>(0);
+  const schoolsTouchStartRef = useRef<{ x: number; y: number } | null>(null);
 
   // Recherches rapides par section (Établissements, Niveaux, Classes, Matières)
   const [isSchoolSearchOpen, setIsSchoolSearchOpen] = useState(false);
@@ -816,6 +830,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
   // Agrandissement progressif et plein écran (Image 2 & 3 - Desktop uniquement)
   const viewerExpandLevel = useViewerExpandLevel();
+  const hasRestoredExpandRef = useRef<boolean>(initialResolvedNav.viewerExpandLevel === 0);
   const [isViewerMaximized, setIsViewerMaximized] = useState<boolean>(
     () => initialResolvedNav.viewerExpandLevel >= 1
   );
@@ -827,6 +842,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setViewerExpandLevel(initialResolvedNav.viewerExpandLevel);
       setIsViewerMaximized(true);
     }
+    hasRestoredExpandRef.current = true;
     return () => {
       resetViewerExpand();
     };
@@ -1015,7 +1031,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           classId: resolved.selectedClassId,
           termId: resolved.selectedTermId,
         };
+        setActiveNavTab(resolved.activeNavTab);
         setSelectedYearId(resolved.selectedYearId);
+        setSchoolsPageByYear(resolved.schoolsPageByYear);
         setSelectedSchoolId(resolved.selectedSchoolId);
         setSelectedSchoolInside(resolved.selectedSchoolInside);
         setSelectedLevelId(resolved.selectedLevelId);
@@ -1149,7 +1167,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       setSubjects(nextCache?.subjects || []);
       setClassAverages(nextCache?.classAverages || []);
       setServerGradebookStats(nextCache?.gradebookStats || {});
+      setActiveNavTab(nextResolved.activeNavTab);
       setSelectedYearId(nextResolved.selectedYearId);
+      setSchoolsPageByYear(nextResolved.schoolsPageByYear);
       setSelectedSchoolId(nextResolved.selectedSchoolId);
       setSelectedSchoolInside(nextResolved.selectedSchoolInside);
       setSelectedSubjectInside(nextResolved.selectedSubjectInside);
@@ -1182,9 +1202,18 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     });
   }, [authUserId, schoolYears, schools, studyLevels, classes, terms, subjects, classAverages, serverGradebookStats]);
 
-  // Persistance en temps réel de l'emplacement exact dans localStorage + sessionStorage (résiste aux rechargements et aux mises à jour)
+  // Persistance en temps réel de l'emplacement exact dans localStorage + sessionStorage (résiste aux sorties du module, rechargements et mises à jour)
+  const effectiveViewerExpandLevel =
+    !hasRestoredExpandRef.current && initialResolvedNav.viewerExpandLevel >= 1
+      ? initialResolvedNav.viewerExpandLevel
+      : viewerExpandLevel;
+  const activeSavedSchoolsPage = selectedYearId ? schoolsPageByYear[selectedYearId] || 0 : 0;
+
   const currentNavPayloadRef = useRef<Omit<TeacherNavSnapshot, 'version' | 'updatedAt'>>({
+    activeNavTab,
     selectedYearId: selectedYearId || null,
+    schoolsPageIndex: activeSavedSchoolsPage,
+    schoolsPageByYear,
     selectedSchoolId,
     schoolInsideId: selectedSchoolInside?.id || null,
     selectedLevelId,
@@ -1197,12 +1226,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     averageCardClassId: selectedAverageCardInside?.classId || null,
     averageCardTermId: selectedAverageCardInside?.termId || null,
     isTransferViewOpen,
-    viewerExpandLevel,
+    viewerExpandLevel: effectiveViewerExpandLevel,
   });
 
   useEffect(() => {
     const payload: Omit<TeacherNavSnapshot, 'version' | 'updatedAt'> = {
+      activeNavTab,
       selectedYearId: selectedYearId || null,
+      schoolsPageIndex: activeSavedSchoolsPage,
+      schoolsPageByYear,
       selectedSchoolId,
       schoolInsideId: selectedSchoolInside?.id || null,
       selectedLevelId,
@@ -1215,14 +1247,17 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
       averageCardClassId: selectedAverageCardInside?.classId || null,
       averageCardTermId: selectedAverageCardInside?.termId || null,
       isTransferViewOpen,
-      viewerExpandLevel,
+      viewerExpandLevel: effectiveViewerExpandLevel,
     };
     currentNavPayloadRef.current = payload;
     if (!authUserId || pendingNavRestoreRef.current) return;
     writeTeacherNavSnapshot(authUserId, payload);
   }, [
     authUserId,
+    activeNavTab,
     selectedYearId,
+    activeSavedSchoolsPage,
+    schoolsPageByYear,
     selectedSchoolId,
     selectedSchoolInside?.id,
     selectedLevelId,
@@ -1235,22 +1270,31 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     selectedAverageCardInside?.classId,
     selectedAverageCardInside?.termId,
     isTransferViewOpen,
-    viewerExpandLevel,
+    effectiveViewerExpandLevel,
   ]);
 
-  // Flush immédiat de l'emplacement juste avant un rechargement ou une mise à jour de l'application
-  useEffect(() => {
-    const flushNav = () => {
-      if (!authUserId || pendingNavRestoreRef.current) return;
-      writeTeacherNavSnapshot(authUserId, currentNavPayloadRef.current);
-    };
-    window.addEventListener('beforeunload', flushNav);
-    window.addEventListener('pagehide', flushNav);
-    return () => {
-      window.removeEventListener('beforeunload', flushNav);
-      window.removeEventListener('pagehide', flushNav);
-    };
+  // Flush immédiat de l'emplacement lors d'une sortie du module, d'un changement d'onglet, d'un rechargement ou d'une mise à jour
+  const flushNavSnapshotNow = useCallback(() => {
+    if (!authUserId || pendingNavRestoreRef.current) return;
+    writeTeacherNavSnapshot(authUserId, currentNavPayloadRef.current);
   }, [authUserId]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'hidden') {
+        flushNavSnapshotNow();
+      }
+    };
+    window.addEventListener('beforeunload', flushNavSnapshotNow);
+    window.addEventListener('pagehide', flushNavSnapshotNow);
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => {
+      flushNavSnapshotNow();
+      window.removeEventListener('beforeunload', flushNavSnapshotNow);
+      window.removeEventListener('pagehide', flushNavSnapshotNow);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
+  }, [flushNavSnapshotNow]);
 
   // Rafraîchir uniquement les stats de tableurs après fermeture/sauvegarde d'un tableur
   const refreshCloudStats = useCallback(async () => {
@@ -2452,8 +2496,13 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
           'Erreur lors de la création des établissements.'
         );
         if (res?.schools && res.schools.length > 0) {
+          const existingCountInYear = schools.filter((s) => s.yearId === selectedYearId).length;
+          const targetPage = getTeacherSchoolPageForIndex(existingCountInYear);
           setSchools((prev) => [...prev, ...res.schools]);
           setSelectedSchoolId(res.schools[0].id);
+          if (selectedYearId) {
+            setSchoolsPageByYear((prev) => ({ ...prev, [selectedYearId]: targetPage }));
+          }
           setIsAddSchoolModalOpen(false);
           resetSchoolForm();
         } else {
@@ -2528,8 +2577,11 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         createdAt: Date.now(),
       };
 
+      const existingCountInYear = schools.filter((s) => s.yearId === selectedYearId).length;
+      const targetPage = getTeacherSchoolPageForIndex(existingCountInYear);
       setSchools(prev => [...prev, newSchool]);
       setSelectedSchoolId(newSchool.id);
+      setSchoolsPageByYear((prev) => ({ ...prev, [selectedYearId]: targetPage }));
       setIsAddSchoolModalOpen(false);
       runCloudMutation(
         () =>
@@ -2985,6 +3037,112 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     return currentYearSchools.filter(s => normalizeSearchText(s.name).includes(q));
   }, [currentYearSchools, schoolSearchQuery]);
 
+  // --- PAGINATION HORIZONTALE DES ÉTABLISSEMENTS SCOLAIRES (3 LIGNES x 4 COLONNES = 12 CASES : 1 BOUTON "+" + 11 ÉCOLES / PAGE) ---
+  const effectiveSchoolsYearId = currentSelectedYear?.id || selectedYearId;
+  const isSchoolSearchActive = schoolSearchQuery.trim().length > 0;
+  const schoolPages = useMemo(
+    () => paginateTeacherSchools(filteredYearSchools),
+    [filteredYearSchools]
+  );
+  const totalSchoolPages = schoolPages.length;
+  const rawSchoolsPageIndex = isSchoolSearchActive
+    ? searchSchoolsPageIndex
+    : effectiveSchoolsYearId
+    ? schoolsPageByYear[effectiveSchoolsYearId] || 0
+    : 0;
+  const safeSchoolsPageIndex = Math.max(
+    0,
+    Math.min(rawSchoolsPageIndex, Math.max(0, totalSchoolPages - 1))
+  );
+
+  const handleGoToSchoolsPage = useCallback(
+    (targetPage: number) => {
+      const clamped = Math.max(0, Math.min(targetPage, Math.max(0, totalSchoolPages - 1)));
+      if (isSchoolSearchActive) {
+        setSearchSchoolsPageIndex(clamped);
+        return;
+      }
+      if (!effectiveSchoolsYearId) return;
+      setSchoolsPageByYear((prev) => {
+        if ((prev[effectiveSchoolsYearId] || 0) === clamped) return prev;
+        const nextMap = { ...prev, [effectiveSchoolsYearId]: clamped };
+        currentNavPayloadRef.current = {
+          ...currentNavPayloadRef.current,
+          schoolsPageIndex: clamped,
+          schoolsPageByYear: nextMap,
+        };
+        if (authUserId && !pendingNavRestoreRef.current) {
+          writeTeacherNavSnapshot(authUserId, currentNavPayloadRef.current);
+        }
+        return nextMap;
+      });
+    },
+    [totalSchoolPages, isSchoolSearchActive, effectiveSchoolsYearId, authUserId]
+  );
+
+  // Réinitialiser la page de recherche uniquement quand la requête texte change
+  useEffect(() => {
+    setSearchSchoolsPageIndex(0);
+  }, [schoolSearchQuery]);
+
+  // Recaler la page sauvegardée si des écoles ont été supprimées (uniquement après hydratation cloud complète)
+  useEffect(() => {
+    if (isSchoolSearchActive || pendingNavRestoreRef.current || !isCloudHydratedRef.current) return;
+    if (!effectiveSchoolsYearId) return;
+    const saved = schoolsPageByYear[effectiveSchoolsYearId] || 0;
+    const maxPage = Math.max(0, totalSchoolPages - 1);
+    if (saved > maxPage) {
+      setSchoolsPageByYear((prev) => ({ ...prev, [effectiveSchoolsYearId]: maxPage }));
+    }
+  }, [isSchoolSearchActive, effectiveSchoolsYearId, schoolsPageByYear, totalSchoolPages]);
+
+  // Navigation clavier Gauche / Droite sur les pages d'établissements scolaires
+  useEffect(() => {
+    if (
+      selectedSchoolInside ||
+      isTransferViewOpen ||
+      isAddSchoolModalOpen ||
+      Boolean(editingSchool) ||
+      Boolean(deleteTarget) ||
+      isCreateMenuOpen ||
+      totalSchoolPages <= 1
+    ) {
+      return;
+    }
+    const handleArrowNav = (e: KeyboardEvent) => {
+      if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === 'ArrowLeft' && safeSchoolsPageIndex > 0) {
+        e.preventDefault();
+        handleGoToSchoolsPage(safeSchoolsPageIndex - 1);
+      } else if (e.key === 'ArrowRight' && safeSchoolsPageIndex < totalSchoolPages - 1) {
+        e.preventDefault();
+        handleGoToSchoolsPage(safeSchoolsPageIndex + 1);
+      }
+    };
+    window.addEventListener('keydown', handleArrowNav);
+    return () => window.removeEventListener('keydown', handleArrowNav);
+  }, [
+    selectedSchoolInside,
+    isTransferViewOpen,
+    isAddSchoolModalOpen,
+    editingSchool,
+    deleteTarget,
+    isCreateMenuOpen,
+    totalSchoolPages,
+    safeSchoolsPageIndex,
+    handleGoToSchoolsPage,
+  ]);
+
   const filteredSchoolLevels = useMemo(() => {
     const q = normalizeSearchText(levelSearchQuery);
     if (!q) return currentSchoolLevels;
@@ -3423,14 +3581,14 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* Fond animé continu, lent et cohérent (100 % vectoriel & Canvas 60 FPS) */}
         <TeacherAnimatedBackground />
 
-        {/* Contenu défilable au-dessus de l'animation continue */}
-        <div className="relative z-10 flex-1 flex flex-col h-full overflow-y-auto overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-1.5 sm:pt-2 pb-24 md:pb-8 space-y-1.5">
+        {/* Contenu au-dessus de l'animation continue : les éléments du haut restent fixes sur bureau, seules les écoles défilent horizontalement */}
+        <div className="relative z-10 flex-1 flex flex-col h-full min-h-0 overflow-y-auto md:overflow-hidden overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-1.5 sm:pt-2 pb-24 md:pb-4 space-y-1.5">
         
         {/* ----------------------------------------------------------------------- */}
         {/* EN-TÊTE COMPACT EN HAUT :                                               */}
         {/* Retour (gauche) | Titre bien centré (milieu) | Utilitaires & Agrandissement (droite) */}
         {/* ----------------------------------------------------------------------- */}
-        <header className="relative flex items-center justify-between gap-2 flex-wrap">
+        <header className="relative shrink-0 flex items-center justify-between gap-2 flex-wrap">
           {/* Groupe haut gauche : Bouton Retour + Statut de synchronisation cloud (le bouton manuel Enregistrer est réservé au tableur de notes) */}
           <div className="flex items-center gap-2 flex-wrap z-10 shrink-0">
             <button
@@ -3441,6 +3599,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 } else if (selectedSchoolInside) {
                   setSelectedSchoolInside(null);
                 } else {
+                  flushNavSnapshotNow();
                   setIsViewerMaximized(false);
                   resetViewerExpand();
                   onBack();
@@ -3602,7 +3761,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* LIGNE POUR COMBLER L'ESPACE (MASQUÉ SI DANS UNE ÉCOLE)                  */}
         {/* ----------------------------------------------------------------------- */}
         {!selectedSchoolInside && (
-          <section className="space-y-1 animate-fade-in">
+          <section className="shrink-0 space-y-1 animate-fade-in">
             <div className="flex items-center justify-between gap-2 flex-wrap">
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-extrabold uppercase tracking-wider text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
@@ -4010,7 +4169,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* ----------------------------------------------------------------------- */}
         {/* ESPACE DE TRAVAIL PRINCIPAL (ÉCOLES OU CLASSES SELON LA NAVIGATION)    */}
         {/* ----------------------------------------------------------------------- */}
-        <section className="flex-1 flex flex-col justify-start">
+        <section className="flex-1 min-h-0 flex flex-col justify-start">
           {currentSelectedYear ? (
               currentYearSchools.length === 0 ? (
                 // 1. AUCUNE ÉCOLE : Bouton Plus au milieu avec pointillé autour formant un carré
@@ -4044,9 +4203,10 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   </button>
                 </div>
               ) : (
-                // 2. ÉCOLES CRÉÉES : Cartes en 3D sous forme de bouton avec logo rond
-                <div className="space-y-2.5 pt-1 animate-fade-in">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                // 2. ÉCOLES CRÉÉES : Carrousel horizontal par pages de 3 lignes x 4 colonnes (12 cases : 1 bouton "+" + 11 écoles)
+                <div className="flex-1 min-h-0 flex flex-col space-y-2 pt-0.5 animate-fade-in">
+                  {/* Barre fixe en haut des écoles : titre, rentrée, recherche + boutons Gauche / Droite */}
+                  <div className="shrink-0 flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="text-xs font-black uppercase tracking-wider text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
                         Établissements scolaires ({currentYearSchools.length})
@@ -4074,156 +4234,287 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         }}
                       />
                     </div>
+
+                    {/* Boutons Gauche / Droite fixes pour défiler horizontalement entre les pages d'écoles */}
+                    <div className="flex items-center gap-1.5 shrink-0 select-none">
+                      <button
+                        type="button"
+                        disabled={safeSchoolsPageIndex <= 0}
+                        onClick={() => handleGoToSchoolsPage(safeSchoolsPageIndex - 1)}
+                        className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                          safeSchoolsPageIndex <= 0
+                            ? 'bg-white/15 border-white/15 text-white/40 cursor-not-allowed'
+                            : 'bg-white/95 hover:bg-cyan-50 border-cyan-200/80 text-[#00313d] shadow-md hover:scale-105 active:scale-95 cursor-pointer'
+                        }`}
+                        title="Page précédente des écoles (←)"
+                        aria-label="Page précédente des écoles"
+                      >
+                        <ChevronLeft className="w-4 h-4 stroke-[2.8]" />
+                      </button>
+
+                      <span
+                        className="px-2.5 py-1 rounded-xl bg-[#081b33]/85 border border-cyan-300/35 text-[11px] font-extrabold text-white shadow-xs tabular-nums"
+                        title={`12 cases par page (3 lignes × 4 colonnes : bouton + et jusqu'à ${TEACHER_SCHOOLS_PER_PAGE} écoles)`}
+                      >
+                        Page {safeSchoolsPageIndex + 1} / {totalSchoolPages}
+                      </span>
+
+                      <button
+                        type="button"
+                        disabled={safeSchoolsPageIndex >= totalSchoolPages - 1}
+                        onClick={() => handleGoToSchoolsPage(safeSchoolsPageIndex + 1)}
+                        className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                          safeSchoolsPageIndex >= totalSchoolPages - 1
+                            ? 'bg-white/15 border-white/15 text-white/40 cursor-not-allowed'
+                            : 'bg-white/95 hover:bg-cyan-50 border-cyan-200/80 text-[#00313d] shadow-md hover:scale-105 active:scale-95 cursor-pointer'
+                        }`}
+                        title={
+                          totalSchoolPages > 1
+                            ? 'Page suivante des écoles (→)'
+                            : `Page suivante disponible dès la ${TEACHER_SCHOOLS_PER_PAGE + 1}e école`
+                        }
+                        aria-label="Page suivante des écoles"
+                      >
+                        <ChevronRight className="w-4 h-4 stroke-[2.8]" />
+                      </button>
+                    </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-5 items-stretch">
-                    {/* Bouton carré pointillé fixe devant (position 1) pour ajouter une autre école */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        resetSchoolForm();
-                        setIsAddSchoolModalOpen(true);
-                      }}
-                      className="min-h-[170px] border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white backdrop-blur-md rounded-2xl p-5 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group hover:-translate-y-1 shadow-md hover:shadow-lg"
+                  {/* Zone défilable UNIQUEMENT pour les cartes d'écoles (glissement horizontal fluide page par page) */}
+                  <div
+                    className="flex-1 min-h-0 overflow-x-hidden md:overflow-y-auto"
+                    onTouchStart={(e) => {
+                      const t = e.touches[0];
+                      if (t) schoolsTouchStartRef.current = { x: t.clientX, y: t.clientY };
+                    }}
+                    onTouchEnd={(e) => {
+                      const start = schoolsTouchStartRef.current;
+                      schoolsTouchStartRef.current = null;
+                      const t = e.changedTouches[0];
+                      if (!start || !t || totalSchoolPages <= 1) return;
+                      const dx = t.clientX - start.x;
+                      const dy = t.clientY - start.y;
+                      if (Math.abs(dx) > 48 && Math.abs(dx) > Math.abs(dy) * 1.25) {
+                        if (dx < 0 && safeSchoolsPageIndex < totalSchoolPages - 1) {
+                          handleGoToSchoolsPage(safeSchoolsPageIndex + 1);
+                        } else if (dx > 0 && safeSchoolsPageIndex > 0) {
+                          handleGoToSchoolsPage(safeSchoolsPageIndex - 1);
+                        }
+                      }
+                    }}
+                  >
+                    <div
+                      className="flex transition-transform duration-300 ease-out will-change-transform"
+                      style={{ transform: `translate3d(-${safeSchoolsPageIndex * 100}%, 0, 0)` }}
                     >
-                      <div className="w-12 h-12 rounded-xl bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-sm transition mb-2.5">
-                        <Plus className="w-6 h-6 stroke-[2.5]" />
-                      </div>
-                      <span className="text-xs font-black text-slate-700 group-hover:text-[#00313d] transition-colors">
-                        Ajouter une autre école
-                      </span>
-                      <span className="text-[10px] text-slate-400 mt-0.5">
-                        Pour {currentSelectedYear.label}
-                      </span>
-                    </button>
-
-                    {filteredYearSchools.length === 0 && schoolSearchQuery.trim() ? (
-                      <div className="min-h-[170px] rounded-2xl border border-slate-200/90 bg-white/75 backdrop-blur-md p-5 flex items-center justify-center text-sm font-bold text-slate-500 select-none">
-                        Non trouvé
-                      </div>
-                    ) : (
-                    filteredYearSchools.map((school) => {
-                      const isSelected = selectedSchoolId === school.id;
-                      const isWhite = !school.color || school.color === '#ffffff' || school.color === 'white';
-                      const isAccentStyle = !isWhite && school.colorStyle === 'accent';
-                      const useLightSurface = isWhite || isAccentStyle;
-                      const schoolLevelsCount = studyLevels.filter(l => l.schoolId === school.id).length;
-                      const schoolClassesCount = classes.filter(c => c.schoolId === school.id).length;
-
-                      return (
+                      {schoolPages.map((pageSchools, pageIdx) => (
                         <div
-                          key={school.id}
-                          onClick={() => {
-                            setSelectedSchoolId(school.id);
-                            setSelectedSchoolInside(school); // Rentrer à l'intérieur de l'école !
-                          }}
-                          style={{
-                            backgroundColor: useLightSurface ? '#ffffff' : school.color,
-                            color: useLightSurface ? '#0f172a' : (school.textColor || '#ffffff'),
-                            borderColor: useLightSurface ? '#cbd5e1' : (school.borderColor || school.color),
-                            borderBottomColor: useLightSurface ? '#94a3b8' : (school.borderDarkColor || '#00141a'),
-                          }}
-                          className={`group relative overflow-hidden rounded-2xl border-2 border-b-[6px] p-4 sm:p-5 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
-                            useLightSurface 
-                              ? 'shadow-[0_10px_25px_-5px_rgba(0,40,60,0.1),0_4px_6px_-2px_rgba(0,0,0,0.05)] hover:border-b-cyan-600' 
-                              : 'shadow-[0_12px_24px_-6px_rgba(0,0,0,0.3)]'
-                          } ${
-                            isSelected 
-                              ? 'ring-2 ring-cyan-500 ring-offset-2 scale-[1.02]' 
-                              : 'hover:-translate-y-1'
-                          } active:translate-y-1 active:border-b-2`}
+                          key={`schools-page-${effectiveSchoolsYearId}-${pageIdx}`}
+                          className="w-full shrink-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-3.5 lg:gap-4 items-stretch content-start pt-1.5 pb-2 px-1"
                         >
-                          {isAccentStyle && (
-                            <span
-                              className="absolute left-0 top-0 bottom-0 w-[5px]"
-                              style={{ backgroundColor: school.color }}
-                            />
-                          )}
-                          {/* Haut de la carte : Logo ROND à gauche & Badge année / Menu à droite */}
-                          <div className={`flex items-start justify-between gap-3 ${isAccentStyle ? 'pl-1.5' : ''}`}>
-                            {/* Logo de l'école (ROND comme demandé explicitement) */}
-                            <div className="w-14 h-14 rounded-full overflow-hidden shadow-md border-2 border-white/90 shrink-0 flex items-center justify-center bg-white/20 backdrop-blur-xs">
-                              {school.logoUrl ? (
-                                <img 
-                                  src={school.logoUrl} 
-                                  alt={school.name} 
-                                  className="w-full h-full object-cover" 
-                                />
-                              ) : (
-                                <div 
-                                  className="w-full h-full flex items-center justify-center font-black text-lg tracking-wider"
-                                  style={{ color: useLightSurface ? '#00313d' : '#ffffff' }}
+                          {/* Bouton carré pointillé fixe en position 1 sur CHAQUE page pour ajouter une autre école */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              resetSchoolForm();
+                              setIsAddSchoolModalOpen(true);
+                            }}
+                            className="min-h-[144px] sm:min-h-[150px] border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white backdrop-blur-md rounded-2xl p-3.5 sm:p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group hover:-translate-y-1 shadow-md hover:shadow-lg"
+                          >
+                            <div className="w-11 h-11 rounded-xl bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-sm transition mb-2">
+                              <Plus className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
+                            </div>
+                            <span className="text-xs font-black text-slate-700 group-hover:text-[#00313d] transition-colors">
+                              Ajouter une autre école
+                            </span>
+                            <span className="text-[10px] text-slate-400 mt-0.5">
+                              Pour {currentSelectedYear.label}
+                            </span>
+                          </button>
+
+                          {pageSchools.length === 0 && isSchoolSearchActive ? (
+                            <div className="min-h-[144px] sm:min-h-[150px] rounded-2xl border border-slate-200/90 bg-white/75 backdrop-blur-md p-4 flex items-center justify-center text-sm font-bold text-slate-500 select-none">
+                              Non trouvé
+                            </div>
+                          ) : (
+                            pageSchools.map((school) => {
+                              const isSelected = selectedSchoolId === school.id;
+                              const isWhite = !school.color || school.color === '#ffffff' || school.color === 'white';
+                              const isAccentStyle = !isWhite && school.colorStyle === 'accent';
+                              const useLightSurface = isWhite || isAccentStyle;
+                              const schoolLevelsCount = studyLevels.filter(l => l.schoolId === school.id).length;
+                              const schoolClassesCount = classes.filter(c => c.schoolId === school.id).length;
+
+                              return (
+                                <div
+                                  key={school.id}
+                                  onClick={() => {
+                                    setSelectedSchoolId(school.id);
+                                    setSelectedSchoolInside(school); // Rentrer à l'intérieur de l'école !
+                                  }}
+                                  style={{
+                                    backgroundColor: useLightSurface ? '#ffffff' : school.color,
+                                    color: useLightSurface ? '#0f172a' : (school.textColor || '#ffffff'),
+                                    borderColor: useLightSurface ? '#cbd5e1' : (school.borderColor || school.color),
+                                    borderBottomColor: useLightSurface ? '#94a3b8' : (school.borderDarkColor || '#00141a'),
+                                  }}
+                                  className={`group relative overflow-hidden min-h-[144px] sm:min-h-[150px] rounded-2xl border-2 border-b-[5px] p-3 sm:p-3.5 lg:p-4 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
+                                    useLightSurface
+                                      ? 'shadow-[0_10px_25px_-5px_rgba(0,40,60,0.1),0_4px_6px_-2px_rgba(0,0,0,0.05)] hover:border-b-cyan-600'
+                                      : 'shadow-[0_12px_24px_-6px_rgba(0,0,0,0.3)]'
+                                  } ${
+                                    isSelected
+                                      ? 'ring-2 ring-cyan-500 ring-offset-2 scale-[1.01]'
+                                      : 'hover:-translate-y-1'
+                                  } active:translate-y-0.5 active:border-b-2`}
                                 >
-                                  {school.name.slice(0, 2).toUpperCase()}
+                                  {isAccentStyle && (
+                                    <span
+                                      className="absolute left-0 top-0 bottom-0 w-[5px]"
+                                      style={{ backgroundColor: school.color }}
+                                    />
+                                  )}
+                                  {/* Haut de la carte : Logo ROND à gauche & Badge année / Menu à droite */}
+                                  <div className={`flex items-start justify-between gap-2 ${isAccentStyle ? 'pl-1.5' : ''}`}>
+                                    {/* Logo de l'école (ROND) */}
+                                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full overflow-hidden shadow-md border-2 border-white/90 shrink-0 flex items-center justify-center bg-white/20 backdrop-blur-xs">
+                                      {school.logoUrl ? (
+                                        <img
+                                          src={school.logoUrl}
+                                          alt={school.name}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      ) : (
+                                        <div
+                                          className="w-full h-full flex items-center justify-center font-black text-base tracking-wider"
+                                          style={{ color: useLightSurface ? '#00313d' : '#ffffff' }}
+                                        >
+                                          {school.name.slice(0, 2).toUpperCase()}
+                                        </div>
+                                      )}
+                                    </div>
+
+                                    {/* Badge année et menu 3 traits */}
+                                    <div className="flex items-center gap-1 min-w-0">
+                                      <span className={`text-[9.5px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-lg border whitespace-nowrap ${
+                                        useLightSurface
+                                          ? 'bg-slate-100 text-slate-700 border-slate-200'
+                                          : 'bg-black/20 text-white/90 border-white/20'
+                                      }`}>
+                                        {currentSelectedYear.label}
+                                      </span>
+
+                                      <button
+                                        type="button"
+                                        onClick={(e) => handleOpenMenu(e, 'school', school)}
+                                        className={`card-menu-trigger w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center transition z-10 shrink-0 ${
+                                          useLightSurface
+                                            ? 'hover:bg-slate-100 text-slate-400 hover:text-slate-800'
+                                            : 'hover:bg-black/30 text-white/70 hover:text-white'
+                                        }`}
+                                        title="Options de l'établissement"
+                                      >
+                                        <div className="w-3.5 h-2.5 flex flex-col justify-between items-center pointer-events-none">
+                                          <span className="w-full h-[1.8px] bg-current rounded-full"></span>
+                                          <span className="w-full h-[1.8px] bg-current rounded-full"></span>
+                                          <span className="w-full h-[1.8px] bg-current rounded-full"></span>
+                                        </div>
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Milieu de la carte : Nom de l'école & compteurs */}
+                                  <div className={`mt-2.5 space-y-0.5 ${isAccentStyle ? 'pl-1.5' : ''}`}>
+                                    <h3
+                                      className="font-black text-sm sm:text-[15px] lg:text-base tracking-tight leading-snug line-clamp-1"
+                                      title={school.name}
+                                    >
+                                      {school.name}
+                                    </h3>
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className={`text-[10px] font-bold ${
+                                        useLightSurface ? 'text-slate-600' : 'text-white/85'
+                                      }`}>
+                                        {schoolLevelsCount} niveau{schoolLevelsCount > 1 ? 'x' : ''}
+                                      </span>
+                                      <span className="text-[10px] opacity-60">&bull;</span>
+                                      <span className={`text-[10px] font-bold ${
+                                        useLightSurface ? 'text-cyan-800' : 'text-cyan-200'
+                                      }`}>
+                                        {schoolClassesCount} classe{schoolClassesCount > 1 ? 's' : ''}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  {/* Bas de la carte : Bouton d'accès 3D intégré */}
+                                  <div className={`mt-2.5 pt-2 border-t flex items-center justify-between text-[11px] sm:text-xs font-black ${
+                                    isAccentStyle ? 'pl-1.5 ' : ''
+                                  }${
+                                    useLightSurface
+                                      ? 'border-slate-100 text-[#00313d] group-hover:text-cyan-600'
+                                      : 'border-white/20 text-white group-hover:text-cyan-200'
+                                  } transition-colors`}>
+                                    <span className="truncate">Accéder aux classes</span>
+                                    <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 transform group-hover:translate-x-1 transition-transform" />
+                                  </div>
                                 </div>
-                              )}
-                            </div>
-
-                            {/* Badge année et menu 3 traits */}
-                            <div className="flex items-center gap-1.5">
-                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
-                                useLightSurface 
-                                   ? 'bg-slate-100 text-slate-700 border-slate-200' 
-                                   : 'bg-black/20 text-white/90 border-white/20'
-                              }`}>
-                                {currentSelectedYear.label}
-                              </span>
-
-                              <button
-                                type="button"
-                                onClick={(e) => handleOpenMenu(e, 'school', school)}
-                                className={`card-menu-trigger w-7 h-7 rounded-lg flex items-center justify-center transition z-10 ${
-                                  useLightSurface 
-                                    ? 'hover:bg-slate-100 text-slate-400 hover:text-slate-800' 
-                                    : 'hover:bg-black/30 text-white/70 hover:text-white'
-                                }`}
-                                title="Options de l'établissement"
-                              >
-                                <div className="w-3.5 h-2.5 flex flex-col justify-between items-center pointer-events-none">
-                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
-                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
-                                  <span className="w-full h-[1.8px] bg-current rounded-full"></span>
-                                </div>
-                              </button>
-                            </div>
-                          </div>
-
-                          {/* Milieu de la carte : Nom de l'école & Type */}
-                          <div className={`mt-3.5 space-y-0.5 ${isAccentStyle ? 'pl-1.5' : ''}`}>
-                            <h3 className="font-black text-base sm:text-lg tracking-tight leading-snug line-clamp-2">
-                              {school.name}
-                            </h3>
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className={`text-[10px] font-bold ${
-                                useLightSurface ? 'text-slate-600' : 'text-white/85'
-                              }`}>
-                                {schoolLevelsCount} niveau{schoolLevelsCount > 1 ? 'x' : ''}
-                              </span>
-                              <span className="text-[10px] opacity-60">&bull;</span>
-                              <span className={`text-[10px] font-bold ${
-                                useLightSurface ? 'text-cyan-800' : 'text-cyan-200'
-                              }`}>
-                                {schoolClassesCount} classe{schoolClassesCount > 1 ? 's' : ''}
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Bas de la carte : Bouton d'accès 3D intégré */}
-                          <div className={`mt-4 pt-3 border-t flex items-center justify-between text-xs font-black ${
-                            isAccentStyle ? 'pl-1.5 ' : ''
-                          }${
-                            useLightSurface 
-                              ? 'border-slate-100 text-[#00313d] group-hover:text-cyan-600' 
-                              : 'border-white/20 text-white group-hover:text-cyan-200'
-                          } transition-colors`}>
-                            <span>Accéder aux classes</span>
-                            <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
-                          </div>
+                              );
+                            })
+                          )}
                         </div>
-                      );
-                    })
-                    )}
+                      ))}
+                    </div>
                   </div>
+
+                  {/* Indicateurs de pages cliquables en bas (fixes, affichés dès 2 pages) */}
+                  {totalSchoolPages > 1 && (
+                    <div className="shrink-0 flex items-center justify-center gap-2 pt-1 pb-0.5 select-none">
+                      <button
+                        type="button"
+                        disabled={safeSchoolsPageIndex <= 0}
+                        onClick={() => handleGoToSchoolsPage(safeSchoolsPageIndex - 1)}
+                        className={`px-2 py-1 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 border transition ${
+                          safeSchoolsPageIndex <= 0
+                            ? 'bg-white/10 border-white/10 text-white/35 cursor-not-allowed'
+                            : 'bg-[#081b33]/80 hover:bg-white/95 border-cyan-300/35 text-cyan-100 hover:text-[#00313d] cursor-pointer'
+                        }`}
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                        <span className="hidden sm:inline">Précédent</span>
+                      </button>
+
+                      <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-[#081b33]/75 border border-cyan-300/25">
+                        {Array.from({ length: totalSchoolPages }).map((_, idx) => (
+                          <button
+                            key={`school-dot-${idx}`}
+                            type="button"
+                            onClick={() => handleGoToSchoolsPage(idx)}
+                            aria-label={`Aller à la page ${idx + 1}`}
+                            title={`Page ${idx + 1} / ${totalSchoolPages}`}
+                            className={`transition-all duration-200 rounded-full cursor-pointer ${
+                              safeSchoolsPageIndex === idx
+                                ? 'w-6 h-2 bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.85)]'
+                                : 'w-2 h-2 bg-white/35 hover:bg-white/70'
+                            }`}
+                          />
+                        ))}
+                      </div>
+
+                      <button
+                        type="button"
+                        disabled={safeSchoolsPageIndex >= totalSchoolPages - 1}
+                        onClick={() => handleGoToSchoolsPage(safeSchoolsPageIndex + 1)}
+                        className={`px-2 py-1 rounded-lg text-[11px] font-bold inline-flex items-center gap-1 border transition ${
+                          safeSchoolsPageIndex >= totalSchoolPages - 1
+                            ? 'bg-white/10 border-white/10 text-white/35 cursor-not-allowed'
+                            : 'bg-[#081b33]/80 hover:bg-white/95 border-cyan-300/35 text-cyan-100 hover:text-[#00313d] cursor-pointer'
+                        }`}
+                      >
+                        <span className="hidden sm:inline">Suivant</span>
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )
             ) : (

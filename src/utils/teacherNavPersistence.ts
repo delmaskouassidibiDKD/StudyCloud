@@ -1,6 +1,75 @@
+export type TeacherDashboardTab =
+  | 'dashboard'
+  | 'trainees'
+  | 'classes'
+  | 'discussions'
+  | 'groups'
+  | 'library';
+
+export const TEACHER_SCHOOLS_GRID_COLUMNS = 4;
+export const TEACHER_SCHOOLS_GRID_ROWS = 3;
+export const TEACHER_SCHOOLS_SLOTS_PER_PAGE =
+  TEACHER_SCHOOLS_GRID_COLUMNS * TEACHER_SCHOOLS_GRID_ROWS; // 12 cases (1 bouton + 11 écoles)
+export const TEACHER_SCHOOLS_PER_PAGE = TEACHER_SCHOOLS_SLOTS_PER_PAGE - 1; // 11 écoles max par page
+
+export function paginateTeacherSchools<T>(schools: T[]): T[][] {
+  if (!schools || schools.length === 0) return [[]];
+  const pages: T[][] = [];
+  for (let i = 0; i < schools.length; i += TEACHER_SCHOOLS_PER_PAGE) {
+    pages.push(schools.slice(i, i + TEACHER_SCHOOLS_PER_PAGE));
+  }
+  return pages;
+}
+
+export function getTeacherSchoolsTotalPages(schoolCount: number): number {
+  if (!Number.isFinite(schoolCount) || schoolCount <= 0) return 1;
+  return Math.max(1, Math.ceil(schoolCount / TEACHER_SCHOOLS_PER_PAGE));
+}
+
+export function getTeacherSchoolPageForIndex(schoolIndex: number): number {
+  if (!Number.isFinite(schoolIndex) || schoolIndex <= 0) return 0;
+  return Math.floor(schoolIndex / TEACHER_SCHOOLS_PER_PAGE);
+}
+
+const VALID_DASHBOARD_TABS: readonly TeacherDashboardTab[] = [
+  'dashboard',
+  'trainees',
+  'classes',
+  'discussions',
+  'groups',
+  'library',
+];
+
+function sanitizeDashboardTab(v: unknown): TeacherDashboardTab {
+  if (typeof v === 'string' && (VALID_DASHBOARD_TABS as readonly string[]).includes(v)) {
+    return v as TeacherDashboardTab;
+  }
+  return 'dashboard';
+}
+
+function sanitizePageIndex(v: unknown): number {
+  const n = Number(v);
+  if (!Number.isFinite(n) || n < 0) return 0;
+  return Math.floor(n);
+}
+
+function sanitizePageByYear(raw: unknown): Record<string, number> {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+  const out: Record<string, number> = {};
+  for (const [k, val] of Object.entries(raw as Record<string, unknown>)) {
+    const cleanKey = k.trim();
+    if (!cleanKey) continue;
+    out[cleanKey] = sanitizePageIndex(val);
+  }
+  return out;
+}
+
 export interface TeacherNavSnapshot {
   version: 1;
+  activeNavTab?: TeacherDashboardTab;
   selectedYearId: string | null;
+  schoolsPageIndex?: number;
+  schoolsPageByYear?: Record<string, number>;
   selectedSchoolId: string | null;
   schoolInsideId: string | null;
   selectedLevelId: string | null;
@@ -97,7 +166,10 @@ export interface ResolvedTeacherNav<
   TSubject extends MinimalSubject = MinimalSubject,
   TAvgCard extends MinimalClassAverageCard = MinimalClassAverageCard,
 > {
+  activeNavTab: TeacherDashboardTab;
   selectedYearId: string;
+  schoolsPageIndex: number;
+  schoolsPageByYear: Record<string, number>;
   selectedSchoolId: string | null;
   selectedSchoolInside: TSchool | null;
   selectedLevelId: string | null;
@@ -135,10 +207,21 @@ export function parseTeacherNavSnapshot(raw: string | null): TeacherNavSnapshot 
     const rawExpand = Number(parsed.viewerExpandLevel);
     const viewerExpandLevel: 0 | 1 | 2 | 3 =
       rawExpand === 3 ? 3 : rawExpand === 2 ? 2 : rawExpand === 1 ? 1 : 0;
+    const selectedYearId = sanitizeNullableStr(parsed.selectedYearId);
+    const schoolsPageByYear = sanitizePageByYear(parsed.schoolsPageByYear);
+    const schoolsPageIndex =
+      parsed.schoolsPageIndex !== undefined
+        ? sanitizePageIndex(parsed.schoolsPageIndex)
+        : selectedYearId && schoolsPageByYear[selectedYearId] !== undefined
+        ? schoolsPageByYear[selectedYearId]
+        : 0;
 
     return {
       version: 1,
-      selectedYearId: sanitizeNullableStr(parsed.selectedYearId),
+      activeNavTab: sanitizeDashboardTab(parsed.activeNavTab),
+      selectedYearId,
+      schoolsPageIndex,
+      schoolsPageByYear,
       selectedSchoolId: sanitizeNullableStr(parsed.selectedSchoolId),
       schoolInsideId: sanitizeNullableStr(parsed.schoolInsideId),
       selectedLevelId: sanitizeNullableStr(parsed.selectedLevelId),
@@ -246,7 +329,10 @@ export function resolveTeacherNavSnapshot<
 
   if (!snapshot) {
     return {
+      activeNavTab: 'dashboard',
       selectedYearId: defaultYearId,
+      schoolsPageIndex: 0,
+      schoolsPageByYear: {},
       selectedSchoolId: null,
       selectedSchoolInside: null,
       selectedLevelId: null,
@@ -261,6 +347,13 @@ export function resolveTeacherNavSnapshot<
     };
   }
 
+  const activeNavTab = sanitizeDashboardTab(snapshot.activeNavTab);
+  const rawPageByYear = sanitizePageByYear(snapshot.schoolsPageByYear);
+  const rawActivePage =
+    snapshot.selectedYearId && rawPageByYear[snapshot.selectedYearId] !== undefined
+      ? rawPageByYear[snapshot.selectedYearId]
+      : sanitizePageIndex(snapshot.schoolsPageIndex);
+
   const years = dataset?.schoolYears || [];
   const schools = dataset?.schools || [];
   const levels = dataset?.studyLevels || [];
@@ -271,8 +364,15 @@ export function resolveTeacherNavSnapshot<
 
   const isDatasetEmpty = years.length === 0 && schools.length === 0;
   if (isDatasetEmpty) {
+    const preservedMap: Record<string, number> = { ...rawPageByYear };
+    if (snapshot.selectedYearId && rawActivePage > 0) {
+      preservedMap[snapshot.selectedYearId] = rawActivePage;
+    }
     return {
+      activeNavTab,
       selectedYearId: snapshot.selectedYearId || '',
+      schoolsPageIndex: rawActivePage,
+      schoolsPageByYear: preservedMap,
       selectedSchoolId: snapshot.selectedSchoolId,
       selectedSchoolInside: null,
       selectedLevelId: snapshot.selectedLevelId,
@@ -283,7 +383,9 @@ export function resolveTeacherNavSnapshot<
       selectedAverageCardInside: null,
       isTransferViewOpen: snapshot.isTransferViewOpen,
       viewerExpandLevel: expandLevel,
-      needsCloudHydration: Boolean(snapshot.selectedYearId || hasDeepTarget(snapshot)),
+      needsCloudHydration: Boolean(
+        snapshot.selectedYearId || hasDeepTarget(snapshot) || rawActivePage > 0
+      ),
     };
   }
 
@@ -486,8 +588,31 @@ export function resolveTeacherNavSnapshot<
   const resolvedTransferOpen =
     Boolean(snapshot.isTransferViewOpen) && !resolvedSubject && !resolvedAvgCard;
 
+  // 6. Page horizontale des écoles (12 cartes / page : 1 bouton + 11 écoles)
+  const resolvedPageByYear: Record<string, number> = {};
+  for (const y of years) {
+    const savedForYear =
+      rawPageByYear[y.id] !== undefined
+        ? rawPageByYear[y.id]
+        : y.id === snapshot.selectedYearId
+        ? sanitizePageIndex(snapshot.schoolsPageIndex)
+        : 0;
+    const countForYear = schools.filter((s) => s.yearId === y.id).length;
+    const maxPageForYear = Math.max(0, getTeacherSchoolsTotalPages(countForYear) - 1);
+    if (savedForYear > maxPageForYear && y.id === resolvedYearId) {
+      missingTarget = true;
+    }
+    resolvedPageByYear[y.id] = Math.min(savedForYear, maxPageForYear);
+  }
+  const resolvedSchoolsPageIndex = resolvedYearId
+    ? resolvedPageByYear[resolvedYearId] || 0
+    : 0;
+
   return {
+    activeNavTab,
     selectedYearId: resolvedYearId,
+    schoolsPageIndex: resolvedSchoolsPageIndex,
+    schoolsPageByYear: resolvedPageByYear,
     selectedSchoolId: resolvedSelectedSchoolId,
     selectedSchoolInside: resolvedSchool,
     selectedLevelId: resolvedLevel?.id || null,

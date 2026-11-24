@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  TEACHER_SCHOOLS_GRID_COLUMNS,
+  TEACHER_SCHOOLS_GRID_ROWS,
+  TEACHER_SCHOOLS_PER_PAGE,
+  TEACHER_SCHOOLS_SLOTS_PER_PAGE,
+  getTeacherSchoolPageForIndex,
+  getTeacherSchoolsTotalPages,
+  paginateTeacherSchools,
   parseTeacherNavSnapshot,
   resolveTeacherNavSnapshot,
   type TeacherNavDataset,
@@ -167,4 +174,81 @@ test('parseTeacherNavSnapshot tolère le JSON corrompu et sanitize les champs', 
   assert.equal(parsed?.averageCardKind, 'annual');
   assert.equal(parsed?.viewerExpandLevel, 2);
   assert.equal(parsed?.isTransferViewOpen, true);
+});
+
+test('Pagination horizontale des écoles : 4 colonnes x 3 lignes = 12 cases (1 bouton + et 11 écoles max par page)', () => {
+  assert.equal(TEACHER_SCHOOLS_GRID_COLUMNS, 4);
+  assert.equal(TEACHER_SCHOOLS_GRID_ROWS, 3);
+  assert.equal(TEACHER_SCHOOLS_SLOTS_PER_PAGE, 12);
+  assert.equal(TEACHER_SCHOOLS_PER_PAGE, 11);
+
+  assert.deepEqual(paginateTeacherSchools([]), [[]]);
+  assert.equal(getTeacherSchoolsTotalPages(0), 1);
+  assert.equal(getTeacherSchoolsTotalPages(11), 1);
+  assert.equal(getTeacherSchoolsTotalPages(12), 2);
+  assert.equal(getTeacherSchoolsTotalPages(22), 2);
+  assert.equal(getTeacherSchoolsTotalPages(23), 3);
+
+  const schools12 = Array.from({ length: 12 }, (_, i) => ({ id: `sch-${i + 1}`, yearId: 'y-2026' }));
+  const pages12 = paginateTeacherSchools(schools12);
+  assert.equal(pages12.length, 2);
+  assert.equal(pages12[0].length, 11);
+  assert.equal(pages12[1].length, 1);
+
+  const schools25 = Array.from({ length: 25 }, (_, i) => ({ id: `sch-${i + 1}`, yearId: 'y-2026' }));
+  const pages25 = paginateTeacherSchools(schools25);
+  assert.equal(pages25.length, 3);
+  assert.deepEqual(pages25.map((p) => p.length), [11, 11, 3]);
+
+  assert.equal(getTeacherSchoolPageForIndex(0), 0);
+  assert.equal(getTeacherSchoolPageForIndex(10), 0);
+  assert.equal(getTeacherSchoolPageForIndex(11), 1);
+  assert.equal(getTeacherSchoolPageForIndex(22), 2);
+});
+
+test('Restaure exactement la page horizontale des écoles et l’onglet actif après avoir quitté et rouvert Moyennes', () => {
+  const manySchools = Array.from({ length: 24 }, (_, i) => ({
+    id: `sch-${i + 1}`,
+    yearId: 'y-2026',
+  }));
+  const bigDataset: TeacherNavDataset = {
+    ...SAMPLE_DATASET,
+    schools: [...manySchools, { id: 'sch-y27-1', yearId: 'y-2027' }],
+  };
+
+  // 1. L'utilisateur était sur Page 3 (index 2) des écoles de 2026 - 2027 et quitte l'app Moyennes
+  const serialized = JSON.stringify(
+    makeSnap({
+      activeNavTab: 'dashboard',
+      selectedYearId: 'y-2026',
+      schoolsPageIndex: 2,
+      schoolsPageByYear: { 'y-2026': 2, 'y-2027': 0 },
+    })
+  );
+  const parsed = parseTeacherNavSnapshot(serialized);
+  assert.ok(parsed);
+  assert.equal(parsed.schoolsPageIndex, 2);
+  assert.equal(parsed.schoolsPageByYear?.['y-2026'], 2);
+
+  // 2. Avant hydratation cloud (cache vide), la page est conservée et needsCloudHydration = true
+  const beforeCloud = resolveTeacherNavSnapshot(parsed, null);
+  assert.equal(beforeCloud.needsCloudHydration, true);
+  assert.equal(beforeCloud.schoolsPageIndex, 2);
+  assert.equal(beforeCloud.schoolsPageByYear['y-2026'], 2);
+
+  // 3. Une fois les 24 écoles chargées (3 pages), l'utilisateur retombe exactement sur Page 3 (index 2)
+  const resolved = resolveTeacherNavSnapshot(parsed, bigDataset);
+  assert.equal(resolved.needsCloudHydration, false);
+  assert.equal(resolved.selectedYearId, 'y-2026');
+  assert.equal(resolved.schoolsPageIndex, 2);
+  assert.equal(resolved.schoolsPageByYear['y-2026'], 2);
+
+  // 4. Si des écoles ont été supprimées ailleurs (plus que 12 écoles -> 2 pages max), clamp propre à l'index 1
+  const smallerDataset: TeacherNavDataset = {
+    ...SAMPLE_DATASET,
+    schools: manySchools.slice(0, 12),
+  };
+  const clamped = resolveTeacherNavSnapshot(parsed, smallerDataset);
+  assert.equal(clamped.schoolsPageIndex, 1);
+  assert.equal(clamped.schoolsPageByYear['y-2026'], 1);
 });
