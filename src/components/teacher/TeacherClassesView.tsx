@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import {
   LayoutDashboard,
@@ -835,9 +835,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     () => initialResolvedNav.viewerExpandLevel >= 1
   );
 
-  // Restaurer le niveau d'agrandissement si l'utilisateur était agrandi / plein écran avant rechargement,
+  // Restaurer le niveau d'agrandissement avant la peinture (synchronisé atomiquement avec FoldersView/Sidebar/App via useSyncExternalStore)
   // et nettoyer uniquement au démontage réel du module
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (initialResolvedNav.viewerExpandLevel >= 1) {
       setViewerExpandLevel(initialResolvedNav.viewerExpandLevel);
       setIsViewerMaximized(true);
@@ -3370,7 +3370,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
     <div 
       className={`w-full flex flex-col md:flex-row overflow-hidden font-sans select-none transition-all duration-300 ${
         viewerExpandLevel >= 2
-          ? 'fixed inset-0 z-50 w-screen h-screen min-h-screen'
+          ? 'fixed inset-0 z-[60] w-screen h-screen min-h-screen'
           : 'relative w-full h-full min-h-0 flex-1'
       } ${selectedSchoolInside ? 'bg-[#eef2f6] dark:bg-[#0b1120]' : 'bg-[#091226]'}`}
     >

@@ -1449,7 +1449,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       )}
 
       {/* Fixed Header bar with action buttons - Masqué en mode agrandi (viewerExpandLevel >= 1) */}
-      <div className={`fixed top-0 left-0 right-0 ${viewerExpandLevel >= 2 ? 'md:left-0' : 'md:left-64'} z-40 px-3 md:px-6 py-2 h-[64px] md:h-[68px] flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${viewerExpandLevel >= 1 ? '!hidden pointer-events-none' : ''
+      <div
+        aria-hidden={viewerExpandLevel >= 1}
+        style={viewerExpandLevel >= 1 ? { display: 'none' } : undefined}
+        className={`fixed top-0 left-0 right-0 ${viewerExpandLevel >= 2 ? 'md:left-0' : 'md:left-64'} z-40 px-3 md:px-6 py-2 h-[64px] md:h-[68px] flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${viewerExpandLevel >= 1 ? '!hidden pointer-events-none' : ''
         } ${dashboardWallpaper && viewMode === 'home'
           ? 'bg-transparent border-b-2 border-white/50 text-white shadow-sm'
           : isDarkHeader
@@ -2324,7 +2327,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'level-menu' && <LevelMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'teacher-classes-menu' && (
-        <div className={`fixed inset-x-0 ${viewerExpandLevel >= 2 ? 'md:left-0 md:w-full z-50' : 'md:left-64 md:w-[calc(100%-16rem)] z-30'} md:right-0 bottom-0 ${viewerExpandLevel >= 1 ? 'top-0' : 'top-[64px] md:top-[68px]'} overflow-hidden transition-all duration-300`}>
+        <div className={`fixed inset-x-0 ${viewerExpandLevel >= 2 ? 'md:left-0 md:w-full z-[60]' : viewerExpandLevel >= 1 ? 'md:left-64 md:w-[calc(100%-16rem)] z-50' : 'md:left-64 md:w-[calc(100%-16rem)] z-30'} md:right-0 bottom-0 ${viewerExpandLevel >= 1 ? 'top-0' : 'top-[64px] md:top-[68px]'} overflow-hidden transition-all duration-300`}>
           <TeacherClassesView
             onBack={() => {
               resetViewerExpand();
