@@ -430,12 +430,19 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
   const [isImportingFiles, setIsImportingFiles] = useState(false);
   const [fileUploadWarning, setFileUploadWarning] = useState<string | null>(null);
 
-  // État d'envoi IA & écriture en direct
+  // État d'envoi IA & exécution parallèle multi-conversations (en arrière-plan sans blocage)
   const [inputValue, setInputValue] = useState('');
-  const [isThinking, setIsThinking] = useState(false);
-  const [isStreamingReply, setIsStreamingReply] = useState(false);
-  const [thinkingLabel, setThinkingLabel] = useState<string>('Assistant Delmas réfléchit...');
+  const [runningLabelByConv, setRunningLabelByConv] = useState<Record<string, string>>({});
+  const [streamingConvIds, setStreamingConvIds] = useState<Set<string>>(() => new Set());
+  const [unreadCompletedConvIds, setUnreadCompletedConvIds] = useState<Set<string>>(() => new Set());
+  const isThinking = Boolean(runningLabelByConv[currentConversationId]);
+  const thinkingLabel =
+    runningLabelByConv[currentConversationId] || 'Assistant Delmas réfléchit...';
+  const isStreamingReply = streamingConvIds.has(currentConversationId);
   const isGenerating = isThinking || isStreamingReply;
+  const otherRunningCount = Object.keys(runningLabelByConv).filter(
+    (id) => id !== currentConversationId
+  ).length;
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   const [openCreditsMsgIds, setOpenCreditsMsgIds] = useState<Set<string>>(() => new Set());
   const [tokensPerCredit, setTokensPerCredit] = useState<number>(() => getActiveTokensPerCredit());
@@ -614,28 +621,39 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const messagesScrollRef = useRef<HTMLDivElement>(null);
-  const abortControllerRef = useRef<AbortController | null>(null);
-  const typingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const activeControllersByConvRef = useRef<Map<string, AbortController>>(new Map());
+  const typingTimersByConvRef = useRef<Map<string, ReturnType<typeof setInterval>>>(new Map());
   const welcomeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const isUserScrolledUpRef = useRef<boolean>(false);
   const currentConversationIdRef = useRef<string>(currentConversationId);
+  const sheetBridgeRef = useRef<TeacherDelmasSheetBridge | null | undefined>(sheetBridge);
+  sheetBridgeRef.current = sheetBridge;
+  const isMountedRef = useRef<boolean>(true);
   const resolvedKimiModelRef = useRef<ResolvedBackgroundModel>(getCachedKimiBackgroundModel());
-  const activeStreamSaveRef = useRef<{
-    conversationId: string;
-    autoTitle: string;
-    language: string;
-    userMsgId: string;
-    aiMsgId: string;
-    promptText: string;
-    attachmentMetaList: any[];
-    userCreatedAt: number;
-    appliedSummaries: string[];
-    tokens: number;
-    credits: number;
-    liveContext: any;
-    currentText: string;
-    saved: boolean;
-  } | null>(null);
+  const liveMessagesByConvRef = useRef<Map<string, UiChatMessage[]>>(new Map());
+  const pendingStreamsByConvRef = useRef<
+    Map<
+      string,
+      {
+        conversationId: string;
+        autoTitle: string;
+        language: string;
+        userMsgId: string;
+        aiMsgId: string;
+        promptText: string;
+        attachmentMetaList: any[];
+        userCreatedAt: number;
+        appliedSummaries: string[];
+        actionsPayload?: any[];
+        tokens: number;
+        credits: number;
+        liveContext: any;
+        currentText: string;
+        fullText?: string;
+        saved: boolean;
+      }
+    >
+  >(new Map());
 
   useEffect(() => {
     currentConversationIdRef.current = currentConversationId;
@@ -692,20 +710,16 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     };
   }, [isOpen, chatLanguage, messages.length === 0]);
 
-  // Nettoyage complet des timers au démontage
+  // Nettoyage des timers visuels au démontage (sans annuler les requêtes IA en arrière-plan pour garantir leur sauvegarde D1)
   useEffect(() => {
+    isMountedRef.current = true;
     return () => {
-      if (typingTimerRef.current) {
-        clearInterval(typingTimerRef.current);
-        typingTimerRef.current = null;
-      }
+      isMountedRef.current = false;
+      typingTimersByConvRef.current.forEach((timer) => clearInterval(timer));
+      typingTimersByConvRef.current.clear();
       if (welcomeTimerRef.current) {
         clearInterval(welcomeTimerRef.current);
         welcomeTimerRef.current = null;
-      }
-      if (abortControllerRef.current) {
-        abortControllerRef.current.abort();
-        abortControllerRef.current = null;
       }
     };
   }, []);
@@ -830,21 +844,134 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     }
   };
 
-  const stopActiveTypingTimer = () => {
-    if (typingTimerRef.current) {
-      clearInterval(typingTimerRef.current);
-      typingTimerRef.current = null;
-    }
-  };
+  const getSheetContextKey = (ctx: any): string =>
+    ctx
+      ? `${ctx.sheetKind || 'subject'}::${ctx.classId || ''}::${ctx.termId || ''}::${ctx.subjectId || ''}`
+      : '';
 
-  // Créer une nouvelle discussion (+)
-  const handleStartNewConversation = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+  const setConvRunningLabel = useCallback((convId: string, label: string | null) => {
+    if (!isMountedRef.current) return;
+    setRunningLabelByConv((prev) => {
+      if (label === null) {
+        if (!(convId in prev)) return prev;
+        const next = { ...prev };
+        delete next[convId];
+        return next;
+      }
+      if (prev[convId] === label) return prev;
+      return { ...prev, [convId]: label };
+    });
+  }, []);
+
+  const setConvStreaming = useCallback((convId: string, active: boolean) => {
+    if (!isMountedRef.current) return;
+    setStreamingConvIds((prev) => {
+      const has = prev.has(convId);
+      if (active && has) return prev;
+      if (!active && !has) return prev;
+      const next = new Set(prev);
+      if (active) next.add(convId);
+      else next.delete(convId);
+      return next;
+    });
+  }, []);
+
+  const stopConvTypingTimer = useCallback((convId: string) => {
+    const timer = typingTimersByConvRef.current.get(convId);
+    if (timer) {
+      clearInterval(timer);
+      typingTimersByConvRef.current.delete(convId);
     }
-    stopActiveTypingTimer();
-    activeStreamSaveRef.current = null;
+  }, []);
+
+  const upsertOptimisticConversation = useCallback(
+    (convId: string, title: string, liveCtx: any) => {
+      if (!isMountedRef.current) return;
+      const nowTs = Date.now();
+      const uid = resolveActiveUserId() || null;
+      setConversations((prev) => {
+        const idx = prev.findIndex((c) => c.id === convId);
+        let next: TeacherDelmasConversationSummary[];
+        if (idx >= 0) {
+          const updated = {
+            ...prev[idx],
+            title: prev[idx].title === 'Nouvelle discussion' ? title : prev[idx].title,
+            updatedAt: nowTs,
+          };
+          next = [updated, ...prev.filter((_, i) => i !== idx)];
+        } else {
+          const optimistic: TeacherDelmasConversationSummary = {
+            id: convId,
+            title,
+            language: chatLanguage,
+            contextYearId: liveCtx?.yearId || null,
+            contextSchoolId: liveCtx?.schoolId || null,
+            contextClassId: liveCtx?.classId || null,
+            contextTermId: liveCtx?.termId || null,
+            contextSubjectId: liveCtx?.subjectId || null,
+            contextSheetKind: liveCtx?.sheetKind || 'subject',
+            isPinned: false,
+            pinnedAt: null,
+            filesCount: 0,
+            createdAt: nowTs,
+            updatedAt: nowTs,
+          };
+          next = [optimistic, ...prev];
+        }
+        writeCachedDelmasConversations(uid, next);
+        return next;
+      });
+    },
+    [chatLanguage, resolveActiveUserId]
+  );
+
+  // Si l'utilisateur quitte une conversation en pleine écriture caractère par caractère,
+  // finalise instantanément son texte complet en mémoire + D1 sans jamais interrompre les autres tâches !
+  const flushVisibleTypingOnSwitch = useCallback(
+    (leavingConvId: string) => {
+      if (!typingTimersByConvRef.current.has(leavingConvId)) return;
+      stopConvTypingTimer(leavingConvId);
+      setConvStreaming(leavingConvId, false);
+      const meta = pendingStreamsByConvRef.current.get(leavingConvId);
+      if (meta && !meta.saved) {
+        const completeText = (meta.fullText || meta.currentText || '').trim();
+        if (completeText) {
+          const prevList = liveMessagesByConvRef.current.get(leavingConvId) || [];
+          const finalAiMsg: UiChatMessage = {
+            id: meta.aiMsgId,
+            sender: 'ai',
+            content: completeText,
+            actions: meta.actionsPayload || [],
+            appliedSummaries: meta.appliedSummaries,
+            tokens: meta.tokens,
+            credits: meta.credits,
+            credits_deducted: meta.credits,
+            isStreaming: false,
+            createdAt: Date.now(),
+          };
+          const mergedList = prevList.some((m) => m.id === meta.aiMsgId)
+            ? prevList.map((m) => (m.id === meta.aiMsgId ? finalAiMsg : m))
+            : [...prevList, finalAiMsg];
+          liveMessagesByConvRef.current.set(leavingConvId, mergedList);
+          const uid = resolveActiveUserId() || null;
+          cacheDelmasConvDetails(uid, leavingConvId, mergedList, conversationFiles);
+          // La persistance D1 est déclenchée via la fonction dédiée
+          meta.currentText = completeText;
+        }
+      }
+    },
+    [conversationFiles, resolveActiveUserId, setConvStreaming, stopConvTypingTimer]
+  );
+
+  // Créer une nouvelle discussion (+) — NE JAMAIS annuler les tâches en cours dans les autres discussions !
+  const handleStartNewConversation = () => {
+    const leavingId = currentConversationIdRef.current;
+    flushVisibleTypingOnSwitch(leavingId);
+    const pendingMeta = pendingStreamsByConvRef.current.get(leavingId);
+    if (pendingMeta && !pendingMeta.saved && pendingMeta.fullText) {
+      persistStreamedExchangeToD1(leavingId, pendingMeta.fullText);
+    }
+
     const newId = generateTeacherEntityId('tdconv');
     currentConversationIdRef.current = newId;
     setCurrentConversationId(newId);
@@ -858,23 +985,22 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     setIsFilesFolderOpen(false);
     setIsHistoryDrawerOpen(false);
     setOpenConvMenuId(null);
-    setIsThinking(false);
-    setIsStreamingReply(false);
     setInputValue('');
     isUserScrolledUpRef.current = false;
     setTimeout(() => textareaRef.current?.focus(), 50);
   };
 
-  // Ouvrir une conversation existante depuis l'historique (charge ses messages + son dossier de fichiers liés)
+  // Ouvrir une conversation existante depuis l'historique — conserve toutes les autres tâches actives en arrière-plan !
   const handleLoadConversation = async (conv: TeacherDelmasConversationSummary) => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+    const leavingId = currentConversationIdRef.current;
+    if (leavingId !== conv.id) {
+      flushVisibleTypingOnSwitch(leavingId);
+      const pendingMeta = pendingStreamsByConvRef.current.get(leavingId);
+      if (pendingMeta && !pendingMeta.saved && pendingMeta.fullText) {
+        persistStreamedExchangeToD1(leavingId, pendingMeta.fullText);
+      }
     }
-    stopActiveTypingTimer();
-    activeStreamSaveRef.current = null;
-    setIsThinking(false);
-    setIsStreamingReply(false);
+
     setOpenConvMenuId(null);
     setIsHistoryDrawerOpen(false);
     currentConversationIdRef.current = conv.id;
@@ -886,11 +1012,25 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     setPendingAttachments([]);
     setFileUploadWarning(null);
     setOpenCreditsMsgIds(new Set());
+    setUnreadCompletedConvIds((prev) => {
+      if (!prev.has(conv.id)) return prev;
+      const next = new Set(prev);
+      next.delete(conv.id);
+      return next;
+    });
     isUserScrolledUpRef.current = false;
 
     const uid = resolveActiveUserId() || null;
+    const liveMemMsgs = liveMessagesByConvRef.current.get(conv.id);
     const cachedDetail = uid ? delmasConvDetailsMemCache.get(`${uid}::${conv.id}`) : undefined;
-    if (cachedDetail) {
+    const isConvInFlight = activeControllersByConvRef.current.has(conv.id);
+
+    if (liveMemMsgs && liveMemMsgs.length > 0) {
+      setMessages(liveMemMsgs);
+      if (cachedDetail) setConversationFiles(cachedDetail.files);
+      else setConversationFiles([]);
+      setIsLoadingConversationMessages(false);
+    } else if (cachedDetail) {
       setMessages(cachedDetail.messages);
       setConversationFiles(cachedDetail.files);
       setIsLoadingConversationMessages(false);
@@ -900,10 +1040,14 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       setIsLoadingConversationMessages(Boolean(getTeacherAuthToken()));
     }
 
-    if (!getTeacherAuthToken()) return;
+    if (!getTeacherAuthToken() || isConvInFlight) return;
     try {
       const res = await TeacherGradebookAPI.getDelmasConversation(conv.id);
-      if (res?.success && currentConversationIdRef.current === conv.id) {
+      if (
+        res?.success &&
+        currentConversationIdRef.current === conv.id &&
+        !activeControllersByConvRef.current.has(conv.id)
+      ) {
         const mappedMessages: UiChatMessage[] = (res.messages || []).map(
           (m: TeacherDelmasMessageRecord) => ({
             id: m.id,
@@ -925,9 +1069,13 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           })
         );
         const mappedFiles = res.files || [];
-        setMessages(mappedMessages);
+        // Si une exécution locale vient tout juste d'ajouter des messages en RAM avant D1, ne pas régresser
+        const latestLive = liveMessagesByConvRef.current.get(conv.id);
+        const bestMessages =
+          latestLive && latestLive.length > mappedMessages.length ? latestLive : mappedMessages;
+        setMessages(bestMessages);
         setConversationFiles(mappedFiles);
-        cacheDelmasConvDetails(uid, conv.id, mappedMessages, mappedFiles);
+        cacheDelmasConvDetails(uid, conv.id, bestMessages, mappedFiles);
       }
     } catch {
       // Silencieux en cas d'erreur réseau
@@ -959,8 +1107,25 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     }
   };
 
-  // Supprimer une discussion et son dossier de fichiers R2
+  // Supprimer une discussion et son dossier de fichiers R2 (annule uniquement SA tâche si en cours)
   const handleDeleteConversation = async (convId: string) => {
+    const ctrl = activeControllersByConvRef.current.get(convId);
+    if (ctrl) {
+      ctrl.abort();
+      activeControllersByConvRef.current.delete(convId);
+    }
+    stopConvTypingTimer(convId);
+    setConvRunningLabel(convId, null);
+    setConvStreaming(convId, false);
+    pendingStreamsByConvRef.current.delete(convId);
+    liveMessagesByConvRef.current.delete(convId);
+    setUnreadCompletedConvIds((prev) => {
+      if (!prev.has(convId)) return prev;
+      const next = new Set(prev);
+      next.delete(convId);
+      return next;
+    });
+
     const uid = resolveActiveUserId() || null;
     if (uid) {
       delmasConvDetailsMemCache.delete(`${uid}::${convId}`);
@@ -1203,15 +1368,18 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
   };
 
   const persistStreamedExchangeToD1 = useCallback(
-    async (finalTextOverride?: string) => {
-      const meta = activeStreamSaveRef.current;
+    async (convId: string, finalTextOverride?: string) => {
+      const meta = pendingStreamsByConvRef.current.get(convId);
       if (!meta || meta.saved) return;
       meta.saved = true;
 
       const textToSave = (finalTextOverride ?? meta.currentText ?? '').trim();
-      if (!getTeacherAuthToken() || !textToSave) return;
+      if (!getTeacherAuthToken() || !textToSave) {
+        pendingStreamsByConvRef.current.delete(convId);
+        return;
+      }
 
-      if (currentConversationIdRef.current === meta.conversationId) {
+      if (isMountedRef.current && currentConversationIdRef.current === meta.conversationId) {
         setCurrentConversationTitle(meta.autoTitle);
       }
 
@@ -1246,6 +1414,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         });
       } catch (saveErr: any) {
         if (
+          isMountedRef.current &&
           (saveErr?.isStorageLimitExceeded || saveErr?.status === 413) &&
           currentConversationIdRef.current === meta.conversationId
         ) {
@@ -1262,31 +1431,38 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
             },
           ]);
         }
+      } finally {
+        pendingStreamsByConvRef.current.delete(convId);
       }
 
       const uid = resolveActiveUserId() || null;
-      if (uid) {
+      if (uid && !liveMessagesByConvRef.current.has(meta.conversationId)) {
         delmasConvDetailsMemCache.delete(`${uid}::${meta.conversationId}`);
       }
-      refreshConversationsOnly();
+      if (isMountedRef.current) {
+        refreshConversationsOnly();
+      }
     },
     [refreshConversationsOnly, resolveActiveUserId]
   );
 
-  // Arrêter la génération ou l'écriture en direct (conserve proprement le texte déjà écrit)
+  // Arrêter UNIQUEMENT la génération de la conversation actuellement affichée (les autres discussions continuent en arrière-plan !)
   const handleStopGeneration = () => {
-    if (abortControllerRef.current) {
-      abortControllerRef.current.abort();
-      abortControllerRef.current = null;
+    const activeConvId = currentConversationIdRef.current;
+    const ctrl = activeControllersByConvRef.current.get(activeConvId);
+    if (ctrl) {
+      ctrl.abort();
+      activeControllersByConvRef.current.delete(activeConvId);
     }
-    stopActiveTypingTimer();
+    stopConvTypingTimer(activeConvId);
     setMessages((prev) =>
       prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
     );
-    setIsThinking(false);
-    setIsStreamingReply(false);
-    if (activeStreamSaveRef.current && !activeStreamSaveRef.current.saved) {
-      persistStreamedExchangeToD1(activeStreamSaveRef.current.currentText);
+    setConvRunningLabel(activeConvId, null);
+    setConvStreaming(activeConvId, false);
+    const meta = pendingStreamsByConvRef.current.get(activeConvId);
+    if (meta && !meta.saved) {
+      persistStreamedExchangeToD1(activeConvId, meta.currentText);
     }
   };
 
@@ -1339,8 +1515,13 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       return;
     }
 
-    stopActiveTypingTimer();
-    activeStreamSaveRef.current = null;
+    const targetConversationId = currentConversationId;
+    const targetConversationTitle = currentConversationTitle;
+    const targetLanguage = chatLanguage;
+    const targetSheetKey = getSheetContextKey(liveContext);
+
+    stopConvTypingTimer(targetConversationId);
+    pendingStreamsByConvRef.current.delete(targetConversationId);
     isUserScrolledUpRef.current = false;
 
     const promptText =
@@ -1349,10 +1530,13 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         ? `Peux-tu lire ce fichier « ${currentAttachments[0].fileName} » ?`
         : `Peux-tu lire ces ${currentAttachments.length} fichiers joints ?`);
 
-    const targetConversationId = currentConversationId;
     const userMsgId = generateTeacherEntityId('tdmsg');
     const aiMsgId = generateTeacherEntityId('tdmsg');
     const now = Date.now();
+    const autoTitle =
+      targetConversationTitle === 'Nouvelle discussion'
+        ? promptText.replace(/\s+/g, ' ').slice(0, 70)
+        : targetConversationTitle;
 
     const attachmentMetaList = currentAttachments.map((f) => ({
       id: f.id,
@@ -1372,7 +1556,11 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       createdAt: now,
     };
 
-    setMessages([...messages, userMessage]);
+    const messagesWithUser = [...messages, userMessage];
+    liveMessagesByConvRef.current.set(targetConversationId, messagesWithUser);
+    upsertOptimisticConversation(targetConversationId, autoTitle, liveContext);
+
+    setMessages(messagesWithUser);
     setInputValue('');
     setPendingAttachments([]);
     setFileUploadWarning(null);
@@ -1395,50 +1583,51 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         appliedSummaries.length,
         appliedSummaries
       );
-      const autoTitle =
-        currentConversationTitle === 'Nouvelle discussion'
-          ? promptText.replace(/\s+/g, ' ').slice(0, 70)
-          : currentConversationTitle;
       const actionsPayload = localResolution.actions.map((a, idx) => ({
         ...a,
         summary: appliedSummaries[idx] || undefined,
       }));
 
-      activeStreamSaveRef.current = {
+      const completedAiMsg: UiChatMessage = {
+        id: aiMsgId,
+        sender: 'ai',
+        content: finalText,
+        actions: actionsPayload,
+        appliedSummaries,
+        tokens: 0,
+        credits: 0,
+        credits_deducted: 0,
+        isStreaming: false,
+        createdAt: Date.now(),
+      };
+      const finalConvMessages = [...messagesWithUser, completedAiMsg];
+      liveMessagesByConvRef.current.set(targetConversationId, finalConvMessages);
+      const uid = resolveActiveUserId() || null;
+      cacheDelmasConvDetails(uid, targetConversationId, finalConvMessages, allConvFiles);
+
+      pendingStreamsByConvRef.current.set(targetConversationId, {
         conversationId: targetConversationId,
         autoTitle,
-        language: chatLanguage,
+        language: targetLanguage,
         userMsgId,
         aiMsgId,
         promptText,
         attachmentMetaList,
         userCreatedAt: now,
         appliedSummaries,
+        actionsPayload,
         tokens: 0,
         credits: 0,
         liveContext,
         currentText: finalText,
+        fullText: finalText,
         saved: false,
-      };
+      });
 
-      if (currentConversationIdRef.current === targetConversationId) {
-        setMessages((prev) => [
-          ...prev,
-          {
-            id: aiMsgId,
-            sender: 'ai',
-            content: finalText,
-            actions: actionsPayload,
-            appliedSummaries,
-            tokens: 0,
-            credits: 0,
-            credits_deducted: 0,
-            isStreaming: false,
-            createdAt: Date.now(),
-          },
-        ]);
+      if (isMountedRef.current && currentConversationIdRef.current === targetConversationId) {
+        setMessages(finalConvMessages);
       }
-      await persistStreamedExchangeToD1(finalText);
+      await persistStreamedExchangeToD1(targetConversationId, finalText);
       return;
     }
 
@@ -1455,7 +1644,8 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       })),
     });
 
-    setThinkingLabel(
+    setConvRunningLabel(
+      targetConversationId,
       hasNewAttachments
         ? 'Lecture du fichier en cours...'
         : intentResult.intent === 'action'
@@ -1464,11 +1654,10 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         ? 'Analyse en cours...'
         : 'Assistant Delmas réfléchit...'
     );
-    setIsThinking(true);
-    setIsStreamingReply(false);
+    setConvStreaming(targetConversationId, false);
 
     const controller = new AbortController();
-    abortControllerRef.current = controller;
+    activeControllersByConvRef.current.set(targetConversationId, controller);
 
     try {
       const systemPrompt = liveContext
@@ -1685,13 +1874,12 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         }
       }
 
-      // Si l'utilisateur a annulé ou changé de conversation pendant la requête
-      if (
-        controller.signal.aborted ||
-        currentConversationIdRef.current !== targetConversationId
-      ) {
-        setIsThinking(false);
-        setIsStreamingReply(false);
+      // Si l'utilisateur a explicitement cliqué sur Stop / supprimé CETTE conversation : on arrête proprement.
+      // En revanche, s'il a simplement changé de conversation ou créé une nouvelle discussion, ON CONTINUE EN ARRIÈRE-PLAN !
+      if (controller.signal.aborted) {
+        activeControllersByConvRef.current.delete(targetConversationId);
+        setConvRunningLabel(targetConversationId, null);
+        setConvStreaming(targetConversationId, false);
         return;
       }
 
@@ -1721,16 +1909,16 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       // Auto-récupération silencieuse (1 essai) si l'IA a affirmé avoir fait l'action mais a oublié le bloc <delmas_actions>
       const claimedActionWithoutBlock =
         safeActions.length === 0 &&
-        Boolean(sheetBridge) &&
+        Boolean(sheetBridgeRef.current) &&
         Boolean(liveContext) &&
         (looksLikeUnfulfilledActionClaim(parsed.chatResponse) ||
           looksLikeFalseNoAccessHallucination(parsed.chatResponse));
 
       if (claimedActionWithoutBlock && intentResult.intent === 'action') {
         try {
-          setThinkingLabel('Application sur le tableau...');
+          setConvRunningLabel(targetConversationId, 'Application sur le tableau...');
           const recoverySystemPrompt = buildTeacherDelmasSystemPrompt({
-            languageCode: chatLanguage,
+            languageCode: targetLanguage,
             activeContext: liveContext!,
             workspaceSnapshot,
             conversationFiles: allConvFiles,
@@ -1771,10 +1959,24 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         }
       }
 
-      // Exécution immédiate des actions demandées sur le tableau ouvert
+      if (controller.signal.aborted) {
+        activeControllersByConvRef.current.delete(targetConversationId);
+        setConvRunningLabel(targetConversationId, null);
+        setConvStreaming(targetConversationId, false);
+        return;
+      }
+
+      // Exécution immédiate des actions demandées sur le tableau cible (y compris si l'utilisateur a ouvert une autre discussion en parallèle !)
+      // Sécurité anti-croisement : n'applique les actions QUE si le tableau ouvert correspond toujours au même contexte matière/classe.
       let appliedSummaries: string[] = [];
-      if (safeActions.length > 0 && sheetBridge) {
-        const resSummaries = await sheetBridge.executeActions(
+      const activeBridge = sheetBridgeRef.current;
+      const currentLiveCtx = activeBridge ? activeBridge.getContext() : null;
+      const sheetStillMatches =
+        Boolean(activeBridge) &&
+        (!targetSheetKey || getSheetContextKey(currentLiveCtx) === targetSheetKey);
+
+      if (safeActions.length > 0 && activeBridge && sheetStillMatches) {
+        const resSummaries = await activeBridge.executeActions(
           safeActions,
           workspaceSnapshot
         );
@@ -1783,12 +1985,10 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         }
       }
 
-      if (
-        controller.signal.aborted ||
-        currentConversationIdRef.current !== targetConversationId
-      ) {
-        setIsThinking(false);
-        setIsStreamingReply(false);
+      if (controller.signal.aborted) {
+        activeControllersByConvRef.current.delete(targetConversationId);
+        setConvRunningLabel(targetConversationId, null);
+        setConvStreaming(targetConversationId, false);
         return;
       }
 
@@ -1803,15 +2003,15 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         (looksLikeUnfulfilledActionClaim(parsed.chatResponse) ||
           looksLikeFalseNoAccessHallucination(parsed.chatResponse))
       ) {
-        const l = (chatLanguage || 'fr').toLowerCase();
-        fullResponseText = l.startsWith('en')
+        const l = (targetLanguage || 'fr').toLowerCase();
+        fullResponseText = !sheetStillMatches && safeActions.length > 0
+          ? l.startsWith('en')
+            ? 'The response finished after you navigated away from the original sheet, so no change was applied to another sheet.'
+            : "La réponse s'est terminée après votre changement de matière ; aucune modification n'a été appliquée sur un autre tableau."
+          : l.startsWith('en')
           ? 'No change was applied to the table yet. Tell me the exact action (for example: "clear all", "clear grades", "clear names", or update a specific student) and I will execute it directly.'
           : "Aucune modification n'a encore été appliquée sur le tableau. Précisez simplement l'action souhaitée (par exemple : « vider tout », « effacer les notes », « effacer les noms » ou l'élève concerné) et je l'exécute directement.";
       }
-      const autoTitle =
-        currentConversationTitle === 'Nouvelle discussion'
-          ? promptText.replace(/\s+/g, ' ').slice(0, 70)
-          : currentConversationTitle;
 
       const actionsPayload = safeActions.map((a, idx) => ({
         ...a,
@@ -1824,11 +2024,11 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         Math.ceil(((promptText || '').length + (fullResponseText || '').length) / 3.8)
       );
       const respTokens =
-        (typeof aiRes.tokens === 'number' && aiRes.tokens > 0
+        typeof aiRes.tokens === 'number' && aiRes.tokens > 0
           ? aiRes.tokens
           : typeof aiRes.usage?.totalTokens === 'number' && aiRes.usage.totalTokens > 0
           ? aiRes.usage.totalTokens
-          : estimatedTokens);
+          : estimatedTokens;
       const respCredits =
         typeof aiRes.credits_deducted === 'number' && aiRes.credits_deducted > 0
           ? aiRes.credits_deducted
@@ -1839,76 +2039,81 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           ? aiRes.credits
           : convertTokensToCredits(respTokens, tokensPerCredit);
 
-      activeStreamSaveRef.current = {
+      pendingStreamsByConvRef.current.set(targetConversationId, {
         conversationId: targetConversationId,
         autoTitle,
-        language: chatLanguage,
+        language: targetLanguage,
         userMsgId,
         aiMsgId,
         promptText,
         attachmentMetaList,
         userCreatedAt: now,
         appliedSummaries,
+        actionsPayload,
         tokens: respTokens,
         credits: respCredits,
         liveContext,
         currentText: '',
+        fullText: fullResponseText,
         saved: false,
-      };
+      });
 
-      setIsThinking(false);
-      abortControllerRef.current = null;
+      activeControllersByConvRef.current.delete(targetConversationId);
+      setConvRunningLabel(targetConversationId, null);
 
       const finalizeLiveMessage = (finalText: string) => {
-        stopActiveTypingTimer();
-        setIsStreamingReply(false);
-        if (currentConversationIdRef.current === targetConversationId) {
-          setMessages((prev) => {
-            const exists = prev.some((m) => m.id === aiMsgId);
-            if (!exists) {
-              return [
-                ...prev,
-                {
-                  id: aiMsgId,
-                  sender: 'ai',
-                  content: finalText,
-                  actions: actionsPayload,
-                  appliedSummaries,
-                  tokens: respTokens,
-                  credits: respCredits,
-                  credits_deducted: respCredits,
-                  isStreaming: false,
-                  createdAt: Date.now(),
-                },
-              ];
-            }
-            return prev.map((m) =>
-              m.id === aiMsgId
-                ? {
-                    ...m,
-                    content: finalText,
-                    actions: actionsPayload,
-                    appliedSummaries,
-                    tokens: respTokens,
-                    credits: respCredits,
-                    credits_deducted: respCredits,
-                    isStreaming: false,
-                  }
-                : m
-            );
-          });
+        stopConvTypingTimer(targetConversationId);
+        setConvStreaming(targetConversationId, false);
+        const completedMsg: UiChatMessage = {
+          id: aiMsgId,
+          sender: 'ai',
+          content: finalText,
+          actions: actionsPayload,
+          appliedSummaries,
+          tokens: respTokens,
+          credits: respCredits,
+          credits_deducted: respCredits,
+          isStreaming: false,
+          createdAt: Date.now(),
+        };
+        const baseLive = liveMessagesByConvRef.current.get(targetConversationId) || messagesWithUser;
+        const mergedLive = baseLive.some((m) => m.id === aiMsgId)
+          ? baseLive.map((m) => (m.id === aiMsgId ? completedMsg : m))
+          : [...baseLive, completedMsg];
+        liveMessagesByConvRef.current.set(targetConversationId, mergedLive);
+        const uid = resolveActiveUserId() || null;
+        cacheDelmasConvDetails(uid, targetConversationId, mergedLive, allConvFiles);
+
+        if (isMountedRef.current) {
+          if (currentConversationIdRef.current === targetConversationId) {
+            setMessages((prev) => {
+              const exists = prev.some((m) => m.id === aiMsgId);
+              if (!exists) return [...prev, completedMsg];
+              return prev.map((m) => (m.id === aiMsgId ? completedMsg : m));
+            });
+          } else {
+            setUnreadCompletedConvIds((prev) => {
+              const next = new Set(prev);
+              next.add(targetConversationId);
+              return next;
+            });
+          }
         }
-        persistStreamedExchangeToD1(finalText);
+        persistStreamedExchangeToD1(targetConversationId, finalText);
       };
 
-      // Si l'onglet est en arrière-plan, on finalise directement ; sinon écriture EN DIRECT !
-      if (typeof document !== 'undefined' && document.hidden) {
+      // Si l'utilisateur consulte une AUTRE conversation ou si l'onglet est en arrière-plan : finalisation instantanée en arrière-plan + sauvegarde D1 !
+      if (
+        !isMountedRef.current ||
+        currentConversationIdRef.current !== targetConversationId ||
+        (typeof document !== 'undefined' && document.hidden)
+      ) {
         finalizeLiveMessage(fullResponseText);
         return;
       }
 
-      // Insertion immédiate de la bulle vide en mode écriture en direct
-      setIsStreamingReply(true);
+      // Insertion immédiate de la bulle vide en mode écriture en direct (pour la conversation active)
+      setConvStreaming(targetConversationId, true);
       setMessages((prev) => [
         ...prev,
         {
@@ -1941,39 +2146,37 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
             );
       let cursor = 0;
 
-      typingTimerRef.current = setInterval(() => {
-        if (currentConversationIdRef.current !== targetConversationId) {
-          stopActiveTypingTimer();
-          setIsStreamingReply(false);
+      const intervalId = setInterval(() => {
+        if (!isMountedRef.current || currentConversationIdRef.current !== targetConversationId) {
+          finalizeLiveMessage(fullResponseText);
           return;
         }
         cursor += charsPerTick;
         if (cursor >= totalChars) {
-          if (activeStreamSaveRef.current) {
-            activeStreamSaveRef.current.currentText = fullResponseText;
-          }
+          const meta = pendingStreamsByConvRef.current.get(targetConversationId);
+          if (meta) meta.currentText = fullResponseText;
           finalizeLiveMessage(fullResponseText);
         } else {
           const partial = chars.slice(0, cursor).join('');
-          if (activeStreamSaveRef.current) {
-            activeStreamSaveRef.current.currentText = partial;
-          }
+          const meta = pendingStreamsByConvRef.current.get(targetConversationId);
+          if (meta) meta.currentText = partial;
           setMessages((prev) =>
             prev.map((m) => (m.id === aiMsgId ? { ...m, content: partial } : m))
           );
         }
       }, tickMs);
+      typingTimersByConvRef.current.set(targetConversationId, intervalId);
     } catch (err: any) {
-      setIsThinking(false);
-      setIsStreamingReply(false);
-      abortControllerRef.current = null;
+      activeControllersByConvRef.current.delete(targetConversationId);
+      setConvRunningLabel(targetConversationId, null);
+      setConvStreaming(targetConversationId, false);
       if (err?.name === 'AbortError') return;
       const isInsufficient = Boolean(
         err?.isInsufficientCredits ||
           err?.code === 'INSUFFICIENT_CREDITS' ||
           err?.status === 402
       );
-      if (isInsufficient) {
+      if (isInsufficient && isMountedRef.current) {
         setIsCreditInsufficient(true);
       }
       const errMessage: UiChatMessage = {
@@ -1988,7 +2191,11 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         isStreaming: false,
         createdAt: Date.now(),
       };
-      setMessages((prev) => [...prev, errMessage]);
+      const baseLive = liveMessagesByConvRef.current.get(targetConversationId) || messagesWithUser;
+      liveMessagesByConvRef.current.set(targetConversationId, [...baseLive, errMessage]);
+      if (isMountedRef.current && currentConversationIdRef.current === targetConversationId) {
+        setMessages((prev) => [...prev, errMessage]);
+      }
     }
   };
 
@@ -2113,7 +2320,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         <div className="flex items-center justify-between px-2.5 sm:px-3.5 py-2 bg-[#23252a] border-b border-zinc-700/60 shrink-0 relative z-30 shadow-sm w-full max-w-full flex-nowrap gap-1.5">
           {/* Groupe Gauche : Historique, + Nouvelle discussion, Dossier fichiers */}
           <div className="flex items-center gap-1.5 min-w-0 flex-nowrap shrink">
-            {/* Bouton Historique */}
+            {/* Bouton Historique (avec indicateur discret des tâches en cours/terminées dans d'autres discussions) */}
             <button
               type="button"
               onClick={(e) => {
@@ -2125,6 +2332,20 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
             >
               <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
               <span>Historique</span>
+              {otherRunningCount > 0 ? (
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/45 text-[9.5px] font-extrabold text-orange-300"
+                  title={`${otherRunningCount} tâche(s) en cours dans une autre discussion`}
+                >
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  {otherRunningCount}
+                </span>
+              ) : unreadCompletedConvIds.size > 0 ? (
+                <span
+                  className="w-2 h-2 rounded-full bg-emerald-400 shrink-0"
+                  title="Une tâche en arrière-plan est terminée"
+                />
+              ) : null}
             </button>
 
             {/* Bouton + (Nouvelle discussion) */}
@@ -2546,6 +2767,8 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                     const isActive = conv.id === currentConversationId;
                     const isPinned = Boolean(conv.isPinned);
                     const isMenuOpen = openConvMenuId === conv.id;
+                    const isConvRunning = Boolean(runningLabelByConv[conv.id]);
+                    const isConvUnreadDone = !isConvRunning && unreadCompletedConvIds.has(conv.id);
 
                     return (
                       <div
@@ -2562,7 +2785,9 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                         }`}
                       >
                         <div className="flex items-center gap-2 min-w-0 flex-1">
-                          {isPinned ? (
+                          {isConvRunning ? (
+                            <Loader2 className="w-3.5 h-3.5 text-orange-400 animate-spin shrink-0" />
+                          ) : isPinned ? (
                             <Pin className="w-3.5 h-3.5 text-amber-400 fill-amber-400 shrink-0 -rotate-45" />
                           ) : (
                             <MessageSquare
@@ -2572,7 +2797,19 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                             />
                           )}
                           <div className="min-w-0 flex-1">
-                            <div className="text-xs font-bold truncate">{conv.title}</div>
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="text-xs font-bold truncate">{conv.title}</span>
+                              {isConvRunning && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/40 text-[9px] font-extrabold text-orange-300 shrink-0">
+                                  En cours…
+                                </span>
+                              )}
+                              {isConvUnreadDone && (
+                                <span className="px-1.5 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-[9px] font-extrabold text-emerald-300 shrink-0">
+                                  Terminé
+                                </span>
+                              )}
+                            </div>
                             {conv.filesCount > 0 && (
                               <div className="text-[10px] text-orange-400/90 flex items-center gap-1 mt-0.5">
                                 <FolderOpen className="w-2.5 h-2.5" />

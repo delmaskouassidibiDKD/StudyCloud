@@ -449,39 +449,93 @@ export async function sendChatMessageToAi(params: {
     }
   }
 
-  // Appel vers le Neurone d'Agent StudyCloud (Durable Objects & Llama 70B) :
-  let response: Response;
+  // Appel vers le Neurone d'Agent StudyCloud (avec retry automatique + backoff jitter sur 429/502/503/504 en cas de pic multi-utilisateurs) :
+  let response!: Response;
   const fetchSignal = params.signal || params.abortSignal;
-  try {
-    response = await fetch(`${dedicatedAiUrl}/api/ai/chat`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-user-id': currentUserId,
-      },
-      body: JSON.stringify(payload),
-      signal: fetchSignal,
+  const payloadJson = JSON.stringify(payload);
+  const sleepWithAbort = (ms: number) =>
+    new Promise<void>((resolve, reject) => {
+      if (fetchSignal?.aborted) {
+        const ae = new Error('Aborted');
+        ae.name = 'AbortError';
+        reject(ae);
+        return;
+      }
+      const timer = setTimeout(() => {
+        fetchSignal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        const ae = new Error('Aborted');
+        ae.name = 'AbortError';
+        reject(ae);
+      };
+      fetchSignal?.addEventListener('abort', onAbort, { once: true });
     });
-  } catch (_netErr: any) {
-    if (_netErr?.name === 'AbortError') {
-      return { response: "*(Tâche annulée par l'utilisateur)*", success: false, mode: 'chat' };
-    }
+
+  const maxTransientAttempts = 3;
+  for (let attempt = 0; attempt < maxTransientAttempts; attempt++) {
     try {
-      response = await fetch(dedicatedAiUrl, {
+      response = await fetch(`${dedicatedAiUrl}/api/ai/chat`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'x-user-id': currentUserId,
         },
-        body: JSON.stringify(payload),
+        body: payloadJson,
         signal: fetchSignal,
       });
-    } catch (_fallbackErr: any) {
-      if (_fallbackErr?.name === 'AbortError') {
+    } catch (_netErr: any) {
+      if (_netErr?.name === 'AbortError') {
         return { response: "*(Tâche annulée par l'utilisateur)*", success: false, mode: 'chat' };
       }
-      throw new Error("Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).");
+      try {
+        response = await fetch(dedicatedAiUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': currentUserId,
+          },
+          body: payloadJson,
+          signal: fetchSignal,
+        });
+      } catch (_fallbackErr: any) {
+        if (_fallbackErr?.name === 'AbortError') {
+          return { response: "*(Tâche annulée par l'utilisateur)*", success: false, mode: 'chat' };
+        }
+        if (attempt < maxTransientAttempts - 1) {
+          try {
+            await sleepWithAbort(750 * (attempt + 1) + Math.floor(Math.random() * 350));
+            continue;
+          } catch {
+            return { response: "*(Tâche annulée par l'utilisateur)*", success: false, mode: 'chat' };
+          }
+        }
+        throw new Error("Veuillez vérifier que votre appareil est bien connecté à Internet (Wi-Fi ou données mobiles).");
+      }
     }
+
+    // Retry automatique en cas de pic de trafic simultané (429 Rate Limit / 502 / 503 / 504), jamais sur 402 (crédits épuisés)
+    const isTransientStatus =
+      response.status === 429 ||
+      response.status === 502 ||
+      response.status === 503 ||
+      response.status === 504;
+    if (isTransientStatus && attempt < maxTransientAttempts - 1) {
+      const retryAfterSec = Number(response.headers.get('retry-after') || 0);
+      const waitMs =
+        Number.isFinite(retryAfterSec) && retryAfterSec > 0 && retryAfterSec <= 5
+          ? retryAfterSec * 1000
+          : 750 * Math.pow(2, attempt) + Math.floor(Math.random() * 400);
+      try {
+        await sleepWithAbort(waitMs);
+        continue;
+      } catch {
+        return { response: "*(Tâche annulée par l'utilisateur)*", success: false, mode: 'chat' };
+      }
+    }
+    break;
   }
 
   if (!response.ok) {

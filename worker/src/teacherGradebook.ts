@@ -6528,7 +6528,7 @@ async function dispatchTeacherGradebookRoutes(
 
       await db
         .prepare(
-          `INSERT INTO teacher_delmas_conversations
+          `INSERT OR IGNORE INTO teacher_delmas_conversations
             (id, user_id, title, language, context_year_id, context_school_id, context_class_id,
              context_term_id, context_subject_id, context_sheet_kind, is_pinned, pinned_at, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`
@@ -6790,7 +6790,7 @@ async function dispatchTeacherGradebookRoutes(
       const lang = String(body?.language || 'fr').trim().slice(0, 12) || 'fr';
       await db
         .prepare(
-          `INSERT INTO teacher_delmas_conversations
+          `INSERT OR IGNORE INTO teacher_delmas_conversations
             (id, user_id, title, language, context_year_id, context_school_id, context_class_id,
              context_term_id, context_subject_id, context_sheet_kind, is_pinned, pinned_at, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, ?, ?)`

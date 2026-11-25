@@ -1198,4 +1198,52 @@ BAMBA SINDOU HIRAM,,,"12,57"`;
   assert.ok(!compactPrompt.includes('ELEVE_119'), 'Ne doit pas ré-injecter 120 lignes quand le fichier n’est pas visé');
   assert.ok(compactPrompt.includes('clear_all'));
   assert.ok(compactPrompt.includes('ÉCONOMIE MAXIMALE DE CRÉDITS'));
+  assert.ok(compactPrompt.includes('MULTI-TÂCHES SIMULTANÉES'));
+});
+
+test('Multi-tâches simultanées : plusieurs tâches combinées dans un seul message (local 0 crédit + batch multi-actions LLM)', () => {
+  // 1. Plusieurs effacements combinés en un seul message -> exécutés en un seul batch local à 0 crédit
+  const multiClear = resolveDirectLocalDelmasCommand({
+    message: 'Efface les noms, les photos de profil et les notes',
+    activeContext: sampleContext,
+  });
+  assert.ok(multiClear);
+  assert.deepEqual(
+    multiClear.actions.map((a) => a.type),
+    ['clear_names', 'clear_photos', 'clear_notes']
+  );
+
+  // 2. Plusieurs tâches hétérogènes (effacement + tri + mise en forme + redimensionnement) -> routées vers Kimi et toutes autorisées en 1 lot
+  const mixedPrompt =
+    'Efface la note 2, trie par ordre de mérite, agrandis la colonne nom et mets le 1er en vert';
+  assert.equal(
+    resolveDirectLocalDelmasCommand({ message: mixedPrompt, activeContext: sampleContext }),
+    null
+  );
+  const mixedIntent = classifyTeacherDelmasIntent({
+    message: mixedPrompt,
+    activeContext: sampleContext,
+  });
+  assert.equal(mixedIntent.intent, 'action');
+
+  const multiBatch = filterSafeTeacherDelmasActions(
+    [
+      { type: 'clear_notes', mode: 'specific', colNumber: 2 },
+      { type: 'set_sort_mode', sortMode: 'merit' },
+      { type: 'resize_columns', column: 'name', deltaPx: 60 },
+      {
+        type: 'format_cells',
+        target: 'student',
+        studentName: 'DKD',
+        column: 'all',
+        style: { bgColor: 'vert' },
+      },
+    ],
+    mixedPrompt
+  );
+  assert.equal(multiBatch.length, 4);
+  assert.deepEqual(
+    multiBatch.map((a) => a.type),
+    ['clear_notes', 'set_sort_mode', 'resize_columns', 'format_cells']
+  );
 });

@@ -18800,122 +18800,128 @@ a:hover{transform:translateY(-2px)}
         const rawCredits = body.explicitCredits || body.explicit_credits || (tokens / tokensPerCredit);
         const creditsDeducted = Math.max(0.01, +(rawCredits).toFixed(2));
 
-        let userCredits: any = null;
+        // 1. Création idempotente anti-course (safe sous requêtes parallèles / multi-utilisateurs)
         try {
-          userCredits = await targetDb.prepare("SELECT * FROM user_ai_credits WHERE user_id = ?").bind(targetUserId).first();
+          await targetDb.prepare(`
+            INSERT OR IGNORE INTO user_ai_credits (
+              user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed,
+              plan_tier, remaining_credits, total_credits, used_credits,
+              gift_remaining, gift_initial, gift_type, purchased_remaining, last_daily_grant_date
+            )
+            VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0, ?, ?, 'welcome', 0.0, ?)
+          `).bind(targetUserId, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, todayStr).run();
         } catch (_) {}
 
-        if (!userCredits) {
-          try {
-            await targetDb.prepare(`
-              INSERT INTO user_ai_credits (
-                user_id, credits_balance, total_credits_purchased, total_tokens_consumed, total_credits_consumed,
-                plan_tier, remaining_credits, total_credits, used_credits,
-                gift_remaining, gift_initial, gift_type, purchased_remaining, last_daily_grant_date
-              )
-              VALUES (?, ?, 0, 0, 0, 'free', ?, ?, 0, ?, ?, 'welcome', 0.0, ?)
-            `).bind(targetUserId, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, todayStr).run();
-          } catch (_) {}
-          userCredits = {
-            user_id: targetUserId,
-            credits_balance: welcomeCredits,
-            gift_remaining: welcomeCredits,
-            gift_initial: welcomeCredits,
-            gift_type: 'welcome',
-            purchased_remaining: 0,
-            total_tokens_consumed: 0,
-            total_credits_consumed: 0,
-            total_credits_purchased: 0,
-            last_daily_grant_date: todayStr
-          };
-        } else {
-          if (userCredits.gift_remaining === null || userCredits.gift_remaining === undefined) {
-            const currentBal = Number(userCredits.credits_balance !== undefined ? userCredits.credits_balance : welcomeCredits);
-            const totalPurchased = Number(userCredits.total_credits_purchased || 0);
-            if (totalPurchased === 0) {
-              userCredits.purchased_remaining = 0;
-              userCredits.gift_remaining = Math.max(0, currentBal);
-            } else {
-              if (currentBal >= totalPurchased) {
-                userCredits.purchased_remaining = totalPurchased;
-                userCredits.gift_remaining = Math.max(0, +(currentBal - totalPurchased).toFixed(2));
-              } else {
-                userCredits.purchased_remaining = Math.max(0, currentBal);
-                userCredits.gift_remaining = 0;
-              }
-            }
-            userCredits.gift_initial = welcomeCredits;
-            userCredits.gift_type = 'welcome';
-          }
-
-          if (isDailyActive && userCredits.last_daily_grant_date !== todayStr) {
-            const currentGift = Number(userCredits.gift_remaining || 0);
-            if (currentGift <= 0 || userCredits.gift_type === 'daily') {
-              userCredits.gift_remaining = dailyFreeCredits;
-              userCredits.gift_initial = dailyFreeCredits;
-              userCredits.gift_type = 'daily';
-              userCredits.last_daily_grant_date = todayStr;
-            }
-          }
-        }
-
-        let giftRem = Math.max(0, Number(userCredits.gift_remaining || 0));
-        let paidRem = Math.max(0, Number(userCredits.purchased_remaining || 0));
-        let deductedFromGift = 0;
-        let deductedFromPaid = 0;
-
-        if (giftRem > 0) {
-          if (giftRem >= creditsDeducted) {
-            deductedFromGift = creditsDeducted;
-            giftRem = +(giftRem - creditsDeducted).toFixed(2);
-          } else {
-            deductedFromGift = giftRem;
-            const leftover = +(creditsDeducted - giftRem).toFixed(2);
-            giftRem = 0;
-            deductedFromPaid = Math.min(paidRem, leftover);
-            paidRem = Math.max(0, +(paidRem - leftover).toFixed(2));
-          }
-        } else {
-          deductedFromPaid = Math.min(paidRem, creditsDeducted);
-          paidRem = Math.max(0, +(paidRem - creditsDeducted).toFixed(2));
-        }
-
-        const newBalance = Math.max(0, +(giftRem + paidRem).toFixed(2));
-        const newTotalTokens = (userCredits.total_tokens_consumed || 0) + tokens;
-        const newTotalCreditsConsumed = +(Number(userCredits.total_credits_consumed || 0) + creditsDeducted).toFixed(2);
-        const giftInit = Math.max(Number(userCredits.gift_initial || 0), giftRem, welcomeCredits);
-        const giftType = userCredits.gift_type || 'welcome';
-        const giftTitle = giftType === 'daily' ? 'Cadeau du jour' : 'Cadeau de base';
-
+        // 2. Backfill atomique pour anciens comptes sans gift_remaining/purchased_remaining initialisés
         try {
           await targetDb.prepare(`
             UPDATE user_ai_credits
-            SET credits_balance = ?,
-                remaining_credits = ?,
+            SET
+              purchased_remaining = CASE
+                WHEN COALESCE(total_credits_purchased, 0) <= 0 THEN 0
+                WHEN COALESCE(credits_balance, ?) >= COALESCE(total_credits_purchased, 0) THEN COALESCE(total_credits_purchased, 0)
+                ELSE MAX(0, COALESCE(credits_balance, 0))
+              END,
+              gift_remaining = CASE
+                WHEN COALESCE(total_credits_purchased, 0) <= 0 THEN MAX(0, COALESCE(credits_balance, ?))
+                WHEN COALESCE(credits_balance, ?) >= COALESCE(total_credits_purchased, 0) THEN MAX(0, ROUND(COALESCE(credits_balance, ?) - COALESCE(total_credits_purchased, 0), 2))
+                ELSE 0
+              END,
+              gift_initial = COALESCE(gift_initial, ?),
+              gift_type = COALESCE(gift_type, 'welcome')
+            WHERE user_id = ? AND gift_remaining IS NULL
+          `).bind(welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, welcomeCredits, targetUserId).run();
+        } catch (_) {}
+
+        // 3. Renouvellement quotidien atomique (un seul octroi par jour garanti même sous appels simultanés)
+        if (isDailyActive) {
+          try {
+            await targetDb.prepare(`
+              UPDATE user_ai_credits
+              SET
                 gift_remaining = ?,
                 gift_initial = ?,
-                gift_type = ?,
-                purchased_remaining = ?,
-                total_tokens_consumed = ?,
-                total_credits_consumed = ?,
+                gift_type = 'daily',
+                credits_balance = ROUND(? + MAX(0, COALESCE(purchased_remaining, 0)), 2),
+                remaining_credits = ROUND(? + MAX(0, COALESCE(purchased_remaining, 0)), 2),
                 last_daily_grant_date = ?,
-                last_usage_at = CURRENT_TIMESTAMP,
                 updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = ?
-          `).bind(
-            newBalance,
-            newBalance,
-            giftRem,
-            giftInit,
-            giftType,
-            paidRem,
-            newTotalTokens,
-            newTotalCreditsConsumed,
-            userCredits.last_daily_grant_date || todayStr,
-            targetUserId
-          ).run();
+              WHERE user_id = ?
+                AND COALESCE(last_daily_grant_date, '') != ?
+                AND (COALESCE(gift_remaining, 0) <= 0 OR gift_type = 'daily')
+            `).bind(dailyFreeCredits, dailyFreeCredits, dailyFreeCredits, dailyFreeCredits, todayStr, targetUserId, todayStr).run();
+          } catch (_) {}
+        }
 
-          const logId = 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 7);
+        // 4. Déduction ATOMIQUE en une seule requête SQL (élimine toute race condition si 2+ tâches tournent en parallèle)
+        let prevSnap: any = null;
+        let updatedRow: any = null;
+        try {
+          prevSnap = await targetDb
+            .prepare("SELECT gift_remaining, purchased_remaining FROM user_ai_credits WHERE user_id = ?")
+            .bind(targetUserId)
+            .first();
+
+          updatedRow = await targetDb.prepare(`
+            UPDATE user_ai_credits
+            SET
+              gift_remaining = CASE
+                WHEN MAX(0, COALESCE(gift_remaining, 0)) >= ? THEN ROUND(MAX(0, COALESCE(gift_remaining, 0)) - ?, 2)
+                ELSE 0
+              END,
+              purchased_remaining = CASE
+                WHEN MAX(0, COALESCE(gift_remaining, 0)) >= ? THEN MAX(0, COALESCE(purchased_remaining, 0))
+                ELSE MAX(0, ROUND(MAX(0, COALESCE(purchased_remaining, 0)) - (? - MAX(0, COALESCE(gift_remaining, 0))), 2))
+              END,
+              credits_balance = MAX(0, ROUND(MAX(0, COALESCE(gift_remaining, 0)) + MAX(0, COALESCE(purchased_remaining, 0)) - ?, 2)),
+              remaining_credits = MAX(0, ROUND(MAX(0, COALESCE(gift_remaining, 0)) + MAX(0, COALESCE(purchased_remaining, 0)) - ?, 2)),
+              gift_initial = MAX(COALESCE(gift_initial, 0), MAX(0, COALESCE(gift_remaining, 0)), ?),
+              gift_type = COALESCE(gift_type, 'welcome'),
+              total_tokens_consumed = COALESCE(total_tokens_consumed, 0) + ?,
+              total_credits_consumed = ROUND(COALESCE(total_credits_consumed, 0) + ?, 2),
+              last_daily_grant_date = COALESCE(last_daily_grant_date, ?),
+              last_usage_at = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ?
+            RETURNING credits_balance, gift_remaining, gift_initial, gift_type, purchased_remaining, total_tokens_consumed, total_credits_consumed, total_credits_purchased
+          `).bind(
+            creditsDeducted,
+            creditsDeducted,
+            creditsDeducted,
+            creditsDeducted,
+            creditsDeducted,
+            creditsDeducted,
+            welcomeCredits,
+            tokens,
+            creditsDeducted,
+            todayStr,
+            targetUserId
+          ).first();
+        } catch (_) {}
+
+        if (!updatedRow) {
+          try {
+            updatedRow = await targetDb
+              .prepare("SELECT credits_balance, gift_remaining, gift_initial, gift_type, purchased_remaining, total_tokens_consumed, total_credits_consumed, total_credits_purchased FROM user_ai_credits WHERE user_id = ?")
+              .bind(targetUserId)
+              .first();
+          } catch (_) {}
+        }
+
+        const giftRem = Math.max(0, Number(updatedRow?.gift_remaining ?? 0));
+        const paidRem = Math.max(0, Number(updatedRow?.purchased_remaining ?? 0));
+        const newBalance = Math.max(0, Number(updatedRow?.credits_balance ?? +(giftRem + paidRem).toFixed(2)));
+        const newTotalTokens = Number(updatedRow?.total_tokens_consumed ?? tokens);
+        const newTotalCreditsConsumed = Number(updatedRow?.total_credits_consumed ?? creditsDeducted);
+        const giftInit = Math.max(Number(updatedRow?.gift_initial || 0), giftRem, welcomeCredits);
+        const giftType = updatedRow?.gift_type || 'welcome';
+        const giftTitle = giftType === 'daily' ? 'Cadeau du jour' : 'Cadeau de base';
+        const prevGift = Math.max(0, Number(prevSnap?.gift_remaining ?? 0));
+        const deductedFromGift = Math.max(0, +(prevGift - giftRem).toFixed(2));
+        const deductedFromPaid = Math.max(0, +(creditsDeducted - deductedFromGift).toFixed(2));
+
+        try {
+          const logId = 'log_' + Date.now() + '_' + Math.random().toString(36).slice(2, 9);
           await targetDb.prepare(`
             INSERT INTO ai_usage_logs (id, user_id, action_type, prompt_tokens, completion_tokens, total_tokens, credits_deducted, balance_after, model_used, created_at)
             VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -18934,7 +18940,7 @@ a:hover{transform:translateY(-2px)}
           gift_type: giftType,
           gift_title: giftTitle,
           purchased_remaining: paidRem,
-          total_purchased: Number(userCredits.total_credits_purchased || 0),
+          total_purchased: Number(updatedRow?.total_credits_purchased || 0),
           tokens_consumed: tokens,
           total_tokens_consumed: newTotalTokens,
           total_credits_consumed: newTotalCreditsConsumed
