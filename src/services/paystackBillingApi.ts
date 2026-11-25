@@ -47,6 +47,9 @@ export interface AppSubscriptionPlanRecord {
   billing_mode: ClientBillingMode;
   duration_days: number;
   is_auto_billing: number;
+  allow_auto?: number;
+  allow_manual?: number;
+  is_infinite?: number;
   features: string | Array<{ text: string; enabled?: boolean }>;
   is_active: number;
   sort_order?: number;

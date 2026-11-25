@@ -4367,31 +4367,41 @@ function renderDashboardHtml(data) {
             </div>
           </div>
 
-          <!-- Choix 3 modes : Automatique / Manuel / Infini + Durée libre en jours -->
+          <!-- Choix 3 cases synchronisées : Manuel seul / Automatique + Manuel / Infini -->
           <div class="p-3 rounded-xl bg-slate-900/80 border border-slate-700 space-y-2.5">
-            <label class="block text-[10px] font-extrabold uppercase text-sky-300">Mode d'abonnement &amp; durée</label>
-            <div class="grid grid-cols-3 gap-2">
-              <label class="p-2 rounded-lg border border-slate-700 bg-slate-950/70 cursor-pointer flex items-center gap-1.5 hover:border-sky-500">
-                <input type="radio" name="ap-billing-mode" id="ap-mode-manual" value="manual" checked onchange="toggleAppPlanDurationVisibility()" class="accent-sky-500" />
-                <div>
-                  <div class="font-bold text-white text-[11px]">🔄 Manuel</div>
-                  <div class="text-[9px] text-slate-400">Durée fixe</div>
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <label class="block text-[10px] font-extrabold uppercase text-sky-300">Modes de renouvellement autorisés &amp; durée</label>
+              <span class="text-[9.5px] text-slate-400">Auto impose obligatoirement Manuel</span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <label id="ap-card-manual" class="p-2.5 rounded-lg border border-sky-500/60 bg-slate-950/80 cursor-pointer flex items-start gap-2 hover:border-sky-400 transition">
+                <input type="checkbox" id="ap-mode-manual" checked onchange="syncAppPlanBillingCheckboxes('manual')" class="mt-0.5 w-4 h-4 rounded accent-sky-500 cursor-pointer shrink-0" />
+                <div class="min-w-0">
+                  <div class="font-bold text-white text-[11px] flex items-center gap-1 flex-wrap">
+                    <span>🔄 Manuel</span>
+                    <span id="ap-mode-manual-lock" class="hidden px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[8.5px] font-black border border-emerald-500/30">🔒 Requis</span>
+                  </div>
+                  <div class="text-[9.5px] text-slate-400 leading-snug mt-0.5">Wave, OM, MTN ou choix manuel à l'échéance</div>
                 </div>
               </label>
-              <label class="p-2 rounded-lg border border-slate-700 bg-slate-950/70 cursor-pointer flex items-center gap-1.5 hover:border-emerald-500">
-                <input type="radio" name="ap-billing-mode" id="ap-mode-auto" value="auto" onchange="toggleAppPlanDurationVisibility()" class="accent-emerald-500" />
-                <div>
+              <label id="ap-card-auto" class="p-2.5 rounded-lg border border-slate-700 bg-slate-950/70 cursor-pointer flex items-start gap-2 hover:border-emerald-500 transition">
+                <input type="checkbox" id="ap-mode-auto" onchange="syncAppPlanBillingCheckboxes('auto')" class="mt-0.5 w-4 h-4 rounded accent-emerald-500 cursor-pointer shrink-0" />
+                <div class="min-w-0">
                   <div class="font-bold text-white text-[11px]">⚡ Automatique</div>
-                  <div class="text-[9px] text-slate-400">Renouvellement</div>
+                  <div class="text-[9.5px] text-slate-400 leading-snug mt-0.5">Visa/Mastercard (coche Manuel avec lui)</div>
                 </div>
               </label>
-              <label class="p-2 rounded-lg border border-slate-700 bg-slate-950/70 cursor-pointer flex items-center gap-1.5 hover:border-amber-500">
-                <input type="radio" name="ap-billing-mode" id="ap-mode-infinite" value="infinite" onchange="toggleAppPlanDurationVisibility()" class="accent-amber-500" />
-                <div>
-                  <div class="font-bold text-white text-[11px]">♾️ Infini</div>
-                  <div class="text-[9px] text-slate-400">Accès à vie</div>
+              <label id="ap-card-infinite" class="p-2.5 rounded-lg border border-slate-700 bg-slate-950/70 cursor-pointer flex items-start gap-2 hover:border-amber-500 transition">
+                <input type="checkbox" id="ap-mode-infinite" onchange="syncAppPlanBillingCheckboxes('infinite')" class="mt-0.5 w-4 h-4 rounded accent-amber-500 cursor-pointer shrink-0" />
+                <div class="min-w-0">
+                  <div class="font-bold text-amber-300 text-[11px]">♾️ Infini (À vie)</div>
+                  <div class="text-[9.5px] text-slate-400 leading-snug mt-0.5">Paiement unique sans expiration</div>
                 </div>
               </label>
+            </div>
+
+            <div id="ap-billing-mode-summary" class="px-2.5 py-2 rounded-lg bg-sky-950/50 border border-sky-500/30 text-[10px] text-sky-200 leading-relaxed">
+              🔄 <strong>Mode actif : Manuel uniquement</strong> — Aucun prélèvement automatique. L'utilisateur renouvelle lui-même à la fin de la période.
             </div>
 
             <div id="ap-duration-wrap" class="space-y-1.5 pt-1">
@@ -7164,44 +7174,54 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- 5. Mode de facturation (Manuel vs Automatique) -->
-        <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800 space-y-2">
-          <label class="text-[11px] font-bold text-slate-300 block">Mode de déclenchement dans l'application :</label>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <label class="flex items-start gap-2.5 p-2 rounded-lg border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-slate-600">
-              <input type="radio" name="sub-plan-billing-mode" value="manual" id="sub-billing-manual" checked onchange="toggleSubPlanDurationVisibility()" class="mt-0.5 text-orange-500" />
-              <div>
-                <span class="font-bold text-white block">🔄 Durée fixe / Manuel</span>
-                <span class="text-[10px] text-slate-400 block">Paiement unique valable X jours (Paystack Mobile Money / Carte, renouvelable quand l'utilisateur veut).</span>
+        <!-- 5. Modes de facturation (Cases synchronisées : Manuel seul / Auto + Manuel / Infini) -->
+        <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800 space-y-2.5">
+          <div class="flex items-center justify-between gap-2 flex-wrap">
+            <label class="text-[11px] font-bold text-slate-300 block">Modes de renouvellement autorisés dans l'application :</label>
+            <span class="text-[10px] text-slate-400">Cocher Automatique coche automatiquement Manuel</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <label id="sub-card-billing-manual" class="flex items-start gap-2.5 p-2.5 rounded-lg border border-sky-500/60 bg-slate-900/80 cursor-pointer hover:border-sky-400 transition">
+              <input type="checkbox" id="sub-billing-manual" checked onchange="syncSubPlanBillingCheckboxes('manual')" class="mt-0.5 w-4 h-4 rounded accent-sky-500 cursor-pointer shrink-0" />
+              <div class="min-w-0">
+                <div class="font-bold text-white flex items-center gap-1.5 flex-wrap">
+                  <span>🔄 Paiement Manuel</span>
+                  <span id="sub-billing-manual-lock" class="hidden px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-black border border-emerald-500/30">🔒 Inclus avec Auto</span>
+                </div>
+                <span class="text-[10px] text-slate-400 block mt-0.5">Paiement unique valable X jours (Wave, Orange Money, MTN ou choix manuel à l'échéance).</span>
               </div>
             </label>
 
-            <label class="flex items-start gap-2.5 p-2 rounded-lg border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-slate-600">
-              <input type="radio" name="sub-plan-billing-mode" value="auto" id="sub-billing-auto" onchange="toggleSubPlanDurationVisibility()" class="mt-0.5 text-orange-500" />
-              <div>
-                <span class="font-bold text-white block">⚡ Abonnement Automatique</span>
-                <span class="text-[10px] text-slate-400 block">Prélèvement automatique Paystack (Carte Visa/Mastercard) + renouvellement assisté (Wave/Orange/MTN) selon la durée choisie.</span>
+            <label id="sub-card-billing-auto" class="flex items-start gap-2.5 p-2.5 rounded-lg border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-emerald-500 transition">
+              <input type="checkbox" id="sub-billing-auto" onchange="syncSubPlanBillingCheckboxes('auto')" class="mt-0.5 w-4 h-4 rounded accent-emerald-500 cursor-pointer shrink-0" />
+              <div class="min-w-0">
+                <span class="font-bold text-white block">⚡ Prélèvement Automatique</span>
+                <span class="text-[10px] text-slate-400 block mt-0.5">Carte Visa/Mastercard (coché par défaut sur l'écran vert, l'utilisateur peut basculer en Manuel).</span>
               </div>
             </label>
 
-            <label class="flex items-start gap-2.5 p-2 rounded-lg border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-amber-500/60">
-              <input type="radio" name="sub-plan-billing-mode" value="infinite" id="sub-billing-infinite" onchange="toggleSubPlanDurationVisibility()" class="mt-0.5 text-amber-500" />
-              <div>
-                <span class="font-bold text-amber-300 block">♾️ Infini (À vie / Sans expiration)</span>
-                <span class="text-[10px] text-slate-400 block">L'utilisateur paie une seule fois et conserve son quota ou accès définitivement sans échéance.</span>
+            <label id="sub-card-billing-infinite" class="flex items-start gap-2.5 p-2.5 rounded-lg border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-amber-500/60 transition">
+              <input type="checkbox" id="sub-billing-infinite" onchange="syncSubPlanBillingCheckboxes('infinite')" class="mt-0.5 w-4 h-4 rounded accent-amber-500 cursor-pointer shrink-0" />
+              <div class="min-w-0">
+                <span class="font-bold text-amber-300 block">♾️ Infini (À vie)</span>
+                <span class="text-[10px] text-slate-400 block mt-0.5">Paiement unique sans expiration : affiche « Abonnement à vie » sur son compte.</span>
               </div>
             </label>
+          </div>
 
-            <div id="sub-plan-duration-container" class="p-2.5 rounded-lg bg-slate-950/70 border border-slate-700/80 space-y-1.5">
-              <label class="block text-[10px] font-bold uppercase text-slate-300">Durée de l'abonnement (en jours)</label>
-              <div class="flex flex-wrap items-center gap-1.5">
-                <input type="number" id="sub-plan-duration-days" min="1" max="3650" value="30" class="w-24 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 font-mono font-bold text-xs outline-none" />
-                <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=7" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">7j</button>
-                <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=30" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">30j (1 mois)</button>
-                <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=90" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">90j (Trim.)</button>
-                <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=180" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">180j</button>
-                <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=365" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">365j (1 an)</button>
-              </div>
+          <div id="sub-billing-mode-summary" class="px-3 py-2 rounded-lg bg-sky-950/50 border border-sky-500/30 text-[10.5px] text-sky-200 leading-relaxed">
+            🔄 <strong>Mode actif : Manuel uniquement</strong> — Aucun prélèvement automatique. L'utilisateur renouvelle manuellement quand il le souhaite.
+          </div>
+
+          <div id="sub-plan-duration-container" class="p-2.5 rounded-lg bg-slate-950/70 border border-slate-700/80 space-y-1.5">
+            <label class="block text-[10px] font-bold uppercase text-slate-300">Durée de l'abonnement (en jours)</label>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <input type="number" id="sub-plan-duration-days" min="1" max="3650" value="30" class="w-24 px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-amber-300 font-mono font-bold text-xs outline-none" />
+              <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=7" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">7j</button>
+              <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=30" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">30j (1 mois)</button>
+              <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=90" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">90j (Trim.)</button>
+              <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=180" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">180j</button>
+              <button type="button" onclick="document.getElementById('sub-plan-duration-days').value=365" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 text-[10px] font-bold cursor-pointer">365j (1 an)</button>
             </div>
           </div>
         </div>
@@ -13323,34 +13343,43 @@ function renderDashboardHtml(data) {
         const footerDiv = document.createElement('div');
         footerDiv.className = 'pt-4 mt-3 border-t border-slate-800 space-y-2.5';
 
-        // VRAI BOUTON ERGONOMIQUE DE BASCULE MODE & DURÉE
+        // VRAI BOUTON ERGONOMIQUE DE BASCULE MODE & DURÉE (Auto + Manuel / Manuel seul / Infini)
         const planBillingMode = String(plan.billing_mode || (isAuto ? 'auto' : 'manual')).toLowerCase();
         const planDurationDays = Number(plan.duration_days || 30);
-        const isInfiniteMode = planBillingMode === 'infinite';
-        const isAutoMode = planBillingMode === 'auto' || (!isInfiniteMode && isAuto);
+        const isInfiniteMode = Number(plan.is_infinite) === 1 || planBillingMode === 'infinite';
+        const isAutoMode = !isInfiniteMode && (Number(plan.allow_auto) === 1 || planBillingMode === 'auto' || isAuto);
         const durationTag = isInfiniteMode ? 'Accès à vie' : (planDurationDays + ' jours');
 
         const autoBillingBtn = document.createElement('button');
         autoBillingBtn.type = 'button';
-        autoBillingBtn.className = 'w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-between transition-all duration-200 cursor-pointer shadow-md ' +
+        autoBillingBtn.className = 'w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-between gap-2 transition-all duration-200 cursor-pointer shadow-md ' +
           (isInfiniteMode
             ? 'bg-amber-950/60 hover:bg-amber-900/70 text-amber-200 border-2 border-amber-500/50 hover:border-amber-400'
             : (isAutoMode
-              ? 'bg-cyan-950/80 hover:bg-cyan-900/90 text-cyan-200 border-2 border-cyan-500/50 hover:border-cyan-400'
-              : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-2 border-slate-700 hover:border-slate-500'));
+              ? 'bg-emerald-950/75 hover:bg-emerald-900/85 text-emerald-200 border-2 border-emerald-500/50 hover:border-emerald-400'
+              : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-2 border-slate-700 hover:border-sky-500/60'));
         autoBillingBtn.innerHTML =
-          '<div class="flex items-center gap-2.5 text-left">' +
-            '<span class="text-base select-none">' + (isInfiniteMode ? '♾️' : (isAutoMode ? '⚡' : '🔄')) + '</span>' +
-            '<div>' +
+          '<div class="flex items-center gap-2.5 text-left min-w-0">' +
+            '<span class="text-base select-none shrink-0">' + (isInfiniteMode ? '♾️' : (isAutoMode ? '⚡' : '🔄')) + '</span>' +
+            '<div class="min-w-0">' +
               '<div class="text-[10px] text-slate-400 uppercase font-black tracking-wider">Mode &amp; Durée (' + durationTag + ') :</div>' +
-              '<div class="text-xs font-black ' + (isInfiniteMode ? 'text-amber-300' : (isAutoMode ? 'text-cyan-300' : 'text-amber-300')) + '">' +
-                (isInfiniteMode ? 'Infini (Sans expiration)' : (isAutoMode ? 'Automatique · ' + planDurationDays + 'j' : 'Manuel · ' + planDurationDays + 'j')) +
+              '<div class="text-xs font-black ' + (isInfiniteMode ? 'text-amber-300' : (isAutoMode ? 'text-emerald-300' : 'text-sky-300')) + '">' +
+                (isInfiniteMode
+                  ? 'Infini (À vie — Sans expiration)'
+                  : (isAutoMode ? '⚡ Auto + 🔄 Manuel · ' + planDurationDays + 'j' : '🔄 Manuel seul · ' + planDurationDays + 'j')) +
+              '</div>' +
+              '<div class="text-[9.5px] text-slate-400 truncate">' +
+                (isInfiniteMode
+                  ? 'Affiche « Abonnement à vie »'
+                  : (isAutoMode ? 'Visa Auto par défaut · Wave/OM Manuel' : 'Aucun prélèvement automatique')) +
               '</div>' +
             '</div>' +
           '</div>' +
           '<span class="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all shadow-sm shrink-0 ' +
-            (isAutoMode ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'bg-amber-500 text-slate-950 hover:bg-amber-400') + '">' +
-            (isAutoMode ? 'Passer en Manuel ➔' : 'Passer en Auto ➔') +
+            (isInfiniteMode
+              ? 'bg-amber-500 text-slate-950 hover:bg-amber-400'
+              : (isAutoMode ? 'bg-slate-200 text-slate-950 hover:bg-white' : 'bg-emerald-500 text-slate-950 hover:bg-emerald-400')) + '">' +
+            (isInfiniteMode ? 'Passer Manuel ➔' : (isAutoMode ? 'Manuel seul ➔' : 'Auto + Manuel ➔')) +
           '</span>';
 
         autoBillingBtn.onclick = function() {
@@ -13467,12 +13496,14 @@ function renderDashboardHtml(data) {
         }
 
         const resolvedMode = String(existing.billing_mode || (existing.is_auto_billing === 1 ? 'auto' : 'manual')).toLowerCase();
+        const existingInfinite = Number(existing.is_infinite) === 1 || resolvedMode === 'infinite';
+        const existingAuto = !existingInfinite && (Number(existing.allow_auto) === 1 || resolvedMode === 'auto' || Number(existing.is_auto_billing) === 1);
         const bAuto = document.getElementById('sub-billing-auto');
         const bManual = document.getElementById('sub-billing-manual');
         const bInfinite = document.getElementById('sub-billing-infinite');
-        if (bAuto) bAuto.checked = resolvedMode === 'auto';
-        if (bInfinite) bInfinite.checked = resolvedMode === 'infinite';
-        if (bManual) bManual.checked = (resolvedMode !== 'auto' && resolvedMode !== 'infinite');
+        if (bInfinite) bInfinite.checked = existingInfinite;
+        if (bAuto) bAuto.checked = existingAuto;
+        if (bManual) bManual.checked = !existingInfinite;
         const durEl = document.getElementById('sub-plan-duration-days');
         if (durEl) durEl.value = existing.duration_days ? String(existing.duration_days) : '30';
       } else {
@@ -13510,12 +13541,16 @@ function renderDashboardHtml(data) {
         }
 
         const bManual = document.getElementById('sub-billing-manual');
+        const bAuto = document.getElementById('sub-billing-auto');
+        const bInfinite = document.getElementById('sub-billing-infinite');
         if (bManual) bManual.checked = true;
+        if (bAuto) bAuto.checked = false;
+        if (bInfinite) bInfinite.checked = false;
         const durEl = document.getElementById('sub-plan-duration-days');
         if (durEl) durEl.value = '30';
       }
 
-      toggleSubPlanDurationVisibility();
+      syncSubPlanBillingCheckboxes('init');
       updateSubscriptionPricingCalculations();
       if (modal) {
         modal.classList.remove('hidden');
@@ -13564,13 +13599,97 @@ function renderDashboardHtml(data) {
     }
     window.addSubscriptionFeatureLine = addSubscriptionFeatureLine;
 
-    function toggleSubPlanDurationVisibility() {
+    function syncSubPlanBillingCheckboxes(source) {
+      const bManual = document.getElementById('sub-billing-manual');
+      const bAuto = document.getElementById('sub-billing-auto');
       const bInf = document.getElementById('sub-billing-infinite');
+      const lockBadge = document.getElementById('sub-billing-manual-lock');
+      const summary = document.getElementById('sub-billing-mode-summary');
       const wrap = document.getElementById('sub-plan-duration-container');
+      const cManual = document.getElementById('sub-card-billing-manual');
+      const cAuto = document.getElementById('sub-card-billing-auto');
+      const cInf = document.getElementById('sub-card-billing-infinite');
+      if (!bManual || !bAuto || !bInf) return;
+
+      if (source === 'infinite') {
+        if (bInf.checked) {
+          bAuto.checked = false;
+          bManual.checked = false;
+        } else if (!bAuto.checked && !bManual.checked) {
+          bManual.checked = true;
+        }
+      } else if (source === 'auto') {
+        if (bAuto.checked) {
+          bInf.checked = false;
+          bManual.checked = true;
+        } else {
+          bManual.checked = true;
+        }
+      } else if (source === 'manual') {
+        if (bManual.checked) {
+          bInf.checked = false;
+        } else if (bAuto.checked) {
+          bManual.checked = true;
+        } else if (!bInf.checked) {
+          bManual.checked = true;
+          showToast('ℹ️ Au moins un mode doit rester actif (cochez Infini pour un abonnement à vie).');
+        }
+      } else {
+        if (bInf.checked) {
+          bAuto.checked = false;
+          bManual.checked = false;
+        } else if (bAuto.checked) {
+          bManual.checked = true;
+        } else {
+          bManual.checked = true;
+        }
+      }
+
+      const isInf = bInf.checked;
+      const isAuto = !isInf && bAuto.checked;
+      const isManualOnly = !isInf && !isAuto;
+
+      // Verrouiller visuellement la case Manuel quand Automatique est coché (toujours les deux ensemble)
+      bManual.disabled = isAuto;
+      if (lockBadge) lockBadge.classList.toggle('hidden', !isAuto);
+
+      if (cManual) {
+        cManual.className = 'flex items-start gap-2.5 p-2.5 rounded-lg border transition ' +
+          (isAuto
+            ? 'border-emerald-500/70 bg-emerald-950/30 cursor-not-allowed'
+            : (isManualOnly ? 'border-sky-500/70 bg-sky-950/30 cursor-pointer hover:border-sky-400' : 'border-slate-700 bg-slate-900/60 cursor-pointer hover:border-sky-500/50'));
+      }
+      if (cAuto) {
+        cAuto.className = 'flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition ' +
+          (isAuto ? 'border-emerald-500/80 bg-emerald-950/35 hover:border-emerald-400' : 'border-slate-700 bg-slate-900/60 hover:border-emerald-500/60');
+      }
+      if (cInf) {
+        cInf.className = 'flex items-start gap-2.5 p-2.5 rounded-lg border cursor-pointer transition ' +
+          (isInf ? 'border-amber-500/80 bg-amber-950/35 hover:border-amber-400' : 'border-slate-700 bg-slate-900/60 hover:border-amber-500/60');
+      }
+
       if (wrap) {
-        if (bInf && bInf.checked) wrap.classList.add('hidden');
+        if (isInf) wrap.classList.add('hidden');
         else wrap.classList.remove('hidden');
       }
+
+      if (summary) {
+        if (isInf) {
+          summary.className = 'px-3 py-2 rounded-lg bg-amber-950/45 border border-amber-500/40 text-[10.5px] text-amber-200 leading-relaxed';
+          summary.innerHTML = '♾️ <strong>Mode actif : Abonnement Infini (À vie)</strong> — Paiement unique sans expiration. Un message « Abonnement à vie activé sur votre compte » s&apos;affichera sur l&apos;écran de succès.';
+        } else if (isAuto) {
+          summary.className = 'px-3 py-2 rounded-lg bg-emerald-950/45 border border-emerald-500/40 text-[10.5px] text-emerald-200 leading-relaxed';
+          summary.innerHTML = '⚡ <strong>Mode actif : Automatique + Manuel</strong> — Carte Visa/Mastercard : <em>Automatique</em> coché par défaut sur l&apos;écran vert (l&apos;utilisateur peut basculer en <em>Manuel</em>). Wave / Orange / MTN : <em>Manuel</em> (carte bancaire liables plus tard).';
+        } else {
+          summary.className = 'px-3 py-2 rounded-lg bg-sky-950/50 border border-sky-500/35 text-[10.5px] text-sky-200 leading-relaxed';
+          summary.innerHTML = '🔄 <strong>Mode actif : Manuel uniquement</strong> — Aucun prélèvement automatique. L&apos;utilisateur paie et renouvelle lui-même à l&apos;échéance.';
+        }
+      }
+    }
+    window.syncSubPlanBillingCheckboxes = syncSubPlanBillingCheckboxes;
+
+    function toggleSubPlanDurationVisibility() {
+      syncSubPlanBillingCheckboxes('init');
     }
     window.toggleSubPlanDurationVisibility = toggleSubPlanDurationVisibility;
 
@@ -13598,8 +13717,11 @@ function renderDashboardHtml(data) {
 
       const bAuto = document.getElementById('sub-billing-auto');
       const bInfinite = document.getElementById('sub-billing-infinite');
-      const billingMode = (bInfinite && bInfinite.checked) ? 'infinite' : ((bAuto && bAuto.checked) ? 'auto' : 'manual');
-      const isAuto = billingMode === 'auto' ? 1 : 0;
+      const isInfinite = (bInfinite && bInfinite.checked) ? 1 : 0;
+      const allowAuto = (!isInfinite && bAuto && bAuto.checked) ? 1 : 0;
+      const allowManual = isInfinite ? 0 : 1;
+      const billingMode = isInfinite ? 'infinite' : (allowAuto ? 'auto' : 'manual');
+      const isAuto = allowAuto;
       const rawDurationDays = parseInt(document.getElementById('sub-plan-duration-days')?.value || '30', 10);
       const durationDays = billingMode === 'infinite' ? 0 : Math.max(1, Math.min(3650, isFinite(rawDurationDays) ? rawDurationDays : 30));
 
@@ -13639,6 +13761,9 @@ function renderDashboardHtml(data) {
         features,
         is_auto_billing: isAuto,
         billing_mode: billingMode,
+        allow_auto: allowAuto,
+        allow_manual: allowManual,
+        is_infinite: isInfinite,
         duration_days: durationDays,
         is_active: 1,
         pricing_model: pricingModel
@@ -13867,9 +13992,18 @@ function renderDashboardHtml(data) {
         if (res && res.success) {
           const list = category === 'ai' ? allAiPlans : allStoragePlans;
           const p = (list || []).find(item => item.id === id);
-          if (p) p.is_auto_billing = res.is_auto_billing;
+          if (p) {
+            p.is_auto_billing = res.is_auto_billing;
+            p.billing_mode = res.billing_mode || (res.is_auto_billing === 1 ? 'auto' : 'manual');
+            p.allow_auto = res.allow_auto !== undefined ? res.allow_auto : (res.is_auto_billing === 1 ? 1 : 0);
+            p.allow_manual = res.allow_manual !== undefined ? res.allow_manual : 1;
+            p.is_infinite = res.is_infinite !== undefined ? res.is_infinite : 0;
+            if (res.duration_days !== undefined) p.duration_days = res.duration_days;
+          }
           renderSubscriptionPlansCards(currentSubPlanTab);
-          showToast(res.is_auto_billing === 1 ? "⚡ Mode Abonnement Automatique activé (Bouton S'abonner)" : '🔄 Mode Paiement Manuel activé (Bouton Commencer)');
+          showToast(res.is_auto_billing === 1
+            ? '⚡ Mode Automatique + Manuel activé (Visa Auto par défaut, Wave/OM Manuel)'
+            : '🔄 Mode Manuel seul activé (aucun prélèvement automatique)');
         }
       } catch (err) {
         console.error('Erreur toggle auto billing:', err);
@@ -17708,16 +17842,19 @@ function renderDashboardHtml(data) {
       return formatted + ' ' + cur;
     }
 
-    function formatBillingBadgeHtml(mode, durationDays) {
+    function formatBillingBadgeHtml(mode, durationDays, allowAuto, allowManual, isInfinite) {
       const m = String(mode || 'manual').toLowerCase();
       const d = Number(durationDays || 30);
-      if (m === 'infinite') {
-        return '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40">♾️ Infini (À vie)</span>';
+      const isPlanCardContext = allowAuto !== undefined || allowManual !== undefined || isInfinite !== undefined;
+      if (Number(isInfinite) === 1 || m === 'infinite') {
+        return '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 whitespace-nowrap">♾️ Infini (À vie)</span>';
       }
-      if (m === 'auto') {
-        return '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">⚡ Auto · ' + d + 'j</span>';
+      if (Number(allowAuto) === 1 || m === 'auto') {
+        const label = isPlanCardContext ? ('⚡ Auto + 🔄 Manuel · ' + d + 'j') : ('⚡ Auto · ' + d + 'j');
+        return '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 whitespace-nowrap">' + label + '</span>';
       }
-      return '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/40">🔄 Manuel · ' + d + 'j</span>';
+      const manualLabel = isPlanCardContext ? ('🔄 Manuel seul · ' + d + 'j') : ('🔄 Manuel · ' + d + 'j');
+      return '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-sky-500/20 text-sky-300 border border-sky-500/40 whitespace-nowrap">' + manualLabel + '</span>';
     }
 
     function formatAdminDateTime(isoStr) {
@@ -18097,6 +18234,15 @@ function renderDashboardHtml(data) {
             if (txt) featItems += '<li class="text-[11px] text-slate-300 flex items-start gap-1.5"><span class="text-emerald-400">✓</span><span>' + escapeHtml(txt) + '</span></li>';
           });
 
+          const planModeLower = String(p.billing_mode || 'manual').toLowerCase();
+          const planIsInf = Number(p.is_infinite) === 1 || planModeLower === 'infinite';
+          const planIsAuto = !planIsInf && (Number(p.allow_auto) === 1 || planModeLower === 'auto' || Number(p.is_auto_billing) === 1);
+          const planModeHint = planIsInf
+            ? '♾️ Paiement unique à vie — sans date d&apos;expiration'
+            : (planIsAuto
+              ? '⚡ Visa : Auto par défaut (modifiable) · 🔄 Wave/OM/MTN : Manuel'
+              : '🔄 Renouvellement manuel uniquement (aucun prélèvement auto)');
+
           plansHtml += '<div class="p-4 rounded-2xl bg-slate-900/90 border ' + (isActive ? 'border-slate-700' : 'border-slate-800 opacity-60') + ' flex flex-col justify-between gap-3">' +
             '<div class="space-y-2">' +
               '<div class="flex items-start justify-between gap-2">' +
@@ -18107,9 +18253,10 @@ function renderDashboardHtml(data) {
                   '</div>' +
                   (p.description ? '<div class="text-[11px] text-slate-400 mt-0.5">' + escapeHtml(p.description) + '</div>' : '') +
                 '</div>' +
-                formatBillingBadgeHtml(p.billing_mode, p.duration_days) +
+                formatBillingBadgeHtml(p.billing_mode, p.duration_days, planIsAuto ? 1 : 0, planIsInf ? 0 : 1, planIsInf ? 1 : 0) +
               '</div>' +
               '<div class="text-xl font-black font-mono text-emerald-400">' + escapeHtml(formatMoneyXof(p.price, p.primary_currency)) + '</div>' +
+              '<div class="text-[10px] px-2 py-1 rounded-lg bg-slate-950/70 border border-slate-800 text-slate-300">' + planModeHint + '</div>' +
               (featItems ? '<ul class="space-y-1 pt-1">' + featItems + '</ul>' : '') +
             '</div>' +
             '<div class="pt-2.5 border-t border-slate-800 flex items-center justify-between gap-2">' +
@@ -18182,7 +18329,7 @@ function renderDashboardHtml(data) {
           '<div class="flex items-center justify-between gap-2 flex-wrap">' +
             '<div>' +
               '<h4 class="text-xs font-black text-white uppercase tracking-wider">💳 Cartes de prix &amp; abonnements</h4>' +
-              '<p class="text-[10.5px] text-slate-400">Créez autant de tarifs que voulu (Auto, Manuel ou Infini).</p>' +
+              '<p class="text-[10.5px] text-slate-400">Créez autant de tarifs que voulu (Auto + Manuel, Manuel seul ou Infini).</p>' +
             '</div>' +
             '<button type="button" onclick="openAppPlanModal(&quot;' + safeKey + '&quot;)" class="px-3.5 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-xs font-black cursor-pointer">+ Créer une carte de prix</button>' +
           '</div>' +
@@ -18315,13 +18462,96 @@ function renderDashboardHtml(data) {
     }
     window.deleteMonetizedApp = deleteMonetizedApp;
 
-    function toggleAppPlanDurationVisibility() {
-      const inf = document.getElementById('ap-mode-infinite');
+    function syncAppPlanBillingCheckboxes(source) {
+      const bManual = document.getElementById('ap-mode-manual');
+      const bAuto = document.getElementById('ap-mode-auto');
+      const bInf = document.getElementById('ap-mode-infinite');
+      const lockBadge = document.getElementById('ap-mode-manual-lock');
+      const summary = document.getElementById('ap-billing-mode-summary');
       const wrap = document.getElementById('ap-duration-wrap');
+      const cManual = document.getElementById('ap-card-manual');
+      const cAuto = document.getElementById('ap-card-auto');
+      const cInf = document.getElementById('ap-card-infinite');
+      if (!bManual || !bAuto || !bInf) return;
+
+      if (source === 'infinite') {
+        if (bInf.checked) {
+          bAuto.checked = false;
+          bManual.checked = false;
+        } else if (!bAuto.checked && !bManual.checked) {
+          bManual.checked = true;
+        }
+      } else if (source === 'auto') {
+        if (bAuto.checked) {
+          bInf.checked = false;
+          bManual.checked = true;
+        } else {
+          bManual.checked = true;
+        }
+      } else if (source === 'manual') {
+        if (bManual.checked) {
+          bInf.checked = false;
+        } else if (bAuto.checked) {
+          bManual.checked = true;
+        } else if (!bInf.checked) {
+          bManual.checked = true;
+          showToast('ℹ️ Au moins un mode doit rester actif (cochez Infini pour un accès à vie).');
+        }
+      } else {
+        if (bInf.checked) {
+          bAuto.checked = false;
+          bManual.checked = false;
+        } else if (bAuto.checked) {
+          bManual.checked = true;
+        } else {
+          bManual.checked = true;
+        }
+      }
+
+      const isInf = bInf.checked;
+      const isAuto = !isInf && bAuto.checked;
+      const isManualOnly = !isInf && !isAuto;
+
+      bManual.disabled = isAuto;
+      if (lockBadge) lockBadge.classList.toggle('hidden', !isAuto);
+
+      if (cManual) {
+        cManual.className = 'p-2.5 rounded-lg border flex items-start gap-2 transition ' +
+          (isAuto
+            ? 'border-emerald-500/70 bg-emerald-950/30 cursor-not-allowed'
+            : (isManualOnly ? 'border-sky-500/70 bg-sky-950/30 cursor-pointer hover:border-sky-400' : 'border-slate-700 bg-slate-950/70 cursor-pointer hover:border-sky-500/50'));
+      }
+      if (cAuto) {
+        cAuto.className = 'p-2.5 rounded-lg border cursor-pointer flex items-start gap-2 transition ' +
+          (isAuto ? 'border-emerald-500/80 bg-emerald-950/35 hover:border-emerald-400' : 'border-slate-700 bg-slate-950/70 hover:border-emerald-500');
+      }
+      if (cInf) {
+        cInf.className = 'p-2.5 rounded-lg border cursor-pointer flex items-start gap-2 transition ' +
+          (isInf ? 'border-amber-500/80 bg-amber-950/35 hover:border-amber-400' : 'border-slate-700 bg-slate-950/70 hover:border-amber-500');
+      }
+
       if (wrap) {
-        if (inf && inf.checked) wrap.classList.add('hidden');
+        if (isInf) wrap.classList.add('hidden');
         else wrap.classList.remove('hidden');
       }
+
+      if (summary) {
+        if (isInf) {
+          summary.className = 'px-2.5 py-2 rounded-lg bg-amber-950/45 border border-amber-500/40 text-[10px] text-amber-200 leading-relaxed';
+          summary.innerHTML = '♾️ <strong>Mode actif : Abonnement Infini (À vie)</strong> — Paiement unique sans expiration. Affiche « Abonnement à vie activé sur votre compte ».';
+        } else if (isAuto) {
+          summary.className = 'px-2.5 py-2 rounded-lg bg-emerald-950/45 border border-emerald-500/40 text-[10px] text-emerald-200 leading-relaxed';
+          summary.innerHTML = '⚡ <strong>Mode actif : Automatique + Manuel</strong> — Carte Visa/Mastercard : <em>Automatique</em> sélectionné par défaut sur l&apos;écran vert (modifiable en <em>Manuel</em>). Wave / Orange / MTN : <em>Manuel</em>.';
+        } else {
+          summary.className = 'px-2.5 py-2 rounded-lg bg-sky-950/50 border border-sky-500/35 text-[10px] text-sky-200 leading-relaxed';
+          summary.innerHTML = '🔄 <strong>Mode actif : Manuel uniquement</strong> — Aucun prélèvement automatique. L&apos;utilisateur renouvelle lui-même à la fin de la période.';
+        }
+      }
+    }
+    window.syncAppPlanBillingCheckboxes = syncAppPlanBillingCheckboxes;
+
+    function toggleAppPlanDurationVisibility() {
+      syncAppPlanBillingCheckboxes('init');
     }
     window.toggleAppPlanDurationVisibility = toggleAppPlanDurationVisibility;
 
@@ -18340,9 +18570,11 @@ function renderDashboardHtml(data) {
       document.getElementById('ap-currency').value = existing ? (existing.primary_currency || 'XOF') : 'XOF';
 
       const mode = existing ? String(existing.billing_mode || 'manual').toLowerCase() : 'manual';
-      document.getElementById('ap-mode-manual').checked = (mode !== 'auto' && mode !== 'infinite');
-      document.getElementById('ap-mode-auto').checked = (mode === 'auto');
-      document.getElementById('ap-mode-infinite').checked = (mode === 'infinite');
+      const existingInf = existing ? (Number(existing.is_infinite) === 1 || mode === 'infinite') : false;
+      const existingAuto = existing ? (!existingInf && (Number(existing.allow_auto) === 1 || mode === 'auto' || Number(existing.is_auto_billing) === 1)) : false;
+      document.getElementById('ap-mode-infinite').checked = existingInf;
+      document.getElementById('ap-mode-auto').checked = existingAuto;
+      document.getElementById('ap-mode-manual').checked = !existingInf;
       document.getElementById('ap-duration-days').value = existing && existing.duration_days ? String(existing.duration_days) : '30';
 
       let feats = [];
@@ -18352,7 +18584,7 @@ function renderDashboardHtml(data) {
       const featLines = (Array.isArray(feats) ? feats : []).map(function(f) { return typeof f === 'string' ? f : (f && f.text ? f.text : ''); }).filter(Boolean);
       document.getElementById('ap-features').value = featLines.join(String.fromCharCode(10));
 
-      toggleAppPlanDurationVisibility();
+      syncAppPlanBillingCheckboxes('init');
       if (modal) {
         modal.classList.remove('hidden');
         modal.style.display = 'flex';
@@ -18372,9 +18604,10 @@ function renderDashboardHtml(data) {
     async function saveAppPlanModalForm(e) {
       if (e) e.preventDefault();
       const appKey = document.getElementById('ap-app-key').value;
-      const mode = document.getElementById('ap-mode-infinite').checked
-        ? 'infinite'
-        : (document.getElementById('ap-mode-auto').checked ? 'auto' : 'manual');
+      const isInfinite = document.getElementById('ap-mode-infinite').checked ? 1 : 0;
+      const allowAuto = (!isInfinite && document.getElementById('ap-mode-auto').checked) ? 1 : 0;
+      const allowManual = isInfinite ? 0 : 1;
+      const mode = isInfinite ? 'infinite' : (allowAuto ? 'auto' : 'manual');
       const durDays = mode === 'infinite' ? 0 : Math.max(1, parseInt(document.getElementById('ap-duration-days').value || '30', 10) || 30);
       const price = Number(document.getElementById('ap-price').value) || 0;
       const primaryCurrency = document.getElementById('ap-currency').value || 'XOF';
@@ -18391,6 +18624,10 @@ function renderDashboardHtml(data) {
         currencies_enabled: ['XOF', 'USD', 'EUR'],
         currency_conversions: calculateConversions(price, primaryCurrency),
         billing_mode: mode,
+        is_auto_billing: allowAuto,
+        allow_auto: allowAuto,
+        allow_manual: allowManual,
+        is_infinite: isInfinite,
         duration_days: durDays,
         features: rawFeatures.map(function(t) { return { text: t, enabled: true }; }),
         is_active: 1
@@ -21539,6 +21776,23 @@ export default {
       // ROUTE GET : /api/subscription-plans (Plans de stockage et IA)
       // ----------------------------------------------------------------------
       
+      // Normalisation stricte côté serveur des 3 cases (Manuel / Automatique + Manuel / Infini)
+      const normalizeAdminPlanBillingFlags = (input = {}) => {
+        const rawInf = input.is_infinite;
+        const rawAuto = input.allow_auto;
+        const rawMode = String(input.billing_mode || '').trim().toLowerCase();
+        const explicitInf = rawInf === true || Number(rawInf) === 1 || rawMode === 'infinite' || rawMode === 'infini' || rawMode === 'lifetime';
+        if (explicitInf) {
+          return { allow_auto: 0, allow_manual: 0, is_infinite: 1, billing_mode: 'infinite', is_auto_billing: 0 };
+        }
+        const explicitAuto = rawAuto === true || Number(rawAuto) === 1 || (rawAuto === undefined && (rawMode === 'auto' || Number(input.is_auto_billing) === 1 || input.is_auto_billing === true));
+        if (explicitAuto) {
+          // Règle métier impérative : cocher Automatique impose toujours Manuel avec lui
+          return { allow_auto: 1, allow_manual: 1, is_infinite: 0, billing_mode: 'auto', is_auto_billing: 1 };
+        }
+        return { allow_auto: 0, allow_manual: 1, is_infinite: 0, billing_mode: 'manual', is_auto_billing: 0 };
+      };
+
       // ----------------------------------------------------------------------
       // ROUTE POST/GET : /api/subscription-plans/reset-tables (Suppression et recréation à neuf des tables)
       // ----------------------------------------------------------------------
@@ -21569,6 +21823,11 @@ export default {
               yearly_discount_pct REAL DEFAULT 10,
               features TEXT DEFAULT '[]',
               is_auto_billing INTEGER DEFAULT 0,
+              billing_mode TEXT DEFAULT 'manual',
+              duration_days INTEGER DEFAULT 30,
+              allow_auto INTEGER DEFAULT 0,
+              allow_manual INTEGER DEFAULT 1,
+              is_infinite INTEGER DEFAULT 0,
               is_active INTEGER DEFAULT 1,
               sort_order INTEGER DEFAULT 0,
               created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -21592,6 +21851,11 @@ export default {
               yearly_discount_pct REAL DEFAULT 0,
               features TEXT DEFAULT '[]',
               is_auto_billing INTEGER DEFAULT 0,
+              billing_mode TEXT DEFAULT 'manual',
+              duration_days INTEGER DEFAULT 30,
+              allow_auto INTEGER DEFAULT 0,
+              allow_manual INTEGER DEFAULT 1,
+              is_infinite INTEGER DEFAULT 0,
               is_active INTEGER DEFAULT 1,
               sort_order INTEGER DEFAULT 0,
               pricing_model TEXT DEFAULT 'subscription',
@@ -21646,7 +21910,8 @@ export default {
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
         }
-                const body = await request.json().catch(() => ({}));
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
         const category = body.category === 'ai' ? 'ai' : 'storage';
         const plan = body.plan || {};
 
@@ -21661,9 +21926,12 @@ export default {
         const yearlyPrice = Number(plan.yearly_price) || 0;
         const yearlyDiscountPct = Number(plan.yearly_discount_pct) || 10;
         const features = typeof plan.features === 'string' ? plan.features : JSON.stringify(plan.features || []);
-        const rawMode = String(plan.billing_mode || (plan.is_auto_billing ? 'auto' : 'manual')).trim().toLowerCase();
-        const billingMode = (rawMode === 'auto' || rawMode === 'infinite') ? rawMode : 'manual';
-        const isAutoBilling = billingMode === 'auto' ? 1 : 0;
+        const flags = normalizeAdminPlanBillingFlags(plan);
+        const billingMode = flags.billing_mode;
+        const isAutoBilling = flags.is_auto_billing;
+        const allowAuto = flags.allow_auto;
+        const allowManual = flags.allow_manual;
+        const isInfinite = flags.is_infinite;
         const durationDays = billingMode === 'infinite'
           ? 0
           : Math.max(1, Math.min(3650, parseInt(plan.duration_days || 30, 10) || 30));
@@ -21673,13 +21941,15 @@ export default {
         if (category === 'ai') {
           const creditsOrWords = String(plan.credits_or_words || '100 000 crédits IA').trim();
           const creditsCount = Number(plan.credits_count) || 100000;
-          const pricingModel = String(plan.pricing_model || 'subscription').trim();
+          const pricingModel = billingMode === 'infinite'
+            ? 'one_time'
+            : String(plan.pricing_model || 'subscription').trim();
           await db.prepare(`
             INSERT INTO ai_subscription_plans (
               id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
               currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-              is_auto_billing, billing_mode, duration_days, is_active, sort_order, pricing_model, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              is_auto_billing, billing_mode, allow_auto, allow_manual, is_infinite, duration_days, is_active, sort_order, pricing_model, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -21695,6 +21965,9 @@ export default {
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
               billing_mode = excluded.billing_mode,
+              allow_auto = excluded.allow_auto,
+              allow_manual = excluded.allow_manual,
+              is_infinite = excluded.is_infinite,
               duration_days = excluded.duration_days,
               is_active = excluded.is_active,
               sort_order = excluded.sort_order,
@@ -21703,7 +21976,7 @@ export default {
           `).bind(
             planId, name, badge, description, creditsOrWords, creditsCount, price, primaryCurrency,
             currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
-            isAutoBilling, billingMode, durationDays, isActive, sortOrder, pricingModel
+            isAutoBilling, billingMode, allowAuto, allowManual, isInfinite, durationDays, isActive, sortOrder, pricingModel
           ).run();
 
           const updatedPlan = await db.prepare("SELECT * FROM ai_subscription_plans WHERE id = ?").bind(planId).first();
@@ -21718,8 +21991,8 @@ export default {
             INSERT INTO storage_subscription_plans (
               id, name, badge, description, storage_amount, storage_mb, price, primary_currency,
               currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-              is_auto_billing, billing_mode, duration_days, is_active, sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              is_auto_billing, billing_mode, allow_auto, allow_manual, is_infinite, duration_days, is_active, sort_order, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -21735,6 +22008,9 @@ export default {
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
               billing_mode = excluded.billing_mode,
+              allow_auto = excluded.allow_auto,
+              allow_manual = excluded.allow_manual,
+              is_infinite = excluded.is_infinite,
               duration_days = excluded.duration_days,
               is_active = excluded.is_active,
               sort_order = excluded.sort_order,
@@ -21742,7 +22018,7 @@ export default {
           `).bind(
             planId, name, badge, description, storageAmount, storageMb, price, primaryCurrency,
             currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
-            isAutoBilling, billingMode, durationDays, isActive, sortOrder
+            isAutoBilling, billingMode, allowAuto, allowManual, isInfinite, durationDays, isActive, sortOrder
           ).run();
 
           const updatedPlan = await db.prepare("SELECT * FROM storage_subscription_plans WHERE id = ?").bind(planId).first();
@@ -21820,20 +22096,47 @@ export default {
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
         }
-                const body = await request.json().catch(() => ({}));
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
         const category = body.category === 'ai' ? 'ai' : 'storage';
         const planId = String(body.id || '').trim();
         const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+        const current = await db.prepare(`SELECT is_auto_billing, billing_mode, allow_auto, is_infinite, duration_days FROM ${tableName} WHERE id = ?`).bind(planId).first();
 
+        let nextAuto = 0;
         if (body.is_auto_billing !== undefined) {
-          const newVal = body.is_auto_billing ? 1 : 0;
-          const newMode = newVal === 1 ? 'auto' : 'manual';
-          await db.prepare(`UPDATE ${tableName} SET is_auto_billing = ?, billing_mode = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, newMode, planId).run();
+          nextAuto = body.is_auto_billing ? 1 : 0;
+        } else if (current && (Number(current.is_infinite) === 1 || String(current.billing_mode || '').toLowerCase() === 'infinite')) {
+          // Si le plan était Infini, le bouton bascule proprement en Manuel (30j)
+          nextAuto = 0;
         } else {
-          await db.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, billing_mode = CASE WHEN is_auto_billing = 1 THEN 'manual' ELSE 'auto' END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+          const curAuto = current ? (Number(current.allow_auto) === 1 || Number(current.is_auto_billing) === 1 || String(current.billing_mode || '').toLowerCase() === 'auto') : false;
+          nextAuto = curAuto ? 0 : 1;
         }
-        const row = await db.prepare(`SELECT is_auto_billing, billing_mode FROM ${tableName} WHERE id = ?`).bind(planId).first();
-        return new Response(JSON.stringify({ success: true, is_auto_billing: row ? row.is_auto_billing : 0, billing_mode: row ? row.billing_mode : 'manual' }), {
+        const nextMode = nextAuto === 1 ? 'auto' : 'manual';
+        const nextDuration = current && Number(current.duration_days) > 0 ? Number(current.duration_days) : 30;
+        await db.prepare(
+          `UPDATE ${tableName}
+              SET is_auto_billing = ?,
+                  billing_mode = ?,
+                  allow_auto = ?,
+                  allow_manual = 1,
+                  is_infinite = 0,
+                  duration_days = ?,
+                  updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`
+        ).bind(nextAuto, nextMode, nextAuto, nextDuration, planId).run();
+
+        const row = await db.prepare(`SELECT is_auto_billing, billing_mode, allow_auto, allow_manual, is_infinite, duration_days FROM ${tableName} WHERE id = ?`).bind(planId).first();
+        return new Response(JSON.stringify({
+          success: true,
+          is_auto_billing: row ? row.is_auto_billing : nextAuto,
+          billing_mode: row ? row.billing_mode : nextMode,
+          allow_auto: row ? row.allow_auto : nextAuto,
+          allow_manual: row ? row.allow_manual : 1,
+          is_infinite: row ? row.is_infinite : 0,
+          duration_days: row ? row.duration_days : nextDuration
+        }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
@@ -22195,9 +22498,12 @@ export default {
         const primaryCurrency = String(body.primary_currency || 'XOF').toUpperCase();
         const currenciesEnabled = typeof body.currencies_enabled === 'string' ? body.currencies_enabled : JSON.stringify(body.currencies_enabled || ['XOF', 'USD', 'EUR']);
         const currencyConversions = typeof body.currency_conversions === 'string' ? body.currency_conversions : JSON.stringify(body.currency_conversions || {});
-        const rawMode = String(body.billing_mode || 'manual').trim().toLowerCase();
-        const billingMode = (rawMode === 'auto' || rawMode === 'infinite') ? rawMode : 'manual';
-        const isAutoBilling = billingMode === 'auto' ? 1 : 0;
+        const flags = normalizeAdminPlanBillingFlags(body);
+        const billingMode = flags.billing_mode;
+        const isAutoBilling = flags.is_auto_billing;
+        const allowAuto = flags.allow_auto;
+        const allowManual = flags.allow_manual;
+        const isInfinite = flags.is_infinite;
         const durationDays = billingMode === 'infinite' ? 0 : Math.max(1, Math.min(3650, parseInt(body.duration_days || 30, 10) || 30));
         const features = typeof body.features === 'string' ? body.features : JSON.stringify(body.features || []);
         const isActive = body.is_active !== undefined ? (body.is_active ? 1 : 0) : 1;
@@ -22207,8 +22513,8 @@ export default {
           INSERT INTO app_subscription_plans (
             id, app_key, name, badge, description, price, primary_currency,
             currencies_enabled, currency_conversions, billing_mode, duration_days,
-            is_auto_billing, features, is_active, sort_order, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            is_auto_billing, allow_auto, allow_manual, is_infinite, features, is_active, sort_order, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
           ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             badge = excluded.badge,
@@ -22220,6 +22526,9 @@ export default {
             billing_mode = excluded.billing_mode,
             duration_days = excluded.duration_days,
             is_auto_billing = excluded.is_auto_billing,
+            allow_auto = excluded.allow_auto,
+            allow_manual = excluded.allow_manual,
+            is_infinite = excluded.is_infinite,
             features = excluded.features,
             is_active = excluded.is_active,
             sort_order = excluded.sort_order,
@@ -22227,7 +22536,7 @@ export default {
         `).bind(
           planId, appKey, name, badge, description, price, primaryCurrency,
           currenciesEnabled, currencyConversions, billingMode, durationDays,
-          isAutoBilling, features, isActive, sortOrder
+          isAutoBilling, allowAuto, allowManual, isInfinite, features, isActive, sortOrder
         ).run();
 
         const planRow = await safeFirst(db, `SELECT * FROM app_subscription_plans WHERE id = ?`, [planId]);

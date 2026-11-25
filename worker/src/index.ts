@@ -12,6 +12,7 @@ import {
   ensurePaystackBillingTables,
   normalizeBillingMode,
   normalizeDurationDays,
+  normalizePlanBillingFlags,
 } from './paystackBilling';
 
 interface D1PreparedStatement {
@@ -18163,6 +18164,11 @@ a:hover{transform:translateY(-2px)}
               yearly_discount_pct REAL DEFAULT 10,
               features TEXT DEFAULT '[]',
               is_auto_billing INTEGER DEFAULT 0,
+              billing_mode TEXT DEFAULT 'manual',
+              duration_days INTEGER DEFAULT 30,
+              allow_auto INTEGER DEFAULT 0,
+              allow_manual INTEGER DEFAULT 1,
+              is_infinite INTEGER DEFAULT 0,
               is_active INTEGER DEFAULT 1,
               sort_order INTEGER DEFAULT 0,
               created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -18186,6 +18192,11 @@ a:hover{transform:translateY(-2px)}
               yearly_discount_pct REAL DEFAULT 0,
               features TEXT DEFAULT '[]',
               is_auto_billing INTEGER DEFAULT 0,
+              billing_mode TEXT DEFAULT 'manual',
+              duration_days INTEGER DEFAULT 30,
+              allow_auto INTEGER DEFAULT 0,
+              allow_manual INTEGER DEFAULT 1,
+              is_infinite INTEGER DEFAULT 0,
               is_active INTEGER DEFAULT 1,
               sort_order INTEGER DEFAULT 0,
               pricing_model TEXT DEFAULT 'subscription',
@@ -18314,9 +18325,13 @@ a:hover{transform:translateY(-2px)}
         const yearlyPrice = Number(plan.yearly_price) || 0;
         const yearlyDiscountPct = Number(plan.yearly_discount_pct) || 0;
         const features = typeof plan.features === 'string' ? plan.features : JSON.stringify(plan.features || []);
-        const billingMode = normalizeBillingMode(plan.billing_mode, plan.is_auto_billing, plan.pricing_model);
+        const flags = normalizePlanBillingFlags(plan);
+        const billingMode = flags.billingMode;
         const durationDays = normalizeDurationDays(plan.duration_days, billingMode);
-        const isAutoBilling = billingMode === 'auto' ? 1 : 0;
+        const isAutoBilling = flags.isAutoBilling;
+        const allowAuto = flags.allowAuto;
+        const allowManual = flags.allowManual;
+        const isInfinite = flags.isInfinite;
         const isActive = plan.is_active !== undefined ? (plan.is_active ? 1 : 0) : 1;
         const sortOrder = Number(plan.sort_order) || 1;
         await ensurePaystackBillingTables(targetDb);
@@ -18333,8 +18348,8 @@ a:hover{transform:translateY(-2px)}
             INSERT INTO ai_subscription_plans (
               id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
               currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-              is_auto_billing, billing_mode, duration_days, is_active, sort_order, pricing_model, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              is_auto_billing, billing_mode, allow_auto, allow_manual, is_infinite, duration_days, is_active, sort_order, pricing_model, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -18350,6 +18365,9 @@ a:hover{transform:translateY(-2px)}
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
               billing_mode = excluded.billing_mode,
+              allow_auto = excluded.allow_auto,
+              allow_manual = excluded.allow_manual,
+              is_infinite = excluded.is_infinite,
               duration_days = excluded.duration_days,
               is_active = excluded.is_active,
               sort_order = excluded.sort_order,
@@ -18358,7 +18376,7 @@ a:hover{transform:translateY(-2px)}
           `).bind(
             planId, name, badge, description, creditsOrWords, creditsCount, price, primaryCurrency,
             currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
-            isAutoBilling, billingMode, durationDays, isActive, sortOrder, pricingModel
+            isAutoBilling, billingMode, allowAuto, allowManual, isInfinite, durationDays, isActive, sortOrder, pricingModel
           ).run();
 
           const updatedPlan = await targetDb.prepare("SELECT * FROM ai_subscription_plans WHERE id = ?").bind(planId).first();
@@ -18371,8 +18389,8 @@ a:hover{transform:translateY(-2px)}
             INSERT INTO storage_subscription_plans (
               id, name, badge, description, storage_amount, storage_mb, price, primary_currency,
               currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-              is_auto_billing, billing_mode, duration_days, is_active, sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              is_auto_billing, billing_mode, allow_auto, allow_manual, is_infinite, duration_days, is_active, sort_order, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -18388,6 +18406,9 @@ a:hover{transform:translateY(-2px)}
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
               billing_mode = excluded.billing_mode,
+              allow_auto = excluded.allow_auto,
+              allow_manual = excluded.allow_manual,
+              is_infinite = excluded.is_infinite,
               duration_days = excluded.duration_days,
               is_active = excluded.is_active,
               sort_order = excluded.sort_order,
@@ -18395,7 +18416,7 @@ a:hover{transform:translateY(-2px)}
           `).bind(
             planId, name, badge, description, storageAmount, storageMb, price, primaryCurrency,
             currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
-            isAutoBilling, billingMode, durationDays, isActive, sortOrder
+            isAutoBilling, billingMode, allowAuto, allowManual, isInfinite, durationDays, isActive, sortOrder
           ).run();
 
           const updatedPlan = await targetDb.prepare("SELECT * FROM storage_subscription_plans WHERE id = ?").bind(planId).first();
@@ -18454,20 +18475,54 @@ a:hover{transform:translateY(-2px)}
       if (path === '/api/subscription-plans/toggle-auto-billing' && method === 'POST') {
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+        await ensurePaystackBillingTables(targetDb);
 
         const body = await request.json().catch(() => ({}));
         const category = body.category === 'ai' ? 'ai' : 'storage';
         const planId = String(body.id || '').trim();
         const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+        const current: any = await targetDb
+          .prepare(`SELECT is_auto_billing, billing_mode, allow_auto, is_infinite, duration_days FROM ${tableName} WHERE id = ?`)
+          .bind(planId)
+          .first();
 
+        let nextAuto = 0;
         if (body.is_auto_billing !== undefined) {
-          const newVal = body.is_auto_billing ? 1 : 0;
-          await targetDb.prepare(`UPDATE ${tableName} SET is_auto_billing = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, planId).run();
+          nextAuto = body.is_auto_billing ? 1 : 0;
+        } else if (current && (Number(current.is_infinite) === 1 || String(current.billing_mode || '').toLowerCase() === 'infinite')) {
+          nextAuto = 0;
         } else {
-          await targetDb.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+          const curAuto = current ? (Number(current.allow_auto) === 1 || Number(current.is_auto_billing) === 1 || String(current.billing_mode || '').toLowerCase() === 'auto') : false;
+          nextAuto = curAuto ? 0 : 1;
         }
-        const row = await targetDb.prepare(`SELECT is_auto_billing FROM ${tableName} WHERE id = ?`).bind(planId).first();
-        return jsonResponse({ success: true, is_auto_billing: row ? (row as any).is_auto_billing : 0 }, 200, origin);
+        const nextMode = nextAuto === 1 ? 'auto' : 'manual';
+        const nextDuration = current && Number(current.duration_days) > 0 ? Number(current.duration_days) : 30;
+
+        await targetDb.prepare(
+          `UPDATE ${tableName}
+              SET is_auto_billing = ?,
+                  billing_mode = ?,
+                  allow_auto = ?,
+                  allow_manual = 1,
+                  is_infinite = 0,
+                  duration_days = ?,
+                  updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?`
+        ).bind(nextAuto, nextMode, nextAuto, nextDuration, planId).run();
+
+        const row: any = await targetDb
+          .prepare(`SELECT is_auto_billing, billing_mode, allow_auto, allow_manual, is_infinite, duration_days FROM ${tableName} WHERE id = ?`)
+          .bind(planId)
+          .first();
+        return jsonResponse({
+          success: true,
+          is_auto_billing: row ? row.is_auto_billing : nextAuto,
+          billing_mode: row ? row.billing_mode : nextMode,
+          allow_auto: row ? row.allow_auto : nextAuto,
+          allow_manual: row ? row.allow_manual : 1,
+          is_infinite: row ? row.is_infinite : 0,
+          duration_days: row ? row.duration_days : nextDuration,
+        }, 200, origin);
       }
 
       // ==============================================================================
