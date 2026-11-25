@@ -85,6 +85,87 @@ export interface AppAccessResponse {
 }
 
 export type MobileMoneyProvider = 'wave' | 'orange' | 'mtn';
+export type SubscriptionRenewalMode = 'auto' | 'manual' | 'infinite';
+
+export interface SubscriptionCountdown {
+  isInfinite: boolean;
+  expired: boolean;
+  inGrace: boolean;
+  daysRemaining: number | null;
+  hoursRemaining: number | null;
+  totalHoursRemaining: number | null;
+  label: string;
+}
+
+export interface MaskedPaymentMethodRecord {
+  id: string;
+  brand: string;
+  last4: string;
+  expMonth: string;
+  expYear: string;
+  bank: string;
+  channel: string;
+  reusable: boolean;
+  isDefault: boolean;
+  label: string;
+}
+
+export interface ActiveSubscriptionRecord {
+  id: string;
+  user_id: string;
+  product_type: PaymentProductType;
+  app_key?: string;
+  app_name?: string;
+  plan_id: string;
+  plan_name: string;
+  status: string;
+  is_infinite: number;
+  plan_allows_auto: number;
+  plan_allows_manual: number;
+  renewal_mode: SubscriptionRenewalMode;
+  user_confirmed_renewal?: number;
+  payment_method_id?: string;
+  last_channel?: string;
+  last_network_label?: string;
+  price_amount?: number;
+  currency?: string;
+  billing_cycle?: string;
+  duration_days?: number;
+  current_period_start?: string | null;
+  current_period_end?: string | null;
+  next_billing_at?: string | null;
+  grace_until?: string | null;
+  cancel_at_period_end?: number;
+  countdown?: SubscriptionCountdown | null;
+}
+
+export interface RenewalUiConfig {
+  renewalMode: SubscriptionRenewalMode;
+  canChooseAutoOnSuccessScreen: boolean;
+  defaultSelectedMode: SubscriptionRenewalMode;
+  isInfinite: boolean;
+  planAllowsAuto: boolean;
+  planAllowsManual: boolean;
+  hasReusableCard: boolean;
+}
+
+export type SuccessScreenRenewalVariant =
+  | 'infinite'
+  | 'interactive_auto_manual'
+  | 'manual_can_link_card'
+  | 'manual_only';
+
+export interface ResolvedSuccessRenewalState {
+  variant: SuccessScreenRenewalVariant;
+  subscriptionId: string | null;
+  initialMode: SubscriptionRenewalMode;
+  canChooseAuto: boolean;
+  isInfinite: boolean;
+  planAllowsAuto: boolean;
+  cardLabel: string;
+  endsAtIso: string | null;
+  durationDays: number;
+}
 
 export interface InitializePaystackPayload {
   productType: PaymentProductType;
@@ -120,6 +201,9 @@ export interface ChargeMobileResponse {
   openUrl?: string;
   deliverySummary?: string;
   transaction?: VerifyPaystackResponse['transaction'];
+  subscription?: ActiveSubscriptionRecord | null;
+  paymentMethod?: MaskedPaymentMethodRecord | null;
+  renewalUiConfig?: RenewalUiConfig | null;
   mode?: 'test' | 'live' | 'unconfigured';
   fallbackSuggested?: boolean;
   error?: string;
@@ -168,6 +252,9 @@ export interface VerifyPaystackResponse {
     granted_ai_credits?: number;
     entitlement_expires_at?: string | null;
   };
+  subscription?: ActiveSubscriptionRecord | null;
+  paymentMethod?: MaskedPaymentMethodRecord | null;
+  renewalUiConfig?: RenewalUiConfig | null;
 }
 
 export interface PendingPaystackReturnContext {
@@ -527,6 +614,161 @@ export async function submitPaystackMobileOtp(
     };
   }
   return json as ChargeMobileResponse;
+}
+
+/**
+ * Résout de manière pure et déterministe la carte d'état de renouvellement
+ * à afficher sur l'écran vert de succès (`PaymentSuccessCelebration`).
+ */
+export function resolveSuccessScreenRenewalState(params: {
+  subscription?: ActiveSubscriptionRecord | null;
+  paymentMethod?: MaskedPaymentMethodRecord | null;
+  renewalUiConfig?: RenewalUiConfig | null;
+  billingMode?: ClientBillingMode;
+  durationDays?: number;
+  networkLabel?: string;
+  entitlementExpiresAt?: string | null;
+}): ResolvedSuccessRenewalState {
+  const { subscription, paymentMethod, renewalUiConfig, billingMode, durationDays, networkLabel, entitlementExpiresAt } = params;
+
+  const isInfinite = Boolean(
+    renewalUiConfig?.isInfinite ||
+      Number(subscription?.is_infinite) === 1 ||
+      subscription?.renewal_mode === 'infinite' ||
+      billingMode === 'infinite'
+  );
+
+  const planAllowsAuto = Boolean(
+    !isInfinite &&
+      (renewalUiConfig?.planAllowsAuto ??
+        (subscription ? Number(subscription.plan_allows_auto) === 1 : billingMode === 'auto'))
+  );
+
+  const subscriptionId = subscription?.id ? String(subscription.id) : null;
+  const endsAtIso =
+    isInfinite
+      ? null
+      : subscription?.current_period_end ||
+        subscription?.next_billing_at ||
+        entitlementExpiresAt ||
+        null;
+
+  const resolvedDuration = isInfinite
+    ? 0
+    : Math.max(1, Math.round(Number(subscription?.duration_days || durationDays || 30)));
+
+  const cardLabel = paymentMethod?.label
+    ? paymentMethod.label
+    : paymentMethod?.last4
+    ? `${paymentMethod.brand || 'Carte'} •••• ${paymentMethod.last4}`
+    : networkLabel && /visa|mastercard|card|carte/i.test(networkLabel)
+    ? networkLabel
+    : 'Visa / Mastercard';
+
+  if (isInfinite) {
+    return {
+      variant: 'infinite',
+      subscriptionId,
+      initialMode: 'infinite',
+      canChooseAuto: false,
+      isInfinite: true,
+      planAllowsAuto: false,
+      cardLabel,
+      endsAtIso: null,
+      durationDays: 0,
+    };
+  }
+
+  const canChooseAuto = Boolean(
+    renewalUiConfig?.canChooseAutoOnSuccessScreen && subscriptionId && planAllowsAuto
+  );
+
+  if (canChooseAuto) {
+    const initialMode: SubscriptionRenewalMode =
+      renewalUiConfig?.defaultSelectedMode === 'manual' || subscription?.renewal_mode === 'manual'
+        ? 'manual'
+        : 'auto';
+    return {
+      variant: 'interactive_auto_manual',
+      subscriptionId,
+      initialMode,
+      canChooseAuto: true,
+      isInfinite: false,
+      planAllowsAuto: true,
+      cardLabel,
+      endsAtIso,
+      durationDays: resolvedDuration,
+    };
+  }
+
+  if (planAllowsAuto) {
+    return {
+      variant: 'manual_can_link_card',
+      subscriptionId,
+      initialMode: 'manual',
+      canChooseAuto: false,
+      isInfinite: false,
+      planAllowsAuto: true,
+      cardLabel,
+      endsAtIso,
+      durationDays: resolvedDuration,
+    };
+  }
+
+  return {
+    variant: 'manual_only',
+    subscriptionId,
+    initialMode: 'manual',
+    canChooseAuto: false,
+    isInfinite: false,
+    planAllowsAuto: false,
+    cardLabel,
+    endsAtIso,
+    durationDays: resolvedDuration,
+  };
+}
+
+export interface UpdateSubscriptionRenewalModeResponse {
+  success: boolean;
+  renewalMode?: SubscriptionRenewalMode;
+  subscription?: ActiveSubscriptionRecord | null;
+  paymentMethod?: MaskedPaymentMethodRecord | null;
+  error?: string;
+}
+
+/**
+ * Enregistre le choix de renouvellement de l'utilisateur (Automatique <-> Manuel)
+ * directement depuis l'écran vert de succès ou le menu « Gérer mes abonnements ».
+ */
+export async function updateSubscriptionRenewalMode(
+  subscriptionId: string,
+  renewalMode: 'auto' | 'manual',
+  paymentMethodId?: string
+): Promise<UpdateSubscriptionRenewalModeResponse> {
+  const resp = await fetch(
+    `${getBaseApi()}/api/billing/subscriptions/${encodeURIComponent(subscriptionId)}/renewal-mode`,
+    {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({
+        renewalMode,
+        ...(paymentMethodId ? { paymentMethodId } : {}),
+      }),
+    }
+  );
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || !json?.success) {
+    return {
+      success: false,
+      error: json?.error || 'Impossible de mettre à jour le mode de renouvellement.',
+    };
+  }
+  return {
+    success: true,
+    renewalMode: (json.subscription?.renewal_mode || renewalMode) as SubscriptionRenewalMode,
+    subscription: json.subscription || null,
+    paymentMethod: json.paymentMethod || null,
+  };
 }
 
 let paystackInlineLoaderPromise: Promise<any> | null = null;

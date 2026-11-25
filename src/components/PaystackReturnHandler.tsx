@@ -94,6 +94,12 @@ export const PaystackReturnHandler: React.FC<PaystackReturnHandlerProps> = ({
           reference={tx?.reference || reference}
           networkLabel={tx?.network_label || 'Paystack'}
           deliverySummary={result?.deliverySummary}
+          billingMode={tx?.billing_mode}
+          durationDays={tx?.duration_days}
+          entitlementExpiresAt={tx?.entitlement_expires_at}
+          subscription={result?.subscription}
+          paymentMethod={result?.paymentMethod}
+          renewalUiConfig={result?.renewalUiConfig}
           onContinue={handleClose}
         />
       </div>

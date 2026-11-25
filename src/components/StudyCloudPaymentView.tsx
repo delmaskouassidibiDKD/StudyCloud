@@ -139,7 +139,6 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
   const [countrySearch, setCountrySearch] = useState<string>('');
   const countryPickerRef = useRef<HTMLDivElement | null>(null);
   const [otpCode, setOtpCode] = useState<string>('');
-  const [preferAutoCard, setPreferAutoCard] = useState<boolean>(target.billingMode === 'auto');
 
   // Fermer le menu déroulant pays en cliquant dehors ou avec Échap
   useEffect(() => {
@@ -331,6 +330,9 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
           verified: true,
           deliverySummary: res.deliverySummary,
           transaction: res.transaction,
+          subscription: res.subscription,
+          paymentMethod: res.paymentMethod,
+          renewalUiConfig: res.renewalUiConfig,
         });
         return;
       }
@@ -376,6 +378,9 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
           verified: true,
           deliverySummary: res.deliverySummary,
           transaction: res.transaction,
+          subscription: res.subscription,
+          paymentMethod: res.paymentMethod,
+          renewalUiConfig: res.renewalUiConfig,
         });
         return;
       }
@@ -402,7 +407,9 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
         billingCycle: target.billingCycle,
         currency: 'XOF',
         channelOnly,
-        preferAutoCard: channelOnly === 'card' && target.billingMode === 'auto' ? preferAutoCard : false,
+        // StudyCloud pilote le renouvellement via active_subscriptions + charge_authorization (Étape 3/7)
+        // afin que le choix Auto/Manuel sur l'écran vert et le tableau admin gardent 100% le contrôle.
+        preferAutoCard: false,
       });
 
       if (!initRes.success || !initRes.accessCode) {
@@ -494,6 +501,12 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
         reference={verifiedResult?.transaction?.reference || activeReference}
         networkLabel={verifiedResult?.transaction?.network_label || getMethodLabel(method)}
         deliverySummary={verifiedResult?.deliverySummary}
+        billingMode={verifiedResult?.transaction?.billing_mode || target.billingMode}
+        durationDays={verifiedResult?.transaction?.duration_days ?? target.durationDays}
+        entitlementExpiresAt={verifiedResult?.transaction?.entitlement_expires_at}
+        subscription={verifiedResult?.subscription}
+        paymentMethod={verifiedResult?.paymentMethod}
+        renewalUiConfig={verifiedResult?.renewalUiConfig}
         onContinue={() => onSuccess(verifiedResult || undefined)}
       />
     );
@@ -838,17 +851,9 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
                   </div>
 
                   {target.billingMode === 'auto' && (
-                    <label className="flex items-center gap-3 p-3.5 rounded-2xl bg-orange-50/80 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/25 cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={preferAutoCard}
-                        onChange={(e) => setPreferAutoCard(e.target.checked)}
-                        className="w-4 h-4 accent-orange-500 cursor-pointer"
-                      />
-                      <span className="text-xs font-bold text-stone-800 dark:text-stone-200">
-                        Renouvellement automatique à l&apos;échéance
-                      </span>
-                    </label>
+                    <div className="p-3.5 rounded-2xl bg-orange-50/80 dark:bg-orange-500/10 border border-orange-200 dark:border-orange-500/25 text-xs font-semibold text-stone-700 dark:text-stone-300 leading-relaxed">
+                      💳 Après validation de votre carte, vous pourrez choisir librement sur l&apos;écran de confirmation entre le <strong className="text-stone-950 dark:text-white">renouvellement Automatique</strong> (sélectionné par défaut) ou <strong className="text-stone-950 dark:text-white">Manuel</strong>.
+                    </div>
                   )}
 
                   <button
