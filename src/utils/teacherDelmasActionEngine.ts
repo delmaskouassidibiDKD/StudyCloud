@@ -2542,7 +2542,8 @@ export function polishTeacherDelmasReply(
 }
 
 // ============================================================================
-// EXÉCUTEUR LOCAL DÉTERMINISTE À 0 CRÉDIT (ÉCONOMIE MAXIMALE DE CRÉDITS IA)
+// EXÉCUTEUR DÉTERMINISTE RAPIDE (FIABILITÉ 100 % & ZÉRO GASPILLAGE DE TOKENS)
+// Facturé en tokens/crédits IA dans D1 via deductUserAiCredits, comme le Menu Création
 // ============================================================================
 
 export interface LocalDelmasResolution {

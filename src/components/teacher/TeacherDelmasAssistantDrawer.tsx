@@ -34,6 +34,7 @@ import { DnaLogo } from '../DnaLogo';
 import { MathText } from '../MathText';
 import {
   StudyCloudAPI,
+  deductUserAiCredits,
   getGeminiApiKey,
   sendChatMessageToAi,
   getActiveTokensPerCredit,
@@ -534,13 +535,13 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
   }, [onClose]);
 
   const getMessageTokens = (msg: UiChatMessage): number => {
-    if (msg.tokens === 0 && (msg.credits === 0 || msg.credits_deducted === 0)) return 0;
     if (typeof msg.tokens === 'number' && msg.tokens > 0) return msg.tokens;
     if (typeof msg.credits === 'number' && msg.credits > 20) return msg.credits;
     return Math.max(55, Math.ceil((msg.content || '').length / 3.8));
   };
 
   const getMessageCreditsDisplay = (msg: UiChatMessage): string => {
+    const rawTokens = getMessageTokens(msg);
     const normLang = (chatLanguage || 'fr').toLowerCase();
     const getUnit = (val: number) => {
       if (normLang.startsWith('zh')) return '积分';
@@ -555,11 +556,6 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       return val <= 1 ? 'crédit' : 'crédits';
     };
 
-    if (msg.tokens === 0 && (msg.credits === 0 || msg.credits_deducted === 0)) {
-      return `0 ${getUnit(0)}`;
-    }
-
-    const rawTokens = getMessageTokens(msg);
     if (typeof msg.credits_deducted === 'number' && msg.credits_deducted > 0) {
       const val = msg.credits_deducted;
       const fmt = val.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
@@ -1466,8 +1462,12 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     }
   };
 
-  // Envoi d'un message à l'Assistant Delmas (voie rapide locale 0 crédit + Kimi économe en arrière-plan)
+  // Envoi d'un message à l'Assistant Delmas (facturation en crédits IA selon les tokens consommés, identique au Menu Création)
   const handleSendMessage = async () => {
+    if (isCreditInsufficient) {
+      handleOpenAiSubscriptions();
+      return;
+    }
     const rawText = inputValue.trim();
     if ((!rawText && pendingAttachments.length === 0) || isGenerating || isImportingFiles) {
       return;
@@ -1493,7 +1493,8 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     ];
     const previousMessages = messages.filter((m) => !m.isError && m.content.trim().length > 0);
 
-    // 0. VOIE RAPIDE LOCALE À 0 CRÉDIT (effacements ciblés/totaux, ré-exécution après plainte, import Excel/CSV direct)
+    // 0. Résolution déterministe ultra-fiable (effacements exacts, récupération de plainte, import Excel/CSV),
+    //    toujours facturée équitablement en tokens/crédits IA dans D1 (sans gaspiller de tokens sur des tableaux inutiles dans le chat)
     const localResolution =
       liveContext && sheetBridge
         ? resolveDirectLocalDelmasCommand({
@@ -1509,11 +1510,6 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
             })),
           })
         : null;
-
-    if (!localResolution && isCreditInsufficient) {
-      handleOpenAiSubscriptions();
-      return;
-    }
 
     const targetConversationId = currentConversationId;
     const targetConversationTitle = currentConversationTitle;
@@ -1565,7 +1561,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     setPendingAttachments([]);
     setFileUploadWarning(null);
 
-    // Exécution immédiate à 0 crédit si résolu localement (sans appeler le LLM)
+    // Exécution déterministe instantanée + facturation réelle en tokens/crédits IA dans D1 (identique au Menu Création)
     if (localResolution && sheetBridge) {
       let appliedSummaries: string[] = [];
       if (localResolution.actions.length > 0) {
@@ -1588,21 +1584,48 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         summary: appliedSummaries[idx] || undefined,
       }));
 
+      // Calcul exact des tokens traités (requête + données/actions traitées + réponse concise, sans aucun tableau inutile)
+      const actionsJsonLen = JSON.stringify(localResolution.actions || []).length;
+      const billedTokens = Math.max(
+        65,
+        Math.ceil((promptText.length + actionsJsonLen + finalText.length) / 3.8)
+      );
+      let billedCredits = convertTokensToCredits(billedTokens, tokensPerCredit);
+      const uid = resolveActiveUserId() || null;
+
+      if (uid) {
+        try {
+          const deductRes = await deductUserAiCredits({
+            userId: uid,
+            tokens: billedTokens,
+            model: 'Assistant Delmas',
+            promptPreview: promptText.slice(0, 100),
+            responsePreview: finalText.slice(0, 150),
+            operationType: 'teacher_gradebook_action',
+          });
+          if (deductRes?.success && typeof deductRes.credits_deducted === 'number' && deductRes.credits_deducted > 0) {
+            billedCredits = deductRes.credits_deducted;
+          }
+          if (deductRes?.success && typeof deductRes.remaining_balance === 'number' && deductRes.remaining_balance <= 0 && isMountedRef.current) {
+            setIsCreditInsufficient(true);
+          }
+        } catch {}
+      }
+
       const completedAiMsg: UiChatMessage = {
         id: aiMsgId,
         sender: 'ai',
         content: finalText,
         actions: actionsPayload,
         appliedSummaries,
-        tokens: 0,
-        credits: 0,
-        credits_deducted: 0,
+        tokens: billedTokens,
+        credits: billedCredits,
+        credits_deducted: billedCredits,
         isStreaming: false,
         createdAt: Date.now(),
       };
       const finalConvMessages = [...messagesWithUser, completedAiMsg];
       liveMessagesByConvRef.current.set(targetConversationId, finalConvMessages);
-      const uid = resolveActiveUserId() || null;
       cacheDelmasConvDetails(uid, targetConversationId, finalConvMessages, allConvFiles);
 
       pendingStreamsByConvRef.current.set(targetConversationId, {
@@ -1616,8 +1639,8 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         userCreatedAt: now,
         appliedSummaries,
         actionsPayload,
-        tokens: 0,
-        credits: 0,
+        tokens: billedTokens,
+        credits: billedCredits,
         liveContext,
         currentText: finalText,
         fullText: finalText,

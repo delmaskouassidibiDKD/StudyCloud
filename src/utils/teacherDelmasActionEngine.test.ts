@@ -911,7 +911,7 @@ test('Assistant Delmas : action set_column_order reconnue, classée en action et
   assert.equal(filtered[0].scope, 'class');
 });
 
-test('Régression captures économie de crédits : effacement total et ciblé à 0 crédit (tout, noms, profils/photos, matricules, moyennes, notes, couleurs)', () => {
+test('Régression captures : effacement total et ciblé déterministe (tout, noms, profils/photos, matricules, moyennes, notes, couleurs)', () => {
   // 1. Vider tout / FAUT TOUT EFFACÉ -> clear_all (JAMAIS clear_formatting !)
   for (const msg of [
     'FAUT TOUT EFFACÉ',
@@ -1085,7 +1085,7 @@ test('Régression captures 3 & 4 : plaintes utilisateur ("TU N\'as PAS FAIT", "M
   );
 });
 
-test('Régression capture 1 : import Excel/CSV local à 0 crédit ("renseigne") et suppression des tableaux Markdown géants dans le chat', () => {
+test('Régression capture 1 : import Excel/CSV déterministe ("renseigne") et suppression des tableaux Markdown géants dans le chat', () => {
   // 1. "renseigner" avec fichier joint -> intent 'action'
   const intentRenseigne = classifyTeacherDelmasIntent({
     message: 'Il faut renseigner le tableau',
@@ -1201,7 +1201,7 @@ BAMBA SINDOU HIRAM,,,"12,57"`;
   assert.ok(compactPrompt.includes('MULTI-TÂCHES SIMULTANÉES'));
 });
 
-test('Multi-tâches simultanées : plusieurs tâches combinées dans un seul message (local 0 crédit + batch multi-actions LLM)', () => {
+test('Multi-tâches simultanées : plusieurs tâches combinées dans un seul message (effacements combinés + batch multi-actions LLM)', () => {
   // 1. Plusieurs effacements combinés en un seul message -> exécutés en un seul batch local à 0 crédit
   const multiClear = resolveDirectLocalDelmasCommand({
     message: 'Efface les noms, les photos de profil et les notes',
