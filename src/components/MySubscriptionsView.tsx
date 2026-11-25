@@ -27,6 +27,7 @@ import {
   MoreHorizontal,
   Receipt,
   ShieldCheck,
+  Lock,
 } from 'lucide-react';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
 import {
@@ -670,7 +671,11 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             {linkingCard ? (
               <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600 shrink-0" />
             ) : (
-              <CreditCard className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300 shrink-0" />
+              <img
+                src="/payment-logos/visa-mastercard.png"
+                alt="Visa / Mastercard"
+                className="h-4 w-7 object-contain rounded-[3px] bg-white border border-slate-200 px-0.5 shrink-0"
+              />
             )}
             <span className="truncate">Ajouter une carte</span>
           </span>
@@ -1088,9 +1093,13 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             /* SECTION CARTES VISA / MASTERCARD (UNIQUEMENT CARTES ENREGISTRÉES) */
             /* =============================================================== */
             paymentMethods.length === 0 ? (
-              <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 rounded-xl p-10 text-center space-y-1.5">
-                <div className="w-10 h-10 mx-auto rounded-lg bg-slate-100 dark:bg-[#1e293b] border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 mb-2">
-                  <CreditCard className="w-5 h-5" />
+              <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 rounded-lg p-10 text-center space-y-2">
+                <div className="inline-flex items-center justify-center rounded-md bg-white border border-slate-300 px-3 py-1.5 shadow-xs mb-1">
+                  <img
+                    src="/payment-logos/visa-mastercard.png"
+                    alt="Visa et Mastercard"
+                    className="h-8 w-auto object-contain"
+                  />
                 </div>
                 <div className="text-sm font-bold text-slate-900 dark:text-white">
                   Aucune carte bancaire enregistrée
@@ -1115,20 +1124,29 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                   return (
                     <div
                       key={pm.id}
-                      className="rounded-xl bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col"
+                      className="rounded-lg bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col"
                     >
-                      {/* En-tête visuel Carte Bancaire */}
-                      <div className="p-4 bg-[#0f172a] text-white">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
-                              {pm.isDefault ? 'CARTE PRINCIPALE' : 'CARTE ENREGISTRÉE'}
+                      {/* En-tête visuel Carte Bancaire avec logo officiel Visa / Mastercard */}
+                      <div className="p-4 bg-[#0f172a] text-white border-b border-slate-800">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="rounded bg-white px-2 py-1 border border-slate-200 shrink-0">
+                              <img
+                                src="/payment-logos/visa-mastercard.png"
+                                alt="Visa et Mastercard"
+                                className="h-6 w-auto object-contain"
+                              />
                             </div>
-                            <h3 className="text-sm font-bold text-white truncate mt-0.5">
-                              {pm.label || `${pm.cardBrand || pm.brand || 'Carte'} •••• ${pm.last4}`}
-                            </h3>
-                            <div className="text-[11px] text-slate-300 mt-0.5 truncate">
-                              Exp. {pm.expMonth}/{pm.expYear} {pm.bank ? `· ${pm.bank}` : ''}
+                            <div className="min-w-0">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                                {pm.isDefault ? 'CARTE PRINCIPALE' : 'CARTE ENREGISTRÉE'}
+                              </div>
+                              <h3 className="text-sm font-bold text-white truncate mt-0.5 font-mono tracking-tight">
+                                {pm.label || `${pm.cardBrand || pm.brand || 'Carte'} •••• ${pm.last4}`}
+                              </h3>
+                              <div className="text-[11px] text-slate-300 mt-0.5 truncate">
+                                Exp. {pm.expMonth}/{pm.expYear} {pm.bank ? `· ${pm.bank}` : ''}
+                              </div>
                             </div>
                           </div>
                           <button
@@ -1143,16 +1161,22 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Contrôles par service : Stockage Cloud / Crédits IA / Applications */}
-                      <div className="p-4 space-y-2.5 flex-1 text-xs">
-                        <div className="flex items-center justify-between">
+                      {/* Contrôles structurés par service */}
+                      <div className="p-4 space-y-2 flex-1 text-xs">
+                        <div className="flex items-center justify-between pb-1">
                           <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                            Paiements automatiques autorisés
+                            Services autorisés en automatique
                           </span>
                           {isBusyCard && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0051c3]" />}
                         </div>
 
-                        <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 dark:border-slate-700/80 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition">
+                        <label
+                          className={`flex items-center gap-3 p-2.5 rounded-md border cursor-pointer transition ${
+                            pm.autoStorage
+                              ? 'border-blue-300 dark:border-blue-700 bg-blue-50/40 dark:bg-blue-950/20'
+                              : 'border-slate-200 dark:border-slate-700/80 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                          }`}
+                        >
                           <input
                             type="checkbox"
                             disabled={isBusyCard}
@@ -1160,20 +1184,38 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                             onChange={(e) =>
                               handleToggleCardPermission(pm, { autoStorage: e.target.checked })
                             }
-                            className="mt-0.5 w-4 h-4 rounded accent-[#2563eb] cursor-pointer"
+                            className="w-4 h-4 rounded accent-[#2563eb] cursor-pointer shrink-0"
                           />
-                          <div className="min-w-0">
-                            <div className="font-semibold text-slate-900 dark:text-white">
-                              💾 Stockage Cloud
+                          <div className="w-7 h-7 rounded bg-sky-100 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 flex items-center justify-center text-sky-700 dark:text-sky-300 shrink-0">
+                            <HardDrive className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-slate-900 dark:text-white leading-tight">
+                              Stockage Cloud
                             </div>
-                            <div className="text-[10.5px] text-slate-500 dark:text-slate-400">
-                              Renouvellement automatique à l&apos;échéance
+                            <div className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
+                              Renouvellement auto à l&apos;échéance
                             </div>
                           </div>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                              pm.autoStorage
+                                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                            }`}
+                          >
+                            {pm.autoStorage ? 'Auto' : 'Manuel'}
+                          </span>
                         </label>
 
-                        <div className="rounded-lg border border-slate-200 dark:border-slate-700/80 p-2 space-y-2">
-                          <label className="flex items-start gap-2.5 cursor-pointer">
+                        <div
+                          className={`rounded-md border overflow-hidden transition ${
+                            pm.autoAi
+                              ? 'border-violet-300 dark:border-violet-700 bg-violet-50/30 dark:bg-violet-950/15'
+                              : 'border-slate-200 dark:border-slate-700/80'
+                          }`}
+                        >
+                          <label className="flex items-center gap-3 p-2.5 cursor-pointer hover:bg-slate-50/60 dark:hover:bg-slate-800/40">
                             <input
                               type="checkbox"
                               disabled={isBusyCard}
@@ -1184,20 +1226,32 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                                   ...(e.target.checked ? {} : { autoAiOnDepleted: false }),
                                 })
                               }
-                              className="mt-0.5 w-4 h-4 rounded accent-[#7c3aed] cursor-pointer"
+                              className="w-4 h-4 rounded accent-[#7c3aed] cursor-pointer shrink-0"
                             />
-                            <div className="min-w-0">
-                              <div className="font-semibold text-slate-900 dark:text-white">
-                                🤖 Crédits IA
+                            <div className="w-7 h-7 rounded bg-violet-100 dark:bg-violet-950/60 border border-violet-200 dark:border-violet-800 flex items-center justify-center text-violet-700 dark:text-violet-300 shrink-0">
+                              <Sparkles className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-slate-900 dark:text-white leading-tight">
+                                Crédits IA
                               </div>
-                              <div className="text-[10.5px] text-slate-500 dark:text-slate-400">
-                                Renouvellement automatique à l&apos;échéance
+                              <div className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
+                                Renouvellement auto à l&apos;échéance
                               </div>
                             </div>
+                            <span
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                                pm.autoAi
+                                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                              }`}
+                            >
+                              {pm.autoAi ? 'Auto' : 'Manuel'}
+                            </span>
                           </label>
 
                           {pm.autoAi && (
-                            <label className="ml-6 flex items-start gap-2 p-2 rounded-md bg-violet-50/80 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800/50 cursor-pointer">
+                            <label className="flex items-center gap-2.5 px-3 py-2 border-t border-violet-200/80 dark:border-violet-800/50 bg-violet-50/70 dark:bg-violet-950/35 cursor-pointer">
                               <input
                                 type="checkbox"
                                 disabled={isBusyCard}
@@ -1207,21 +1261,28 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                                     autoAiOnDepleted: e.target.checked,
                                   })
                                 }
-                                className="mt-0.5 w-3.5 h-3.5 rounded accent-[#7c3aed] cursor-pointer"
+                                className="w-3.5 h-3.5 rounded accent-[#7c3aed] cursor-pointer shrink-0"
                               />
-                              <div className="min-w-0">
-                                <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-200">
-                                  ⚡ Recharger automatiquement à 0 crédit
+                              <Zap className="w-3.5 h-3.5 text-violet-600 dark:text-violet-300 shrink-0" />
+                              <div className="min-w-0 flex-1">
+                                <div className="text-[11px] font-semibold text-violet-950 dark:text-violet-100 leading-tight">
+                                  Recharge auto si solde = 0
                                 </div>
-                                <div className="text-[10px] text-violet-700/80 dark:text-violet-300/80">
-                                  Sécurité anti-boucle : max 1 recharge / 24h + reçu email
+                                <div className="text-[10px] text-violet-700/80 dark:text-violet-300/80 truncate">
+                                  Max 1 recharge / 24h · Reçu email
                                 </div>
                               </div>
                             </label>
                           )}
                         </div>
 
-                        <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 dark:border-slate-700/80 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition">
+                        <label
+                          className={`flex items-center gap-3 p-2.5 rounded-md border cursor-pointer transition ${
+                            hasAnyAppAuto
+                              ? 'border-rose-300 dark:border-rose-700 bg-rose-50/35 dark:bg-rose-950/15'
+                              : 'border-slate-200 dark:border-slate-700/80 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                          }`}
+                        >
                           <input
                             type="checkbox"
                             disabled={isBusyCard}
@@ -1231,23 +1292,38 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                                 autoApps: e.target.checked ? ['*'] : [],
                               })
                             }
-                            className="mt-0.5 w-4 h-4 rounded accent-[#dc2626] cursor-pointer"
+                            className="w-4 h-4 rounded accent-[#dc2626] cursor-pointer shrink-0"
                           />
-                          <div className="min-w-0">
-                            <div className="font-semibold text-slate-900 dark:text-white">
-                              📱 Applications (Moyennes &amp; futures apps)
+                          <div className="w-7 h-7 rounded bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 flex items-center justify-center text-rose-700 dark:text-rose-300 shrink-0">
+                            <AppWindow className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold text-slate-900 dark:text-white leading-tight">
+                              Applications
                             </div>
-                            <div className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                            <div className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate">
                               {appsScopeNote}
                             </div>
                           </div>
+                          <span
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-bold shrink-0 ${
+                              hasAnyAppAuto
+                                ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                            }`}
+                          >
+                            {hasAnyAppAuto ? 'Auto' : 'Manuel'}
+                          </span>
                         </label>
                       </div>
 
-                      <div className="px-4 py-2.5 bg-slate-50 dark:bg-[#0f172a]/70 border-t border-slate-200 dark:border-slate-700/80 flex items-center justify-between text-[10.5px] text-slate-500 dark:text-slate-400">
-                        <span>Tokenisation PCI-DSS Paystack</span>
+                      <div className="px-4 py-2 bg-slate-50 dark:bg-[#0f172a]/70 border-t border-slate-200 dark:border-slate-700/80 flex items-center justify-between text-[10.5px] text-slate-500 dark:text-slate-400">
+                        <span className="inline-flex items-center gap-1.5">
+                          <Lock className="w-3 h-3 text-slate-400" />
+                          <span>PCI-DSS Paystack</span>
+                        </span>
                         <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                          Prête pour auto
+                          Active &amp; Réutilisable
                         </span>
                       </div>
                     </div>
@@ -1392,168 +1468,364 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
       </div>
 
       {/* ===================================================================== */}
-      {/* MODALE STUDYCLOUD : ASSOCIER UNE CARTE & CHOISIR LES SERVICES AUTO    */}
+      {/* MODALE STUDYCLOUD : ASSOCIER UNE CARTE — MISE EN PAGE CARRÉE PRO      */}
       {/* ===================================================================== */}
-      {showAddCardModal && (
-        <div
-          className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center p-4"
-          onClick={() => !linkingCard && setShowAddCardModal(false)}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 shadow-2xl overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* En-tête */}
-            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
-                  <CreditCard className="w-4 h-4" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-tight">
-                    Associer une carte Visa / Mastercard
-                  </h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Aucun abonnement n&apos;est acheté maintenant — choisissez les services automatiques.
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShowAddCardModal(false)}
-                className="w-7 h-7 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-500 cursor-pointer shrink-0"
+      {showAddCardModal &&
+        (() => {
+          const selectedServicesCount =
+            (addCardPerms.autoStorage ? 1 : 0) +
+            (addCardPerms.autoAi ? 1 : 0) +
+            (addCardPerms.autoApps.length > 0 ? 1 : 0);
+          const allSelected = selectedServicesCount === 3;
+
+          return (
+            <div
+              className="fixed inset-0 z-[70] bg-slate-950/65 backdrop-blur-[2px] flex items-center justify-center p-3 sm:p-6"
+              onClick={() => !linkingCard && setShowAddCardModal(false)}
+            >
+              <div
+                className="w-full max-w-3xl max-h-[92vh] flex flex-col rounded-lg bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 shadow-2xl overflow-hidden"
+                onClick={(e) => e.stopPropagation()}
               >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Corps : Cases à cocher par service + explication empreinte 100 FCFA remboursée */}
-            <div className="p-5 space-y-3 text-xs">
-              <div className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                Services autorisés à utiliser cette carte automatiquement
-              </div>
-
-              <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition">
-                <input
-                  type="checkbox"
-                  checked={addCardPerms.autoStorage}
-                  onChange={(e) =>
-                    setAddCardPerms((prev) => ({ ...prev, autoStorage: e.target.checked }))
-                  }
-                  className="mt-0.5 w-4 h-4 rounded accent-[#2563eb] cursor-pointer"
-                />
-                <div>
-                  <div className="font-bold text-slate-900 dark:text-white">💾 Stockage Cloud</div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Renouvelle automatiquement vos forfaits de stockage non-infinis à l&apos;échéance.
-                  </div>
-                </div>
-              </label>
-
-              <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2.5">
-                <label className="flex items-start gap-2.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={addCardPerms.autoAi}
-                    onChange={(e) =>
-                      setAddCardPerms((prev) => ({
-                        ...prev,
-                        autoAi: e.target.checked,
-                        autoAiOnDepleted: e.target.checked ? prev.autoAiOnDepleted : false,
-                      }))
-                    }
-                    className="mt-0.5 w-4 h-4 rounded accent-[#7c3aed] cursor-pointer"
-                  />
-                  <div>
-                    <div className="font-bold text-slate-900 dark:text-white">🤖 Crédits IA</div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                      Renouvelle automatiquement votre forfait IA à la date d&apos;échéance.
+                {/* BARRE D'EN-TÊTE STRUCTURÉE AVEC LE VRAI LOGO VISA / MASTERCARD */}
+                <div className="px-5 py-3.5 bg-white dark:bg-[#111827] border-b border-slate-300 dark:border-slate-700 flex items-center justify-between gap-4 shrink-0">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className="h-10 px-2.5 rounded-md bg-white border border-slate-300 flex items-center justify-center shrink-0 shadow-2xs">
+                      <img
+                        src="/payment-logos/visa-mastercard.png"
+                        alt="Visa et Mastercard"
+                        className="h-7 w-auto object-contain"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <h3 className="text-sm sm:text-[15px] font-bold text-slate-900 dark:text-white tracking-tight truncate">
+                        Associer une carte bancaire Visa / Mastercard
+                      </h3>
+                      <p className="text-[11.5px] text-slate-500 dark:text-slate-400 truncate mt-0.5">
+                        Enregistrement sécurisé sans achat immédiat · Contrôle complet par service
+                      </p>
                     </div>
                   </div>
-                </label>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddCardModal(false)}
+                    className="w-8 h-8 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer shrink-0 transition"
+                    aria-label="Fermer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
 
-                {addCardPerms.autoAi && (
-                  <label className="ml-6 flex items-start gap-2 p-2.5 rounded-lg bg-violet-50/90 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800/50 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={addCardPerms.autoAiOnDepleted}
-                      onChange={(e) =>
-                        setAddCardPerms((prev) => ({ ...prev, autoAiOnDepleted: e.target.checked }))
-                      }
-                      className="mt-0.5 w-3.5 h-3.5 rounded accent-[#7c3aed] cursor-pointer"
-                    />
-                    <div>
-                      <div className="text-[11px] font-bold text-violet-900 dark:text-violet-200">
-                        ⚡ Recharger automatiquement dès que mon solde IA arrive à 0
+                {/* CORPS 2 COLONNES ÉQUILIBRÉES : APERÇU + GARANTIES (GAUCHE) / SERVICES (DROITE) */}
+                <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 md:grid-cols-12 md:divide-x divide-slate-200 dark:divide-slate-700/90">
+                  {/* COLONNE GAUCHE : VISUEL CARTE OFFICIEL + TABLEAU DE VÉRIFICATION */}
+                  <div className="md:col-span-5 bg-slate-50 dark:bg-[#0d1424] p-5 flex flex-col justify-between gap-4">
+                    <div className="space-y-4">
+                      {/* Aperçu Carte Bancaire Carré */}
+                      <div className="rounded-lg bg-[#0f172a] border border-slate-800 p-4 text-white shadow-sm space-y-4">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="rounded bg-white px-2.5 py-1 border border-slate-200">
+                            <img
+                              src="/payment-logos/visa-mastercard.png"
+                              alt="Visa et Mastercard"
+                              className="h-6 w-auto object-contain"
+                            />
+                          </div>
+                          <span className="px-2 py-0.5 rounded bg-emerald-500/15 border border-emerald-400/30 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                            PCI-DSS
+                          </span>
+                        </div>
+
+                        <div className="font-mono text-sm tracking-[0.18em] text-slate-200 pt-1">
+                          •••• &nbsp;•••• &nbsp;•••• &nbsp;XXXX
+                        </div>
+
+                        <div className="pt-2.5 border-t border-white/10 flex items-end justify-between gap-2 text-[10.5px]">
+                          <div className="min-w-0">
+                            <div className="uppercase tracking-wider text-slate-400 text-[9.5px]">
+                              Titulaire du compte
+                            </div>
+                            <div className="font-semibold text-white truncate mt-0.5">
+                              {userName}
+                            </div>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <div className="uppercase tracking-wider text-slate-400 text-[9.5px]">
+                              Autorisations
+                            </div>
+                            <div className="font-bold text-emerald-300 mt-0.5">
+                              {selectedServicesCount} / 3 services
+                            </div>
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-[10px] text-violet-700/80 dark:text-violet-300/80">
-                        Protection anti-boucle : max 1 recharge par 24h + email de confirmation immédiat.
+
+                      {/* Tableau structuré des conditions de vérification */}
+                      <div className="rounded-lg bg-white dark:bg-[#131c2e] border border-slate-200 dark:border-slate-700 overflow-hidden">
+                        <div className="px-3.5 py-2 bg-slate-100/80 dark:bg-[#1a243b] border-b border-slate-200 dark:border-slate-700 text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                          Récapitulatif de vérification
+                        </div>
+                        <div className="divide-y divide-slate-200 dark:divide-slate-700/80 text-[11.5px]">
+                          <div className="px-3.5 py-2 flex items-center justify-between gap-2">
+                            <span className="text-slate-500 dark:text-slate-400">Coût net facturé</span>
+                            <span className="font-bold text-emerald-700 dark:text-emerald-400">0 FCFA</span>
+                          </div>
+                          <div className="px-3.5 py-2 flex items-center justify-between gap-2">
+                            <span className="text-slate-500 dark:text-slate-400">Empreinte bancaire</span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">
+                              100 FCFA <span className="text-emerald-600 dark:text-emerald-400 font-bold">(remboursée)</span>
+                            </span>
+                          </div>
+                          <div className="px-3.5 py-2 flex items-center justify-between gap-2">
+                            <span className="text-slate-500 dark:text-slate-400">Opérateur sécurisé</span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">Paystack</span>
+                          </div>
+                          <div className="px-3.5 py-2 flex items-center justify-between gap-2">
+                            <span className="text-slate-500 dark:text-slate-400">Révocation</span>
+                            <span className="font-semibold text-slate-800 dark:text-slate-200">1 clic à tout moment</span>
+                          </div>
+                        </div>
                       </div>
                     </div>
-                  </label>
-                )}
-              </div>
 
-              <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition">
-                <input
-                  type="checkbox"
-                  checked={addCardPerms.autoApps.length > 0}
-                  onChange={(e) =>
-                    setAddCardPerms((prev) => ({
-                      ...prev,
-                      autoApps: e.target.checked ? ['*'] : [],
-                    }))
-                  }
-                  className="mt-0.5 w-4 h-4 rounded accent-[#dc2626] cursor-pointer"
-                />
-                <div>
-                  <div className="font-bold text-slate-900 dark:text-white">
-                    📱 Applications (Moyennes &amp; futures apps)
+                    {/* Note sécurité concise */}
+                    <div className="p-3 rounded-md bg-emerald-50/90 dark:bg-emerald-950/35 border border-emerald-200 dark:border-emerald-800/60 flex items-start gap-2.5">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                      <p className="text-[11px] text-emerald-950 dark:text-emerald-200 leading-relaxed">
+                        L&apos;empreinte de <strong>100 FCFA</strong> sert uniquement à valider la carte auprès de votre banque et est <strong>remboursée automatiquement</strong> juste après.
+                      </p>
+                    </div>
                   </div>
-                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Règle automatiquement les abonnements mensuels / périodiques d&apos;applications.
+
+                  {/* COLONNE DROITE : SERVICES AUTORISÉS BIEN RÉPARTIS ET STRUCTURÉS */}
+                  <div className="md:col-span-7 bg-white dark:bg-[#111827] p-5 flex flex-col justify-between gap-4">
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between gap-2 pb-1 border-b border-slate-200 dark:border-slate-800">
+                        <div>
+                          <div className="text-[11px] font-bold uppercase tracking-wider text-slate-700 dark:text-slate-200">
+                            Services autorisés au paiement automatique
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                            Cochez uniquement les services que cette carte pourra régler à l&apos;échéance.
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setAddCardPerms(
+                              allSelected
+                                ? { autoStorage: false, autoAi: false, autoAiOnDepleted: false, autoApps: [] }
+                                : { autoStorage: true, autoAi: true, autoAiOnDepleted: addCardPerms.autoAiOnDepleted, autoApps: ['*'] }
+                            )
+                          }
+                          className="px-2.5 py-1 rounded border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-[#1e293b] hover:bg-slate-100 text-[11px] font-semibold text-slate-700 dark:text-slate-200 cursor-pointer shrink-0 transition"
+                        >
+                          {allSelected ? 'Tout décocher' : 'Tout cocher'}
+                        </button>
+                      </div>
+
+                      {/* Service 1 : Stockage Cloud */}
+                      <label
+                        className={`flex items-center gap-3.5 p-3.5 rounded-lg border cursor-pointer transition ${
+                          addCardPerms.autoStorage
+                            ? 'border-blue-400 dark:border-blue-600 bg-blue-50/40 dark:bg-blue-950/20'
+                            : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-[#131c2e]'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={addCardPerms.autoStorage}
+                          onChange={(e) =>
+                            setAddCardPerms((prev) => ({ ...prev, autoStorage: e.target.checked }))
+                          }
+                          className="w-4 h-4 rounded accent-[#2563eb] cursor-pointer shrink-0"
+                        />
+                        <div className="w-9 h-9 rounded-md bg-sky-100 dark:bg-sky-950/60 border border-sky-200 dark:border-sky-800 flex items-center justify-center text-sky-700 dark:text-sky-300 shrink-0">
+                          <HardDrive className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-900 dark:text-white">
+                              Stockage Cloud
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                                addCardPerms.autoStorage
+                                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                              }`}
+                            >
+                              {addCardPerms.autoStorage ? 'Automatique' : 'Manuel'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                            Renouvelle automatiquement vos forfaits de stockage non-infinis à la date d&apos;échéance.
+                          </p>
+                        </div>
+                      </label>
+
+                      {/* Service 2 : Crédits IA + Option Solde à 0 */}
+                      <div
+                        className={`rounded-lg border overflow-hidden transition ${
+                          addCardPerms.autoAi
+                            ? 'border-violet-400 dark:border-violet-600 bg-violet-50/30 dark:bg-violet-950/15'
+                            : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-[#131c2e]'
+                        }`}
+                      >
+                        <label className="flex items-center gap-3.5 p-3.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={addCardPerms.autoAi}
+                            onChange={(e) =>
+                              setAddCardPerms((prev) => ({
+                                ...prev,
+                                autoAi: e.target.checked,
+                                autoAiOnDepleted: e.target.checked ? prev.autoAiOnDepleted : false,
+                              }))
+                            }
+                            className="w-4 h-4 rounded accent-[#7c3aed] cursor-pointer shrink-0"
+                          />
+                          <div className="w-9 h-9 rounded-md bg-violet-100 dark:bg-violet-950/60 border border-violet-200 dark:border-violet-800 flex items-center justify-center text-violet-700 dark:text-violet-300 shrink-0">
+                            <Sparkles className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                Crédits IA StudyCloud
+                              </span>
+                              <span
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                                  addCardPerms.autoAi
+                                    ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                    : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                                }`}
+                              >
+                                {addCardPerms.autoAi ? 'Automatique' : 'Manuel'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                              Renouvelle automatiquement votre forfait de crédits IA à l&apos;échéance mensuelle.
+                            </p>
+                          </div>
+                        </label>
+
+                        {addCardPerms.autoAi && (
+                          <label className="flex items-center gap-3 px-4 py-2.5 border-t border-violet-200 dark:border-violet-800/60 bg-violet-50/80 dark:bg-violet-950/40 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={addCardPerms.autoAiOnDepleted}
+                              onChange={(e) =>
+                                setAddCardPerms((prev) => ({ ...prev, autoAiOnDepleted: e.target.checked }))
+                              }
+                              className="w-3.5 h-3.5 rounded accent-[#7c3aed] cursor-pointer shrink-0"
+                            />
+                            <div className="w-6 h-6 rounded bg-violet-200/70 dark:bg-violet-900/70 flex items-center justify-center text-violet-700 dark:text-violet-200 shrink-0">
+                              <Zap className="w-3.5 h-3.5" />
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="text-[11.5px] font-bold text-violet-950 dark:text-violet-100 leading-tight">
+                                Recharger automatiquement si mon solde IA arrive à 0
+                              </div>
+                              <div className="text-[10.5px] text-violet-700/85 dark:text-violet-300/85 mt-0.5">
+                                Sécurité anti-boucle : 1 recharge max / 24h · Reçu envoyé par email
+                              </div>
+                            </div>
+                          </label>
+                        )}
+                      </div>
+
+                      {/* Service 3 : Applications */}
+                      <label
+                        className={`flex items-center gap-3.5 p-3.5 rounded-lg border cursor-pointer transition ${
+                          addCardPerms.autoApps.length > 0
+                            ? 'border-rose-400 dark:border-rose-600 bg-rose-50/35 dark:bg-rose-950/15'
+                            : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600 bg-white dark:bg-[#131c2e]'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={addCardPerms.autoApps.length > 0}
+                          onChange={(e) =>
+                            setAddCardPerms((prev) => ({
+                              ...prev,
+                              autoApps: e.target.checked ? ['*'] : [],
+                            }))
+                          }
+                          className="w-4 h-4 rounded accent-[#dc2626] cursor-pointer shrink-0"
+                        />
+                        <div className="w-9 h-9 rounded-md bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 flex items-center justify-center text-rose-700 dark:text-rose-300 shrink-0">
+                          <AppWindow className="w-4 h-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-bold text-slate-900 dark:text-white">
+                              Applications (Moyennes &amp; futures apps)
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
+                                addCardPerms.autoApps.length > 0
+                                  ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400'
+                              }`}
+                            >
+                              {addCardPerms.autoApps.length > 0 ? 'Automatique' : 'Manuel'}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                            Règle automatiquement les abonnements mensuels ou périodiques de vos applications.
+                          </p>
+                        </div>
+                      </label>
+                    </div>
+
+                    {/* Barre de synthèse discrète en bas de la colonne droite */}
+                    <div className="px-3.5 py-2.5 rounded-md bg-slate-50 dark:bg-[#0d1424] border border-slate-200 dark:border-slate-700/80 text-[11px] text-slate-600 dark:text-slate-400 flex items-center justify-between gap-2">
+                      <span>
+                        {selectedServicesCount > 0
+                          ? 'Les forfaits à vie (Infini) ne sont jamais prélevés.'
+                          : 'Carte enregistrée en réserve — aucun prélèvement auto activé.'}
+                      </span>
+                      <span className="font-bold text-slate-800 dark:text-slate-200 shrink-0">
+                        Modifiable à tout moment
+                      </span>
+                    </div>
                   </div>
                 </div>
-              </label>
 
-              {/* Bandeau de transparence PCI-DSS + Remboursement auto 100 FCFA */}
-              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-start gap-2.5">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                <div className="text-[11px] text-emerald-900 dark:text-emerald-200 leading-relaxed">
-                  <strong>Vérification bancaire 0 FCFA net :</strong> Paystack effectue une empreinte de sécurité de{' '}
-                  <strong>100 FCFA</strong> pour enregistrer votre carte auprès de votre banque, puis la{' '}
-                  <strong>rembourse automatiquement</strong> immédiatement après. Vous pourrez modifier ces cases à tout moment.
+                {/* BARRE DE PIED ARCHITECTURALE */}
+                <div className="px-5 py-3.5 bg-slate-50 dark:bg-[#0f172a] border-t border-slate-300 dark:border-slate-700 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                  <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                    <Lock className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span>Chiffrement bancaire TLS · Traitement certifié PCI-DSS par Paystack</span>
+                  </div>
+                  <div className="flex items-center justify-end gap-2.5">
+                    <button
+                      type="button"
+                      disabled={linkingCard}
+                      onClick={() => setShowAddCardModal(false)}
+                      className="h-9 px-4 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer transition"
+                    >
+                      Annuler
+                    </button>
+                    <button
+                      type="button"
+                      disabled={linkingCard}
+                      onClick={() => handleLinkCard(addCardTargetSubId, addCardPerms)}
+                      className="h-9 px-4 rounded-md bg-[#047857] hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-2 transition cursor-pointer disabled:opacity-60 shadow-xs"
+                    >
+                      {linkingCard ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      )}
+                      <span>Continuer vers la saisie sécurisée (0 FCFA net)</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
-
-            {/* Pied de modale */}
-            <div className="px-5 py-3.5 bg-slate-50 dark:bg-[#0f172a] border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                disabled={linkingCard}
-                onClick={() => setShowAddCardModal(false)}
-                className="h-9 px-3.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1e293b] hover:bg-slate-100 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
-              >
-                Annuler
-              </button>
-              <button
-                type="button"
-                disabled={linkingCard}
-                onClick={() => handleLinkCard(addCardTargetSubId, addCardPerms)}
-                className="h-9 px-4 rounded-lg bg-[#047857] hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer disabled:opacity-60 shadow-xs"
-              >
-                {linkingCard ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <CreditCard className="w-3.5 h-3.5" />
-                )}
-                <span>Sécuriser ma carte (0 FCFA net)</span>
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+          );
+        })()}
     </div>
   );
 };
