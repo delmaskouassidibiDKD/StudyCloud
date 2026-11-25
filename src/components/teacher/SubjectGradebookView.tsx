@@ -3929,6 +3929,154 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             break;
           }
 
+          case 'clear_all': {
+            if (!disableCloudPersistence && getTeacherAuthToken()) {
+              for (const s of workingStudents) {
+                if (s.photoR2Key) {
+                  TeacherGradebookAPI.deleteStudentPhoto({
+                    subjectId: subject.id,
+                    termId: effectiveTermId,
+                    studentId: s.id,
+                    photoR2Key: s.photoR2Key,
+                  }).catch(() => {});
+                }
+              }
+            }
+            const blankRowCount = Math.max(8, Math.min(workingStudents.length, 12));
+            workingStudents = Array.from({ length: blankRowCount }, () => ({
+              id: generateTeacherEntityId('std'),
+              name: '',
+              matricule: '',
+              photoUrl: undefined,
+              photoR2Key: undefined,
+              photoSizeBytes: undefined,
+              notes: Array(workingColCount).fill(''),
+            }));
+            workingCellStyles = {};
+            workingCellColors = {};
+            workingRowColors = {};
+            Object.keys(workingColMetas).forEach((k) => {
+              const idx = parseInt(k, 10);
+              const meta = workingColMetas[idx];
+              if (meta && (meta.headerBgColor || meta.columnBgColor)) {
+                const { headerBgColor: _h, columnBgColor: _c, ...rest } = meta;
+                workingColMetas[idx] = rest;
+                colsMutated = true;
+              }
+            });
+            studentsMutated = true;
+            stylesMutated = true;
+            cellColorsMutated = true;
+            rowColorsMutated = true;
+            summaries.push(`✓ Tableau ${subject.name} entièrement vidé`);
+            break;
+          }
+
+          case 'clear_names':
+          case 'clear_matricules':
+          case 'clear_photos': {
+            const hasTargetedStudent = Boolean(
+              (typeof action.studentName === 'string' && action.studentName.trim()) ||
+                (Array.isArray(action.studentNames) && action.studentNames.length > 0) ||
+                action.rowIndex !== undefined ||
+                (Array.isArray(action.rowIndices) && action.rowIndices.length > 0)
+            );
+            const displayList = studentsMutated ? workingStudents : studentsWithStats;
+            const targetIds = new Set<string>();
+            if (hasTargetedStudent) {
+              const nameTargets: string[] = [];
+              if (typeof action.studentName === 'string' && action.studentName.trim()) {
+                nameTargets.push(
+                  normalizeStudentNameKey(action.studentName.replace(/\([^)]*\)/g, ' ').trim())
+                );
+              }
+              if (Array.isArray(action.studentNames)) {
+                action.studentNames.forEach((n: unknown) => {
+                  const clean = normalizeStudentNameKey(String(n || '').replace(/\([^)]*\)/g, ' ').trim());
+                  if (clean) nameTargets.push(clean);
+                });
+              }
+              const rowTargets = new Set<number>();
+              if (typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
+                rowTargets.add(Math.round(action.rowIndex) - 1);
+              }
+              if (Array.isArray(action.rowIndices)) {
+                action.rowIndices.forEach((r: unknown) => {
+                  if (Number(r) >= 1) rowTargets.add(Math.round(Number(r)) - 1);
+                });
+              }
+              displayList.forEach((s, idx) => {
+                const sn = normalizeStudentNameKey(s.name || '');
+                const matchName =
+                  nameTargets.length > 0 &&
+                  Boolean(sn) &&
+                  nameTargets.some(
+                    (t) =>
+                      sn === t ||
+                      sn.includes(t) ||
+                      t.includes(sn) ||
+                      (/^(?:le\s+|la\s+)?(?:1er|1ere|premier|premiere|major)$/.test(t) && idx === 0)
+                  );
+                if (matchName || rowTargets.has(idx)) {
+                  targetIds.add(s.id);
+                }
+              });
+            }
+
+            let touched = 0;
+            workingStudents = workingStudents.map((s) => {
+              if (hasTargetedStudent && !targetIds.has(s.id)) return s;
+              if (action.type === 'clear_names') {
+                if ((s.name || '').trim().length > 0) touched++;
+                return { ...s, name: '' };
+              }
+              if (action.type === 'clear_matricules') {
+                if ((s.matricule || '').trim().length > 0) touched++;
+                return { ...s, matricule: '' };
+              }
+              // clear_photos
+              if (s.photoUrl || s.photoR2Key) {
+                touched++;
+                if (s.photoR2Key && !disableCloudPersistence && getTeacherAuthToken()) {
+                  TeacherGradebookAPI.deleteStudentPhoto({
+                    subjectId: subject.id,
+                    termId: effectiveTermId,
+                    studentId: s.id,
+                    photoR2Key: s.photoR2Key,
+                  }).catch(() => {});
+                }
+              }
+              return {
+                ...s,
+                photoUrl: undefined,
+                photoR2Key: undefined,
+                photoSizeBytes: undefined,
+              };
+            });
+
+            studentsMutated = true;
+            if (action.type === 'clear_names') {
+              summaries.push(
+                hasTargetedStudent
+                  ? `✓ Nom effacé (${touched || 1} ligne)`
+                  : `✓ Tous les noms de ${subject.name} ont été effacés`
+              );
+            } else if (action.type === 'clear_matricules') {
+              summaries.push(
+                hasTargetedStudent
+                  ? `✓ Matricule effacé (${touched || 1} ligne)`
+                  : `✓ Tous les matricules de ${subject.name} ont été effacés`
+              );
+            } else {
+              summaries.push(
+                hasTargetedStudent
+                  ? `✓ Photo de profil effacée (${touched || 1} ligne)`
+                  : `✓ Toutes les photos de profil de ${subject.name} ont été effacées`
+              );
+            }
+            break;
+          }
+
           case 'clear_notes': {
             const isSpec =
               action.mode === 'specific' &&
@@ -3938,7 +4086,56 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 ? Number(action.colNumber) - 1
                 : Number(action.colIndex);
 
+            const hasTargetedStudent = Boolean(
+              (typeof action.studentName === 'string' && action.studentName.trim()) ||
+                (Array.isArray(action.studentNames) && action.studentNames.length > 0) ||
+                action.rowIndex !== undefined ||
+                (Array.isArray(action.rowIndices) && action.rowIndices.length > 0)
+            );
+            const targetIds = new Set<string>();
+            if (hasTargetedStudent) {
+              const displayList = studentsMutated ? workingStudents : studentsWithStats;
+              const nameTargets: string[] = [];
+              if (typeof action.studentName === 'string' && action.studentName.trim()) {
+                nameTargets.push(
+                  normalizeStudentNameKey(action.studentName.replace(/\([^)]*\)/g, ' ').trim())
+                );
+              }
+              if (Array.isArray(action.studentNames)) {
+                action.studentNames.forEach((n: unknown) => {
+                  const clean = normalizeStudentNameKey(String(n || '').replace(/\([^)]*\)/g, ' ').trim());
+                  if (clean) nameTargets.push(clean);
+                });
+              }
+              const rowTargets = new Set<number>();
+              if (typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
+                rowTargets.add(Math.round(action.rowIndex) - 1);
+              }
+              if (Array.isArray(action.rowIndices)) {
+                action.rowIndices.forEach((r: unknown) => {
+                  if (Number(r) >= 1) rowTargets.add(Math.round(Number(r)) - 1);
+                });
+              }
+              displayList.forEach((s, idx) => {
+                const sn = normalizeStudentNameKey(s.name || '');
+                const matchName =
+                  nameTargets.length > 0 &&
+                  Boolean(sn) &&
+                  nameTargets.some(
+                    (t) =>
+                      sn === t ||
+                      sn.includes(t) ||
+                      t.includes(sn) ||
+                      (/^(?:le\s+|la\s+)?(?:1er|1ere|premier|premiere|major)$/.test(t) && idx === 0)
+                  );
+                if (matchName || rowTargets.has(idx)) {
+                  targetIds.add(s.id);
+                }
+              });
+            }
+
             workingStudents = workingStudents.map((s) => {
+              if (hasTargetedStudent && !targetIds.has(s.id)) return s;
               const copyNotes = [...s.notes];
               if (isSpec && specIdx >= 0 && specIdx < workingColCount) {
                 copyNotes[specIdx] = '';
@@ -3950,8 +4147,12 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             studentsMutated = true;
             summaries.push(
               isSpec
-                ? `✓ Notes de la colonne ${specIdx + 1} effacées`
-                : `✓ Toutes les notes de ${subject.name} ont été effacées`
+                ? hasTargetedStudent
+                  ? `✓ Note ${specIdx + 1} effacée pour la sélection`
+                  : `✓ Notes de la colonne ${specIdx + 1} effacées`
+                : hasTargetedStudent
+                ? `✓ Notes et moyenne effacées pour la sélection`
+                : `✓ Toutes les notes et moyennes de ${subject.name} ont été effacées`
             );
             break;
           }

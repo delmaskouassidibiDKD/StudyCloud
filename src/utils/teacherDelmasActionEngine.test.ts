@@ -6,15 +6,19 @@ import {
   buildTeacherDelmasSystemPrompt,
   classifyDelmasUploadFile,
   classifyTeacherDelmasIntent,
+  compactHistoryMessageForPrompt,
   filterSafeTeacherDelmasActions,
   hasRealExplicitMatriculeBatch,
   isLikelyFakeRowNumberMatricule,
   isLikelyFakeSequentialMatriculeBatch,
+  looksLikeFalseNoAccessHallucination,
   looksLikeUnfulfilledActionClaim,
+  parseSpreadsheetStudentsFromText,
   parseTeacherDelmasAiResponse,
   pickPreferredKimiModel,
   polishTeacherDelmasReply,
   resolveDelmasColorHex,
+  resolveDirectLocalDelmasCommand,
   stripTeacherDelmasReasoning,
   validateDelmasFileSelection,
   type TeacherDelmasActiveContext,
@@ -905,4 +909,293 @@ test('Assistant Delmas : action set_column_order reconnue, classée en action et
   assert.equal(filtered.length, 1);
   assert.equal(filtered[0].type, 'set_column_order');
   assert.equal(filtered[0].scope, 'class');
+});
+
+test('Régression captures économie de crédits : effacement total et ciblé à 0 crédit (tout, noms, profils/photos, matricules, moyennes, notes, couleurs)', () => {
+  // 1. Vider tout / FAUT TOUT EFFACÉ -> clear_all (JAMAIS clear_formatting !)
+  for (const msg of [
+    'FAUT TOUT EFFACÉ',
+    'vider tout',
+    'vide tout le tableau',
+    'efface tout',
+    'tout supprimer',
+    'remettre tout à zéro',
+  ]) {
+    const intent = classifyTeacherDelmasIntent({
+      message: msg,
+      activeContext: sampleContext,
+    });
+    assert.equal(intent.intent, 'action', `Attendu 'action' pour "${msg}"`);
+
+    const local = resolveDirectLocalDelmasCommand({
+      message: msg,
+      activeContext: sampleContext,
+    });
+    assert.ok(local, `Attendu résolution locale 0 crédit pour "${msg}"`);
+    assert.equal(local.actions.length, 1);
+    assert.equal(local.actions[0].type, 'clear_all', `Attendu clear_all pour "${msg}"`);
+    assert.ok(!local.chatResponse.includes('|'), 'Ne doit jamais tracer de tableau Markdown');
+  }
+
+  // 2. Effacements ciblés par champ : nom, profil/photo, matricule, moyenne/notes, note précise, couleurs
+  const cases: Array<{ msg: string; expectedType: string; check?: (a: any) => void }> = [
+    { msg: 'efface les noms', expectedType: 'clear_names' },
+    { msg: 'vider nom', expectedType: 'clear_names' },
+    {
+      msg: 'efface le nom de DKD',
+      expectedType: 'clear_names',
+      check: (a) => assert.equal(a.studentName, 'DKD'),
+    },
+    { msg: 'efface les profils', expectedType: 'clear_photos' },
+    { msg: 'supprimer les photos de profil', expectedType: 'clear_photos' },
+    { msg: 'efface les matricules', expectedType: 'clear_matricules' },
+    { msg: 'vider matricule', expectedType: 'clear_matricules' },
+    {
+      msg: 'effacer les moyennes',
+      expectedType: 'clear_notes',
+      check: (a) => assert.equal(a.mode, 'all'),
+    },
+    {
+      msg: 'effacer moyenne',
+      expectedType: 'clear_notes',
+      check: (a) => assert.equal(a.mode, 'all'),
+    },
+    {
+      msg: 'efface les notes',
+      expectedType: 'clear_notes',
+      check: (a) => assert.equal(a.mode, 'all'),
+    },
+    {
+      msg: 'vide la note 2',
+      expectedType: 'clear_notes',
+      check: (a) => {
+        assert.equal(a.mode, 'specific');
+        assert.equal(a.colNumber, 2);
+      },
+    },
+    { msg: 'efface les couleurs', expectedType: 'clear_formatting' },
+  ];
+
+  for (const tc of cases) {
+    const local = resolveDirectLocalDelmasCommand({
+      message: tc.msg,
+      activeContext: sampleContext,
+    });
+    assert.ok(local, `Attendu résolution locale pour "${tc.msg}"`);
+    assert.equal(local.actions[0].type, tc.expectedType, `Mauvais type pour "${tc.msg}"`);
+    tc.check?.(local.actions[0]);
+  }
+
+  // 3. Commande composée (efface couleur + mets en vert) ou question conseil -> NE DOIT PAS être interceptée localement
+  assert.equal(
+    resolveDirectLocalDelmasCommand({
+      message: 'Enlève la couleur et mets son nom en vert',
+      activeContext: sampleContext,
+    }),
+    null
+  );
+  assert.equal(
+    resolveDirectLocalDelmasCommand({
+      message: 'Comment effacer les notes ?',
+      activeContext: sampleContext,
+    }),
+    null
+  );
+
+  // 4. Sur un tableau de moyenne générale -> message clair à 0 crédit sans hallucination
+  const termAvgClear = resolveDirectLocalDelmasCommand({
+    message: 'FAUT TOUT EFFACÉ',
+    activeContext: { ...sampleContext, sheetKind: 'term_average' },
+  });
+  assert.ok(termAvgClear);
+  assert.equal(termAvgClear.informationalOnly, true);
+  assert.equal(termAvgClear.actions.length, 0);
+});
+
+test('Régression captures 3 & 4 : plaintes utilisateur ("TU N\'as PAS FAIT", "MAIS MOI JE VOIS TOUJOURS LES MOYENNE") et anti-hallucination', () => {
+  const historyAfterClearAll = [
+    { sender: 'user' as const, content: 'FAUT TOUT EFFACÉ' },
+    { sender: 'ai' as const, content: "J'ai effacé toutes les données du tableau." },
+  ];
+
+  for (const complaint of [
+    "TU N'as PAS FAIT",
+    'MAIS MOI JE VOIS TOUJOURS LES MOYENNE',
+    "rien n'a changé",
+  ]) {
+    const intent = classifyTeacherDelmasIntent({
+      message: complaint,
+      activeContext: sampleContext,
+      recentMessages: historyAfterClearAll,
+    });
+    assert.equal(intent.intent, 'action', `Attendu 'action' pour la plainte "${complaint}"`);
+
+    const recovered = resolveDirectLocalDelmasCommand({
+      message: complaint,
+      activeContext: sampleContext,
+      recentMessages: historyAfterClearAll,
+    });
+    assert.ok(recovered, `Attendu récupération locale 0 crédit pour "${complaint}"`);
+    assert.equal(recovered.actions[0].type, 'clear_all');
+  }
+
+  // Plainte "MAIS MOI JE VOIS TOUJOURS LES MOYENNE" sans clear_all préalable -> clear_notes all
+  const complaintNotesOnly = resolveDirectLocalDelmasCommand({
+    message: 'MAIS MOI JE VOIS TOUJOURS LES MOYENNE',
+    activeContext: sampleContext,
+    recentMessages: [],
+  });
+  assert.ok(complaintNotesOnly);
+  assert.equal(complaintNotesOnly.actions[0].type, 'clear_notes');
+  assert.equal(complaintNotesOnly.actions[0].mode, 'all');
+
+  // Pare-feu anti-injection : autorise clear_all sur plainte si le message précédent était destructif, bloque sinon
+  const allowedFollowUp = filterSafeTeacherDelmasActions(
+    [{ type: 'clear_all' }],
+    "TU N'as PAS FAIT",
+    { recentUserMessages: ['FAUT TOUT EFFACÉ'] }
+  );
+  assert.equal(allowedFollowUp.length, 1);
+
+  const blockedInjection = filterSafeTeacherDelmasActions(
+    [{ type: 'clear_all' }],
+    'Ajoute un élève Kouassi',
+    { recentUserMessages: ['Bonjour'] }
+  );
+  assert.equal(blockedInjection.length, 0);
+
+  // Détecteurs d'hallucination & faux claims des captures 3 & 4
+  assert.equal(
+    looksLikeUnfulfilledActionClaim(
+      'Je vais effacer toutes les données du tableau et réinitialiser le tableau à son état initial.'
+    ),
+    true
+  );
+  assert.equal(
+    looksLikeUnfulfilledActionClaim(
+      'Le tableau de moyennes est maintenant vide et prêt pour de nouvelles saisies.'
+    ),
+    true
+  );
+  assert.equal(
+    looksLikeFalseNoAccessHallucination(
+      "C'est parce que je n'ai pas réellement accès au tableau de moyennes et que je ne peux pas le modifier directement."
+    ),
+    true
+  );
+});
+
+test('Régression capture 1 : import Excel/CSV local à 0 crédit ("renseigne") et suppression des tableaux Markdown géants dans le chat', () => {
+  // 1. "renseigner" avec fichier joint -> intent 'action'
+  const intentRenseigne = classifyTeacherDelmasIntent({
+    message: 'Il faut renseigner le tableau',
+    hasNewAttachments: true,
+    hasConversationFiles: true,
+    activeContext: sampleContext,
+  });
+  assert.equal(intentRenseigne.intent, 'action');
+
+  // 2. Parseur Excel/CSV déterministe (cas A : notes individuelles + cas B : notes vides avec colonne Moyenne)
+  const csvWithNotes = `[--- Feuille Excel : "SVT" ---]
+Nom && Prénoms,NOTE 1,NOTE 2,Moyenne
+ADESIYAN ABDULMALIK AYOBAMI,14,16,15
+AMALAMAN BROU N'GOUAN EMMANUEL,12.5,13.5,13
+Moyenne de classe,,,14`;
+  const parsedA = parseSpreadsheetStudentsFromText(csvWithNotes);
+  assert.equal(parsedA.length, 2);
+  assert.equal(parsedA[0].name, 'ADESIYAN ABDULMALIK AYOBAMI');
+  assert.deepEqual(parsedA[0].notes, ['14', '16']);
+  assert.equal(parsedA[1].name, "AMALAMAN BROU N'GOUAN EMMANUEL");
+  assert.deepEqual(parsedA[1].notes, ['12.5', '13.5']);
+
+  const csvAvgOnly = `[--- Feuille Excel : "SVT" ---]
+Nom && Prénoms,NOTE 1,NOTE 2,Moyenne
+ADESIYAN ABDULMALIK AYOBAMI,,,"12,28"
+BAMBA SINDOU HIRAM,,,"12,57"`;
+  const parsedB = parseSpreadsheetStudentsFromText(csvAvgOnly);
+  assert.equal(parsedB.length, 2);
+  assert.deepEqual(parsedB[0].notes, ['12.28']);
+  assert.deepEqual(parsedB[1].notes, ['12.57']);
+
+  // 3. Résolution locale à 0 crédit sur "renseigne" avec fichier Excel
+  const excelImport = resolveDirectLocalDelmasCommand({
+    message: 'renseigne le tableau',
+    activeContext: sampleContext,
+    hasNewAttachments: true,
+    conversationFiles: [
+      {
+        id: 'tdfile-xl',
+        conversationId: 'tdconv-1',
+        fileName: 'liste_4eme1.xlsx',
+        mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        fileType: 'document',
+        sizeBytes: 12000,
+        compressedSizeBytes: 8000,
+        extractedText: csvWithNotes,
+        createdAt: Date.now(),
+      },
+    ],
+  });
+  assert.ok(excelImport);
+  assert.equal(excelImport.actions.length, 1);
+  assert.equal(excelImport.actions[0].type, 'add_students');
+  assert.equal(excelImport.actions[0].students.length, 2);
+  assert.ok(!excelImport.chatResponse.includes('|'), 'Ne doit jamais tracer de tableau Markdown');
+
+  // 4. Nettoyage strict des réponses verbeuses (tableaux Markdown aplatis, faux effacement Excel, questions inutiles, futur+passé)
+  const cleanedCapture1 = polishTeacherDelmasReply(
+    "J'ai inséré les élèves du fichier Excel dans le tableau. Voici le tableau mis à jour : | Nom && Prénoms | NOTE 1 | NOTE 2 | Moyenne || --- | --- | --- | --- || ADESIYAN ABDULMALIK AYOBAMI | | | 12,28 | J'ai inséré les 50 élèves dans le tableau.",
+    1
+  );
+  assert.ok(!cleanedCapture1.includes('|'), `Ne doit plus contenir de tableau: "${cleanedCapture1}"`);
+  assert.ok(!cleanedCapture1.includes('ADESIYAN'), `Ne doit pas recopier les lignes: "${cleanedCapture1}"`);
+  assert.ok(cleanedCapture1.length < 180);
+
+  const cleanedCapture2 = polishTeacherDelmasReply(
+    "J'ai effacé toutes les données du tableau. Voici le tableau vide : | Nom && Prénoms | NOTE 1 | NOTE 2 | Moyenne || --- | --- | --- | --- | J'ai également effacé les données du fichier Excel joint.",
+    1
+  );
+  assert.ok(!cleanedCapture2.includes('|'));
+  assert.ok(!cleanedCapture2.toLowerCase().includes('fichier excel joint'));
+
+  const cleanedCapture4 = polishTeacherDelmasReply(
+    "Je vais effacer toutes les données et nous allons recommencer à zéro. Le tableau de moyennes est maintenant vide et prêt pour de nouvelles saisies. Comment puis-je vous aider aujourd'hui ?",
+    1
+  );
+  assert.ok(!cleanedCapture4.startsWith('Je vais'));
+  assert.ok(!cleanedCapture4.includes("Comment puis-je vous aider aujourd'hui"));
+
+  // 5. Compactage de l'historique pour éviter de re-facturer les vieux tableaux géants
+  const compacted = compactHistoryMessageForPrompt(
+    "J'ai inséré les élèves. Voici le tableau mis à jour : | Nom | NOTE 1 | NOTE 2 | Moyenne || A | 10 | 12 | 11 || B | 14 | 15 | 14.5 |",
+    'assistant'
+  );
+  assert.ok(!compacted.includes('|'));
+  assert.ok(compacted.length <= 325);
+
+  // 6. Prompt système compacte les très gros fichiers hors référence active pour économiser les crédits
+  const hugeExcelText = `Nom,Note 1\n${Array.from({ length: 120 }, (_, i) => `ELEVE_${i},15`).join('\n')}`;
+  const compactPrompt = buildTeacherDelmasSystemPrompt({
+    languageCode: 'fr',
+    activeContext: sampleContext,
+    intent: 'action',
+    referencesActiveFiles: false,
+    conversationFiles: [
+      {
+        id: 'tdfile-big',
+        conversationId: 'tdconv-1',
+        fileName: 'big_class.xlsx',
+        mimeType: 'text/csv',
+        fileType: 'document',
+        sizeBytes: 50000,
+        compressedSizeBytes: 20000,
+        extractedText: hugeExcelText,
+        createdAt: Date.now(),
+      },
+    ],
+  });
+  assert.ok(compactPrompt.includes('big_class.xlsx'));
+  assert.ok(!compactPrompt.includes('ELEVE_119'), 'Ne doit pas ré-injecter 120 lignes quand le fichier n’est pas visé');
+  assert.ok(compactPrompt.includes('clear_all'));
+  assert.ok(compactPrompt.includes('ÉCONOMIE MAXIMALE DE CRÉDITS'));
 });

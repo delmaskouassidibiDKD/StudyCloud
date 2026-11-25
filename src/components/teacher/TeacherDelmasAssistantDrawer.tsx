@@ -64,11 +64,14 @@ import {
   SUPPORTED_DELMAS_LANGUAGES,
   buildTeacherDelmasSystemPrompt,
   classifyTeacherDelmasIntent,
+  compactHistoryMessageForPrompt,
   filterSafeTeacherDelmasActions,
+  looksLikeFalseNoAccessHallucination,
   looksLikeUnfulfilledActionClaim,
   parseTeacherDelmasAiResponse,
   pickPreferredKimiModel,
   polishTeacherDelmasReply,
+  resolveDirectLocalDelmasCommand,
   validateDelmasFileSelection,
   type ResolvedBackgroundModel,
   type TeacherDelmasSheetBridge,
@@ -524,13 +527,13 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
   }, [onClose]);
 
   const getMessageTokens = (msg: UiChatMessage): number => {
+    if (msg.tokens === 0 && (msg.credits === 0 || msg.credits_deducted === 0)) return 0;
     if (typeof msg.tokens === 'number' && msg.tokens > 0) return msg.tokens;
     if (typeof msg.credits === 'number' && msg.credits > 20) return msg.credits;
     return Math.max(55, Math.ceil((msg.content || '').length / 3.8));
   };
 
   const getMessageCreditsDisplay = (msg: UiChatMessage): string => {
-    const rawTokens = getMessageTokens(msg);
     const normLang = (chatLanguage || 'fr').toLowerCase();
     const getUnit = (val: number) => {
       if (normLang.startsWith('zh')) return '积分';
@@ -545,6 +548,11 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       return val <= 1 ? 'crédit' : 'crédits';
     };
 
+    if (msg.tokens === 0 && (msg.credits === 0 || msg.credits_deducted === 0)) {
+      return `0 ${getUnit(0)}`;
+    }
+
+    const rawTokens = getMessageTokens(msg);
     if (typeof msg.credits_deducted === 'number' && msg.credits_deducted > 0) {
       const val = msg.credits_deducted;
       const fmt = val.toLocaleString('fr-FR', { maximumFractionDigits: 2 });
@@ -1282,14 +1290,52 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     }
   };
 
-  // Envoi d'un message à l'Assistant Delmas (Kimi en arrière-plan + détection d'intention + écriture en direct)
+  // Envoi d'un message à l'Assistant Delmas (voie rapide locale 0 crédit + Kimi économe en arrière-plan)
   const handleSendMessage = async () => {
-    if (isCreditInsufficient) {
-      handleOpenAiSubscriptions();
-      return;
-    }
     const rawText = inputValue.trim();
     if ((!rawText && pendingAttachments.length === 0) || isGenerating || isImportingFiles) {
+      return;
+    }
+
+    const currentAttachments = [...pendingAttachments];
+    const hasNewAttachments = currentAttachments.length > 0;
+    const hasNewMediaAttachments = currentAttachments.some(
+      (f) =>
+        f.fileType === 'image' ||
+        f.fileType === 'audio' ||
+        Boolean(f.imageBase64) ||
+        Boolean(f.audioBase64) ||
+        Boolean(f.documentBase64) ||
+        (f.documentImages && f.documentImages.length > 0)
+    );
+    const liveContext = sheetBridge ? sheetBridge.getContext() : null;
+    const allConvFiles = [
+      ...conversationFiles,
+      ...currentAttachments.filter(
+        (att) => !conversationFiles.some((cf) => cf.id === att.id)
+      ),
+    ];
+    const previousMessages = messages.filter((m) => !m.isError && m.content.trim().length > 0);
+
+    // 0. VOIE RAPIDE LOCALE À 0 CRÉDIT (effacements ciblés/totaux, ré-exécution après plainte, import Excel/CSV direct)
+    const localResolution =
+      liveContext && sheetBridge
+        ? resolveDirectLocalDelmasCommand({
+            message: rawText,
+            languageCode: chatLanguage,
+            activeContext: liveContext,
+            conversationFiles: allConvFiles,
+            hasNewAttachments,
+            hasNewMediaAttachments,
+            recentMessages: previousMessages.slice(-8).map((m) => ({
+              sender: m.sender,
+              content: m.content,
+            })),
+          })
+        : null;
+
+    if (!localResolution && isCreditInsufficient) {
+      handleOpenAiSubscriptions();
       return;
     }
 
@@ -1297,8 +1343,6 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     activeStreamSaveRef.current = null;
     isUserScrolledUpRef.current = false;
 
-    const currentAttachments = [...pendingAttachments];
-    const hasNewAttachments = currentAttachments.length > 0;
     const promptText =
       rawText ||
       (currentAttachments.length === 1
@@ -1328,19 +1372,75 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       createdAt: now,
     };
 
-    const previousMessages = messages.filter((m) => !m.isError && m.content.trim().length > 0);
     setMessages([...messages, userMessage]);
     setInputValue('');
     setPendingAttachments([]);
     setFileUploadWarning(null);
 
-    const liveContext = sheetBridge ? sheetBridge.getContext() : null;
-    const allConvFiles = [
-      ...conversationFiles,
-      ...currentAttachments.filter(
-        (att) => !conversationFiles.some((cf) => cf.id === att.id)
-      ),
-    ];
+    // Exécution immédiate à 0 crédit si résolu localement (sans appeler le LLM)
+    if (localResolution && sheetBridge) {
+      let appliedSummaries: string[] = [];
+      if (localResolution.actions.length > 0) {
+        const resSummaries = await sheetBridge.executeActions(
+          localResolution.actions,
+          workspaceSnapshot
+        );
+        if (Array.isArray(resSummaries)) {
+          appliedSummaries = resSummaries.filter(Boolean);
+        }
+      }
+
+      const finalText = polishTeacherDelmasReply(
+        localResolution.chatResponse,
+        appliedSummaries.length,
+        appliedSummaries
+      );
+      const autoTitle =
+        currentConversationTitle === 'Nouvelle discussion'
+          ? promptText.replace(/\s+/g, ' ').slice(0, 70)
+          : currentConversationTitle;
+      const actionsPayload = localResolution.actions.map((a, idx) => ({
+        ...a,
+        summary: appliedSummaries[idx] || undefined,
+      }));
+
+      activeStreamSaveRef.current = {
+        conversationId: targetConversationId,
+        autoTitle,
+        language: chatLanguage,
+        userMsgId,
+        aiMsgId,
+        promptText,
+        attachmentMetaList,
+        userCreatedAt: now,
+        appliedSummaries,
+        tokens: 0,
+        credits: 0,
+        liveContext,
+        currentText: finalText,
+        saved: false,
+      };
+
+      if (currentConversationIdRef.current === targetConversationId) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: aiMsgId,
+            sender: 'ai',
+            content: finalText,
+            actions: actionsPayload,
+            appliedSummaries,
+            tokens: 0,
+            credits: 0,
+            credits_deducted: 0,
+            isStreaming: false,
+            createdAt: Date.now(),
+          },
+        ]);
+      }
+      await persistStreamedExchangeToD1(finalText);
+      return;
+    }
 
     // 1. Détection fine de l'intention réelle (discussion libre vs analyse lecture seule vs action sur le tableau)
     const intentResult = classifyTeacherDelmasIntent({
@@ -1383,15 +1483,16 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           })
         : `Tu es Assistant Delmas. ${currentChatLangObj.promptInstruction}`;
 
-      // Historique propre avec alternance stricte user / assistant
+      // Historique propre et compact (supprime les anciens tableaux géants pour économiser les crédits !)
       const sanitizedTurns: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-      for (const m of previousMessages.slice(-12)) {
+      for (const m of previousMessages.slice(-8)) {
         const role: 'user' | 'assistant' = m.sender === 'user' ? 'user' : 'assistant';
+        const compactContent = compactHistoryMessageForPrompt(m.content, role);
         const last = sanitizedTurns[sanitizedTurns.length - 1];
         if (last && last.role === role) {
-          last.content = `${last.content}\n\n${m.content}`;
+          last.content = `${last.content}\n\n${compactContent}`;
         } else {
-          sanitizedTurns.push({ role, content: m.content });
+          sanitizedTurns.push({ role, content: compactContent });
         }
       }
       const lastTurn = sanitizedTurns[sanitizedTurns.length - 1];
@@ -1512,9 +1613,9 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         ...(firstDoc?.documentImages || []),
       ].slice(0, 3);
 
-      // Tous les fichiers non supprimés du dossier restent connectés en mémoire texte permanente !
+      // Économie stricte de tokens : quand liveContext est actif, le texte des fichiers pertinents est déjà dans systemPrompt — ne jamais le dupliquer !
       const combinedDocText =
-        hasAnyConvFiles && intentResult.intent !== 'chat'
+        !liveContext && hasAnyConvFiles && intentResult.referencesActiveFiles
           ? allConvFiles
               .filter((f) => !isPlaceholderMediaText(f.extractedText))
               .map((f) => `[Fichier: ${f.fileName}]\n${f.extractedText}`)
@@ -1522,7 +1623,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           : '';
 
       const activeAttachedFileName =
-        hasAnyConvFiles && (intentResult.intent !== 'chat' || shouldRunVisionPass || shouldRunAudioPass)
+        hasAnyConvFiles && (intentResult.referencesActiveFiles || shouldRunVisionPass || shouldRunAudioPass)
           ? currentAttachments.length > 0
             ? currentAttachments.map((f) => f.fileName).join(', ')
             : allConvFiles.map((f) => f.fileName).join(', ')
@@ -1607,9 +1708,14 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           .filter((f) => !isPlaceholderMediaText(f.extractedText))
           .map((f) => String(f.extractedText || '')),
       ];
+      const recentUserMessages = previousMessages
+        .filter((m) => m.sender === 'user')
+        .slice(-5)
+        .map((m) => m.content);
       let safeActions = filterSafeTeacherDelmasActions(parsed.actions, rawText, {
         hasAttachedFiles: hasAnyConvFiles && (intentResult.referencesActiveFiles || shouldRunVisionPass),
         sourceFileTexts,
+        recentUserMessages,
       });
 
       // Auto-récupération silencieuse (1 essai) si l'IA a affirmé avoir fait l'action mais a oublié le bloc <delmas_actions>
@@ -1617,7 +1723,8 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         safeActions.length === 0 &&
         Boolean(sheetBridge) &&
         Boolean(liveContext) &&
-        looksLikeUnfulfilledActionClaim(parsed.chatResponse);
+        (looksLikeUnfulfilledActionClaim(parsed.chatResponse) ||
+          looksLikeFalseNoAccessHallucination(parsed.chatResponse));
 
       if (claimedActionWithoutBlock && intentResult.intent === 'action') {
         try {
@@ -1631,12 +1738,11 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
             needsWorkspaceDb: intentResult.needsWorkspaceDb,
             referencesActiveFiles: intentResult.referencesActiveFiles,
           });
-          const recoveryPrompt = `Demande exacte de l'utilisateur : « ${promptText} »\nRéponse que tu viens d'écrire sans exécuter l'action : « ${parsed.chatResponse} »\n\nCONSIGNE STRICTE : L'action n'a PAS encore été appliquée car le bloc <delmas_actions> manquait. Renvoie UNIQUEMENT le bloc JSON <delmas_actions>[...]</delmas_actions> valide pour exécuter immédiatement cette demande sur le tableau ouvert (aucune phrase en dehors de la balise).`;
+          const recoveryPrompt = `Demande exacte de l'utilisateur : « ${promptText} »\nRéponse précédente sans exécution réelle : « ${compactHistoryMessageForPrompt(parsed.chatResponse, 'assistant')} »\n\nCONSIGNE STRICTE : Tu ES connecté en direct au tableau. L'action n'a PAS encore été appliquée car le bloc <delmas_actions> manquait. Renvoie UNIQUEMENT le bloc JSON <delmas_actions>[...]</delmas_actions> valide pour exécuter immédiatement cette demande (aucune phrase, aucun tableau Markdown en dehors de la balise).`;
 
           const recoveryHistory = [
             { role: 'system', content: recoverySystemPrompt },
             ...sanitizedTurns.slice(-4),
-            { role: 'assistant', content: parsed.chatResponse },
             { role: 'user', content: recoveryPrompt },
           ];
           const recRes = await sendChatMessageToAi({
@@ -1655,6 +1761,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           const recSafe = filterSafeTeacherDelmasActions(recParsed.actions, rawText, {
             hasAttachedFiles: hasAnyConvFiles && (intentResult.referencesActiveFiles || shouldRunVisionPass),
             sourceFileTexts,
+            recentUserMessages,
           });
           if (recSafe.length > 0) {
             safeActions = recSafe;
@@ -1685,19 +1792,21 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         return;
       }
 
-      // Garde-fou d'honnêteté absolue : ne JAMAIS afficher un faux "C'est fait !" si 0 action réelle n'a été appliquée !
+      // Garde-fou d'honnêteté absolue : ne JAMAIS afficher un faux "C'est fait !" ni une hallucination "je n'ai pas accès au tableau" !
       let fullResponseText = polishTeacherDelmasReply(
         parsed.chatResponse || 'Je suis à votre écoute.',
-        appliedSummaries.length
+        appliedSummaries.length,
+        appliedSummaries
       );
       if (
         appliedSummaries.length === 0 &&
-        looksLikeUnfulfilledActionClaim(parsed.chatResponse)
+        (looksLikeUnfulfilledActionClaim(parsed.chatResponse) ||
+          looksLikeFalseNoAccessHallucination(parsed.chatResponse))
       ) {
         const l = (chatLanguage || 'fr').toLowerCase();
         fullResponseText = l.startsWith('en')
-          ? "No change was applied to the sheet yet. Please specify the exact student or column to update (for example: \"Apply a green background to DIALLO Fatoumata's name cell\") and I will execute it immediately."
-          : "Aucune modification n'a pu être appliquée automatiquement sur le tableau pour cette demande. Précisez simplement l'élève et la colonne visés (par exemple : « Mets un fond vert sur le nom de DIALLO Fatoumata » ou « Retire la couleur de fond du nom de DIALLO Fatoumata ») et je l'exécute immédiatement.";
+          ? 'No change was applied to the table yet. Tell me the exact action (for example: "clear all", "clear grades", "clear names", or update a specific student) and I will execute it directly.'
+          : "Aucune modification n'a encore été appliquée sur le tableau. Précisez simplement l'action souhaitée (par exemple : « vider tout », « effacer les notes », « effacer les noms » ou l'élève concerné) et je l'exécute directement.";
       }
       const autoTitle =
         currentConversationTitle === 'Nouvelle discussion'
