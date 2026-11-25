@@ -39,6 +39,8 @@ import { AppUpdatePrompt } from './components/AppUpdatePrompt';
 import { StorageAlertNotificationModal } from './components/StorageAlertNotificationModal';
 import { AppAccessGate } from './components/AppAccessGate';
 import { PaystackReturnHandler } from './components/PaystackReturnHandler';
+import { MySubscriptionsView } from './components/MySubscriptionsView';
+import { BillingAlertBanner } from './components/BillingAlertBanner';
 import { WallpaperSelectorDrawer } from './components/WallpaperSelectorDrawer';
 import { UploadQueueWidget } from './components/UploadQueueWidget';
 import { checkAndPerformWallpaperAutoRotation } from './utils/wallpaperHelper';
@@ -212,13 +214,16 @@ export default function App() {
       if (urlParams.get('product')) {
         return 'library';
       }
+      if (urlParams.get('tab') === 'subscriptions') {
+        return 'my-subscriptions';
+      }
       if (urlParams.get('view') === 'notifications') {
         localStorage.setItem('studycloud_open_subview', 'notifications');
         return 'settings';
       }
     } catch (e) { }
     const saved = localStorage.getItem('unifolder_current_tab');
-    if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file', 'ai-subscriptions', 'storage-menu', 'teacher-classes'].includes(saved)) {
+    if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file', 'ai-subscriptions', 'storage-menu', 'my-subscriptions', 'teacher-classes'].includes(saved)) {
       return saved as NavigationTab;
     }
     return 'folders';
@@ -2065,6 +2070,21 @@ export default function App() {
               onBack={() => handleSetTab('folders')}
               onOpenPricing={(tab = 'storage') => handleOpenAuthenticPricing(tab as 'ai' | 'renewal' | 'storage')}
             />
+          ) : currentTab === 'my-subscriptions' ? (
+            <MySubscriptionsView
+              onBack={() => handleSetTab('folders')}
+              onOpenRenewTarget={(productType, appKey) => {
+                if (productType === 'storage') {
+                  handleOpenAuthenticPricing('storage');
+                } else if (productType === 'ai') {
+                  handleOpenAuthenticPricing('ai');
+                } else if (appKey === 'moyennes') {
+                  handleSetTab('teacher-classes');
+                } else {
+                  handleSetTab('folders');
+                }
+              }}
+            />
           ) : null}
 
           {/* Persistent PublishFileView: keeps in-progress uploads, drafts, rejected files & status intact */}
@@ -2828,6 +2848,12 @@ export default function App() {
 
       {/* Modal d'alerte et de blocage de saturation de stockage (50%, 75%, 85%, 95%, >=96%) */}
       <StorageAlertNotificationModal />
+
+      {/* Bannière d'alerte abonnements (période de grâce / service suspendu) */}
+      <BillingAlertBanner
+        isAuthenticated={isAuthenticated}
+        onOpenSubscriptions={() => handleSetTab('my-subscriptions')}
+      />
 
       {/* Vérification automatique au retour de paiement Paystack (?payment=paystack-return) */}
       <PaystackReturnHandler

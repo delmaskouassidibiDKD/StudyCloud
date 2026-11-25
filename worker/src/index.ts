@@ -13,6 +13,7 @@ import {
   normalizeBillingMode,
   normalizeDurationDays,
   normalizePlanBillingFlags,
+  executeBillingCronJob,
 } from './paystackBilling';
 
 interface D1PreparedStatement {
@@ -5831,6 +5832,8 @@ a:hover{transform:translateY(-2px)}
       if (
         path.startsWith('/api/payments/') ||
         path.startsWith('/api/billing/') ||
+        path.startsWith('/api/admin/billing/') ||
+        path.startsWith('/api/webhooks/resend') ||
         path.startsWith('/api/monetized-apps') ||
         path.startsWith('/api/apps/access/')
       ) {
@@ -19037,6 +19040,10 @@ a:hover{transform:translateY(-2px)}
           WHERE created_at < datetime('now', '-21 days')
         `).run();
         console.log('[StudyCloud Cron] Purge des notifications de plus de 3 semaines (21 jours) effectuée avec succès.');
+
+        // ÉTAPE 7 : Moteur Cron Abonnements (pré-alertes, prélèvements auto Visa, relances impayés, blocage)
+        const billingSummary = await executeBillingCronJob(env.DB, env);
+        console.log('[StudyCloud Billing Cron]', JSON.stringify(billingSummary));
       } catch (e) {
         console.error('[StudyCloud Cron Error]', e);
       }

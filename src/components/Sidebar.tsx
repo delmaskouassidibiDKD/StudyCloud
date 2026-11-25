@@ -7,6 +7,7 @@ import {
   UserCircle, 
   Sparkles, 
   HardDrive,
+  CreditCard,
   GraduationCap 
 } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
@@ -117,6 +118,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
       activeBorder: 'rgba(236, 72, 153, 0.45)',
       activeShadow: '0 0 24px -2px rgba(236, 72, 153, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.25)',
       accentColor: '#ec4899'
+    },
+    { 
+      id: 'my-subscriptions' as NavigationTab, 
+      label: 'Mes abonnements', 
+      icon: CreditCard, 
+      specialGlow: true,
+      aura: 'radial-gradient(circle, rgba(245, 158, 11, 0.75) 0%, rgba(16, 185, 129, 0.35) 45%, transparent 72%)',
+      activeBg: 'linear-gradient(90deg, rgba(245, 158, 11, 0.16) 0%, rgba(16, 185, 129, 0.08) 100%)',
+      activeBorder: 'rgba(245, 158, 11, 0.45)',
+      activeShadow: '0 0 24px -2px rgba(245, 158, 11, 0.35), inset 0 1px 1px rgba(255, 255, 255, 0.25)',
+      accentColor: '#f59e0b'
     },
   ];
 

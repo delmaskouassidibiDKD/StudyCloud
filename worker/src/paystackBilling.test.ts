@@ -7,6 +7,7 @@ import {
   computePaystackHmacSha512Hex,
   computeSubscriptionCountdown,
   ensurePaystackBillingTables,
+  executeBillingCronJob,
   extractPaystackNetworkLabel,
   handlePaystackBillingRoutes,
   normalizeBillingMode,
@@ -837,4 +838,275 @@ test('Étape 1 — Règles Auto+Manuel / Manuel seul / Infini, table unifiée ac
   assert.equal(vipPol.gracePeriodDays, 14);
   assert.equal(vipPol.blockScope, 'full_account');
   assert.equal(vipPol.overdueIntervalHours, 72);
+});
+
+test('Étapes 4 & 7 — Emails Resend auto + webhook delivered/opened, envoi manuel admin, liaison carte et Moteur Cron complet', async () => {
+  const { db, sqlite } = createMockD1();
+  sqlite.exec(`
+    CREATE TABLE users (
+      id TEXT PRIMARY KEY,
+      name TEXT,
+      email TEXT,
+      phone TEXT,
+      storage_quota_mb REAL DEFAULT 1024
+    );
+  `);
+  await ensurePaystackBillingTables(db);
+  await db
+    .prepare("INSERT INTO users (id, name, email, phone) VALUES ('u-cron', 'Koffi Kouame', 'koffi@studycloud.ci', '+2250701020304')")
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO app_subscription_plans (id, app_key, name, price, primary_currency, billing_mode, duration_days, is_auto_billing, allow_auto, allow_manual, is_infinite)
+       VALUES ('moy_cron_auto', 'moyennes', 'Mensuel Auto', 2000, 'XOF', 'auto', 30, 1, 1, 1, 0)`
+    )
+    .run();
+  await db.prepare("UPDATE monetized_apps SET is_paid = 1 WHERE app_key = 'moyennes'").run();
+
+  const sentEmails: Array<{ to: string; subject: string; id: string }> = [];
+  let autoChargeShouldFail = false;
+  let autoChargeCalls = 0;
+
+  const mockFetch: any = async (url: string, init?: any) => {
+    const body = init?.body ? JSON.parse(init.body) : {};
+    if (String(url).includes('api.resend.com/emails')) {
+      const msgId = `re_msg_${sentEmails.length + 1}`;
+      sentEmails.push({ to: body.to?.[0] || '', subject: body.subject || '', id: msgId });
+      return new Response(JSON.stringify({ id: msgId }), { status: 200 });
+    }
+    if (String(url).includes('/transaction/initialize')) {
+      return new Response(
+        JSON.stringify({ status: true, data: { access_code: 'AC_LINK', authorization_url: 'https://checkout.paystack.com/AC_LINK', reference: body.reference } }),
+        { status: 200 }
+      );
+    }
+    if (String(url).includes('/transaction/verify/')) {
+      const ref = String(url).split('/').pop() || '';
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            id: 7771,
+            reference: ref,
+            status: 'success',
+            amount: 10000,
+            currency: 'XOF',
+            channel: 'card',
+            customer: { email: 'koffi@studycloud.ci' },
+            metadata: { user_id: 'u-cron' },
+            authorization: {
+              authorization_code: 'AUTH_CRON_VISA_888',
+              brand: 'visa',
+              card_type: 'visa',
+              last4: '8888',
+              exp_month: '08',
+              exp_year: '2029',
+              bank: 'NSIA CI',
+              country_code: 'CI',
+              signature: 'SIG_KOFFI_8888',
+              reusable: true,
+            },
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    if (String(url).includes('/transaction/charge_authorization')) {
+      autoChargeCalls++;
+      if (autoChargeShouldFail) {
+        return new Response(
+          JSON.stringify({ status: false, message: 'Insufficient funds', data: { status: 'failed', gateway_response: 'Insufficient funds' } }),
+          { status: 200 }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            id: 8800 + autoChargeCalls,
+            reference: body.reference,
+            status: 'success',
+            amount: body.amount,
+            currency: body.currency,
+            channel: 'card',
+            customer: { email: body.email },
+            authorization: {
+              authorization_code: 'AUTH_CRON_VISA_888',
+              brand: 'visa',
+              last4: '8888',
+              reusable: true,
+            },
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response(JSON.stringify({ status: false }), { status: 404 });
+  };
+
+  const rawEnv = { STUDYCLOUD_PAYSTACK_SECRET_KEY: 'sk_test_cron', RESEND_API_KEY: 're_test_key' };
+  const callApi = async (path: string, opts: { method?: string; body?: any; token?: string } = {}) => {
+    const req = new Request(`https://api-worker.dkd-technologies.com${path}`, {
+      method: opts.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    const res = await handlePaystackBillingRoutes(req, new URL(req.url), new URL(req.url).pathname, req.method, {
+      db,
+      rawEnv,
+      origin: '*',
+      fetchFn: mockFetch,
+      getAuthUser: async (r) =>
+        r.headers.get('Authorization') === 'Bearer token-koffi'
+          ? { userId: 'u-cron', email: 'koffi@studycloud.ci', name: 'Koffi Kouame' }
+          : null,
+      jsonResponse: (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'Content-Type': 'application/json' } }),
+      errorResponse: (m, s = 400) => new Response(JSON.stringify({ success: false, error: m }), { status: s, headers: { 'Content-Type': 'application/json' } }),
+    });
+    assert.ok(res);
+    return res!;
+  };
+
+  // 1. Admin crée un abonnement actif pour Koffi + envoie email de confirmation
+  const createRes = await (
+    await callApi('/api/admin/billing/subscriptions/create', {
+      method: 'POST',
+      body: {
+        user_query: 'koffi@studycloud.ci',
+        product_type: 'app',
+        app_key: 'moyennes',
+        app_name: 'Moyennes',
+        plan_id: 'moy_cron_auto',
+        plan_name: 'Mensuel Auto',
+        renewal_mode: 'auto',
+        price_amount: 2000,
+        currency: 'XOF',
+        duration_days: 30,
+        sendEmail: true,
+      },
+    })
+  ).json();
+  assert.equal(createRes.success, true);
+  const subId = createRes.subscription.id;
+  assert.equal(sentEmails.length, 1);
+
+  // 2. Webhook Resend -> delivered puis opened met à jour billing_email_logs et active_subscriptions.last_email_status
+  await callApi('/api/webhooks/resend', {
+    method: 'POST',
+    body: { type: 'email.delivered', data: { email_id: sentEmails[0].id } },
+  });
+  await callApi('/api/webhooks/resend', {
+    method: 'POST',
+    body: { type: 'email.opened', data: { email_id: sentEmails[0].id } },
+  });
+  const subAfterOpen: any = await db.prepare('SELECT last_email_status FROM active_subscriptions WHERE id = ?').bind(subId).first();
+  assert.equal(subAfterOpen.last_email_status, 'opened');
+
+  // 3. Utilisateur lie une carte Visa plus tard (`link-init` + `link-verify`) -> carte liée + auto activé
+  const linkInit = await (
+    await callApi('/api/billing/payment-methods/link-init', {
+      method: 'POST',
+      token: 'token-koffi',
+      body: { subscriptionId: subId, enableAuto: true },
+    })
+  ).json();
+  assert.equal(linkInit.success, true);
+  const linkVer = await (
+    await callApi('/api/billing/payment-methods/link-verify', {
+      method: 'POST',
+      token: 'token-koffi',
+      body: { reference: linkInit.reference, subscriptionId: subId, enableAuto: true },
+    })
+  ).json();
+  assert.equal(linkVer.success, true);
+  assert.equal(linkVer.paymentMethod.last4, '8888');
+  assert.equal(linkVer.subscription.renewal_mode, 'auto');
+
+  // 4. Admin personnalise la politique Moyennes : intervalle 24h, grâce 2j, blocage service_only
+  const polSave = await (
+    await callApi('/api/admin/billing/policies/save', {
+      method: 'POST',
+      body: {
+        scope_type: 'app',
+        scope_key: 'moyennes',
+        pre_renewal_days: 3,
+        grace_period_days: 2,
+        overdue_interval_hours: 24,
+        max_overdue_reminders: 3,
+        max_auto_retries: 2,
+        retry_schedule_hours: '24,48',
+        block_scope: 'service_only',
+      },
+    })
+  ).json();
+  assert.equal(polSave.success, true);
+
+  // 5. Phase 1 Cron : Pré-alerte à J-2 avant expiration
+  const expIso = '2026-12-10T10:00:00.000Z';
+  await db
+    .prepare('UPDATE active_subscriptions SET current_period_end = ?, next_billing_at = ?, grace_until = NULL WHERE id = ?')
+    .bind(expIso, expIso, subId)
+    .run();
+  const cronPre = await executeBillingCronJob(db, rawEnv, { fetchFn: mockFetch, nowIso: '2026-12-08T12:00:00.000Z' });
+  assert.equal(cronPre.preRenewalSent, 1);
+
+  // 6. Phase 2 Cron (échec carte) : passage en grâce + email payment_failed + retry_count = 1
+  autoChargeShouldFail = true;
+  const cronFail = await executeBillingCronJob(db, rawEnv, { fetchFn: mockFetch, nowIso: '2026-12-10T11:00:00.000Z' });
+  assert.equal(cronFail.autoFailed, 1);
+  const subInGrace: any = await db.prepare('SELECT status, retry_count FROM active_subscriptions WHERE id = ?').bind(subId).first();
+  assert.equal(subInGrace.status, 'grace');
+  assert.equal(Number(subInGrace.retry_count), 1);
+
+  // 7. Phase 4 Cron : 10h plus tard (< 24h intervalle) -> AUCUNE relance ; 26h plus tard (>= 24h) -> 1 relance overdue_reminder !
+  const cronTooSoon = await executeBillingCronJob(db, rawEnv, { fetchFn: mockFetch, nowIso: '2026-12-10T20:00:00.000Z' });
+  assert.equal(cronTooSoon.remindersSent, 0);
+  // Décaler next_billing_at pour tester spécifiquement la Phase 4 (relance) sans déclencher le retry carte Phase 2 en même temps
+  await db.prepare("UPDATE active_subscriptions SET next_billing_at = '2026-12-12T10:00:00.000Z' WHERE id = ?").bind(subId).run();
+  const cronRemind = await executeBillingCronJob(db, rawEnv, { fetchFn: mockFetch, nowIso: '2026-12-11T14:00:00.000Z' });
+  assert.equal(cronRemind.remindersSent, 1);
+
+  // 8. Phase 5 Cron : fin de période de grâce dépassée -> BLOCAGE automatique + email service_blocked + /api/apps/access/moyennes bloqué !
+  await db.prepare("UPDATE active_subscriptions SET retry_count = 5 WHERE id = ?").bind(subId).run();
+  const cronBlock = await executeBillingCronJob(db, rawEnv, { fetchFn: mockFetch, nowIso: '2026-12-13T12:00:00.000Z' });
+  assert.equal(cronBlock.blocked, 1);
+  const subBlocked: any = await db.prepare('SELECT status, block_scope FROM active_subscriptions WHERE id = ?').bind(subId).first();
+  assert.equal(subBlocked.status, 'blocked');
+  assert.equal(subBlocked.block_scope, 'service_only');
+
+  const accessBlocked = await (await callApi('/api/apps/access/moyennes', { token: 'token-koffi' })).json();
+  assert.equal(accessBlocked.allowed, false);
+  assert.equal(accessBlocked.billingBlocked, true);
+
+  // 9. Admin clique sur « Envoyer un rappel manuel » -> envoi immédiat + journalisé
+  const adminManualEmail = await (
+    await callApi(`/api/admin/billing/subscriptions/${subId}/send-email`, {
+      method: 'POST',
+      body: { emailType: 'overdue_reminder', customMessage: 'Merci de régulariser avant vendredi.' },
+    })
+  ).json();
+  assert.equal(adminManualEmail.success, true);
+  assert.equal(adminManualEmail.status, 'sent');
+
+  // 10. Auto-charge réussit à la tentative suivante (R1) quand la carte est réapprovisionnée -> réactivation + idempotence anti-double charge !
+  autoChargeShouldFail = false;
+  await db
+    .prepare("UPDATE active_subscriptions SET status = 'grace', retry_count = 1, next_billing_at = '2026-12-14T10:00:00.000Z', grace_until = '2026-12-20T10:00:00.000Z' WHERE id = ?")
+    .bind(subId)
+    .run();
+  const callsBefore = autoChargeCalls;
+  const cronRenewOk = await executeBillingCronJob(db, rawEnv, { fetchFn: mockFetch, nowIso: '2026-12-14T11:00:00.000Z' });
+  assert.equal(cronRenewOk.autoCharged, 1);
+  assert.equal(autoChargeCalls, callsBefore + 1);
+  const subReactivated: any = await db.prepare('SELECT status, retry_count FROM active_subscriptions WHERE id = ?').bind(subId).first();
+  assert.equal(subReactivated.status, 'active');
+  assert.equal(Number(subReactivated.retry_count), 0);
+
+  // Relancer le Cron immédiatement à la même date -> 0 double facturation !
+  const cronIdempotent = await executeBillingCronJob(db, rawEnv, { fetchFn: mockFetch, nowIso: '2026-12-14T11:05:00.000Z' });
+  assert.equal(cronIdempotent.autoCharged, 0);
+  assert.equal(autoChargeCalls, callsBefore + 1);
 });

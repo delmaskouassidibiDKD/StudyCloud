@@ -10,6 +10,14 @@
  * - Règle officielle Paystack XOF : les montants envoyés à l'API sont toujours multipliés par 100 (ex: 5 000 FCFA -> 500000).
  */
 
+import {
+  sendAndLogBillingEmail,
+  processResendWebhookEvent,
+  evaluateUserBillingGuard,
+  BillingEmailType,
+} from './billingEmailAndPolicy';
+import { runBillingCronCycle, BillingCronSummary } from './billingCron';
+
 export type BillingMode = 'auto' | 'manual' | 'infinite';
 export type RenewalMode = 'auto' | 'manual' | 'infinite';
 export type BlockScope = 'service_only' | 'read_only' | 'full_account';
@@ -1097,11 +1105,21 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
       last_reminder_sent_at TEXT DEFAULT NULL,
       reminder_count INTEGER DEFAULT 0,
       last_transaction_ref TEXT DEFAULT '',
+      last_email_at TEXT DEFAULT NULL,
+      last_email_type TEXT DEFAULT '',
+      last_email_status TEXT DEFAULT '',
       admin_notes TEXT DEFAULT '',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `).run().catch(() => {});
+  for (const colSql of [
+    'ALTER TABLE active_subscriptions ADD COLUMN last_email_at TEXT DEFAULT NULL',
+    "ALTER TABLE active_subscriptions ADD COLUMN last_email_type TEXT DEFAULT ''",
+    "ALTER TABLE active_subscriptions ADD COLUMN last_email_status TEXT DEFAULT ''",
+  ]) {
+    await db.prepare(colSql).run().catch(() => {});
+  }
   await db.prepare(
     'CREATE INDEX IF NOT EXISTS idx_active_subs_user ON active_subscriptions(user_id, status, product_type)'
   ).run().catch(() => {});
@@ -1601,7 +1619,8 @@ async function loadSubscriptionBundleForTx(db: any, txRow: any): Promise<{
 async function fulfillPaidTransaction(
   db: any,
   txRow: any,
-  paystackData: any
+  paystackData: any,
+  runtimeOpts?: { rawEnv?: Record<string, any>; fetchFn?: typeof fetch }
 ): Promise<{
   alreadyFulfilled: boolean;
   transaction: any;
@@ -2257,6 +2276,26 @@ async function fulfillPaidTransaction(
     .first();
   const bundle = await loadSubscriptionBundleForTx(db, refreshed || { ...txRow, subscription_id: masterSubId });
 
+  // ÉTAPE 4 : Envoi automatique d'email de confirmation via Resend (non-bloquant)
+  if (effectivePolicy.emailOnPurchase && runtimeOpts?.rawEnv && bundle.subscription) {
+    const emailType: BillingEmailType =
+      finalIsInfinite === 1
+        ? 'infinite_confirmed'
+        : wasBlockedOrPastDue
+        ? 'service_reactivated'
+        : 'purchase_confirmed';
+    await sendAndLogBillingEmail({
+      db,
+      rawEnv: runtimeOpts.rawEnv,
+      fetchFn: runtimeOpts.fetchFn,
+      subscription: bundle.subscription,
+      emailType,
+      triggeredBy: 'system',
+      reference: String(txRow.reference || ''),
+      recordEventFn: recordSubscriptionEvent,
+    }).catch(() => {});
+  }
+
   return {
     alreadyFulfilled: false,
     transaction: refreshed || txRow,
@@ -2376,6 +2415,8 @@ export async function handlePaystackBillingRoutes(
   if (
     !path.startsWith('/api/payments/') &&
     !path.startsWith('/api/billing/') &&
+    !path.startsWith('/api/admin/billing/') &&
+    !path.startsWith('/api/webhooks/resend') &&
     !path.startsWith('/api/monetized-apps') &&
     !path.startsWith('/api/apps/access/')
   ) {
@@ -2444,6 +2485,23 @@ export async function handlePaystackBillingRoutes(
     }
 
     const access = await checkUserAppAccess(db, String(authUser.userId), appKey);
+    const guard = await evaluateUserBillingGuard(db, String(authUser.userId));
+    const appExplicitlyBlocked = guard.blockedSubscriptions.some(
+      (b) => b.productType === 'app' && b.appKey === appKey
+    );
+    const enforcedAccess =
+      guard.fullAccountBlocked || appExplicitlyBlocked
+        ? {
+            ...access,
+            allowed: false,
+            status: 'expired' as const,
+            billingBlocked: true,
+            blockScope: guard.fullAccountBlocked ? 'full_account' : 'service_only',
+            reason: guard.fullAccountBlocked
+              ? 'Votre compte est temporairement suspendu suite à un abonnement impayé. Régularisez votre paiement pour retrouver l’accès immédiatement.'
+              : 'L’accès à cette application est suspendu suite à un impayé. Régularisez votre abonnement pour le débloquer.',
+          }
+        : access;
     const plansRes = await db
       .prepare(
         'SELECT * FROM app_subscription_plans WHERE app_key = ? AND is_active = 1 ORDER BY sort_order ASC, created_at ASC'
@@ -2456,7 +2514,7 @@ export async function handlePaystackBillingRoutes(
     return jsonResponse(
       {
         success: true,
-        ...access,
+        ...enforcedAccess,
         plans: plansRes.results || [],
         paymentConfig: config,
       },
@@ -2945,7 +3003,7 @@ export async function handlePaystackBillingRoutes(
       );
     }
 
-    const fulfillment = await fulfillPaidTransaction(db, txRow, psJson.data);
+    const fulfillment = await fulfillPaidTransaction(db, txRow, psJson.data, { rawEnv, fetchFn });
     return jsonResponse(
       {
         success: true,
@@ -3081,7 +3139,7 @@ export async function handlePaystackBillingRoutes(
       if (txRow) {
         const check = validatePaystackVerificationPayload(txRow, data);
         if (check.ok) {
-          const res = await fulfillPaidTransaction(db, txRow, data);
+          const res = await fulfillPaidTransaction(db, txRow, data, { rawEnv, fetchFn });
           processingNote = res.alreadyFulfilled ? 'already_fulfilled' : `fulfilled:${res.deliverySummary}`;
         } else {
           processingNote = `rejected:${check.reason}`;
@@ -3179,7 +3237,7 @@ export async function handlePaystackBillingRoutes(
       return jsonResponse({ success: true, verified: false, status: check.newStatus, reason: check.reason }, 200, origin);
     }
 
-    const fulfillment = await fulfillPaidTransaction(db, txRow, psJson.data);
+    const fulfillment = await fulfillPaidTransaction(db, txRow, psJson.data, { rawEnv, fetchFn });
     return jsonResponse(
       {
         success: true,
@@ -3465,7 +3523,7 @@ export async function handlePaystackBillingRoutes(
         .first();
       const check = validatePaystackVerificationPayload(txRow, data);
       if (check.ok) {
-        const fulfillment = await fulfillPaidTransaction(db, txRow, data);
+        const fulfillment = await fulfillPaidTransaction(db, txRow, data, { rawEnv, fetchFn });
         return jsonResponse(
           {
             success: true,
@@ -3618,7 +3676,7 @@ export async function handlePaystackBillingRoutes(
       if (!check.ok) {
         return jsonResponse({ success: false, verified: false, error: check.reason }, 200, origin);
       }
-      const fulfillment = await fulfillPaidTransaction(db, txRow, data);
+      const fulfillment = await fulfillPaidTransaction(db, txRow, data, { rawEnv, fetchFn });
       return jsonResponse(
         {
           success: true,
@@ -3935,5 +3993,813 @@ export async function handlePaystackBillingRoutes(
     return jsonResponse({ success: true, policies: rulesRes.results || [] }, 200, origin);
   }
 
+  // --------------------------------------------------------------------------
+  // 16. GET /api/billing/status-banner — Alertes impayés / grâce / blocage pour l'utilisateur connecté
+  // --------------------------------------------------------------------------
+  if (path === '/api/billing/status-banner' && method === 'GET') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const guard = await evaluateUserBillingGuard(db, String(authUser.userId));
+    return jsonResponse({ success: true, ...guard }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 17. POST /api/billing/subscriptions/:id/cancel — Annuler le renouvellement auto en fin de période (Anti-IDOR)
+  // --------------------------------------------------------------------------
+  const userCancelMatch = path.match(/^\/api\/billing\/subscriptions\/([^/]+)\/cancel$/);
+  if (userCancelMatch && method === 'POST') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const userId = String(authUser.userId);
+    const subId = decodeURIComponent(userCancelMatch[1]);
+    const sub: any = await db
+      .prepare('SELECT * FROM active_subscriptions WHERE id = ? AND user_id = ? LIMIT 1')
+      .bind(subId, userId)
+      .first();
+    if (!sub) return errorResponse('Abonnement introuvable ou non autorisé.', 404, origin);
+    if (Number(sub.is_infinite) === 1) {
+      return errorResponse('Un abonnement à vie (Infini) ne peut pas être annulé.', 400, origin);
+    }
+
+    const nowIso = new Date().toISOString();
+    await db
+      .prepare(
+        `UPDATE active_subscriptions
+         SET cancel_at_period_end = 1,
+             renewal_mode = 'manual',
+             cancelled_at = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND user_id = ?`
+      )
+      .bind(nowIso, subId, userId)
+      .run();
+
+    if (sub.product_type === 'app' && sub.app_key) {
+      await db
+        .prepare('UPDATE user_app_entitlements SET auto_renew = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?')
+        .bind(userId, sub.app_key)
+        .run()
+        .catch(() => {});
+    }
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: subId,
+      userId,
+      eventType: 'user_cancelled_auto',
+      actor: 'user',
+      details: { cancelAtPeriodEnd: true, currentPeriodEnd: sub.current_period_end },
+    });
+
+    const refreshed: any = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ?').bind(subId).first();
+    return jsonResponse(
+      {
+        success: true,
+        subscription: refreshed
+          ? { ...refreshed, countdown: computeSubscriptionCountdown(refreshed.current_period_end, refreshed.is_infinite, refreshed.grace_until) }
+          : null,
+      },
+      200,
+      origin
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // 18. POST /api/billing/payment-methods/link-init & link-verify — Associer une carte Visa/Mastercard plus tard
+  // --------------------------------------------------------------------------
+  if (path === '/api/billing/payment-methods/link-init' && method === 'POST') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const secretKey = getPaystackSecretKey(rawEnv);
+    if (!secretKey) return errorResponse('Passerelle Paystack non configurée.', 503, origin);
+
+    const userId = String(authUser.userId);
+    const body: any = await request.json().catch(() => ({}));
+    const targetSubId = String(body.subscriptionId || '').trim();
+    const enableAutoAfterLink = body.enableAuto !== false;
+
+    const uRow: any = await db
+      .prepare('SELECT id, name, email FROM users WHERE id = ? LIMIT 1')
+      .bind(userId)
+      .first()
+      .catch(() => null);
+    const email = String(uRow?.email || authUser.email || '').trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      return errorResponse('Adresse email de compte requise pour lier une carte bancaire.', 400, origin);
+    }
+
+    // Paystack exige un montant minimal (100 FCFA) pour tokeniser une carte Visa/Mastercard réutilisable
+    const linkAmountMajor = 100;
+    const linkAmountMinor = linkAmountMajor * 100;
+    const reference = `SC-CARD-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
+
+    const psRes = await fetchFn(`${PAYSTACK_API_BASE}/transaction/initialize`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        email,
+        amount: linkAmountMinor,
+        currency: 'XOF',
+        reference,
+        channels: ['card'],
+        metadata: {
+          purpose: 'card_link',
+          user_id: userId,
+          subscription_id: targetSubId,
+          enable_auto: enableAutoAfterLink,
+        },
+      }),
+    });
+    const psJson: any = await psRes.json().catch(() => null);
+    if (!psRes.ok || !psJson?.status || !psJson?.data?.access_code) {
+      return errorResponse(String(psJson?.message || 'Impossible d’initialiser la liaison de carte.'), 502, origin);
+    }
+
+    return jsonResponse(
+      {
+        success: true,
+        reference,
+        accessCode: psJson.data.access_code,
+        authorizationUrl: psJson.data.authorization_url,
+        verificationAmountFcfa: linkAmountMajor,
+      },
+      200,
+      origin
+    );
+  }
+
+  if (path === '/api/billing/payment-methods/link-verify' && method === 'POST') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const secretKey = getPaystackSecretKey(rawEnv);
+    if (!secretKey) return errorResponse('Passerelle Paystack non configurée.', 503, origin);
+
+    const userId = String(authUser.userId);
+    const body: any = await request.json().catch(() => ({}));
+    const reference = String(body.reference || '').trim();
+    const targetSubId = String(body.subscriptionId || '').trim();
+    const enableAuto = body.enableAuto !== false;
+    if (!reference) return errorResponse('reference requise.', 400, origin);
+
+    const psRes = await fetchFn(`${PAYSTACK_API_BASE}/transaction/verify/${encodeURIComponent(reference)}`, {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${secretKey}` },
+    });
+    const psJson: any = await psRes.json().catch(() => null);
+    if (!psRes.ok || !psJson?.status || !psJson?.data || psJson.data.status !== 'success') {
+      return errorResponse(String(psJson?.data?.gateway_response || psJson?.message || 'Vérification de carte échouée.'), 400, origin);
+    }
+
+    // Anti-IDOR : vérifier que la référence appartient bien à cet utilisateur
+    const metaUserId = String(psJson.data?.metadata?.user_id || '').trim();
+    if (metaUserId && metaUserId !== userId) {
+      return errorResponse('Référence non autorisée pour ce compte.', 403, origin);
+    }
+
+    const savedCard = await upsertUserPaymentMethodFromPaystack(db, {
+      userId,
+      authEmail: String(psJson.data?.customer?.email || authUser.email || ''),
+      channel: 'card',
+      paystackData: psJson.data,
+    });
+    if (!savedCard) {
+      return errorResponse('Cette carte ne permet pas le prélèvement récurrent sécurisé (non réutilisable).', 400, origin);
+    }
+
+    let updatedSub: any = null;
+    const subIdToLink = targetSubId || String(psJson.data?.metadata?.subscription_id || '').trim();
+    if (subIdToLink) {
+      const subRow: any = await db
+        .prepare('SELECT * FROM active_subscriptions WHERE id = ? AND user_id = ? LIMIT 1')
+        .bind(subIdToLink, userId)
+        .first()
+        .catch(() => null);
+      if (subRow && Number(subRow.is_infinite) !== 1) {
+        const shouldAuto = enableAuto && Number(subRow.plan_allows_auto) === 1;
+        await db
+          .prepare(
+            `UPDATE active_subscriptions
+             SET payment_method_id = ?,
+                 renewal_mode = CASE WHEN ? = 1 THEN 'auto' ELSE renewal_mode END,
+                 user_confirmed_renewal = 1,
+                 cancel_at_period_end = CASE WHEN ? = 1 THEN 0 ELSE cancel_at_period_end END,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND user_id = ?`
+          )
+          .bind(savedCard.id, shouldAuto ? 1 : 0, shouldAuto ? 1 : 0, subIdToLink, userId)
+          .run();
+        if (shouldAuto && subRow.product_type === 'app' && subRow.app_key) {
+          await db
+            .prepare('UPDATE user_app_entitlements SET auto_renew = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?')
+            .bind(userId, subRow.app_key)
+            .run()
+            .catch(() => {});
+        }
+        updatedSub = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ?').bind(subIdToLink).first();
+      }
+    }
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: subIdToLink || '',
+      userId,
+      eventType: 'card_linked',
+      actor: 'user',
+      details: {
+        paymentMethodId: savedCard.id,
+        cardBrand: savedCard.card_brand,
+        last4: savedCard.last4,
+        linkedSubscriptionId: subIdToLink || null,
+        switchedToAuto: Boolean(updatedSub && updatedSub.renewal_mode === 'auto'),
+      },
+    });
+
+    return jsonResponse(
+      {
+        success: true,
+        paymentMethod: maskPaymentMethodForClient(savedCard),
+        subscription: updatedSub
+          ? { ...updatedSub, countdown: computeSubscriptionCountdown(updatedSub.current_period_end, updatedSub.is_infinite, updatedSub.grace_until) }
+          : null,
+      },
+      200,
+      origin
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // 19. POST /api/webhooks/resend — Suivi temps réel des emails (reçu / ouvert / rebondi)
+  // --------------------------------------------------------------------------
+  if (path === '/api/webhooks/resend' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const result = await processResendWebhookEvent(db, body);
+    return jsonResponse({ success: true, ...result }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 20. ROUTES ADMIN ABONNEMENTS, EMAILS, POLITIQUES & CRON (/api/admin/billing/*)
+  // --------------------------------------------------------------------------
+  if (path === '/api/admin/billing/subscriptions' && method === 'GET') {
+    const subsRes = await db
+      .prepare('SELECT * FROM active_subscriptions ORDER BY updated_at DESC LIMIT 500')
+      .all()
+      .catch(() => ({ results: [] }));
+    const pmRes = await db
+      .prepare('SELECT * FROM user_payment_methods WHERE is_active = 1')
+      .all()
+      .catch(() => ({ results: [] }));
+    const pmMap = new Map<string, any>();
+    for (const pm of pmRes.results || []) {
+      pmMap.set(String(pm.id), maskPaymentMethodForClient(pm));
+    }
+
+    const list = (subsRes.results || []).map((s: any) => ({
+      ...s,
+      countdown: computeSubscriptionCountdown(s.current_period_end, s.is_infinite, s.grace_until),
+      paymentMethod: s.payment_method_id ? pmMap.get(String(s.payment_method_id)) || null : null,
+    }));
+
+    const stats = {
+      total: list.length,
+      active: list.filter((s: any) => s.status === 'active').length,
+      auto: list.filter((s: any) => s.status === 'active' && s.renewal_mode === 'auto' && Number(s.is_infinite) !== 1).length,
+      manual: list.filter((s: any) => s.status === 'active' && s.renewal_mode === 'manual' && Number(s.is_infinite) !== 1).length,
+      infinite: list.filter((s: any) => Number(s.is_infinite) === 1 && s.status === 'active').length,
+      grace: list.filter((s: any) => s.status === 'grace' || s.status === 'past_due').length,
+      blocked: list.filter((s: any) => s.status === 'blocked').length,
+    };
+
+    return jsonResponse({ success: true, stats, subscriptions: list }, 200, origin);
+  }
+
+  const adminSubDetailsMatch = path.match(/^\/api\/admin\/billing\/subscriptions\/([^/]+)\/details$/);
+  if (adminSubDetailsMatch && method === 'GET') {
+    const subId = decodeURIComponent(adminSubDetailsMatch[1]);
+    const sub: any = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ? LIMIT 1').bind(subId).first();
+    if (!sub) return errorResponse('Abonnement introuvable.', 404, origin);
+
+    const [pmRow, eventsRes, emailsRes, userCardsRes, policy] = await Promise.all([
+      sub.payment_method_id
+        ? db.prepare('SELECT * FROM user_payment_methods WHERE id = ? LIMIT 1').bind(sub.payment_method_id).first().catch(() => null)
+        : Promise.resolve(null),
+      db.prepare('SELECT * FROM subscription_events WHERE subscription_id = ? ORDER BY created_at DESC LIMIT 80').bind(subId).all().catch(() => ({ results: [] })),
+      db.prepare('SELECT * FROM billing_email_logs WHERE subscription_id = ? ORDER BY sent_at DESC LIMIT 50').bind(subId).all().catch(() => ({ results: [] })),
+      db.prepare('SELECT * FROM user_payment_methods WHERE user_id = ? AND is_active = 1 ORDER BY is_default DESC, updated_at DESC').bind(sub.user_id).all().catch(() => ({ results: [] })),
+      resolveEffectiveBillingPolicy(db, { productType: sub.product_type, appKey: sub.app_key, subscriptionId: subId }),
+    ]);
+
+    return jsonResponse(
+      {
+        success: true,
+        subscription: {
+          ...sub,
+          countdown: computeSubscriptionCountdown(sub.current_period_end, sub.is_infinite, sub.grace_until),
+          paymentMethod: maskPaymentMethodForClient(pmRow),
+        },
+        userPaymentMethods: (userCardsRes.results || []).map(maskPaymentMethodForClient).filter(Boolean),
+        events: eventsRes.results || [],
+        emails: emailsRes.results || [],
+        effectivePolicy: policy,
+      },
+      200,
+      origin
+    );
+  }
+
+  const adminSubUpdateMatch = path.match(/^\/api\/admin\/billing\/subscriptions\/([^/]+)\/update$/);
+  if (adminSubUpdateMatch && method === 'POST') {
+    const subId = decodeURIComponent(adminSubUpdateMatch[1]);
+    const sub: any = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ? LIMIT 1').bind(subId).first();
+    if (!sub) return errorResponse('Abonnement introuvable.', 404, origin);
+
+    const body: any = await request.json().catch(() => ({}));
+    const nextIsInfinite =
+      body.is_infinite !== undefined
+        ? body.is_infinite ? 1 : 0
+        : body.renewal_mode === 'infinite'
+        ? 1
+        : Number(sub.is_infinite) === 1 && body.renewal_mode && body.renewal_mode !== 'infinite'
+        ? 0
+        : Number(sub.is_infinite || 0);
+
+    const nextRenewalMode =
+      nextIsInfinite === 1
+        ? 'infinite'
+        : body.renewal_mode === 'auto' || body.renewal_mode === 'manual'
+        ? body.renewal_mode
+        : sub.renewal_mode === 'infinite'
+        ? 'manual'
+        : sub.renewal_mode || 'manual';
+
+    const validStatuses = ['active', 'trial', 'past_due', 'grace', 'blocked', 'expired', 'cancelled', 'revoked'];
+    const nextStatus =
+      body.status && validStatuses.includes(String(body.status))
+        ? String(body.status)
+        : String(sub.status || 'active');
+
+    const nextBlockScope = body.block_scope ? normalizeBlockScope(body.block_scope) : normalizeBlockScope(sub.block_scope);
+    const nextStart = body.current_period_start !== undefined ? (body.current_period_start || sub.current_period_start) : sub.current_period_start;
+    const nextEnd =
+      nextIsInfinite === 1
+        ? null
+        : body.current_period_end !== undefined
+        ? body.current_period_end || null
+        : sub.current_period_end;
+    const nextBillingAt =
+      nextIsInfinite === 1
+        ? null
+        : body.next_billing_at !== undefined
+        ? body.next_billing_at || nextEnd
+        : nextEnd;
+    const nextGraceUntil =
+      nextIsInfinite === 1
+        ? null
+        : body.grace_until !== undefined
+        ? body.grace_until || null
+        : sub.grace_until;
+    const nextCancelAtPeriodEnd =
+      body.cancel_at_period_end !== undefined
+        ? body.cancel_at_period_end ? 1 : 0
+        : Number(sub.cancel_at_period_end || 0);
+    const nextPrice = body.price_amount !== undefined ? Math.max(0, Number(body.price_amount) || 0) : Number(sub.price_amount || 0);
+    const nextNotes =
+      body.admin_notes !== undefined
+        ? String(body.admin_notes || '')
+        : body.notes !== undefined
+        ? String(body.notes || '')
+        : String(sub.admin_notes || '');
+    const nowIso = new Date().toISOString();
+    const nextBlockedAt = nextStatus === 'blocked' ? sub.blocked_at || nowIso : null;
+
+    await db
+      .prepare(
+        `UPDATE active_subscriptions
+         SET status = ?,
+             is_infinite = ?,
+             renewal_mode = ?,
+             block_scope = ?,
+             blocked_at = ?,
+             current_period_start = ?,
+             current_period_end = ?,
+             next_billing_at = ?,
+             grace_until = ?,
+             cancel_at_period_end = ?,
+             price_amount = ?,
+             admin_notes = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      )
+      .bind(
+        nextStatus,
+        nextIsInfinite,
+        nextRenewalMode,
+        nextBlockScope,
+        nextBlockedAt,
+        nextStart,
+        nextEnd,
+        nextBillingAt,
+        nextGraceUntil,
+        nextCancelAtPeriodEnd,
+        nextPrice,
+        nextNotes,
+        subId
+      )
+      .run();
+
+    // Synchroniser user_app_entitlements si abonnement d'application
+    if (sub.product_type === 'app' && sub.app_key) {
+      const entStatus =
+        nextStatus === 'active' || nextStatus === 'trial'
+          ? nextStatus
+          : nextStatus === 'grace' || nextStatus === 'past_due'
+          ? 'grace'
+          : nextStatus === 'revoked' || nextStatus === 'cancelled'
+          ? 'revoked'
+          : 'expired';
+      await db
+        .prepare(
+          `UPDATE user_app_entitlements
+           SET status = ?,
+               access_type = ?,
+               expires_at = ?,
+               grace_until = ?,
+               auto_renew = ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = ? AND app_key = ?`
+        )
+        .bind(
+          entStatus,
+          nextIsInfinite === 1 ? 'infinite' : nextRenewalMode,
+          nextEnd,
+          nextGraceUntil,
+          nextRenewalMode === 'auto' ? 1 : 0,
+          sub.user_id,
+          sub.app_key
+        )
+        .run()
+        .catch(() => {});
+    }
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: subId,
+      userId: String(sub.user_id),
+      eventType: 'admin_updated',
+      actor: 'admin',
+      details: {
+        previousStatus: sub.status,
+        nextStatus,
+        previousMode: sub.renewal_mode,
+        nextRenewalMode,
+        nextIsInfinite: nextIsInfinite === 1,
+        nextEnd,
+        nextBlockScope,
+      },
+    });
+
+    const refreshed: any = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ?').bind(subId).first();
+
+    // Envoi email optionnel demandé par l'admin lors d'un blocage / réactivation
+    if (body.notifyByEmail && refreshed) {
+      const mailType: BillingEmailType =
+        nextStatus === 'blocked'
+          ? 'service_blocked'
+          : nextStatus === 'active' && sub.status === 'blocked'
+          ? 'service_reactivated'
+          : 'admin_manual_notice';
+      await sendAndLogBillingEmail({
+        db,
+        rawEnv,
+        fetchFn,
+        subscription: refreshed,
+        emailType: mailType,
+        triggeredBy: 'admin',
+        customMessage: body.customMessage ? String(body.customMessage) : undefined,
+        recordEventFn: recordSubscriptionEvent,
+      }).catch(() => {});
+    }
+
+    return jsonResponse(
+      {
+        success: true,
+        subscription: refreshed
+          ? { ...refreshed, countdown: computeSubscriptionCountdown(refreshed.current_period_end, refreshed.is_infinite, refreshed.grace_until) }
+          : null,
+      },
+      200,
+      origin
+    );
+  }
+
+  if (path === '/api/admin/billing/subscriptions/create' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const userQuery = String(body.user_query || body.user_email || body.user_id || '').trim();
+    if (!userQuery) return errorResponse('Email ou ID utilisateur requis.', 400, origin);
+
+    const userRow: any = await db
+      .prepare('SELECT id, name, email, phone FROM users WHERE id = ? OR LOWER(email) = LOWER(?) LIMIT 1')
+      .bind(userQuery, userQuery)
+      .first()
+      .catch(() => null);
+    if (!userRow) return errorResponse('Utilisateur introuvable dans la base D1.', 404, origin);
+
+    const productType = ['storage', 'ai', 'app'].includes(String(body.product_type)) ? String(body.product_type) : 'app';
+    const appKey = productType === 'app' ? sanitizeAppKey(body.app_key || 'moyennes') : '';
+    const appName = String(body.app_name || (productType === 'storage' ? 'Stockage Cloud' : productType === 'ai' ? 'Crédits IA' : appKey)).trim();
+    const planName = String(body.plan_name || 'Abonnement attribué par admin').trim();
+    const isInfinite = body.is_infinite ? 1 : body.renewal_mode === 'infinite' ? 1 : 0;
+    const renewalMode = isInfinite === 1 ? 'infinite' : body.renewal_mode === 'auto' ? 'auto' : 'manual';
+    const durationDays = isInfinite === 1 ? 0 : Math.max(1, parseInt(String(body.duration_days || '30'), 10) || 30);
+    const nowIso = new Date().toISOString();
+    const startIso = body.current_period_start ? String(body.current_period_start) : nowIso;
+    const endIso =
+      isInfinite === 1
+        ? null
+        : body.current_period_end
+        ? String(body.current_period_end)
+        : new Date(Date.parse(startIso) + durationDays * 86400 * 1000).toISOString();
+    const policy = await resolveEffectiveBillingPolicy(db, { productType, appKey });
+    const graceUntil = endIso ? new Date(Date.parse(endIso) + policy.gracePeriodDays * 86400 * 1000).toISOString() : null;
+    const subId = `asub_adm_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+
+    await db
+      .prepare(
+        `INSERT INTO active_subscriptions (
+           id, user_id, user_name, user_email, user_phone,
+           product_type, app_key, app_name, plan_id, plan_name,
+           status, is_infinite, plan_allows_auto, plan_allows_manual,
+           renewal_mode, user_confirmed_renewal, last_channel, last_network_label,
+           price_amount, currency, billing_cycle, duration_days,
+           started_at, current_period_start, current_period_end,
+           next_billing_at, grace_until, block_scope, admin_notes
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 1, 'admin', 'Attribution Admin', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        subId,
+        String(userRow.id),
+        String(userRow.name || ''),
+        String(userRow.email || ''),
+        String(userRow.phone || ''),
+        productType,
+        appKey,
+        appName,
+        String(body.plan_id || 'admin_grant'),
+        planName,
+        isInfinite,
+        renewalMode === 'auto' ? 1 : 0,
+        isInfinite === 1 ? 0 : 1,
+        renewalMode,
+        Math.max(0, Number(body.price_amount) || 0),
+        String(body.currency || 'XOF').toUpperCase(),
+        isInfinite === 1 ? 'infinite' : 'manual',
+        durationDays,
+        startIso,
+        startIso,
+        endIso,
+        endIso,
+        graceUntil,
+        normalizeBlockScope(body.block_scope || policy.blockScope),
+        String(body.notes || 'Créé manuellement par l’administrateur')
+      )
+      .run();
+
+    if (productType === 'app' && appKey) {
+      await db
+        .prepare(
+          `INSERT INTO user_app_entitlements (id, user_id, app_key, plan_id, plan_name, status, access_type, starts_at, expires_at, grace_until, auto_renew)
+           VALUES (?, ?, ?, 'admin_grant', ?, 'active', ?, ?, ?, ?, 0)
+           ON CONFLICT(user_id, app_key) DO UPDATE SET
+             plan_name = excluded.plan_name,
+             status = 'active',
+             access_type = excluded.access_type,
+             expires_at = excluded.expires_at,
+             grace_until = excluded.grace_until,
+             updated_at = CURRENT_TIMESTAMP`
+        )
+        .bind(`ent_adm_${Date.now()}`, String(userRow.id), appKey, planName, isInfinite === 1 ? 'infinite' : 'manual', startIso, endIso, graceUntil)
+        .run()
+        .catch(() => {});
+    }
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: subId,
+      userId: String(userRow.id),
+      eventType: 'admin_created',
+      actor: 'admin',
+      details: { productType, appKey, planName, isInfinite: isInfinite === 1, endIso },
+    });
+
+    const created: any = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ?').bind(subId).first();
+    if (body.sendEmail && created) {
+      await sendAndLogBillingEmail({
+        db,
+        rawEnv,
+        fetchFn,
+        subscription: created,
+        emailType: isInfinite === 1 ? 'infinite_confirmed' : 'purchase_confirmed',
+        triggeredBy: 'admin',
+        recordEventFn: recordSubscriptionEvent,
+      }).catch(() => {});
+    }
+
+    return jsonResponse({ success: true, subscription: created }, 200, origin);
+  }
+
+  const adminSendEmailMatch = path.match(/^\/api\/admin\/billing\/subscriptions\/([^/]+)\/send-email$/);
+  if (adminSendEmailMatch && method === 'POST') {
+    const subId = decodeURIComponent(adminSendEmailMatch[1]);
+    const sub: any = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ? LIMIT 1').bind(subId).first();
+    if (!sub) return errorResponse('Abonnement introuvable.', 404, origin);
+
+    const body: any = await request.json().catch(() => ({}));
+    const allowedTypes: BillingEmailType[] = [
+      'purchase_confirmed',
+      'infinite_confirmed',
+      'pre_renewal_notice',
+      'payment_failed',
+      'overdue_reminder',
+      'service_blocked',
+      'service_reactivated',
+      'admin_manual_notice',
+    ];
+    const emailType: BillingEmailType = allowedTypes.includes(body.emailType)
+      ? body.emailType
+      : 'overdue_reminder';
+    const customMessage = body.customMessage ? String(body.customMessage).trim() : undefined;
+
+    const graceEndMs = sub.grace_until ? Date.parse(String(sub.grace_until)) : NaN;
+    const graceDaysRemaining = Number.isFinite(graceEndMs)
+      ? Math.max(0, Math.ceil((graceEndMs - Date.now()) / (24 * 3600 * 1000)))
+      : null;
+
+    const sendRes = await sendAndLogBillingEmail({
+      db,
+      rawEnv,
+      fetchFn,
+      subscription: sub,
+      emailType,
+      triggeredBy: 'admin',
+      customMessage,
+      graceDaysRemaining,
+      recordEventFn: recordSubscriptionEvent,
+    });
+
+    return jsonResponse({ ...sendRes }, sendRes.success ? 200 : 200, origin);
+  }
+
+  if (path === '/api/admin/billing/policies' && method === 'GET') {
+    const rulesRes = await db
+      .prepare('SELECT * FROM billing_policy_rules ORDER BY scope_type ASC, scope_key ASC')
+      .all()
+      .catch(() => ({ results: [] }));
+    return jsonResponse({ success: true, policies: rulesRes.results || [] }, 200, origin);
+  }
+
+  if (path === '/api/admin/billing/policies/save' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const validScopes = ['global', 'product_type', 'app', 'subscription'];
+    const scopeType = validScopes.includes(String(body.scope_type)) ? String(body.scope_type) : 'global';
+    const scopeKey = String(body.scope_key || 'default').trim();
+    if (!scopeKey) return errorResponse('scope_key requis.', 400, origin);
+
+    const ruleId = String(body.id || `bpol_${scopeType}_${scopeKey.replace(/[^a-zA-Z0-9_-]/g, '_')}`);
+    const label = String(body.label || `${scopeType}:${scopeKey}`).trim();
+    const autoNoticeDays = Math.max(
+      0,
+      Math.min(30, parseInt(String(body.auto_notice_days ?? body.pre_renewal_days ?? 3), 10) || 0)
+    );
+    const preExpiryDaysJson =
+      typeof body.pre_expiry_days_json === 'string' && body.pre_expiry_days_json.trim().startsWith('[')
+        ? body.pre_expiry_days_json.trim()
+        : JSON.stringify([autoNoticeDays > 0 ? autoNoticeDays : 3, 1]);
+    const gracePeriodDays = Math.max(0, Math.min(90, parseInt(String(body.grace_period_days ?? 5), 10) || 0));
+    const overdueIntervalHours = Math.max(1, Math.min(720, parseInt(String(body.overdue_interval_hours ?? 48), 10) || 48));
+    const overdueMaxReminders = Math.max(
+      0,
+      Math.min(30, parseInt(String(body.overdue_max_reminders ?? body.max_overdue_reminders ?? 5), 10) || 0)
+    );
+    const rawRetry = body.retry_intervals_hours_json ?? body.retry_schedule_hours ?? '[24,72]';
+    const retryArr = Array.isArray(rawRetry)
+      ? rawRetry.map((x: any) => Math.max(1, parseInt(String(x), 10) || 24))
+      : String(rawRetry).trim().startsWith('[')
+      ? parseIntArrayJson(rawRetry, [24, 72])
+      : String(rawRetry)
+          .split(',')
+          .map((s) => Math.max(1, parseInt(s.trim(), 10) || 0))
+          .filter((n) => n > 0);
+    const retryIntervalsJson = JSON.stringify(retryArr.length > 0 ? retryArr : [24, 72]);
+    const blockScope = normalizeBlockScope(body.block_scope || 'service_only');
+    const emailOnPurchase =
+      body.email_on_purchase === false || Number(body.email_on_purchase) === 0 || body.send_purchase_email === false ? 0 : 1;
+    const emailOnFail =
+      body.email_on_fail === false || Number(body.email_on_fail) === 0 || body.send_failure_email === false ? 0 : 1;
+    const emailOnBlock =
+      body.email_on_block === false || Number(body.email_on_block) === 0 || body.send_block_email === false ? 0 : 1;
+    const isActive = body.is_active === false || Number(body.is_active) === 0 ? 0 : 1;
+
+    await db
+      .prepare(
+        `INSERT INTO billing_policy_rules (
+           id, scope_type, scope_key, label, pre_expiry_days_json, auto_notice_days,
+           overdue_interval_hours, overdue_max_reminders, grace_period_days,
+           block_scope, retry_intervals_hours_json, email_on_purchase,
+           email_on_fail, email_on_block, is_active, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(scope_type, scope_key) DO UPDATE SET
+           label = excluded.label,
+           pre_expiry_days_json = excluded.pre_expiry_days_json,
+           auto_notice_days = excluded.auto_notice_days,
+           overdue_interval_hours = excluded.overdue_interval_hours,
+           overdue_max_reminders = excluded.overdue_max_reminders,
+           grace_period_days = excluded.grace_period_days,
+           block_scope = excluded.block_scope,
+           retry_intervals_hours_json = excluded.retry_intervals_hours_json,
+           email_on_purchase = excluded.email_on_purchase,
+           email_on_fail = excluded.email_on_fail,
+           email_on_block = excluded.email_on_block,
+           is_active = excluded.is_active,
+           updated_at = CURRENT_TIMESTAMP`
+      )
+      .bind(
+        ruleId,
+        scopeType,
+        scopeKey,
+        label,
+        preExpiryDaysJson,
+        autoNoticeDays,
+        overdueIntervalHours,
+        overdueMaxReminders,
+        gracePeriodDays,
+        blockScope,
+        retryIntervalsJson,
+        emailOnPurchase,
+        emailOnFail,
+        emailOnBlock,
+        isActive
+      )
+      .run();
+
+    const saved = await db
+      .prepare('SELECT * FROM billing_policy_rules WHERE scope_type = ? AND scope_key = ? LIMIT 1')
+      .bind(scopeType, scopeKey)
+      .first();
+    return jsonResponse({ success: true, policy: saved }, 200, origin);
+  }
+
+  if (path === '/api/admin/billing/email-logs' && method === 'GET') {
+    const subFilter = url.searchParams.get('subscription_id') || '';
+    const logsRes = subFilter
+      ? await db
+          .prepare('SELECT * FROM billing_email_logs WHERE subscription_id = ? ORDER BY sent_at DESC LIMIT 100')
+          .bind(subFilter)
+          .all()
+          .catch(() => ({ results: [] }))
+      : await db
+          .prepare('SELECT * FROM billing_email_logs ORDER BY sent_at DESC LIMIT 200')
+          .all()
+          .catch(() => ({ results: [] }));
+    return jsonResponse({ success: true, emails: logsRes.results || [] }, 200, origin);
+  }
+
+  if (path === '/api/admin/billing/cron/run' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const summary = await executeBillingCronJob(db, rawEnv, {
+      fetchFn,
+      nowIso: body?.nowIso ? String(body.nowIso) : undefined,
+    });
+    return jsonResponse({ success: true, summary }, 200, origin);
+  }
+
   return null;
+}
+
+/**
+ * Exécute le cycle horaire complet de facturation / relance / blocage (Étape 7).
+ * Appelé automatiquement par `scheduled()` dans `worker/src/index.ts` et manuellement par l'admin.
+ */
+export async function executeBillingCronJob(
+  db: any,
+  rawEnv: Record<string, any>,
+  opts?: { fetchFn?: typeof fetch; nowIso?: string }
+): Promise<BillingCronSummary> {
+  await ensurePaystackBillingTables(db);
+  return runBillingCronCycle({
+    db,
+    rawEnv,
+    fetchFn: opts?.fetchFn,
+    nowIso: opts?.nowIso,
+    getPaystackSecretKey,
+    resolveEffectiveBillingPolicy,
+    recordSubscriptionEvent,
+    fulfillAutoRenewalTransaction: (d, txRow, psData) =>
+      fulfillPaidTransaction(d, txRow, psData, { rawEnv, fetchFn: opts?.fetchFn }),
+  });
 }

@@ -1047,6 +1047,14 @@ async function ensureStorageTables(db) {
       )
     `).run().catch(() => {});
 
+    for (const colSql of [
+      "ALTER TABLE active_subscriptions ADD COLUMN last_email_at TEXT DEFAULT NULL",
+      "ALTER TABLE active_subscriptions ADD COLUMN last_email_type TEXT DEFAULT ''",
+      "ALTER TABLE active_subscriptions ADD COLUMN last_email_status TEXT DEFAULT ''"
+    ]) {
+      await db.prepare(colSql).run().catch(() => {});
+    }
+
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS subscription_events (
         id TEXT PRIMARY KEY,
@@ -3580,6 +3588,21 @@ function renderDashboardHtml(data) {
       </button>
 
       <button 
+        onclick="switchView('active-subs')" 
+        id="nav-btn-active-subs"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
+      >
+        <span class="text-base text-amber-400 group-hover:scale-110 transition-transform">📋</span>
+        <div class="flex-1 overflow-hidden">
+          <div class="text-xs font-bold text-white flex items-center justify-between gap-1.5">
+            <span class="truncate">Abonnements en cours</span>
+            <span id="sidebar-active-subs-count" class="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">0</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Auto/Manuel/Infini, relances &amp; blocage</div>
+        </div>
+      </button>
+
+      <button 
         onclick="switchView('abonnements')" 
         id="nav-btn-abonnements"
         class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
@@ -4425,6 +4448,373 @@ function renderDashboardHtml(data) {
           <div class="pt-3 border-t border-slate-800 flex justify-end gap-2">
             <button type="button" onclick="closeAppPlanModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold cursor-pointer">Annuler</button>
             <button type="submit" class="px-5 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-black cursor-pointer">Enregistrer la carte</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- VUE 6C : ABONNEMENTS EN COURS, POLITIQUES DE RELANCE & EMAILS      -->
+    <!-- ================================================================== -->
+    <div id="view-active-subs" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
+      <div class="flex-1 overflow-y-auto p-4 space-y-4">
+        <!-- En-tête & Actions globales -->
+        <div class="neo-card p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-base font-black text-white flex items-center gap-2">
+              <span>📋</span>
+              <span>Abonnements en cours, Relances Emails &amp; Blocages</span>
+            </h2>
+            <p class="text-[11px] text-slate-400 mt-0.5">
+              Suivi temps réel de tous les abonnements (Stockage, Crédits IA, Moyennes &amp; futures apps), dates exactes, cartes Visa liées, statuts Resend et règles de blocage.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" onclick="openAdminCreateSubModal()" class="px-3 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black cursor-pointer">+ Attribuer un abonnement</button>
+            <button type="button" id="btn-run-billing-cron" onclick="runAdminBillingCronNow()" class="px-3 py-2 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-amber-300 text-xs font-black cursor-pointer">⚡ Exécuter le Cron</button>
+            <button type="button" onclick="loadAdminActiveSubscriptions()" class="px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer">🔄 Actualiser</button>
+          </div>
+        </div>
+
+        <!-- Sous-onglets -->
+        <div class="flex flex-wrap items-center gap-2">
+          <button type="button" id="asub-tab-list" onclick="switchAdminActiveSubsTab('list')" class="px-3.5 py-2 rounded-xl bg-orange-600 text-white text-xs font-black cursor-pointer">📋 Abonnements en cours</button>
+          <button type="button" id="asub-tab-policies" onclick="switchAdminActiveSubsTab('policies')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">⚙️ Politiques de relance &amp; blocage</button>
+          <button type="button" id="asub-tab-emails" onclick="switchAdminActiveSubsTab('emails')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">📧 Journal des Emails envoyés</button>
+        </div>
+
+        <!-- PANEL 1 : TABLEAU LIVE DES ABONNEMENTS -->
+        <div id="asub-panel-list" class="space-y-4">
+          <!-- KPIs -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2.5">
+            <div class="neo-card p-3 border-l-4 border-l-emerald-500">
+              <div class="text-[10px] uppercase font-bold text-slate-400">Actifs</div>
+              <div id="asub-kpi-active" class="text-xl font-black text-emerald-400 mt-0.5">0</div>
+            </div>
+            <div class="neo-card p-3 border-l-4 border-l-cyan-500">
+              <div class="text-[10px] uppercase font-bold text-slate-400">⚡ Auto (Visa)</div>
+              <div id="asub-kpi-auto" class="text-xl font-black text-cyan-300 mt-0.5">0</div>
+            </div>
+            <div class="neo-card p-3 border-l-4 border-l-sky-500">
+              <div class="text-[10px] uppercase font-bold text-slate-400">🔄 Manuel</div>
+              <div id="asub-kpi-manual" class="text-xl font-black text-sky-300 mt-0.5">0</div>
+            </div>
+            <div class="neo-card p-3 border-l-4 border-l-amber-500">
+              <div class="text-[10px] uppercase font-bold text-slate-400">♾️ À vie</div>
+              <div id="asub-kpi-infinite" class="text-xl font-black text-amber-300 mt-0.5">0</div>
+            </div>
+            <div class="neo-card p-3 border-l-4 border-l-orange-500">
+              <div class="text-[10px] uppercase font-bold text-slate-400">⏳ Grâce / Impayé</div>
+              <div id="asub-kpi-grace" class="text-xl font-black text-orange-400 mt-0.5">0</div>
+            </div>
+            <div class="neo-card p-3 border-l-4 border-l-rose-500">
+              <div class="text-[10px] uppercase font-bold text-slate-400">🔒 Bloqués</div>
+              <div id="asub-kpi-blocked" class="text-xl font-black text-rose-400 mt-0.5">0</div>
+            </div>
+          </div>
+
+          <!-- Filtres -->
+          <div class="neo-card p-3 flex flex-wrap items-center gap-2">
+            <input id="asub-filter-search" type="text" oninput="renderAdminActiveSubsTable()" placeholder="Rechercher nom, email, téléphone, forfait, app..." class="flex-1 min-w-[200px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white outline-none focus:border-orange-500" />
+            <select id="asub-filter-service" onchange="renderAdminActiveSubsTable()" class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white outline-none">
+              <option value="all">Tous les services</option>
+              <option value="storage">💾 Stockage Cloud</option>
+              <option value="ai">🤖 Crédits IA</option>
+              <option value="app">📱 Applications</option>
+            </select>
+            <select id="asub-filter-mode" onchange="renderAdminActiveSubsTable()" class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white outline-none">
+              <option value="all">Tous les modes</option>
+              <option value="auto">⚡ Automatique</option>
+              <option value="manual">🔄 Manuel</option>
+              <option value="infinite">♾️ Infini (À vie)</option>
+            </select>
+            <select id="asub-filter-status" onchange="renderAdminActiveSubsTable()" class="px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white outline-none">
+              <option value="all">Tous les statuts</option>
+              <option value="active">✅ Actif / Payé</option>
+              <option value="grace">⏳ Grâce / Impayé</option>
+              <option value="blocked">🔒 Bloqué</option>
+              <option value="cancelled">❌ Annulé / Expiré</option>
+            </select>
+            <span id="asub-table-counter" class="text-[11px] font-bold text-slate-400 px-2">0 abonnement</span>
+          </div>
+
+          <!-- Tableau principal -->
+          <div class="neo-card overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead>
+                  <tr class="bg-slate-900/90 text-[10px] uppercase text-slate-400 border-b border-slate-800">
+                    <th class="px-3 py-2.5">Utilisateur</th>
+                    <th class="px-3 py-2.5">Service / Application &amp; Offre</th>
+                    <th class="px-3 py-2.5">Mode &amp; Carte</th>
+                    <th class="px-3 py-2.5">Début / Fin &amp; Décompte live</th>
+                    <th class="px-3 py-2.5">Statut</th>
+                    <th class="px-3 py-2.5">Emails &amp; Relances</th>
+                    <th class="px-3 py-2.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="asub-table-tbody" class="divide-y divide-slate-800/80">
+                  <tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">Chargement des abonnements...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL 2 : POLITIQUES DE RELANCE & RÈGLES DE BLOCAGE -->
+        <div id="asub-panel-policies" class="hidden space-y-4">
+          <div class="neo-card p-4 space-y-3">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div>
+                <h3 class="text-sm font-black text-white">⚙️ Règles par service / application</h3>
+                <p class="text-[11px] text-slate-400">Réglez l'intervalle entre chaque email d'impayé (en heures), la période de grâce avant blocage et la portée du blocage (Service seul, Lecture seule ou Tout le compte).</p>
+              </div>
+              <button type="button" onclick="openAdminNewPolicyPrompt()" class="px-3 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white text-xs font-black cursor-pointer">+ Nouvelle règle par App</button>
+            </div>
+            <div id="asub-policies-grid" class="grid grid-cols-1 lg:grid-cols-2 gap-3">
+              <div class="text-xs text-slate-400">Chargement des politiques...</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL 3 : JOURNAL GLOBAL DES EMAILS -->
+        <div id="asub-panel-emails" class="hidden space-y-3">
+          <div class="neo-card overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <h3 class="text-xs font-black text-white uppercase tracking-wider">📧 Historique complet des emails de facturation (Resend)</h3>
+                <p class="text-[10.5px] text-slate-400">Suivi automatique des statuts Envoyé / Reçu / Ouvert / Rebondi via le webhook <code class="text-sky-300">/api/webhooks/resend</code>.</p>
+              </div>
+              <button type="button" onclick="loadAdminBillingEmailLogs()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold cursor-pointer">🔄 Actualiser</button>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead>
+                  <tr class="bg-slate-900 text-[10px] uppercase text-slate-400 border-b border-slate-800">
+                    <th class="px-3 py-2">Date</th>
+                    <th class="px-3 py-2">Destinataire</th>
+                    <th class="px-3 py-2">Type</th>
+                    <th class="px-3 py-2">Sujet</th>
+                    <th class="px-3 py-2">Source</th>
+                    <th class="px-3 py-2">Statut Resend</th>
+                  </tr>
+                </thead>
+                <tbody id="asub-emails-tbody" class="divide-y divide-slate-800/70">
+                  <tr><td colspan="6" class="px-4 py-8 text-center text-slate-400">Chargement du journal...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- MODALE ADMIN : MODIFIER UN ABONNEMENT EN COURS + HISTORIQUE -->
+    <div id="admin-sub-edit-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-3" onclick="if(event.target===this) closeAdminSubEditModal()">
+      <div class="max-w-3xl w-full max-h-[92vh] overflow-y-auto bg-[#0f172a] border border-slate-700 rounded-2xl shadow-2xl">
+        <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between sticky top-0 bg-[#0f172a] z-10">
+          <div>
+            <h3 id="ase-modal-title" class="text-sm font-black text-white">Gérer l'abonnement</h3>
+            <p id="ase-modal-subtitle" class="text-[11px] text-slate-400"></p>
+          </div>
+          <button type="button" onclick="closeAdminSubEditModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer">✕</button>
+        </div>
+        <form onsubmit="saveAdminSubEditForm(event)" class="p-5 space-y-4 text-xs">
+          <input type="hidden" id="ase-id" value="" />
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Mode de renouvellement</label>
+              <select id="ase-renewal-mode" onchange="toggleAdminSubEditInfinite()" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none">
+                <option value="manual">🔄 Manuel</option>
+                <option value="auto">⚡ Automatique (Carte)</option>
+                <option value="infinite">♾️ Infini (À vie)</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Statut</label>
+              <select id="ase-status" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none">
+                <option value="active">✅ Actif (Payé)</option>
+                <option value="trial">🎁 Essai gratuit</option>
+                <option value="grace">⏳ Période de grâce</option>
+                <option value="past_due">⚠️ Impayé</option>
+                <option value="blocked">🔒 Bloqué</option>
+                <option value="cancelled">❌ Annulé</option>
+                <option value="expired">⌛ Expiré</option>
+                <option value="revoked">🚫 Révoqué</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Portée du blocage</label>
+              <select id="ase-block-scope" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none">
+                <option value="service_only">🔒 Service / App uniquement</option>
+                <option value="read_only">👁️ Lecture seule</option>
+                <option value="full_account">🚫 Tout le compte StudyCloud</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="ase-dates-section" class="p-3 rounded-xl bg-slate-900/70 border border-slate-800 space-y-3">
+            <div class="flex items-center justify-between gap-2 flex-wrap">
+              <span class="text-[10px] font-black uppercase text-sky-300">Dates &amp; Heures exactes (UTC)</span>
+              <div class="flex items-center gap-1.5 flex-wrap">
+                <button type="button" onclick="extendAdminSubEndDate(7)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[10px] font-bold cursor-pointer">+7j</button>
+                <button type="button" onclick="extendAdminSubEndDate(30)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[10px] font-bold cursor-pointer">+30j</button>
+                <button type="button" onclick="extendAdminSubEndDate(90)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[10px] font-bold cursor-pointer">+90j</button>
+                <button type="button" onclick="extendAdminSubEndDate(365)" class="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-emerald-300 text-[10px] font-bold cursor-pointer">+365j</button>
+              </div>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label class="block text-[10px] font-bold text-slate-400 mb-1">Date/heure de début</label>
+                <input id="ase-start" type="datetime-local" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono text-[11px] outline-none" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-amber-300 mb-1">Date/heure de fin</label>
+                <input id="ase-end" type="datetime-local" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-amber-500/40 text-amber-200 font-mono text-[11px] outline-none" />
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-rose-300 mb-1">Fin période de grâce</label>
+                <input id="ase-grace" type="datetime-local" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-rose-500/40 text-rose-200 font-mono text-[11px] outline-none" />
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Montant (FCFA / Devise)</label>
+              <input id="ase-price" type="number" step="any" min="0" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-emerald-300 font-mono font-bold outline-none" />
+            </div>
+            <div class="flex flex-col justify-end gap-1.5">
+              <label class="flex items-center gap-2 cursor-pointer text-slate-200">
+                <input id="ase-cancel-end" type="checkbox" class="w-4 h-4 accent-amber-500" />
+                <span>Annuler automatiquement en fin de période</span>
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-sky-300">
+                <input id="ase-notify-email" type="checkbox" class="w-4 h-4 accent-sky-500" />
+                <span>Envoyer un email de notification à l'utilisateur</span>
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Notes internes admin</label>
+            <textarea id="ase-notes" rows="2" placeholder="Commentaire interne (accord VIP, report de paiement...)" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white outline-none"></textarea>
+          </div>
+
+          <!-- Historique & Emails de cet abonnement -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-slate-800">
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+              <div class="text-[10px] font-black uppercase text-slate-300">📜 Historique des événements</div>
+              <div id="ase-events-list" class="space-y-1.5 max-h-40 overflow-y-auto text-[11px] text-slate-400">Chargement...</div>
+            </div>
+            <div class="p-3 rounded-xl bg-slate-950/70 border border-slate-800 space-y-2">
+              <div class="text-[10px] font-black uppercase text-slate-300">📧 Emails envoyés à cet utilisateur</div>
+              <div id="ase-emails-list" class="space-y-1.5 max-h-40 overflow-y-auto text-[11px] text-slate-400">Chargement...</div>
+            </div>
+          </div>
+
+          <div class="pt-3 border-t border-slate-800 flex items-center justify-end gap-2">
+            <button type="button" onclick="closeAdminSubEditModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold cursor-pointer">Fermer</button>
+            <button type="submit" id="ase-save-btn" class="px-5 py-2 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-black cursor-pointer">Enregistrer les modifications</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODALE ADMIN : ENVOYER UN EMAIL / RAPPEL MANUEL IMMÉDIAT -->
+    <div id="admin-sub-email-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-3" onclick="if(event.target===this) closeAdminSubEmailModal()">
+      <div class="max-w-lg w-full bg-[#0f172a] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+          <div>
+            <h3 class="text-sm font-black text-white">📧 Envoyer un email manuellement</h3>
+            <p id="asmail-target" class="text-[11px] text-slate-400"></p>
+          </div>
+          <button type="button" onclick="closeAdminSubEmailModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer">✕</button>
+        </div>
+        <form onsubmit="sendAdminSubManualEmail(event)" class="p-5 space-y-3.5 text-xs">
+          <input type="hidden" id="asmail-sub-id" value="" />
+          <div>
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Modèle d'email StudyCloud</label>
+            <select id="asmail-type" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none">
+              <option value="overdue_reminder">🔔 Rappel de non-règlement (impayé)</option>
+              <option value="payment_failed">⚠️ Notification d'échec de paiement</option>
+              <option value="pre_renewal_notice">⏰ Rappel d'échéance prochaine</option>
+              <option value="service_blocked">🔒 Avis de suspension / blocage</option>
+              <option value="service_reactivated">🎉 Confirmation de réactivation</option>
+              <option value="purchase_confirmed">✅ Confirmation d'abonnement actif</option>
+              <option value="infinite_confirmed">♾️ Confirmation d'abonnement à vie</option>
+              <option value="admin_manual_notice">📩 Message personnalisé libre</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Message personnalisé (optionnel)</label>
+            <textarea id="asmail-custom-msg" rows="4" placeholder="Ex : Bonjour, nous vous rappelons que votre abonnement expire bientôt. Régularisez avant demain pour conserver l'accès..." class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white outline-none focus:border-sky-500"></textarea>
+          </div>
+          <div class="pt-2 border-t border-slate-800 flex justify-end gap-2">
+            <button type="button" onclick="closeAdminSubEmailModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold cursor-pointer">Annuler</button>
+            <button type="submit" id="asmail-send-btn" class="px-5 py-2 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-black cursor-pointer">📤 Envoyer maintenant (Resend)</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODALE ADMIN : ATTRIBUER / CRÉER UN ABONNEMENT MANUELLEMENT -->
+    <div id="admin-sub-create-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-3" onclick="if(event.target===this) closeAdminCreateSubModal()">
+      <div class="max-w-lg w-full bg-[#0f172a] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+          <h3 class="text-sm font-black text-white">+ Attribuer un abonnement à un utilisateur</h3>
+          <button type="button" onclick="closeAdminCreateSubModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer">✕</button>
+        </div>
+        <form onsubmit="saveAdminCreateSubForm(event)" class="p-5 space-y-3 text-xs">
+          <div>
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Email ou ID utilisateur *</label>
+            <input id="asc-user" type="text" required placeholder="etudiant@exemple.com ou ID..." class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white outline-none focus:border-emerald-500" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Service</label>
+              <select id="asc-product-type" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none">
+                <option value="app">📱 Application</option>
+                <option value="storage">💾 Stockage Cloud</option>
+                <option value="ai">🤖 Crédits IA</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Clé App (si Application)</label>
+              <input id="asc-app-key" type="text" value="moyennes" placeholder="moyennes" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-sky-300 font-mono outline-none" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Nom du forfait *</label>
+              <input id="asc-plan-name" type="text" required value="Forfait Pro" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white outline-none" />
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Montant (FCFA)</label>
+              <input id="asc-price" type="number" min="0" value="2000" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-emerald-300 font-mono font-bold outline-none" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Mode</label>
+              <select id="asc-mode" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none">
+                <option value="manual">🔄 Manuel (Durée fixe)</option>
+                <option value="infinite">♾️ Infini (À vie)</option>
+                <option value="auto">⚡ Automatique</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Durée (jours)</label>
+              <input id="asc-days" type="number" min="1" max="3650" value="30" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-amber-300 font-mono font-bold outline-none" />
+            </div>
+          </div>
+          <label class="flex items-center gap-2 cursor-pointer text-sky-300 pt-1">
+            <input id="asc-send-email" type="checkbox" checked class="w-4 h-4 accent-sky-500" />
+            <span>Envoyer automatiquement l'email de confirmation à l'utilisateur</span>
+          </label>
+          <div class="pt-3 border-t border-slate-800 flex justify-end gap-2">
+            <button type="button" onclick="closeAdminCreateSubModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold cursor-pointer">Annuler</button>
+            <button type="submit" id="asc-save-btn" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black cursor-pointer">Créer l'abonnement</button>
           </div>
         </form>
       </div>
@@ -8047,8 +8437,8 @@ function renderDashboardHtml(data) {
 
     function switchView(viewName) {
       currentView = viewName;
-      const flexViews = ['users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'abonnements', 'apps-monetization', 'statistiques', 'dkd-store'];
-      ['global', 'users', 'demandes', 'demandes-ia', 'robot-rouge', 'distribution', 'messages', 'signalements', 'abonnements', 'apps-monetization', 'statistiques', 'profil-pro', 'alertes-stockage', 'facturation-ia', 'dkd-store'].forEach(v => {
+      const flexViews = ['users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'active-subs', 'abonnements', 'apps-monetization', 'statistiques', 'dkd-store'];
+      ['global', 'users', 'demandes', 'demandes-ia', 'robot-rouge', 'distribution', 'messages', 'signalements', 'active-subs', 'abonnements', 'apps-monetization', 'statistiques', 'profil-pro', 'alertes-stockage', 'facturation-ia', 'dkd-store'].forEach(v => {
         const el = document.getElementById('view-' + v);
         const navBtn = document.getElementById('nav-btn-' + v);
         if (!el) return;
@@ -8078,6 +8468,7 @@ function renderDashboardHtml(data) {
           distribution: 'Distribution de Stockage',
           messages: 'Messages',
           signalements: 'Signalements & Retours',
+          'active-subs': 'Abonnements en cours, Relances & Blocages',
           abonnements: 'Transactions & Paiements Paystack',
           'apps-monetization': 'Applications Monétisées & Cartes de Prix',
           statistiques: 'Statistiques & Métriques',
@@ -8143,6 +8534,10 @@ function renderDashboardHtml(data) {
           }
         } catch(e) {
           console.warn('Erreur chargement Robot Rouge:', e);
+        }
+      } else if (viewName === 'active-subs') {
+        if (typeof loadAdminActiveSubscriptions === 'function') {
+          loadAdminActiveSubscriptions();
         }
       } else if (viewName === 'abonnements') {
         if (typeof loadAdminPaymentsOverview === 'function') {
@@ -18683,6 +19078,614 @@ function renderDashboardHtml(data) {
       }
     }
     window.deleteAppPlan = deleteAppPlan;
+
+    // =========================================================================
+    // ÉTAPE 5 : GESTION LIVE DES ABONNEMENTS EN COURS, POLITIQUES & EMAILS
+    // =========================================================================
+    const BILLING_API_ORIGIN = 'https://api-worker.dkd-technologies.com';
+    let adminActiveSubs = [];
+    let adminBillingPolicies = [];
+    let adminBillingEmailLogs = [];
+    let adminActiveSubsTicker = null;
+
+    function switchAdminActiveSubsTab(tab) {
+      ['list', 'policies', 'emails'].forEach(function(k) {
+        const panel = document.getElementById('asub-panel-' + k);
+        const btn = document.getElementById('asub-tab-' + k);
+        if (panel) panel.classList.toggle('hidden', k !== tab);
+        if (btn) {
+          btn.className = k === tab
+            ? 'px-3.5 py-2 rounded-xl bg-orange-600 text-white text-xs font-black cursor-pointer'
+            : 'px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer';
+        }
+      });
+      if (tab === 'policies') loadAdminBillingPolicies();
+      if (tab === 'emails') loadAdminBillingEmailLogs();
+    }
+    window.switchAdminActiveSubsTab = switchAdminActiveSubsTab;
+
+    function formatLiveCountdownHtml(sub) {
+      if (Number(sub.is_infinite) === 1 || sub.renewal_mode === 'infinite') {
+        return '<span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black">♾️ À vie (sans fin)</span>';
+      }
+      const endMs = sub.current_period_end ? Date.parse(sub.current_period_end) : NaN;
+      if (!isFinite(endMs)) return '<span class="text-slate-500 text-[10px]">—</span>';
+      const now = Date.now();
+      const diffMs = endMs - now;
+      if (diffMs > 0) {
+        const totalHours = Math.floor(diffMs / 3600000);
+        const days = Math.floor(totalHours / 24);
+        const hours = totalHours % 24;
+        const mins = Math.floor((diffMs % 3600000) / 60000);
+        const cls = days <= 2 ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' : 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30';
+        const txt = days > 0 ? (days + 'j ' + hours + 'h restants') : (hours + 'h ' + mins + 'm restants');
+        return '<span class="px-2 py-0.5 rounded-full border text-[10px] font-black ' + cls + '">⏱️ ' + txt + '</span>';
+      }
+      const graceMs = sub.grace_until ? Date.parse(sub.grace_until) : NaN;
+      if (isFinite(graceMs) && graceMs > now) {
+        const gHours = Math.max(1, Math.ceil((graceMs - now) / 3600000));
+        const gDays = Math.floor(gHours / 24);
+        const gRemH = gHours % 24;
+        return '<span class="px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/40 text-[10px] font-black">⏳ Grâce : ' + (gDays > 0 ? gDays + 'j ' + gRemH + 'h' : gHours + 'h') + '</span>';
+      }
+      return '<span class="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black">⌛ Expiré</span>';
+    }
+
+    function formatResendStatusBadge(st) {
+      const s = String(st || '').toLowerCase();
+      if (s === 'opened') return '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[9.5px] font-black">👁️ Ouvert</span>';
+      if (s === 'delivered') return '<span class="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/40 text-[9.5px] font-black">📬 Reçu</span>';
+      if (s === 'sent') return '<span class="px-1.5 py-0.5 rounded bg-slate-700 text-slate-200 text-[9.5px] font-bold">📤 Envoyé</span>';
+      if (s === 'bounced' || s === 'complained') return '<span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[9.5px] font-black">⚠️ Rebond</span>';
+      if (s === 'failed') return '<span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 text-[9.5px] font-black">❌ Échec</span>';
+      return '<span class="text-[10px] text-slate-500">Aucun</span>';
+    }
+
+    function formatSubStatusBadge(sub) {
+      const st = String(sub.status || 'active').toLowerCase();
+      if (st === 'active') return '<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black">✅ Payé / Actif</span>';
+      if (st === 'trial') return '<span class="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40 text-[10px] font-black">🎁 Essai</span>';
+      if (st === 'grace') return '<span class="px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-300 border border-orange-500/40 text-[10px] font-black">⏳ Grâce</span>';
+      if (st === 'past_due') return '<span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black">⚠️ Impayé</span>';
+      if (st === 'blocked') {
+        const sc = sub.block_scope === 'full_account' ? 'Compte entier' : (sub.block_scope === 'read_only' ? 'Lecture seule' : 'Service seul');
+        return '<span class="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black">🔒 Bloqué (' + sc + ')</span>';
+      }
+      if (st === 'cancelled' || st === 'revoked') return '<span class="px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 text-[10px] font-black">❌ ' + escapeHtml(st) + '</span>';
+      return '<span class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">' + escapeHtml(st) + '</span>';
+    }
+
+    async function loadAdminActiveSubscriptions() {
+      const tbody = document.getElementById('asub-table-tbody');
+      if (tbody && adminActiveSubs.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">Chargement des abonnements en cours...</td></tr>';
+      }
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions?_t=' + Date.now());
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur chargement');
+        adminActiveSubs = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+        const st = data.stats || {};
+        const setTxt = function(id, v) { const el = document.getElementById(id); if (el) el.textContent = String(v || 0); };
+        setTxt('asub-kpi-active', st.active);
+        setTxt('asub-kpi-auto', st.auto);
+        setTxt('asub-kpi-manual', st.manual);
+        setTxt('asub-kpi-infinite', st.infinite);
+        setTxt('asub-kpi-grace', st.grace);
+        setTxt('asub-kpi-blocked', st.blocked);
+        setTxt('sidebar-active-subs-count', st.total || adminActiveSubs.length);
+        renderAdminActiveSubsTable();
+
+        if (!adminActiveSubsTicker) {
+          adminActiveSubsTicker = setInterval(function() {
+            if (currentView === 'active-subs') renderAdminActiveSubsTable();
+          }, 60000);
+        }
+      } catch (err) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-rose-400">Erreur : ' + escapeHtml(err.message || err) + '</td></tr>';
+      }
+    }
+    window.loadAdminActiveSubscriptions = loadAdminActiveSubscriptions;
+
+    function renderAdminActiveSubsTable() {
+      const tbody = document.getElementById('asub-table-tbody');
+      const counter = document.getElementById('asub-table-counter');
+      if (!tbody) return;
+      const q = String(document.getElementById('asub-filter-search')?.value || '').trim().toLowerCase();
+      const fSrv = String(document.getElementById('asub-filter-service')?.value || 'all');
+      const fMode = String(document.getElementById('asub-filter-mode')?.value || 'all');
+      const fStat = String(document.getElementById('asub-filter-status')?.value || 'all');
+
+      const filtered = (adminActiveSubs || []).filter(function(s) {
+        if (fSrv !== 'all' && String(s.product_type || '') !== fSrv) return false;
+        const isInf = Number(s.is_infinite) === 1 || s.renewal_mode === 'infinite';
+        const mode = isInf ? 'infinite' : (s.renewal_mode === 'auto' ? 'auto' : 'manual');
+        if (fMode !== 'all' && mode !== fMode) return false;
+        if (fStat !== 'all') {
+          const st = String(s.status || '').toLowerCase();
+          if (fStat === 'grace' && st !== 'grace' && st !== 'past_due') return false;
+          else if (fStat === 'cancelled' && st !== 'cancelled' && st !== 'expired' && st !== 'revoked') return false;
+          else if (fStat !== 'grace' && fStat !== 'cancelled' && st !== fStat) return false;
+        }
+        if (q) {
+          const hay = [s.user_name, s.user_email, s.user_phone, s.user_id, s.plan_name, s.app_name, s.app_key, s.product_type].join(' ').toLowerCase();
+          if (hay.indexOf(q) === -1) return false;
+        }
+        return true;
+      });
+
+      if (counter) counter.textContent = filtered.length + ' abonnement' + (filtered.length > 1 ? 's' : '');
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">Aucun abonnement ne correspond aux filtres.</td></tr>';
+        return;
+      }
+
+      let html = '';
+      filtered.forEach(function(s) {
+        const sid = escapeHtml(s.id);
+        const isInf = Number(s.is_infinite) === 1 || s.renewal_mode === 'infinite';
+        const isAuto = !isInf && s.renewal_mode === 'auto';
+        const isBlocked = s.status === 'blocked';
+        const srvIcon = s.product_type === 'storage' ? '💾 Stockage Cloud' : (s.product_type === 'ai' ? '🤖 Crédits IA' : ('📱 ' + escapeHtml(s.app_name || s.app_key || 'App')));
+        const cardTxt = s.paymentMethod ? ('<div class="text-[10px] text-emerald-300 font-mono mt-0.5">💳 ' + escapeHtml(s.paymentMethod.label || ('•••• ' + s.paymentMethod.last4)) + '</div>') : (s.last_network_label ? '<div class="text-[10px] text-slate-400 mt-0.5">' + escapeHtml(s.last_network_label) + '</div>' : '');
+        const modeBadge = isInf
+          ? '<span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black">♾️ Infini</span>'
+          : (isAuto
+            ? '<span class="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-black">⚡ Automatique</span>'
+            : '<span class="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40 text-[10px] font-black">🔄 Manuel</span>');
+
+        html += '<tr class="hover:bg-slate-900/60 transition">' +
+          '<td class="px-3 py-2.5">' +
+            '<div class="font-bold text-white truncate max-w-[165px]">' + escapeHtml(s.user_name || s.user_id) + '</div>' +
+            '<div class="text-[10px] text-slate-400 truncate max-w-[165px]">' + escapeHtml(s.user_email || '') + '</div>' +
+            (s.user_phone ? '<div class="text-[9.5px] font-mono text-slate-500">' + escapeHtml(s.user_phone) + '</div>' : '') +
+          '</td>' +
+          '<td class="px-3 py-2.5">' +
+            '<div class="text-[10px] font-bold text-sky-300">' + srvIcon + '</div>' +
+            '<div class="font-bold text-white">' + escapeHtml(s.plan_name || 'Forfait') + '</div>' +
+            '<div class="text-[10px] font-mono text-emerald-400">' + escapeHtml(formatMoneyXof(s.price_amount, s.currency)) + '</div>' +
+          '</td>' +
+          '<td class="px-3 py-2.5 whitespace-nowrap">' + modeBadge + cardTxt + '</td>' +
+          '<td class="px-3 py-2.5 whitespace-nowrap">' +
+            '<div class="mb-1">' + formatLiveCountdownHtml(s) + '</div>' +
+            '<div class="text-[10px] text-slate-400">Début : <span class="text-slate-200">' + escapeHtml(formatAdminDateTime(s.current_period_start)) + '</span></div>' +
+            '<div class="text-[10px] text-slate-400">Fin : <span class="text-amber-300 font-bold">' + (isInf ? '♾️ Jamais' : escapeHtml(formatAdminDateTime(s.current_period_end))) + '</span></div>' +
+          '</td>' +
+          '<td class="px-3 py-2.5 whitespace-nowrap">' +
+            formatSubStatusBadge(s) +
+            (Number(s.cancel_at_period_end) === 1 ? '<div class="text-[9.5px] text-amber-400 font-bold mt-1">Fin programmée</div>' : '') +
+            (s.last_charge_error ? '<div class="text-[9.5px] text-rose-400 truncate max-w-[130px] mt-0.5" title="' + escapeHtml(s.last_charge_error) + '">⚠️ ' + escapeHtml(s.last_charge_error) + '</div>' : '') +
+          '</td>' +
+          '<td class="px-3 py-2.5 whitespace-nowrap">' +
+            formatResendStatusBadge(s.last_email_status) +
+            (s.last_email_at ? '<div class="text-[9.5px] text-slate-400 mt-0.5">' + escapeHtml(formatAdminDateTime(s.last_email_at)) + '</div>' : '') +
+            (Number(s.reminder_count) > 0 ? '<div class="text-[9.5px] text-amber-300 font-bold">' + Number(s.reminder_count) + ' relance(s)</div>' : '') +
+          '</td>' +
+          '<td class="px-3 py-2.5 text-right whitespace-nowrap">' +
+            '<div class="inline-flex items-center gap-1 flex-wrap justify-end">' +
+              '<button type="button" onclick="openAdminSubEditModal(&quot;' + sid + '&quot;)" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-bold cursor-pointer" title="Modifier dates, mode, statut, historique">✏️ Gérer</button>' +
+              '<button type="button" onclick="openAdminSubEmailModal(&quot;' + sid + '&quot;)" class="px-2 py-1 rounded-lg bg-sky-600/25 hover:bg-sky-600/40 border border-sky-500/40 text-sky-200 text-[10px] font-bold cursor-pointer" title="Envoyer un email / rappel manuel">📧</button>' +
+              (!isInf ? '<button type="button" onclick="quickToggleAdminSubMode(&quot;' + sid + '&quot;)" class="px-2 py-1 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/35 border border-cyan-500/40 text-cyan-200 text-[10px] font-bold cursor-pointer" title="Basculer Auto / Manuel">' + (isAuto ? '🔄' : '⚡') + '</button>' : '') +
+              '<button type="button" onclick="quickToggleAdminSubBlock(&quot;' + sid + '&quot;)" class="px-2 py-1 rounded-lg ' + (isBlocked ? 'bg-emerald-600/25 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-200' : 'bg-rose-600/20 hover:bg-rose-600/35 border border-rose-500/40 text-rose-200') + ' text-[10px] font-bold cursor-pointer" title="' + (isBlocked ? 'Débloquer le service' : 'Bloquer le service') + '">' + (isBlocked ? '🔓' : '🔒') + '</button>' +
+            '</div>' +
+          '</td>' +
+        '</tr>';
+      });
+      tbody.innerHTML = html;
+    }
+    window.renderAdminActiveSubsTable = renderAdminActiveSubsTable;
+
+    function toDatetimeLocalValue(iso) {
+      if (!iso) return '';
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return '';
+      return d.toISOString().slice(0, 16);
+    }
+
+    function toggleAdminSubEditInfinite() {
+      const mode = document.getElementById('ase-renewal-mode')?.value;
+      const datesBox = document.getElementById('ase-dates-section');
+      if (datesBox) datesBox.classList.toggle('hidden', mode === 'infinite');
+    }
+    window.toggleAdminSubEditInfinite = toggleAdminSubEditInfinite;
+
+    function extendAdminSubEndDate(days) {
+      const el = document.getElementById('ase-end');
+      if (!el) return;
+      const baseMs = el.value ? Date.parse(el.value + ':00.000Z') : Date.now();
+      const startMs = isFinite(baseMs) && baseMs > Date.now() ? baseMs : Date.now();
+      const nextIso = new Date(startMs + days * 86400000).toISOString().slice(0, 16);
+      el.value = nextIso;
+    }
+    window.extendAdminSubEndDate = extendAdminSubEndDate;
+
+    async function openAdminSubEditModal(subId) {
+      const modal = document.getElementById('admin-sub-edit-modal');
+      const sub = (adminActiveSubs || []).find(function(s) { return s.id === subId; });
+      if (!sub || !modal) return;
+
+      document.getElementById('ase-id').value = sub.id;
+      document.getElementById('ase-modal-title').textContent = (sub.user_name || sub.user_email || sub.user_id) + ' — ' + (sub.plan_name || 'Abonnement');
+      document.getElementById('ase-modal-subtitle').textContent = (sub.user_email || '') + ' · ID : ' + sub.id;
+      document.getElementById('ase-renewal-mode').value = Number(sub.is_infinite) === 1 ? 'infinite' : (sub.renewal_mode || 'manual');
+      document.getElementById('ase-status').value = sub.status || 'active';
+      document.getElementById('ase-block-scope').value = sub.block_scope || 'service_only';
+      document.getElementById('ase-start').value = toDatetimeLocalValue(sub.current_period_start);
+      document.getElementById('ase-end').value = toDatetimeLocalValue(sub.current_period_end);
+      document.getElementById('ase-grace').value = toDatetimeLocalValue(sub.grace_until);
+      document.getElementById('ase-price').value = String(sub.price_amount || 0);
+      document.getElementById('ase-cancel-end').checked = Number(sub.cancel_at_period_end) === 1;
+      document.getElementById('ase-notify-email').checked = false;
+      document.getElementById('ase-notes').value = sub.admin_notes || '';
+      toggleAdminSubEditInfinite();
+
+      document.getElementById('ase-events-list').innerHTML = '<div class="text-slate-500">Chargement...</div>';
+      document.getElementById('ase-emails-list').innerHTML = '<div class="text-slate-500">Chargement...</div>';
+
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/' + encodeURIComponent(subId) + '/details');
+        const data = await resp.json();
+        if (data && data.success) {
+          const evEl = document.getElementById('ase-events-list');
+          const emEl = document.getElementById('ase-emails-list');
+          const evs = data.events || [];
+          const ems = data.emails || [];
+          if (evEl) {
+            evEl.innerHTML = evs.length === 0
+              ? '<div class="text-slate-500">Aucun événement enregistré.</div>'
+              : evs.map(function(ev) {
+                  return '<div class="p-1.5 rounded bg-slate-900 border border-slate-800"><span class="font-bold text-white">' + escapeHtml(ev.event_type) + '</span> <span class="text-sky-400">(' + escapeHtml(ev.actor) + ')</span><div class="text-[10px] text-slate-500">' + escapeHtml(formatAdminDateTime(ev.created_at)) + '</div></div>';
+                }).join('');
+          }
+          if (emEl) {
+            emEl.innerHTML = ems.length === 0
+              ? '<div class="text-slate-500">Aucun email envoyé pour cet abonnement.</div>'
+              : ems.map(function(em) {
+                  return '<div class="p-1.5 rounded bg-slate-900 border border-slate-800 flex items-center justify-between gap-2"><div class="min-w-0"><div class="font-bold text-white truncate">' + escapeHtml(em.subject || em.email_type) + '</div><div class="text-[10px] text-slate-500">' + escapeHtml(formatAdminDateTime(em.sent_at)) + ' · ' + escapeHtml(em.trigger_source || 'auto') + '</div></div>' + formatResendStatusBadge(em.delivery_status) + '</div>';
+                }).join('');
+          }
+        }
+      } catch (e) {}
+    }
+    window.openAdminSubEditModal = openAdminSubEditModal;
+
+    function closeAdminSubEditModal() {
+      const modal = document.getElementById('admin-sub-edit-modal');
+      if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
+    }
+    window.closeAdminSubEditModal = closeAdminSubEditModal;
+
+    async function saveAdminSubEditForm(e) {
+      if (e) e.preventDefault();
+      const subId = document.getElementById('ase-id').value;
+      const mode = document.getElementById('ase-renewal-mode').value;
+      const toIso = function(val) { return val ? new Date(val + ':00.000Z').toISOString() : null; };
+      const payload = {
+        renewal_mode: mode,
+        is_infinite: mode === 'infinite' ? 1 : 0,
+        status: document.getElementById('ase-status').value,
+        block_scope: document.getElementById('ase-block-scope').value,
+        current_period_start: toIso(document.getElementById('ase-start').value),
+        current_period_end: mode === 'infinite' ? null : toIso(document.getElementById('ase-end').value),
+        grace_until: mode === 'infinite' ? null : toIso(document.getElementById('ase-grace').value),
+        price_amount: Number(document.getElementById('ase-price').value) || 0,
+        cancel_at_period_end: document.getElementById('ase-cancel-end').checked ? 1 : 0,
+        admin_notes: document.getElementById('ase-notes').value || '',
+        notifyByEmail: document.getElementById('ase-notify-email').checked
+      };
+      const btn = document.getElementById('ase-save-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Enregistrement...'; }
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/' + encodeURIComponent(subId) + '/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Échec mise à jour');
+        closeAdminSubEditModal();
+        showToast('✅ Abonnement mis à jour avec succès !');
+        await loadAdminActiveSubscriptions();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Enregistrer les modifications'; }
+      }
+    }
+    window.saveAdminSubEditForm = saveAdminSubEditForm;
+
+    async function quickToggleAdminSubMode(subId) {
+      const sub = (adminActiveSubs || []).find(function(s) { return s.id === subId; });
+      if (!sub) return;
+      const nextMode = sub.renewal_mode === 'auto' ? 'manual' : 'auto';
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/' + encodeURIComponent(subId) + '/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ renewal_mode: nextMode, is_infinite: 0 })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+        showToast(nextMode === 'auto' ? '⚡ Passé en mode Automatique' : '🔄 Passé en mode Manuel');
+        await loadAdminActiveSubscriptions();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.quickToggleAdminSubMode = quickToggleAdminSubMode;
+
+    async function quickToggleAdminSubBlock(subId) {
+      const sub = (adminActiveSubs || []).find(function(s) { return s.id === subId; });
+      if (!sub) return;
+      const nextStatus = sub.status === 'blocked' ? 'active' : 'blocked';
+      const label = nextStatus === 'blocked' ? 'Bloquer ce service et notifier l utilisateur par email ?' : 'Débloquer et réactiver ce service ?';
+      if (!confirm(label)) return;
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/' + encodeURIComponent(subId) + '/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: nextStatus, notifyByEmail: true })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+        showToast(nextStatus === 'blocked' ? '🔒 Service bloqué & email envoyé' : '🔓 Service réactivé & email envoyé');
+        await loadAdminActiveSubscriptions();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.quickToggleAdminSubBlock = quickToggleAdminSubBlock;
+
+    function openAdminSubEmailModal(subId) {
+      const sub = (adminActiveSubs || []).find(function(s) { return s.id === subId; });
+      const modal = document.getElementById('admin-sub-email-modal');
+      if (!sub || !modal) return;
+      document.getElementById('asmail-sub-id').value = subId;
+      document.getElementById('asmail-target').textContent = (sub.user_name || 'Utilisateur') + ' (' + (sub.user_email || 'sans email') + ') — ' + (sub.plan_name || '');
+      document.getElementById('asmail-custom-msg').value = '';
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+    }
+    window.openAdminSubEmailModal = openAdminSubEmailModal;
+
+    function closeAdminSubEmailModal() {
+      const modal = document.getElementById('admin-sub-email-modal');
+      if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
+    }
+    window.closeAdminSubEmailModal = closeAdminSubEmailModal;
+
+    async function sendAdminSubManualEmail(e) {
+      if (e) e.preventDefault();
+      const subId = document.getElementById('asmail-sub-id').value;
+      const emailType = document.getElementById('asmail-type').value;
+      const customMessage = document.getElementById('asmail-custom-msg').value.trim();
+      const btn = document.getElementById('asmail-send-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Envoi Resend...'; }
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/' + encodeURIComponent(subId) + '/send-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ emailType: emailType, customMessage: customMessage })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Échec envoi email');
+        closeAdminSubEmailModal();
+        showToast('📤 Email envoyé avec succès via Resend !');
+        await loadAdminActiveSubscriptions();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '📤 Envoyer maintenant (Resend)'; }
+      }
+    }
+    window.sendAdminSubManualEmail = sendAdminSubManualEmail;
+
+    function openAdminCreateSubModal() {
+      const modal = document.getElementById('admin-sub-create-modal');
+      if (modal) { modal.classList.remove('hidden'); modal.style.display = 'flex'; }
+    }
+    window.openAdminCreateSubModal = openAdminCreateSubModal;
+
+    function closeAdminCreateSubModal() {
+      const modal = document.getElementById('admin-sub-create-modal');
+      if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
+    }
+    window.closeAdminCreateSubModal = closeAdminCreateSubModal;
+
+    async function saveAdminCreateSubForm(e) {
+      if (e) e.preventDefault();
+      const mode = document.getElementById('asc-mode').value;
+      const payload = {
+        user_query: document.getElementById('asc-user').value.trim(),
+        product_type: document.getElementById('asc-product-type').value,
+        app_key: document.getElementById('asc-app-key').value.trim() || 'moyennes',
+        plan_name: document.getElementById('asc-plan-name').value.trim(),
+        price_amount: Number(document.getElementById('asc-price').value) || 0,
+        renewal_mode: mode,
+        is_infinite: mode === 'infinite' ? 1 : 0,
+        duration_days: Number(document.getElementById('asc-days').value) || 30,
+        sendEmail: document.getElementById('asc-send-email').checked
+      };
+      const btn = document.getElementById('asc-save-btn');
+      if (btn) { btn.disabled = true; btn.textContent = 'Création...'; }
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur création');
+        closeAdminCreateSubModal();
+        showToast('✅ Abonnement attribué avec succès !');
+        await loadAdminActiveSubscriptions();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "Créer l'abonnement"; }
+      }
+    }
+    window.saveAdminCreateSubForm = saveAdminCreateSubForm;
+
+    async function loadAdminBillingPolicies() {
+      const grid = document.getElementById('asub-policies-grid');
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/policies?_t=' + Date.now());
+        const data = await resp.json();
+        adminBillingPolicies = (data && data.policies) ? data.policies : [];
+        if (!grid) return;
+        if (adminBillingPolicies.length === 0) {
+          grid.innerHTML = '<div class="text-xs text-slate-400">Aucune politique configurée.</div>';
+          return;
+        }
+        grid.innerHTML = adminBillingPolicies.map(function(p, idx) {
+          const scopeTag = p.scope_type === 'global' ? '🌍 GLOBAL' : (p.scope_type === 'product_type' ? '📦 SERVICE' : (p.scope_type === 'app' ? '📱 APP' : '👤 ABONNEMENT'));
+          const retriesStr = String(p.retry_intervals_hours_json || '[48,96]').replace(/[\[\]\s]/g, '');
+          return '<div class="p-4 rounded-2xl bg-slate-900/90 border border-slate-700 space-y-3 text-xs">' +
+            '<div class="flex items-center justify-between gap-2">' +
+              '<div>' +
+                '<span class="px-2 py-0.5 rounded bg-sky-500/20 text-sky-300 text-[9.5px] font-black">' + scopeTag + ' : ' + escapeHtml(p.scope_key) + '</span>' +
+                '<div class="text-sm font-black text-white mt-1">' + escapeHtml(p.label || p.scope_key) + '</div>' +
+              '</div>' +
+              '<button type="button" onclick="saveAdminBillingPolicyCard(' + idx + ')" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-black cursor-pointer">💾 Enregistrer</button>' +
+            '</div>' +
+            '<div class="grid grid-cols-2 sm:grid-cols-3 gap-2">' +
+              '<div><label class="block text-[9.5px] text-slate-400 mb-0.5">Pré-alerte (jours)</label><input id="pol-notice-' + idx + '" type="number" min="0" max="30" value="' + Number(p.auto_notice_days ?? 3) + '" class="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono" /></div>' +
+              '<div><label class="block text-[9.5px] text-amber-300 mb-0.5">Grâce avant blocage (j)</label><input id="pol-grace-' + idx + '" type="number" min="0" max="90" value="' + Number(p.grace_period_days ?? 5) + '" class="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-amber-500/40 text-amber-200 font-mono font-bold" /></div>' +
+              '<div><label class="block text-[9.5px] text-sky-300 mb-0.5">Intervalle relance (h)</label><input id="pol-interval-' + idx + '" type="number" min="1" max="720" value="' + Number(p.overdue_interval_hours ?? 48) + '" class="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-sky-500/40 text-sky-200 font-mono font-bold" /></div>' +
+              '<div><label class="block text-[9.5px] text-slate-400 mb-0.5">Max relances email</label><input id="pol-maxrem-' + idx + '" type="number" min="0" max="30" value="' + Number(p.overdue_max_reminders ?? 5) + '" class="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono" /></div>' +
+              '<div><label class="block text-[9.5px] text-slate-400 mb-0.5">Retries carte (heures)</label><input id="pol-retries-' + idx + '" type="text" value="' + escapeHtml(retriesStr) + '" placeholder="24,72,120" class="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono" /></div>' +
+              '<div><label class="block text-[9.5px] text-rose-300 mb-0.5">Portée du blocage</label><select id="pol-scope-' + idx + '" class="w-full px-2 py-1.5 rounded-lg bg-slate-950 border border-rose-500/40 text-white font-bold">' +
+                '<option value="service_only"' + (p.block_scope === 'service_only' ? ' selected' : '') + '>🔒 Service seul</option>' +
+                '<option value="read_only"' + (p.block_scope === 'read_only' ? ' selected' : '') + '>👁️ Lecture seule</option>' +
+                '<option value="full_account"' + (p.block_scope === 'full_account' ? ' selected' : '') + '>🚫 Tout le compte</option>' +
+              '</select></div>' +
+            '</div>' +
+            '<div class="flex flex-wrap items-center gap-3 pt-1 text-[10.5px] text-slate-300">' +
+              '<label class="flex items-center gap-1.5 cursor-pointer"><input id="pol-mpur-' + idx + '" type="checkbox"' + (Number(p.email_on_purchase) !== 0 ? ' checked' : '') + ' class="accent-emerald-500" /> Email achat</label>' +
+              '<label class="flex items-center gap-1.5 cursor-pointer"><input id="pol-mfail-' + idx + '" type="checkbox"' + (Number(p.email_on_fail) !== 0 ? ' checked' : '') + ' class="accent-amber-500" /> Email échec</label>' +
+              '<label class="flex items-center gap-1.5 cursor-pointer"><input id="pol-mblk-' + idx + '" type="checkbox"' + (Number(p.email_on_block) !== 0 ? ' checked' : '') + ' class="accent-rose-500" /> Email blocage</label>' +
+            '</div>' +
+          '</div>';
+        }).join('');
+      } catch (err) {
+        if (grid) grid.innerHTML = '<div class="text-xs text-rose-400">Erreur : ' + escapeHtml(err.message || err) + '</div>';
+      }
+    }
+    window.loadAdminBillingPolicies = loadAdminBillingPolicies;
+
+    async function saveAdminBillingPolicyCard(idx) {
+      const p = adminBillingPolicies[idx];
+      if (!p) return;
+      const payload = {
+        id: p.id,
+        scope_type: p.scope_type,
+        scope_key: p.scope_key,
+        label: p.label,
+        auto_notice_days: Number(document.getElementById('pol-notice-' + idx)?.value || 3),
+        grace_period_days: Number(document.getElementById('pol-grace-' + idx)?.value || 5),
+        overdue_interval_hours: Number(document.getElementById('pol-interval-' + idx)?.value || 48),
+        overdue_max_reminders: Number(document.getElementById('pol-maxrem-' + idx)?.value || 5),
+        retry_schedule_hours: document.getElementById('pol-retries-' + idx)?.value || '24,72',
+        block_scope: document.getElementById('pol-scope-' + idx)?.value || 'service_only',
+        email_on_purchase: document.getElementById('pol-mpur-' + idx)?.checked ? 1 : 0,
+        email_on_fail: document.getElementById('pol-mfail-' + idx)?.checked ? 1 : 0,
+        email_on_block: document.getElementById('pol-mblk-' + idx)?.checked ? 1 : 0
+      };
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/policies/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+        showToast('✅ Politique « ' + (p.label || p.scope_key) + ' » enregistrée !');
+        await loadAdminBillingPolicies();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.saveAdminBillingPolicyCard = saveAdminBillingPolicyCard;
+
+    async function openAdminNewPolicyPrompt() {
+      const appKey = prompt("Clé de l'application pour créer une politique dédiée (ex: moyennes, quiz, bibliotheque) :");
+      if (!appKey || !appKey.trim()) return;
+      const cleanKey = appKey.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/policies/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            scope_type: 'app',
+            scope_key: cleanKey,
+            label: 'Application ' + cleanKey,
+            grace_period_days: 5,
+            overdue_interval_hours: 48,
+            block_scope: 'service_only'
+          })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+        showToast('✅ Politique créée pour « ' + cleanKey + ' »');
+        await loadAdminBillingPolicies();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      }
+    }
+    window.openAdminNewPolicyPrompt = openAdminNewPolicyPrompt;
+
+    async function loadAdminBillingEmailLogs() {
+      const tbody = document.getElementById('asub-emails-tbody');
+      if (!tbody) return;
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/email-logs?_t=' + Date.now());
+        const data = await resp.json();
+        adminBillingEmailLogs = (data && data.emails) ? data.emails : [];
+        if (adminBillingEmailLogs.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Aucun email de facturation envoyé pour le moment.</td></tr>';
+          return;
+        }
+        tbody.innerHTML = adminBillingEmailLogs.map(function(m) {
+          return '<tr class="hover:bg-slate-900/50">' +
+            '<td class="px-3 py-2 whitespace-nowrap text-[11px] text-slate-300">' + escapeHtml(formatAdminDateTime(m.sent_at)) + '</td>' +
+            '<td class="px-3 py-2 font-bold text-white">' + escapeHtml(m.email_to || '') + '</td>' +
+            '<td class="px-3 py-2"><span class="px-2 py-0.5 rounded bg-slate-800 text-sky-300 text-[10px] font-mono">' + escapeHtml(m.email_type || '') + '</span></td>' +
+            '<td class="px-3 py-2 text-slate-200 max-w-[260px] truncate" title="' + escapeHtml(m.subject || '') + '">' + escapeHtml(m.subject || '') + '</td>' +
+            '<td class="px-3 py-2 text-[10.5px] text-slate-400 uppercase font-bold">' + escapeHtml(m.trigger_source || 'auto') + '</td>' +
+            '<td class="px-3 py-2 whitespace-nowrap">' + formatResendStatusBadge(m.delivery_status) + (m.opened_at ? '<div class="text-[9.5px] text-emerald-400">Lu : ' + escapeHtml(formatAdminDateTime(m.opened_at)) + '</div>' : '') + '</td>' +
+          '</tr>';
+        }).join('');
+      } catch (err) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-rose-400">Erreur : ' + escapeHtml(err.message || err) + '</td></tr>';
+      }
+    }
+    window.loadAdminBillingEmailLogs = loadAdminBillingEmailLogs;
+
+    async function runAdminBillingCronNow() {
+      const btn = document.getElementById('btn-run-billing-cron');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Exécution Cron...'; }
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/cron/run', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({})
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur Cron');
+        const s = data.summary || {};
+        showToast('⚡ Cron exécuté : ' + (s.autoCharged || 0) + ' prélevé(s), ' + (s.remindersSent || 0) + ' relance(s), ' + (s.blocked || 0) + ' bloqué(s).');
+        await loadAdminActiveSubscriptions();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '⚡ Exécuter le Cron'; }
+      }
+    }
+    window.runAdminBillingCronNow = runAdminBillingCronNow;
 
     async function grantManualAppEntitlement(appKey) {
       const userQuery = String(document.getElementById('grant-ent-user-input')?.value || '').trim();

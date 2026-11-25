@@ -771,6 +771,168 @@ export async function updateSubscriptionRenewalMode(
   };
 }
 
+export interface MySubscriptionsResponse {
+  success: boolean;
+  subscriptions: ActiveSubscriptionRecord[];
+  paymentMethods: MaskedPaymentMethodRecord[];
+  recentEvents: Array<{
+    id: string;
+    subscription_id: string;
+    event_type: string;
+    actor: string;
+    details_json?: string;
+    created_at: string;
+  }>;
+  error?: string;
+}
+
+export interface BillingStatusBannerResponse {
+  success: boolean;
+  fullAccountBlocked: boolean;
+  readOnlyBlocked: boolean;
+  blockedSubscriptions: Array<{
+    id: string;
+    productType: string;
+    appKey: string;
+    appName: string;
+    planName: string;
+    blockScope: 'service_only' | 'read_only' | 'full_account';
+    blockedAt: string | null;
+    priceAmount: number;
+    currency: string;
+  }>;
+  graceSubscriptions: Array<{
+    id: string;
+    productType: string;
+    appKey: string;
+    appName: string;
+    planName: string;
+    status: string;
+    graceUntil: string | null;
+    currentPeriodEnd: string | null;
+    blockScope: 'service_only' | 'read_only' | 'full_account';
+    priceAmount: number;
+    currency: string;
+  }>;
+}
+
+export async function getMyActiveSubscriptions(): Promise<MySubscriptionsResponse> {
+  const resp = await fetch(`${getBaseApi()}/api/billing/my-subscriptions?_t=${Date.now()}`, {
+    method: 'GET',
+    headers: getAuthHeaders(),
+  });
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || !json?.success) {
+    return {
+      success: false,
+      subscriptions: [],
+      paymentMethods: [],
+      recentEvents: [],
+      error: json?.error || 'Impossible de charger vos abonnements.',
+    };
+  }
+  return {
+    success: true,
+    subscriptions: Array.isArray(json.subscriptions) ? json.subscriptions : [],
+    paymentMethods: Array.isArray(json.paymentMethods) ? json.paymentMethods : [],
+    recentEvents: Array.isArray(json.recentEvents) ? json.recentEvents : [],
+  };
+}
+
+export async function getMyBillingStatusBanner(): Promise<BillingStatusBannerResponse | null> {
+  try {
+    const resp = await fetch(`${getBaseApi()}/api/billing/status-banner?_t=${Date.now()}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    const json = await resp.json().catch(() => null);
+    if (!resp.ok || !json?.success) return null;
+    return json as BillingStatusBannerResponse;
+  } catch {
+    return null;
+  }
+}
+
+export async function cancelMySubscriptionAutoRenew(
+  subscriptionId: string
+): Promise<{ success: boolean; subscription?: ActiveSubscriptionRecord | null; error?: string }> {
+  const resp = await fetch(
+    `${getBaseApi()}/api/billing/subscriptions/${encodeURIComponent(subscriptionId)}/cancel`,
+    {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({}),
+    }
+  );
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || !json?.success) {
+    return { success: false, error: json?.error || "Impossible d'annuler le renouvellement automatique." };
+  }
+  return { success: true, subscription: json.subscription || null };
+}
+
+export async function deleteMyPaymentMethod(
+  paymentMethodId: string
+): Promise<{ success: boolean; switchedToManualCount?: number; error?: string }> {
+  const resp = await fetch(
+    `${getBaseApi()}/api/billing/payment-methods/${encodeURIComponent(paymentMethodId)}`,
+    {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    }
+  );
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || !json?.success) {
+    return { success: false, error: json?.error || 'Impossible de supprimer cette carte bancaire.' };
+  }
+  return { success: true, switchedToManualCount: Number(json.switchedToManualCount || 0) };
+}
+
+export async function initLinkBankCard(
+  subscriptionId?: string,
+  enableAuto = true
+): Promise<{
+  success: boolean;
+  reference?: string;
+  accessCode?: string;
+  authorizationUrl?: string;
+  verificationAmountFcfa?: number;
+  error?: string;
+}> {
+  const resp = await fetch(`${getBaseApi()}/api/billing/payment-methods/link-init`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ subscriptionId: subscriptionId || '', enableAuto }),
+  });
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || !json?.success) {
+    return { success: false, error: json?.error || 'Impossible de préparer la liaison de carte.' };
+  }
+  return json;
+}
+
+export async function verifyLinkBankCard(
+  reference: string,
+  subscriptionId?: string,
+  enableAuto = true
+): Promise<{
+  success: boolean;
+  paymentMethod?: MaskedPaymentMethodRecord | null;
+  subscription?: ActiveSubscriptionRecord | null;
+  error?: string;
+}> {
+  const resp = await fetch(`${getBaseApi()}/api/billing/payment-methods/link-verify`, {
+    method: 'POST',
+    headers: getAuthHeaders(),
+    body: JSON.stringify({ reference, subscriptionId: subscriptionId || '', enableAuto }),
+  });
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || !json?.success) {
+    return { success: false, error: json?.error || 'Impossible de vérifier votre carte bancaire.' };
+  }
+  return json;
+}
+
 let paystackInlineLoaderPromise: Promise<any> | null = null;
 
 /**
