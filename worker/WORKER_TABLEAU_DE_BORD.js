@@ -792,15 +792,21 @@ async function ensureStorageTables(db) {
       )
     `).run();
 
-    // Migration pour pricing_model, billing_mode, duration_days et paystack_plan_code
+    // Migration pour pricing_model, billing_mode, duration_days, paystack_plan_code et drapeaux allow_auto/allow_manual/is_infinite
     for (const migSql of [
       "ALTER TABLE ai_subscription_plans ADD COLUMN pricing_model TEXT DEFAULT 'subscription'",
       "ALTER TABLE ai_subscription_plans ADD COLUMN billing_mode TEXT DEFAULT 'manual'",
       "ALTER TABLE ai_subscription_plans ADD COLUMN duration_days INTEGER DEFAULT 30",
       "ALTER TABLE ai_subscription_plans ADD COLUMN paystack_plan_code TEXT DEFAULT ''",
+      "ALTER TABLE ai_subscription_plans ADD COLUMN allow_auto INTEGER DEFAULT 0",
+      "ALTER TABLE ai_subscription_plans ADD COLUMN allow_manual INTEGER DEFAULT 1",
+      "ALTER TABLE ai_subscription_plans ADD COLUMN is_infinite INTEGER DEFAULT 0",
       "ALTER TABLE storage_subscription_plans ADD COLUMN billing_mode TEXT DEFAULT 'manual'",
       "ALTER TABLE storage_subscription_plans ADD COLUMN duration_days INTEGER DEFAULT 30",
-      "ALTER TABLE storage_subscription_plans ADD COLUMN paystack_plan_code TEXT DEFAULT ''"
+      "ALTER TABLE storage_subscription_plans ADD COLUMN paystack_plan_code TEXT DEFAULT ''",
+      "ALTER TABLE storage_subscription_plans ADD COLUMN allow_auto INTEGER DEFAULT 0",
+      "ALTER TABLE storage_subscription_plans ADD COLUMN allow_manual INTEGER DEFAULT 1",
+      "ALTER TABLE storage_subscription_plans ADD COLUMN is_infinite INTEGER DEFAULT 0"
     ]) {
       try { await db.prepare(migSql).run(); } catch (e) {}
     }
@@ -951,6 +957,160 @@ async function ensureStorageTables(db) {
         processed INTEGER DEFAULT 0,
         processing_note TEXT DEFAULT '',
         payload_json TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    for (const migSql2 of [
+      "ALTER TABLE app_subscription_plans ADD COLUMN allow_auto INTEGER DEFAULT 0",
+      "ALTER TABLE app_subscription_plans ADD COLUMN allow_manual INTEGER DEFAULT 1",
+      "ALTER TABLE app_subscription_plans ADD COLUMN is_infinite INTEGER DEFAULT 0",
+      "ALTER TABLE payment_transactions ADD COLUMN subscription_id TEXT DEFAULT ''"
+    ]) {
+      try { await db.prepare(migSql2).run(); } catch (e) {}
+    }
+
+    for (const planTbl of ['storage_subscription_plans', 'ai_subscription_plans', 'app_subscription_plans']) {
+      await db.prepare(`UPDATE ${planTbl} SET is_infinite = 1, allow_auto = 0, allow_manual = 0 WHERE LOWER(COALESCE(billing_mode, '')) = 'infinite' AND COALESCE(is_infinite, 0) = 0`).run().catch(() => {});
+      await db.prepare(`UPDATE ${planTbl} SET allow_auto = 1, allow_manual = 1, is_infinite = 0 WHERE (LOWER(COALESCE(billing_mode, '')) = 'auto' OR COALESCE(is_auto_billing, 0) = 1) AND COALESCE(is_infinite, 0) = 0 AND (COALESCE(allow_auto, 0) = 0 OR COALESCE(allow_manual, 0) = 0)`).run().catch(() => {});
+    }
+
+    // 8c. Tables unifiées d'abonnements en cours, cartes bancaires tokenisées, règles de relance/blocage & journal d'emails
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_payment_methods (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        provider TEXT DEFAULT 'paystack',
+        authorization_code TEXT NOT NULL,
+        auth_email TEXT NOT NULL,
+        card_brand TEXT DEFAULT 'Carte',
+        card_type TEXT DEFAULT '',
+        last4 TEXT DEFAULT '',
+        exp_month TEXT DEFAULT '',
+        exp_year TEXT DEFAULT '',
+        bank TEXT DEFAULT '',
+        country_code TEXT DEFAULT '',
+        signature TEXT DEFAULT '',
+        reusable INTEGER DEFAULT 1,
+        is_default INTEGER DEFAULT 1,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS active_subscriptions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        user_name TEXT DEFAULT '',
+        user_email TEXT DEFAULT '',
+        user_phone TEXT DEFAULT '',
+        product_type TEXT NOT NULL,
+        app_key TEXT NOT NULL,
+        app_name TEXT DEFAULT '',
+        plan_id TEXT DEFAULT '',
+        plan_name TEXT NOT NULL,
+        status TEXT DEFAULT 'active',
+        is_infinite INTEGER DEFAULT 0,
+        plan_allows_auto INTEGER DEFAULT 0,
+        plan_allows_manual INTEGER DEFAULT 1,
+        renewal_mode TEXT DEFAULT 'manual',
+        user_confirmed_renewal INTEGER DEFAULT 0,
+        payment_method_id TEXT DEFAULT '',
+        last_channel TEXT DEFAULT '',
+        last_network_label TEXT DEFAULT '',
+        price_amount REAL DEFAULT 0,
+        currency TEXT DEFAULT 'XOF',
+        billing_cycle TEXT DEFAULT 'monthly',
+        duration_days INTEGER DEFAULT 30,
+        granted_storage_mb REAL DEFAULT 0,
+        granted_ai_credits REAL DEFAULT 0,
+        started_at TEXT NOT NULL,
+        current_period_start TEXT NOT NULL,
+        current_period_end TEXT DEFAULT NULL,
+        next_billing_at TEXT DEFAULT NULL,
+        grace_until TEXT DEFAULT NULL,
+        blocked_at TEXT DEFAULT NULL,
+        block_scope TEXT DEFAULT 'service_only',
+        cancel_at_period_end INTEGER DEFAULT 0,
+        cancelled_at TEXT DEFAULT NULL,
+        retry_count INTEGER DEFAULT 0,
+        last_charge_attempt_at TEXT DEFAULT NULL,
+        last_charge_error TEXT DEFAULT '',
+        last_reminder_sent_at TEXT DEFAULT NULL,
+        reminder_count INTEGER DEFAULT 0,
+        last_transaction_ref TEXT DEFAULT '',
+        admin_notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS subscription_events (
+        id TEXT PRIMARY KEY,
+        subscription_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        event_type TEXT NOT NULL,
+        actor TEXT DEFAULT 'system',
+        details_json TEXT DEFAULT '{}',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS billing_policy_rules (
+        id TEXT PRIMARY KEY,
+        scope_type TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        label TEXT DEFAULT '',
+        pre_expiry_days_json TEXT DEFAULT '[7,3,1]',
+        auto_notice_days INTEGER DEFAULT 3,
+        overdue_interval_hours INTEGER DEFAULT 48,
+        overdue_max_reminders INTEGER DEFAULT 5,
+        grace_period_days INTEGER DEFAULT 5,
+        block_scope TEXT DEFAULT 'service_only',
+        retry_intervals_hours_json TEXT DEFAULT '[48,96]',
+        email_on_purchase INTEGER DEFAULT 1,
+        email_on_fail INTEGER DEFAULT 1,
+        email_on_block INTEGER DEFAULT 1,
+        auto_unblock_on_payment INTEGER DEFAULT 1,
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(scope_type, scope_key)
+      )
+    `).run().catch(() => {});
+
+    for (const seed of [
+      ['policy_global_default', 'global', 'default', 'Règle globale par défaut', 5, 'service_only', 48],
+      ['policy_product_storage', 'product_type', 'storage', 'Stockage Cloud', 7, 'read_only', 48],
+      ['policy_product_ai', 'product_type', 'ai', 'Crédits IA StudyCloud', 3, 'service_only', 48],
+      ['policy_app_moyennes', 'app', 'moyennes', 'Application Moyennes', 5, 'service_only', 48]
+    ]) {
+      await db.prepare(
+        'INSERT OR IGNORE INTO billing_policy_rules (id, scope_type, scope_key, label, grace_period_days, block_scope, overdue_interval_hours) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).bind(...seed).run().catch(() => {});
+    }
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS billing_email_logs (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        subscription_id TEXT DEFAULT '',
+        transaction_ref TEXT DEFAULT '',
+        email_to TEXT NOT NULL,
+        email_type TEXT NOT NULL,
+        trigger_source TEXT DEFAULT 'auto',
+        subject TEXT DEFAULT '',
+        body_preview TEXT DEFAULT '',
+        resend_message_id TEXT DEFAULT '',
+        delivery_status TEXT DEFAULT 'sent',
+        error_message TEXT DEFAULT '',
+        sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        delivered_at TEXT DEFAULT NULL,
+        opened_at TEXT DEFAULT NULL,
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run().catch(() => {});

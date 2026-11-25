@@ -5,12 +5,17 @@ import {
   checkUserAppAccess,
   computeEntitlementExpiration,
   computePaystackHmacSha512Hex,
+  computeSubscriptionCountdown,
   ensurePaystackBillingTables,
   extractPaystackNetworkLabel,
   handlePaystackBillingRoutes,
   normalizeBillingMode,
+  normalizeBlockScope,
   normalizeIvoryCoastPhone,
   normalizeMobileMoneyProvider,
+  normalizePlanBillingFlags,
+  resolveEffectiveBillingPolicy,
+  resolveInitialRenewalMode,
   resolvePlanPriceMajor,
   toPaystackAmountMinor,
 } from './paystackBilling';
@@ -531,4 +536,305 @@ test('Charge API Mobile Money (Orange OTP + Wave open_url) + Anti-IDOR + channel
   assert.equal(cardJson.accessCode, 'acc_card_only_123');
   const lastCall = calls[calls.length - 1];
   assert.deepEqual(lastCall.body.channels, ['card']);
+});
+
+test('Étape 1 — Règles Auto+Manuel / Manuel seul / Infini, table unifiée active_subscriptions, cartes masquées, Anti-IDOR et politiques 3 niveaux', async () => {
+  // 1. Règle métier stricte des cases Admin : Auto impose toujours Manuel ; Infini est exclusif
+  assert.deepEqual(normalizePlanBillingFlags({ allow_auto: 1, allow_manual: 0 }), {
+    allowAuto: 1,
+    allowManual: 1,
+    isInfinite: 0,
+    billingMode: 'auto',
+    isAutoBilling: 1,
+  });
+  assert.deepEqual(normalizePlanBillingFlags({ allow_auto: 0, allow_manual: 1 }), {
+    allowAuto: 0,
+    allowManual: 1,
+    isInfinite: 0,
+    billingMode: 'manual',
+    isAutoBilling: 0,
+  });
+  assert.deepEqual(normalizePlanBillingFlags({ is_infinite: 1, allow_auto: 1, allow_manual: 1 }), {
+    allowAuto: 0,
+    allowManual: 0,
+    isInfinite: 1,
+    billingMode: 'infinite',
+    isAutoBilling: 0,
+  });
+
+  // 2. Mode initial après paiement : Auto par défaut UNIQUEMENT sur Carte réutilisable + Plan Auto+Manuel
+  const resVisaAuto = resolveInitialRenewalMode({ isInfinite: 0, allowAuto: 1, channel: 'card', reusable: 1 });
+  assert.equal(resVisaAuto.renewalMode, 'auto');
+  assert.equal(resVisaAuto.canChooseAutoOnSuccessScreen, true);
+
+  const resWaveAutoPlan = resolveInitialRenewalMode({ isInfinite: 0, allowAuto: 1, channel: 'mobile_money', reusable: 0 });
+  assert.equal(resWaveAutoPlan.renewalMode, 'manual');
+  assert.equal(resWaveAutoPlan.canChooseAutoOnSuccessScreen, false);
+
+  const resVisaManualOnly = resolveInitialRenewalMode({ isInfinite: 0, allowAuto: 0, channel: 'card', reusable: 1 });
+  assert.equal(resVisaManualOnly.renewalMode, 'manual');
+  assert.equal(resVisaManualOnly.canChooseAutoOnSuccessScreen, false);
+
+  const resInfinite = resolveInitialRenewalMode({ isInfinite: 1, allowAuto: 0, channel: 'card', reusable: 1 });
+  assert.equal(resInfinite.renewalMode, 'infinite');
+  assert.equal(resInfinite.canChooseAutoOnSuccessScreen, false);
+
+  // 3. Countdown temps réel (actif, grâce, expiré, infini) & blockScope
+  assert.equal(normalizeBlockScope('read_only'), 'read_only');
+  assert.equal(normalizeBlockScope('full_account'), 'full_account');
+  assert.equal(normalizeBlockScope('invalid'), 'service_only');
+
+  const nowMs = Date.parse('2026-11-25T10:00:00.000Z');
+  const cdInf = computeSubscriptionCountdown(null, 1, null, nowMs);
+  assert.equal(cdInf.isInfinite, true);
+  assert.equal(cdInf.labelFr, 'À vie (Infini)');
+
+  const cdActive = computeSubscriptionCountdown('2026-12-05T14:00:00.000Z', 0, null, nowMs);
+  assert.equal(cdActive.daysRemaining, 10);
+  assert.equal(cdActive.hoursRemaining, 4);
+  assert.equal(cdActive.isExpired, false);
+
+  const cdGrace = computeSubscriptionCountdown('2026-11-24T10:00:00.000Z', 0, '2026-11-28T10:00:00.000Z', nowMs);
+  assert.equal(cdGrace.isExpired, true);
+  assert.equal(cdGrace.isInGrace, true);
+  assert.equal(cdGrace.graceDaysRemaining, 3);
+
+  // 4. Flux bout-en-bout : Wave sur plan Auto+Manuel -> Manuel, puis Visa sur plan Auto+Manuel -> Auto,
+  //    puis bascule Auto <-> Manuel, Anti-IDOR Bob, et suppression de carte -> bascule auto vers manuel
+  let verifyData: any = null;
+  const mockFetch: typeof fetch = async (input: any, init?: any) => {
+    const u = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : undefined;
+    if (u.endsWith('/transaction/initialize')) {
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            authorization_url: `https://checkout.paystack.com/${body.reference}`,
+            access_code: `acc_${body.reference}`,
+            reference: body.reference,
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    if (u.includes('/transaction/verify/')) {
+      return new Response(JSON.stringify({ status: true, data: verifyData }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ status: false }), { status: 404 });
+  };
+
+  const { db, callApi } = createHarness(mockFetch);
+  await ensurePaystackBillingTables(db);
+
+  // Seed plans : Stockage Auto+Manuel, App Moyennes Auto+Manuel, App Moyennes Infini
+  await db
+    .prepare(
+      `INSERT INTO storage_subscription_plans (id, name, storage_amount, storage_mb, price, primary_currency, billing_mode, duration_days, is_auto_billing, allow_auto, allow_manual, is_infinite, is_active)
+       VALUES ('stor_auto_100', 'Stockage 100 Go Auto+Manuel', '100 Go', 102400, 4000, 'XOF', 'auto', 30, 1, 1, 1, 0, 1)`
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO app_subscription_plans (id, app_key, name, price, primary_currency, billing_mode, duration_days, is_auto_billing, allow_auto, allow_manual, is_infinite, is_active)
+       VALUES
+         ('moy_auto_m', 'moyennes', 'Moyennes Mensuel', 2000, 'XOF', 'auto', 30, 1, 1, 1, 0, 1),
+         ('moy_life', 'moyennes', 'Moyennes À Vie', 25000, 'XOF', 'infinite', 0, 0, 0, 0, 1, 1)`
+    )
+    .run();
+
+  // 4A. Alice achète Stockage Auto+Manuel via Wave -> renewal_mode DOIT être 'manual' (pas de carte encore)
+  const initWave = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'token-alice',
+      body: { productType: 'storage', productId: 'stor_auto_100' },
+    })
+  ).json();
+  verifyData = {
+    id: 5001,
+    reference: initWave.reference,
+    status: 'success',
+    amount: 400000,
+    currency: 'XOF',
+    channel: 'mobile_money',
+    authorization: { bank: 'Wave CI', reusable: false },
+  };
+  const verWave = await (
+    await callApi(`/api/payments/paystack/verify?reference=${initWave.reference}`, { token: 'token-alice' })
+  ).json();
+  assert.equal(verWave.verified, true);
+  assert.ok(verWave.subscription?.id);
+  assert.equal(verWave.subscription.renewal_mode, 'manual');
+  assert.equal(verWave.renewalUiConfig.canChooseAutoOnSuccessScreen, false);
+
+  // Alice essaie de passer Stockage en 'auto' AVANT d'avoir une carte -> refusé 400 proprement !
+  const tryAutoNoCard = await callApi(`/api/billing/subscriptions/${verWave.subscription.id}/renewal-mode`, {
+    method: 'PATCH',
+    token: 'token-alice',
+    body: { renewalMode: 'auto' },
+  });
+  assert.equal(tryAutoNoCard.status, 400);
+
+  // 4B. Alice achète Moyennes Mensuel par Carte Visa réutilisable -> carte enregistrée + renewal_mode = 'auto' par défaut !
+  const initVisa = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'token-alice',
+      body: { productType: 'app', productId: 'moy_auto_m', channelOnly: 'card' },
+    })
+  ).json();
+  verifyData = {
+    id: 5002,
+    reference: initVisa.reference,
+    status: 'success',
+    amount: 200000,
+    currency: 'XOF',
+    channel: 'card',
+    customer: { email: 'alice@studycloud.ci' },
+    authorization: {
+      authorization_code: 'AUTH_SECRET_VISA_999',
+      brand: 'visa',
+      card_type: 'visa debit',
+      last4: '4081',
+      exp_month: '12',
+      exp_year: '2029',
+      bank: 'Ecobank CI',
+      country_code: 'CI',
+      signature: 'SIG_ALICE_4081',
+      reusable: true,
+    },
+  };
+  const verVisa = await (
+    await callApi(`/api/payments/paystack/verify?reference=${initVisa.reference}`, { token: 'token-alice' })
+  ).json();
+  assert.equal(verVisa.verified, true);
+  assert.equal(verVisa.subscription.renewal_mode, 'auto');
+  assert.equal(verVisa.renewalUiConfig.canChooseAutoOnSuccessScreen, true);
+  assert.equal(verVisa.paymentMethod.last4, '4081');
+  assert.equal(verVisa.paymentMethod.authorization_code, undefined, 'Ne doit JAMAIS exposer authorization_code au client');
+
+  // 4C. Alice décide sur l'écran vert de passer Moyennes en 'manual' -> OK + sync user_app_entitlements.auto_renew = 0
+  const switchManualRes = await callApi(`/api/billing/subscriptions/${verVisa.subscription.id}/renewal-mode`, {
+    method: 'PATCH',
+    token: 'token-alice',
+    body: { renewalMode: 'manual' },
+  });
+  assert.equal(switchManualRes.status, 200);
+  const switchManual = await switchManualRes.json();
+  assert.equal(switchManual.subscription.renewal_mode, 'manual');
+  assert.equal(Number(switchManual.subscription.user_confirmed_renewal), 1);
+  const entAfterManual: any = await db
+    .prepare("SELECT auto_renew FROM user_app_entitlements WHERE user_id = 'user-alice' AND app_key = 'moyennes'")
+    .first();
+  assert.equal(Number(entAfterManual.auto_renew), 0);
+
+  // 4D. Maintenant qu'Alice a une carte Visa liée, elle peut activer 'auto' sur son abonnement Stockage (payé Wave) !
+  const switchStorAuto = await callApi(`/api/billing/subscriptions/${verWave.subscription.id}/renewal-mode`, {
+    method: 'PATCH',
+    token: 'token-alice',
+    body: { renewalMode: 'auto' },
+  });
+  assert.equal(switchStorAuto.status, 200);
+  const storAutoJson = await switchStorAuto.json();
+  assert.equal(storAutoJson.subscription.renewal_mode, 'auto');
+  assert.equal(storAutoJson.subscription.paymentMethod.last4, '4081');
+
+  // 4E. Anti-IDOR : Bob ne peut PAS modifier l'abonnement d'Alice ni supprimer sa carte !
+  const bobHackSub = await callApi(`/api/billing/subscriptions/${verVisa.subscription.id}/renewal-mode`, {
+    method: 'PATCH',
+    token: 'token-bob',
+    body: { renewalMode: 'auto' },
+  });
+  assert.equal(bobHackSub.status, 404);
+  const bobHackPm = await callApi(`/api/billing/payment-methods/${verVisa.paymentMethod.id}`, {
+    method: 'DELETE',
+    token: 'token-bob',
+  });
+  assert.equal(bobHackPm.status, 404);
+
+  // 4F. GET /api/billing/my-subscriptions renvoie les abonnements + cartes masquées + événements
+  const mySubs = await (await callApi('/api/billing/my-subscriptions', { token: 'token-alice' })).json();
+  assert.equal(mySubs.success, true);
+  assert.equal(mySubs.subscriptions.length, 2);
+  assert.equal(mySubs.paymentMethods.length, 1);
+  assert.equal(mySubs.paymentMethods[0].last4, '4081');
+  assert.equal((mySubs.paymentMethods[0] as any).authorization_code, undefined);
+  assert.ok(mySubs.recentEvents.length >= 4);
+
+  // 4G. Alice retire sa carte Visa -> son abonnement Stockage (en auto) repasse automatiquement en 'manual' !
+  const delPmRes = await callApi(`/api/billing/payment-methods/${verVisa.paymentMethod.id}`, {
+    method: 'DELETE',
+    token: 'token-alice',
+  });
+  assert.equal(delPmRes.status, 200);
+  const delPmJson = await delPmRes.json();
+  assert.equal(delPmJson.switchedToManualCount, 1);
+
+  const storAfterCardRemoved: any = await db
+    .prepare('SELECT renewal_mode, payment_method_id FROM active_subscriptions WHERE id = ?')
+    .bind(verWave.subscription.id)
+    .first();
+  assert.equal(storAfterCardRemoved.renewal_mode, 'manual');
+  assert.equal(storAfterCardRemoved.payment_method_id, '');
+
+  // 4H. Achat Infini -> renewal_mode = 'infinite', impossible de passer en auto/manual
+  const initInf = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'token-bob',
+      body: { productType: 'app', productId: 'moy_life' },
+    })
+  ).json();
+  verifyData = {
+    id: 5003,
+    reference: initInf.reference,
+    status: 'success',
+    amount: 2500000,
+    currency: 'XOF',
+    channel: 'mobile_money',
+    authorization: { bank: 'Orange Money CI', reusable: false },
+  };
+  const verInf = await (
+    await callApi(`/api/payments/paystack/verify?reference=${initInf.reference}`, { token: 'token-bob' })
+  ).json();
+  assert.equal(verInf.subscription.is_infinite, 1);
+  assert.equal(verInf.subscription.renewal_mode, 'infinite');
+  assert.equal(verInf.subscription.current_period_end, null);
+  assert.equal(verInf.renewalUiConfig.isInfinite, true);
+  const tryEditInf = await callApi(`/api/billing/subscriptions/${verInf.subscription.id}/renewal-mode`, {
+    method: 'PATCH',
+    token: 'token-bob',
+    body: { renewalMode: 'manual' },
+  });
+  assert.equal(tryEditInf.status, 400);
+
+  // 5. Hiérarchie des politiques de relances & blocages (global < product_type < app < subscription)
+  const storagePol = await resolveEffectiveBillingPolicy(db, { productType: 'storage', appKey: 'storage' });
+  assert.equal(storagePol.scopeType, 'product_type');
+  assert.equal(storagePol.gracePeriodDays, 7);
+  assert.equal(storagePol.blockScope, 'read_only');
+
+  const moyPol = await resolveEffectiveBillingPolicy(db, { productType: 'app', appKey: 'moyennes' });
+  assert.equal(moyPol.scopeType, 'app');
+  assert.equal(moyPol.gracePeriodDays, 5);
+  assert.equal(moyPol.blockScope, 'service_only');
+
+  // Surcharge individuelle sur un abonnement précis (ex: 14j de grâce + blocage compte entier)
+  await db
+    .prepare(
+      `INSERT INTO billing_policy_rules (id, scope_type, scope_key, label, grace_period_days, block_scope, overdue_interval_hours)
+       VALUES ('pol_vip_sub', 'subscription', ?, 'VIP', 14, 'full_account', 72)`
+    )
+    .bind(verWave.subscription.id)
+    .run();
+  const vipPol = await resolveEffectiveBillingPolicy(db, {
+    productType: 'storage',
+    appKey: 'storage',
+    subscriptionId: verWave.subscription.id,
+  });
+  assert.equal(vipPol.scopeType, 'subscription');
+  assert.equal(vipPol.gracePeriodDays, 14);
+  assert.equal(vipPol.blockScope, 'full_account');
+  assert.equal(vipPol.overdueIntervalHours, 72);
 });

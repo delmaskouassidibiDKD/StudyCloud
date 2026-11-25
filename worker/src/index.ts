@@ -5829,6 +5829,7 @@ a:hover{transform:translateY(-2px)}
       // ----------------------------------------------------------------------
       if (
         path.startsWith('/api/payments/') ||
+        path.startsWith('/api/billing/') ||
         path.startsWith('/api/monetized-apps') ||
         path.startsWith('/api/apps/access/')
       ) {

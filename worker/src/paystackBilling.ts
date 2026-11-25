@@ -11,7 +11,60 @@
  */
 
 export type BillingMode = 'auto' | 'manual' | 'infinite';
+export type RenewalMode = 'auto' | 'manual' | 'infinite';
+export type BlockScope = 'service_only' | 'read_only' | 'full_account';
+export type SubscriptionStatus =
+  | 'active'
+  | 'trial'
+  | 'past_due'
+  | 'grace'
+  | 'blocked'
+  | 'expired'
+  | 'cancelled'
+  | 'revoked';
 export type PaymentProductType = 'storage' | 'ai' | 'app';
+
+export interface NormalizedPlanBillingFlags {
+  allowAuto: 0 | 1;
+  allowManual: 0 | 1;
+  isInfinite: 0 | 1;
+  billingMode: BillingMode;
+  isAutoBilling: 0 | 1;
+}
+
+export interface InitialRenewalResolution {
+  renewalMode: RenewalMode;
+  canChooseAutoOnSuccessScreen: boolean;
+  defaultSelectedMode: RenewalMode;
+}
+
+export interface SubscriptionCountdown {
+  isInfinite: boolean;
+  remainingMs: number | null;
+  daysRemaining: number | null;
+  hoursRemaining: number | null;
+  minutesRemaining: number | null;
+  isExpired: boolean;
+  isInGrace: boolean;
+  graceDaysRemaining: number | null;
+  labelFr: string;
+}
+
+export interface EffectiveBillingPolicy {
+  scopeType: 'global' | 'product_type' | 'app' | 'subscription';
+  scopeKey: string;
+  preExpiryDays: number[];
+  autoNoticeDays: number;
+  overdueIntervalHours: number;
+  overdueMaxReminders: number;
+  gracePeriodDays: number;
+  blockScope: BlockScope;
+  retryIntervalsHours: number[];
+  emailOnPurchase: boolean;
+  emailOnFail: boolean;
+  emailOnBlock: boolean;
+  autoUnblockOnPayment: boolean;
+}
 
 export interface PaystackBillingContext {
   db: any;
@@ -90,6 +143,227 @@ export function normalizeDurationDays(rawDays: unknown, billingMode: BillingMode
   const n = Math.round(Number(rawDays));
   if (!Number.isFinite(n) || n <= 0) return 30;
   return Math.max(1, Math.min(3650, n));
+}
+
+/**
+ * Normalise de façon stricte les 3 cases de configuration d'un plan d'abonnement :
+ * - Infini / À vie (`isInfinite = 1`) -> exclusif (`allowAuto = 0, allowManual = 0`)
+ * - Automatique coché (`allowAuto = 1`) -> force OBLIGATOIREMENT `allowManual = 1` (les deux ensemble)
+ * - Manuel seul (`allowManual = 1, allowAuto = 0`) -> valeur sûre par défaut
+ */
+export function normalizePlanBillingFlags(input: {
+  allow_auto?: unknown;
+  allowAuto?: unknown;
+  allow_manual?: unknown;
+  allowManual?: unknown;
+  is_infinite?: unknown;
+  isInfinite?: unknown;
+  billing_mode?: unknown;
+  billingMode?: unknown;
+  is_auto_billing?: unknown;
+  isAutoBilling?: unknown;
+  pricing_model?: unknown;
+  pricingModel?: unknown;
+}): NormalizedPlanBillingFlags {
+  const rawInfinite = input?.is_infinite ?? input?.isInfinite;
+  const rawAuto = input?.allow_auto ?? input?.allowAuto;
+  const rawMode = input?.billing_mode ?? input?.billingMode;
+  const rawIsAuto = input?.is_auto_billing ?? input?.isAutoBilling;
+  const rawPricingModel = input?.pricing_model ?? input?.pricingModel;
+
+  const explicitInfinite =
+    rawInfinite === true ||
+    Number(rawInfinite) === 1 ||
+    String(rawMode || '').trim().toLowerCase() === 'infinite' ||
+    String(rawMode || '').trim().toLowerCase() === 'infini' ||
+    String(rawMode || '').trim().toLowerCase() === 'lifetime';
+
+  const inferredMode = normalizeBillingMode(rawMode, rawIsAuto, rawPricingModel);
+
+  if (explicitInfinite || (rawAuto === undefined && rawInfinite === undefined && inferredMode === 'infinite')) {
+    return {
+      allowAuto: 0,
+      allowManual: 0,
+      isInfinite: 1,
+      billingMode: 'infinite',
+      isAutoBilling: 0,
+    };
+  }
+
+  const explicitAuto =
+    rawAuto === true ||
+    Number(rawAuto) === 1 ||
+    (rawAuto === undefined && inferredMode === 'auto');
+
+  if (explicitAuto) {
+    // Règle métier impérative : cocher Automatique impose toujours Manuel coché avec lui
+    return {
+      allowAuto: 1,
+      allowManual: 1,
+      isInfinite: 0,
+      billingMode: 'auto',
+      isAutoBilling: 1,
+    };
+  }
+
+  return {
+    allowAuto: 0,
+    allowManual: 1,
+    isInfinite: 0,
+    billingMode: 'manual',
+    isAutoBilling: 0,
+  };
+}
+
+/**
+ * Détermine le mode de renouvellement initial enregistré en D1 juste après un paiement vérifié :
+ * - Plan Infini -> 'infinite'
+ * - Plan Auto+Manuel + payé par carte bancaire réutilisable -> 'auto' par défaut (modifiable en 'manual' sur l'écran vert)
+ * - Plan Manuel seul OU payé par Wave/Orange/MTN -> 'manual'
+ */
+export function resolveInitialRenewalMode(params: {
+  isInfinite: boolean | number;
+  allowAuto: boolean | number;
+  channel?: string;
+  reusable?: boolean | number;
+}): InitialRenewalResolution {
+  if (params.isInfinite === true || Number(params.isInfinite) === 1) {
+    return {
+      renewalMode: 'infinite',
+      canChooseAutoOnSuccessScreen: false,
+      defaultSelectedMode: 'infinite',
+    };
+  }
+  const allowsAuto = params.allowAuto === true || Number(params.allowAuto) === 1;
+  const isCard = String(params.channel || '').trim().toLowerCase() === 'card';
+  const isReusable = params.reusable === true || Number(params.reusable) === 1;
+
+  if (allowsAuto && isCard && isReusable) {
+    return {
+      renewalMode: 'auto',
+      canChooseAutoOnSuccessScreen: true,
+      defaultSelectedMode: 'auto',
+    };
+  }
+
+  return {
+    renewalMode: 'manual',
+    canChooseAutoOnSuccessScreen: false,
+    defaultSelectedMode: 'manual',
+  };
+}
+
+export function normalizeBlockScope(raw: unknown): BlockScope {
+  const s = String(raw || '').trim().toLowerCase();
+  if (s === 'read_only' || s === 'readonly' || s === 'lecture_seule') return 'read_only';
+  if (s === 'full_account' || s === 'all' || s === 'tout' || s === 'compte_entier') return 'full_account';
+  return 'service_only';
+}
+
+export function computeSubscriptionCountdown(
+  currentPeriodEnd: string | null | undefined,
+  isInfinite: boolean | number,
+  graceUntil?: string | null,
+  nowMs = Date.now()
+): SubscriptionCountdown {
+  if (isInfinite === true || Number(isInfinite) === 1 || !currentPeriodEnd) {
+    return {
+      isInfinite: true,
+      remainingMs: null,
+      daysRemaining: null,
+      hoursRemaining: null,
+      minutesRemaining: null,
+      isExpired: false,
+      isInGrace: false,
+      graceDaysRemaining: null,
+      labelFr: 'À vie (Infini)',
+    };
+  }
+
+  const endMs = Date.parse(currentPeriodEnd);
+  if (!Number.isFinite(endMs)) {
+    return {
+      isInfinite: false,
+      remainingMs: 0,
+      daysRemaining: 0,
+      hoursRemaining: 0,
+      minutesRemaining: 0,
+      isExpired: true,
+      isInGrace: false,
+      graceDaysRemaining: 0,
+      labelFr: 'Expiré',
+    };
+  }
+
+  const diff = endMs - nowMs;
+  if (diff > 0) {
+    const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+    const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+    const minutes = Math.floor((diff % (60 * 60 * 1000)) / (60 * 1000));
+    const labelFr =
+      days > 0
+        ? `${days} j ${hours} h`
+        : hours > 0
+        ? `${hours} h ${minutes} min`
+        : `${Math.max(1, minutes)} min`;
+    return {
+      isInfinite: false,
+      remainingMs: diff,
+      daysRemaining: days,
+      hoursRemaining: hours,
+      minutesRemaining: minutes,
+      isExpired: false,
+      isInGrace: false,
+      graceDaysRemaining: null,
+      labelFr,
+    };
+  }
+
+  const graceMs = graceUntil ? Date.parse(graceUntil) : NaN;
+  if (Number.isFinite(graceMs) && graceMs > nowMs) {
+    const gDays = Math.max(1, Math.ceil((graceMs - nowMs) / (24 * 60 * 60 * 1000)));
+    return {
+      isInfinite: false,
+      remainingMs: 0,
+      daysRemaining: 0,
+      hoursRemaining: 0,
+      minutesRemaining: 0,
+      isExpired: true,
+      isInGrace: true,
+      graceDaysRemaining: gDays,
+      labelFr: `Grâce (${gDays} j restant${gDays > 1 ? 's' : ''})`,
+    };
+  }
+
+  return {
+    isInfinite: false,
+    remainingMs: 0,
+    daysRemaining: 0,
+    hoursRemaining: 0,
+    minutesRemaining: 0,
+    isExpired: true,
+    isInGrace: false,
+    graceDaysRemaining: 0,
+    labelFr: 'Expiré',
+  };
+}
+
+export function maskPaymentMethodForClient(row: any) {
+  if (!row) return null;
+  return {
+    id: String(row.id || ''),
+    provider: String(row.provider || 'paystack'),
+    cardBrand: String(row.card_brand || 'Carte'),
+    cardType: String(row.card_type || ''),
+    last4: String(row.last4 || '••••'),
+    expMonth: String(row.exp_month || ''),
+    expYear: String(row.exp_year || ''),
+    bank: String(row.bank || ''),
+    countryCode: String(row.country_code || ''),
+    isDefault: Number(row.is_default) === 1,
+    isActive: Number(row.is_active) !== 0,
+    createdAt: row.created_at || null,
+  };
 }
 
 export function sanitizeAppKey(raw: unknown): string {
@@ -442,9 +716,15 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
     "ALTER TABLE storage_subscription_plans ADD COLUMN billing_mode TEXT DEFAULT 'manual'",
     'ALTER TABLE storage_subscription_plans ADD COLUMN duration_days INTEGER DEFAULT 30',
     "ALTER TABLE storage_subscription_plans ADD COLUMN paystack_plan_code TEXT DEFAULT ''",
+    'ALTER TABLE storage_subscription_plans ADD COLUMN allow_auto INTEGER DEFAULT 0',
+    'ALTER TABLE storage_subscription_plans ADD COLUMN allow_manual INTEGER DEFAULT 1',
+    'ALTER TABLE storage_subscription_plans ADD COLUMN is_infinite INTEGER DEFAULT 0',
     "ALTER TABLE ai_subscription_plans ADD COLUMN billing_mode TEXT DEFAULT 'manual'",
     'ALTER TABLE ai_subscription_plans ADD COLUMN duration_days INTEGER DEFAULT 30',
     "ALTER TABLE ai_subscription_plans ADD COLUMN paystack_plan_code TEXT DEFAULT ''",
+    'ALTER TABLE ai_subscription_plans ADD COLUMN allow_auto INTEGER DEFAULT 0',
+    'ALTER TABLE ai_subscription_plans ADD COLUMN allow_manual INTEGER DEFAULT 1',
+    'ALTER TABLE ai_subscription_plans ADD COLUMN is_infinite INTEGER DEFAULT 0',
   ]) {
     try {
       await db.prepare(sql).run();
@@ -504,6 +784,9 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
       billing_mode TEXT DEFAULT 'manual',
       duration_days INTEGER DEFAULT 30,
       is_auto_billing INTEGER DEFAULT 0,
+      allow_auto INTEGER DEFAULT 0,
+      allow_manual INTEGER DEFAULT 1,
+      is_infinite INTEGER DEFAULT 0,
       paystack_plan_code TEXT DEFAULT '',
       features TEXT DEFAULT '[]',
       is_active INTEGER DEFAULT 1,
@@ -512,9 +795,34 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `).run().catch(() => {});
+  for (const sql of [
+    'ALTER TABLE app_subscription_plans ADD COLUMN allow_auto INTEGER DEFAULT 0',
+    'ALTER TABLE app_subscription_plans ADD COLUMN allow_manual INTEGER DEFAULT 1',
+    'ALTER TABLE app_subscription_plans ADD COLUMN is_infinite INTEGER DEFAULT 0',
+  ]) {
+    try {
+      await db.prepare(sql).run();
+    } catch {}
+  }
   await db.prepare(
     'CREATE INDEX IF NOT EXISTS idx_app_plans_key ON app_subscription_plans(app_key, is_active, sort_order)'
   ).run().catch(() => {});
+
+  // Synchronisation rétroactive douce des drapeaux allow_auto / allow_manual / is_infinite sur les anciens plans
+  for (const tbl of ['storage_subscription_plans', 'ai_subscription_plans', 'app_subscription_plans']) {
+    await db.prepare(
+      `UPDATE ${tbl}
+       SET is_infinite = 1, allow_auto = 0, allow_manual = 0
+       WHERE LOWER(COALESCE(billing_mode, '')) = 'infinite' AND COALESCE(is_infinite, 0) = 0`
+    ).run().catch(() => {});
+    await db.prepare(
+      `UPDATE ${tbl}
+       SET allow_auto = 1, allow_manual = 1, is_infinite = 0
+       WHERE (LOWER(COALESCE(billing_mode, '')) = 'auto' OR COALESCE(is_auto_billing, 0) = 1)
+         AND COALESCE(is_infinite, 0) = 0
+         AND (COALESCE(allow_auto, 0) = 0 OR COALESCE(allow_manual, 0) = 0)`
+    ).run().catch(() => {});
+  }
 
   // 5. Droits d'accès par utilisateur et par application (`user_app_entitlements`)
   await db.prepare(`
@@ -715,7 +1023,360 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
     )
   `).run().catch(() => {});
 
+  try {
+    await db.prepare("ALTER TABLE payment_transactions ADD COLUMN subscription_id TEXT DEFAULT ''").run();
+  } catch {}
+
+  // 8. Cartes bancaires tokenisées (PCI-DSS : uniquement authorization_code Paystack + 4 derniers chiffres)
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS user_payment_methods (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      provider TEXT DEFAULT 'paystack',
+      authorization_code TEXT NOT NULL,
+      auth_email TEXT NOT NULL,
+      card_brand TEXT DEFAULT 'Carte',
+      card_type TEXT DEFAULT '',
+      last4 TEXT DEFAULT '',
+      exp_month TEXT DEFAULT '',
+      exp_year TEXT DEFAULT '',
+      bank TEXT DEFAULT '',
+      country_code TEXT DEFAULT '',
+      signature TEXT DEFAULT '',
+      reusable INTEGER DEFAULT 1,
+      is_default INTEGER DEFAULT 1,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_user_pm_uid ON user_payment_methods(user_id, is_active, is_default)'
+  ).run().catch(() => {});
+
+  // 9. Table maîtresse unifiée de TOUS les abonnements (Stockage, Crédits IA, Moyennes & toutes futures apps)
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS active_subscriptions (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_name TEXT DEFAULT '',
+      user_email TEXT DEFAULT '',
+      user_phone TEXT DEFAULT '',
+      product_type TEXT NOT NULL,
+      app_key TEXT NOT NULL,
+      app_name TEXT DEFAULT '',
+      plan_id TEXT DEFAULT '',
+      plan_name TEXT NOT NULL,
+      status TEXT DEFAULT 'active',
+      is_infinite INTEGER DEFAULT 0,
+      plan_allows_auto INTEGER DEFAULT 0,
+      plan_allows_manual INTEGER DEFAULT 1,
+      renewal_mode TEXT DEFAULT 'manual',
+      user_confirmed_renewal INTEGER DEFAULT 0,
+      payment_method_id TEXT DEFAULT '',
+      last_channel TEXT DEFAULT '',
+      last_network_label TEXT DEFAULT '',
+      price_amount REAL DEFAULT 0,
+      currency TEXT DEFAULT 'XOF',
+      billing_cycle TEXT DEFAULT 'monthly',
+      duration_days INTEGER DEFAULT 30,
+      granted_storage_mb REAL DEFAULT 0,
+      granted_ai_credits REAL DEFAULT 0,
+      started_at TEXT NOT NULL,
+      current_period_start TEXT NOT NULL,
+      current_period_end TEXT DEFAULT NULL,
+      next_billing_at TEXT DEFAULT NULL,
+      grace_until TEXT DEFAULT NULL,
+      blocked_at TEXT DEFAULT NULL,
+      block_scope TEXT DEFAULT 'service_only',
+      cancel_at_period_end INTEGER DEFAULT 0,
+      cancelled_at TEXT DEFAULT NULL,
+      retry_count INTEGER DEFAULT 0,
+      last_charge_attempt_at TEXT DEFAULT NULL,
+      last_charge_error TEXT DEFAULT '',
+      last_reminder_sent_at TEXT DEFAULT NULL,
+      reminder_count INTEGER DEFAULT 0,
+      last_transaction_ref TEXT DEFAULT '',
+      admin_notes TEXT DEFAULT '',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_active_subs_user ON active_subscriptions(user_id, status, product_type)'
+  ).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_active_subs_billing ON active_subscriptions(status, renewal_mode, next_billing_at)'
+  ).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_active_subs_scope ON active_subscriptions(product_type, app_key, status)'
+  ).run().catch(() => {});
+
+  // 10. Journal d'audit des événements d'abonnements (changement auto/manuel, ajout carte, échecs, actions admin)
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS subscription_events (
+      id TEXT PRIMARY KEY,
+      subscription_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      event_type TEXT NOT NULL,
+      actor TEXT DEFAULT 'system',
+      details_json TEXT DEFAULT '{}',
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_sub_events_sub ON subscription_events(subscription_id, created_at)'
+  ).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_sub_events_user ON subscription_events(user_id, created_at)'
+  ).run().catch(() => {});
+
+  // 11. Politiques configurables de relances, délais de grâce & blocages (global / produit / app / abonnement)
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS billing_policy_rules (
+      id TEXT PRIMARY KEY,
+      scope_type TEXT NOT NULL,
+      scope_key TEXT NOT NULL,
+      label TEXT DEFAULT '',
+      pre_expiry_days_json TEXT DEFAULT '[7,3,1]',
+      auto_notice_days INTEGER DEFAULT 3,
+      overdue_interval_hours INTEGER DEFAULT 48,
+      overdue_max_reminders INTEGER DEFAULT 5,
+      grace_period_days INTEGER DEFAULT 5,
+      block_scope TEXT DEFAULT 'service_only',
+      retry_intervals_hours_json TEXT DEFAULT '[48,96]',
+      email_on_purchase INTEGER DEFAULT 1,
+      email_on_fail INTEGER DEFAULT 1,
+      email_on_block INTEGER DEFAULT 1,
+      auto_unblock_on_payment INTEGER DEFAULT 1,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(scope_type, scope_key)
+    )
+  `).run().catch(() => {});
+
+  for (const seed of [
+    ['policy_global_default', 'global', 'default', 'Règle globale par défaut', 5, 'service_only', 48],
+    ['policy_product_storage', 'product_type', 'storage', 'Stockage Cloud', 7, 'read_only', 48],
+    ['policy_product_ai', 'product_type', 'ai', 'Crédits IA StudyCloud', 3, 'service_only', 48],
+    ['policy_app_moyennes', 'app', 'moyennes', 'Application Moyennes', 5, 'service_only', 48],
+  ]) {
+    await db.prepare(
+      `INSERT OR IGNORE INTO billing_policy_rules (
+         id, scope_type, scope_key, label, grace_period_days, block_scope, overdue_interval_hours
+       ) VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).bind(...seed).run().catch(() => {});
+  }
+
+  // 12. Journal des emails de facturation & suivi Resend (envoyé / délivré / ouvert / échec)
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS billing_email_logs (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      subscription_id TEXT DEFAULT '',
+      transaction_ref TEXT DEFAULT '',
+      email_to TEXT NOT NULL,
+      email_type TEXT NOT NULL,
+      trigger_source TEXT DEFAULT 'auto',
+      subject TEXT DEFAULT '',
+      body_preview TEXT DEFAULT '',
+      resend_message_id TEXT DEFAULT '',
+      delivery_status TEXT DEFAULT 'sent',
+      error_message TEXT DEFAULT '',
+      sent_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      delivered_at TEXT DEFAULT NULL,
+      opened_at TEXT DEFAULT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_bill_email_user ON billing_email_logs(user_id, sent_at)'
+  ).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_bill_email_sub ON billing_email_logs(subscription_id, sent_at)'
+  ).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_bill_email_resend ON billing_email_logs(resend_message_id)'
+  ).run().catch(() => {});
+
   ensuredDbSet.add(db);
+}
+
+function parseIntArrayJson(raw: unknown, fallback: number[]): number[] {
+  if (Array.isArray(raw)) {
+    const nums = raw.map((x) => Math.round(Number(x))).filter((n) => Number.isFinite(n) && n >= 0);
+    return nums.length > 0 ? nums : fallback;
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const nums = parsed.map((x) => Math.round(Number(x))).filter((n) => Number.isFinite(n) && n >= 0);
+        if (nums.length > 0) return nums;
+      }
+    } catch {}
+  }
+  return fallback;
+}
+
+/**
+ * Résout la politique effective selon la hiérarchie à 3 niveaux :
+ * 1. Surcharge individuelle sur l'abonnement (`subscription:<subId>`)
+ * 2. Règle spécifique à l'application (`app:<appKey>`)
+ * 3. Règle du type de produit (`product_type:<storage|ai|app>`)
+ * 4. Règle globale par défaut (`global:default`)
+ */
+export async function resolveEffectiveBillingPolicy(
+  db: any,
+  params: { productType?: string; appKey?: string; subscriptionId?: string }
+): Promise<EffectiveBillingPolicy> {
+  await ensurePaystackBillingTables(db);
+  const candidates: Array<{ scopeType: 'subscription' | 'app' | 'product_type' | 'global'; scopeKey: string }> = [];
+  if (params.subscriptionId) {
+    candidates.push({ scopeType: 'subscription', scopeKey: String(params.subscriptionId) });
+  }
+  if (params.appKey) {
+    candidates.push({ scopeType: 'app', scopeKey: sanitizeAppKey(params.appKey) });
+  }
+  if (params.productType) {
+    candidates.push({ scopeType: 'product_type', scopeKey: String(params.productType).toLowerCase() });
+  }
+  candidates.push({ scopeType: 'global', scopeKey: 'default' });
+
+  let matched: any = null;
+  for (const c of candidates) {
+    const row = await db
+      .prepare('SELECT * FROM billing_policy_rules WHERE scope_type = ? AND scope_key = ? AND is_active = 1 LIMIT 1')
+      .bind(c.scopeType, c.scopeKey)
+      .first()
+      .catch(() => null);
+    if (row) {
+      matched = row;
+      break;
+    }
+  }
+
+  return {
+    scopeType: (matched?.scope_type || 'global') as EffectiveBillingPolicy['scopeType'],
+    scopeKey: String(matched?.scope_key || 'default'),
+    preExpiryDays: parseIntArrayJson(matched?.pre_expiry_days_json, [7, 3, 1]),
+    autoNoticeDays: Math.max(0, Math.min(30, Number(matched?.auto_notice_days ?? 3))),
+    overdueIntervalHours: Math.max(1, Math.min(720, Number(matched?.overdue_interval_hours ?? 48))),
+    overdueMaxReminders: Math.max(0, Math.min(30, Number(matched?.overdue_max_reminders ?? 5))),
+    gracePeriodDays: Math.max(0, Math.min(90, Number(matched?.grace_period_days ?? 5))),
+    blockScope: normalizeBlockScope(matched?.block_scope),
+    retryIntervalsHours: parseIntArrayJson(matched?.retry_intervals_hours_json, [48, 96]),
+    emailOnPurchase: matched ? Number(matched.email_on_purchase) !== 0 : true,
+    emailOnFail: matched ? Number(matched.email_on_fail) !== 0 : true,
+    emailOnBlock: matched ? Number(matched.email_on_block) !== 0 : true,
+    autoUnblockOnPayment: matched ? Number(matched.auto_unblock_on_payment) !== 0 : true,
+  };
+}
+
+export async function recordSubscriptionEvent(
+  db: any,
+  params: {
+    subscriptionId: string;
+    userId: string;
+    eventType: string;
+    actor?: 'user' | 'admin' | 'cron' | 'webhook' | 'system';
+    details?: Record<string, any>;
+  }
+): Promise<void> {
+  const evId = `subev_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  await db
+    .prepare(
+      `INSERT INTO subscription_events (id, subscription_id, user_id, event_type, actor, details_json, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)`
+    )
+    .bind(
+      evId,
+      String(params.subscriptionId || ''),
+      String(params.userId || ''),
+      String(params.eventType || 'updated'),
+      String(params.actor || 'system'),
+      JSON.stringify(params.details || {}).slice(0, 4000)
+    )
+    .run()
+    .catch(() => {});
+}
+
+async function upsertUserPaymentMethodFromPaystack(
+  db: any,
+  params: {
+    userId: string;
+    authEmail: string;
+    channel: string;
+    paystackData: any;
+  }
+): Promise<any | null> {
+  const auth = params.paystackData?.authorization || {};
+  const authCode = String(auth?.authorization_code || '').trim();
+  const reusable = auth?.reusable === true || Number(auth?.reusable) === 1;
+  if (params.channel !== 'card' || !reusable || !authCode) return null;
+
+  const signature = String(auth?.signature || '').trim();
+  const brand = String(auth?.brand || auth?.card_type || 'Carte').trim();
+  const cardType = String(auth?.card_type || '').trim();
+  const last4 = String(auth?.last4 || '').trim().slice(-4);
+  const expMonth = String(auth?.exp_month || '').trim();
+  const expYear = String(auth?.exp_year || '').trim();
+  const bank = String(auth?.bank || '').trim();
+  const countryCode = String(auth?.country_code || '').trim().toUpperCase();
+  const authEmail = String(params.paystackData?.customer?.email || params.authEmail || '').trim().toLowerCase();
+
+  let existing: any = null;
+  if (signature) {
+    existing = await db
+      .prepare('SELECT * FROM user_payment_methods WHERE user_id = ? AND signature = ? LIMIT 1')
+      .bind(params.userId, signature)
+      .first()
+      .catch(() => null);
+  }
+  if (!existing) {
+    existing = await db
+      .prepare('SELECT * FROM user_payment_methods WHERE user_id = ? AND authorization_code = ? LIMIT 1')
+      .bind(params.userId, authCode)
+      .first()
+      .catch(() => null);
+  }
+
+  // Définir cette carte comme carte par défaut de l'utilisateur
+  await db
+    .prepare('UPDATE user_payment_methods SET is_default = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
+    .bind(params.userId)
+    .run()
+    .catch(() => {});
+
+  if (existing) {
+    await db
+      .prepare(
+        `UPDATE user_payment_methods
+         SET authorization_code = ?, auth_email = ?, card_brand = ?, card_type = ?,
+             last4 = ?, exp_month = ?, exp_year = ?, bank = ?, country_code = ?,
+             reusable = 1, is_default = 1, is_active = 1, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      )
+      .bind(authCode, authEmail, brand, cardType, last4, expMonth, expYear, bank, countryCode, existing.id)
+      .run()
+      .catch(() => {});
+    return await db.prepare('SELECT * FROM user_payment_methods WHERE id = ? LIMIT 1').bind(existing.id).first();
+  }
+
+  const pmId = `pm_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  await db
+    .prepare(
+      `INSERT INTO user_payment_methods (
+         id, user_id, provider, authorization_code, auth_email, card_brand, card_type,
+         last4, exp_month, exp_year, bank, country_code, signature, reusable, is_default, is_active
+       ) VALUES (?, ?, 'paystack', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1)`
+    )
+    .bind(pmId, params.userId, authCode, authEmail, brand, cardType, last4, expMonth, expYear, bank, countryCode, signature)
+    .run()
+    .catch(() => {});
+
+  return await db.prepare('SELECT * FROM user_payment_methods WHERE id = ? LIMIT 1').bind(pmId).first();
 }
 
 // ============================================================================
@@ -881,11 +1542,74 @@ export async function checkUserAppAccess(
 // LIVRAISON ATOMIQUE ANTI-DOUBLE CRÉDIT (STORAGE / AI / APPS)
 // ============================================================================
 
+async function loadSubscriptionBundleForTx(db: any, txRow: any): Promise<{
+  subscription: any | null;
+  paymentMethod: any | null;
+  renewalUiConfig: {
+    renewalMode: RenewalMode;
+    canChooseAutoOnSuccessScreen: boolean;
+    defaultSelectedMode: RenewalMode;
+    isInfinite: boolean;
+    planAllowsAuto: boolean;
+    planAllowsManual: boolean;
+    hasReusableCard: boolean;
+  };
+}> {
+  const subId = String(txRow?.subscription_id || '').trim();
+  const sub: any = subId
+    ? await db.prepare('SELECT * FROM active_subscriptions WHERE id = ? LIMIT 1').bind(subId).first().catch(() => null)
+    : await db
+        .prepare('SELECT * FROM active_subscriptions WHERE last_transaction_ref = ? ORDER BY updated_at DESC LIMIT 1')
+        .bind(String(txRow?.reference || ''))
+        .first()
+        .catch(() => null);
+
+  let pmRow: any = null;
+  if (sub?.payment_method_id) {
+    pmRow = await db
+      .prepare('SELECT * FROM user_payment_methods WHERE id = ? AND is_active = 1 LIMIT 1')
+      .bind(String(sub.payment_method_id))
+      .first()
+      .catch(() => null);
+  }
+  const isInfinite = Number(sub?.is_infinite) === 1 || String(txRow?.billing_mode) === 'infinite';
+  const planAllowsAuto = Number(sub?.plan_allows_auto) === 1;
+  const planAllowsManual = sub ? Number(sub.plan_allows_manual) === 1 : !isInfinite;
+  const hasReusableCard = Boolean(pmRow && Number(pmRow.reusable) === 1);
+  const renewalMode = (sub?.renewal_mode || (isInfinite ? 'infinite' : 'manual')) as RenewalMode;
+
+  return {
+    subscription: sub
+      ? {
+          ...sub,
+          countdown: computeSubscriptionCountdown(sub.current_period_end, sub.is_infinite, sub.grace_until),
+        }
+      : null,
+    paymentMethod: maskPaymentMethodForClient(pmRow),
+    renewalUiConfig: {
+      renewalMode,
+      canChooseAutoOnSuccessScreen: !isInfinite && planAllowsAuto && hasReusableCard && String(txRow?.channel || sub?.last_channel || '') === 'card',
+      defaultSelectedMode: renewalMode,
+      isInfinite,
+      planAllowsAuto,
+      planAllowsManual,
+      hasReusableCard,
+    },
+  };
+}
+
 async function fulfillPaidTransaction(
   db: any,
   txRow: any,
   paystackData: any
-): Promise<{ alreadyFulfilled: boolean; transaction: any; deliverySummary: string }> {
+): Promise<{
+  alreadyFulfilled: boolean;
+  transaction: any;
+  deliverySummary: string;
+  subscription: any | null;
+  paymentMethod: any | null;
+  renewalUiConfig: any;
+}> {
   const nowIso = new Date().toISOString();
   const paidMinor = Number(paystackData?.amount || txRow.expected_amount_minor || 0);
   const paidMajor = Math.round((paidMinor / 100) * 100) / 100;
@@ -941,10 +1665,12 @@ async function fulfillPaidTransaction(
       .prepare('SELECT * FROM payment_transactions WHERE reference = ? LIMIT 1')
       .bind(txRow.reference)
       .first();
+    const bundle = await loadSubscriptionBundleForTx(db, existing || txRow);
     return {
       alreadyFulfilled: true,
       transaction: existing || txRow,
       deliverySummary: 'Transaction déjà validée et livrée.',
+      ...bundle,
     };
   }
 
@@ -955,6 +1681,17 @@ async function fulfillPaidTransaction(
   let grantedStorageMb = 0;
   let grantedAiCredits = 0;
   let entitlementExpiresAt: string | null = null;
+  let loadedPlanRow: any = null;
+  let resolvedAppKey = sanitizeAppKey(txRow.app_key || txRow.product_type || '');
+  let resolvedAppName = String(txRow.app_name || '');
+
+  // Enregistrer la carte bancaire tokenisée (PCI-DSS) si paiement par carte réutilisable
+  const savedPaymentMethod = await upsertUserPaymentMethodFromPaystack(db, {
+    userId,
+    authEmail: String(txRow.user_email || ''),
+    channel,
+    paystackData,
+  });
 
   if (txRow.product_type === 'storage') {
     const plan: any = await db
@@ -962,6 +1699,9 @@ async function fulfillPaidTransaction(
       .bind(txRow.product_id)
       .first()
       .catch(() => null);
+    loadedPlanRow = plan;
+    resolvedAppKey = 'storage';
+    resolvedAppName = 'Stockage Cloud';
     grantedStorageMb = Math.max(0, Number(plan?.storage_mb || txRow.granted_storage_mb || 0));
 
     const currentQuota: any = await db
@@ -1071,6 +1811,9 @@ async function fulfillPaidTransaction(
       .bind(txRow.product_id)
       .first()
       .catch(() => null);
+    loadedPlanRow = plan;
+    resolvedAppKey = 'ai';
+    resolvedAppName = 'Crédits IA StudyCloud';
     grantedAiCredits = Math.max(0, Number(plan?.credits_count || txRow.granted_ai_credits || 0));
 
     const existingCredits: any = await db
@@ -1167,11 +1910,18 @@ async function fulfillPaidTransaction(
     deliverySummary = `+${grantedAiCredits.toLocaleString('fr-FR')} crédits IA crédités sur votre compte.`;
   } else if (txRow.product_type === 'app') {
     const appKey = sanitizeAppKey(txRow.app_key || txRow.product_id);
+    resolvedAppKey = appKey;
+    loadedPlanRow = await db
+      .prepare('SELECT * FROM app_subscription_plans WHERE id = ? LIMIT 1')
+      .bind(txRow.product_id)
+      .first()
+      .catch(() => null);
     const appRow: any = await db
       .prepare('SELECT * FROM monetized_apps WHERE app_key = ? LIMIT 1')
       .bind(appKey)
       .first()
       .catch(() => null);
+    resolvedAppName = String(appRow?.name || txRow.app_name || appKey);
     const graceDays = Math.max(0, Number(appRow?.grace_period_days ?? 5));
 
     const existingEnt: any = await db
@@ -1273,17 +2023,231 @@ async function fulfillPaidTransaction(
       : `Accès illimité (à vie) activé pour ${appRow?.name || txRow.app_name || appKey}.`;
   }
 
-  // Mettre à jour les champs de livraison dans payment_transactions
+  // =========================================================================
+  // ENREGISTREMENT UNIFIÉ DANS LA TABLE MAÎTRESSE `active_subscriptions`
+  // =========================================================================
+  const planFlags = normalizePlanBillingFlags(
+    loadedPlanRow || { billing_mode: billingMode, is_auto_billing: billingMode === 'auto' ? 1 : 0 }
+  );
+  const existingMasterSub: any = await db
+    .prepare(
+      `SELECT * FROM active_subscriptions
+       WHERE user_id = ? AND product_type = ? AND app_key = ?
+       ORDER BY updated_at DESC LIMIT 1`
+    )
+    .bind(userId, String(txRow.product_type), resolvedAppKey)
+    .first()
+    .catch(() => null);
+
+  const alreadyInfiniteMaster =
+    existingMasterSub &&
+    existingMasterSub.status === 'active' &&
+    Number(existingMasterSub.is_infinite) === 1;
+  const finalIsInfinite = planFlags.isInfinite === 1 || alreadyInfiniteMaster ? 1 : 0;
+
+  const effectivePolicy = await resolveEffectiveBillingPolicy(db, {
+    productType: String(txRow.product_type),
+    appKey: resolvedAppKey,
+    subscriptionId: existingMasterSub?.id,
+  });
+
+  const initialRenewal = resolveInitialRenewalMode({
+    isInfinite: finalIsInfinite === 1,
+    allowAuto: planFlags.allowAuto === 1,
+    channel,
+    reusable: Boolean(savedPaymentMethod && Number(savedPaymentMethod.reusable) === 1),
+  });
+
+  // Calculer la période de l'abonnement unifié (préserve les jours restants si renouvellement anticipé)
+  const finalPeriodEnd =
+    finalIsInfinite === 1
+      ? null
+      : entitlementExpiresAt ||
+        computeEntitlementExpiration(
+          planFlags.billingMode,
+          durationDays,
+          existingMasterSub?.status === 'active' ? existingMasterSub.current_period_end : null
+        );
+  const finalGraceUntil = finalPeriodEnd
+    ? new Date(Date.parse(finalPeriodEnd) + effectivePolicy.gracePeriodDays * 24 * 60 * 60 * 1000).toISOString()
+    : null;
+  const nextBillingAt = finalIsInfinite === 1 ? null : finalPeriodEnd;
+  const masterSubId = existingMasterSub?.id || `asub_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const wasBlockedOrPastDue = Boolean(
+    existingMasterSub &&
+      ['past_due', 'grace', 'blocked', 'expired'].includes(String(existingMasterSub.status || ''))
+  );
+
+  if (existingMasterSub) {
+    await db
+      .prepare(
+        `UPDATE active_subscriptions
+         SET user_name = ?, user_email = ?, user_phone = ?,
+             app_name = ?, plan_id = ?, plan_name = ?,
+             status = 'active',
+             is_infinite = ?,
+             plan_allows_auto = ?,
+             plan_allows_manual = ?,
+             renewal_mode = ?,
+             user_confirmed_renewal = 0,
+             payment_method_id = CASE WHEN ? != '' THEN ? ELSE payment_method_id END,
+             last_channel = ?,
+             last_network_label = ?,
+             price_amount = ?,
+             currency = ?,
+             billing_cycle = ?,
+             duration_days = ?,
+             granted_storage_mb = ?,
+             granted_ai_credits = ?,
+             current_period_start = ?,
+             current_period_end = ?,
+             next_billing_at = ?,
+             grace_until = ?,
+             blocked_at = NULL,
+             block_scope = ?,
+             cancel_at_period_end = 0,
+             cancelled_at = NULL,
+             retry_count = 0,
+             last_charge_error = '',
+             reminder_count = 0,
+             last_transaction_ref = ?,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      )
+      .bind(
+        txRow.user_name || '',
+        txRow.user_email || '',
+        txRow.user_phone || '',
+        resolvedAppName,
+        txRow.product_id || '',
+        txRow.product_name || 'Forfait StudyCloud',
+        finalIsInfinite,
+        planFlags.allowAuto,
+        planFlags.allowManual,
+        initialRenewal.renewalMode,
+        savedPaymentMethod?.id || '',
+        savedPaymentMethod?.id || '',
+        channel,
+        networkLabel,
+        paidMajor,
+        txRow.currency || 'XOF',
+        txRow.billing_cycle || planFlags.billingMode,
+        finalIsInfinite === 1 ? 0 : durationDays,
+        grantedStorageMb,
+        grantedAiCredits,
+        nowIso,
+        finalPeriodEnd,
+        nextBillingAt,
+        finalGraceUntil,
+        effectivePolicy.blockScope,
+        txRow.reference,
+        masterSubId
+      )
+      .run()
+      .catch(() => {});
+  } else {
+    await db
+      .prepare(
+        `INSERT INTO active_subscriptions (
+           id, user_id, user_name, user_email, user_phone,
+           product_type, app_key, app_name, plan_id, plan_name,
+           status, is_infinite, plan_allows_auto, plan_allows_manual,
+           renewal_mode, user_confirmed_renewal, payment_method_id,
+           last_channel, last_network_label, price_amount, currency,
+           billing_cycle, duration_days, granted_storage_mb, granted_ai_credits,
+           started_at, current_period_start, current_period_end,
+           next_billing_at, grace_until, block_scope, last_transaction_ref
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        masterSubId,
+        userId,
+        txRow.user_name || '',
+        txRow.user_email || '',
+        txRow.user_phone || '',
+        String(txRow.product_type),
+        resolvedAppKey,
+        resolvedAppName,
+        txRow.product_id || '',
+        txRow.product_name || 'Forfait StudyCloud',
+        finalIsInfinite,
+        planFlags.allowAuto,
+        planFlags.allowManual,
+        initialRenewal.renewalMode,
+        savedPaymentMethod?.id || '',
+        channel,
+        networkLabel,
+        paidMajor,
+        txRow.currency || 'XOF',
+        txRow.billing_cycle || planFlags.billingMode,
+        finalIsInfinite === 1 ? 0 : durationDays,
+        grantedStorageMb,
+        grantedAiCredits,
+        nowIso,
+        nowIso,
+        finalPeriodEnd,
+        nextBillingAt,
+        finalGraceUntil,
+        effectivePolicy.blockScope,
+        txRow.reference
+      )
+      .run()
+      .catch(() => {});
+  }
+
+  // Journalisation des événements d'abonnement (pour la visibilité temps réel du tableau de bord)
+  await recordSubscriptionEvent(db, {
+    subscriptionId: masterSubId,
+    userId,
+    eventType: existingMasterSub ? 'renewed_manual' : 'created',
+    actor: 'system',
+    details: {
+      reference: txRow.reference,
+      planName: txRow.product_name,
+      amount: paidMajor,
+      currency: txRow.currency || 'XOF',
+      channel,
+      networkLabel,
+      renewalMode: initialRenewal.renewalMode,
+      isInfinite: finalIsInfinite === 1,
+      currentPeriodEnd: finalPeriodEnd,
+    },
+  });
+  if (savedPaymentMethod) {
+    await recordSubscriptionEvent(db, {
+      subscriptionId: masterSubId,
+      userId,
+      eventType: 'card_attached',
+      actor: 'user',
+      details: {
+        paymentMethodId: savedPaymentMethod.id,
+        cardBrand: savedPaymentMethod.card_brand,
+        last4: savedPaymentMethod.last4,
+      },
+    });
+  }
+  if (wasBlockedOrPastDue) {
+    await recordSubscriptionEvent(db, {
+      subscriptionId: masterSubId,
+      userId,
+      eventType: 'reactivated',
+      actor: 'system',
+      details: { reference: txRow.reference },
+    });
+  }
+
+  // Mettre à jour les champs de livraison + lien subscription_id dans payment_transactions
   await db
     .prepare(
       `UPDATE payment_transactions
        SET granted_storage_mb = ?,
            granted_ai_credits = ?,
            entitlement_expires_at = ?,
+           subscription_id = ?,
            updated_at = CURRENT_TIMESTAMP
        WHERE reference = ?`
     )
-    .bind(grantedStorageMb, grantedAiCredits, entitlementExpiresAt, txRow.reference)
+    .bind(grantedStorageMb, grantedAiCredits, finalPeriodEnd, masterSubId, txRow.reference)
     .run()
     .catch(() => {});
 
@@ -1291,11 +2255,13 @@ async function fulfillPaidTransaction(
     .prepare('SELECT * FROM payment_transactions WHERE reference = ? LIMIT 1')
     .bind(txRow.reference)
     .first();
+  const bundle = await loadSubscriptionBundleForTx(db, refreshed || { ...txRow, subscription_id: masterSubId });
 
   return {
     alreadyFulfilled: false,
     transaction: refreshed || txRow,
     deliverySummary,
+    ...bundle,
   };
 }
 
@@ -1409,6 +2375,7 @@ export async function handlePaystackBillingRoutes(
 
   if (
     !path.startsWith('/api/payments/') &&
+    !path.startsWith('/api/billing/') &&
     !path.startsWith('/api/monetized-apps') &&
     !path.startsWith('/api/apps/access/')
   ) {
@@ -1541,6 +2508,40 @@ export async function handlePaystackBillingRoutes(
       )
       .bind(entId, userId, appKey, `Essai gratuit (${trialDays}j)`, nowIso, expiresAt)
       .run();
+
+    const trialSubId = `asub_trial_${appKey}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    await db
+      .prepare(
+        `INSERT INTO active_subscriptions (
+           id, user_id, user_email, product_type, app_key, app_name, plan_id, plan_name,
+           status, is_infinite, plan_allows_auto, plan_allows_manual, renewal_mode,
+           price_amount, currency, billing_cycle, duration_days,
+           started_at, current_period_start, current_period_end, next_billing_at
+         ) VALUES (?, ?, ?, 'app', ?, ?, 'trial', ?, 'trial', 0, 0, 1, 'manual', 0, 'XOF', 'trial', ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        trialSubId,
+        userId,
+        String(authUser.email || ''),
+        appKey,
+        String(app.name || appKey),
+        `Essai gratuit (${trialDays}j)`,
+        trialDays,
+        nowIso,
+        nowIso,
+        expiresAt,
+        expiresAt
+      )
+      .run()
+      .catch(() => {});
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: trialSubId,
+      userId,
+      eventType: 'trial_started',
+      actor: 'user',
+      details: { appKey, trialDays, expiresAt },
+    });
 
     const access = await checkUserAppAccess(db, userId, appKey);
     return jsonResponse({ success: true, ...access }, 200, origin);
@@ -1870,12 +2871,16 @@ export async function handlePaystackBillingRoutes(
     }
 
     if (txRow.status === 'paid' && txRow.fulfilled_at) {
+      const bundle = await loadSubscriptionBundleForTx(db, txRow);
       return jsonResponse(
         {
           success: true,
           verified: true,
           alreadyFulfilled: true,
           transaction: txRow,
+          subscription: bundle.subscription,
+          paymentMethod: bundle.paymentMethod,
+          renewalUiConfig: bundle.renewalUiConfig,
           message: 'Paiement déjà vérifié et appliqué à votre compte.',
         },
         200,
@@ -1948,6 +2953,9 @@ export async function handlePaystackBillingRoutes(
         alreadyFulfilled: fulfillment.alreadyFulfilled,
         deliverySummary: fulfillment.deliverySummary,
         transaction: fulfillment.transaction,
+        subscription: fulfillment.subscription,
+        paymentMethod: fulfillment.paymentMethod,
+        renewalUiConfig: fulfillment.renewalUiConfig,
       },
       200,
       origin
@@ -2179,6 +3187,9 @@ export async function handlePaystackBillingRoutes(
         alreadyFulfilled: fulfillment.alreadyFulfilled,
         deliverySummary: fulfillment.deliverySummary,
         transaction: fulfillment.transaction,
+        subscription: fulfillment.subscription,
+        paymentMethod: fulfillment.paymentMethod,
+        renewalUiConfig: fulfillment.renewalUiConfig,
       },
       200,
       origin
@@ -2467,6 +3478,9 @@ export async function handlePaystackBillingRoutes(
             currency,
             deliverySummary: fulfillment.deliverySummary,
             transaction: fulfillment.transaction,
+            subscription: fulfillment.subscription,
+            paymentMethod: fulfillment.paymentMethod,
+            renewalUiConfig: fulfillment.renewalUiConfig,
           },
           200,
           origin
@@ -2613,6 +3627,9 @@ export async function handlePaystackBillingRoutes(
           alreadyFulfilled: fulfillment.alreadyFulfilled,
           deliverySummary: fulfillment.deliverySummary,
           transaction: fulfillment.transaction,
+          subscription: fulfillment.subscription,
+          paymentMethod: fulfillment.paymentMethod,
+          renewalUiConfig: fulfillment.renewalUiConfig,
         },
         200,
         origin
@@ -2650,6 +3667,272 @@ export async function handlePaystackBillingRoutes(
       200,
       origin
     );
+  }
+
+  // --------------------------------------------------------------------------
+  // 12. GET /api/billing/my-subscriptions — Tous les abonnements & cartes masquées de l'utilisateur
+  // --------------------------------------------------------------------------
+  if (path === '/api/billing/my-subscriptions' && method === 'GET') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const userId = String(authUser.userId);
+
+    const subsRes = await db
+      .prepare('SELECT * FROM active_subscriptions WHERE user_id = ? ORDER BY updated_at DESC, created_at DESC LIMIT 100')
+      .bind(userId)
+      .all()
+      .catch(() => ({ results: [] }));
+    const pmRes = await db
+      .prepare('SELECT * FROM user_payment_methods WHERE user_id = ? AND is_active = 1 ORDER BY is_default DESC, updated_at DESC')
+      .bind(userId)
+      .all()
+      .catch(() => ({ results: [] }));
+    const evRes = await db
+      .prepare('SELECT id, subscription_id, event_type, actor, details_json, created_at FROM subscription_events WHERE user_id = ? ORDER BY created_at DESC LIMIT 50')
+      .bind(userId)
+      .all()
+      .catch(() => ({ results: [] }));
+
+    const pmById = new Map<string, any>();
+    const maskedPaymentMethods: any[] = [];
+    for (const pm of pmRes.results || []) {
+      const masked = maskPaymentMethodForClient(pm);
+      if (masked) {
+        pmById.set(masked.id, masked);
+        maskedPaymentMethods.push(masked);
+      }
+    }
+
+    const subscriptions = (subsRes.results || []).map((s: any) => ({
+      ...s,
+      countdown: computeSubscriptionCountdown(s.current_period_end, s.is_infinite, s.grace_until),
+      paymentMethod: s.payment_method_id ? pmById.get(String(s.payment_method_id)) || null : null,
+      canEnableAuto: Number(s.is_infinite) !== 1 && Number(s.plan_allows_auto) === 1 && maskedPaymentMethods.length > 0,
+    }));
+
+    return jsonResponse(
+      {
+        success: true,
+        subscriptions,
+        paymentMethods: maskedPaymentMethods,
+        recentEvents: evRes.results || [],
+      },
+      200,
+      origin
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // 13. PATCH /api/billing/subscriptions/:id/renewal-mode — Choix utilisateur Auto <-> Manuel (Anti-IDOR)
+  // --------------------------------------------------------------------------
+  const renewalMatch = path.match(/^\/api\/billing\/subscriptions\/([^/]+)\/renewal-mode$/);
+  if (renewalMatch && (method === 'PATCH' || method === 'POST')) {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const userId = String(authUser.userId);
+    const subId = decodeURIComponent(renewalMatch[1]);
+    const body: any = await request.json().catch(() => ({}));
+    const requestedMode = String(body.renewalMode || body.renewal_mode || '').trim().toLowerCase();
+
+    if (requestedMode !== 'auto' && requestedMode !== 'manual') {
+      return errorResponse('Mode de renouvellement invalide (auto ou manual attendu).', 400, origin);
+    }
+
+    // Anti-IDOR strict : l'utilisateur ne peut modifier QUE ses propres abonnements
+    const sub: any = await db
+      .prepare('SELECT * FROM active_subscriptions WHERE id = ? AND user_id = ? LIMIT 1')
+      .bind(subId, userId)
+      .first();
+    if (!sub) {
+      return errorResponse('Abonnement introuvable ou non autorisé.', 404, origin);
+    }
+
+    if (Number(sub.is_infinite) === 1 || sub.renewal_mode === 'infinite') {
+      return errorResponse('Un abonnement à vie (Infini) ne nécessite aucun renouvellement.', 400, origin);
+    }
+
+    let linkedPaymentMethodId = String(sub.payment_method_id || '');
+    let maskedCard: any = null;
+
+    if (requestedMode === 'auto') {
+      if (Number(sub.plan_allows_auto) !== 1) {
+        return errorResponse('Ce forfait autorise uniquement le renouvellement manuel.', 400, origin);
+      }
+      const wantedPmId = String(body.paymentMethodId || body.payment_method_id || linkedPaymentMethodId || '').trim();
+      let pmRow: any = null;
+      if (wantedPmId) {
+        pmRow = await db
+          .prepare('SELECT * FROM user_payment_methods WHERE id = ? AND user_id = ? AND is_active = 1 AND reusable = 1 LIMIT 1')
+          .bind(wantedPmId, userId)
+          .first()
+          .catch(() => null);
+      }
+      if (!pmRow) {
+        pmRow = await db
+          .prepare('SELECT * FROM user_payment_methods WHERE user_id = ? AND is_active = 1 AND reusable = 1 ORDER BY is_default DESC, updated_at DESC LIMIT 1')
+          .bind(userId)
+          .first()
+          .catch(() => null);
+      }
+      if (!pmRow) {
+        return errorResponse(
+          'Aucune carte bancaire enregistrée sur votre compte. Ajoutez une carte Visa ou Mastercard pour activer le paiement automatique.',
+          400,
+          origin
+        );
+      }
+      linkedPaymentMethodId = String(pmRow.id);
+      maskedCard = maskPaymentMethodForClient(pmRow);
+    }
+
+    await db
+      .prepare(
+        `UPDATE active_subscriptions
+         SET renewal_mode = ?,
+             user_confirmed_renewal = 1,
+             payment_method_id = ?,
+             cancel_at_period_end = CASE WHEN ? = 'auto' THEN 0 ELSE cancel_at_period_end END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND user_id = ?`
+      )
+      .bind(requestedMode, linkedPaymentMethodId, requestedMode, subId, userId)
+      .run();
+
+    // Synchroniser user_app_entitlements.auto_renew si abonnement application
+    if (sub.product_type === 'app' && sub.app_key) {
+      await db
+        .prepare('UPDATE user_app_entitlements SET auto_renew = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?')
+        .bind(requestedMode === 'auto' ? 1 : 0, userId, sub.app_key)
+        .run()
+        .catch(() => {});
+    }
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: subId,
+      userId,
+      eventType: requestedMode === 'auto' ? 'switched_to_auto' : 'switched_to_manual',
+      actor: 'user',
+      details: {
+        previousMode: sub.renewal_mode,
+        newMode: requestedMode,
+        paymentMethodId: linkedPaymentMethodId || null,
+      },
+    });
+
+    const updatedSub = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ? LIMIT 1').bind(subId).first();
+    return jsonResponse(
+      {
+        success: true,
+        subscription: updatedSub
+          ? {
+              ...updatedSub,
+              countdown: computeSubscriptionCountdown(updatedSub.current_period_end, updatedSub.is_infinite, updatedSub.grace_until),
+              paymentMethod: maskedCard,
+            }
+          : null,
+      },
+      200,
+      origin
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // 14. DELETE /api/billing/payment-methods/:id — Retirer une carte enregistrée (bascule auto -> manuel)
+  // --------------------------------------------------------------------------
+  const pmDeleteMatch = path.match(/^\/api\/billing\/payment-methods\/([^/]+)$/);
+  if (pmDeleteMatch && method === 'DELETE') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const userId = String(authUser.userId);
+    const pmId = decodeURIComponent(pmDeleteMatch[1]);
+
+    const pmRow: any = await db
+      .prepare('SELECT * FROM user_payment_methods WHERE id = ? AND user_id = ? AND is_active = 1 LIMIT 1')
+      .bind(pmId, userId)
+      .first();
+    if (!pmRow) {
+      return errorResponse('Carte introuvable ou non autorisée.', 404, origin);
+    }
+
+    await db
+      .prepare('UPDATE user_payment_methods SET is_active = 0, is_default = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?')
+      .bind(pmId, userId)
+      .run();
+
+    // Basculer en mode manuel tous les abonnements automatiques qui reposaient sur cette carte
+    const affectedRes = await db
+      .prepare("SELECT id, product_type, app_key FROM active_subscriptions WHERE user_id = ? AND payment_method_id = ? AND renewal_mode = 'auto'")
+      .bind(userId, pmId)
+      .all()
+      .catch(() => ({ results: [] }));
+
+    await db
+      .prepare(
+        `UPDATE active_subscriptions
+         SET renewal_mode = CASE WHEN renewal_mode = 'auto' THEN 'manual' ELSE renewal_mode END,
+             payment_method_id = '',
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = ? AND payment_method_id = ?`
+      )
+      .bind(userId, pmId)
+      .run()
+      .catch(() => {});
+
+    for (const sub of affectedRes.results || []) {
+      if (sub.product_type === 'app' && sub.app_key) {
+        await db
+          .prepare('UPDATE user_app_entitlements SET auto_renew = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?')
+          .bind(userId, sub.app_key)
+          .run()
+          .catch(() => {});
+      }
+      await recordSubscriptionEvent(db, {
+        subscriptionId: String(sub.id),
+        userId,
+        eventType: 'switched_to_manual',
+        actor: 'user',
+        details: { reason: 'card_removed', removedCardLast4: pmRow.last4 || '' },
+      });
+    }
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: String((affectedRes.results || [])[0]?.id || ''),
+      userId,
+      eventType: 'card_removed',
+      actor: 'user',
+      details: { paymentMethodId: pmId, cardBrand: pmRow.card_brand, last4: pmRow.last4 },
+    });
+
+    return jsonResponse(
+      {
+        success: true,
+        removedId: pmId,
+        switchedToManualCount: (affectedRes.results || []).length,
+      },
+      200,
+      origin
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // 15. GET /api/billing/policies — Lecture des règles de relances & délais par service
+  // --------------------------------------------------------------------------
+  if (path === '/api/billing/policies' && method === 'GET') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const rulesRes = await db
+      .prepare('SELECT * FROM billing_policy_rules WHERE is_active = 1 ORDER BY scope_type ASC, scope_key ASC')
+      .all()
+      .catch(() => ({ results: [] }));
+    return jsonResponse({ success: true, policies: rulesRes.results || [] }, 200, origin);
   }
 
   return null;
