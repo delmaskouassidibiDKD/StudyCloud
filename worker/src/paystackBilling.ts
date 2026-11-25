@@ -511,7 +511,7 @@ export function toPaystackAmountMinor(amountMajor: number): number {
 
 export function resolvePlanPriceMajor(
   plan: any,
-  billingCycle: 'monthly' | 'annual' | 'one_time' | 'custom' | 'infinite',
+  _billingCycle: 'monthly' | 'annual' | 'one_time' | 'custom' | 'infinite',
   targetCurrency = 'XOF'
 ): { amountMajor: number; currency: string; durationDays: number } {
   const billingMode = normalizeBillingMode(
@@ -520,11 +520,8 @@ export function resolvePlanPriceMajor(
     plan?.pricing_model
   );
   const baseDuration = normalizeDurationDays(plan?.duration_days, billingMode);
-  const isAnnual = billingCycle === 'annual' && billingMode !== 'infinite';
   const primaryCurr = String(plan?.primary_currency || 'XOF').toUpperCase();
   const basePrice = Number(plan?.price) || 0;
-  const discountPct = Number(plan?.yearly_discount_pct) || 0;
-  const explicitYearly = Number(plan?.yearly_price) || 0;
 
   let convObj: Record<string, number> = {};
   if (typeof plan?.currency_conversions === 'string') {
@@ -539,42 +536,22 @@ export function resolvePlanPriceMajor(
   }
 
   const wantedCurr = String(targetCurrency || 'XOF').toUpperCase();
-  let monthlyInWanted: number;
+  let finalAmount: number;
 
   if (primaryCurr === wantedCurr) {
-    monthlyInWanted = basePrice;
+    finalAmount = basePrice;
   } else if (Number(convObj[wantedCurr]) > 0) {
-    monthlyInWanted = Number(convObj[wantedCurr]);
+    finalAmount = Number(convObj[wantedCurr]);
   } else if (wantedCurr === 'XOF') {
-    if (primaryCurr === 'USD') monthlyInWanted = Math.round(basePrice * 650);
-    else if (primaryCurr === 'EUR') monthlyInWanted = Math.round(basePrice * 655.957);
-    else monthlyInWanted = Math.round(basePrice);
+    if (primaryCurr === 'USD') finalAmount = Math.round(basePrice * 650);
+    else if (primaryCurr === 'EUR') finalAmount = Math.round(basePrice * 655.957);
+    else finalAmount = Math.round(basePrice);
   } else if (wantedCurr === 'USD') {
-    if (primaryCurr === 'XOF') monthlyInWanted = Math.round((basePrice / 650) * 100) / 100;
-    else if (primaryCurr === 'EUR') monthlyInWanted = Math.round((basePrice / 0.92) * 100) / 100;
-    else monthlyInWanted = basePrice;
+    if (primaryCurr === 'XOF') finalAmount = Math.round((basePrice / 650) * 100) / 100;
+    else if (primaryCurr === 'EUR') finalAmount = Math.round((basePrice / 0.92) * 100) / 100;
+    else finalAmount = basePrice;
   } else {
-    monthlyInWanted = basePrice;
-  }
-
-  let finalAmount = monthlyInWanted;
-  let durationDays = baseDuration;
-
-  if (isAnnual) {
-    if (primaryCurr === wantedCurr && explicitYearly > 0) {
-      finalAmount = explicitYearly;
-    } else if (basePrice > 0 && explicitYearly > 0) {
-      const ratio = explicitYearly / basePrice;
-      finalAmount = wantedCurr === 'XOF'
-        ? Math.round(monthlyInWanted * ratio)
-        : Math.round(monthlyInWanted * ratio * 100) / 100;
-    } else {
-      const factor = 12 * (1 - Math.max(0, Math.min(90, discountPct)) / 100);
-      finalAmount = wantedCurr === 'XOF'
-        ? Math.round(monthlyInWanted * factor)
-        : Math.round(monthlyInWanted * factor * 100) / 100;
-    }
-    durationDays = 365;
+    finalAmount = basePrice;
   }
 
   if (wantedCurr === 'XOF') {
@@ -584,7 +561,7 @@ export function resolvePlanPriceMajor(
   return {
     amountMajor: Math.max(0, finalAmount),
     currency: wantedCurr,
-    durationDays: billingMode === 'infinite' ? 0 : durationDays,
+    durationDays: billingMode === 'infinite' ? 0 : baseDuration,
   };
 }
 
@@ -754,8 +731,6 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
       primary_currency TEXT DEFAULT 'XOF',
       currencies_enabled TEXT DEFAULT '["XOF","USD","EUR"]',
       currency_conversions TEXT DEFAULT '{}',
-      yearly_price REAL DEFAULT 0,
-      yearly_discount_pct REAL DEFAULT 10,
       features TEXT DEFAULT '[]',
       is_auto_billing INTEGER DEFAULT 0,
       billing_mode TEXT DEFAULT 'manual',
@@ -780,8 +755,6 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
       primary_currency TEXT DEFAULT 'XOF',
       currencies_enabled TEXT DEFAULT '["XOF","USD","EUR"]',
       currency_conversions TEXT DEFAULT '{}',
-      yearly_price REAL DEFAULT 0,
-      yearly_discount_pct REAL DEFAULT 0,
       features TEXT DEFAULT '[]',
       is_auto_billing INTEGER DEFAULT 0,
       billing_mode TEXT DEFAULT 'manual',
@@ -862,8 +835,6 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
       primary_currency TEXT DEFAULT 'XOF',
       currencies_enabled TEXT DEFAULT '["XOF","USD","EUR"]',
       currency_conversions TEXT DEFAULT '{}',
-      yearly_price REAL DEFAULT 0,
-      yearly_discount_pct REAL DEFAULT 0,
       billing_mode TEXT DEFAULT 'manual',
       duration_days INTEGER DEFAULT 30,
       is_auto_billing INTEGER DEFAULT 0,
@@ -882,6 +853,12 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
     'ALTER TABLE app_subscription_plans ADD COLUMN allow_auto INTEGER DEFAULT 0',
     'ALTER TABLE app_subscription_plans ADD COLUMN allow_manual INTEGER DEFAULT 1',
     'ALTER TABLE app_subscription_plans ADD COLUMN is_infinite INTEGER DEFAULT 0',
+    'ALTER TABLE storage_subscription_plans DROP COLUMN yearly_price',
+    'ALTER TABLE storage_subscription_plans DROP COLUMN yearly_discount_pct',
+    'ALTER TABLE ai_subscription_plans DROP COLUMN yearly_price',
+    'ALTER TABLE ai_subscription_plans DROP COLUMN yearly_discount_pct',
+    'ALTER TABLE app_subscription_plans DROP COLUMN yearly_price',
+    'ALTER TABLE app_subscription_plans DROP COLUMN yearly_discount_pct',
   ]) {
     try {
       await db.prepare(sql).run();

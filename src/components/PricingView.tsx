@@ -72,24 +72,10 @@ function calculateConversions(price: number, primaryCurr: string) {
   return { USD: usd, XOF: xof, EUR: eur };
 }
 
-function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean) {
+function getCardPricingAndConversions(plan: SubscriptionPlan) {
   const isOneTime = plan.pricing_model === 'one_time' || plan.pricing_model === 'pack';
-  if (isOneTime) {
-    isAnnual = false;
-  }
   const primaryCurr = plan.primary_currency || 'USD';
-  const monthlyPrice = Number(plan.price) || 0;
-  const discountPct = Number(plan.yearly_discount_pct) || 10;
-  let fullYearlyPrice = monthlyPrice * 12;
-  const yearlyPrice = Number(plan.yearly_price) > 0
-    ? Number(plan.yearly_price)
-    : Math.round(monthlyPrice * 12 * (1 - (discountPct / 100)) * 100) / 100;
-
-  const activePrice = isAnnual ? yearlyPrice : monthlyPrice;
-  if (isAnnual && fullYearlyPrice <= activePrice && discountPct > 0) {
-    fullYearlyPrice = Math.round(activePrice / (1 - (discountPct / 100)));
-  }
-  const annualRatio = monthlyPrice > 0 ? (yearlyPrice / monthlyPrice) : (12 * (1 - (discountPct / 100)));
+  const activePrice = Number(plan.price) || 0;
 
   let convObj: Record<string, number> = {};
   if (typeof plan.currency_conversions === 'string') {
@@ -101,17 +87,16 @@ function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean)
   }
 
   const enabledCurrs = parsePlanCurrencies(plan.currencies_enabled);
-  const secondaryParts: { curr: string; fullVal?: number; finalVal: number; formatted: string; fullFormatted?: string }[] = [];
+  const secondaryParts: { curr: string; finalVal: number; formatted: string }[] = [];
 
   for (const curr of ['XOF', 'USD', 'EUR']) {
     if (enabledCurrs.includes(curr) && curr !== primaryCurr) {
       let rawVal = convObj[curr];
       if (!rawVal) {
-        const fallback = calculateConversions(monthlyPrice, primaryCurr);
+        const fallback = calculateConversions(activePrice, primaryCurr);
         rawVal = fallback[curr as keyof typeof fallback];
       }
-      const finalVal = isAnnual ? Math.round(rawVal * annualRatio) : rawVal;
-      const fullVal = isAnnual ? Math.round(rawVal * 12) : rawVal;
+      const finalVal = rawVal;
 
       let suffix = '';
       if (curr === 'XOF') suffix = 'FCFA';
@@ -119,14 +104,11 @@ function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean)
       else if (curr === 'EUR') suffix = '€';
 
       const formatted = curr === 'XOF' ? `${finalVal.toLocaleString('fr-FR')} ${suffix}` : `${finalVal} ${suffix}`;
-      const fullFormatted = curr === 'XOF' ? `${fullVal.toLocaleString('fr-FR')} ${suffix}` : `${fullVal} ${suffix}`;
 
       secondaryParts.push({
         curr,
-        fullVal,
         finalVal,
         formatted,
-        fullFormatted
       });
     }
   }
@@ -135,21 +117,16 @@ function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean)
   if (primaryCurr === 'XOF') {
     finalPriceFcfa = activePrice;
   } else {
-    const baseFcfa = convObj.XOF || Math.round(monthlyPrice * 650);
-    finalPriceFcfa = isAnnual ? Math.round(baseFcfa * annualRatio) : baseFcfa;
+    finalPriceFcfa = convObj.XOF || Math.round(activePrice * 650);
   }
 
   return {
     activePrice,
-    fullYearlyPrice,
-    yearlyPrice,
-    monthlyPrice,
-    discountPct,
     primaryCurr,
     secondaryParts,
     secondaryString: secondaryParts.map(s => `= ${s.formatted}`).join(' • '),
     priceFcfa: finalPriceFcfa,
-    isOneTime
+    isOneTime,
   };
 }
 
@@ -166,9 +143,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
       setActiveTab(initialTab);
     }
   }, [initialTab]);
-
-  // Présentation par MOIS par défaut demandée par l'utilisateur
-  const [billingCycle, setBillingCycle] = useState<'annual' | 'monthly'>('monthly');
 
   const [dbStoragePlans, setDbStoragePlans] = useState<SubscriptionPlan[]>([]);
   const [dbAiPlans, setDbAiPlans] = useState<SubscriptionPlan[]>([]);
@@ -346,8 +320,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
   const renderCard = (plan: SubscriptionPlan, type: 'storage' | 'ai') => {
     const isOneTime = plan.pricing_model === 'one_time' || plan.pricing_model === 'pack';
     const isPopular = !!(plan.badge && plan.badge.trim());
-    const isAnnual = isOneTime ? false : billingCycle === 'annual';
-    const pricing = getCardPricingAndConversions(plan, isAnnual);
+    const pricing = getCardPricingAndConversions(plan);
 
     // Première ligne verrouillée (stockage ou IA)
     const lockedPerkText = type === 'ai'
@@ -406,23 +379,12 @@ export const PricingView: React.FC<PricingViewProps> = ({
           {/* Bloc Prix Principal & Conversions secondaires */}
           <div className="mb-4 sm:mb-5">
             <div className={`flex items-baseline flex-wrap gap-x-2 gap-y-1 ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
-              {/* Vrai prix annuel barré si paiement par an avec réduction (uniquement abonnement) */}
-              {!isOneTime && isAnnual && (pricing.fullYearlyPrice > pricing.activePrice || pricing.discountPct > 0) && (
-                <span className={`text-lg sm:text-2xl font-semibold line-through decoration-rose-500/80 decoration-2 opacity-65 mr-1 ${isPopular ? 'text-slate-400' : 'text-slate-400'}`}>
-                  {getCurrencySymbol(pricing.primaryCurr)} {pricing.primaryCurr === 'XOF' ? (pricing.fullYearlyPrice || Math.round(pricing.activePrice * 1.15)).toLocaleString('fr-FR') : (pricing.fullYearlyPrice || Math.round(pricing.activePrice * 1.15))}
-                </span>
-              )}
               <span className="text-3xl sm:text-4xl font-extrabold tracking-tight tabular-nums">
                 {getCurrencySymbol(pricing.primaryCurr)} {pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice}
               </span>
-              {!isOneTime && (
+              {!isOneTime && !isInfinite && (
                 <span className={`text-sm sm:text-base font-medium ${isPopular ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>
-                  {isAnnual ? '/an' : '/mois'}
-                </span>
-              )}
-              {!isOneTime && isAnnual && pricing.discountPct > 0 && (
-                <span className={`ml-1 text-[11px] font-bold px-2 py-0.5 rounded-full ${isPopular ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-400/30' : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50'}`}>
-                  -{pricing.discountPct}%
+                  {durationDays === 30 ? '/mois' : `/ ${durationDays}j`}
                 </span>
               )}
             </div>
@@ -433,9 +395,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
                 {pricing.secondaryParts.map((sec, idx) => (
                   <span key={sec.curr} className="inline-flex items-center gap-1">
                     {idx > 0 && <span className="opacity-40">•</span>}
-                    {!isOneTime && isAnnual && sec.fullVal && (sec.fullVal > sec.finalVal || pricing.discountPct > 0) && (
-                      <span className="line-through decoration-rose-500/70 decoration-1 opacity-65">{sec.fullFormatted}</span>
-                    )}
                     <span>= {sec.formatted}</span>
                   </span>
                 ))}
@@ -500,13 +459,13 @@ export const PricingView: React.FC<PricingViewProps> = ({
             priceDisplay:
               isOneTime || isInfinite
                 ? `${formattedPrimary} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`
-                : `${formattedPrimary} / ${isAnnual ? 'an' : 'mois'} ${
+                : `${formattedPrimary} / ${durationDays === 30 ? 'mois' : `${durationDays} jours`} ${
                     pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''
                   }`,
             price: pricing.activePrice,
             priceFcfa: pricing.priceFcfa,
             currency: getCurrencySymbol(pricing.primaryCurr),
-            billingCycle: isOneTime || isInfinite ? 'one_time' : billingCycle,
+            billingCycle: isOneTime || isInfinite ? 'one_time' : 'monthly',
             mb: plan.storage_mb,
             words: plan.credits_count,
           };
@@ -514,11 +473,11 @@ export const PricingView: React.FC<PricingViewProps> = ({
           const isPaystackAvailable =
             paymentConfig.paystackEnabled && paymentConfig.mode !== 'unconfigured';
           const showManualUnderneath = shouldShowManualReceiptButton(paymentConfig, true);
-          const resolvedCycle: 'monthly' | 'annual' | 'one_time' | 'infinite' = isInfinite
+          const resolvedCycle: 'monthly' | 'one_time' | 'infinite' = isInfinite
             ? 'infinite'
             : isOneTime
             ? 'one_time'
-            : billingCycle;
+            : 'monthly';
 
           return (
             <div className="space-y-2">
@@ -534,7 +493,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
                         subtitle: lockedPerkText,
                         description: plan.description || undefined,
                         features: activeFeatures.map((f) => f.text).filter(Boolean),
-                        periodLabel: isInfinite || isOneTime ? undefined : isAnnual ? '/ an' : '/ mois',
+                        periodLabel: isInfinite || isOneTime ? undefined : durationDays === 30 ? '/ mois' : `/ ${durationDays} jours`,
                         amountFcfa: Math.round(pricing.priceFcfa),
                         secondaryPriceDisplay:
                           pricing.primaryCurr !== 'XOF'
@@ -657,38 +616,8 @@ export const PricingView: React.FC<PricingViewProps> = ({
           </button>
         </div>
 
-        {/* Toggle Facturation Ans / Mois (En haut à droite sur mobile et desktop) */}
-        <div className="order-2 md:order-3 shrink-0">
-          {activeTab !== 'renewal' ? (
-            <div className="bg-slate-100 dark:bg-slate-900 rounded-full p-0.5 sm:p-1 flex items-center border border-slate-200/90 dark:border-slate-800 shadow-xs">
-              <button
-                onClick={() => setBillingCycle('annual')}
-                className={`flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-semibold transition-all cursor-pointer ${
-                  billingCycle === 'annual'
-                    ? 'bg-slate-900 dark:bg-blue-600 text-white shadow-xs'
-                    : 'bg-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>Ans</span>
-                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-full ${billingCycle === 'annual' ? 'bg-emerald-500/20 text-emerald-300' : 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300'}`}>
-                  -10%
-                </span>
-              </button>
-              <button
-                onClick={() => setBillingCycle('monthly')}
-                className={`flex items-center gap-1 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[11px] sm:text-xs font-semibold transition-all cursor-pointer ${
-                  billingCycle === 'monthly'
-                    ? 'bg-slate-900 dark:bg-blue-600 text-white shadow-xs'
-                    : 'bg-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
-                }`}
-              >
-                <span>Mois</span>
-              </button>
-            </div>
-          ) : (
-            <div className="hidden md:block md:w-20"></div>
-          )}
-        </div>
+        {/* Espace symétrique à droite sur desktop */}
+        <div className="hidden md:block md:w-20 order-3 shrink-0"></div>
       </div>
 
       {/* ========================================================================= */}

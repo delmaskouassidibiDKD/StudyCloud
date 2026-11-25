@@ -756,8 +756,6 @@ async function ensureStorageTables(db) {
         primary_currency TEXT DEFAULT 'USD',
         currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
         currency_conversions TEXT DEFAULT '{}',
-        yearly_price REAL DEFAULT 0,
-        yearly_discount_pct REAL DEFAULT 10,
         features TEXT DEFAULT '[]',
         is_auto_billing INTEGER DEFAULT 0,
         is_active INTEGER DEFAULT 1,
@@ -780,8 +778,6 @@ async function ensureStorageTables(db) {
         primary_currency TEXT DEFAULT 'USD',
         currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
         currency_conversions TEXT DEFAULT '{}',
-        yearly_price REAL DEFAULT 0,
-        yearly_discount_pct REAL DEFAULT 10,
         features TEXT DEFAULT '[]',
         is_auto_billing INTEGER DEFAULT 0,
         is_active INTEGER DEFAULT 1,
@@ -791,6 +787,18 @@ async function ensureStorageTables(db) {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    // Suppression définitive des anciennes colonnes annuel/réduction dans D1
+    for (const dropColSql of [
+      "ALTER TABLE storage_subscription_plans DROP COLUMN yearly_price",
+      "ALTER TABLE storage_subscription_plans DROP COLUMN yearly_discount_pct",
+      "ALTER TABLE ai_subscription_plans DROP COLUMN yearly_price",
+      "ALTER TABLE ai_subscription_plans DROP COLUMN yearly_discount_pct",
+      "ALTER TABLE app_subscription_plans DROP COLUMN yearly_price",
+      "ALTER TABLE app_subscription_plans DROP COLUMN yearly_discount_pct"
+    ]) {
+      try { await db.prepare(dropColSql).run(); } catch (e) {}
+    }
 
     // Migration pour pricing_model, billing_mode, duration_days, paystack_plan_code et drapeaux allow_auto/allow_manual/is_infinite
     for (const migSql of [
@@ -869,8 +877,6 @@ async function ensureStorageTables(db) {
         primary_currency TEXT DEFAULT 'XOF',
         currencies_enabled TEXT DEFAULT '["XOF","USD","EUR"]',
         currency_conversions TEXT DEFAULT '{}',
-        yearly_price REAL DEFAULT 0,
-        yearly_discount_pct REAL DEFAULT 0,
         billing_mode TEXT DEFAULT 'manual',
         duration_days INTEGER DEFAULT 30,
         is_auto_billing INTEGER DEFAULT 0,
@@ -7475,7 +7481,7 @@ function renderDashboardHtml(data) {
               <div class="flex items-center gap-1.5 font-extrabold text-xs">
                 <span>🔄</span> <span>Abonnement Récurrent</span>
               </div>
-              <span class="text-[10px] text-slate-400 mt-1">Facturé par mois / an avec réduction</span>
+              <span class="text-[10px] text-slate-400 mt-1">Facturé selon la durée configurée</span>
             </button>
 
             <button 
@@ -7546,27 +7552,12 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- 3. Encadré Récapitulatif : Prix par Mois & Prix par An avec Réduction -->
-        <div id="sub-pricing-recap-box" class="p-3.5 bg-gradient-to-r from-slate-900 to-slate-950 rounded-xl border border-slate-700/80 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
-          <!-- Côté Gauche : Prix Mois -->
+        <!-- 3. Encadré Récapitulatif du Tarif (sans option annuelle ni réduction) -->
+        <div id="sub-pricing-recap-box" class="p-3.5 bg-gradient-to-r from-slate-900 to-slate-950 rounded-xl border border-slate-700/80">
           <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1" id="sub-preview-left-title">Tarif par Mois</span>
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1" id="sub-preview-left-title">Tarif du forfait</span>
             <div class="text-xl font-extrabold text-white" id="sub-preview-monthly-primary">$ 10 / mois</div>
             <div class="text-[11px] text-amber-400 font-medium mt-0.5" id="sub-preview-monthly-conversions">≈ 6 500 FCFA • ≈ 9.20 €</div>
-          </div>
-
-          <!-- Côté Droit : Prix An & Réduction -->
-          <div id="sub-preview-yearly-container" class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-1.5">
-            <div class="flex items-center justify-between">
-              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tarif par An (12 mois)</span>
-              <div class="flex items-center gap-1">
-                <span class="text-[10px] text-emerald-400 font-bold">Réduction :</span>
-                <input type="number" min="0" max="90" id="sub-plan-discount" value="10" oninput="updateSubscriptionPricingCalculations()" class="w-12 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-center text-xs text-emerald-400 font-bold outline-none" />
-                <span class="text-xs text-emerald-400 font-bold">%</span>
-              </div>
-            </div>
-            <div class="text-xl font-extrabold text-emerald-400" id="sub-preview-yearly-primary">$ 90 / an</div>
-            <div class="text-[11px] text-slate-400 mt-0.5" id="sub-preview-yearly-conversions">≈ 58 500 FCFA • ≈ 82.80 €</div>
           </div>
         </div>
 
@@ -13287,8 +13278,6 @@ function renderDashboardHtml(data) {
       const btnOne = document.getElementById('sub-model-btn-onetime');
       const priceLabel = document.getElementById('sub-plan-price-label');
       const leftTitle = document.getElementById('sub-preview-left-title');
-      const yearlyContainer = document.getElementById('sub-preview-yearly-container');
-      const recapBox = document.getElementById('sub-pricing-recap-box');
 
       const isOneTime = model === 'one_time' || model === 'pack';
 
@@ -13303,19 +13292,10 @@ function renderDashboardHtml(data) {
       }
 
       if (priceLabel) {
-        priceLabel.textContent = isOneTime ? "Prix du pack de crédits (Vente unique) *" : "Prix de base mensuel *";
+        priceLabel.textContent = isOneTime ? "Prix du pack de crédits (Vente unique) *" : "Prix du forfait *";
       }
       if (leftTitle) {
-        leftTitle.textContent = isOneTime ? "Prix d'achat direct" : "Tarif par Mois";
-      }
-      if (yearlyContainer) {
-        if (isOneTime) {
-          yearlyContainer.classList.add('hidden');
-          if (recapBox) recapBox.className = "p-3.5 bg-gradient-to-r from-slate-900 to-slate-950 rounded-xl border border-slate-700/80";
-        } else {
-          yearlyContainer.classList.remove('hidden');
-          if (recapBox) recapBox.className = "p-3.5 bg-gradient-to-r from-slate-900 to-slate-950 rounded-xl border border-slate-700/80 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center";
-        }
+        leftTitle.textContent = isOneTime ? "Prix d'achat direct" : "Tarif du forfait";
       }
 
       updateSubscriptionPricingCalculations();
@@ -13339,14 +13319,12 @@ function renderDashboardHtml(data) {
     function updateSubscriptionPricingCalculations() {
       const priceInput = document.getElementById('sub-plan-price');
       const currSelect = document.getElementById('sub-plan-primary-curr');
-      const discountInput = document.getElementById('sub-plan-discount');
       const currXof = document.getElementById('sub-curr-xof');
       const currUsd = document.getElementById('sub-curr-usd');
       const currEur = document.getElementById('sub-curr-eur');
 
       const price = Number(priceInput ? priceInput.value : 10) || 0;
       const primaryCurr = currSelect ? currSelect.value : 'USD';
-      const discountPct = Number(discountInput ? discountInput.value : 10) || 0;
 
       const conv = calculateConversions(price, primaryCurr);
 
@@ -13363,23 +13341,6 @@ function renderDashboardHtml(data) {
         if (currUsd && currUsd.checked && primaryCurr !== 'USD') parts.push('≈ ' + conv.USD + ' $');
         if (currEur && currEur.checked && primaryCurr !== 'EUR') parts.push('≈ ' + conv.EUR + ' €');
         monthlyConvEl.textContent = parts.length > 0 ? parts.join(' • ') : 'Aucune conversion secondaire cochée';
-      }
-
-      // Aperçu annuel (12 mois avec réduction)
-      const yearlyPrice = Math.round(price * 12 * (1 - (discountPct / 100)) * 100) / 100;
-      const yearlyConv = calculateConversions(yearlyPrice, primaryCurr);
-
-      const yearlyPrimaryEl = document.getElementById('sub-preview-yearly-primary');
-      const yearlyConvEl = document.getElementById('sub-preview-yearly-conversions');
-      if (yearlyPrimaryEl) {
-        yearlyPrimaryEl.textContent = getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? yearlyConv.XOF.toLocaleString() : yearlyConv[primaryCurr]) + ' / an';
-      }
-      if (yearlyConvEl) {
-        const yearlyParts = [];
-        if (currXof && currXof.checked && primaryCurr !== 'XOF') yearlyParts.push('≈ ' + yearlyConv.XOF.toLocaleString() + ' FCFA');
-        if (currUsd && currUsd.checked && primaryCurr !== 'USD') yearlyParts.push('≈ ' + yearlyConv.USD + ' $');
-        if (currEur && currEur.checked && primaryCurr !== 'EUR') yearlyParts.push('≈ ' + yearlyConv.EUR + ' €');
-        yearlyConvEl.textContent = yearlyParts.length > 0 ? yearlyParts.join(' • ') : 'Aucune conversion secondaire';
       }
     }
     window.updateSubscriptionPricingCalculations = updateSubscriptionPricingCalculations;
@@ -13691,54 +13652,6 @@ function renderDashboardHtml(data) {
           secDiv.textContent = convParts.join(' • ');
           priceBox.appendChild(secDiv);
         }
-
-        // VRAI PRIX ANNUEL BARRÉ & RÉDUCTION ANNUELLE
-        const monthlyP = Number(plan.price) || 0;
-        const yearlyP = Number(plan.yearly_price) || 0;
-        const discPct = Number(plan.yearly_discount_pct) || 0;
-        const fullYearly = monthlyP * 12;
-
-        if (!isOneTime && (yearlyP > 0 || discPct > 0)) {
-          const activeYearly = yearlyP > 0 ? yearlyP : Math.round(fullYearly * (1 - (discPct / 100)) * 100) / 100;
-          const yrRow = document.createElement('div');
-          yrRow.className = 'pt-2 mt-2 border-t border-slate-800 space-y-1';
-          
-          const yrTop = document.createElement('div');
-          yrTop.className = 'flex items-center justify-between text-xs';
-          yrTop.innerHTML = '<span class="text-slate-400 font-bold">Annuel (12 mois) :</span>' +
-            '<div class="flex items-center gap-1.5">' +
-              (fullYearly > activeYearly ? '<span class="line-through text-slate-500 font-mono text-xs">' + getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? fullYearly.toLocaleString() : fullYearly) + '</span>' : '') +
-              '<span class="font-black text-emerald-400 font-mono text-sm">' + getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? activeYearly.toLocaleString() : activeYearly) + ' / an</span>' +
-              (discPct > 0 ? '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold border border-emerald-500/30">-' + discPct + '%</span>' : '') +
-            '</div>';
-          yrRow.appendChild(yrTop);
-
-          // Conversions secondaires annuelles avec vrai prix barré
-          const yrSecParts = [];
-          const annualRatio = monthlyP > 0 ? (activeYearly / monthlyP) : (12 * (1 - (discPct / 100)));
-          if (currEnabled.includes('XOF') && primaryCurr !== 'XOF' && convObj.XOF) {
-            const fullSec = Math.round(convObj.XOF * 12);
-            const discSec = Math.round(convObj.XOF * annualRatio);
-            yrSecParts.push('≈ ' + (fullSec > discSec ? '<span class="line-through text-slate-500">' + fullSec.toLocaleString() + '</span> ' : '') + '<span class="text-amber-400 font-bold">' + discSec.toLocaleString() + ' FCFA</span>');
-          }
-          if (currEnabled.includes('USD') && primaryCurr !== 'USD' && convObj.USD) {
-            const fullSec = Math.round(convObj.USD * 12 * 100) / 100;
-            const discSec = Math.round(convObj.USD * annualRatio * 100) / 100;
-            yrSecParts.push('≈ ' + (fullSec > discSec ? '<span class="line-through text-slate-500">' + fullSec + '</span> ' : '') + '<span class="text-amber-400 font-bold">' + discSec + ' $</span>');
-          }
-          if (currEnabled.includes('EUR') && primaryCurr !== 'EUR' && convObj.EUR) {
-            const fullSec = Math.round(convObj.EUR * 12 * 100) / 100;
-            const discSec = Math.round(convObj.EUR * annualRatio * 100) / 100;
-            yrSecParts.push('≈ ' + (fullSec > discSec ? '<span class="line-through text-slate-500">' + fullSec + '</span> ' : '') + '<span class="text-amber-400 font-bold">' + discSec + ' €</span>');
-          }
-          if (yrSecParts.length > 0) {
-            const yrSecDiv = document.createElement('div');
-            yrSecDiv.className = 'text-[11px] text-slate-400 text-right';
-            yrSecDiv.innerHTML = yrSecParts.join(' • ');
-            yrRow.appendChild(yrSecDiv);
-          }
-          priceBox.appendChild(yrRow);
-        }
         headerDiv.appendChild(priceBox);
 
         // Liste des avantages
@@ -13898,7 +13811,6 @@ function renderDashboardHtml(data) {
         document.getElementById('sub-plan-desc').value = existing.description || '';
         document.getElementById('sub-plan-price').value = existing.price || 10;
         document.getElementById('sub-plan-primary-curr').value = existing.primary_currency || 'USD';
-        document.getElementById('sub-plan-discount').value = existing.yearly_discount_pct !== undefined ? existing.yearly_discount_pct : 10;
         setSubscriptionPricingModel(existing.pricing_model || 'subscription');
 
         document.getElementById('sub-plan-main-feature-text').value = existing.storage_amount || existing.credits_or_words || '';
@@ -13949,7 +13861,6 @@ function renderDashboardHtml(data) {
         document.getElementById('sub-plan-desc').value = '';
         document.getElementById('sub-plan-price').value = '10';
         document.getElementById('sub-plan-primary-curr').value = 'USD';
-        document.getElementById('sub-plan-discount').value = '10';
         setSubscriptionPricingModel('subscription');
 
         document.getElementById('sub-plan-main-feature-text').value = targetCat === 'ai' ? '100 000 crédits IA' : '10 Go supplémentaires';
@@ -14136,7 +14047,6 @@ function renderDashboardHtml(data) {
       const desc = document.getElementById('sub-plan-desc').value.trim();
       const price = Number(document.getElementById('sub-plan-price').value) || 0;
       const primaryCurr = document.getElementById('sub-plan-primary-curr').value || 'USD';
-      const discountPct = Number(document.getElementById('sub-plan-discount').value) || 0;
 
       const mainText = document.getElementById('sub-plan-main-feature-text').value.trim();
       const mainVal = Number(document.getElementById('sub-plan-main-feature-val').value) || 0;
@@ -14148,7 +14058,6 @@ function renderDashboardHtml(data) {
       if (!currEnabled.includes(primaryCurr)) currEnabled.unshift(primaryCurr);
 
       const conv = calculateConversions(price, primaryCurr);
-      const yearlyPrice = Math.round(price * 12 * (1 - (discountPct / 100)) * 100) / 100;
 
       const bAuto = document.getElementById('sub-billing-auto');
       const bInfinite = document.getElementById('sub-billing-infinite');
@@ -14191,8 +14100,6 @@ function renderDashboardHtml(data) {
         primary_currency: primaryCurr,
         currencies_enabled: currEnabled,
         currency_conversions: conv,
-        yearly_price: isOneTime ? 0 : yearlyPrice,
-        yearly_discount_pct: isOneTime ? 0 : discountPct,
         features,
         is_auto_billing: isAuto,
         billing_mode: billingMode,
@@ -22940,8 +22847,6 @@ export default {
               primary_currency TEXT DEFAULT 'USD',
               currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
               currency_conversions TEXT DEFAULT '{}',
-              yearly_price REAL DEFAULT 0,
-              yearly_discount_pct REAL DEFAULT 10,
               features TEXT DEFAULT '[]',
               is_auto_billing INTEGER DEFAULT 0,
               billing_mode TEXT DEFAULT 'manual',
@@ -22968,8 +22873,6 @@ export default {
               primary_currency TEXT DEFAULT 'USD',
               currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
               currency_conversions TEXT DEFAULT '{}',
-              yearly_price REAL DEFAULT 0,
-              yearly_discount_pct REAL DEFAULT 0,
               features TEXT DEFAULT '[]',
               is_auto_billing INTEGER DEFAULT 0,
               billing_mode TEXT DEFAULT 'manual',
@@ -23044,8 +22947,6 @@ export default {
         const primaryCurrency = String(plan.primary_currency || 'USD').trim();
         const currenciesEnabled = typeof plan.currencies_enabled === 'string' ? plan.currencies_enabled : JSON.stringify(plan.currencies_enabled || ['USD', 'XOF', 'EUR']);
         const currencyConversions = typeof plan.currency_conversions === 'string' ? plan.currency_conversions : JSON.stringify(plan.currency_conversions || {});
-        const yearlyPrice = Number(plan.yearly_price) || 0;
-        const yearlyDiscountPct = Number(plan.yearly_discount_pct) || 10;
         const features = typeof plan.features === 'string' ? plan.features : JSON.stringify(plan.features || []);
         const flags = normalizeAdminPlanBillingFlags(plan);
         const billingMode = flags.billing_mode;
@@ -23068,9 +22969,9 @@ export default {
           await db.prepare(`
             INSERT INTO ai_subscription_plans (
               id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
-              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+              currencies_enabled, currency_conversions, features,
               is_auto_billing, billing_mode, allow_auto, allow_manual, is_infinite, duration_days, is_active, sort_order, pricing_model, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -23081,8 +22982,6 @@ export default {
               primary_currency = excluded.primary_currency,
               currencies_enabled = excluded.currencies_enabled,
               currency_conversions = excluded.currency_conversions,
-              yearly_price = excluded.yearly_price,
-              yearly_discount_pct = excluded.yearly_discount_pct,
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
               billing_mode = excluded.billing_mode,
@@ -23096,7 +22995,7 @@ export default {
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             planId, name, badge, description, creditsOrWords, creditsCount, price, primaryCurrency,
-            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
+            currenciesEnabled, currencyConversions, features,
             isAutoBilling, billingMode, allowAuto, allowManual, isInfinite, durationDays, isActive, sortOrder, pricingModel
           ).run();
 
@@ -23111,9 +23010,9 @@ export default {
           await db.prepare(`
             INSERT INTO storage_subscription_plans (
               id, name, badge, description, storage_amount, storage_mb, price, primary_currency,
-              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+              currencies_enabled, currency_conversions, features,
               is_auto_billing, billing_mode, allow_auto, allow_manual, is_infinite, duration_days, is_active, sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -23124,8 +23023,6 @@ export default {
               primary_currency = excluded.primary_currency,
               currencies_enabled = excluded.currencies_enabled,
               currency_conversions = excluded.currency_conversions,
-              yearly_price = excluded.yearly_price,
-              yearly_discount_pct = excluded.yearly_discount_pct,
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
               billing_mode = excluded.billing_mode,
@@ -23138,7 +23035,7 @@ export default {
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             planId, name, badge, description, storageAmount, storageMb, price, primaryCurrency,
-            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
+            currenciesEnabled, currencyConversions, features,
             isAutoBilling, billingMode, allowAuto, allowManual, isInfinite, durationDays, isActive, sortOrder
           ).run();
 

@@ -111,7 +111,7 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
   const currency = subscription?.currency || 'FCFA';
   const isYearly = subscription?.billing_cycle === 'yearly' || subscription?.billing_cycle === 'annual';
   const cycleBadge = isYearly ? 'Annuel' : 'Mensuel';
-  const cycleDescription = isYearly ? 'Facturation annuelle (-10%)' : 'Facturation mensuelle (+1 mois)';
+  const cycleDescription = isYearly ? 'Facturation annuelle' : 'Facturation mensuelle (+1 mois)';
 
   // Calcul de la capacité de stockage
   const freeBaseStorageMb = 30;

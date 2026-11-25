@@ -18164,8 +18164,6 @@ a:hover{transform:translateY(-2px)}
               primary_currency TEXT DEFAULT 'USD',
               currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
               currency_conversions TEXT DEFAULT '{}',
-              yearly_price REAL DEFAULT 0,
-              yearly_discount_pct REAL DEFAULT 10,
               features TEXT DEFAULT '[]',
               is_auto_billing INTEGER DEFAULT 0,
               billing_mode TEXT DEFAULT 'manual',
@@ -18192,8 +18190,6 @@ a:hover{transform:translateY(-2px)}
               primary_currency TEXT DEFAULT 'USD',
               currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
               currency_conversions TEXT DEFAULT '{}',
-              yearly_price REAL DEFAULT 0,
-              yearly_discount_pct REAL DEFAULT 0,
               features TEXT DEFAULT '[]',
               is_auto_billing INTEGER DEFAULT 0,
               billing_mode TEXT DEFAULT 'manual',
@@ -18253,8 +18249,6 @@ a:hover{transform:translateY(-2px)}
                   primary_currency TEXT DEFAULT 'USD',
                   currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
                   currency_conversions TEXT DEFAULT '{}',
-                  yearly_price REAL DEFAULT 0,
-                  yearly_discount_pct REAL DEFAULT 10,
                   features TEXT DEFAULT '[]',
                   is_auto_billing INTEGER DEFAULT 0,
                   is_active INTEGER DEFAULT 1,
@@ -18276,8 +18270,6 @@ a:hover{transform:translateY(-2px)}
                   primary_currency TEXT DEFAULT 'USD',
                   currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
                   currency_conversions TEXT DEFAULT '{}',
-                  yearly_price REAL DEFAULT 0,
-                  yearly_discount_pct REAL DEFAULT 10,
                   features TEXT DEFAULT '[]',
                   is_auto_billing INTEGER DEFAULT 0,
                   is_active INTEGER DEFAULT 1,
@@ -18326,8 +18318,6 @@ a:hover{transform:translateY(-2px)}
         const primaryCurrency = String(plan.primary_currency || 'USD').trim();
         const currenciesEnabled = typeof plan.currencies_enabled === 'string' ? plan.currencies_enabled : JSON.stringify(plan.currencies_enabled || ['USD', 'XOF', 'EUR']);
         const currencyConversions = typeof plan.currency_conversions === 'string' ? plan.currency_conversions : JSON.stringify(plan.currency_conversions || {});
-        const yearlyPrice = Number(plan.yearly_price) || 0;
-        const yearlyDiscountPct = Number(plan.yearly_discount_pct) || 0;
         const features = typeof plan.features === 'string' ? plan.features : JSON.stringify(plan.features || []);
         const flags = normalizePlanBillingFlags(plan);
         const billingMode = flags.billingMode;
@@ -18351,9 +18341,9 @@ a:hover{transform:translateY(-2px)}
           await targetDb.prepare(`
             INSERT INTO ai_subscription_plans (
               id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
-              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+              currencies_enabled, currency_conversions, features,
               is_auto_billing, billing_mode, allow_auto, allow_manual, is_infinite, duration_days, is_active, sort_order, pricing_model, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -18364,8 +18354,6 @@ a:hover{transform:translateY(-2px)}
               primary_currency = excluded.primary_currency,
               currencies_enabled = excluded.currencies_enabled,
               currency_conversions = excluded.currency_conversions,
-              yearly_price = excluded.yearly_price,
-              yearly_discount_pct = excluded.yearly_discount_pct,
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
               billing_mode = excluded.billing_mode,
@@ -18379,7 +18367,7 @@ a:hover{transform:translateY(-2px)}
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             planId, name, badge, description, creditsOrWords, creditsCount, price, primaryCurrency,
-            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
+            currenciesEnabled, currencyConversions, features,
             isAutoBilling, billingMode, allowAuto, allowManual, isInfinite, durationDays, isActive, sortOrder, pricingModel
           ).run();
 
@@ -18392,9 +18380,9 @@ a:hover{transform:translateY(-2px)}
           await targetDb.prepare(`
             INSERT INTO storage_subscription_plans (
               id, name, badge, description, storage_amount, storage_mb, price, primary_currency,
-              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+              currencies_enabled, currency_conversions, features,
               is_auto_billing, billing_mode, allow_auto, allow_manual, is_infinite, duration_days, is_active, sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -18405,8 +18393,6 @@ a:hover{transform:translateY(-2px)}
               primary_currency = excluded.primary_currency,
               currencies_enabled = excluded.currencies_enabled,
               currency_conversions = excluded.currency_conversions,
-              yearly_price = excluded.yearly_price,
-              yearly_discount_pct = excluded.yearly_discount_pct,
               features = excluded.features,
               is_auto_billing = excluded.is_auto_billing,
               billing_mode = excluded.billing_mode,
@@ -18419,7 +18405,7 @@ a:hover{transform:translateY(-2px)}
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             planId, name, badge, description, storageAmount, storageMb, price, primaryCurrency,
-            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
+            currenciesEnabled, currencyConversions, features,
             isAutoBilling, billingMode, allowAuto, allowManual, isInfinite, durationDays, isActive, sortOrder
           ).run();
 
