@@ -9,7 +9,6 @@ import {
   CalendarClock,
   ShieldAlert,
   Trash2,
-  Plus,
   CheckCircle2,
   Loader2,
   AlertTriangle,
@@ -19,7 +18,6 @@ import {
   Clock,
   Ban,
   ChevronRight,
-  Cloud,
   Maximize2,
   Minimize2,
   Menu,
@@ -473,25 +471,8 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
         </div>
       </div>
 
-      {/* Milieu défilable : Catégories d'abonnements (style exact NIVEAUX / BTS 2 de Moyennes) */}
+      {/* Milieu défilable : Onglets d'abonnements + Cartes & Suivi (épuré sans compteurs ni +) */}
       <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-2.5 space-y-1">
-        <div className="px-1.5 pb-1 flex items-center justify-between">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Catégories ({navCategories.length})
-          </span>
-          <button
-            type="button"
-            onClick={() => {
-              setIsMobileSidebarOpen(false);
-              if (onOpenRenewTarget) onOpenRenewTarget('storage');
-            }}
-            className="w-6 h-6 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center transition cursor-pointer"
-            title="Voir les offres disponibles"
-          >
-            <Plus className="w-3.5 h-3.5 stroke-[2.2]" />
-          </button>
-        </div>
-
         {navCategories.map((cat) => {
           const isSelected = section === cat.id && !selectedSub;
           const CatIcon = cat.Icon;
@@ -503,7 +484,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                 setSection(cat.id);
                 setIsMobileSidebarOpen(false);
               }}
-              className={`group relative overflow-hidden flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
+              className={`group relative overflow-hidden flex items-center gap-2 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
                 isSelected
                   ? 'bg-[#2563eb] border-[#1d4ed8] text-white font-semibold shadow-xs'
                   : 'bg-white dark:bg-[#161f33]/70 border-slate-200 dark:border-slate-700/90 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'
@@ -523,15 +504,6 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                 />
                 <span className="truncate">{cat.label}</span>
               </div>
-              <span
-                className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold shrink-0 ${
-                  isSelected
-                    ? 'bg-black/20 border-white/25 text-white'
-                    : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300'
-                }`}
-              >
-                {cat.count}
-              </span>
             </div>
           );
         })}
@@ -549,7 +521,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             setSection('cards');
             setIsMobileSidebarOpen(false);
           }}
-          className={`group relative overflow-hidden flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
+          className={`group relative overflow-hidden flex items-center gap-2 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
             section === 'cards' && !selectedSub
               ? 'bg-[#2563eb] border-[#1d4ed8] text-white font-semibold shadow-xs'
               : 'bg-white dark:bg-[#161f33]/70 border-slate-200 dark:border-slate-700/90 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'
@@ -566,15 +538,6 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             />
             <span className="truncate">Cartes Visa / MC</span>
           </div>
-          <span
-            className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold shrink-0 ${
-              section === 'cards' && !selectedSub
-                ? 'bg-black/20 border-white/25 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300'
-            }`}
-          >
-            {counts.cards}
-          </span>
         </div>
 
         <div
@@ -583,7 +546,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             setSection('history');
             setIsMobileSidebarOpen(false);
           }}
-          className={`group relative overflow-hidden flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
+          className={`group relative overflow-hidden flex items-center gap-2 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
             section === 'history' && !selectedSub
               ? 'bg-[#2563eb] border-[#1d4ed8] text-white font-semibold shadow-xs'
               : 'bg-white dark:bg-[#161f33]/70 border-slate-200 dark:border-slate-700/90 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'
@@ -600,20 +563,11 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             />
             <span className="truncate">Activité &amp; Historique</span>
           </div>
-          <span
-            className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold shrink-0 ${
-              section === 'history' && !selectedSub
-                ? 'bg-black/20 border-white/25 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300'
-            }`}
-          >
-            {counts.history}
-          </span>
         </div>
       </div>
 
-      {/* Bas fixe de la barre latérale (identique aux boutons Moyenne générale / Transférer) */}
-      <div className="px-2.5 py-2.5 border-t border-slate-300 dark:border-slate-700 shrink-0 space-y-1.5">
+      {/* Bas fixe de la barre latérale : Ajouter une carte Visa / Mastercard */}
+      <div className="px-2.5 py-2.5 border-t border-slate-300 dark:border-slate-700 shrink-0">
         <button
           type="button"
           disabled={linkingCard}
@@ -633,70 +587,9 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
           </span>
           <ChevronRight className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
         </button>
-
-        {onOpenRenewTarget && (
-          <button
-            type="button"
-            onClick={() => {
-              setIsMobileSidebarOpen(false);
-              onOpenRenewTarget('storage');
-            }}
-            className="w-full px-2.5 h-8 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#161f33] hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center justify-between gap-2 transition cursor-pointer"
-          >
-            <span className="flex items-center gap-2 truncate">
-              <Sparkles className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-              <span className="truncate">Voir les offres</span>
-            </span>
-            <ChevronRight className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
-          </button>
-        )}
       </div>
     </div>
   );
-
-  // Cartes d'offres rapides (quand 0 abonnement dans la catégorie, pour occuper l'espace avec le même style graphique!)
-  const quickOfferCards = [
-    {
-      key: 'storage' as const,
-      tag: 'STOCKAGE CLOUD',
-      title: 'AUGMENTER MON STOCKAGE',
-      desc: 'Espace cloud supplémentaire · Auto, Manuel ou Infini',
-      meta: 'Plans flexibles · Paystack',
-      bg: '#0369a1',
-      border: '#075985',
-      onClick: () => onOpenRenewTarget?.('storage'),
-    },
-    {
-      key: 'ai' as const,
-      tag: 'CRÉDITS IA',
-      title: 'FORFAITS & PACKS IA',
-      desc: 'Assistant Delmas, résumés, création & analyses',
-      meta: 'Abonnement ou Pack',
-      bg: '#6d28d9',
-      border: '#5b21b6',
-      onClick: () => onOpenRenewTarget?.('ai'),
-    },
-    {
-      key: 'app' as const,
-      tag: 'APPLICATION',
-      title: 'MOYENNES & BULLETINS',
-      desc: 'Classes, trimestres, moyennes générales & exports',
-      meta: 'Accès complet · Essai / Pass',
-      bg: '#b91c1c',
-      border: '#991b1b',
-      onClick: () => onOpenRenewTarget?.('app', 'moyennes'),
-    },
-    {
-      key: 'card' as const,
-      tag: 'PAIEMENT AUTOMATIQUE',
-      title: 'ASSOCIER VISA / MASTERCARD',
-      desc: 'Activez le renouvellement automatique à tout moment',
-      meta: 'Sécurisé PCI-DSS Paystack',
-      bg: '#047857',
-      border: '#065f46',
-      onClick: () => handleLinkCard(),
-    },
-  ];
 
   const activeTitle = selectedSub ? selectedSub.plan_name : sectionMeta[section].title;
   const activeSubtitle = selectedSub
@@ -801,26 +694,6 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={loadAll}
-              disabled={loading}
-              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold border bg-slate-50 dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 cursor-pointer transition"
-              title="Actualiser vos abonnements"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="w-3 h-3 animate-spin text-amber-600 dark:text-amber-300" />
-                  <span>Actualisation...</span>
-                </>
-              ) : (
-                <>
-                  <Cloud className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                  <span>Synchronisé</span>
-                </>
-              )}
-            </button>
-
             <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-[#1e293b]">
               <div className="w-5 h-5 rounded-full bg-slate-800 dark:bg-blue-600 text-white flex items-center justify-center font-bold text-[10px]">
                 {userName.charAt(0).toUpperCase()}
@@ -855,7 +728,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
           </div>
         </header>
 
-        {/* SOUS-EN-TÊTE FIXE : TITRE + RECHERCHE + BOUTON SOMBRE PRINCIPAL (IDENTIQUE À IMAGE 2) */}
+        {/* SOUS-EN-TÊTE FIXE : TITRE + RECHERCHE */}
         <div className="shrink-0 bg-white dark:bg-[#111827] border-b border-slate-300 dark:border-slate-700 px-4 sm:px-8 py-3.5">
           <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="min-w-0">
@@ -879,43 +752,27 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
               </p>
             </div>
 
-            {!selectedSub && (
+            {!selectedSub && section !== 'cards' && section !== 'history' && (
               <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-                {section !== 'cards' && section !== 'history' && (
-                  <div className="relative flex-1 sm:w-60">
-                    <Search className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder="Rechercher un abonnement..."
-                      className="w-full h-8 pl-8 pr-7 rounded-lg bg-slate-50 dark:bg-[#1e293b] focus:bg-white dark:focus:bg-[#161f33] border border-slate-300 dark:border-slate-600 focus:border-[#0051c3] dark:focus:border-blue-400 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 outline-none transition"
-                    />
-                    {searchQuery && (
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery('')}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer"
-                      >
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  disabled={linkingCard}
-                  onClick={() => handleLinkCard()}
-                  className="h-8 px-3 rounded-lg bg-[#0f172a] hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 border border-slate-900 dark:border-blue-400/60 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shrink-0 disabled:opacity-60"
-                >
-                  {linkingCard ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Rechercher un abonnement..."
+                    className="w-full h-8 pl-8 pr-7 rounded-lg bg-slate-50 dark:bg-[#1e293b] focus:bg-white dark:focus:bg-[#161f33] border border-slate-300 dark:border-slate-600 focus:border-[#0051c3] dark:focus:border-blue-400 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 outline-none transition"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
                   )}
-                  <span>Ajouter une carte</span>
-                </button>
+                </div>
               </div>
             )}
           </div>
@@ -1139,9 +996,21 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             })()
           ) : section === 'cards' ? (
             /* =============================================================== */
-            /* SECTION CARTES VISA / MASTERCARD (GRILLE STYLE IMAGE 2)         */
+            /* SECTION CARTES VISA / MASTERCARD (UNIQUEMENT CARTES ENREGISTRÉES) */
             /* =============================================================== */
-            <div className="space-y-4">
+            paymentMethods.length === 0 ? (
+              <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 rounded-xl p-10 text-center space-y-1.5">
+                <div className="w-10 h-10 mx-auto rounded-lg bg-slate-100 dark:bg-[#1e293b] border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300 mb-2">
+                  <CreditCard className="w-5 h-5" />
+                </div>
+                <div className="text-sm font-bold text-slate-900 dark:text-white">
+                  Aucune carte bancaire enregistrée
+                </div>
+                <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm mx-auto">
+                  Cliquez sur « Ajouter une carte » dans la barre latérale gauche pour associer une carte Visa ou Mastercard.
+                </p>
+              </div>
+            ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
                 {paymentMethods.map((pm) => (
                   <div
@@ -1175,44 +1044,8 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                     </div>
                   </div>
                 ))}
-
-                {/* Carte d'ajout direct */}
-                <button
-                  type="button"
-                  disabled={linkingCard}
-                  onClick={() => handleLinkCard()}
-                  className="group rounded-xl p-4 flex flex-col justify-between min-h-[138px] bg-white dark:bg-[#131c2e] border border-dashed border-slate-400 dark:border-slate-600 hover:border-[#0051c3] dark:hover:border-blue-400 text-left transition cursor-pointer disabled:opacity-60"
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        VISA / MASTERCARD
-                      </div>
-                      <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
-                        Ajouter une carte bancaire
-                      </div>
-                      <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
-                        Utile pour activer le renouvellement automatique
-                      </div>
-                    </div>
-                    <div className="w-7 h-7 rounded-md bg-slate-100 dark:bg-[#1e293b] border border-slate-300 dark:border-slate-600 flex items-center justify-center shrink-0">
-                      {linkingCard ? (
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
-                      ) : (
-                        <Plus className="w-4 h-4 text-slate-700 dark:text-slate-200" />
-                      )}
-                    </div>
-                  </div>
-                  <div className="mt-4 pt-2.5 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-[11px] font-semibold text-[#0051c3] dark:text-blue-400">
-                    <span>Tokenisation PCI-DSS</span>
-                    <span className="inline-flex items-center gap-1">
-                      <span>Associer</span>
-                      <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
-                    </span>
-                  </div>
-                </button>
               </div>
-            </div>
+            )
           ) : section === 'history' ? (
             /* =============================================================== */
             /* SECTION ACTIVITÉ & HISTORIQUE (PLEINE LARGEUR)                  */
@@ -1250,73 +1083,33 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             </div>
           ) : visibleSubscriptions.length === 0 ? (
             /* =============================================================== */
-            /* GRILLE DE CARTES COLORÉES DE DÉCOUVERTE (MÊME STYLE QUE IMAGE 2)*/
+            /* ÉTAT VIDE ÉPURÉ — AUCUNE CARTE PUBLICITAIRE                     */
             /* =============================================================== */
-            <div className="space-y-5">
-              <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                <div>
-                  <div className="text-sm font-bold text-slate-900 dark:text-white">
-                    {searchQuery.trim()
-                      ? `Aucun abonnement ne correspond à « ${searchQuery} »`
-                      : 'Aucun abonnement payant actif dans cette catégorie'}
-                  </div>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
-                    Sélectionnez une carte ci-dessous pour découvrir les offres StudyCloud ou associer une carte Visa/Mastercard.
-                  </p>
-                </div>
-                {searchQuery.trim() && (
+            <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 rounded-xl p-10 text-center space-y-2">
+              <div className="w-10 h-10 mx-auto rounded-lg bg-slate-100 dark:bg-[#1e293b] border border-slate-300 dark:border-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-300">
+                <Layers className="w-5 h-5" />
+              </div>
+              <div className="text-sm font-bold text-slate-900 dark:text-white">
+                {searchQuery.trim()
+                  ? `Aucun abonnement ne correspond à « ${searchQuery} »`
+                  : 'Aucun abonnement actif dans cette catégorie'}
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm mx-auto">
+                {searchQuery.trim()
+                  ? 'Essayez un autre mot-clé dans la barre de recherche.'
+                  : 'Vos abonnements Stockage Cloud, Crédits IA et Applications apparaîtront automatiquement ici dès leur activation.'}
+              </p>
+              {searchQuery.trim() && (
+                <div className="pt-1">
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-semibold cursor-pointer shrink-0"
+                    className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-semibold cursor-pointer"
                   >
                     Effacer la recherche
                   </button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-                {quickOfferCards
-                  .filter(
-                    (c) =>
-                      section === 'all' ||
-                      c.key === section ||
-                      c.key === 'card'
-                  )
-                  .map((card) => (
-                    <div
-                      key={card.key}
-                      onClick={card.onClick}
-                      style={{ backgroundColor: card.bg, borderColor: card.border }}
-                      className="group relative rounded-xl p-4 flex flex-col justify-between min-h-[138px] text-white transition cursor-pointer overflow-hidden border shadow-[0_1px_2px_rgba(15,23,42,0.08)] hover:shadow-md hover:brightness-[1.05]"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-[10.5px] font-semibold uppercase tracking-wide text-white/80 truncate">
-                            {card.tag}
-                          </div>
-                          <h3 className="text-sm font-bold text-white truncate mt-0.5">
-                            {card.title}
-                          </h3>
-                          <div className="text-[11px] text-white/85 mt-1 line-clamp-2 leading-snug">
-                            {card.desc}
-                          </div>
-                        </div>
-                        <span className="w-7 h-7 rounded-md bg-black/15 flex items-center justify-center text-white/85 shrink-0">
-                          <MoreHorizontal className="w-4 h-4" />
-                        </span>
-                      </div>
-
-                      <div className="mt-4 pt-2.5 border-t border-white/25 flex items-center justify-between text-[11px]">
-                        <span className="font-medium text-white/90 truncate">{card.meta}</span>
-                        <span className="inline-flex items-center gap-1 font-semibold text-white shrink-0">
-                          <span>Ouvrir</span>
-                          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-              </div>
+                </div>
+              )}
             </div>
           ) : (
             /* =============================================================== */
