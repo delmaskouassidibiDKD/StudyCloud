@@ -1,6 +1,7 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ArrowLeft,
+  ArrowRight,
   CreditCard,
   RefreshCw,
   Zap,
@@ -17,7 +18,23 @@ import {
   AppWindow,
   Clock,
   Ban,
+  ChevronRight,
+  Cloud,
+  Maximize2,
+  Minimize2,
+  Menu,
+  Search,
+  X,
+  Layers,
+  MoreHorizontal,
+  Receipt,
 } from 'lucide-react';
+import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
+import {
+  useViewerExpandLevel,
+  setViewerExpandLevel,
+  resetViewerExpand,
+} from '../utils/viewerExpandManager';
 import {
   ActiveSubscriptionRecord,
   cancelMySubscriptionAutoRenew,
@@ -32,23 +49,39 @@ import {
 } from '../services/paystackBillingApi';
 
 interface MySubscriptionsViewProps {
+  user?: {
+    name?: string;
+    email?: string;
+    avatar_url?: string;
+  } | null;
   onBack: () => void;
   onOpenRenewTarget?: (productType: 'storage' | 'ai' | 'app', appKey?: string) => void;
 }
+
+type SubWorkspaceSection = 'all' | 'storage' | 'ai' | 'app' | 'cards' | 'history';
 
 function formatDateTimeFr(iso?: string | null): string {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return String(iso);
-  return `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+  return `${d.toLocaleDateString('fr-FR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })} à ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function computeLiveCountdownLabel(sub: ActiveSubscriptionRecord): {
   text: string;
+  short: string;
   tone: 'amber' | 'emerald' | 'orange' | 'rose';
 } {
   if (Number(sub.is_infinite) === 1 || sub.renewal_mode === 'infinite') {
-    return { text: '♾️ Abonnement à vie (sans expiration)', tone: 'amber' };
+    return {
+      text: 'Abonnement à vie (sans expiration)',
+      short: '♾️ À vie',
+      tone: 'amber',
+    };
   }
   const endMs = sub.current_period_end ? Date.parse(sub.current_period_end) : NaN;
   const now = Date.now();
@@ -58,8 +91,11 @@ function computeLiveCountdownLabel(sub: ActiveSubscriptionRecord): {
     const hours = totalHours % 24;
     const mins = Math.floor(((endMs - now) % 3600000) / 60000);
     const text =
-      days > 0 ? `${days} jour${days > 1 ? 's' : ''} et ${hours}h restants` : `${hours}h ${mins}m restantes`;
-    return { text, tone: days <= 3 ? 'orange' : 'emerald' };
+      days > 0
+        ? `${days} jour${days > 1 ? 's' : ''} et ${hours}h restants`
+        : `${hours}h ${mins}m restantes`;
+    const short = days > 0 ? `${days}j ${hours}h` : `${hours}h ${mins}m`;
+    return { text, short, tone: days <= 3 ? 'orange' : 'emerald' };
   }
   const graceMs = sub.grace_until ? Date.parse(sub.grace_until) : NaN;
   if (Number.isFinite(graceMs) && graceMs > now) {
@@ -68,23 +104,44 @@ function computeLiveCountdownLabel(sub: ActiveSubscriptionRecord): {
     const gRemH = gHours % 24;
     return {
       text: `Période de grâce : ${gDays > 0 ? `${gDays}j ${gRemH}h` : `${gHours}h`} avant blocage`,
+      short: `Grâce ${gDays > 0 ? `${gDays}j` : `${gHours}h`}`,
       tone: 'orange',
     };
   }
-  return { text: 'Expiré — renouvellement requis', tone: 'rose' };
+  return { text: 'Expiré — renouvellement requis', short: 'Expiré', tone: 'rose' };
 }
 
-function getServiceMeta(sub: ActiveSubscriptionRecord) {
+function getCardPalette(sub: ActiveSubscriptionRecord): {
+  bg: string;
+  border: string;
+  serviceLabel: string;
+} {
+  const isInf = Number(sub.is_infinite) === 1 || sub.renewal_mode === 'infinite';
+  if (sub.status === 'blocked') {
+    return { bg: '#9f1239', border: '#881337', serviceLabel: 'SUSPENDU' };
+  }
+  if (isInf) {
+    return {
+      bg: '#b45309',
+      border: '#92400e',
+      serviceLabel:
+        sub.product_type === 'storage'
+          ? 'STOCKAGE CLOUD · À VIE'
+          : sub.product_type === 'ai'
+          ? 'CRÉDITS IA · À VIE'
+          : `${(sub.app_name || sub.app_key || 'APPLICATION').toUpperCase()} · À VIE`,
+    };
+  }
   if (sub.product_type === 'storage') {
-    return { label: 'Stockage Cloud', Icon: HardDrive, badgeCls: 'bg-cyan-500/15 text-cyan-600 dark:text-cyan-300 border-cyan-500/30' };
+    return { bg: '#0369a1', border: '#075985', serviceLabel: 'STOCKAGE CLOUD' };
   }
   if (sub.product_type === 'ai') {
-    return { label: 'Crédits IA', Icon: Sparkles, badgeCls: 'bg-fuchsia-500/15 text-fuchsia-600 dark:text-fuchsia-300 border-fuchsia-500/30' };
+    return { bg: '#6d28d9', border: '#5b21b6', serviceLabel: 'CRÉDITS IA' };
   }
   return {
-    label: sub.app_name || sub.app_key || 'Application StudyCloud',
-    Icon: AppWindow,
-    badgeCls: 'bg-sky-500/15 text-sky-600 dark:text-sky-300 border-sky-500/30',
+    bg: '#b91c1c',
+    border: '#991b1b',
+    serviceLabel: (sub.app_name || sub.app_key || 'APPLICATION').toUpperCase(),
   };
 }
 
@@ -110,9 +167,16 @@ function formatEventLabel(eventType: string): string {
 }
 
 export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
+  user,
   onBack,
   onOpenRenewTarget,
 }) => {
+  const viewerExpandLevel = useViewerExpandLevel();
+  const [section, setSection] = useState<SubWorkspaceSection>('all');
+  const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [subscriptions, setSubscriptions] = useState<ActiveSubscriptionRecord[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<MaskedPaymentMethodRecord[]>([]);
@@ -150,11 +214,25 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
     };
   }, [loadAll]);
 
+  useEffect(() => {
+    return () => {
+      resetViewerExpand();
+    };
+  }, []);
+
   const notifyBannerSync = () => {
     try {
       window.dispatchEvent(new CustomEvent('studycloud_subscription_updated'));
     } catch {
       // Ignore
+    }
+  };
+
+  const handleToggleMaximize = () => {
+    if (viewerExpandLevel >= 1) {
+      setViewerExpandLevel(0);
+    } else {
+      setViewerExpandLevel(2);
     }
   };
 
@@ -169,8 +247,8 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
         type: 'ok',
         text:
           nextMode === 'auto'
-            ? `⚡ Renouvellement automatique activé pour ${sub.plan_name}.`
-            : `🔄 Renouvellement manuel activé pour ${sub.plan_name} (aucun prélèvement automatique).`,
+            ? `Prélèvement automatique activé pour « ${sub.plan_name} ».`
+            : `Paiement manuel activé pour « ${sub.plan_name} » (aucun prélèvement automatique).`,
       });
       notifyBannerSync();
       await loadAll();
@@ -179,7 +257,11 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
   };
 
   const handleCancelAuto = async (sub: ActiveSubscriptionRecord) => {
-    if (!window.confirm(`Arrêter le renouvellement automatique de « ${sub.plan_name} » ? Vous conserverez votre accès jusqu'à la fin de la période déjà payée.`)) {
+    if (
+      !window.confirm(
+        `Arrêter le renouvellement automatique de « ${sub.plan_name} » ? Vous conservez votre accès jusqu'à la fin de la période déjà payée.`
+      )
+    ) {
       return;
     }
     setBusyId(sub.id);
@@ -213,11 +295,15 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
       const popup = new PaystackPop();
       popup.resumeTransaction(initRes.accessCode, {
         onSuccess: async (tx: any) => {
-          const verRes = await verifyLinkBankCard(tx?.reference || initRes.reference!, targetSubId, true);
+          const verRes = await verifyLinkBankCard(
+            tx?.reference || initRes.reference!,
+            targetSubId,
+            true
+          );
           if (verRes.success) {
             setFeedback({
               type: 'ok',
-              text: `💳 Carte ${verRes.paymentMethod?.label || 'Visa / Mastercard'} enregistrée avec succès !`,
+              text: `Carte ${verRes.paymentMethod?.label || 'Visa / Mastercard'} enregistrée avec succès.`,
             });
             notifyBannerSync();
             await loadAll();
@@ -261,373 +347,1046 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
     setBusyId(null);
   };
 
-  const hasAlerts = subscriptions.some((s) => ['grace', 'past_due', 'blocked'].includes(String(s.status)));
+  const counts = useMemo(
+    () => ({
+      all: subscriptions.length,
+      storage: subscriptions.filter((s) => s.product_type === 'storage').length,
+      ai: subscriptions.filter((s) => s.product_type === 'ai').length,
+      app: subscriptions.filter((s) => s.product_type === 'app').length,
+      cards: paymentMethods.length,
+      history: recentEvents.length,
+    }),
+    [subscriptions, paymentMethods, recentEvents]
+  );
 
-  return (
-    <div className="w-full min-h-full bg-slate-50 dark:bg-[#0B0F19] text-slate-900 dark:text-slate-100 pb-24">
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
-        {/* En-tête */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <button
-              type="button"
-              onClick={onBack}
-              className="w-10 h-10 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-              aria-label="Retour"
-            >
-              <ArrowLeft className="w-4 h-4" />
-            </button>
-            <div>
-              <h1 className="text-xl sm:text-2xl font-black tracking-tight flex items-center gap-2">
-                <CreditCard className="w-6 h-6 text-orange-500" />
-                <span>Gérer mes abonnements</span>
-              </h1>
-              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-                Suivez vos forfaits Stockage, Crédits IA &amp; Applications, basculez Automatique / Manuel et gérez vos cartes Visa/Mastercard.
-              </p>
+  const visibleSubscriptions = useMemo(() => {
+    const base =
+      section === 'storage' || section === 'ai' || section === 'app'
+        ? subscriptions.filter((s) => s.product_type === section)
+        : subscriptions;
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return base;
+    return base.filter((s) =>
+      [s.plan_name, s.app_name, s.app_key, s.product_type, s.renewal_mode, s.status]
+        .join(' ')
+        .toLowerCase()
+        .includes(q)
+    );
+  }, [subscriptions, section, searchQuery]);
+
+  const selectedSub = useMemo(
+    () => (selectedSubId ? subscriptions.find((s) => s.id === selectedSubId) || null : null),
+    [selectedSubId, subscriptions]
+  );
+
+  const hasAlerts = subscriptions.some((s) =>
+    ['grace', 'past_due', 'blocked'].includes(String(s.status))
+  );
+
+  const sectionMeta: Record<SubWorkspaceSection, { title: string; subtitle: string }> = {
+    all: {
+      title: 'Tous mes abonnements',
+      subtitle: `${counts.all} abonnement${counts.all > 1 ? 's' : ''} enregistré${counts.all > 1 ? 's' : ''} — cliquez sur une carte pour gérer le mode Automatique / Manuel ou renouveler.`,
+    },
+    storage: {
+      title: 'Stockage Cloud',
+      subtitle: `${counts.storage} forfait${counts.storage > 1 ? 's' : ''} de stockage cloud actif${counts.storage > 1 ? 's' : ''} ou récent${counts.storage > 1 ? 's' : ''}.`,
+    },
+    ai: {
+      title: 'Crédits IA',
+      subtitle: `${counts.ai} forfait${counts.ai > 1 ? 's' : ''} ou pack${counts.ai > 1 ? 's' : ''} de crédits IA StudyCloud.`,
+    },
+    app: {
+      title: 'Applications',
+      subtitle: `${counts.app} abonnement${counts.app > 1 ? 's' : ''} d'application (Moyennes et futures applications StudyCloud).`,
+    },
+    cards: {
+      title: 'Cartes Visa / Mastercard',
+      subtitle: `${counts.cards} carte${counts.cards > 1 ? 's' : ''} enregistrée${counts.cards > 1 ? 's' : ''} — associez une carte sécurisée même après un paiement Wave, Orange Money ou MTN.`,
+    },
+    history: {
+      title: 'Activité & Historique',
+      subtitle: `${counts.history} événement${counts.history > 1 ? 's' : ''} récent${counts.history > 1 ? 's' : ''} sur vos abonnements et cartes.`,
+    },
+  };
+
+  const navCategories: Array<{
+    id: SubWorkspaceSection;
+    label: string;
+    count: number;
+    accent: string;
+    Icon: any;
+  }> = [
+    { id: 'all', label: 'Tous les abonnements', count: counts.all, accent: '#2563eb', Icon: Layers },
+    { id: 'storage', label: 'Stockage Cloud', count: counts.storage, accent: '#0284c7', Icon: HardDrive },
+    { id: 'ai', label: 'Crédits IA', count: counts.ai, accent: '#7c3aed', Icon: Sparkles },
+    { id: 'app', label: 'Applications', count: counts.app, accent: '#dc2626', Icon: AppWindow },
+  ];
+
+  const userName = user?.name || user?.email?.split('@')[0] || 'Utilisateur';
+
+  // ============================================================================
+  // BARRE LATÉRALE GAUCHE — IDENTIQUE AU MENU MOYENNES (`SchoolWorkspaceLayout`)
+  // ============================================================================
+  const renderSidebarContent = () => (
+    <div className="flex flex-col h-full min-h-0 bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-100 select-none">
+      {/* Haut fixe */}
+      <div className="px-3 pt-2.5 pb-2.5 border-b border-slate-300 dark:border-slate-700 shrink-0 space-y-2">
+        <button
+          type="button"
+          onClick={() => {
+            setIsMobileSidebarOpen(false);
+            if (selectedSub) {
+              setSelectedSubId(null);
+            } else {
+              onBack();
+            }
+          }}
+          className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 text-[11px] font-semibold text-slate-700 dark:text-slate-200 transition cursor-pointer"
+        >
+          <ArrowLeft className="w-3.5 h-3.5" />
+          <span className="truncate">
+            {selectedSub ? 'Tous les abonnements' : 'Tableau de bord'}
+          </span>
+        </button>
+
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-7 h-7 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-[#1e293b] flex items-center justify-center shrink-0 text-orange-600 dark:text-orange-400">
+            <CreditCard className="w-4 h-4" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="text-xs font-bold text-slate-900 dark:text-white truncate leading-tight">
+              Mes abonnements
+            </div>
+            <div className="text-[10.5px] text-slate-500 dark:text-slate-400 truncate leading-tight mt-0.5">
+              Facturation &amp; Cartes
             </div>
           </div>
-
           <button
             type="button"
-            onClick={loadAll}
-            disabled={loading}
-            className="px-3.5 py-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-xs font-bold flex items-center gap-2 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            onClick={() => setIsMobileSidebarOpen(false)}
+            className="md:hidden w-7 h-7 rounded-md border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer shrink-0"
+            aria-label="Fermer le menu"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>Actualiser</span>
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Milieu défilable : Catégories d'abonnements (style exact NIVEAUX / BTS 2 de Moyennes) */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-2.5 py-2.5 space-y-1">
+        <div className="px-1.5 pb-1 flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Catégories ({navCategories.length})
+          </span>
+          <button
+            type="button"
+            onClick={() => {
+              setIsMobileSidebarOpen(false);
+              if (onOpenRenewTarget) onOpenRenewTarget('storage');
+            }}
+            className="w-6 h-6 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 flex items-center justify-center transition cursor-pointer"
+            title="Voir les offres disponibles"
+          >
+            <Plus className="w-3.5 h-3.5 stroke-[2.2]" />
           </button>
         </div>
 
-        {/* Message de retour */}
-        {feedback && (
-          <div
-            className={`p-3.5 rounded-2xl border text-xs sm:text-sm font-bold flex items-start gap-2.5 ${
-              feedback.type === 'ok'
-                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-200 dark:border-emerald-700/60 text-emerald-800 dark:text-emerald-200'
-                : 'bg-rose-50 dark:bg-rose-950/40 border-rose-200 dark:border-rose-700/60 text-rose-800 dark:text-rose-200'
+        {navCategories.map((cat) => {
+          const isSelected = section === cat.id && !selectedSub;
+          const CatIcon = cat.Icon;
+          return (
+            <div
+              key={cat.id}
+              onClick={() => {
+                setSelectedSubId(null);
+                setSection(cat.id);
+                setIsMobileSidebarOpen(false);
+              }}
+              className={`group relative overflow-hidden flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
+                isSelected
+                  ? 'bg-[#2563eb] border-[#1d4ed8] text-white font-semibold shadow-xs'
+                  : 'bg-white dark:bg-[#161f33]/70 border-slate-200 dark:border-slate-700/90 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'
+              }`}
+            >
+              {!isSelected && (
+                <span
+                  className="absolute left-0 top-0 bottom-0 w-[3.5px]"
+                  style={{ backgroundColor: cat.accent }}
+                />
+              )}
+              <div className={`flex items-center gap-2 min-w-0 flex-1 ${!isSelected ? 'pl-1' : ''}`}>
+                <CatIcon
+                  className={`w-3.5 h-3.5 shrink-0 ${
+                    isSelected ? 'text-white/95' : 'text-slate-500 dark:text-slate-400'
+                  }`}
+                />
+                <span className="truncate">{cat.label}</span>
+              </div>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold shrink-0 ${
+                  isSelected
+                    ? 'bg-black/20 border-white/25 text-white'
+                    : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                {cat.count}
+              </span>
+            </div>
+          );
+        })}
+
+        {/* Sous-section Paiements & Suivi */}
+        <div className="pt-3 px-1.5 pb-1">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            Cartes &amp; Suivi
+          </span>
+        </div>
+
+        <div
+          onClick={() => {
+            setSelectedSubId(null);
+            setSection('cards');
+            setIsMobileSidebarOpen(false);
+          }}
+          className={`group relative overflow-hidden flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
+            section === 'cards' && !selectedSub
+              ? 'bg-[#2563eb] border-[#1d4ed8] text-white font-semibold shadow-xs'
+              : 'bg-white dark:bg-[#161f33]/70 border-slate-200 dark:border-slate-700/90 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'
+          }`}
+        >
+          {!(section === 'cards' && !selectedSub) && (
+            <span className="absolute left-0 top-0 bottom-0 w-[3.5px] bg-emerald-600" />
+          )}
+          <div className={`flex items-center gap-2 min-w-0 flex-1 ${!(section === 'cards' && !selectedSub) ? 'pl-1' : ''}`}>
+            <CreditCard
+              className={`w-3.5 h-3.5 shrink-0 ${
+                section === 'cards' && !selectedSub ? 'text-white/95' : 'text-slate-500 dark:text-slate-400'
+              }`}
+            />
+            <span className="truncate">Cartes Visa / MC</span>
+          </div>
+          <span
+            className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold shrink-0 ${
+              section === 'cards' && !selectedSub
+                ? 'bg-black/20 border-white/25 text-white'
+                : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300'
             }`}
           >
-            {feedback.type === 'ok' ? (
-              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+            {counts.cards}
+          </span>
+        </div>
+
+        <div
+          onClick={() => {
+            setSelectedSubId(null);
+            setSection('history');
+            setIsMobileSidebarOpen(false);
+          }}
+          className={`group relative overflow-hidden flex items-center justify-between gap-1.5 px-2.5 h-8 rounded-md border text-xs transition cursor-pointer ${
+            section === 'history' && !selectedSub
+              ? 'bg-[#2563eb] border-[#1d4ed8] text-white font-semibold shadow-xs'
+              : 'bg-white dark:bg-[#161f33]/70 border-slate-200 dark:border-slate-700/90 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'
+          }`}
+        >
+          {!(section === 'history' && !selectedSub) && (
+            <span className="absolute left-0 top-0 bottom-0 w-[3.5px] bg-amber-500" />
+          )}
+          <div className={`flex items-center gap-2 min-w-0 flex-1 ${!(section === 'history' && !selectedSub) ? 'pl-1' : ''}`}>
+            <Receipt
+              className={`w-3.5 h-3.5 shrink-0 ${
+                section === 'history' && !selectedSub ? 'text-white/95' : 'text-slate-500 dark:text-slate-400'
+              }`}
+            />
+            <span className="truncate">Activité &amp; Historique</span>
+          </div>
+          <span
+            className={`text-[10px] px-1.5 py-0.2 rounded border font-semibold shrink-0 ${
+              section === 'history' && !selectedSub
+                ? 'bg-black/20 border-white/25 text-white'
+                : 'bg-slate-100 dark:bg-slate-800 border-slate-300 dark:border-slate-600 text-slate-600 dark:text-slate-300'
+            }`}
+          >
+            {counts.history}
+          </span>
+        </div>
+      </div>
+
+      {/* Bas fixe de la barre latérale (identique aux boutons Moyenne générale / Transférer) */}
+      <div className="px-2.5 py-2.5 border-t border-slate-300 dark:border-slate-700 shrink-0 space-y-1.5">
+        <button
+          type="button"
+          disabled={linkingCard}
+          onClick={() => {
+            setIsMobileSidebarOpen(false);
+            handleLinkCard();
+          }}
+          className="w-full px-2.5 h-8 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#161f33] hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center justify-between gap-2 transition cursor-pointer disabled:opacity-60"
+        >
+          <span className="flex items-center gap-2 truncate">
+            {linkingCard ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin text-emerald-600 shrink-0" />
             ) : (
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <CreditCard className="w-3.5 h-3.5 text-slate-600 dark:text-slate-300 shrink-0" />
             )}
-            <span>{feedback.text}</span>
-          </div>
+            <span className="truncate">Ajouter une carte</span>
+          </span>
+          <ChevronRight className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+        </button>
+
+        {onOpenRenewTarget && (
+          <button
+            type="button"
+            onClick={() => {
+              setIsMobileSidebarOpen(false);
+              onOpenRenewTarget('storage');
+            }}
+            className="w-full px-2.5 h-8 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#161f33] hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center justify-between gap-2 transition cursor-pointer"
+          >
+            <span className="flex items-center gap-2 truncate">
+              <Sparkles className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+              <span className="truncate">Voir les offres</span>
+            </span>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 shrink-0" />
+          </button>
         )}
+      </div>
+    </div>
+  );
 
-        {/* Alerte impayé / blocage */}
-        {hasAlerts && (
-          <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-500/15 via-orange-500/15 to-amber-500/15 border border-rose-400/40 flex items-start gap-3">
-            <ShieldAlert className="w-5 h-5 text-rose-500 shrink-0 mt-0.5" />
-            <div className="text-xs sm:text-sm">
-              <div className="font-black text-rose-700 dark:text-rose-300">
-                Action requise sur un ou plusieurs abonnements
-              </div>
-              <p className="text-slate-700 dark:text-slate-300 mt-0.5">
-                Un abonnement est en période de grâce ou suspendu. Régularisez-le ci-dessous pour rétablir immédiatement votre accès.
-              </p>
-            </div>
+  // Cartes d'offres rapides (quand 0 abonnement dans la catégorie, pour occuper l'espace avec le même style graphique!)
+  const quickOfferCards = [
+    {
+      key: 'storage' as const,
+      tag: 'STOCKAGE CLOUD',
+      title: 'AUGMENTER MON STOCKAGE',
+      desc: 'Espace cloud supplémentaire · Auto, Manuel ou Infini',
+      meta: 'Plans flexibles · Paystack',
+      bg: '#0369a1',
+      border: '#075985',
+      onClick: () => onOpenRenewTarget?.('storage'),
+    },
+    {
+      key: 'ai' as const,
+      tag: 'CRÉDITS IA',
+      title: 'FORFAITS & PACKS IA',
+      desc: 'Assistant Delmas, résumés, création & analyses',
+      meta: 'Abonnement ou Pack',
+      bg: '#6d28d9',
+      border: '#5b21b6',
+      onClick: () => onOpenRenewTarget?.('ai'),
+    },
+    {
+      key: 'app' as const,
+      tag: 'APPLICATION',
+      title: 'MOYENNES & BULLETINS',
+      desc: 'Classes, trimestres, moyennes générales & exports',
+      meta: 'Accès complet · Essai / Pass',
+      bg: '#b91c1c',
+      border: '#991b1b',
+      onClick: () => onOpenRenewTarget?.('app', 'moyennes'),
+    },
+    {
+      key: 'card' as const,
+      tag: 'PAIEMENT AUTOMATIQUE',
+      title: 'ASSOCIER VISA / MASTERCARD',
+      desc: 'Activez le renouvellement automatique à tout moment',
+      meta: 'Sécurisé PCI-DSS Paystack',
+      bg: '#047857',
+      border: '#065f46',
+      onClick: () => handleLinkCard(),
+    },
+  ];
+
+  const activeTitle = selectedSub ? selectedSub.plan_name : sectionMeta[section].title;
+  const activeSubtitle = selectedSub
+    ? `${selectedSub.app_name || selectedSub.product_type} · ${formatCurrencyAmount(
+        selectedSub.price_amount || 0,
+        selectedSub.currency || 'XOF'
+      )}`
+    : sectionMeta[section].subtitle;
+
+  return (
+    <div
+      className={`flex flex-1 w-full bg-[#eef2f6] dark:bg-[#0b1120] text-slate-900 dark:text-slate-100 overflow-hidden font-sans transition-all duration-300 ${
+        viewerExpandLevel >= 2
+          ? 'fixed inset-0 z-[60] w-screen h-screen min-h-screen'
+          : 'relative h-dvh min-h-dvh'
+      }`}
+    >
+      {/* BARRE LATÉRALE DESKTOP (>= md) */}
+      <aside className="hidden md:flex w-[228px] lg:w-[244px] shrink-0 flex-col border-r border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] h-full min-h-0 z-20">
+        {renderSidebarContent()}
+      </aside>
+
+      {/* TIROIR LATÉRAL MOBILE (< md) */}
+      {isMobileSidebarOpen && (
+        <div
+          className="md:hidden fixed inset-0 z-50 flex bg-slate-900/50 backdrop-blur-[1px]"
+          onClick={() => setIsMobileSidebarOpen(false)}
+        >
+          <div
+            className="w-[264px] max-w-[82vw] h-full bg-white dark:bg-[#111827] shadow-xl border-r border-slate-300 dark:border-slate-700"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {renderSidebarContent()}
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Liste des abonnements */}
-        <section className="space-y-3">
-          <h2 className="text-sm font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
-            Mes abonnements actifs &amp; récents ({subscriptions.length})
-          </h2>
+      {/* ===================================================================== */}
+      {/* ZONE PRINCIPALE À DROITE — PLEIN ÉCRAN, IDENTIQUE AU MENU MOYENNES    */}
+      {/* ===================================================================== */}
+      <div className="flex-1 flex flex-col min-w-0 h-full min-h-0 overflow-hidden bg-[#eef2f6] dark:bg-[#0b1120]">
+        {/* BARRE SUPÉRIEURE UNIFIÉE : MENU MOBILE + FIL D'ARIANE + SYNCHRONISÉ + USER + EXPAND */}
+        <header className="h-12 bg-white dark:bg-[#111827] border-b border-slate-300 dark:border-slate-700 px-3 sm:px-6 flex items-center justify-between gap-2 shrink-0 z-10">
+          <div className="flex items-center gap-2 min-w-0">
+            <button
+              type="button"
+              onClick={() => setIsMobileSidebarOpen(true)}
+              className="md:hidden w-8 h-8 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1e293b] hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center justify-center text-slate-700 dark:text-slate-200 cursor-pointer shrink-0"
+              aria-label="Ouvrir le menu latéral"
+            >
+              <Menu className="w-4 h-4" />
+            </button>
 
-          {loading ? (
-            <div className="p-10 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center gap-2 text-sm text-slate-500">
-              <Loader2 className="w-5 h-5 animate-spin text-orange-500" />
-              <span>Chargement de vos abonnements...</span>
-            </div>
-          ) : subscriptions.length === 0 ? (
-            <div className="p-8 rounded-2xl bg-white dark:bg-slate-900 border border-dashed border-slate-300 dark:border-slate-700 text-center space-y-3">
-              <div className="text-3xl">📦</div>
-              <div className="font-black text-base">Aucun abonnement payant actif pour le moment</div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                Dès que vous souscrivez à un forfait Stockage Cloud, Crédits IA ou une application StudyCloud (comme Moyennes), vous pourrez tout piloter ici.
-              </p>
-              {onOpenRenewTarget && (
-                <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+            <nav className="flex items-center gap-1.5 text-xs min-w-0 overflow-hidden" aria-label="Fil d'Ariane">
+              <button
+                type="button"
+                onClick={onBack}
+                className="text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium truncate cursor-pointer"
+              >
+                StudyCloud
+              </button>
+              <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600 shrink-0" />
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedSubId(null);
+                  setSection('all');
+                }}
+                className={`truncate cursor-pointer ${
+                  section === 'all' && !selectedSub
+                    ? 'text-slate-900 dark:text-white font-bold'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium'
+                }`}
+              >
+                Mes abonnements
+              </button>
+              {section !== 'all' && (
+                <>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600 shrink-0" />
                   <button
                     type="button"
-                    onClick={() => onOpenRenewTarget('storage')}
-                    className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-extrabold cursor-pointer"
+                    onClick={() => setSelectedSubId(null)}
+                    className={`truncate cursor-pointer ${
+                      !selectedSub
+                        ? 'text-slate-900 dark:text-white font-bold'
+                        : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white font-medium'
+                    }`}
                   >
-                    Voir les offres Stockage
+                    {sectionMeta[section].title}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => onOpenRenewTarget('ai')}
-                    className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-white text-xs font-extrabold cursor-pointer"
-                  >
-                    Voir les offres Crédits IA
-                  </button>
-                </div>
+                </>
               )}
+              {selectedSub && (
+                <>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400 dark:text-slate-600 shrink-0" />
+                  <span className="text-slate-900 dark:text-white font-bold truncate max-w-[160px]">
+                    {selectedSub.plan_name}
+                  </span>
+                </>
+              )}
+            </nav>
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={loadAll}
+              disabled={loading}
+              className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-semibold border bg-slate-50 dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600 cursor-pointer transition"
+              title="Actualiser vos abonnements"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="w-3 h-3 animate-spin text-amber-600 dark:text-amber-300" />
+                  <span>Actualisation...</span>
+                </>
+              ) : (
+                <>
+                  <Cloud className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                  <span>Synchronisé</span>
+                </>
+              )}
+            </button>
+
+            <div className="hidden lg:flex items-center gap-1.5 px-2 py-1 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-[#1e293b]">
+              <div className="w-5 h-5 rounded-full bg-slate-800 dark:bg-blue-600 text-white flex items-center justify-center font-bold text-[10px]">
+                {userName.charAt(0).toUpperCase()}
+              </div>
+              <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-200 max-w-[110px] truncate">
+                {userName}
+              </span>
             </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              {subscriptions.map((sub) => {
-                const isInf = Number(sub.is_infinite) === 1 || sub.renewal_mode === 'infinite';
-                const isAuto = !isInf && sub.renewal_mode === 'auto';
-                const canAuto = !isInf && Number(sub.plan_allows_auto) === 1;
-                const hasCard = paymentMethods.length > 0;
-                const countdown = computeLiveCountdownLabel(sub);
-                const meta = getServiceMeta(sub);
-                const SrvIcon = meta.Icon;
-                const isBusy = busyId === sub.id;
 
-                return (
-                  <div
-                    key={sub.id}
-                    className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-5 flex flex-col justify-between gap-4"
+            <div className="hidden md:flex items-center gap-1.5 pl-1.5 border-l border-slate-300 dark:border-slate-700">
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => setViewerExpandLevel(lvl)}
+              />
+              <button
+                type="button"
+                onClick={handleToggleMaximize}
+                className={`w-7 h-7 rounded-md flex items-center justify-center border transition cursor-pointer ${
+                  viewerExpandLevel >= 1
+                    ? 'bg-[#0051c3] text-white border-[#0051c3]'
+                    : 'bg-white dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border-slate-300 dark:border-slate-600'
+                }`}
+                title={viewerExpandLevel >= 1 ? 'Réduire la vue' : "Agrandir l'espace"}
+              >
+                {viewerExpandLevel >= 1 ? (
+                  <Minimize2 className="w-3.5 h-3.5" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5" />
+                )}
+              </button>
+            </div>
+          </div>
+        </header>
+
+        {/* SOUS-EN-TÊTE FIXE : TITRE + RECHERCHE + BOUTON SOMBRE PRINCIPAL (IDENTIQUE À IMAGE 2) */}
+        <div className="shrink-0 bg-white dark:bg-[#111827] border-b border-slate-300 dark:border-slate-700 px-4 sm:px-8 py-3.5">
+          <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                {selectedSub && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedSubId(null)}
+                    className="w-7 h-7 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-[#1e293b] hover:bg-slate-100 flex items-center justify-center cursor-pointer shrink-0"
+                    title="Retour à la liste"
                   >
-                    <div className="space-y-3">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="space-y-1 min-w-0">
-                          <span
-                            className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[10.5px] font-extrabold ${meta.badgeCls}`}
-                          >
-                            <SrvIcon className="w-3 h-3" />
-                            <span>{meta.label}</span>
-                          </span>
-                          <h3 className="text-base font-black truncate">{sub.plan_name}</h3>
-                        </div>
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                  </button>
+                )}
+                <h1 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white tracking-tight truncate">
+                  {activeTitle}
+                </h1>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 truncate">
+                {activeSubtitle}
+              </p>
+            </div>
 
-                        <div className="text-right shrink-0">
-                          <div className="text-sm font-black font-mono text-emerald-600 dark:text-emerald-400">
-                            {formatCurrencyAmount(sub.price_amount || 0, sub.currency || 'XOF')}
-                          </div>
-                          <span
-                            className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-black ${
-                              sub.status === 'active'
-                                ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300'
-                                : sub.status === 'blocked'
-                                ? 'bg-rose-500/15 text-rose-700 dark:text-rose-300'
-                                : 'bg-amber-500/15 text-amber-700 dark:text-amber-300'
-                            }`}
-                          >
-                            {sub.status === 'active'
-                              ? '✅ Actif'
-                              : sub.status === 'blocked'
-                              ? '🔒 Suspendu'
-                              : sub.status === 'grace' || sub.status === 'past_due'
-                              ? '⏳ En grâce'
-                              : sub.status}
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Compte à rebours temps réel */}
-                      <div
-                        className={`px-3 py-2 rounded-xl border text-xs font-extrabold flex items-center gap-2 ${
-                          countdown.tone === 'amber'
-                            ? 'bg-amber-50 dark:bg-amber-500/15 border-amber-200 dark:border-amber-500/35 text-amber-800 dark:text-amber-200'
-                            : countdown.tone === 'emerald'
-                            ? 'bg-emerald-50 dark:bg-emerald-500/15 border-emerald-200 dark:border-emerald-500/35 text-emerald-800 dark:text-emerald-200'
-                            : countdown.tone === 'orange'
-                            ? 'bg-orange-50 dark:bg-orange-500/15 border-orange-200 dark:border-orange-500/35 text-orange-800 dark:text-orange-200'
-                            : 'bg-rose-50 dark:bg-rose-500/15 border-rose-200 dark:border-rose-500/35 text-rose-800 dark:text-rose-200'
-                        }`}
+            {!selectedSub && (
+              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+                {section !== 'cards' && section !== 'history' && (
+                  <div className="relative flex-1 sm:w-60">
+                    <Search className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Rechercher un abonnement..."
+                      className="w-full h-8 pl-8 pr-7 rounded-lg bg-slate-50 dark:bg-[#1e293b] focus:bg-white dark:focus:bg-[#161f33] border border-slate-300 dark:border-slate-600 focus:border-[#0051c3] dark:focus:border-blue-400 text-xs text-slate-900 dark:text-slate-100 placeholder:text-slate-500 dark:placeholder:text-slate-400 outline-none transition"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white cursor-pointer"
                       >
-                        {isInf ? <InfinityIcon className="w-4 h-4 shrink-0" /> : <CalendarClock className="w-4 h-4 shrink-0" />}
-                        <span>{countdown.text}</span>
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  disabled={linkingCard}
+                  onClick={() => handleLinkCard()}
+                  className="h-8 px-3 rounded-lg bg-[#0f172a] hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 border border-slate-900 dark:border-blue-400/60 text-white text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer shrink-0 disabled:opacity-60"
+                >
+                  {linkingCard ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  )}
+                  <span>Ajouter une carte</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ZONE DE CONTENU PLEINE LARGEUR DÉFILABLE */}
+        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-6 space-y-5">
+          {/* Retours / Alertes */}
+          {feedback && (
+            <div
+              className={`p-3 rounded-xl border text-xs font-semibold flex items-center justify-between gap-2 ${
+                feedback.type === 'ok'
+                  ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-300 dark:border-emerald-700 text-emerald-800 dark:text-emerald-200'
+                  : 'bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-700 text-rose-800 dark:text-rose-200'
+              }`}
+            >
+              <div className="flex items-center gap-2">
+                {feedback.type === 'ok' ? (
+                  <CheckCircle2 className="w-4 h-4 shrink-0" />
+                ) : (
+                  <AlertTriangle className="w-4 h-4 shrink-0" />
+                )}
+                <span>{feedback.text}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setFeedback(null)}
+                className="p-1 rounded hover:bg-black/5 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {hasAlerts && !selectedSub && (
+            <div className="p-3.5 rounded-xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-700/60 flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-start gap-2.5 text-xs">
+                <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-rose-800 dark:text-rose-200">
+                    Un ou plusieurs abonnements nécessitent votre attention
+                  </div>
+                  <div className="text-rose-700/80 dark:text-rose-300/80 mt-0.5">
+                    Cliquez sur la carte concernée pour régulariser votre paiement et rétablir l&apos;accès immédiatement.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* =============================================================== */}
+          {/* VUE DÉTAIL D'UN ABONNEMENT SÉLECTIONNÉ                          */}
+          {/* =============================================================== */}
+          {selectedSub ? (
+            (() => {
+              const isInf = Number(selectedSub.is_infinite) === 1 || selectedSub.renewal_mode === 'infinite';
+              const isAuto = !isInf && selectedSub.renewal_mode === 'auto';
+              const canAuto = !isInf && Number(selectedSub.plan_allows_auto) === 1;
+              const hasCard = paymentMethods.length > 0;
+              const cd = computeLiveCountdownLabel(selectedSub);
+              const palette = getCardPalette(selectedSub);
+              const isBusy = busyId === selectedSub.id;
+
+              return (
+                <div className="space-y-4">
+                  {/* Bandeau coloré récapitulatif */}
+                  <div
+                    style={{ backgroundColor: palette.bg, borderColor: palette.border }}
+                    className="rounded-xl p-5 border text-white flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm"
+                  >
+                    <div className="space-y-1">
+                      <div className="text-[10.5px] font-bold uppercase tracking-wider text-white/80">
+                        {palette.serviceLabel}
+                      </div>
+                      <h2 className="text-xl font-black tracking-tight">{selectedSub.plan_name}</h2>
+                      <div className="text-xs text-white/90 font-medium flex items-center gap-2 flex-wrap">
+                        <span>
+                          {formatCurrencyAmount(
+                            selectedSub.price_amount || 0,
+                            selectedSub.currency || 'XOF'
+                          )}
+                        </span>
+                        <span>•</span>
+                        <span>{cd.text}</span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {!isInf && onOpenRenewTarget && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            onOpenRenewTarget(selectedSub.product_type, selectedSub.app_key)
+                          }
+                          className="h-9 px-4 rounded-lg bg-white text-slate-900 hover:bg-slate-100 text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                        >
+                          <span>Renouveler / Changer</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Grille d'informations & contrôles */}
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    {/* Carte Dates & Validité */}
+                    <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 rounded-xl p-4 space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white">
+                        <CalendarClock className="w-4 h-4 text-[#0051c3] dark:text-blue-400" />
+                        <span>Validité &amp; Échéance</span>
+                      </div>
+                      <div className="divide-y divide-slate-200 dark:divide-slate-700/80 text-xs">
+                        <div className="py-2 flex items-center justify-between">
+                          <span className="text-slate-500 dark:text-slate-400">Statut</span>
+                          <span className="font-bold text-slate-900 dark:text-white capitalize">
+                            {selectedSub.status === 'active'
+                              ? '✅ Actif (Payé)'
+                              : selectedSub.status === 'blocked'
+                              ? '🔒 Suspendu'
+                              : selectedSub.status === 'grace'
+                              ? '⏳ Période de grâce'
+                              : selectedSub.status}
+                          </span>
+                        </div>
+                        <div className="py-2 flex items-center justify-between">
+                          <span className="text-slate-500 dark:text-slate-400">Début de période</span>
+                          <span className="font-semibold">
+                            {formatDateTimeFr(selectedSub.current_period_start)}
+                          </span>
+                        </div>
+                        <div className="py-2 flex items-center justify-between">
+                          <span className="text-slate-500 dark:text-slate-400">Expiration exacte</span>
+                          <span className="font-bold text-amber-700 dark:text-amber-300">
+                            {isInf ? '♾️ Jamais (À vie)' : formatDateTimeFr(selectedSub.current_period_end)}
+                          </span>
+                        </div>
+                        <div className="py-2 flex items-center justify-between">
+                          <span className="text-slate-500 dark:text-slate-400">Moyen utilisé</span>
+                          <span className="font-semibold">
+                            {selectedSub.last_network_label || 'Paystack'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Carte Mode Auto / Manuel */}
+                    <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 rounded-xl p-4 space-y-3 flex flex-col justify-between">
+                      <div className="space-y-2.5">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-xs font-bold text-slate-900 dark:text-white">
+                            {isInf ? (
+                              <InfinityIcon className="w-4 h-4 text-amber-500" />
+                            ) : isAuto ? (
+                              <Zap className="w-4 h-4 text-emerald-500" />
+                            ) : (
+                              <RefreshCw className="w-4 h-4 text-sky-500" />
+                            )}
+                            <span>Mode de renouvellement</span>
+                          </div>
+                          <span className="px-2 py-0.5 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-[#1e293b] text-[11px] font-bold">
+                            {isInf ? '♾️ Infini (À vie)' : isAuto ? '⚡ Automatique' : '🔄 Manuel'}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                          {isInf
+                            ? 'Cet abonnement est actif à vie sur votre compte. Aucun prélèvement ni renouvellement ne sera jamais facturé.'
+                            : isAuto
+                            ? 'Votre carte bancaire enregistrée sera prélevée automatiquement à la date d’échéance. Vous pouvez basculer en mode manuel à tout moment.'
+                            : canAuto
+                            ? 'Aucun prélèvement automatique. Vous renouvelez vous-même ou vous pouvez associer une carte Visa/Mastercard pour passer en automatique.'
+                            : 'Ce forfait fonctionne uniquement en paiement manuel. Aucun prélèvement automatique ne sera effectué.'}
+                        </p>
                       </div>
 
-                      {!isInf && (
-                        <div className="grid grid-cols-2 gap-2 text-[11px] text-slate-500 dark:text-slate-400">
-                          <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800">
-                            <div className="text-[9.5px] uppercase font-bold">Début</div>
-                            <div className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
-                              {formatDateTimeFr(sub.current_period_start)}
-                            </div>
-                          </div>
-                          <div className="p-2 rounded-lg bg-slate-50 dark:bg-slate-950/60 border border-slate-100 dark:border-slate-800">
-                            <div className="text-[9.5px] uppercase font-bold">Fin exacte</div>
-                            <div className="font-bold text-slate-800 dark:text-slate-200 mt-0.5">
-                              {formatDateTimeFr(sub.current_period_end)}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Contrôle Auto / Manuel */}
-                      {!isInf && (
-                        <div className="p-3 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200/70 dark:border-slate-800 space-y-2">
-                          <div className="flex items-center justify-between gap-2 text-xs">
-                            <span className="font-bold text-slate-600 dark:text-slate-300">Mode actuel :</span>
-                            <span className="font-black flex items-center gap-1">
-                              {isAuto ? (
-                                <>
-                                  <Zap className="w-3.5 h-3.5 text-emerald-500" />
-                                  <span className="text-emerald-600 dark:text-emerald-300">Automatique</span>
-                                </>
-                              ) : (
-                                <>
-                                  <RefreshCw className="w-3.5 h-3.5 text-sky-500" />
-                                  <span className="text-sky-600 dark:text-sky-300">Manuel</span>
-                                </>
-                              )}
-                            </span>
-                          </div>
-
-                          {canAuto ? (
-                            hasCard ? (
-                              <div className="flex items-center gap-2">
+                      {!isInf && canAuto && (
+                        <div className="pt-2 flex flex-wrap items-center gap-2">
+                          {hasCard ? (
+                            <>
+                              <button
+                                type="button"
+                                disabled={isBusy}
+                                onClick={() => handleToggleMode(selectedSub, isAuto ? 'manual' : 'auto')}
+                                className="flex-1 h-9 px-3 rounded-lg bg-[#0f172a] hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white text-xs font-semibold transition cursor-pointer disabled:opacity-60"
+                              >
+                                {isBusy
+                                  ? 'Mise à jour...'
+                                  : isAuto
+                                  ? '🔄 Passer en Paiement Manuel'
+                                  : '⚡ Activer le Paiement Automatique'}
+                              </button>
+                              {isAuto && Number(selectedSub.cancel_at_period_end) !== 1 && (
                                 <button
                                   type="button"
                                   disabled={isBusy}
-                                  onClick={() => handleToggleMode(sub, isAuto ? 'manual' : 'auto')}
-                                  className="flex-1 py-2 px-3 rounded-lg bg-slate-900 dark:bg-slate-800 hover:bg-slate-800 dark:hover:bg-slate-700 text-white text-[11px] font-extrabold transition cursor-pointer disabled:opacity-60"
+                                  onClick={() => handleCancelAuto(selectedSub)}
+                                  className="h-9 px-3 rounded-lg border border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 text-xs font-semibold inline-flex items-center gap-1.5 hover:bg-rose-100 cursor-pointer"
                                 >
-                                  {isBusy
-                                    ? 'Mise à jour...'
-                                    : isAuto
-                                    ? '🔄 Passer en Manuel'
-                                    : '⚡ Activer le paiement Auto'}
+                                  <Ban className="w-3.5 h-3.5" />
+                                  <span>Arrêter en fin de période</span>
                                 </button>
-                                {isAuto && Number(sub.cancel_at_period_end) !== 1 && (
-                                  <button
-                                    type="button"
-                                    disabled={isBusy}
-                                    onClick={() => handleCancelAuto(sub)}
-                                    title="Arrêter en fin de période"
-                                    className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-300 transition cursor-pointer"
-                                  >
-                                    <Ban className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                disabled={linkingCard}
-                                onClick={() => handleLinkCard(sub.id)}
-                                className="w-full py-2 px-3 rounded-lg bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-[11px] font-extrabold flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
-                              >
-                                <CreditCard className="w-3.5 h-3.5" />
-                                <span>Associer une carte Visa/Mastercard (Auto)</span>
-                              </button>
-                            )
+                              )}
+                            </>
                           ) : (
-                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                              Ce forfait fonctionne uniquement en paiement manuel.
-                            </p>
+                            <button
+                              type="button"
+                              disabled={linkingCard}
+                              onClick={() => handleLinkCard(selectedSub.id)}
+                              className="w-full h-9 px-3 rounded-lg bg-[#047857] hover:bg-emerald-700 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-60"
+                            >
+                              <CreditCard className="w-3.5 h-3.5" />
+                              <span>Associer une carte Visa / Mastercard (Passer en Auto)</span>
+                            </button>
                           )}
                         </div>
                       )}
                     </div>
-
-                    {/* Bouton Renouveler / Régulariser */}
-                    {!isInf && onOpenRenewTarget && (
+                  </div>
+                </div>
+              );
+            })()
+          ) : section === 'cards' ? (
+            /* =============================================================== */
+            /* SECTION CARTES VISA / MASTERCARD (GRILLE STYLE IMAGE 2)         */
+            /* =============================================================== */
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+                {paymentMethods.map((pm) => (
+                  <div
+                    key={pm.id}
+                    className="group relative rounded-xl p-4 flex flex-col justify-between min-h-[138px] bg-[#0f172a] border border-slate-700 text-white shadow-sm overflow-hidden"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[10.5px] font-semibold uppercase tracking-wide text-emerald-300">
+                          {pm.isDefault ? 'CARTE PRINCIPALE' : 'CARTE ENREGISTRÉE'}
+                        </div>
+                        <h3 className="text-sm font-bold text-white truncate mt-0.5">{pm.label}</h3>
+                        <div className="text-[11px] text-slate-300 mt-0.5 truncate">
+                          Exp. {pm.expMonth}/{pm.expYear} {pm.bank ? `· ${pm.bank}` : ''}
+                        </div>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => onOpenRenewTarget(sub.product_type, sub.app_key)}
-                        className={`w-full py-2.5 px-4 rounded-xl text-xs font-black transition cursor-pointer ${
-                          sub.status === 'blocked' || sub.status === 'grace' || sub.status === 'past_due'
-                            ? 'bg-gradient-to-r from-orange-500 to-rose-500 hover:from-orange-600 hover:to-rose-600 text-white shadow-md'
-                            : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-white'
-                        }`}
+                        disabled={busyId === pm.id}
+                        onClick={() => handleRemoveCard(pm)}
+                        className="w-7 h-7 rounded-md bg-white/10 hover:bg-rose-600 text-white/80 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0"
+                        title="Supprimer cette carte"
                       >
-                        {sub.status === 'blocked' || sub.status === 'grace' || sub.status === 'past_due'
-                          ? '💳 Régulariser / Renouveler maintenant'
-                          : 'Renouveler ou changer de forfait'}
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
-                    )}
+                    </div>
+
+                    <div className="mt-4 pt-2.5 border-t border-white/15 flex items-center justify-between text-[11px] text-slate-300">
+                      <span>Sécurisée Paystack</span>
+                      <span className="font-semibold text-emerald-300">Réutilisable</span>
+                    </div>
+                  </div>
+                ))}
+
+                {/* Carte d'ajout direct */}
+                <button
+                  type="button"
+                  disabled={linkingCard}
+                  onClick={() => handleLinkCard()}
+                  className="group rounded-xl p-4 flex flex-col justify-between min-h-[138px] bg-white dark:bg-[#131c2e] border border-dashed border-slate-400 dark:border-slate-600 hover:border-[#0051c3] dark:hover:border-blue-400 text-left transition cursor-pointer disabled:opacity-60"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-[10.5px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        VISA / MASTERCARD
+                      </div>
+                      <div className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                        Ajouter une carte bancaire
+                      </div>
+                      <div className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                        Utile pour activer le renouvellement automatique
+                      </div>
+                    </div>
+                    <div className="w-7 h-7 rounded-md bg-slate-100 dark:bg-[#1e293b] border border-slate-300 dark:border-slate-600 flex items-center justify-center shrink-0">
+                      {linkingCard ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-600" />
+                      ) : (
+                        <Plus className="w-4 h-4 text-slate-700 dark:text-slate-200" />
+                      )}
+                    </div>
+                  </div>
+                  <div className="mt-4 pt-2.5 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between text-[11px] font-semibold text-[#0051c3] dark:text-blue-400">
+                    <span>Tokenisation PCI-DSS</span>
+                    <span className="inline-flex items-center gap-1">
+                      <span>Associer</span>
+                      <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                    </span>
+                  </div>
+                </button>
+              </div>
+            </div>
+          ) : section === 'history' ? (
+            /* =============================================================== */
+            /* SECTION ACTIVITÉ & HISTORIQUE (PLEINE LARGEUR)                  */
+            /* =============================================================== */
+            <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 rounded-xl overflow-hidden">
+              {recentEvents.length === 0 ? (
+                <div className="p-10 text-center text-xs text-slate-500 dark:text-slate-400">
+                  Aucune activité enregistrée sur vos abonnements pour le moment.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-200 dark:divide-slate-800">
+                  {recentEvents.map((ev) => (
+                    <div
+                      key={ev.id}
+                      className="px-4 py-3 flex items-center justify-between gap-3 text-xs hover:bg-slate-50 dark:hover:bg-slate-800/50 transition"
+                    >
+                      <div className="flex items-center gap-2.5 min-w-0">
+                        <Clock className="w-3.5 h-3.5 text-[#0051c3] dark:text-blue-400 shrink-0" />
+                        <span className="font-semibold text-slate-900 dark:text-white truncate">
+                          {formatEventLabel(ev.event_type)}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap shrink-0">
+                        {formatDateTimeFr(ev.created_at)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : loading ? (
+            <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 rounded-xl p-10 flex items-center justify-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300">
+              <Loader2 className="w-4 h-4 animate-spin text-[#0051c3]" />
+              <span>Chargement de vos abonnements...</span>
+            </div>
+          ) : visibleSubscriptions.length === 0 ? (
+            /* =============================================================== */
+            /* GRILLE DE CARTES COLORÉES DE DÉCOUVERTE (MÊME STYLE QUE IMAGE 2)*/
+            /* =============================================================== */
+            <div className="space-y-5">
+              <div className="bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 rounded-xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="text-sm font-bold text-slate-900 dark:text-white">
+                    {searchQuery.trim()
+                      ? `Aucun abonnement ne correspond à « ${searchQuery} »`
+                      : 'Aucun abonnement payant actif dans cette catégorie'}
+                  </div>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                    Sélectionnez une carte ci-dessous pour découvrir les offres StudyCloud ou associer une carte Visa/Mastercard.
+                  </p>
+                </div>
+                {searchQuery.trim() && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    className="h-8 px-3 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-xs font-semibold cursor-pointer shrink-0"
+                  >
+                    Effacer la recherche
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+                {quickOfferCards
+                  .filter(
+                    (c) =>
+                      section === 'all' ||
+                      c.key === section ||
+                      c.key === 'card'
+                  )
+                  .map((card) => (
+                    <div
+                      key={card.key}
+                      onClick={card.onClick}
+                      style={{ backgroundColor: card.bg, borderColor: card.border }}
+                      className="group relative rounded-xl p-4 flex flex-col justify-between min-h-[138px] text-white transition cursor-pointer overflow-hidden border shadow-[0_1px_2px_rgba(15,23,42,0.08)] hover:shadow-md hover:brightness-[1.05]"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="text-[10.5px] font-semibold uppercase tracking-wide text-white/80 truncate">
+                            {card.tag}
+                          </div>
+                          <h3 className="text-sm font-bold text-white truncate mt-0.5">
+                            {card.title}
+                          </h3>
+                          <div className="text-[11px] text-white/85 mt-1 line-clamp-2 leading-snug">
+                            {card.desc}
+                          </div>
+                        </div>
+                        <span className="w-7 h-7 rounded-md bg-black/15 flex items-center justify-center text-white/85 shrink-0">
+                          <MoreHorizontal className="w-4 h-4" />
+                        </span>
+                      </div>
+
+                      <div className="mt-4 pt-2.5 border-t border-white/25 flex items-center justify-between text-[11px]">
+                        <span className="font-medium text-white/90 truncate">{card.meta}</span>
+                        <span className="inline-flex items-center gap-1 font-semibold text-white shrink-0">
+                          <span>Ouvrir</span>
+                          <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          ) : (
+            /* =============================================================== */
+            /* GRILLE DES ABONNEMENTS ACTIFS — CARTES IDENTIQUES À IMAGE 2     */
+            /* =============================================================== */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
+              {visibleSubscriptions.map((sub) => {
+                const isInf = Number(sub.is_infinite) === 1 || sub.renewal_mode === 'infinite';
+                const isAuto = !isInf && sub.renewal_mode === 'auto';
+                const cd = computeLiveCountdownLabel(sub);
+                const palette = getCardPalette(sub);
+
+                return (
+                  <div
+                    key={sub.id}
+                    onClick={() => setSelectedSubId(sub.id)}
+                    style={{ backgroundColor: palette.bg, borderColor: palette.border }}
+                    className="group relative rounded-xl p-4 flex flex-col justify-between min-h-[144px] text-white transition cursor-pointer overflow-hidden border shadow-[0_1px_2px_rgba(15,23,42,0.08)] hover:shadow-md hover:brightness-[1.05]"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-[10.5px] font-semibold uppercase tracking-wide text-white/80 truncate">
+                          {palette.serviceLabel}
+                        </div>
+                        <h3 className="text-sm font-bold text-white truncate mt-0.5 uppercase">
+                          {sub.plan_name}
+                        </h3>
+                        <div className="text-[11px] text-white/90 font-medium truncate mt-0.5">
+                          {formatCurrencyAmount(sub.price_amount || 0, sub.currency || 'XOF')} ·{' '}
+                          {isInf ? '♾️ À vie' : isAuto ? '⚡ Automatique' : '🔄 Manuel'}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedSubId(sub.id);
+                        }}
+                        className="w-7 h-7 rounded-md hover:bg-black/20 text-white/80 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0"
+                        title="Gérer cet abonnement"
+                      >
+                        <MoreHorizontal className="w-4 h-4" />
+                      </button>
+                    </div>
+
+                    <div className="mt-4 pt-2.5 border-t border-white/25 flex items-center justify-between text-[11px]">
+                      <div className="flex items-center gap-1.5 font-medium text-white/95 truncate">
+                        <span>{cd.short}</span>
+                        <span className="text-white/60">•</span>
+                        <span>
+                          {sub.status === 'active'
+                            ? 'Actif'
+                            : sub.status === 'blocked'
+                            ? 'Bloqué'
+                            : sub.status === 'grace'
+                            ? 'Grâce'
+                            : sub.status}
+                        </span>
+                      </div>
+                      <span className="inline-flex items-center gap-1 font-semibold text-white shrink-0">
+                        <span>Ouvrir</span>
+                        <ArrowRight className="w-3.5 h-3.5 transition-transform group-hover:translate-x-0.5" />
+                      </span>
+                    </div>
                   </div>
                 );
               })}
             </div>
           )}
-        </section>
-
-        {/* Cartes bancaires enregistrées */}
-        <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="text-sm font-black flex items-center gap-2">
-                <CreditCard className="w-4 h-4 text-emerald-500" />
-                <span>Mes cartes bancaires (Visa / Mastercard)</span>
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                Associez une carte bancaire sécurisée (tokenisée PCI-DSS via Paystack) même si vous avez payé initialement par Wave, Orange Money ou MTN.
-              </p>
-            </div>
-            <button
-              type="button"
-              disabled={linkingCard}
-              onClick={() => handleLinkCard()}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
-            >
-              {linkingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Plus className="w-3.5 h-3.5" />}
-              <span>Ajouter une carte Visa/Mastercard</span>
-            </button>
-          </div>
-
-          {paymentMethods.length === 0 ? (
-            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-950/60 border border-dashed border-slate-200 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
-              Aucune carte bancaire enregistrée. Vos abonnements actuels sont en mode manuel.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {paymentMethods.map((pm) => (
-                <div
-                  key={pm.id}
-                  className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3"
-                >
-                  <div className="min-w-0">
-                    <div className="font-black text-sm flex items-center gap-2">
-                      <span>💳 {pm.label}</span>
-                      {pm.isDefault && (
-                        <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 text-[9.5px] font-black">
-                          Principale
-                        </span>
-                      )}
-                    </div>
-                    <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      Exp. {pm.expMonth}/{pm.expYear} {pm.bank ? `· ${pm.bank}` : ''}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={busyId === pm.id}
-                    onClick={() => handleRemoveCard(pm)}
-                    className="p-2 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-300 transition cursor-pointer"
-                    title="Supprimer cette carte"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
-        {/* Historique récent */}
-        {recentEvents.length > 0 && (
-          <section className="rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 space-y-3">
-            <h2 className="text-sm font-black flex items-center gap-2">
-              <Clock className="w-4 h-4 text-sky-500" />
-              <span>Activité récente sur vos abonnements</span>
-            </h2>
-            <div className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
-              {recentEvents.slice(0, 10).map((ev) => (
-                <div key={ev.id} className="py-2 flex items-center justify-between gap-3">
-                  <span className="font-bold text-slate-800 dark:text-slate-200">
-                    {formatEventLabel(ev.event_type)}
-                  </span>
-                  <span className="text-[11px] text-slate-400 whitespace-nowrap">
-                    {formatDateTimeFr(ev.created_at)}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </section>
-        )}
+        </div>
       </div>
     </div>
   );
