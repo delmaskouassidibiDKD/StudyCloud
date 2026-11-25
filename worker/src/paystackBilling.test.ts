@@ -19,6 +19,7 @@ import {
   resolveInitialRenewalMode,
   resolvePlanPriceMajor,
   toPaystackAmountMinor,
+  tryAutoRechargeDepletedAiCredits,
 } from './paystackBilling';
 
 function createMockD1() {
@@ -1109,4 +1110,280 @@ test('Étapes 4 & 7 — Emails Resend auto + webhook delivered/opened, envoi man
   const cronIdempotent = await executeBillingCronJob(db, rawEnv, { fetchFn: mockFetch, nowIso: '2026-12-14T11:05:00.000Z' });
   assert.equal(cronIdempotent.autoCharged, 0);
   assert.equal(autoChargeCalls, callsBefore + 1);
+});
+
+test('Cartes enregistrées — Permissions par service, remboursement auto 100 FCFA, achat Visa ciblé, pré-autorisation, recharge auto IA à 0 (anti-boucle 24h) et vue Admin Cartes', async () => {
+  const { db } = createMockD1();
+  await ensurePaystackBillingTables(db);
+
+  await db.prepare('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT, phone TEXT)').run();
+  await db.prepare(`INSERT INTO users (id, name, email, phone) VALUES ('u-card', 'Awa Diallo', 'awa@studycloud.ci', '+2250701020304')`).run();
+  await db
+    .prepare(
+      `INSERT INTO storage_subscription_plans (id, name, storage_amount, storage_mb, price, primary_currency, billing_mode, duration_days, is_auto_billing, allow_auto, allow_manual, is_infinite, is_active)
+       VALUES ('stor_card_50', 'Stockage 50 Go', '50 Go', 51200, 3000, 'XOF', 'auto', 30, 1, 1, 1, 0, 1)`
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO ai_subscription_plans (id, name, credits_or_words, credits_count, price, primary_currency, billing_mode, duration_days, is_auto_billing, allow_auto, allow_manual, is_infinite, is_active)
+       VALUES ('ai_card_pro', 'Pack IA Pro 200', '200 crédits', 200, 2500, 'XOF', 'auto', 30, 1, 1, 1, 0, 1)`
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO app_subscription_plans (id, app_key, name, price, primary_currency, billing_mode, duration_days, is_auto_billing, allow_auto, allow_manual, is_infinite, is_active)
+       VALUES ('moy_card_m', 'moyennes', 'Moyennes Mensuel', 1500, 'XOF', 'auto', 30, 1, 1, 1, 0, 1)`
+    )
+    .run();
+
+  const refundCalls: any[] = [];
+  const chargeCalls: any[] = [];
+  let pendingMeta: Record<string, any> = {};
+  let nextVerifyChannel: 'card' | 'mobile_money' = 'card';
+  let nextVerifyAmountMinor = 10000;
+
+  const mockFetch: typeof fetch = async (input: any, init?: any) => {
+    const urlStr = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+
+    if (urlStr.includes('api.resend.com/emails')) {
+      return new Response(JSON.stringify({ id: `re_card_${Date.now()}` }), { status: 200 });
+    }
+    if (urlStr.endsWith('/transaction/initialize')) {
+      pendingMeta = body.metadata || {};
+      nextVerifyAmountMinor = Number(body.amount || 10000);
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            authorization_url: `https://checkout.paystack.com/${body.reference}`,
+            access_code: `acc_${body.reference}`,
+            reference: body.reference,
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    if (urlStr.includes('/transaction/verify/')) {
+      const ref = urlStr.split('/transaction/verify/')[1];
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            id: 99001,
+            reference: ref,
+            status: 'success',
+            amount: nextVerifyAmountMinor,
+            currency: 'XOF',
+            channel: nextVerifyChannel,
+            customer: { email: 'awa@studycloud.ci' },
+            metadata: pendingMeta,
+            authorization:
+              nextVerifyChannel === 'card'
+                ? {
+                    authorization_code: 'AUTH_AWA_5544',
+                    brand: 'visa',
+                    card_type: 'visa debit',
+                    last4: '5544',
+                    exp_month: '09',
+                    exp_year: '2029',
+                    bank: 'SGCI',
+                    country_code: 'CI',
+                    signature: 'SIG_AWA_5544',
+                    reusable: true,
+                  }
+                : { bank: 'Wave CI', reusable: false },
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    if (urlStr.endsWith('/refund')) {
+      refundCalls.push(body);
+      return new Response(
+        JSON.stringify({
+          status: true,
+          message: 'Refund has been queued for processing',
+          data: { status: 'processed', transaction: body.transaction },
+        }),
+        { status: 200 }
+      );
+    }
+    if (urlStr.endsWith('/transaction/charge_authorization')) {
+      chargeCalls.push(body);
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            id: 99500 + chargeCalls.length,
+            reference: body.reference,
+            status: 'success',
+            amount: body.amount,
+            currency: body.currency || 'XOF',
+            channel: 'card',
+            customer: { email: body.email },
+            authorization: {
+              authorization_code: body.authorization_code,
+              brand: 'visa',
+              last4: '5544',
+              reusable: true,
+            },
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response(JSON.stringify({ status: false }), { status: 404 });
+  };
+
+  const rawEnv = { PAYSTACK_SECRET_KEY: 'sk_test_card_perms', RESEND_API_KEY: 're_test_card' };
+  const callApi = async (path: string, opts: { method?: string; token?: string; body?: any } = {}) => {
+    const req = new Request(`https://api-worker.dkd-technologies.com${path}`, {
+      method: opts.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    const res = await handlePaystackBillingRoutes(req, new URL(req.url), new URL(req.url).pathname, req.method, {
+      db,
+      rawEnv,
+      origin: '*',
+      fetchFn: mockFetch,
+      getAuthUser: async (r) =>
+        r.headers.get('Authorization') === 'Bearer token-awa'
+          ? { userId: 'u-card', email: 'awa@studycloud.ci', name: 'Awa Diallo' }
+          : null,
+      jsonResponse: (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'Content-Type': 'application/json' } }),
+      errorResponse: (m, s = 400) => new Response(JSON.stringify({ success: false, error: m }), { status: s, headers: { 'Content-Type': 'application/json' } }),
+    });
+    assert.ok(res);
+    return res!;
+  };
+
+  // 1. Awa ajoute sa carte depuis la modale StudyCloud en cochant Stockage + Crédits IA (avec recharge auto à 0), mais PAS Applications
+  const linkInit = await (
+    await callApi('/api/billing/payment-methods/link-init', {
+      method: 'POST',
+      token: 'token-awa',
+      body: { autoStorage: true, autoAi: true, autoAiOnDepleted: true, autoApps: [] },
+    })
+  ).json();
+  assert.equal(linkInit.success, true);
+  assert.equal(linkInit.autoRefundEnabled, true);
+
+  nextVerifyChannel = 'card';
+  const linkVer = await (
+    await callApi('/api/billing/payment-methods/link-verify', {
+      method: 'POST',
+      token: 'token-awa',
+      body: {
+        reference: linkInit.reference,
+        autoStorage: true,
+        autoAi: true,
+        autoAiOnDepleted: true,
+        autoApps: [],
+      },
+    })
+  ).json();
+  assert.equal(linkVer.success, true);
+  assert.equal(linkVer.refunded, true, 'L’empreinte de 100 FCFA doit être remboursée automatiquement');
+  assert.equal(refundCalls.length, 1);
+  assert.equal(refundCalls[0].transaction, linkInit.reference);
+  assert.equal(linkVer.paymentMethod.autoStorage, true);
+  assert.equal(linkVer.paymentMethod.autoAi, true);
+  assert.equal(linkVer.paymentMethod.autoAiOnDepleted, true);
+  assert.deepEqual(linkVer.paymentMethod.autoApps, []);
+  const pmId = linkVer.paymentMethod.id;
+
+  // 2. Awa s'abonne à Stockage 50 Go via Wave -> sa carte déjà enregistrée autorise Stockage => rattachée en auto !
+  nextVerifyChannel = 'mobile_money';
+  const initStor = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'token-awa',
+      body: { productType: 'storage', productId: 'stor_card_50' },
+    })
+  ).json();
+  const verStor = await (
+    await callApi(`/api/payments/paystack/verify?reference=${initStor.reference}`, { token: 'token-awa' })
+  ).json();
+  assert.equal(verStor.verified, true);
+  assert.equal(verStor.subscription.renewal_mode, 'auto');
+  assert.equal(verStor.subscription.payment_method_id, pmId);
+
+  // 3. Awa s'abonne à Moyennes via Wave -> sa carte n'autorise PAS Applications => reste 'manual' !
+  const initMoy = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'token-awa',
+      body: { productType: 'app', productId: 'moy_card_m' },
+    })
+  ).json();
+  const verMoy = await (
+    await callApi(`/api/payments/paystack/verify?reference=${initMoy.reference}`, { token: 'token-awa' })
+  ).json();
+  assert.equal(verMoy.verified, true);
+  assert.equal(verMoy.subscription.renewal_mode, 'manual');
+  assert.equal(verMoy.subscription.payment_method_id, '');
+
+  // 4. Awa décoche Stockage et coche Applications via PATCH /permissions -> Stockage passe en manuel & Moyennes passe en auto !
+  const patchPerm = await (
+    await callApi(`/api/billing/payment-methods/${pmId}/permissions`, {
+      method: 'PATCH',
+      token: 'token-awa',
+      body: { autoStorage: false, autoAi: true, autoAiOnDepleted: true, autoApps: ['*'] },
+    })
+  ).json();
+  assert.equal(patchPerm.success, true);
+  assert.equal(patchPerm.switchedToManualCount, 1);
+  assert.equal(patchPerm.switchedToAutoCount, 1);
+
+  const storSubRow: any = await db.prepare('SELECT renewal_mode FROM active_subscriptions WHERE id = ?').bind(verStor.subscription.id).first();
+  const moySubRow: any = await db.prepare('SELECT renewal_mode, payment_method_id FROM active_subscriptions WHERE id = ?').bind(verMoy.subscription.id).first();
+  assert.equal(storSubRow.renewal_mode, 'manual');
+  assert.equal(moySubRow.renewal_mode, 'auto');
+  assert.equal(moySubRow.payment_method_id, pmId);
+
+  // 5. Recharge automatique Crédits IA quand le solde tombe à 0 + garde-fou anti-boucle 24h !
+  nextVerifyChannel = 'card';
+  const initAi = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'token-awa',
+      body: { productType: 'ai', productId: 'ai_card_pro', channelOnly: 'card' },
+    })
+  ).json();
+  const verAi = await (
+    await callApi(`/api/payments/paystack/verify?reference=${initAi.reference}`, { token: 'token-awa' })
+  ).json();
+  assert.equal(verAi.verified, true);
+  assert.equal(verAi.subscription.renewal_mode, 'auto');
+
+  // Simuler épuisement complet du solde IA (credits_balance = 0)
+  await db.prepare('UPDATE user_ai_credits SET credits_balance = 0, remaining_credits = 0, purchased_remaining = 0, gift_remaining = 0 WHERE user_id = ?').bind('u-card').run();
+  const rech1 = await tryAutoRechargeDepletedAiCredits(db, rawEnv, 'u-card', { fetchFn: mockFetch, nowIso: '2026-12-20T10:00:00.000Z' });
+  assert.equal(rech1.triggered, true);
+  assert.equal(rech1.recharged, true);
+  assert.equal(chargeCalls.length, 1);
+  const balAfterRech: any = await db.prepare('SELECT credits_balance FROM user_ai_credits WHERE user_id = ?').bind('u-card').first();
+  assert.equal(Number(balAfterRech.credits_balance), 200);
+
+  // Même si le solde retombe à 0 2 heures plus tard -> bloqué par le garde-fou 24h !
+  await db.prepare('UPDATE user_ai_credits SET credits_balance = 0 WHERE user_id = ?').bind('u-card').run();
+  const rech2 = await tryAutoRechargeDepletedAiCredits(db, rawEnv, 'u-card', { fetchFn: mockFetch, nowIso: '2026-12-20T12:00:00.000Z' });
+  assert.equal(rech2.triggered, false);
+  assert.equal(chargeCalls.length, 1);
+
+  // 6. Tableau de bord Admin GET /api/admin/billing/subscriptions expose `paymentMethods` avec utilisateur + permissions + abonnements liés
+  const adminRes = await (await callApi('/api/admin/billing/subscriptions')).json();
+  assert.equal(adminRes.success, true);
+  assert.equal(adminRes.stats.savedCards, 1);
+  assert.equal(adminRes.paymentMethods.length, 1);
+  assert.equal(adminRes.paymentMethods[0].userName, 'Awa Diallo');
+  assert.equal(adminRes.paymentMethods[0].last4, '5544');
+  assert.equal(adminRes.paymentMethods[0].autoAiOnDepleted, true);
+  assert.ok(adminRes.paymentMethods[0].linkedActiveCount >= 2);
 });

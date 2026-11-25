@@ -21,6 +21,7 @@ export interface BillingCronSummary {
   preRenewalSent: number;
   autoCharged: number;
   autoFailed: number;
+  aiAutoRecharged: number;
   movedToGrace: number;
   cancelledAtPeriodEnd: number;
   remindersSent: number;
@@ -54,6 +55,13 @@ export interface BillingCronDependencies {
     args: { subscriptionId: string; userId: string; eventType: string; actor: string; details?: Record<string, any> }
   ) => Promise<void>;
   fulfillAutoRenewalTransaction: (db: any, txRow: any, paystackData: any) => Promise<any>;
+  isCardAuthorizedForSubscription?: (pmRow: any, sub: any) => boolean;
+  tryAutoRechargeDepletedAiCredits?: (
+    db: any,
+    rawEnv: Record<string, any>,
+    userId: string,
+    opts?: { fetchFn?: typeof fetch; nowIso?: string }
+  ) => Promise<{ triggered: boolean; recharged?: boolean; reason?: string; reference?: string }>;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -74,6 +82,8 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
     resolveEffectiveBillingPolicy,
     recordSubscriptionEvent,
     fulfillAutoRenewalTransaction,
+    isCardAuthorizedForSubscription,
+    tryAutoRechargeDepletedAiCredits,
   } = deps;
   const fetchFn = deps.fetchFn || fetch;
   const nowMs = deps.nowIso ? Date.parse(deps.nowIso) : Date.now();
@@ -84,6 +94,7 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
     preRenewalSent: 0,
     autoCharged: 0,
     autoFailed: 0,
+    aiAutoRecharged: 0,
     movedToGrace: 0,
     cancelledAtPeriodEnd: 0,
     remindersSent: 0,
@@ -218,6 +229,32 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
           .bind(graceUntilIso, sub.id)
           .run()
           .catch(() => {});
+        summary.movedToGrace++;
+        continue;
+      }
+
+      // Vérifier que cette carte autorise bien le prélèvement automatique pour CE service (Stockage / IA / Application)
+      if (isCardAuthorizedForSubscription && !isCardAuthorizedForSubscription(pm, sub)) {
+        const periodEndMs = Date.parse(String(sub.current_period_end || nowIso)) || nowMs;
+        const graceUntilIso = sub.grace_until || new Date(periodEndMs + policy.gracePeriodDays * DAY_MS).toISOString();
+        await db
+          .prepare(
+            `UPDATE active_subscriptions
+             SET status = 'grace', renewal_mode = 'manual', grace_until = ?,
+                 last_charge_error = 'Carte non autorisée pour ce service',
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`
+          )
+          .bind(graceUntilIso, sub.id)
+          .run()
+          .catch(() => {});
+        await recordSubscriptionEvent(db, {
+          subscriptionId: String(sub.id),
+          userId: String(sub.user_id),
+          eventType: 'switched_to_manual',
+          actor: 'cron',
+          details: { reason: 'card_service_not_authorized', productType: sub.product_type, appKey: sub.app_key || '' },
+        });
         summary.movedToGrace++;
         continue;
       }
@@ -415,6 +452,39 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
     }
   } catch (err: any) {
     summary.errors.push(`Phase 2 (auto-charge): ${err?.message || err}`);
+  }
+
+  // ==========================================================================
+  // PHASE 2B : RECHARGE AUTOMATIQUE CRÉDITS IA QUAND SOLDE = 0 (MAX 1 / 24H)
+  // ==========================================================================
+  if (tryAutoRechargeDepletedAiCredits) {
+    try {
+      const depletedAiUsers = await db
+        .prepare(
+          `SELECT DISTINCT pm.user_id
+           FROM user_payment_methods pm
+           JOIN user_ai_credits c ON c.user_id = pm.user_id
+           WHERE pm.is_active = 1
+             AND pm.reusable = 1
+             AND COALESCE(pm.auto_ai, 0) = 1
+             AND COALESCE(pm.auto_ai_on_depleted, 0) = 1
+             AND COALESCE(c.credits_balance, 0) <= 0
+           LIMIT 50`
+        )
+        .all()
+        .catch(() => ({ results: [] }));
+
+      for (const row of depletedAiUsers.results || []) {
+        const uid = String(row.user_id || '').trim();
+        if (!uid) continue;
+        const rechRes = await tryAutoRechargeDepletedAiCredits(db, rawEnv, uid, { fetchFn, nowIso });
+        if (rechRes.recharged) {
+          summary.aiAutoRecharged++;
+        }
+      }
+    } catch (err: any) {
+      summary.errors.push(`Phase 2B (ai-auto-recharge): ${err?.message || err}`);
+    }
   }
 
   // ==========================================================================

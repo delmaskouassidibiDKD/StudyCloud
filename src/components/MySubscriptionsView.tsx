@@ -26,6 +26,7 @@ import {
   Layers,
   MoreHorizontal,
   Receipt,
+  ShieldCheck,
 } from 'lucide-react';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
 import {
@@ -36,12 +37,14 @@ import {
 import {
   ActiveSubscriptionRecord,
   cancelMySubscriptionAutoRenew,
+  CardServicePermissions,
   deleteMyPaymentMethod,
   formatCurrencyAmount,
   getMyActiveSubscriptions,
   initLinkBankCard,
   loadPaystackInlinePop,
   MaskedPaymentMethodRecord,
+  updatePaymentMethodPermissions,
   updateSubscriptionRenewalMode,
   verifyLinkBankCard,
 } from '../services/paystackBillingApi';
@@ -152,8 +155,11 @@ function formatEventLabel(eventType: string): string {
     switched_to_auto: 'Passé en renouvellement automatique',
     switched_to_manual: 'Passé en renouvellement manuel',
     card_attached: 'Carte bancaire enregistrée',
-    card_linked: 'Carte Visa/Mastercard associée',
+    card_linked: 'Carte Visa/Mastercard associée (empreinte remboursée)',
+    card_permissions_updated: 'Services automatiques de la carte mis à jour',
     card_removed: 'Carte bancaire supprimée',
+    ai_auto_recharged: 'Crédits IA rechargés automatiquement (solde à 0)',
+    ai_auto_recharge_failed: 'Échec de la recharge auto Crédits IA',
     user_cancelled_auto: 'Arrêt du renouvellement programmé',
     entered_grace: 'Entrée en période de grâce',
     service_blocked: 'Service suspendu (impayé)',
@@ -183,6 +189,14 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
   >([]);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [linkingCard, setLinkingCard] = useState(false);
+  const [showAddCardModal, setShowAddCardModal] = useState(false);
+  const [addCardTargetSubId, setAddCardTargetSubId] = useState<string | undefined>(undefined);
+  const [addCardPerms, setAddCardPerms] = useState<CardServicePermissions>({
+    autoStorage: true,
+    autoAi: true,
+    autoAiOnDepleted: false,
+    autoApps: ['*'],
+  });
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [, setTick] = useState(0);
 
@@ -278,12 +292,38 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
     setBusyId(null);
   };
 
-  const handleLinkCard = async (targetSubId?: string) => {
+  const openAddCardModal = (targetSub?: ActiveSubscriptionRecord) => {
+    setFeedback(null);
+    if (targetSub) {
+      setAddCardTargetSubId(targetSub.id);
+      setAddCardPerms({
+        autoStorage: targetSub.product_type === 'storage',
+        autoAi: targetSub.product_type === 'ai',
+        autoAiOnDepleted: false,
+        autoApps:
+          targetSub.product_type === 'app'
+            ? [targetSub.app_key || '*']
+            : [],
+      });
+    } else {
+      setAddCardTargetSubId(undefined);
+      setAddCardPerms({
+        autoStorage: true,
+        autoAi: true,
+        autoAiOnDepleted: false,
+        autoApps: ['*'],
+      });
+    }
+    setShowAddCardModal(true);
+  };
+
+  const handleLinkCard = async (targetSubId?: string, permissions?: CardServicePermissions) => {
     if (linkingCard) return;
     setLinkingCard(true);
+    setShowAddCardModal(false);
     setFeedback(null);
     try {
-      const initRes = await initLinkBankCard(targetSubId, true);
+      const initRes = await initLinkBankCard(targetSubId, true, permissions);
       if (!initRes.success || !initRes.accessCode || !initRes.reference) {
         setFeedback({ type: 'err', text: initRes.error || 'Impossible de démarrer la liaison de carte.' });
         setLinkingCard(false);
@@ -296,15 +336,26 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
           const verRes = await verifyLinkBankCard(
             tx?.reference || initRes.reference!,
             targetSubId,
-            true
+            true,
+            permissions
           );
           if (verRes.success) {
+            const refundTxt = verRes.refunded
+              ? ' L’empreinte de vérification de 100 FCFA a été remboursée automatiquement.'
+              : verRes.refundMessage
+              ? ` ${verRes.refundMessage}`
+              : '';
+            const linkedTxt =
+              verRes.autoLinkedCount && verRes.autoLinkedCount > 0
+                ? ` ${verRes.autoLinkedCount} abonnement(s) actif(s) passé(s) en renouvellement automatique.`
+                : '';
             setFeedback({
               type: 'ok',
-              text: `Carte ${verRes.paymentMethod?.label || 'Visa / Mastercard'} enregistrée avec succès.`,
+              text: `Carte ${verRes.paymentMethod?.label || 'Visa / Mastercard'} enregistrée.${refundTxt}${linkedTxt}`,
             });
             notifyBannerSync();
             await loadAll();
+            setSection('cards');
           } else {
             setFeedback({ type: 'err', text: verRes.error || 'Échec de validation de la carte.' });
           }
@@ -318,6 +369,44 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
       setFeedback({ type: 'err', text: err?.message || 'Erreur lors de la liaison de carte.' });
       setLinkingCard(false);
     }
+  };
+
+  const handleToggleCardPermission = async (
+    pm: MaskedPaymentMethodRecord,
+    patch: Partial<CardServicePermissions>
+  ) => {
+    setBusyId(pm.id);
+    setFeedback(null);
+    const nextAi = patch.autoAi !== undefined ? patch.autoAi : pm.autoAi;
+    const payload: CardServicePermissions = {
+      autoStorage: patch.autoStorage !== undefined ? patch.autoStorage : pm.autoStorage,
+      autoAi: nextAi,
+      autoAiOnDepleted: nextAi
+        ? patch.autoAiOnDepleted !== undefined
+          ? patch.autoAiOnDepleted
+          : pm.autoAiOnDepleted
+        : false,
+      autoApps: patch.autoApps !== undefined ? patch.autoApps : pm.autoApps,
+    };
+    const res = await updatePaymentMethodPermissions(pm.id, payload);
+    if (!res.success) {
+      setFeedback({ type: 'err', text: res.error || 'Impossible de mettre à jour les permissions.' });
+    } else {
+      const notes: string[] = [];
+      if (res.switchedToAutoCount && res.switchedToAutoCount > 0) {
+        notes.push(`${res.switchedToAutoCount} abonnement(s) activé(s) en auto`);
+      }
+      if (res.switchedToManualCount && res.switchedToManualCount > 0) {
+        notes.push(`${res.switchedToManualCount} passé(s) en manuel`);
+      }
+      setFeedback({
+        type: 'ok',
+        text: `Services autorisés mis à jour pour ${pm.label}${notes.length ? ` (${notes.join(', ')})` : ''}.`,
+      });
+      notifyBannerSync();
+      await loadAll();
+    }
+    setBusyId(null);
   };
 
   const handleRemoveCard = async (pm: MaskedPaymentMethodRecord) => {
@@ -573,7 +662,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
           disabled={linkingCard}
           onClick={() => {
             setIsMobileSidebarOpen(false);
-            handleLinkCard();
+            openAddCardModal();
           }}
           className="w-full px-2.5 h-8 rounded-md border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#161f33] hover:bg-slate-50 dark:hover:bg-slate-800 hover:border-slate-400 dark:hover:border-slate-500 text-xs font-semibold text-slate-800 dark:text-slate-100 flex items-center justify-between gap-2 transition cursor-pointer disabled:opacity-60"
         >
@@ -980,7 +1069,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                             <button
                               type="button"
                               disabled={linkingCard}
-                              onClick={() => handleLinkCard(selectedSub.id)}
+                              onClick={() => openAddCardModal(selectedSub)}
                               className="w-full h-9 px-3 rounded-lg bg-[#047857] hover:bg-emerald-700 text-white text-xs font-semibold inline-flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-60"
                             >
                               <CreditCard className="w-3.5 h-3.5" />
@@ -1011,39 +1100,159 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                 </p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3.5">
-                {paymentMethods.map((pm) => (
-                  <div
-                    key={pm.id}
-                    className="group relative rounded-xl p-4 flex flex-col justify-between min-h-[138px] bg-[#0f172a] border border-slate-700 text-white shadow-sm overflow-hidden"
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="text-[10.5px] font-semibold uppercase tracking-wide text-emerald-300">
-                          {pm.isDefault ? 'CARTE PRINCIPALE' : 'CARTE ENREGISTRÉE'}
-                        </div>
-                        <h3 className="text-sm font-bold text-white truncate mt-0.5">{pm.label}</h3>
-                        <div className="text-[11px] text-slate-300 mt-0.5 truncate">
-                          Exp. {pm.expMonth}/{pm.expYear} {pm.bank ? `· ${pm.bank}` : ''}
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {paymentMethods.map((pm) => {
+                  const isBusyCard = busyId === pm.id;
+                  const appsList = Array.isArray(pm.autoApps) ? pm.autoApps : [];
+                  const hasAnyAppAuto = appsList.length > 0;
+                  const appsScopeNote =
+                    appsList.includes('*')
+                      ? 'Toutes les applications'
+                      : appsList.length > 0
+                      ? `Uniquement : ${appsList.join(', ')}`
+                      : 'Renouvellement mensuel / périodique';
+
+                  return (
+                    <div
+                      key={pm.id}
+                      className="rounded-xl bg-white dark:bg-[#131c2e] border border-slate-300 dark:border-slate-700 shadow-sm overflow-hidden flex flex-col"
+                    >
+                      {/* En-tête visuel Carte Bancaire */}
+                      <div className="p-4 bg-[#0f172a] text-white">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+                              {pm.isDefault ? 'CARTE PRINCIPALE' : 'CARTE ENREGISTRÉE'}
+                            </div>
+                            <h3 className="text-sm font-bold text-white truncate mt-0.5">
+                              {pm.label || `${pm.cardBrand || pm.brand || 'Carte'} •••• ${pm.last4}`}
+                            </h3>
+                            <div className="text-[11px] text-slate-300 mt-0.5 truncate">
+                              Exp. {pm.expMonth}/{pm.expYear} {pm.bank ? `· ${pm.bank}` : ''}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={isBusyCard}
+                            onClick={() => handleRemoveCard(pm)}
+                            className="w-7 h-7 rounded-md bg-white/10 hover:bg-rose-600 text-white/80 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0 disabled:opacity-50"
+                            title="Supprimer cette carte"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        disabled={busyId === pm.id}
-                        onClick={() => handleRemoveCard(pm)}
-                        className="w-7 h-7 rounded-md bg-white/10 hover:bg-rose-600 text-white/80 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0"
-                        title="Supprimer cette carte"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
 
-                    <div className="mt-4 pt-2.5 border-t border-white/15 flex items-center justify-between text-[11px] text-slate-300">
-                      <span>Sécurisée Paystack</span>
-                      <span className="font-semibold text-emerald-300">Réutilisable</span>
+                      {/* Contrôles par service : Stockage Cloud / Crédits IA / Applications */}
+                      <div className="p-4 space-y-2.5 flex-1 text-xs">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                            Paiements automatiques autorisés
+                          </span>
+                          {isBusyCard && <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0051c3]" />}
+                        </div>
+
+                        <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 dark:border-slate-700/80 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition">
+                          <input
+                            type="checkbox"
+                            disabled={isBusyCard}
+                            checked={Boolean(pm.autoStorage)}
+                            onChange={(e) =>
+                              handleToggleCardPermission(pm, { autoStorage: e.target.checked })
+                            }
+                            className="mt-0.5 w-4 h-4 rounded accent-[#2563eb] cursor-pointer"
+                          />
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-900 dark:text-white">
+                              💾 Stockage Cloud
+                            </div>
+                            <div className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                              Renouvellement automatique à l&apos;échéance
+                            </div>
+                          </div>
+                        </label>
+
+                        <div className="rounded-lg border border-slate-200 dark:border-slate-700/80 p-2 space-y-2">
+                          <label className="flex items-start gap-2.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              disabled={isBusyCard}
+                              checked={Boolean(pm.autoAi)}
+                              onChange={(e) =>
+                                handleToggleCardPermission(pm, {
+                                  autoAi: e.target.checked,
+                                  ...(e.target.checked ? {} : { autoAiOnDepleted: false }),
+                                })
+                              }
+                              className="mt-0.5 w-4 h-4 rounded accent-[#7c3aed] cursor-pointer"
+                            />
+                            <div className="min-w-0">
+                              <div className="font-semibold text-slate-900 dark:text-white">
+                                🤖 Crédits IA
+                              </div>
+                              <div className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                                Renouvellement automatique à l&apos;échéance
+                              </div>
+                            </div>
+                          </label>
+
+                          {pm.autoAi && (
+                            <label className="ml-6 flex items-start gap-2 p-2 rounded-md bg-violet-50/80 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800/50 cursor-pointer">
+                              <input
+                                type="checkbox"
+                                disabled={isBusyCard}
+                                checked={Boolean(pm.autoAiOnDepleted)}
+                                onChange={(e) =>
+                                  handleToggleCardPermission(pm, {
+                                    autoAiOnDepleted: e.target.checked,
+                                  })
+                                }
+                                className="mt-0.5 w-3.5 h-3.5 rounded accent-[#7c3aed] cursor-pointer"
+                              />
+                              <div className="min-w-0">
+                                <div className="text-[11px] font-semibold text-violet-900 dark:text-violet-200">
+                                  ⚡ Recharger automatiquement à 0 crédit
+                                </div>
+                                <div className="text-[10px] text-violet-700/80 dark:text-violet-300/80">
+                                  Sécurité anti-boucle : max 1 recharge / 24h + reçu email
+                                </div>
+                              </div>
+                            </label>
+                          )}
+                        </div>
+
+                        <label className="flex items-start gap-2.5 p-2 rounded-lg border border-slate-200 dark:border-slate-700/80 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition">
+                          <input
+                            type="checkbox"
+                            disabled={isBusyCard}
+                            checked={hasAnyAppAuto}
+                            onChange={(e) =>
+                              handleToggleCardPermission(pm, {
+                                autoApps: e.target.checked ? ['*'] : [],
+                              })
+                            }
+                            className="mt-0.5 w-4 h-4 rounded accent-[#dc2626] cursor-pointer"
+                          />
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-900 dark:text-white">
+                              📱 Applications (Moyennes &amp; futures apps)
+                            </div>
+                            <div className="text-[10.5px] text-slate-500 dark:text-slate-400">
+                              {appsScopeNote}
+                            </div>
+                          </div>
+                        </label>
+                      </div>
+
+                      <div className="px-4 py-2.5 bg-slate-50 dark:bg-[#0f172a]/70 border-t border-slate-200 dark:border-slate-700/80 flex items-center justify-between text-[10.5px] text-slate-500 dark:text-slate-400">
+                        <span>Tokenisation PCI-DSS Paystack</span>
+                        <span className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          Prête pour auto
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )
           ) : section === 'history' ? (
@@ -1181,6 +1390,170 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* ===================================================================== */}
+      {/* MODALE STUDYCLOUD : ASSOCIER UNE CARTE & CHOISIR LES SERVICES AUTO    */}
+      {/* ===================================================================== */}
+      {showAddCardModal && (
+        <div
+          className="fixed inset-0 z-[70] bg-slate-900/60 backdrop-blur-[2px] flex items-center justify-center p-4"
+          onClick={() => !linkingCard && setShowAddCardModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white dark:bg-[#111827] border border-slate-300 dark:border-slate-700 shadow-2xl overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* En-tête */}
+            <div className="px-5 py-4 border-b border-slate-200 dark:border-slate-800 flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0">
+                  <CreditCard className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-slate-900 dark:text-white leading-tight">
+                    Associer une carte Visa / Mastercard
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Aucun abonnement n&apos;est acheté maintenant — choisissez les services automatiques.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAddCardModal(false)}
+                className="w-7 h-7 rounded-md hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-500 cursor-pointer shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Corps : Cases à cocher par service + explication empreinte 100 FCFA remboursée */}
+            <div className="p-5 space-y-3 text-xs">
+              <div className="text-[10.5px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                Services autorisés à utiliser cette carte automatiquement
+              </div>
+
+              <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition">
+                <input
+                  type="checkbox"
+                  checked={addCardPerms.autoStorage}
+                  onChange={(e) =>
+                    setAddCardPerms((prev) => ({ ...prev, autoStorage: e.target.checked }))
+                  }
+                  className="mt-0.5 w-4 h-4 rounded accent-[#2563eb] cursor-pointer"
+                />
+                <div>
+                  <div className="font-bold text-slate-900 dark:text-white">💾 Stockage Cloud</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Renouvelle automatiquement vos forfaits de stockage non-infinis à l&apos;échéance.
+                  </div>
+                </div>
+              </label>
+
+              <div className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2.5">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={addCardPerms.autoAi}
+                    onChange={(e) =>
+                      setAddCardPerms((prev) => ({
+                        ...prev,
+                        autoAi: e.target.checked,
+                        autoAiOnDepleted: e.target.checked ? prev.autoAiOnDepleted : false,
+                      }))
+                    }
+                    className="mt-0.5 w-4 h-4 rounded accent-[#7c3aed] cursor-pointer"
+                  />
+                  <div>
+                    <div className="font-bold text-slate-900 dark:text-white">🤖 Crédits IA</div>
+                    <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Renouvelle automatiquement votre forfait IA à la date d&apos;échéance.
+                    </div>
+                  </div>
+                </label>
+
+                {addCardPerms.autoAi && (
+                  <label className="ml-6 flex items-start gap-2 p-2.5 rounded-lg bg-violet-50/90 dark:bg-violet-950/30 border border-violet-200 dark:border-violet-800/50 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={addCardPerms.autoAiOnDepleted}
+                      onChange={(e) =>
+                        setAddCardPerms((prev) => ({ ...prev, autoAiOnDepleted: e.target.checked }))
+                      }
+                      className="mt-0.5 w-3.5 h-3.5 rounded accent-[#7c3aed] cursor-pointer"
+                    />
+                    <div>
+                      <div className="text-[11px] font-bold text-violet-900 dark:text-violet-200">
+                        ⚡ Recharger automatiquement dès que mon solde IA arrive à 0
+                      </div>
+                      <div className="text-[10px] text-violet-700/80 dark:text-violet-300/80">
+                        Protection anti-boucle : max 1 recharge par 24h + email de confirmation immédiat.
+                      </div>
+                    </div>
+                  </label>
+                )}
+              </div>
+
+              <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/60 cursor-pointer transition">
+                <input
+                  type="checkbox"
+                  checked={addCardPerms.autoApps.length > 0}
+                  onChange={(e) =>
+                    setAddCardPerms((prev) => ({
+                      ...prev,
+                      autoApps: e.target.checked ? ['*'] : [],
+                    }))
+                  }
+                  className="mt-0.5 w-4 h-4 rounded accent-[#dc2626] cursor-pointer"
+                />
+                <div>
+                  <div className="font-bold text-slate-900 dark:text-white">
+                    📱 Applications (Moyennes &amp; futures apps)
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Règle automatiquement les abonnements mensuels / périodiques d&apos;applications.
+                  </div>
+                </div>
+              </label>
+
+              {/* Bandeau de transparence PCI-DSS + Remboursement auto 100 FCFA */}
+              <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 flex items-start gap-2.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <div className="text-[11px] text-emerald-900 dark:text-emerald-200 leading-relaxed">
+                  <strong>Vérification bancaire 0 FCFA net :</strong> Paystack effectue une empreinte de sécurité de{' '}
+                  <strong>100 FCFA</strong> pour enregistrer votre carte auprès de votre banque, puis la{' '}
+                  <strong>rembourse automatiquement</strong> immédiatement après. Vous pourrez modifier ces cases à tout moment.
+                </div>
+              </div>
+            </div>
+
+            {/* Pied de modale */}
+            <div className="px-5 py-3.5 bg-slate-50 dark:bg-[#0f172a] border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                disabled={linkingCard}
+                onClick={() => setShowAddCardModal(false)}
+                className="h-9 px-3.5 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-[#1e293b] hover:bg-slate-100 text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                disabled={linkingCard}
+                onClick={() => handleLinkCard(addCardTargetSubId, addCardPerms)}
+                className="h-9 px-4 rounded-lg bg-[#047857] hover:bg-emerald-700 text-white text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer disabled:opacity-60 shadow-xs"
+              >
+                {linkingCard ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <CreditCard className="w-3.5 h-3.5" />
+                )}
+                <span>Sécuriser ma carte (0 FCFA net)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

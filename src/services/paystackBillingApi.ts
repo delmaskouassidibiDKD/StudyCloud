@@ -97,9 +97,17 @@ export interface SubscriptionCountdown {
   label: string;
 }
 
+export interface CardServicePermissions {
+  autoStorage: boolean;
+  autoAi: boolean;
+  autoAiOnDepleted: boolean;
+  autoApps: string[];
+}
+
 export interface MaskedPaymentMethodRecord {
   id: string;
   brand: string;
+  cardBrand?: string;
   last4: string;
   expMonth: string;
   expYear: string;
@@ -108,6 +116,11 @@ export interface MaskedPaymentMethodRecord {
   reusable: boolean;
   isDefault: boolean;
   label: string;
+  autoStorage: boolean;
+  autoAi: boolean;
+  autoAiOnDepleted: boolean;
+  autoApps: string[];
+  createdAt?: string | null;
 }
 
 export interface ActiveSubscriptionRecord {
@@ -888,21 +901,52 @@ export async function deleteMyPaymentMethod(
   return { success: true, switchedToManualCount: Number(json.switchedToManualCount || 0) };
 }
 
+export async function updatePaymentMethodPermissions(
+  paymentMethodId: string,
+  permissions: Partial<CardServicePermissions> & { syncSubscriptions?: boolean }
+): Promise<{
+  success: boolean;
+  paymentMethod?: MaskedPaymentMethodRecord | null;
+  switchedToAutoCount?: number;
+  switchedToManualCount?: number;
+  error?: string;
+}> {
+  const resp = await fetch(
+    `${getBaseApi()}/api/billing/payment-methods/${encodeURIComponent(paymentMethodId)}/permissions`,
+    {
+      method: 'PATCH',
+      headers: getAuthHeaders(),
+      body: JSON.stringify(permissions),
+    }
+  );
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || !json?.success) {
+    return { success: false, error: json?.error || 'Impossible de mettre à jour les autorisations de cette carte.' };
+  }
+  return json;
+}
+
 export async function initLinkBankCard(
   subscriptionId?: string,
-  enableAuto = true
+  enableAuto = true,
+  permissions?: Partial<CardServicePermissions>
 ): Promise<{
   success: boolean;
   reference?: string;
   accessCode?: string;
   authorizationUrl?: string;
   verificationAmountFcfa?: number;
+  autoRefundEnabled?: boolean;
   error?: string;
 }> {
   const resp = await fetch(`${getBaseApi()}/api/billing/payment-methods/link-init`, {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ subscriptionId: subscriptionId || '', enableAuto }),
+    body: JSON.stringify({
+      subscriptionId: subscriptionId || '',
+      enableAuto,
+      ...(permissions || {}),
+    }),
   });
   const json = await resp.json().catch(() => null);
   if (!resp.ok || !json?.success) {
@@ -914,17 +958,27 @@ export async function initLinkBankCard(
 export async function verifyLinkBankCard(
   reference: string,
   subscriptionId?: string,
-  enableAuto = true
+  enableAuto = true,
+  permissions?: Partial<CardServicePermissions>
 ): Promise<{
   success: boolean;
   paymentMethod?: MaskedPaymentMethodRecord | null;
   subscription?: ActiveSubscriptionRecord | null;
+  autoLinkedCount?: number;
+  refunded?: boolean;
+  refundStatus?: string;
+  refundMessage?: string;
   error?: string;
 }> {
   const resp = await fetch(`${getBaseApi()}/api/billing/payment-methods/link-verify`, {
     method: 'POST',
     headers: getAuthHeaders(),
-    body: JSON.stringify({ reference, subscriptionId: subscriptionId || '', enableAuto }),
+    body: JSON.stringify({
+      reference,
+      subscriptionId: subscriptionId || '',
+      enableAuto,
+      ...(permissions || {}),
+    }),
   });
   const json = await resp.json().catch(() => null);
   if (!resp.ok || !json?.success) {

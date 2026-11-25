@@ -14,6 +14,7 @@ import {
   normalizeDurationDays,
   normalizePlanBillingFlags,
   executeBillingCronJob,
+  tryAutoRechargeDepletedAiCredits,
 } from './paystackBilling';
 
 interface D1PreparedStatement {
@@ -18987,19 +18988,47 @@ a:hover{transform:translateY(-2px)}
           `).bind(logId, targetUserId, actionType, tokens, creditsDeducted, newBalance, model).run();
         } catch (_) {}
 
+        // Si le solde IA atteint 0 et l'utilisateur a autorisé la recharge auto par carte, déclencher (max 1 / 24h)
+        let finalBalance = newBalance;
+        let finalPaidRem = paidRem;
+        let finalTotalPurchased = Number(updatedRow?.total_credits_purchased || 0);
+        let autoRecharged = false;
+        let autoRechargeRef = '';
+        if (newBalance <= 0) {
+          try {
+            const rech = await tryAutoRechargeDepletedAiCredits(targetDb, env as any, targetUserId);
+            if (rech?.recharged) {
+              autoRecharged = true;
+              autoRechargeRef = String(rech.reference || '');
+              const afterRech: any = await targetDb
+                .prepare("SELECT credits_balance, purchased_remaining, total_credits_purchased FROM user_ai_credits WHERE user_id = ?")
+                .bind(targetUserId)
+                .first()
+                .catch(() => null);
+              if (afterRech) {
+                finalBalance = Math.max(0, Number(afterRech.credits_balance ?? finalBalance));
+                finalPaidRem = Math.max(0, Number(afterRech.purchased_remaining ?? finalPaidRem));
+                finalTotalPurchased = Number(afterRech.total_credits_purchased ?? finalTotalPurchased);
+              }
+            }
+          } catch (_) {}
+        }
+
         return jsonResponse({
           success: true,
           credits_deducted: creditsDeducted,
           deducted_from_gift: deductedFromGift,
           deducted_from_paid: deductedFromPaid,
-          new_balance: newBalance,
-          remaining_balance: newBalance,
+          new_balance: finalBalance,
+          remaining_balance: finalBalance,
           gift_remaining: giftRem,
           gift_initial: giftInit,
           gift_type: giftType,
           gift_title: giftTitle,
-          purchased_remaining: paidRem,
-          total_purchased: Number(updatedRow?.total_credits_purchased || 0),
+          purchased_remaining: finalPaidRem,
+          total_purchased: finalTotalPurchased,
+          auto_recharged: autoRecharged,
+          auto_recharge_reference: autoRechargeRef || undefined,
           tokens_consumed: tokens,
           total_tokens_consumed: newTotalTokens,
           total_credits_consumed: newTotalCreditsConsumed

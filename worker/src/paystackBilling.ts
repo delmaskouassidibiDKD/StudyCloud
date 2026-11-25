@@ -356,20 +356,95 @@ export function computeSubscriptionCountdown(
   };
 }
 
+export function parseAutoAppsJson(raw: unknown): string[] {
+  if (Array.isArray(raw)) {
+    return Array.from(
+      new Set(
+        raw
+          .map((x) => {
+            const s = String(x || '').trim();
+            return s === '*' ? '*' : sanitizeAppKey(s);
+          })
+          .filter(Boolean)
+      )
+    );
+  }
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        return Array.from(
+          new Set(
+            parsed
+              .map((x) => {
+                const s = String(x || '').trim();
+                return s === '*' ? '*' : sanitizeAppKey(s);
+              })
+              .filter(Boolean)
+          )
+        );
+      }
+    } catch {}
+  }
+  return [];
+}
+
+export function isCardAuthorizedForSubscription(
+  pmRow: any,
+  sub: { product_type?: string; app_key?: string; payment_method_id?: string; renewal_mode?: string }
+): boolean {
+  if (!pmRow || Number(pmRow.is_active) === 0 || Number(pmRow.reusable) === 0) return false;
+  const autoStorage = Number(pmRow.auto_storage) === 1;
+  const autoAi = Number(pmRow.auto_ai) === 1;
+  const autoApps = parseAutoAppsJson(pmRow.auto_apps_json);
+
+  // Rétrocompatibilité pour les cartes legacy (antérieures aux permissions par service) déjà liées en auto
+  const hasExplicitFlags = autoStorage || autoAi || autoApps.length > 0;
+  if (
+    !hasExplicitFlags &&
+    sub.renewal_mode === 'auto' &&
+    sub.payment_method_id &&
+    String(sub.payment_method_id) === String(pmRow.id)
+  ) {
+    return true;
+  }
+
+  const pType = String(sub.product_type || '').toLowerCase();
+  if (pType === 'storage') return autoStorage;
+  if (pType === 'ai') return autoAi;
+  if (pType === 'app') {
+    if (autoApps.includes('*')) return true;
+    const key = sanitizeAppKey(sub.app_key || '');
+    return Boolean(key && autoApps.includes(key));
+  }
+  return false;
+}
+
 export function maskPaymentMethodForClient(row: any) {
   if (!row) return null;
+  const brand = String(row.card_brand || 'Carte');
+  const last4 = String(row.last4 || '••••');
+  const autoApps = parseAutoAppsJson(row.auto_apps_json);
   return {
     id: String(row.id || ''),
     provider: String(row.provider || 'paystack'),
-    cardBrand: String(row.card_brand || 'Carte'),
+    cardBrand: brand,
+    brand,
     cardType: String(row.card_type || ''),
-    last4: String(row.last4 || '••••'),
+    last4,
     expMonth: String(row.exp_month || ''),
     expYear: String(row.exp_year || ''),
     bank: String(row.bank || ''),
     countryCode: String(row.country_code || ''),
+    channel: 'card',
+    reusable: Number(row.reusable ?? 1) === 1,
     isDefault: Number(row.is_default) === 1,
     isActive: Number(row.is_active) !== 0,
+    label: `${brand} •••• ${last4}`,
+    autoStorage: Number(row.auto_storage) === 1,
+    autoAi: Number(row.auto_ai) === 1,
+    autoAiOnDepleted: Number(row.auto_ai_on_depleted) === 1,
+    autoApps,
     createdAt: row.created_at || null,
   };
 }
@@ -1054,10 +1129,22 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
       reusable INTEGER DEFAULT 1,
       is_default INTEGER DEFAULT 1,
       is_active INTEGER DEFAULT 1,
+      auto_storage INTEGER DEFAULT 0,
+      auto_ai INTEGER DEFAULT 0,
+      auto_ai_on_depleted INTEGER DEFAULT 0,
+      auto_apps_json TEXT DEFAULT '[]',
       created_at TEXT DEFAULT CURRENT_TIMESTAMP,
       updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )
   `).run().catch(() => {});
+  for (const pmColSql of [
+    'ALTER TABLE user_payment_methods ADD COLUMN auto_storage INTEGER DEFAULT 0',
+    'ALTER TABLE user_payment_methods ADD COLUMN auto_ai INTEGER DEFAULT 0',
+    'ALTER TABLE user_payment_methods ADD COLUMN auto_ai_on_depleted INTEGER DEFAULT 0',
+    "ALTER TABLE user_payment_methods ADD COLUMN auto_apps_json TEXT DEFAULT '[]'",
+  ]) {
+    await db.prepare(pmColSql).run().catch(() => {});
+  }
   await db.prepare(
     'CREATE INDEX IF NOT EXISTS idx_user_pm_uid ON user_payment_methods(user_id, is_active, is_default)'
   ).run().catch(() => {});
@@ -1320,6 +1407,14 @@ export async function recordSubscriptionEvent(
     .catch(() => {});
 }
 
+interface CardServicePermissionsInput {
+  mode: 'replace' | 'merge';
+  autoStorage?: boolean;
+  autoAi?: boolean;
+  autoAiOnDepleted?: boolean;
+  autoApps?: string[];
+}
+
 async function upsertUserPaymentMethodFromPaystack(
   db: any,
   params: {
@@ -1327,6 +1422,7 @@ async function upsertUserPaymentMethodFromPaystack(
     authEmail: string;
     channel: string;
     paystackData: any;
+    servicePermissions?: CardServicePermissionsInput;
   }
 ): Promise<any | null> {
   const auth = params.paystackData?.authorization || {};
@@ -1367,16 +1463,61 @@ async function upsertUserPaymentMethodFromPaystack(
     .run()
     .catch(() => {});
 
+  const perms = params.servicePermissions;
+  let nextAutoStorage = existing ? Number(existing.auto_storage || 0) : 0;
+  let nextAutoAi = existing ? Number(existing.auto_ai || 0) : 0;
+  let nextAutoAiOnDepleted = existing ? Number(existing.auto_ai_on_depleted || 0) : 0;
+  let nextAutoApps = existing ? parseAutoAppsJson(existing.auto_apps_json) : [];
+
+  if (perms) {
+    if (perms.mode === 'replace') {
+      nextAutoStorage = perms.autoStorage ? 1 : 0;
+      nextAutoAi = perms.autoAi ? 1 : 0;
+      nextAutoAiOnDepleted = nextAutoAi === 1 && perms.autoAiOnDepleted ? 1 : 0;
+      nextAutoApps = parseAutoAppsJson(perms.autoApps || []);
+    } else {
+      if (perms.autoStorage) nextAutoStorage = 1;
+      if (perms.autoAi) nextAutoAi = 1;
+      if (nextAutoAi === 1 && perms.autoAiOnDepleted) nextAutoAiOnDepleted = 1;
+      if (nextAutoAi === 0) nextAutoAiOnDepleted = 0;
+      const addApps = parseAutoAppsJson(perms.autoApps || []);
+      if (addApps.length > 0) {
+        nextAutoApps =
+          nextAutoApps.includes('*') || addApps.includes('*')
+            ? ['*']
+            : Array.from(new Set([...nextAutoApps, ...addApps]));
+      }
+    }
+  }
+  const nextAutoAppsJson = JSON.stringify(nextAutoApps);
+
   if (existing) {
     await db
       .prepare(
         `UPDATE user_payment_methods
          SET authorization_code = ?, auth_email = ?, card_brand = ?, card_type = ?,
              last4 = ?, exp_month = ?, exp_year = ?, bank = ?, country_code = ?,
-             reusable = 1, is_default = 1, is_active = 1, updated_at = CURRENT_TIMESTAMP
+             reusable = 1, is_default = 1, is_active = 1,
+             auto_storage = ?, auto_ai = ?, auto_ai_on_depleted = ?, auto_apps_json = ?,
+             updated_at = CURRENT_TIMESTAMP
          WHERE id = ?`
       )
-      .bind(authCode, authEmail, brand, cardType, last4, expMonth, expYear, bank, countryCode, existing.id)
+      .bind(
+        authCode,
+        authEmail,
+        brand,
+        cardType,
+        last4,
+        expMonth,
+        expYear,
+        bank,
+        countryCode,
+        nextAutoStorage,
+        nextAutoAi,
+        nextAutoAiOnDepleted,
+        nextAutoAppsJson,
+        existing.id
+      )
       .run()
       .catch(() => {});
     return await db.prepare('SELECT * FROM user_payment_methods WHERE id = ? LIMIT 1').bind(existing.id).first();
@@ -1387,10 +1528,107 @@ async function upsertUserPaymentMethodFromPaystack(
     .prepare(
       `INSERT INTO user_payment_methods (
          id, user_id, provider, authorization_code, auth_email, card_brand, card_type,
-         last4, exp_month, exp_year, bank, country_code, signature, reusable, is_default, is_active
-       ) VALUES (?, ?, 'paystack', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1)`
+         last4, exp_month, exp_year, bank, country_code, signature, reusable, is_default, is_active,
+         auto_storage, auto_ai, auto_ai_on_depleted, auto_apps_json
+       ) VALUES (?, ?, 'paystack', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 1, 1, ?, ?, ?, ?)`
     )
-    .bind(pmId, params.userId, authCode, authEmail, brand, cardType, last4, expMonth, expYear, bank, countryCode, signature)
+    .bind(
+      pmId,
+      params.userId,
+      authCode,
+      authEmail,
+      brand,
+      cardType,
+      last4,
+      expMonth,
+      expYear,
+      bank,
+      countryCode,
+      signature,
+      nextAutoStorage,
+      nextAutoAi,
+      nextAutoAiOnDepleted,
+      nextAutoAppsJson
+    )
+    .run()
+    .catch(() => {});
+
+  return await db.prepare('SELECT * FROM user_payment_methods WHERE id = ? LIMIT 1').bind(pmId).first();
+}
+
+async function findPreAuthorizedCardForService(
+  db: any,
+  userId: string,
+  productType: string,
+  appKey: string
+): Promise<any | null> {
+  const res = await db
+    .prepare(
+      `SELECT * FROM user_payment_methods
+       WHERE user_id = ? AND is_active = 1 AND reusable = 1
+       ORDER BY is_default DESC, updated_at DESC`
+    )
+    .bind(userId)
+    .all()
+    .catch(() => ({ results: [] }));
+  for (const pm of res.results || []) {
+    const pType = String(productType || '').toLowerCase();
+    if (pType === 'storage' && Number(pm.auto_storage) === 1) return pm;
+    if (pType === 'ai' && Number(pm.auto_ai) === 1) return pm;
+    if (pType === 'app') {
+      const apps = parseAutoAppsJson(pm.auto_apps_json);
+      const cleanKey = sanitizeAppKey(appKey);
+      if (apps.includes('*') || (cleanKey && apps.includes(cleanKey))) return pm;
+    }
+  }
+  return null;
+}
+
+async function syncCardPermissionFlagForService(
+  db: any,
+  pmId: string,
+  userId: string,
+  productType: string,
+  appKey: string,
+  enable: boolean
+): Promise<any | null> {
+  if (!pmId) return null;
+  const pm: any = await db
+    .prepare('SELECT * FROM user_payment_methods WHERE id = ? AND user_id = ? AND is_active = 1 LIMIT 1')
+    .bind(pmId, userId)
+    .first()
+    .catch(() => null);
+  if (!pm) return null;
+
+  let nextStorage = Number(pm.auto_storage || 0);
+  let nextAi = Number(pm.auto_ai || 0);
+  let nextAiDep = Number(pm.auto_ai_on_depleted || 0);
+  let nextApps = parseAutoAppsJson(pm.auto_apps_json);
+  const pType = String(productType || '').toLowerCase();
+
+  if (pType === 'storage') {
+    nextStorage = enable ? 1 : 0;
+  } else if (pType === 'ai') {
+    nextAi = enable ? 1 : 0;
+    if (nextAi === 0) nextAiDep = 0;
+  } else if (pType === 'app') {
+    const cleanKey = sanitizeAppKey(appKey);
+    if (enable) {
+      if (cleanKey && !nextApps.includes('*') && !nextApps.includes(cleanKey)) {
+        nextApps = [...nextApps, cleanKey];
+      }
+    } else if (cleanKey && !nextApps.includes('*')) {
+      nextApps = nextApps.filter((k) => k !== cleanKey);
+    }
+  }
+
+  await db
+    .prepare(
+      `UPDATE user_payment_methods
+       SET auto_storage = ?, auto_ai = ?, auto_ai_on_depleted = ?, auto_apps_json = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ? AND user_id = ?`
+    )
+    .bind(nextStorage, nextAi, nextAiDep, JSON.stringify(nextApps), pmId, userId)
     .run()
     .catch(() => {});
 
@@ -1606,7 +1844,11 @@ async function loadSubscriptionBundleForTx(db: any, txRow: any): Promise<{
     paymentMethod: maskPaymentMethodForClient(pmRow),
     renewalUiConfig: {
       renewalMode,
-      canChooseAutoOnSuccessScreen: !isInfinite && planAllowsAuto && hasReusableCard && String(txRow?.channel || sub?.last_channel || '') === 'card',
+      canChooseAutoOnSuccessScreen:
+        !isInfinite &&
+        planAllowsAuto &&
+        hasReusableCard &&
+        (String(txRow?.channel || sub?.last_channel || '') === 'card' || renewalMode === 'auto'),
       defaultSelectedMode: renewalMode,
       isInfinite,
       planAllowsAuto,
@@ -1703,14 +1945,6 @@ async function fulfillPaidTransaction(
   let loadedPlanRow: any = null;
   let resolvedAppKey = sanitizeAppKey(txRow.app_key || txRow.product_type || '');
   let resolvedAppName = String(txRow.app_name || '');
-
-  // Enregistrer la carte bancaire tokenisée (PCI-DSS) si paiement par carte réutilisable
-  const savedPaymentMethod = await upsertUserPaymentMethodFromPaystack(db, {
-    userId,
-    authEmail: String(txRow.user_email || ''),
-    channel,
-    paystackData,
-  });
 
   if (txRow.product_type === 'storage') {
     const plan: any = await db
@@ -2070,12 +2304,53 @@ async function fulfillPaidTransaction(
     subscriptionId: existingMasterSub?.id,
   });
 
-  const initialRenewal = resolveInitialRenewalMode({
+  // Enregistrer la carte tokenisée (PCI-DSS) avec permission UNIQUEMENT pour CE service si paiement par carte sur offre Auto+Manuel
+  const shouldAutoScopeThisService = finalIsInfinite === 0 && planFlags.allowAuto === 1 && channel === 'card' && reusable === 1;
+  const savedPaymentMethod = await upsertUserPaymentMethodFromPaystack(db, {
+    userId,
+    authEmail: String(txRow.user_email || ''),
+    channel,
+    paystackData,
+    servicePermissions: shouldAutoScopeThisService
+      ? {
+          mode: 'merge',
+          autoStorage: txRow.product_type === 'storage',
+          autoAi: txRow.product_type === 'ai',
+          autoApps: txRow.product_type === 'app' && resolvedAppKey ? [resolvedAppKey] : [],
+        }
+      : undefined,
+  });
+
+  // Si l'utilisateur n'a pas payé par carte cette fois mais possède DÉJÀ une carte enregistrée qui autorise CE service non-infini :
+  // on rattache automatiquement cette carte pour les échéances futures !
+  const preAuthorizedCard =
+    !savedPaymentMethod && finalIsInfinite === 0 && planFlags.allowAuto === 1
+      ? await findPreAuthorizedCardForService(db, userId, String(txRow.product_type), resolvedAppKey)
+      : null;
+  const effectivePaymentMethod = savedPaymentMethod || preAuthorizedCard;
+
+  let initialRenewal = resolveInitialRenewalMode({
     isInfinite: finalIsInfinite === 1,
     allowAuto: planFlags.allowAuto === 1,
     channel,
     reusable: Boolean(savedPaymentMethod && Number(savedPaymentMethod.reusable) === 1),
   });
+  if (!savedPaymentMethod && preAuthorizedCard && finalIsInfinite === 0 && planFlags.allowAuto === 1) {
+    initialRenewal = {
+      renewalMode: 'auto',
+      canChooseAutoOnSuccessScreen: true,
+      defaultSelectedMode: 'auto',
+    };
+  }
+
+  // Synchroniser user_app_entitlements.auto_renew si carte pré-autorisée sur une app
+  if (txRow.product_type === 'app' && resolvedAppKey && initialRenewal.renewalMode === 'auto') {
+    await db
+      .prepare('UPDATE user_app_entitlements SET auto_renew = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?')
+      .bind(userId, resolvedAppKey)
+      .run()
+      .catch(() => {});
+  }
 
   // Calculer la période de l'abonnement unifié (préserve les jours restants si renouvellement anticipé)
   const finalPeriodEnd =
@@ -2144,8 +2419,8 @@ async function fulfillPaidTransaction(
         planFlags.allowAuto,
         planFlags.allowManual,
         initialRenewal.renewalMode,
-        savedPaymentMethod?.id || '',
-        savedPaymentMethod?.id || '',
+        effectivePaymentMethod?.id || '',
+        effectivePaymentMethod?.id || '',
         channel,
         networkLabel,
         paidMajor,
@@ -2193,7 +2468,7 @@ async function fulfillPaidTransaction(
         planFlags.allowAuto,
         planFlags.allowManual,
         initialRenewal.renewalMode,
-        savedPaymentMethod?.id || '',
+        effectivePaymentMethod?.id || '',
         channel,
         networkLabel,
         paidMajor,
@@ -3844,7 +4119,38 @@ export async function handlePaystackBillingRoutes(
         );
       }
       linkedPaymentMethodId = String(pmRow.id);
-      maskedCard = maskPaymentMethodForClient(pmRow);
+      const updatedCard = await syncCardPermissionFlagForService(
+        db,
+        linkedPaymentMethodId,
+        userId,
+        String(sub.product_type || ''),
+        String(sub.app_key || ''),
+        true
+      );
+      maskedCard = maskPaymentMethodForClient(updatedCard || pmRow);
+    } else if (linkedPaymentMethodId) {
+      // Si l'utilisateur bascule en manuel et n'a plus d'autre abonnement auto actif pour ce même service sur cette carte,
+      // on décoche proprement ce service sur la carte.
+      const otherAuto = await db
+        .prepare(
+          `SELECT id FROM active_subscriptions
+           WHERE user_id = ? AND payment_method_id = ? AND product_type = ? AND app_key = ?
+             AND renewal_mode = 'auto' AND status IN ('active', 'grace', 'past_due') AND id != ?
+           LIMIT 1`
+        )
+        .bind(userId, linkedPaymentMethodId, String(sub.product_type || ''), String(sub.app_key || ''), subId)
+        .first()
+        .catch(() => null);
+      if (!otherAuto) {
+        await syncCardPermissionFlagForService(
+          db,
+          linkedPaymentMethodId,
+          userId,
+          String(sub.product_type || ''),
+          String(sub.app_key || ''),
+          false
+        );
+      }
     }
 
     await db
@@ -3979,6 +4285,160 @@ export async function handlePaystackBillingRoutes(
   }
 
   // --------------------------------------------------------------------------
+  // 14B. PATCH /api/billing/payment-methods/:id/permissions — Permissions par service (Anti-IDOR)
+  // --------------------------------------------------------------------------
+  const pmPermMatch = path.match(/^\/api\/billing\/payment-methods\/([^/]+)\/permissions$/);
+  if (pmPermMatch && (method === 'PATCH' || method === 'POST')) {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const userId = String(authUser.userId);
+    const pmId = decodeURIComponent(pmPermMatch[1]);
+
+    const pmRow: any = await db
+      .prepare('SELECT * FROM user_payment_methods WHERE id = ? AND user_id = ? AND is_active = 1 LIMIT 1')
+      .bind(pmId, userId)
+      .first();
+    if (!pmRow) {
+      return errorResponse('Carte introuvable ou non autorisée.', 404, origin);
+    }
+
+    const body: any = await request.json().catch(() => ({}));
+    const nextAutoStorage =
+      body.autoStorage !== undefined ? (body.autoStorage ? 1 : 0) : Number(pmRow.auto_storage || 0);
+    const nextAutoAi = body.autoAi !== undefined ? (body.autoAi ? 1 : 0) : Number(pmRow.auto_ai || 0);
+    const nextAutoAiOnDepleted =
+      nextAutoAi === 1
+        ? body.autoAiOnDepleted !== undefined
+          ? body.autoAiOnDepleted
+            ? 1
+            : 0
+          : Number(pmRow.auto_ai_on_depleted || 0)
+        : 0;
+    const nextAutoApps =
+      body.autoApps !== undefined
+        ? parseAutoAppsJson(body.autoApps)
+        : body.autoAllApps !== undefined
+        ? body.autoAllApps
+          ? ['*']
+          : []
+        : parseAutoAppsJson(pmRow.auto_apps_json);
+    const nextAutoAppsJson = JSON.stringify(nextAutoApps);
+
+    await db
+      .prepare(
+        `UPDATE user_payment_methods
+         SET auto_storage = ?, auto_ai = ?, auto_ai_on_depleted = ?, auto_apps_json = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND user_id = ?`
+      )
+      .bind(nextAutoStorage, nextAutoAi, nextAutoAiOnDepleted, nextAutoAppsJson, pmId, userId)
+      .run();
+
+    const updatedPm: any = await db
+      .prepare('SELECT * FROM user_payment_methods WHERE id = ? LIMIT 1')
+      .bind(pmId)
+      .first();
+
+    // Synchroniser les abonnements actifs non-infinis de l'utilisateur
+    const syncSubs = body.syncSubscriptions !== false;
+    let switchedToAutoCount = 0;
+    let switchedToManualCount = 0;
+
+    if (syncSubs && updatedPm) {
+      const userSubsRes = await db
+        .prepare(
+          `SELECT * FROM active_subscriptions
+           WHERE user_id = ? AND status IN ('active', 'trial', 'grace', 'past_due')
+             AND COALESCE(is_infinite, 0) = 0`
+        )
+        .bind(userId)
+        .all()
+        .catch(() => ({ results: [] }));
+
+      for (const sub of userSubsRes.results || []) {
+        const pType = String(sub.product_type || '').toLowerCase();
+        const appKey = sanitizeAppKey(sub.app_key || '');
+        const isServiceAuthorized =
+          (pType === 'storage' && nextAutoStorage === 1) ||
+          (pType === 'ai' && nextAutoAi === 1) ||
+          (pType === 'app' && (nextAutoApps.includes('*') || (appKey && nextAutoApps.includes(appKey))));
+
+        if (!isServiceAuthorized && sub.renewal_mode === 'auto' && String(sub.payment_method_id || '') === pmId) {
+          await db
+            .prepare(
+              `UPDATE active_subscriptions
+               SET renewal_mode = 'manual', updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND user_id = ?`
+            )
+            .bind(sub.id, userId)
+            .run()
+            .catch(() => {});
+          if (pType === 'app' && appKey) {
+            await db
+              .prepare('UPDATE user_app_entitlements SET auto_renew = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?')
+              .bind(userId, appKey)
+              .run()
+              .catch(() => {});
+          }
+          switchedToManualCount++;
+        } else if (
+          isServiceAuthorized &&
+          Number(sub.plan_allows_auto) === 1 &&
+          Number(sub.cancel_at_period_end) !== 1 &&
+          (sub.renewal_mode !== 'auto' || !sub.payment_method_id)
+        ) {
+          await db
+            .prepare(
+              `UPDATE active_subscriptions
+               SET payment_method_id = ?, renewal_mode = 'auto', user_confirmed_renewal = 1, updated_at = CURRENT_TIMESTAMP
+               WHERE id = ? AND user_id = ?`
+            )
+            .bind(pmId, sub.id, userId)
+            .run()
+            .catch(() => {});
+          if (pType === 'app' && appKey) {
+            await db
+              .prepare('UPDATE user_app_entitlements SET auto_renew = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?')
+              .bind(userId, appKey)
+              .run()
+              .catch(() => {});
+          }
+          switchedToAutoCount++;
+        }
+      }
+    }
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: '',
+      userId,
+      eventType: 'card_permissions_updated',
+      actor: 'user',
+      details: {
+        paymentMethodId: pmId,
+        last4: updatedPm?.last4 || '',
+        autoStorage: nextAutoStorage === 1,
+        autoAi: nextAutoAi === 1,
+        autoAiOnDepleted: nextAutoAiOnDepleted === 1,
+        autoApps: nextAutoApps,
+        switchedToAutoCount,
+        switchedToManualCount,
+      },
+    });
+
+    return jsonResponse(
+      {
+        success: true,
+        paymentMethod: maskPaymentMethodForClient(updatedPm),
+        switchedToAutoCount,
+        switchedToManualCount,
+      },
+      200,
+      origin
+    );
+  }
+
+  // --------------------------------------------------------------------------
   // 15. GET /api/billing/policies — Lecture des règles de relances & délais par service
   // --------------------------------------------------------------------------
   if (path === '/api/billing/policies' && method === 'GET') {
@@ -4082,6 +4542,21 @@ export async function handlePaystackBillingRoutes(
     const body: any = await request.json().catch(() => ({}));
     const targetSubId = String(body.subscriptionId || '').trim();
     const enableAutoAfterLink = body.enableAuto !== false;
+    const hasExplicitPerms =
+      body.autoStorage !== undefined ||
+      body.autoAi !== undefined ||
+      body.autoAiOnDepleted !== undefined ||
+      body.autoApps !== undefined ||
+      body.autoAllApps !== undefined;
+    const permAutoStorage = Boolean(body.autoStorage);
+    const permAutoAi = Boolean(body.autoAi);
+    const permAutoAiOnDepleted = permAutoAi && Boolean(body.autoAiOnDepleted);
+    const permAutoApps =
+      body.autoApps !== undefined
+        ? parseAutoAppsJson(body.autoApps)
+        : body.autoAllApps
+        ? ['*']
+        : [];
 
     const uRow: any = await db
       .prepare('SELECT id, name, email FROM users WHERE id = ? LIMIT 1')
@@ -4093,7 +4568,8 @@ export async function handlePaystackBillingRoutes(
       return errorResponse('Adresse email de compte requise pour lier une carte bancaire.', 400, origin);
     }
 
-    // Paystack exige un montant minimal (100 FCFA) pour tokeniser une carte Visa/Mastercard réutilisable
+    // Paystack exige une empreinte minimale (100 FCFA) pour tokeniser une carte Visa/Mastercard réutilisable.
+    // Cette empreinte est automatiquement remboursée dès validation dans /link-verify (0 FCFA net).
     const linkAmountMajor = 100;
     const linkAmountMinor = linkAmountMajor * 100;
     const reference = `SC-CARD-${Date.now()}-${Math.random().toString(36).slice(2, 8).toUpperCase()}`;
@@ -4115,6 +4591,11 @@ export async function handlePaystackBillingRoutes(
           user_id: userId,
           subscription_id: targetSubId,
           enable_auto: enableAutoAfterLink,
+          has_explicit_perms: hasExplicitPerms,
+          auto_storage: permAutoStorage,
+          auto_ai: permAutoAi,
+          auto_ai_on_depleted: permAutoAiOnDepleted,
+          auto_apps: permAutoApps,
         },
       }),
     });
@@ -4130,6 +4611,7 @@ export async function handlePaystackBillingRoutes(
         accessCode: psJson.data.access_code,
         authorizationUrl: psJson.data.authorization_url,
         verificationAmountFcfa: linkAmountMajor,
+        autoRefundEnabled: true,
       },
       200,
       origin
@@ -4161,9 +4643,56 @@ export async function handlePaystackBillingRoutes(
     }
 
     // Anti-IDOR : vérifier que la référence appartient bien à cet utilisateur
-    const metaUserId = String(psJson.data?.metadata?.user_id || '').trim();
+    const meta = psJson.data?.metadata || {};
+    const metaUserId = String(meta?.user_id || '').trim();
     if (metaUserId && metaUserId !== userId) {
       return errorResponse('Référence non autorisée pour ce compte.', 403, origin);
+    }
+
+    const subIdToLink = targetSubId || String(meta?.subscription_id || '').trim();
+    let targetSubRow: any = null;
+    if (subIdToLink) {
+      targetSubRow = await db
+        .prepare('SELECT * FROM active_subscriptions WHERE id = ? AND user_id = ? LIMIT 1')
+        .bind(subIdToLink, userId)
+        .first()
+        .catch(() => null);
+    }
+
+    // Déterminer les permissions par service choisies dans la modale StudyCloud (ou déduites de l'abonnement cible)
+    const bodyHasPerms =
+      body.autoStorage !== undefined ||
+      body.autoAi !== undefined ||
+      body.autoAiOnDepleted !== undefined ||
+      body.autoApps !== undefined ||
+      body.autoAllApps !== undefined;
+    const metaHasPerms = Boolean(meta?.has_explicit_perms);
+
+    let permAutoStorage = false;
+    let permAutoAi = false;
+    let permAutoAiOnDepleted = false;
+    let permAutoApps: string[] = [];
+
+    if (bodyHasPerms) {
+      permAutoStorage = Boolean(body.autoStorage);
+      permAutoAi = Boolean(body.autoAi);
+      permAutoAiOnDepleted = permAutoAi && Boolean(body.autoAiOnDepleted);
+      permAutoApps =
+        body.autoApps !== undefined
+          ? parseAutoAppsJson(body.autoApps)
+          : body.autoAllApps
+          ? ['*']
+          : [];
+    } else if (metaHasPerms) {
+      permAutoStorage = Boolean(meta.auto_storage);
+      permAutoAi = Boolean(meta.auto_ai);
+      permAutoAiOnDepleted = permAutoAi && Boolean(meta.auto_ai_on_depleted);
+      permAutoApps = parseAutoAppsJson(meta.auto_apps);
+    } else if (targetSubRow && enableAuto) {
+      const pType = String(targetSubRow.product_type || '').toLowerCase();
+      if (pType === 'storage') permAutoStorage = true;
+      else if (pType === 'ai') permAutoAi = true;
+      else if (pType === 'app' && targetSubRow.app_key) permAutoApps = [sanitizeAppKey(targetSubRow.app_key)];
     }
 
     const savedCard = await upsertUserPaymentMethodFromPaystack(db, {
@@ -4171,41 +4700,121 @@ export async function handlePaystackBillingRoutes(
       authEmail: String(psJson.data?.customer?.email || authUser.email || ''),
       channel: 'card',
       paystackData: psJson.data,
+      servicePermissions: {
+        mode: bodyHasPerms || metaHasPerms ? 'replace' : 'merge',
+        autoStorage: permAutoStorage,
+        autoAi: permAutoAi,
+        autoAiOnDepleted: permAutoAiOnDepleted,
+        autoApps: permAutoApps,
+      },
     });
     if (!savedCard) {
       return errorResponse('Cette carte ne permet pas le prélèvement récurrent sécurisé (non réutilisable).', 400, origin);
     }
 
+    // REMBOURSEMENT AUTOMATIQUE IMMÉDIAT DE L'EMPREINTE DE 100 FCFA (0 FCFA NET POUR L'UTILISATEUR)
+    let refunded = false;
+    let refundStatus = 'skipped';
+    let refundMessage = '';
+    try {
+      const refundResp = await fetchFn(`${PAYSTACK_API_BASE}/refund`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${secretKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          transaction: reference,
+          customer_note: 'Remboursement automatique empreinte de vérification carte StudyCloud (0 FCFA net)',
+          merchant_note: `Auto-refund card link ${reference} (user ${userId})`,
+        }),
+      });
+      const refundJson: any = await refundResp.json().catch(() => null);
+      if (refundResp.ok && refundJson?.status) {
+        refunded = true;
+        refundStatus = String(refundJson?.data?.status || 'processed');
+        refundMessage = 'Empreinte de vérification de 100 FCFA remboursée automatiquement.';
+      } else {
+        refundStatus = 'pending_bank';
+        refundMessage = String(refundJson?.message || 'Empreinte en cours de libération par la banque.');
+      }
+    } catch (refErr: any) {
+      refundStatus = 'deferred';
+      refundMessage = String(refErr?.message || 'Libération de l’empreinte différée.');
+    }
+
     let updatedSub: any = null;
-    const subIdToLink = targetSubId || String(psJson.data?.metadata?.subscription_id || '').trim();
-    if (subIdToLink) {
-      const subRow: any = await db
-        .prepare('SELECT * FROM active_subscriptions WHERE id = ? AND user_id = ? LIMIT 1')
-        .bind(subIdToLink, userId)
-        .first()
-        .catch(() => null);
-      if (subRow && Number(subRow.is_infinite) !== 1) {
-        const shouldAuto = enableAuto && Number(subRow.plan_allows_auto) === 1;
-        await db
-          .prepare(
-            `UPDATE active_subscriptions
-             SET payment_method_id = ?,
-                 renewal_mode = CASE WHEN ? = 1 THEN 'auto' ELSE renewal_mode END,
-                 user_confirmed_renewal = 1,
-                 cancel_at_period_end = CASE WHEN ? = 1 THEN 0 ELSE cancel_at_period_end END,
-                 updated_at = CURRENT_TIMESTAMP
-             WHERE id = ? AND user_id = ?`
-          )
-          .bind(savedCard.id, shouldAuto ? 1 : 0, shouldAuto ? 1 : 0, subIdToLink, userId)
-          .run();
-        if (shouldAuto && subRow.product_type === 'app' && subRow.app_key) {
+    let autoLinkedCount = 0;
+
+    if (targetSubRow && Number(targetSubRow.is_infinite) !== 1) {
+      const shouldAuto = enableAuto && Number(targetSubRow.plan_allows_auto) === 1;
+      await db
+        .prepare(
+          `UPDATE active_subscriptions
+           SET payment_method_id = ?,
+               renewal_mode = CASE WHEN ? = 1 THEN 'auto' ELSE renewal_mode END,
+               user_confirmed_renewal = 1,
+               cancel_at_period_end = CASE WHEN ? = 1 THEN 0 ELSE cancel_at_period_end END,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND user_id = ?`
+        )
+        .bind(savedCard.id, shouldAuto ? 1 : 0, shouldAuto ? 1 : 0, subIdToLink, userId)
+        .run();
+      if (shouldAuto) {
+        autoLinkedCount++;
+        if (targetSubRow.product_type === 'app' && targetSubRow.app_key) {
           await db
             .prepare('UPDATE user_app_entitlements SET auto_renew = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?')
-            .bind(userId, subRow.app_key)
+            .bind(userId, targetSubRow.app_key)
             .run()
             .catch(() => {});
         }
-        updatedSub = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ?').bind(subIdToLink).first();
+      }
+      updatedSub = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ?').bind(subIdToLink).first();
+    }
+
+    // Rattacher automatiquement cette carte aux abonnements actifs non-infinis compatibles avec les services cochés
+    if (enableAuto) {
+      const existingSubsRes = await db
+        .prepare(
+          `SELECT * FROM active_subscriptions
+           WHERE user_id = ?
+             AND status IN ('active', 'trial', 'grace', 'past_due')
+             AND COALESCE(is_infinite, 0) = 0
+             AND COALESCE(plan_allows_auto, 0) = 1
+             AND COALESCE(cancel_at_period_end, 0) = 0`
+        )
+        .bind(userId)
+        .all()
+        .catch(() => ({ results: [] }));
+
+      for (const s of existingSubsRes.results || []) {
+        if (subIdToLink && String(s.id) === subIdToLink) continue;
+        const pType = String(s.product_type || '').toLowerCase();
+        const aKey = sanitizeAppKey(s.app_key || '');
+        const matchesPerm =
+          (pType === 'storage' && Number(savedCard.auto_storage) === 1) ||
+          (pType === 'ai' && Number(savedCard.auto_ai) === 1) ||
+          (pType === 'app' && (permAutoApps.includes('*') || (aKey && permAutoApps.includes(aKey))));
+        if (!matchesPerm) continue;
+
+        await db
+          .prepare(
+            `UPDATE active_subscriptions
+             SET payment_method_id = ?, renewal_mode = 'auto', user_confirmed_renewal = 1, updated_at = CURRENT_TIMESTAMP
+             WHERE id = ? AND user_id = ?`
+          )
+          .bind(savedCard.id, s.id, userId)
+          .run()
+          .catch(() => {});
+        if (pType === 'app' && aKey) {
+          await db
+            .prepare('UPDATE user_app_entitlements SET auto_renew = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?')
+            .bind(userId, aKey)
+            .run()
+            .catch(() => {});
+        }
+        autoLinkedCount++;
       }
     }
 
@@ -4219,7 +4828,14 @@ export async function handlePaystackBillingRoutes(
         cardBrand: savedCard.card_brand,
         last4: savedCard.last4,
         linkedSubscriptionId: subIdToLink || null,
-        switchedToAuto: Boolean(updatedSub && updatedSub.renewal_mode === 'auto'),
+        switchedToAuto: Boolean(updatedSub && updatedSub.renewal_mode === 'auto') || autoLinkedCount > 0,
+        autoLinkedCount,
+        autoStorage: Number(savedCard.auto_storage) === 1,
+        autoAi: Number(savedCard.auto_ai) === 1,
+        autoAiOnDepleted: Number(savedCard.auto_ai_on_depleted) === 1,
+        autoApps: parseAutoAppsJson(savedCard.auto_apps_json),
+        refunded,
+        refundStatus,
       },
     });
 
@@ -4230,6 +4846,10 @@ export async function handlePaystackBillingRoutes(
         subscription: updatedSub
           ? { ...updatedSub, countdown: computeSubscriptionCountdown(updatedSub.current_period_end, updatedSub.is_infinite, updatedSub.grace_until) }
           : null,
+        autoLinkedCount,
+        refunded,
+        refundStatus,
+        refundMessage,
       },
       200,
       origin
@@ -4254,18 +4874,67 @@ export async function handlePaystackBillingRoutes(
       .all()
       .catch(() => ({ results: [] }));
     const pmRes = await db
-      .prepare('SELECT * FROM user_payment_methods WHERE is_active = 1')
+      .prepare(
+        `SELECT pm.*, u.name AS u_name, u.email AS u_email, u.phone AS u_phone
+         FROM user_payment_methods pm
+         LEFT JOIN users u ON u.id = pm.user_id
+         WHERE pm.is_active = 1
+         ORDER BY pm.updated_at DESC LIMIT 500`
+      )
       .all()
-      .catch(() => ({ results: [] }));
+      .catch(async () =>
+        db.prepare('SELECT * FROM user_payment_methods WHERE is_active = 1 ORDER BY updated_at DESC LIMIT 500').all().catch(() => ({ results: [] }))
+      );
+
     const pmMap = new Map<string, any>();
+    const activeSubsByPmId = new Map<string, any[]>();
+    const activeSubsByUserId = new Map<string, any[]>();
+
+    for (const s of subsRes.results || []) {
+      const uid = String(s.user_id || '');
+      if (['active', 'trial', 'grace', 'past_due'].includes(String(s.status || ''))) {
+        const uArr = activeSubsByUserId.get(uid) || [];
+        uArr.push(s);
+        activeSubsByUserId.set(uid, uArr);
+        if (s.payment_method_id) {
+          const pArr = activeSubsByPmId.get(String(s.payment_method_id)) || [];
+          pArr.push(s);
+          activeSubsByPmId.set(String(s.payment_method_id), pArr);
+        }
+      }
+    }
+
+    const adminPaymentMethods: any[] = [];
     for (const pm of pmRes.results || []) {
-      pmMap.set(String(pm.id), maskPaymentMethodForClient(pm));
+      const masked = maskPaymentMethodForClient(pm);
+      if (!masked) continue;
+      pmMap.set(masked.id, masked);
+      const linkedSubs = activeSubsByPmId.get(masked.id) || [];
+      const userAllActive = activeSubsByUserId.get(String(pm.user_id || '')) || [];
+      adminPaymentMethods.push({
+        ...masked,
+        userId: String(pm.user_id || ''),
+        userName: String(pm.u_name || linkedSubs[0]?.user_name || userAllActive[0]?.user_name || ''),
+        userEmail: String(pm.u_email || pm.auth_email || linkedSubs[0]?.user_email || ''),
+        userPhone: String(pm.u_phone || linkedSubs[0]?.user_phone || ''),
+        linkedActiveCount: linkedSubs.length,
+        userActiveSubsCount: userAllActive.length,
+        linkedSubscriptions: linkedSubs.map((ls: any) => ({
+          id: ls.id,
+          productType: ls.product_type,
+          appKey: ls.app_key,
+          planName: ls.plan_name,
+          status: ls.status,
+          renewalMode: ls.renewal_mode,
+        })),
+      });
     }
 
     const list = (subsRes.results || []).map((s: any) => ({
       ...s,
       countdown: computeSubscriptionCountdown(s.current_period_end, s.is_infinite, s.grace_until),
       paymentMethod: s.payment_method_id ? pmMap.get(String(s.payment_method_id)) || null : null,
+      hasSavedCardOnAccount: (pmRes.results || []).some((pm: any) => String(pm.user_id) === String(s.user_id)),
     }));
 
     const stats = {
@@ -4276,9 +4945,14 @@ export async function handlePaystackBillingRoutes(
       infinite: list.filter((s: any) => Number(s.is_infinite) === 1 && s.status === 'active').length,
       grace: list.filter((s: any) => s.status === 'grace' || s.status === 'past_due').length,
       blocked: list.filter((s: any) => s.status === 'blocked').length,
+      savedCards: adminPaymentMethods.length,
     };
 
-    return jsonResponse({ success: true, stats, subscriptions: list }, 200, origin);
+    return jsonResponse(
+      { success: true, stats, subscriptions: list, paymentMethods: adminPaymentMethods },
+      200,
+      origin
+    );
   }
 
   const adminSubDetailsMatch = path.match(/^\/api\/admin\/billing\/subscriptions\/([^/]+)\/details$/);
@@ -4782,6 +5456,223 @@ export async function handlePaystackBillingRoutes(
 }
 
 /**
+ * Recharge automatiquement le forfait de Crédits IA lorsque le solde atteint 0,
+ * si l'utilisateur a explicitement coché `auto_ai = 1` et `auto_ai_on_depleted = 1`
+ * sur sa carte enregistrée.
+ * Garde-fou anti-boucle strict : 1 seule recharge automatique maximum par 24 heures.
+ */
+export async function tryAutoRechargeDepletedAiCredits(
+  db: any,
+  rawEnv: Record<string, any>,
+  userId: string,
+  opts?: { fetchFn?: typeof fetch; nowIso?: string }
+): Promise<{ triggered: boolean; recharged?: boolean; reason?: string; reference?: string }> {
+  if (!db || !userId) return { triggered: false, reason: 'invalid_args' };
+  await ensurePaystackBillingTables(db);
+
+  const creditRow: any = await db
+    .prepare('SELECT credits_balance FROM user_ai_credits WHERE user_id = ? LIMIT 1')
+    .bind(userId)
+    .first()
+    .catch(() => null);
+  if (!creditRow || Number(creditRow.credits_balance || 0) > 0) {
+    return { triggered: false, reason: 'balance_positive' };
+  }
+
+  // Chercher une carte active autorisant la recharge auto IA quand solde = 0
+  const pm: any = await db
+    .prepare(
+      `SELECT * FROM user_payment_methods
+       WHERE user_id = ? AND is_active = 1 AND reusable = 1
+         AND COALESCE(auto_ai, 0) = 1 AND COALESCE(auto_ai_on_depleted, 0) = 1
+       ORDER BY is_default DESC, updated_at DESC LIMIT 1`
+    )
+    .bind(userId)
+    .first()
+    .catch(() => null);
+  if (!pm || !pm.authorization_code) {
+    return { triggered: false, reason: 'no_authorized_card' };
+  }
+
+  // Chercher l'abonnement / pack IA non-infini de référence pour connaître le montant & plan
+  const aiSub: any = await db
+    .prepare(
+      `SELECT * FROM active_subscriptions
+       WHERE user_id = ?
+         AND product_type = 'ai'
+         AND status IN ('active', 'grace', 'past_due')
+         AND COALESCE(is_infinite, 0) = 0
+         AND COALESCE(cancel_at_period_end, 0) = 0
+       ORDER BY updated_at DESC LIMIT 1`
+    )
+    .bind(userId)
+    .first()
+    .catch(() => null);
+  if (!aiSub || Number(aiSub.price_amount || 0) <= 0) {
+    return { triggered: false, reason: 'no_eligible_ai_subscription' };
+  }
+
+  const secretKey = getPaystackSecretKey(rawEnv);
+  if (!secretKey) return { triggered: false, reason: 'paystack_unconfigured' };
+
+  const nowMs = opts?.nowIso ? Date.parse(opts.nowIso) : Date.now();
+  const nowIso = new Date(nowMs).toISOString();
+  const dayKey = nowIso.slice(0, 10).replace(/-/g, '');
+  const cleanUid = String(userId).replace(/[^a-zA-Z0-9]/g, '').slice(-10) || 'USR';
+  const rechargeRef = `SC-AIRECH-${cleanUid}-${dayKey}`;
+
+  // GARDE-FOU ANTI-BOUCLE STRICT : max 1 recharge auto IA / 24h (et clé unique par jour)
+  const recentAutoRecharges = await db
+    .prepare(
+      `SELECT id, reference, status, fulfilled_at, created_at
+       FROM payment_transactions
+       WHERE user_id = ? AND reference LIKE 'SC-AIRECH-%'
+       ORDER BY created_at DESC LIMIT 5`
+    )
+    .bind(userId)
+    .all()
+    .catch(() => ({ results: [] }));
+
+  for (const prev of recentAutoRecharges.results || []) {
+    if (String(prev.reference) === rechargeRef) {
+      return { triggered: false, reason: 'cooldown_24h_same_day', reference: rechargeRef };
+    }
+    const tsRaw = String(prev.fulfilled_at || prev.created_at || '');
+    const parsedMs = Date.parse(tsRaw.includes('T') ? tsRaw : tsRaw.replace(' ', 'T') + 'Z');
+    if (Number.isFinite(parsedMs) && nowMs - parsedMs < 24 * 60 * 60 * 1000) {
+      return { triggered: false, reason: 'cooldown_24h', reference: String(prev.reference) };
+    }
+  }
+
+  const amountMajor = Number(aiSub.price_amount || 0);
+  const currency = String(aiSub.currency || 'XOF').toUpperCase();
+  const amountMinor = Math.round(amountMajor * 100);
+  const email = String(pm.auth_email || aiSub.user_email || '').trim();
+  if (!email) return { triggered: false, reason: 'missing_email' };
+
+  const txId = `tx_airech_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  await db
+    .prepare(
+      `INSERT INTO payment_transactions (
+         id, reference, user_id, user_name, user_email, user_phone,
+         product_type, product_id, product_name, app_key, app_name,
+         billing_mode, billing_cycle, duration_days,
+         expected_amount, expected_amount_minor, currency,
+         provider, channel, status, subscription_id
+       ) VALUES (?, ?, ?, ?, ?, ?, 'ai', ?, ?, 'ai', 'Crédits IA StudyCloud', 'auto', ?, ?, ?, ?, ?, 'paystack', 'card', 'pending', ?)`
+    )
+    .bind(
+      txId,
+      rechargeRef,
+      userId,
+      String(aiSub.user_name || ''),
+      email,
+      String(aiSub.user_phone || ''),
+      String(aiSub.plan_id || ''),
+      String(aiSub.plan_name || 'Recharge Auto Crédits IA'),
+      String(aiSub.billing_cycle || 'monthly'),
+      Math.max(1, Number(aiSub.duration_days || 30)),
+      amountMajor,
+      amountMinor,
+      currency,
+      String(aiSub.id)
+    )
+    .run();
+
+  const fetchFn = opts?.fetchFn || fetch;
+  let psOk = false;
+  let psJson: any = {};
+  let failReason = '';
+  try {
+    const resp = await fetchFn(`${PAYSTACK_API_BASE}/transaction/charge_authorization`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        authorization_code: pm.authorization_code,
+        email,
+        amount: amountMinor,
+        currency,
+        reference: rechargeRef,
+        metadata: {
+          user_id: userId,
+          subscription_id: aiSub.id,
+          product_type: 'ai',
+          product_id: aiSub.plan_id,
+          auto_ai_depleted_recharge: true,
+        },
+      }),
+    });
+    psJson = await resp.json().catch(() => ({}));
+    psOk = Boolean(resp.ok && psJson?.status && psJson?.data?.status === 'success');
+    if (!psOk) {
+      failReason = String(psJson?.data?.gateway_response || psJson?.message || `HTTP ${resp.status}`);
+    }
+  } catch (err: any) {
+    failReason = String(err?.message || 'Erreur réseau Paystack');
+  }
+
+  if (psOk) {
+    const pendingTxRow = await db
+      .prepare('SELECT * FROM payment_transactions WHERE reference = ? LIMIT 1')
+      .bind(rechargeRef)
+      .first();
+    await fulfillPaidTransaction(db, pendingTxRow, psJson.data, { rawEnv, fetchFn });
+    await recordSubscriptionEvent(db, {
+      subscriptionId: String(aiSub.id),
+      userId,
+      eventType: 'ai_auto_recharged',
+      actor: 'system',
+      details: {
+        reference: rechargeRef,
+        amount: amountMajor,
+        currency,
+        cardLast4: pm.last4 || '',
+        trigger: 'credits_depleted',
+      },
+    });
+    return { triggered: true, recharged: true, reference: rechargeRef };
+  }
+
+  await db
+    .prepare("UPDATE payment_transactions SET status = 'failed', raw_verify_json = ?, updated_at = CURRENT_TIMESTAMP WHERE reference = ?")
+    .bind(JSON.stringify(psJson || { error: failReason }).slice(0, 8000), rechargeRef)
+    .run()
+    .catch(() => {});
+
+  await recordSubscriptionEvent(db, {
+    subscriptionId: String(aiSub.id),
+    userId,
+    eventType: 'ai_auto_recharge_failed',
+    actor: 'system',
+    details: { reference: rechargeRef, reason: failReason },
+  });
+
+  const policy = await resolveEffectiveBillingPolicy(db, {
+    productType: 'ai',
+    appKey: 'ai',
+    subscriptionId: String(aiSub.id),
+  });
+  if (policy.emailOnFail) {
+    await sendAndLogBillingEmail({
+      db,
+      rawEnv,
+      fetchFn,
+      subscription: { ...aiSub, last_charge_error: failReason },
+      emailType: 'payment_failed',
+      triggeredBy: 'auto',
+      reference: rechargeRef,
+      nowIso,
+      recordEventFn: recordSubscriptionEvent,
+    }).catch(() => {});
+  }
+
+  return { triggered: true, recharged: false, reason: failReason, reference: rechargeRef };
+}
+
+/**
  * Exécute le cycle horaire complet de facturation / relance / blocage (Étape 7).
  * Appelé automatiquement par `scheduled()` dans `worker/src/index.ts` et manuellement par l'admin.
  */
@@ -4801,5 +5692,7 @@ export async function executeBillingCronJob(
     recordSubscriptionEvent,
     fulfillAutoRenewalTransaction: (d, txRow, psData) =>
       fulfillPaidTransaction(d, txRow, psData, { rawEnv, fetchFn: opts?.fetchFn }),
+    isCardAuthorizedForSubscription,
+    tryAutoRechargeDepletedAiCredits,
   });
 }

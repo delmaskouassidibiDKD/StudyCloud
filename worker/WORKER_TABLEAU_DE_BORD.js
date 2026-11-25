@@ -994,10 +994,22 @@ async function ensureStorageTables(db) {
         reusable INTEGER DEFAULT 1,
         is_default INTEGER DEFAULT 1,
         is_active INTEGER DEFAULT 1,
+        auto_storage INTEGER DEFAULT 0,
+        auto_ai INTEGER DEFAULT 0,
+        auto_ai_on_depleted INTEGER DEFAULT 0,
+        auto_apps_json TEXT DEFAULT '[]',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run().catch(() => {});
+    for (const pmMig of [
+      "ALTER TABLE user_payment_methods ADD COLUMN auto_storage INTEGER DEFAULT 0",
+      "ALTER TABLE user_payment_methods ADD COLUMN auto_ai INTEGER DEFAULT 0",
+      "ALTER TABLE user_payment_methods ADD COLUMN auto_ai_on_depleted INTEGER DEFAULT 0",
+      "ALTER TABLE user_payment_methods ADD COLUMN auto_apps_json TEXT DEFAULT '[]'"
+    ]) {
+      try { await db.prepare(pmMig).run(); } catch (e) {}
+    }
 
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS active_subscriptions (
@@ -4479,6 +4491,7 @@ function renderDashboardHtml(data) {
         <!-- Sous-onglets -->
         <div class="flex flex-wrap items-center gap-2">
           <button type="button" id="asub-tab-list" onclick="switchAdminActiveSubsTab('list')" class="px-3.5 py-2 rounded-xl bg-orange-600 text-white text-xs font-black cursor-pointer">📋 Abonnements en cours</button>
+          <button type="button" id="asub-tab-cards" onclick="switchAdminActiveSubsTab('cards')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">💳 Cartes enregistrées (<span id="asub-tab-cards-count">0</span>)</button>
           <button type="button" id="asub-tab-policies" onclick="switchAdminActiveSubsTab('policies')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">⚙️ Politiques de relance &amp; blocage</button>
           <button type="button" id="asub-tab-emails" onclick="switchAdminActiveSubsTab('emails')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">📧 Journal des Emails envoyés</button>
         </div>
@@ -4555,6 +4568,33 @@ function renderDashboardHtml(data) {
                 </thead>
                 <tbody id="asub-table-tbody" class="divide-y divide-slate-800/80">
                   <tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">Chargement des abonnements...</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL 2 : CARTES BANCAIRES ENREGISTRÉES & PERMISSIONS AUTO -->
+        <div id="asub-panel-cards" class="hidden space-y-3">
+          <div class="neo-card p-3 flex flex-wrap items-center justify-between gap-2">
+            <input id="asub-cards-search" type="text" oninput="renderAdminSavedCardsTable()" placeholder="Rechercher utilisateur, email, banque, 4 derniers chiffres..." class="flex-1 min-w-[220px] px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-xs text-white outline-none focus:border-orange-500" />
+            <span id="asub-cards-counter" class="text-[11px] font-bold text-slate-400 px-2">0 carte</span>
+            <button type="button" onclick="loadAdminActiveSubscriptions()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold cursor-pointer">🔄 Actualiser</button>
+          </div>
+          <div class="neo-card overflow-hidden">
+            <div class="overflow-x-auto">
+              <table class="w-full text-left text-xs">
+                <thead>
+                  <tr class="bg-slate-900/90 text-[10px] uppercase text-slate-400 border-b border-slate-800">
+                    <th class="px-3 py-2.5">Utilisateur</th>
+                    <th class="px-3 py-2.5">Carte Visa / Mastercard</th>
+                    <th class="px-3 py-2.5">Services autorisés en automatique</th>
+                    <th class="px-3 py-2.5">Abonnements actifs liés</th>
+                    <th class="px-3 py-2.5">Date d'ajout</th>
+                  </tr>
+                </thead>
+                <tbody id="asub-cards-tbody" class="divide-y divide-slate-800/80">
+                  <tr><td colspan="5" class="px-4 py-8 text-center text-slate-400">Chargement des cartes enregistrées...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -19084,12 +19124,13 @@ function renderDashboardHtml(data) {
     // =========================================================================
     const BILLING_API_ORIGIN = 'https://api-worker.dkd-technologies.com';
     let adminActiveSubs = [];
+    let adminSavedCards = [];
     let adminBillingPolicies = [];
     let adminBillingEmailLogs = [];
     let adminActiveSubsTicker = null;
 
     function switchAdminActiveSubsTab(tab) {
-      ['list', 'policies', 'emails'].forEach(function(k) {
+      ['list', 'cards', 'policies', 'emails'].forEach(function(k) {
         const panel = document.getElementById('asub-panel-' + k);
         const btn = document.getElementById('asub-tab-' + k);
         if (panel) panel.classList.toggle('hidden', k !== tab);
@@ -19099,10 +19140,28 @@ function renderDashboardHtml(data) {
             : 'px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer';
         }
       });
+      if (tab === 'cards') renderAdminSavedCardsTable();
       if (tab === 'policies') loadAdminBillingPolicies();
       if (tab === 'emails') loadAdminBillingEmailLogs();
     }
     window.switchAdminActiveSubsTab = switchAdminActiveSubsTab;
+
+    function formatAdminCardPermBadges(pm) {
+      if (!pm) return '';
+      const badges = [];
+      if (pm.autoStorage) badges.push('<span class="px-1.5 py-0.5 rounded bg-sky-500/20 text-sky-300 border border-sky-500/35 text-[9.5px] font-bold">💾 Stockage</span>');
+      if (pm.autoAi) badges.push('<span class="px-1.5 py-0.5 rounded bg-violet-500/20 text-violet-300 border border-violet-500/35 text-[9.5px] font-bold">🤖 Crédits IA</span>');
+      if (pm.autoAi && pm.autoAiOnDepleted) badges.push('<span class="px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/35 text-[9.5px] font-bold">⚡ Auto IA à 0</span>');
+      const apps = Array.isArray(pm.autoApps) ? pm.autoApps : [];
+      if (apps.length > 0) {
+        const appLbl = apps.indexOf('*') !== -1 ? 'Toutes Apps' : apps.join(', ');
+        badges.push('<span class="px-1.5 py-0.5 rounded bg-rose-500/20 text-rose-300 border border-rose-500/35 text-[9.5px] font-bold">📱 ' + escapeHtml(appLbl) + '</span>');
+      }
+      if (badges.length === 0) {
+        return '<span class="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[9.5px] font-bold">Aucun service auto coché</span>';
+      }
+      return '<div class="flex flex-wrap items-center gap-1 mt-1">' + badges.join('') + '</div>';
+    }
 
     function formatLiveCountdownHtml(sub) {
       if (Number(sub.is_infinite) === 1 || sub.renewal_mode === 'infinite') {
@@ -19165,6 +19224,7 @@ function renderDashboardHtml(data) {
         const data = await resp.json();
         if (!data || !data.success) throw new Error((data && data.error) || 'Erreur chargement');
         adminActiveSubs = Array.isArray(data.subscriptions) ? data.subscriptions : [];
+        adminSavedCards = Array.isArray(data.paymentMethods) ? data.paymentMethods : [];
         const st = data.stats || {};
         const setTxt = function(id, v) { const el = document.getElementById(id); if (el) el.textContent = String(v || 0); };
         setTxt('asub-kpi-active', st.active);
@@ -19173,8 +19233,10 @@ function renderDashboardHtml(data) {
         setTxt('asub-kpi-infinite', st.infinite);
         setTxt('asub-kpi-grace', st.grace);
         setTxt('asub-kpi-blocked', st.blocked);
+        setTxt('asub-tab-cards-count', adminSavedCards.length);
         setTxt('sidebar-active-subs-count', st.total || adminActiveSubs.length);
         renderAdminActiveSubsTable();
+        renderAdminSavedCardsTable();
 
         if (!adminActiveSubsTicker) {
           adminActiveSubsTicker = setInterval(function() {
@@ -19227,7 +19289,14 @@ function renderDashboardHtml(data) {
         const isAuto = !isInf && s.renewal_mode === 'auto';
         const isBlocked = s.status === 'blocked';
         const srvIcon = s.product_type === 'storage' ? '💾 Stockage Cloud' : (s.product_type === 'ai' ? '🤖 Crédits IA' : ('📱 ' + escapeHtml(s.app_name || s.app_key || 'App')));
-        const cardTxt = s.paymentMethod ? ('<div class="text-[10px] text-emerald-300 font-mono mt-0.5">💳 ' + escapeHtml(s.paymentMethod.label || ('•••• ' + s.paymentMethod.last4)) + '</div>') : (s.last_network_label ? '<div class="text-[10px] text-slate-400 mt-0.5">' + escapeHtml(s.last_network_label) + '</div>' : '');
+        let cardTxt = '';
+        if (s.paymentMethod) {
+          cardTxt = '<div class="text-[10px] text-emerald-300 font-mono mt-0.5">💳 ' + escapeHtml(s.paymentMethod.label || ((s.paymentMethod.cardBrand || 'Carte') + ' •••• ' + s.paymentMethod.last4)) + '</div>' + formatAdminCardPermBadges(s.paymentMethod);
+        } else if (s.hasSavedCardOnAccount) {
+          cardTxt = '<div class="text-[10px] text-amber-300 mt-0.5">💳 Carte sur compte (non liée ici)</div>' + (s.last_network_label ? '<div class="text-[9.5px] text-slate-400">' + escapeHtml(s.last_network_label) + '</div>' : '');
+        } else {
+          cardTxt = '<div class="text-[10px] text-slate-500 mt-0.5">Aucune carte liée</div>' + (s.last_network_label ? '<div class="text-[9.5px] text-slate-400">' + escapeHtml(s.last_network_label) + '</div>' : '');
+        }
         const modeBadge = isInf
           ? '<span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black">♾️ Infini</span>'
           : (isAuto
@@ -19274,6 +19343,55 @@ function renderDashboardHtml(data) {
       tbody.innerHTML = html;
     }
     window.renderAdminActiveSubsTable = renderAdminActiveSubsTable;
+
+    function renderAdminSavedCardsTable() {
+      const tbody = document.getElementById('asub-cards-tbody');
+      const counter = document.getElementById('asub-cards-counter');
+      if (!tbody) return;
+      const q = String(document.getElementById('asub-cards-search')?.value || '').trim().toLowerCase();
+      const filtered = (adminSavedCards || []).filter(function(pm) {
+        if (!q) return true;
+        const hay = [pm.userName, pm.userEmail, pm.userPhone, pm.userId, pm.brand, pm.cardBrand, pm.last4, pm.bank].join(' ').toLowerCase();
+        return hay.indexOf(q) !== -1;
+      });
+      if (counter) counter.textContent = filtered.length + ' carte' + (filtered.length > 1 ? 's' : '');
+      if (filtered.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" class="px-4 py-8 text-center text-slate-500">Aucune carte bancaire enregistrée pour le moment.</td></tr>';
+        return;
+      }
+      let html = '';
+      filtered.forEach(function(pm) {
+        const linked = Array.isArray(pm.linkedSubscriptions) ? pm.linkedSubscriptions : [];
+        let linkedHtml = '';
+        if (linked.length > 0) {
+          linkedHtml = '<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black">✅ Oui (' + linked.length + ')</span>';
+          linkedHtml += '<div class="mt-1 space-y-0.5">';
+          linked.forEach(function(ls) {
+            linkedHtml += '<div class="text-[10px] text-slate-300">• ' + escapeHtml(ls.planName || ls.appKey || ls.productType) + ' <span class="text-cyan-300">(' + escapeHtml(ls.renewalMode || 'auto') + ')</span></div>';
+          });
+          linkedHtml += '</div>';
+        } else {
+          linkedHtml = '<span class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-[10px] font-bold">⚪ Aucun abonnement actif</span>';
+        }
+        html += '<tr class="hover:bg-slate-900/60 transition">' +
+          '<td class="px-3 py-2.5">' +
+            '<div class="font-bold text-white truncate max-w-[170px]">' + escapeHtml(pm.userName || pm.userId || 'Utilisateur') + '</div>' +
+            '<div class="text-[10px] text-slate-400 truncate max-w-[170px]">' + escapeHtml(pm.userEmail || '') + '</div>' +
+            (pm.userPhone ? '<div class="text-[9.5px] font-mono text-slate-500">' + escapeHtml(pm.userPhone) + '</div>' : '') +
+          '</td>' +
+          '<td class="px-3 py-2.5 whitespace-nowrap">' +
+            '<div class="font-mono font-bold text-emerald-300">💳 ' + escapeHtml(pm.label || ((pm.cardBrand || 'Carte') + ' •••• ' + (pm.last4 || '••••'))) + '</div>' +
+            '<div class="text-[10px] text-slate-400 mt-0.5">Exp. ' + escapeHtml((pm.expMonth || '--') + '/' + (pm.expYear || '----')) + (pm.bank ? ' · ' + escapeHtml(pm.bank) : '') + '</div>' +
+            (pm.isDefault ? '<span class="inline-block mt-1 px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[9px] font-bold">Carte principale</span>' : '') +
+          '</td>' +
+          '<td class="px-3 py-2.5">' + formatAdminCardPermBadges(pm) + '</td>' +
+          '<td class="px-3 py-2.5">' + linkedHtml + '</td>' +
+          '<td class="px-3 py-2.5 whitespace-nowrap text-[10.5px] text-slate-400">' + escapeHtml(formatAdminDateTime(pm.createdAt)) + '</td>' +
+        '</tr>';
+      });
+      tbody.innerHTML = html;
+    }
+    window.renderAdminSavedCardsTable = renderAdminSavedCardsTable;
 
     function toDatetimeLocalValue(iso) {
       if (!iso) return '';
