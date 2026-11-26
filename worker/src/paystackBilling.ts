@@ -5006,7 +5006,14 @@ export async function handlePaystackBillingRoutes(
       .all()
       .catch(() => ({ results: [] }));
     const evRes = await db
-      .prepare('SELECT id, subscription_id, event_type, actor, details_json, created_at FROM subscription_events WHERE user_id = ? ORDER BY created_at DESC LIMIT 50')
+      .prepare(
+        `SELECT id, subscription_id, event_type, actor, details_json, created_at
+         FROM subscription_events
+         WHERE user_id = ?
+           AND LOWER(COALESCE(actor, '')) != 'admin'
+           AND event_type NOT IN ('admin_updated', 'admin_created', 'email_sent', 'updated')
+         ORDER BY created_at DESC LIMIT 50`
+      )
       .bind(userId)
       .all()
       .catch(() => ({ results: [] }));

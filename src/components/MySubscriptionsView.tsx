@@ -9,6 +9,7 @@ import {
   CalendarClock,
   ShieldAlert,
   Trash2,
+  Check,
   CheckCircle2,
   Loader2,
   AlertTriangle,
@@ -115,85 +116,143 @@ function computeLiveCountdownLabel(sub: ActiveSubscriptionRecord): {
 
 const MY_SUBS_PAGE_BG_STYLE: React.CSSProperties = {
   background: [
-    'radial-gradient(ellipse 68% 55% at 18% 22%, rgba(29, 99, 237, 0.44) 0%, rgba(15, 58, 148, 0.22) 38%, rgba(11, 21, 38, 0.08) 68%, transparent 86%)',
-    'radial-gradient(ellipse 60% 52% at 86% 78%, rgba(6, 182, 212, 0.28) 0%, rgba(14, 116, 144, 0.14) 40%, transparent 74%)',
-    'radial-gradient(ellipse 55% 45% at 82% 10%, rgba(79, 70, 229, 0.22) 0%, rgba(15, 23, 42, 0.5) 55%, transparent 82%)',
-    'linear-gradient(155deg, #070C17 0%, #0C1628 45%, #091322 78%, #060B14 100%)',
+    'radial-gradient(ellipse 68% 58% at 16% 18%, rgba(56, 189, 248, 0.38) 0%, rgba(37, 99, 235, 0.24) 40%, transparent 78%)',
+    'radial-gradient(ellipse 62% 56% at 86% 82%, rgba(99, 102, 241, 0.34) 0%, rgba(59, 130, 246, 0.18) 44%, transparent 76%)',
+    'radial-gradient(ellipse 56% 48% at 84% 12%, rgba(45, 212, 191, 0.26) 0%, transparent 72%)',
+    'linear-gradient(145deg, #1E3A6E 0%, #244C8A 38%, #1D447B 70%, #193766 100%)',
   ].join(', '),
 };
 
+const USER_VISIBLE_EVENT_TYPES = new Set<string>([
+  'created',
+  'renewed_manual',
+  'auto_charge_succeeded',
+  'auto_charge_failed',
+  'switched_to_auto',
+  'switched_to_manual',
+  'card_attached',
+  'card_linked',
+  'card_permissions_updated',
+  'card_removed',
+  'ai_auto_recharged',
+  'ai_auto_recharge_failed',
+  'user_cancelled_auto',
+  'trial_started',
+  'entered_grace',
+  'service_blocked',
+  'reactivated',
+]);
+
+function isUserVisibleActivityEvent(ev: { event_type?: string; actor?: string }): boolean {
+  const actor = String(ev?.actor || '').trim().toLowerCase();
+  const type = String(ev?.event_type || '').trim();
+  if (actor === 'admin') return false;
+  return USER_VISIBLE_EVENT_TYPES.has(type);
+}
+
 function getCardPalette(sub: ActiveSubscriptionRecord): {
+  headerGradient: string;
+  headerTextCls: string;
+  headerSubCls: string;
+  pillCls: string;
   gradient: string;
   border: string;
   glow: string;
   serviceLabel: string;
+  categoryTitle: string;
 } {
   const isInf = Number(sub.is_infinite) === 1 || sub.renewal_mode === 'infinite';
   if (sub.status === 'blocked') {
     return {
-      gradient: 'linear-gradient(145deg, rgba(190, 18, 60, 0.92) 0%, rgba(120, 14, 43, 0.94) 48%, rgba(28, 7, 16, 0.98) 100%)',
-      border: 'rgba(251, 113, 133, 0.38)',
-      glow: '0 16px 36px -12px rgba(190, 18, 60, 0.45)',
+      headerGradient: 'linear-gradient(135deg, #FB7185 0%, #E11D48 52%, #BE123C 100%)',
+      headerTextCls: 'text-white',
+      headerSubCls: 'text-white/85',
+      pillCls: 'bg-white/25 text-white',
+      gradient: 'linear-gradient(135deg, #E11D48 0%, #9F1239 100%)',
+      border: 'rgba(253, 164, 175, 0.45)',
+      glow: '0 18px 40px -14px rgba(159, 18, 57, 0.45)',
       serviceLabel: 'SUSPENDU',
+      categoryTitle: 'Suspendu',
     };
   }
   if (isInf) {
+    const baseTitle =
+      sub.product_type === 'storage'
+        ? 'Stockage Cloud'
+        : sub.product_type === 'ai'
+        ? 'Crédits IA'
+        : sub.app_name || sub.app_key || 'Application';
     return {
-      gradient: 'linear-gradient(145deg, rgba(217, 119, 6, 0.94) 0%, rgba(146, 64, 14, 0.94) 46%, rgba(36, 19, 7, 0.98) 100%)',
-      border: 'rgba(251, 191, 36, 0.42)',
-      glow: '0 16px 36px -12px rgba(217, 119, 6, 0.42)',
-      serviceLabel:
-        sub.product_type === 'storage'
-          ? 'STOCKAGE CLOUD · À VIE'
-          : sub.product_type === 'ai'
-          ? 'CRÉDITS IA · À VIE'
-          : `${(sub.app_name || sub.app_key || 'APPLICATION').toUpperCase()} · À VIE`,
+      headerGradient: 'linear-gradient(135deg, #FDE047 0%, #FBBF24 48%, #F59E0B 100%)',
+      headerTextCls: 'text-[#2B1904]',
+      headerSubCls: 'text-[#5C3A0E]',
+      pillCls: 'bg-white/45 text-[#2B1904]',
+      gradient: 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)',
+      border: 'rgba(253, 224, 71, 0.55)',
+      glow: '0 18px 40px -14px rgba(217, 119, 6, 0.4)',
+      serviceLabel: `${baseTitle.toUpperCase()} · À VIE`,
+      categoryTitle: `${baseTitle} · À vie`,
     };
   }
   if (sub.product_type === 'storage') {
     return {
-      gradient: 'linear-gradient(145deg, rgba(14, 165, 233, 0.92) 0%, rgba(3, 105, 161, 0.94) 44%, rgba(11, 36, 68, 0.98) 100%)',
-      border: 'rgba(125, 211, 252, 0.36)',
-      glow: '0 16px 36px -12px rgba(14, 165, 233, 0.42)',
+      headerGradient: 'linear-gradient(135deg, #FFD24C 0%, #FFA629 48%, #FF8A1F 100%)',
+      headerTextCls: 'text-[#2B1805]',
+      headerSubCls: 'text-[#61390D]',
+      pillCls: 'bg-white/40 text-[#2B1805]',
+      gradient: 'linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%)',
+      border: 'rgba(255, 210, 76, 0.5)',
+      glow: '0 18px 42px -14px rgba(14, 38, 78, 0.48)',
       serviceLabel: 'STOCKAGE CLOUD',
+      categoryTitle: 'Stockage Cloud',
     };
   }
   if (sub.product_type === 'ai') {
     return {
-      gradient: 'linear-gradient(145deg, rgba(124, 58, 237, 0.92) 0%, rgba(91, 33, 182, 0.94) 44%, rgba(28, 16, 62, 0.98) 100%)',
-      border: 'rgba(196, 181, 253, 0.36)',
-      glow: '0 16px 36px -12px rgba(124, 58, 237, 0.45)',
+      headerGradient: 'linear-gradient(135deg, #C084FC 0%, #8B5CF6 50%, #6D28D9 100%)',
+      headerTextCls: 'text-white',
+      headerSubCls: 'text-white/85',
+      pillCls: 'bg-white/25 text-white',
+      gradient: 'linear-gradient(135deg, #8B5CF6 0%, #5B21B6 100%)',
+      border: 'rgba(196, 181, 253, 0.48)',
+      glow: '0 18px 42px -14px rgba(91, 33, 182, 0.45)',
       serviceLabel: 'CRÉDITS IA',
+      categoryTitle: 'Crédits IA',
     };
   }
+  const appLabel = sub.app_name || sub.app_key || 'Application';
   return {
-    gradient: 'linear-gradient(145deg, rgba(225, 29, 72, 0.92) 0%, rgba(159, 18, 57, 0.94) 44%, rgba(45, 10, 24, 0.98) 100%)',
-    border: 'rgba(253, 164, 175, 0.36)',
-    glow: '0 16px 36px -12px rgba(225, 29, 72, 0.42)',
-    serviceLabel: (sub.app_name || sub.app_key || 'APPLICATION').toUpperCase(),
+    headerGradient: 'linear-gradient(135deg, #FB7185 0%, #F43F5E 52%, #E11D48 100%)',
+    headerTextCls: 'text-white',
+    headerSubCls: 'text-white/85',
+    pillCls: 'bg-white/25 text-white',
+    gradient: 'linear-gradient(135deg, #F43F5E 0%, #BE123C 100%)',
+    border: 'rgba(253, 164, 175, 0.48)',
+    glow: '0 18px 42px -14px rgba(190, 18, 60, 0.45)',
+    serviceLabel: appLabel.toUpperCase(),
+    categoryTitle: appLabel,
   };
 }
 
 function formatEventLabel(eventType: string): string {
   const map: Record<string, string> = {
     created: 'Abonnement activé',
-    renewed_manual: 'Renouvellement manuel confirmé',
+    renewed_manual: 'Renouvellement confirmé',
     auto_charge_succeeded: 'Prélèvement automatique réussi',
     auto_charge_failed: 'Échec du prélèvement automatique',
     switched_to_auto: 'Passé en renouvellement automatique',
     switched_to_manual: 'Passé en renouvellement manuel',
     card_attached: 'Carte bancaire enregistrée',
-    card_linked: 'Carte Visa/Mastercard associée (empreinte remboursée)',
-    card_permissions_updated: 'Services automatiques de la carte mis à jour',
+    card_linked: 'Carte Visa/Mastercard associée',
+    card_permissions_updated: 'Préférences de votre carte mises à jour',
     card_removed: 'Carte bancaire supprimée',
-    ai_auto_recharged: 'Crédits IA rechargés automatiquement (solde à 0)',
+    ai_auto_recharged: 'Crédits IA rechargés automatiquement',
     ai_auto_recharge_failed: 'Échec de la recharge auto Crédits IA',
     user_cancelled_auto: 'Arrêt du renouvellement programmé',
-    entered_grace: 'Entrée en période de grâce',
-    service_blocked: 'Service suspendu (impayé)',
-    reactivated: 'Service réactivé',
-    admin_updated: 'Mis à jour par l’administration',
-    email_sent: 'Email de suivi envoyé',
+    trial_started: 'Essai gratuit activé',
+    entered_grace: 'Période de grâce démarrée',
+    service_blocked: 'Abonnement suspendu (échéance dépassée)',
+    reactivated: 'Abonnement réactivé',
   };
   return map[eventType] || eventType;
 }
@@ -462,6 +521,11 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
     setBusyId(null);
   };
 
+  const userVisibleEvents = useMemo(
+    () => recentEvents.filter((ev) => isUserVisibleActivityEvent(ev)),
+    [recentEvents]
+  );
+
   const counts = useMemo(
     () => ({
       all: subscriptions.length,
@@ -469,9 +533,9 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
       ai: subscriptions.filter((s) => s.product_type === 'ai').length,
       app: subscriptions.filter((s) => s.product_type === 'app').length,
       cards: paymentMethods.length,
-      history: recentEvents.length,
+      history: userVisibleEvents.length,
     }),
-    [subscriptions, paymentMethods, recentEvents]
+    [subscriptions, paymentMethods, userVisibleEvents]
   );
 
   const visibleSubscriptions = useMemo(() => {
@@ -544,7 +608,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
   // BARRE LATÉRALE GAUCHE — VERRE SOMBRE SAPHIR HARMONISÉ
   // ============================================================================
   const renderSidebarContent = () => (
-    <div className="flex flex-col h-full min-h-0 bg-[#08101E]/86 backdrop-blur-xl text-slate-100 select-none">
+    <div className="flex flex-col h-full min-h-0 bg-[#152E59]/72 backdrop-blur-xl text-white select-none">
       {/* Haut fixe */}
       <div className="px-3 pt-2.5 pb-2.5 border-b border-white/10 shrink-0 space-y-2.5">
         <button
@@ -754,7 +818,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
       {/* ===================================================================== */}
       <div className="flex-1 flex flex-col min-w-0 h-full min-h-0 overflow-hidden">
         {/* BARRE SUPÉRIEURE UNIFIÉE : MENU MOBILE + FIL D'ARIANE + USER + EXPAND */}
-        <header className="h-12 bg-[#08101E]/68 backdrop-blur-xl border-b border-white/10 px-3 sm:px-6 flex items-center justify-between gap-2 shrink-0 z-10">
+        <header className="h-12 bg-[#152E59]/58 backdrop-blur-xl border-b border-white/15 px-3 sm:px-6 flex items-center justify-between gap-2 shrink-0 z-10">
           <div className="flex items-center gap-2 min-w-0">
             <button
               type="button"
@@ -851,7 +915,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
         </header>
 
         {/* SOUS-EN-TÊTE FIXE : TITRE + RECHERCHE */}
-        <div className="shrink-0 bg-[#08101E]/46 backdrop-blur-md border-b border-white/10 px-4 sm:px-8 py-4">
+        <div className="shrink-0 bg-white/[0.06] backdrop-blur-md border-b border-white/14 px-4 sm:px-8 py-4">
           <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
@@ -1005,7 +1069,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                   {/* Grille d'informations & contrôles */}
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                     {/* Carte Dates & Validité */}
-                    <div className="bg-[#0B1426]/82 backdrop-blur-xl border border-white/12 rounded-2xl p-5 space-y-3 shadow-[0_18px_40px_-16px_rgba(0,0,0,0.65)]">
+                    <div className="bg-[#163466]/72 backdrop-blur-xl border border-white/18 rounded-2xl p-5 space-y-3 shadow-[0_18px_40px_-16px_rgba(8,22,52,0.5)]">
                       <div className="flex items-center gap-2 text-xs font-bold text-white">
                         <CalendarClock className="w-4 h-4 text-sky-400" />
                         <span>Validité &amp; Échéance</span>
@@ -1045,7 +1109,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                     </div>
 
                     {/* Carte Mode Auto / Manuel */}
-                    <div className="bg-[#0B1426]/82 backdrop-blur-xl border border-white/12 rounded-2xl p-5 space-y-3 flex flex-col justify-between shadow-[0_18px_40px_-16px_rgba(0,0,0,0.65)]">
+                    <div className="bg-[#163466]/72 backdrop-blur-xl border border-white/18 rounded-2xl p-5 space-y-3 flex flex-col justify-between shadow-[0_18px_40px_-16px_rgba(8,22,52,0.5)]">
                       <div className="space-y-2.5">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2 text-xs font-bold text-white">
@@ -1125,7 +1189,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             /* SECTION CARTES VISA / MASTERCARD (UNIQUEMENT CARTES ENREGISTRÉES) */
             /* =============================================================== */
             paymentMethods.length === 0 ? (
-              <div className="bg-[#0B1426]/82 backdrop-blur-xl border border-white/12 rounded-2xl p-10 text-center space-y-2.5 shadow-[0_18px_40px_-16px_rgba(0,0,0,0.65)]">
+              <div className="bg-[#163466]/72 backdrop-blur-xl border border-white/18 rounded-2xl p-10 text-center space-y-2.5 shadow-[0_18px_40px_-16px_rgba(8,22,52,0.5)]">
                 <div className="inline-flex items-center justify-center rounded-lg bg-white border border-white/30 px-3 py-1.5 shadow-sm mb-1">
                   <img
                     src="/payment-logos/visa-mastercard.png"
@@ -1156,10 +1220,10 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                   return (
                     <div
                       key={pm.id}
-                      className="rounded-2xl bg-[#0B1426]/86 backdrop-blur-xl border border-white/12 shadow-[0_18px_40px_-16px_rgba(0,0,0,0.7)] overflow-hidden flex flex-col"
+                      className="rounded-2xl bg-[#163466]/76 backdrop-blur-xl border border-white/18 shadow-[0_18px_40px_-16px_rgba(8,22,52,0.55)] overflow-hidden flex flex-col"
                     >
                       {/* En-tête visuel Carte Bancaire avec logo officiel Visa / Mastercard */}
-                      <div className="p-4 bg-gradient-to-br from-[#0F2142] via-[#0B1730] to-[#081020] text-white border-b border-white/10">
+                      <div className="p-4 bg-gradient-to-br from-[#1C417D] via-[#173566] to-[#122850] text-white border-b border-white/15">
                         <div className="flex items-start justify-between gap-3">
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="rounded-md bg-white px-2 py-1 border border-white/30 shrink-0">
@@ -1365,27 +1429,27 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             )
           ) : section === 'history' ? (
             /* =============================================================== */
-            /* SECTION ACTIVITÉ & HISTORIQUE (PLEINE LARGEUR)                  */
+            /* SECTION ACTIVITÉ & HISTORIQUE (ACTIVITÉS UTILISATEUR UNIQUEMENT)*/
             /* =============================================================== */
-            <div className="bg-[#0B1426]/82 backdrop-blur-xl border border-white/12 rounded-2xl overflow-hidden shadow-[0_18px_40px_-16px_rgba(0,0,0,0.65)]">
-              {recentEvents.length === 0 ? (
-                <div className="p-10 text-center text-xs text-slate-400">
+            <div className="bg-[#163466]/72 backdrop-blur-xl border border-white/18 rounded-2xl overflow-hidden shadow-[0_18px_40px_-16px_rgba(8,22,52,0.5)]">
+              {userVisibleEvents.length === 0 ? (
+                <div className="p-10 text-center text-xs text-slate-200/85">
                   Aucune activité enregistrée sur vos abonnements pour le moment.
                 </div>
               ) : (
-                <div className="divide-y divide-white/10">
-                  {recentEvents.map((ev) => (
+                <div className="divide-y divide-white/12">
+                  {userVisibleEvents.map((ev) => (
                     <div
                       key={ev.id}
-                      className="px-4 py-3.5 flex items-center justify-between gap-3 text-xs hover:bg-white/[0.04] transition"
+                      className="px-4 py-3.5 flex items-center justify-between gap-3 text-xs hover:bg-white/[0.06] transition"
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <Clock className="w-3.5 h-3.5 text-sky-400 shrink-0" />
+                        <Clock className="w-3.5 h-3.5 text-sky-300 shrink-0" />
                         <span className="font-semibold text-white truncate">
                           {formatEventLabel(ev.event_type)}
                         </span>
                       </div>
-                      <span className="text-[11px] text-slate-400 whitespace-nowrap shrink-0">
+                      <span className="text-[11px] text-slate-200/80 whitespace-nowrap shrink-0">
                         {formatDateTimeFr(ev.created_at)}
                       </span>
                     </div>
@@ -1394,16 +1458,16 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
               )}
             </div>
           ) : loading ? (
-            <div className="bg-[#0B1426]/82 backdrop-blur-xl border border-white/12 rounded-2xl p-10 flex items-center justify-center gap-2 text-xs font-semibold text-slate-200">
-              <Loader2 className="w-4 h-4 animate-spin text-sky-400" />
+            <div className="bg-[#163466]/72 backdrop-blur-xl border border-white/18 rounded-2xl p-10 flex items-center justify-center gap-2 text-xs font-semibold text-white">
+              <Loader2 className="w-4 h-4 animate-spin text-sky-300" />
               <span>Chargement de vos abonnements...</span>
             </div>
           ) : visibleSubscriptions.length === 0 ? (
             /* =============================================================== */
             /* ÉTAT VIDE ÉPURÉ                                                 */
             /* =============================================================== */
-            <div className="bg-[#0B1426]/82 backdrop-blur-xl border border-white/12 rounded-2xl p-10 text-center space-y-2.5 shadow-[0_18px_40px_-16px_rgba(0,0,0,0.65)]">
-              <div className="w-11 h-11 mx-auto rounded-xl bg-sky-500/15 border border-sky-400/30 flex items-center justify-center text-sky-300">
+            <div className="bg-[#163466]/72 backdrop-blur-xl border border-white/18 rounded-2xl p-10 text-center space-y-2.5 shadow-[0_18px_40px_-16px_rgba(8,22,52,0.5)]">
+              <div className="w-11 h-11 mx-auto rounded-xl bg-sky-400/20 border border-sky-300/35 flex items-center justify-center text-sky-200">
                 <Layers className="w-5 h-5" />
               </div>
               <div className="text-sm font-bold text-white">
@@ -1411,7 +1475,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                   ? `Aucun abonnement ne correspond à « ${searchQuery} »`
                   : 'Aucun abonnement actif dans cette catégorie'}
               </div>
-              <p className="text-xs text-slate-400 max-w-sm mx-auto">
+              <p className="text-xs text-slate-200/80 max-w-sm mx-auto">
                 {searchQuery.trim()
                   ? 'Essayez un autre mot-clé dans la barre de recherche.'
                   : 'Vos abonnements Stockage Cloud, Crédits IA et Applications apparaîtront automatiquement ici dès leur activation.'}
@@ -1421,7 +1485,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setSearchQuery('')}
-                    className="h-8 px-4 rounded-full bg-white/[0.08] hover:bg-white/[0.15] border border-white/15 text-white text-xs font-semibold cursor-pointer transition"
+                    className="h-8 px-4 rounded-full bg-white/[0.1] hover:bg-white/[0.18] border border-white/20 text-white text-xs font-semibold cursor-pointer transition"
                   >
                     Effacer la recherche
                   </button>
@@ -1430,70 +1494,110 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             </div>
           ) : (
             /* =============================================================== */
-            /* GRILLE DES ABONNEMENTS ACTIFS — CARTES PRO DÉGRADÉES            */
+            /* GRILLE DES ABONNEMENTS ACTIFS — MODÈLE SUPERPOSÉ STYLE IMAGE 3  */
             /* =============================================================== */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
               {visibleSubscriptions.map((sub) => {
                 const isInf = Number(sub.is_infinite) === 1 || sub.renewal_mode === 'infinite';
                 const isAuto = !isInf && sub.renewal_mode === 'auto';
                 const cd = computeLiveCountdownLabel(sub);
                 const palette = getCardPalette(sub);
+                const statusPillLabel = isInf
+                  ? 'À vie'
+                  : sub.status === 'active'
+                  ? 'Actif'
+                  : sub.status === 'blocked'
+                  ? 'Bloqué'
+                  : sub.status === 'grace'
+                  ? 'Grâce'
+                  : sub.status;
+                const priceLine = `${formatCurrencyAmount(
+                  sub.price_amount || 0,
+                  sub.currency || 'XOF'
+                )} · ${isInf ? 'Accès à vie' : isAuto ? 'Paiement automatique' : 'Paiement manuel'}`;
+                const expiryLine = isInf
+                  ? 'Sans date d’expiration'
+                  : sub.current_period_end
+                  ? `Échéance : ${formatDateTimeFr(sub.current_period_end).split(' à ')[0]}`
+                  : `Moyen : ${sub.last_network_label || 'Paystack'}`;
 
                 return (
                   <div
                     key={sub.id}
                     onClick={() => setSelectedSubId(sub.id)}
-                    style={{
-                      background: palette.gradient,
-                      borderColor: palette.border,
-                      boxShadow: palette.glow,
-                    }}
-                    className="group relative rounded-2xl p-4 sm:p-5 flex flex-col justify-between min-h-[152px] text-white transition-all duration-300 cursor-pointer overflow-hidden border hover:-translate-y-0.5 hover:brightness-[1.06]"
+                    style={{ boxShadow: palette.glow }}
+                    className="group relative rounded-[26px] bg-[#FFFDF9] border border-white/40 overflow-hidden flex flex-col cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_52px_-12px_rgba(8,22,52,0.58)]"
                   >
-                    <div className="flex items-start justify-between gap-2">
+                    {/* Bandeau supérieur coloré façon Image 3 (Catégorie + Temps + Pilule statut) */}
+                    <div
+                      style={{ background: palette.headerGradient }}
+                      className="px-5 pt-4 pb-8 flex items-start justify-between gap-2 relative"
+                    >
                       <div className="min-w-0">
-                        <div className="text-[10.5px] font-bold uppercase tracking-wider text-white/80 truncate">
-                          {palette.serviceLabel}
+                        <div className={`text-[13px] font-extrabold tracking-tight truncate ${palette.headerTextCls}`}>
+                          {palette.categoryTitle}
                         </div>
-                        <h3 className="text-base font-extrabold text-white truncate mt-0.5 uppercase tracking-tight">
-                          {sub.plan_name}
-                        </h3>
-                        <div className="text-[11.5px] text-white/90 font-medium truncate mt-1">
-                          {formatCurrencyAmount(sub.price_amount || 0, sub.currency || 'XOF')} ·{' '}
-                          {isInf ? '♾️ À vie' : isAuto ? '⚡ Automatique' : '🔄 Manuel'}
+                        <div className={`text-[11px] font-semibold mt-0.5 tabular-nums truncate ${palette.headerSubCls}`}>
+                          {cd.short}
                         </div>
                       </div>
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedSubId(sub.id);
-                        }}
-                        className="w-7 h-7 rounded-lg bg-white/10 hover:bg-black/25 text-white/85 hover:text-white flex items-center justify-center transition cursor-pointer shrink-0"
-                        title="Gérer cet abonnement"
+                      <span
+                        className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold backdrop-blur-sm ${palette.pillCls}`}
                       >
-                        <MoreHorizontal className="w-4 h-4" />
-                      </button>
+                        {statusPillLabel}
+                      </span>
                     </div>
 
-                    <div className="mt-4 pt-3 border-t border-white/20 flex items-center justify-between text-[11px]">
-                      <div className="flex items-center gap-1.5 font-semibold text-white/95 truncate">
-                        <span>{cd.short}</span>
-                        <span className="text-white/55">•</span>
-                        <span>
-                          {sub.status === 'active'
-                            ? 'Actif'
-                            : sub.status === 'blocked'
-                            ? 'Bloqué'
-                            : sub.status === 'grace'
-                            ? 'Grâce'
-                            : sub.status}
-                        </span>
+                    {/* Corps arrondi ivoire superposé par-dessus le bandeau coloré */}
+                    <div className="-mt-4 rounded-[24px] bg-[#FFFDF9] px-5 pt-4 pb-4 flex-1 flex flex-col justify-between relative">
+                      <div>
+                        <h3 className="text-[18px] font-extrabold tracking-tight text-[#1A1614] truncate leading-snug uppercase">
+                          {sub.plan_name}
+                        </h3>
+
+                        <ul className="mt-3 space-y-2">
+                          <li className="flex items-center gap-2.5">
+                            <span className="w-[17px] h-[17px] rounded-full bg-[#1C1917] text-white flex items-center justify-center shrink-0">
+                              <Check className="w-2.5 h-2.5 stroke-[3]" />
+                            </span>
+                            <span className="text-[12.5px] font-semibold text-[#292524] truncate">
+                              {priceLine}
+                            </span>
+                          </li>
+                          <li className="flex items-center gap-2.5">
+                            <span className="w-[17px] h-[17px] rounded-full bg-[#1C1917] text-white flex items-center justify-center shrink-0">
+                              <Check className="w-2.5 h-2.5 stroke-[3]" />
+                            </span>
+                            <span className="text-[12.5px] font-medium text-[#44403C] truncate">
+                              {cd.text}
+                            </span>
+                          </li>
+                          <li className="flex items-center gap-2.5">
+                            <span className="w-[17px] h-[17px] rounded-full border border-[#D6CFC5] bg-transparent shrink-0" />
+                            <span className="text-[12px] font-medium text-[#78716C] truncate">
+                              {expiryLine}
+                            </span>
+                          </li>
+                        </ul>
                       </div>
-                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-black/25 border border-white/20 font-semibold text-white shrink-0">
-                        <span>Ouvrir</span>
-                        <ArrowRight className="w-3 h-3 transition-transform group-hover:translate-x-0.5" />
-                      </span>
+
+                      {/* Bouton circulaire flottant en bas à droite (modèle Image 3) */}
+                      <div className="mt-4 flex items-center justify-between gap-2">
+                        <span className="text-[11px] font-semibold text-[#A8A29E] truncate">
+                          {sub.last_network_label || 'StudyCloud'}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedSubId(sub.id);
+                          }}
+                          title="Gérer cet abonnement"
+                          className="w-9 h-9 rounded-full border border-[#E7DFD5] bg-white group-hover:bg-[#1C1917] group-hover:border-[#1C1917] text-[#1C1917] group-hover:text-white shadow-xs flex items-center justify-center transition-all duration-200 cursor-pointer shrink-0"
+                        >
+                          <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                        </button>
+                      </div>
                     </div>
                   </div>
                 );
@@ -1520,11 +1624,11 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
               onClick={() => !linkingCard && setShowAddCardModal(false)}
             >
               <div
-                className="w-full max-w-3xl max-h-[92vh] flex flex-col rounded-2xl bg-[#0B1426] border border-white/15 text-slate-100 shadow-[0_28px_70px_-14px_rgba(0,0,0,0.85)] overflow-hidden"
+                className="w-full max-w-3xl max-h-[92vh] flex flex-col rounded-2xl bg-[#163466] border border-white/20 text-white shadow-[0_28px_70px_-14px_rgba(8,22,52,0.75)] overflow-hidden"
                 onClick={(e) => e.stopPropagation()}
               >
                 {/* BARRE D'EN-TÊTE STRUCTURÉE AVEC LE VRAI LOGO VISA / MASTERCARD */}
-                <div className="px-5 py-3.5 bg-[#08101E] border-b border-white/10 flex items-center justify-between gap-4 shrink-0">
+                <div className="px-5 py-3.5 bg-[#122B56] border-b border-white/14 flex items-center justify-between gap-4 shrink-0">
                   <div className="flex items-center gap-3.5 min-w-0">
                     <div className="h-10 px-2.5 rounded-lg bg-white border border-white/30 flex items-center justify-center shrink-0 shadow-xs">
                       <img
@@ -1555,7 +1659,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                 {/* CORPS 2 COLONNES ÉQUILIBRÉES : APERÇU + GARANTIES (GAUCHE) / SERVICES (DROITE) */}
                 <div className="flex-1 min-h-0 overflow-y-auto grid grid-cols-1 md:grid-cols-12 md:divide-x divide-white/10">
                   {/* COLONNE GAUCHE : VISUEL CARTE OFFICIEL + TABLEAU DE VÉRIFICATION */}
-                  <div className="md:col-span-5 bg-[#08101E]/85 p-5 flex flex-col justify-between gap-4">
+                  <div className="md:col-span-5 bg-[#122B56]/90 p-5 flex flex-col justify-between gap-4">
                     <div className="space-y-4">
                       {/* Aperçu Carte Bancaire */}
                       <div className="rounded-xl bg-gradient-to-br from-[#132952] via-[#0C1A36] to-[#081122] border border-sky-400/25 p-4 text-white shadow-lg space-y-4">
@@ -1634,7 +1738,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                   </div>
 
                   {/* COLONNE DROITE : SERVICES AUTORISÉS BIEN RÉPARTIS ET STRUCTURÉS */}
-                  <div className="md:col-span-7 bg-[#0B1426] p-5 flex flex-col justify-between gap-4">
+                  <div className="md:col-span-7 bg-[#163466] p-5 flex flex-col justify-between gap-4">
                     <div className="space-y-3">
                       <div className="flex items-center justify-between gap-2 pb-2 border-b border-white/10">
                         <div>
@@ -1829,7 +1933,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                 </div>
 
                 {/* BARRE DE PIED ARCHITECTURALE */}
-                <div className="px-5 py-3.5 bg-[#08101E] border-t border-white/10 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
+                <div className="px-5 py-3.5 bg-[#122B56] border-t border-white/14 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shrink-0">
                   <div className="flex items-center gap-2 text-[11px] text-slate-400">
                     <Lock className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
                     <span>Chiffrement bancaire TLS · Traitement certifié PCI-DSS par Paystack</span>
