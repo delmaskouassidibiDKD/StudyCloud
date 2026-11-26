@@ -223,19 +223,20 @@ export const AppUpdatePrompt: React.FC = () => {
 
     const reg = registrationRef.current;
     if (reg && reg.waiting) {
-      // Signaler au Service Worker en attente de prendre le contrôle
+      // Signaler au Service Worker en attente de prendre le contrôle (il a déjà pré-caché la nouvelle version)
       reg.waiting.postMessage({ type: 'SKIP_WAITING' });
-    } else {
-      // Vider les caches éventuels et actualiser directement
-      if (typeof caches !== 'undefined') {
-        caches.keys().then((names) => {
-          return Promise.all(names.map((name) => caches.delete(name)));
-        }).finally(() => {
+    } else if (navigator.onLine) {
+      // Ne jamais vider le cache hors-ligne : demander simplement au SW de récupérer la nouvelle version puis recharger
+      if (reg && typeof reg.update === 'function') {
+        reg.update().catch(() => {}).finally(() => {
           window.location.reload();
         });
       } else {
         window.location.reload();
       }
+    } else {
+      setIsUpdating(false);
+      return;
     }
 
     // Sécurité de secours : forcer le rechargement après 1.5s si controllerchange tarde

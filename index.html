@@ -143,6 +143,24 @@
         box-shadow: none !important;
       }
     </style>
+    <!-- Capture immédiate de beforeinstallprompt + enregistrement prioritaire du Service Worker AVANT React -->
+    <script>
+      window.__SC_DEFERRED_INSTALL_PROMPT__ = null;
+      window.addEventListener('beforeinstallprompt', function(e) {
+        e.preventDefault();
+        window.__SC_DEFERRED_INSTALL_PROMPT__ = e;
+        window.dispatchEvent(new CustomEvent('studycloud_install_prompt_ready'));
+      });
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
+          .then(function(reg) {
+            if (reg && reg.update) reg.update().catch(function() {});
+          })
+          .catch(function(err) {
+            console.warn('[StudyCloud PWA] Erreur enregistrement Service Worker:', err);
+          });
+      }
+    </script>
     <script>
       try {
         if (window.screen && window.screen.orientation && window.screen.orientation.lock) {
@@ -192,20 +210,6 @@
     <div id="google_translate_element" style="display:none !important; visibility:hidden !important; position:absolute !important; top:-9999px !important;"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
-    <script>
-      // Enregistrement automatique et prioritaire du Service Worker PWA
-      if ('serviceWorker' in navigator) {
-        window.addEventListener('load', function() {
-          navigator.serviceWorker.register('/sw.js', { scope: '/' })
-            .then(function(reg) {
-              console.log('[StudyCloud PWA] Service Worker actif et prêt pour le hors-ligne.');
-            })
-            .catch(function(err) {
-              console.warn('[StudyCloud PWA] Erreur enregistrement Service Worker:', err);
-            });
-        });
-      }
-    </script>
     <script>
       // 1. Force block text selection and copying everywhere except inputs
       ['selectstart', 'copy', 'contextmenu'].forEach(eventType => {

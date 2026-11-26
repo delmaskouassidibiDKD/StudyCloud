@@ -1,12 +1,15 @@
 // ============================================================================
-// SERVICE WORKER STUDYCLOUD (PWA HORS-LIGNE & NOTIFICATIONS PUSH)
+// SERVICE WORKER STUDYCLOUD (PWA 100 % HORS-LIGNE & NOTIFICATIONS PUSH)
 // Conçu par DKD Technologies pour StudyCloud
 // ============================================================================
 
-const CACHE_NAME = 'studycloud-pwa-v43';
+const CACHE_NAME = 'studycloud-pwa-v44';
 
-// Ressources fondamentales du "Shell" de l'application pré-mises en cache à l'installation
-const PRECACHE_ASSETS = [
+// Liste injectée automatiquement à chaque build Vite (contient index-*.js, vendor-react-*.js, index-*.css...)
+const BUILD_APP_ASSETS = [];
+
+// Ressources fondamentales du "Shell" de l'application pré-mises en cache dès l'installation
+const CORE_SHELL_ASSETS = [
   '/',
   '/index.html',
   '/manifest.json',
@@ -19,23 +22,50 @@ const PRECACHE_ASSETS = [
   '/icons/icon-maskable-512x512.png'
 ];
 
+const PRECACHE_ASSETS = Array.from(new Set([...CORE_SHELL_ASSETS, ...BUILD_APP_ASSETS]));
+
+// Helper : fetch réseau avec timeout strict pour ne jamais bloquer l'ouverture hors-ligne sur mobile
+function fetchWithTimeout(request, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('NETWORK_TIMEOUT')), timeoutMs);
+    fetch(request)
+      .then((res) => {
+        clearTimeout(timer);
+        resolve(res);
+      })
+      .catch((err) => {
+        clearTimeout(timer);
+        reject(err);
+      });
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
-// 1. INSTALLATION DU SERVICE WORKER (Mise en cache du cœur de l'application)
+// 1. INSTALLATION DU SERVICE WORKER (Pré-cache complet du shell + bundles JS/CSS)
 // ─────────────────────────────────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  // Si première installation sans contrôleur actif, on s'active immédiatement
+  // Activation immédiate si premier contrôleur ou mise à jour fluide
   if (!self.registration.active) {
     self.skipWaiting();
   }
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      // Pré-mise en cache résiliente (n'échoue pas si un asset optionnel manque)
-      return Promise.allSettled(
-        PRECACHE_ASSETS.map((url) =>
-          cache.add(url).catch((err) => {
-            console.warn('[PWA Precache Warning] Impossible de pré-cacher:', url, err);
-          })
-        )
+    caches.open(CACHE_NAME).then(async (cache) => {
+      // Pré-cacher chaque ressource en parallèle sans jamais bloquer l'installation sur un fichier optionnel
+      await Promise.allSettled(
+        PRECACHE_ASSETS.map(async (assetUrl) => {
+          try {
+            const req = new Request(assetUrl, { cache: 'reload' });
+            const res = await fetch(req);
+            if (res && res.ok) {
+              await cache.put(assetUrl, res.clone());
+              if (assetUrl === '/index.html') {
+                await cache.put('/', res.clone());
+              }
+            }
+          } catch (err) {
+            console.warn('[PWA Precache Warning] Impossible de pré-cacher:', assetUrl, err);
+          }
+        })
       );
     })
   );
@@ -55,68 +85,83 @@ self.addEventListener('activate', (event) => {
   event.waitUntil(
     Promise.all([
       self.clients.claim(),
-      caches.keys().then((cacheNames) => {
-        return Promise.all(
+      caches.keys().then((cacheNames) =>
+        Promise.all(
           cacheNames.map((name) => {
             if (name !== CACHE_NAME) {
-              console.log('[PWA Cache] Suppression de l\'ancien cache:', name);
               return caches.delete(name);
             }
+            return Promise.resolve();
           })
-        );
-      })
+        )
+      )
     ])
   );
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// 3. STRATÉGIE DE REQUÊTES (FONCTIONNEMENT HORS-LIGNE & PROTECTION MÉMOIRE)
+// 3. STRATÉGIE DE REQUÊTES (OUVERTURE HORS-LIGNE INSTANTANÉE & PROTECTION RAM)
 // ─────────────────────────────────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
 
-  // Ignorer les requêtes non-GET (POST, PUT, DELETE, OPTIONS ne peuvent pas être cachées)
+  // Ignorer les requêtes non-GET
   if (request.method !== 'GET') {
     return;
   }
 
-  // Ne pas cacher les extensions de navigateur (chrome-extension://, etc.)
+  // Ignorer extensions navigateur (chrome-extension://, etc.)
   if (!url.protocol.startsWith('http')) {
     return;
   }
 
-  // Ignorer absolument les requêtes avec Range (streaming vidéo/audio HTML5)
-  // Essayer de cloner ou mettre en cache un flux Range 206 provoque une fuite mémoire critique / OOM dans Chrome/Edge
+  // Ne JAMAIS intercepter les flux Range (streaming vidéo/audio HTML5)
   if (request.headers && request.headers.has('range')) {
     return;
   }
 
-  // Ne JAMAIS intercepter ni cloner les flux médias volumineux (vidéos, audio, archives)
+  // Ne JAMAIS mettre en cache les fichiers médias volumineux ou archives
   const pathnameLower = url.pathname.toLowerCase();
   const mediaExtensions = ['.mp4', '.webm', '.ogv', '.mp3', '.wav', '.ogg', '.m4a', '.flac', '.zip', '.tar', '.gz', '.7z'];
-  if (mediaExtensions.some(ext => pathnameLower.endsWith(ext))) {
+  if (mediaExtensions.some((ext) => pathnameLower.endsWith(ext))) {
     return;
   }
 
-  // A. REQUÊTES DE NAVIGATION (Chargement d'une page HTML ou rafraîchissement)
-  // Stratégie : Network First avec Fallback Cache (ouvre instantanément l'app hors-ligne)
+  // Ne pas cacher /version.json (toujours frais)
+  if (url.origin === self.location.origin && pathnameLower === '/version.json') {
+    return;
+  }
+
+  // A. REQUÊTES DE NAVIGATION (Ouverture de l'application / rafraîchissement / démarrage PWA)
+  // Stratégie : Réseau rapide (timeout 2.5s) avec bascule immédiate sur le cache local /index.html
   if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(request)
-        .then((networkResponse) => {
+      (async () => {
+        try {
+          const networkResponse = await fetchWithTimeout(request, 2500);
           if (networkResponse && networkResponse.status === 200) {
-            const copy = networkResponse.clone();
-            caches.open(CACHE_NAME).then((cache) => cache.put('/index.html', copy));
+            const copyForIndex = networkResponse.clone();
+            const copyForRoot = networkResponse.clone();
+            caches.open(CACHE_NAME).then((cache) => {
+              cache.put('/index.html', copyForIndex).catch(() => {});
+              cache.put('/', copyForRoot).catch(() => {});
+            });
+            return networkResponse;
           }
+          // Si le serveur renvoie une erreur (5xx), essayer le cache avant d'échouer
+          const fallbackCached =
+            (await caches.match('/index.html', { ignoreSearch: true })) ||
+            (await caches.match('/', { ignoreSearch: true }));
+          if (fallbackCached) return fallbackCached;
           return networkResponse;
-        })
-        .catch(async () => {
-          // Si hors-ligne, servir immédiatement le fichier index.html mis en cache
-          const cachedApp = await caches.match('/index.html');
+        } catch {
+          // Hors-ligne ou réseau injoignable -> ouvrir instantanément l'app depuis le cache !
+          const cachedApp =
+            (await caches.match('/index.html', { ignoreSearch: true })) ||
+            (await caches.match('/', { ignoreSearch: true })) ||
+            (await caches.match(request, { ignoreSearch: true }));
           if (cachedApp) return cachedApp;
-          const cachedRoot = await caches.match('/');
-          if (cachedRoot) return cachedRoot;
 
           return new Response(
             `<!doctype html>
@@ -124,31 +169,32 @@ self.addEventListener('fetch', (event) => {
               <head>
                 <meta charset="utf-8">
                 <meta name="viewport" content="width=device-width, initial-scale=1">
-                <title>StudyCloud - Mode Hors-Ligne</title>
+                <title>StudyCloud - Hors connexion</title>
                 <style>
                   body { margin:0; padding:0; background:#0f1117; color:#fff; font-family:system-ui,-apple-system,sans-serif; display:flex; align-items:center; justify-content:center; min-height:100vh; text-align:center; }
-                  .card { max-width:380px; padding:24px; background:#1a1d24; border-radius:20px; border:1px solid #2d3342; }
-                  h1 { font-size:20px; margin-bottom:8px; color:#60a5fa; }
+                  .card { max-width:360px; padding:24px; background:#1a1d24; border-radius:20px; border:1px solid #2d3342; }
+                  h1 { font-size:19px; margin-bottom:8px; color:#60a5fa; }
                   p { font-size:13px; color:#9ca3af; line-height:1.5; margin-bottom:16px; }
                   button { background:#2563eb; color:#fff; border:none; padding:10px 20px; border-radius:12px; font-weight:bold; cursor:pointer; }
                 </style>
               </head>
               <body>
                 <div class="card">
-                  <h1>StudyCloud - Hors Ligne</h1>
-                  <p>Vous êtes actuellement hors connexion internet. Vos documents et votre espace s'afficheront dès le retour du réseau.</p>
-                  <button onclick="window.location.reload()">Réessayer la connexion</button>
+                  <h1>StudyCloud - Hors connexion</h1>
+                  <p>Ouvrez StudyCloud une première fois avec Internet pour activer le mode hors connexion complet.</p>
+                  <button onclick="window.location.reload()">Réessayer</button>
                 </div>
               </body>
             </html>`,
             { headers: { 'Content-Type': 'text/html; charset=utf-8' } }
           );
-        })
+        }
+      })()
     );
     return;
   }
 
-  // B. REQUÊTES D'API OU VERS DES WORKERS (Network First avec timeout)
+  // B. REQUÊTES API / WORKERS (Network Only avec réponse JSON propre hors-ligne)
   if (
     url.pathname.startsWith('/api') ||
     url.hostname.includes('workers.dev') ||
@@ -161,7 +207,7 @@ self.addEventListener('fetch', (event) => {
           JSON.stringify({
             success: false,
             offline: true,
-            error: "Vous êtes actuellement hors connexion internet.",
+            error: 'Vous êtes actuellement hors connexion internet.',
           }),
           { headers: { 'Content-Type': 'application/json' }, status: 503 }
         );
@@ -170,8 +216,36 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // C. ASSETS STATIQUES DU SITE (Scripts JS, styles CSS, Polices KaTeX, Icônes)
-  // Ne cacher que les ressources statiques légères du même domaine ou des CDN de polices
+  // C. ASSETS IMMUTABLES HACHÉS DE L'APPLICATION (/assets/*.js, /assets/*.css, /assets/*.woff2, etc.)
+  // Stratégie Cache-First stricte : ouverture hors-ligne instantanée (0 ms réseau) et plafond 15 Mo pour le bundle principal
+  if (url.origin === self.location.origin && url.pathname.startsWith('/assets/')) {
+    event.respondWith(
+      (async () => {
+        const cached = await caches.match(request);
+        if (cached) return cached;
+
+        try {
+          const networkResponse = await fetch(request);
+          if (networkResponse && networkResponse.status === 200) {
+            const contentType = networkResponse.headers.get('content-type') || '';
+            const contentLength = Number(networkResponse.headers.get('content-length') || 0);
+            const isMedia = contentType.startsWith('video/') || contentType.startsWith('audio/');
+            const isTooLarge = contentLength > 15 * 1024 * 1024;
+            if (!isMedia && !isTooLarge) {
+              const copy = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, copy).catch(() => {}));
+            }
+          }
+          return networkResponse;
+        } catch {
+          return new Response('', { status: 504, statusText: 'Offline Asset Unavailable' });
+        }
+      })()
+    );
+    return;
+  }
+
+  // D. AUTRES RESSOURCES STATIQUES DU SITE (Icônes, fonds d'écran, manifeste, polices)
   const isStaticAsset =
     url.origin === self.location.origin ||
     url.hostname.includes('fonts.googleapis.com') ||
@@ -179,38 +253,37 @@ self.addEventListener('fetch', (event) => {
     url.hostname.includes('cdn.jsdelivr.net');
 
   if (!isStaticAsset) {
-    return; // Passer directement par le réseau sans saturer la RAM ni CacheStorage
+    return;
   }
 
-  // Stratégie : Stale-While-Revalidate avec garde-fous stricts de taille mémoire
+  // Stale-While-Revalidate sécurisé (ne retourne JAMAIS undefined en hors-ligne)
   event.respondWith(
-    caches.match(request).then((cachedResponse) => {
-      const fetchPromise = fetch(request)
+    (async () => {
+      const cachedResponse = await caches.match(request);
+      const networkPromise = fetch(request)
         .then((networkResponse) => {
           if (networkResponse && networkResponse.status === 200) {
             const contentType = networkResponse.headers.get('content-type') || '';
             const contentLength = Number(networkResponse.headers.get('content-length') || 0);
-
-            // Ne jamais mettre en cache de la vidéo, de l'audio ou des fichiers > 5 Mo en RAM
             const isMedia = contentType.startsWith('video/') || contentType.startsWith('audio/');
-            const isTooLarge = contentLength > 5 * 1024 * 1024;
-
+            const isTooLarge = contentLength > 10 * 1024 * 1024;
             if (!isMedia && !isTooLarge) {
-              const responseToCache = networkResponse.clone();
-              caches.open(CACHE_NAME).then((cache) => {
-                cache.put(request, responseToCache).catch(() => {});
-              });
+              const copy = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(request, copy).catch(() => {}));
             }
           }
           return networkResponse;
         })
-        .catch(() => {
-          // Erreur réseau : le cache prend le relais
-          return cachedResponse;
-        });
+        .catch(() => null);
 
-      return cachedResponse || fetchPromise;
-    })
+      if (cachedResponse) {
+        event.waitUntil(networkPromise);
+        return cachedResponse;
+      }
+
+      const fresh = await networkPromise;
+      return fresh || new Response('', { status: 504, statusText: 'Offline' });
+    })()
   );
 });
 
@@ -251,7 +324,6 @@ self.addEventListener('push', (event) => {
   event.waitUntil(self.registration.showNotification(data.title, options));
 });
 
-// Clic sur la notification : active la fenêtre ou ouvre StudyCloud
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = (event.notification.data && event.notification.data.url) || '/?view=notifications';
