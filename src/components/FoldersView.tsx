@@ -105,10 +105,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   }, [isDarkMode]);
 
   const [activeNotification, setActiveNotification] = useState<string | null>(null);
-  const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai' | 'renewal'>(() => {
+  const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai'>(() => {
     try {
       const saved = localStorage.getItem('studycloud_pricing_initial_tab');
-      if (saved === 'storage' || saved === 'ai' || saved === 'renewal') return saved;
+      if (saved === 'storage' || saved === 'ai') return saved;
     } catch { }
     return 'storage';
   });
@@ -141,7 +141,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
   useEffect(() => {
     const handleOpenPricingEvent = (e: any) => {
-      const tab = e?.detail?.tab || 'storage';
+      const rawTab = e?.detail?.tab;
+      const tab: 'storage' | 'ai' = rawTab === 'ai' ? 'ai' : 'storage';
       setPricingInitialTab(tab);
       setPreviousViewMode('home');
       setViewMode('abondamment');
@@ -2351,7 +2352,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         <StorageMenuView
           onBack={() => setViewMode('home')}
           onOpenPricing={(tab = 'storage') => {
-            setPricingInitialTab(tab);
+            setPricingInitialTab(tab === 'ai' ? 'ai' : 'storage');
             setPreviousViewMode('storage-menu');
             setViewMode('abondamment');
           }}

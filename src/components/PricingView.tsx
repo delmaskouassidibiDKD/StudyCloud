@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Check, HardDrive, Bot, RotateCw, Receipt } from 'lucide-react';
+import { ArrowLeft, Check, HardDrive, Bot, Receipt } from 'lucide-react';
 import { SubscriptionFormView, SelectedPlan } from './SubscriptionFormView';
-import { RenewalFormView } from './RenewalFormView';
-import { RenewalSectionView } from './RenewalSectionView';
 import { StudyCloudPaymentView, StudyCloudPaymentTarget } from './StudyCloudPaymentView';
 import { getSubscriptionPlans, SubscriptionPlan } from '../services/api';
 import {
@@ -16,7 +14,7 @@ import {
 interface PricingViewProps {
   onBack: () => void;
   onSelectPlan: (planName: string) => void;
-  initialTab?: 'storage' | 'ai' | 'renewal';
+  initialTab?: 'storage' | 'ai';
   isEmbeddedInSettings?: boolean;
 }
 
@@ -136,10 +134,10 @@ export const PricingView: React.FC<PricingViewProps> = ({
   initialTab = 'storage',
   isEmbeddedInSettings = false 
 }) => {
-  const [activeTab, setActiveTab] = useState<'storage' | 'ai' | 'renewal'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'storage' | 'ai'>(initialTab === 'ai' ? 'ai' : 'storage');
 
   useEffect(() => {
-    if (initialTab) {
+    if (initialTab === 'storage' || initialTab === 'ai') {
       setActiveTab(initialTab);
     }
   }, [initialTab]);
@@ -157,10 +155,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
     target: StudyCloudPaymentTarget;
     manualPlan: SelectedPlan;
   } | null>(null);
-
-  // État pour afficher le menu complet de renouvellement
-  const [selectedPlanForRenewal, setSelectedPlanForRenewal] = useState<any | null>(null);
-  const [renewalRefreshKey, setRenewalRefreshKey] = useState<number>(0);
 
   // Charger dynamiquement les cartes de forfaits depuis Cloudflare D1 avec horodatage anti-cache
   useEffect(() => {
@@ -235,30 +229,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
           plan={selectedPlanForSubscription}
           onBack={() => setSelectedPlanForSubscription(null)}
           onSuccess={() => onSelectPlan(selectedPlanForSubscription.name)}
-          onGoToRenewal={() => {
-            setSelectedPlanForSubscription(null);
-            setActiveTab('renewal');
-          }}
-        />
-      </div>
-    );
-  }
-
-  // Si l'utilisateur clique sur "Renouveler l'abonnement", on affiche le formulaire de renouvellement
-  if (selectedPlanForRenewal) {
-    return (
-      <div className={`fixed inset-x-0 bottom-0 ${isEmbeddedInSettings ? 'top-0 md:top-0' : 'top-[64px] md:top-[68px]'} left-0 md:left-64 z-50 w-full md:w-[calc(100%-16rem)] h-full bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100 overflow-y-auto animate-fadeIn pb-24 transition-colors duration-300`}>
-        <RenewalFormView
-          subscription={selectedPlanForRenewal}
-          onBack={() => {
-            setSelectedPlanForRenewal(null);
-            setRenewalRefreshKey(k => k + 1);
-          }}
-          onSuccess={() => {
-            setSelectedPlanForRenewal(null);
-            setActiveTab('renewal');
-            setRenewalRefreshKey(k => k + 1);
-          }}
         />
       </div>
     );
@@ -575,7 +545,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
         </button>
 
         {/* Boutons pour changer de menu (Sur mobile : rangée pleine largeur sans coupure ; sur PC : au centre) */}
-        <div className="order-3 md:order-2 w-full md:w-auto bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200/80 dark:border-slate-800 grid grid-cols-3 md:flex md:items-center gap-1 shadow-xs">
+        <div className="order-3 md:order-2 w-full md:w-auto bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200/80 dark:border-slate-800 grid grid-cols-2 md:flex md:items-center gap-1 shadow-xs">
           <button
             onClick={() => setActiveTab('storage')}
             className={`flex items-center justify-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-w-0 ${
@@ -601,19 +571,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
             <span className="hidden md:inline">Abonnement assistante StudyCloud</span>
             <span className="md:hidden truncate">Assistante IA</span>
           </button>
-
-          <button
-            onClick={() => setActiveTab('renewal')}
-            className={`flex items-center justify-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-w-0 ${
-              activeTab === 'renewal'
-                ? 'bg-slate-900 text-white dark:bg-blue-600 dark:text-white shadow-xs'
-                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-800/70'
-            }`}
-          >
-            <RotateCw className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
-            <span className="hidden md:inline">Renouveler mon abonnement</span>
-            <span className="md:hidden truncate">Renouveler</span>
-          </button>
         </div>
 
         {/* Espace symétrique à droite sur desktop */}
@@ -625,17 +582,15 @@ export const PricingView: React.FC<PricingViewProps> = ({
       {/* ========================================================================= */}
       <div className="flex-1 overflow-y-auto px-3 sm:px-4 pt-5 sm:pt-8 pb-32">
         <div className="w-full max-w-[1250px] mx-auto">
-          {/* Header Section (Uniquement sur Stockage et IA) */}
-          {activeTab !== 'renewal' && (
-            <div className="text-center pb-6 sm:pb-8 max-w-5xl mx-auto">
-              <h1 className="text-2xl sm:text-4xl md:text-5xl font-sans font-extrabold tracking-tight text-slate-900 dark:text-white mb-2 leading-tight">
-                Choisissez votre formule
-              </h1>
-              <p className="text-xs sm:text-base font-sans text-slate-500 dark:text-slate-400 max-w-xl mx-auto leading-relaxed px-2">
-                Des tarifs simples, transparents et adaptés à vos objectifs.
-              </p>
-            </div>
-          )}
+          {/* Header Section */}
+          <div className="text-center pb-6 sm:pb-8 max-w-5xl mx-auto">
+            <h1 className="text-2xl sm:text-4xl md:text-5xl font-sans font-extrabold tracking-tight text-slate-900 dark:text-white mb-2 leading-tight">
+              Choisissez votre formule
+            </h1>
+            <p className="text-xs sm:text-base font-sans text-slate-500 dark:text-slate-400 max-w-xl mx-auto leading-relaxed px-2">
+              Des tarifs simples, transparents et adaptés à vos objectifs.
+            </p>
+          </div>
 
           {/* Animation de chargement squelette ou affichage des cartes */}
           {loadingPlans ? (
@@ -672,16 +627,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
                 )
               )}
             </>
-          )}
-
-          {/* 3. SECTION : RENOUVELER MON ABONNEMENT */}
-          {activeTab === 'renewal' && (
-            <RenewalSectionView
-              key={renewalRefreshKey}
-              onGoToStorage={() => setActiveTab('storage')}
-              onSelectPlan={onSelectPlan}
-              onStartRenewal={(sub) => setSelectedPlanForRenewal(sub)}
-            />
           )}
         </div>
       </div>
