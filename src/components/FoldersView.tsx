@@ -2600,8 +2600,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                     className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full"
                     title="Ouvrir NoteFlow"
                   >
-                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 lg:w-20 lg:h-20 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_16px_rgba(16,52,71,0.3)] dark:drop-shadow-[0_10px_24px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_14px_28px_rgba(16,52,71,0.45)] group-hover:scale-110 active:scale-95 transition-all duration-300">
-                      <NoteFlow3DIcon />
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 lg:w-20 lg:h-20 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_16px_rgba(37,99,235,0.35)] dark:drop-shadow-[0_10px_24px_rgba(56,189,248,0.45)] group-hover:drop-shadow-[0_14px_28px_rgba(37,99,235,0.55)] group-hover:scale-110 active:scale-95 transition-all duration-300">
+                      <NoteFlow3DIcon className="w-full h-full" />
                     </div>
 
                     <span className={`text-[8.5px] sm:text-[9.5px] md:text-[10.5px] font-bold mt-1 md:mt-1.5 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper

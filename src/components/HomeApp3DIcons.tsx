@@ -6,7 +6,7 @@ const MY_SUBSCRIPTIONS_3D_DATA_URI = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQE
 /**
  * Logo 3D "Crédits IA" — intégré en dur (zéro chargement réseau).
  */
-export const AiCredits3DIcon: React.FC<{ className?: string }> = ({ className = 'w-[78%] h-[78%]' }) => (
+export const AiCredits3DIcon: React.FC<{ className?: string }> = ({ className = 'w-[86%] h-[86%]' }) => (
   <div className={`${className} rounded-[22%] overflow-hidden bg-[#0b1033] border border-white/25 dark:border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.45)]`}>
     <img
       src={AI_CREDITS_3D_DATA_URI}
@@ -22,7 +22,7 @@ export const AiCredits3DIcon: React.FC<{ className?: string }> = ({ className = 
 /**
  * Logo 3D "Mes abonnements" — intégré en dur (zéro chargement réseau).
  */
-export const MySubscriptions3DIcon: React.FC<{ className?: string }> = ({ className = 'w-[78%] h-[78%]' }) => (
+export const MySubscriptions3DIcon: React.FC<{ className?: string }> = ({ className = 'w-[86%] h-[86%]' }) => (
   <div className={`${className} rounded-[22%] overflow-hidden bg-[#1239a8] border border-white/25 dark:border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.45)]`}>
     <img
       src={MY_SUBSCRIPTIONS_3D_DATA_URI}
@@ -38,7 +38,7 @@ export const MySubscriptions3DIcon: React.FC<{ className?: string }> = ({ classN
 /**
  * Logo 3D "Abonnements" — SVG vectoriel en dur (zéro chargement réseau).
  */
-export const Subscriptions3DIcon: React.FC<{ className?: string }> = ({ className = 'w-[78%] h-[78%]' }) => (
+export const Subscriptions3DIcon: React.FC<{ className?: string }> = ({ className = 'w-[86%] h-[86%]' }) => (
   <div className={`${className} rounded-[22%] overflow-hidden bg-[#062226] border border-white/25 dark:border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.45)]`}>
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" className="w-full h-full" fill="none">
       <defs>
@@ -165,83 +165,227 @@ export const Subscriptions3DIcon: React.FC<{ className?: string }> = ({ classNam
 );
 
 /**
- * Logo "NoteFlow" — Chapeau de diplômé bleu marine + livre ouvert doré + barres de progression + flèche ascendante dorée.
- * SVG vectoriel en dur (zéro chargement réseau).
+ * Logo 3D "NoteFlow" — Objet 3D flottant sans fond blanc (exactement comme DKD store & Menu de création).
+ * Chapeau de diplômé bleu saphir 3D + livre ouvert 3D à page dorée + barres 3D multicolores + flèche dorée lumineuse.
+ * 100 % en dur (zéro chargement réseau), pleine taille (w-full h-full) identique aux autres apps sur mobile & PC.
  */
-export const NoteFlow3DIcon: React.FC<{ className?: string }> = ({ className = 'w-[78%] h-[78%]' }) => (
-  <div className={`${className} rounded-[22%] overflow-hidden bg-[#F7F3E9] border border-[#D8CEBA] dark:border-white/25 shadow-[inset_0_1px_2px_rgba(255,255,255,0.85)]`}>
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" className="w-full h-full" fill="none">
+export const NoteFlow3DIcon: React.FC<{ className?: string }> = ({ className = 'w-full h-full' }) => (
+  <div className={`relative flex items-center justify-center ${className}`}>
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 100 100"
+      className="w-full h-full filter drop-shadow-[0_8px_16px_rgba(15,23,42,0.42)]"
+      fill="none"
+    >
       <defs>
-        <linearGradient id="nfBgGrad" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#FDFBF6" />
-          <stop offset="60%" stopColor="#F5F0E3" />
-          <stop offset="100%" stopColor="#E9E1CE" />
+        {/* Halo doux bleu/or derrière l'objet 3D */}
+        <radialGradient id="nfAura3D" cx="50%" cy="52%" r="46%">
+          <stop offset="0%" stopColor="#38BDF8" stopOpacity="0.38" />
+          <stop offset="65%" stopColor="#2563EB" stopOpacity="0.12" />
+          <stop offset="100%" stopColor="#2563EB" stopOpacity="0" />
+        </radialGradient>
+
+        {/* Chapeau 3D Bleu Saphir / Royal */}
+        <linearGradient id="nfCapTop3D" x1="14" y1="6" x2="86" y2="38" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#38BDF8" />
+          <stop offset="42%" stopColor="#2563EB" />
+          <stop offset="100%" stopColor="#1E3A8A" />
         </linearGradient>
-        <linearGradient id="nfNavyGrad" x1="15" y1="10" x2="85" y2="90" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#1A4459" />
-          <stop offset="55%" stopColor="#113244" />
-          <stop offset="100%" stopColor="#0A212E" />
+        <linearGradient id="nfCapRim3D" x1="14" y1="22" x2="86" y2="40" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#1E3A8A" />
+          <stop offset="50%" stopColor="#172554" />
+          <stop offset="100%" stopColor="#0F172A" />
         </linearGradient>
-        <linearGradient id="nfGoldGrad" x1="20" y1="32" x2="82" y2="82" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#D4AA4E" />
-          <stop offset="50%" stopColor="#BE9239" />
-          <stop offset="100%" stopColor="#9C7323" />
+        <linearGradient id="nfCapBase3D" x1="30" y1="28" x2="70" y2="46" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#3B82F6" />
+          <stop offset="50%" stopColor="#1D4ED8" />
+          <stop offset="100%" stopColor="#0F172A" />
+        </linearGradient>
+
+        {/* Couverture de livre 3D Bleu Nuit / Saphir */}
+        <linearGradient id="nfCover3D" x1="6" y1="54" x2="94" y2="94" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#1D4ED8" />
+          <stop offset="52%" stopColor="#0F295C" />
+          <stop offset="100%" stopColor="#071530" />
+        </linearGradient>
+
+        {/* Page gauche dorée-ambre lumineuse 3D */}
+        <linearGradient id="nfGoldPage3D" x1="12" y1="44" x2="50" y2="86" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FEF08A" />
+          <stop offset="35%" stopColor="#FBBF24" />
+          <stop offset="78%" stopColor="#F59E0B" />
+          <stop offset="100%" stopColor="#C2410C" />
+        </linearGradient>
+
+        {/* Flèche & pompon 3D Or Brillant */}
+        <linearGradient id="nfGoldBright3D" x1="45" y1="26" x2="92" y2="62" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#FEF9C3" />
+          <stop offset="38%" stopColor="#FACC15" />
+          <stop offset="76%" stopColor="#F59E0B" />
+          <stop offset="100%" stopColor="#D97706" />
+        </linearGradient>
+
+        {/* Barres 3D ascendantes (Cyan, Émeraude, Royal, Violet) */}
+        <linearGradient id="nfBar1Front" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#67E8F9" />
+          <stop offset="100%" stopColor="#0284C7" />
+        </linearGradient>
+        <linearGradient id="nfBar2Front" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#6EE7B7" />
+          <stop offset="100%" stopColor="#059669" />
+        </linearGradient>
+        <linearGradient id="nfBar3Front" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#93C5FD" />
+          <stop offset="100%" stopColor="#1D4ED8" />
+        </linearGradient>
+        <linearGradient id="nfBar4Front" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#C4B5FD" />
+          <stop offset="100%" stopColor="#6D28D9" />
         </linearGradient>
       </defs>
 
-      {/* Fond crème ivoire propre */}
-      <rect width="100" height="100" fill="url(#nfBgGrad)" />
+      {/* Ombre portée douce sous l'objet 3D */}
+      <ellipse cx="50" cy="92" rx="38" ry="5.5" fill="#000000" fillOpacity="0.32" />
+      <circle cx="50" cy="52" r="44" fill="url(#nfAura3D)" />
 
-      {/* Chapeau de diplômé (Mortarboard) en haut */}
-      <path d="M 50 10 L 82 24.5 L 50 38.5 L 18 24.5 Z" fill="url(#nfNavyGrad)" />
-      {/* Base du chapeau avec léger espace blanc en arc */}
+      {/* ================================================================ */}
+      {/* 1. CHAPEAU DE DIPLÔMÉ 3D (BLEU SAPHIR + POMPON OR)               */}
+      {/* ================================================================ */}
+      {/* Calotte 3D cylindrique */}
       <path
-        d="M 32.5 31.8 L 32.5 43.2 C 39.5 38.2 60.5 38.2 67.5 43.2 L 67.5 31.8 L 50 39.5 Z"
-        fill="url(#nfNavyGrad)"
+        d="M 30 28 L 30 42 C 39 36.5 61 36.5 70 42 L 70 28 L 50 37 Z"
+        fill="url(#nfCapBase3D)"
+        stroke="#0F172A"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      {/* Reflet courbé sur la calotte */}
+      <path d="M 34 33 Q 50 28 66 33" stroke="#93C5FD" strokeOpacity="0.7" strokeWidth="1.4" strokeLinecap="round" />
+
+      {/* Tranche / épaisseur 3D du plateau du chapeau */}
+      <path
+        d="M 11 22.5 L 50 39 L 89 22.5 L 89 25.5 L 50 42 L 11 25.5 Z"
+        fill="url(#nfCapRim3D)"
+      />
+      {/* Face supérieure biseautée 3D du chapeau */}
+      <path
+        d="M 50 6 L 89 22.5 L 50 39 L 11 22.5 Z"
+        fill="url(#nfCapTop3D)"
+        stroke="#0F172A"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+      {/* Reflet vitré diagonal sur le haut du chapeau */}
+      <path
+        d="M 50 8.2 L 82 22.2 L 50 27.5 L 18 22.2 Z"
+        fill="#FFFFFF"
+        fillOpacity="0.22"
+      />
+      {/* Bouton doré au sommet du chapeau */}
+      <ellipse cx="50" cy="21" rx="4.2" ry="2.5" fill="url(#nfGoldBright3D)" stroke="#78350F" strokeWidth="0.9" />
+
+      {/* Cordon & pompon 3D doré suspendu à gauche */}
+      <path d="M 50 21 C 34 21 20 24 19 31 L 19 36" stroke="#FBBF24" strokeWidth="2.3" strokeLinecap="round" fill="none" />
+      <circle cx="19" cy="36.5" r="2.7" fill="url(#nfGoldBright3D)" stroke="#78350F" strokeWidth="0.8" />
+      <path
+        d="M 16.8 38.5 L 21.2 38.5 L 23.4 48.5 C 21 49.5 17 49.5 14.6 48.5 Z"
+        fill="url(#nfGoldBright3D)"
+        stroke="#78350F"
+        strokeWidth="0.9"
+        strokeLinejoin="round"
+      />
+
+      {/* ================================================================ */}
+      {/* 2. LIVRE OUVERT 3D (COUVERTURE SAPHIR + PAGE DORÉE + BARRES 3D)  */}
+      {/* ================================================================ */}
+      {/* Couverture rigide 3D (épaisseur externe + pointe centrale) */}
+      <path
+        d="M 8 53 L 8 78.5 C 24 79 39 84 50 92.5 C 61 84 76 79 92 78.5 L 92 72 C 76 72.5 61 77.5 50 86 C 39 77.5 24 72.5 13 72 L 13 53 Z"
+        fill="url(#nfCover3D)"
+        stroke="#020617"
+        strokeWidth="1.3"
+        strokeLinejoin="round"
+      />
+      {/* Tranche blanche épaisse des pages sous la page dorée */}
+      <path
+        d="M 13 71.5 C 25 72.2 38 76.2 48.5 83.8 L 48.5 86.2 C 38 78.5 25 74.5 13 73.8 Z"
+        fill="#E2E8F0"
       />
       <path
-        d="M 35.5 30.8 Q 50 25.5 64.5 30.8"
-        stroke="#F7F3E9"
-        strokeWidth="1.6"
-        strokeLinecap="round"
-        fill="none"
-      />
-      {/* Cordon & pompon gauche du chapeau */}
-      <line x1="23.5" y1="27" x2="23.5" y2="35.5" stroke="#113244" strokeWidth="2.1" strokeLinecap="round" />
-      <circle cx="23.5" cy="36.2" r="2.2" fill="#113244" />
-      <path d="M 22 37.8 L 25 37.8 L 26.8 46.8 L 20.2 46.8 Z" fill="url(#nfNavyGrad)" />
-
-      {/* Couverture / reliure bleu marine du livre ouvert */}
-      <path
-        d="M 18.5 55.5 L 18.5 76.5 C 31 76.8 42.5 81 50 89 C 57.5 81 69 76.8 81.5 76.5 L 81.5 71.2 C 69 71.8 58 75.8 50 83.2 C 42 75.8 31 71.8 22.8 71.2 L 22.8 55.5 Z"
-        fill="url(#nfNavyGrad)"
+        d="M 87 71.5 C 75 72.2 62 76.2 51.5 83.8 L 51.5 86.2 C 62 78.5 75 74.5 87 73.8 Z"
+        fill="#CBD5E1"
       />
 
-      {/* Page gauche dorée du livre ouvert */}
+      {/* Page gauche 3D dorée-ambre brillante */}
       <path
-        d="M 25.5 51.5 C 34.5 52.2 43 55.5 48.2 61.5 L 48.2 79.2 C 42.2 73.2 34 70.2 25.5 69.5 Z"
-        fill="url(#nfGoldGrad)"
+        d="M 15.5 49 C 28 50 39.5 54 47.8 61.5 L 47.8 82.8 C 39.2 75.5 28 71.5 15.5 70.6 Z"
+        fill="url(#nfGoldPage3D)"
+        stroke="#92400E"
+        strokeWidth="1.2"
+        strokeLinejoin="round"
       />
-      {/* 3 lignes de notes sur la page dorée */}
-      <path d="M 29.2 57.5 Q 37.5 58.5 44.2 62.2" stroke="#F8F4EA" strokeWidth="1.85" strokeLinecap="round" />
-      <path d="M 29.2 61.8 Q 37.5 62.8 44.2 66.5" stroke="#F8F4EA" strokeWidth="1.85" strokeLinecap="round" />
-      <path d="M 29.2 66.1 Q 37.5 67.1 44.2 70.8" stroke="#F8F4EA" strokeWidth="1.85" strokeLinecap="round" />
-
-      {/* Barres de progression ascendantes (page droite du livre) */}
-      <path d="M 51.2 61.8 L 54.4 61.8 L 54.4 77.8 L 51.2 80.5 Z" fill="url(#nfNavyGrad)" />
-      <path d="M 57.5 57.2 L 63.4 57.2 L 63.4 73.2 L 57.5 76.2 Z" fill="url(#nfNavyGrad)" />
-      <path d="M 66.5 51.2 L 72.4 51.2 L 72.4 70.6 L 66.5 72.2 Z" fill="url(#nfNavyGrad)" />
-      <path d="M 75.4 44.5 L 81.4 44.5 L 81.4 69.2 L 75.4 70.0 Z" fill="url(#nfNavyGrad)" />
-
-      {/* Flèche de croissance dorée en zigzag */}
+      {/* Reflet lumineux sur la page dorée */}
       <path
-        d="M 48.5 56.5 L 57.5 48.2 L 61.2 51.8 L 76.2 37.2"
-        stroke="url(#nfGoldGrad)"
-        strokeWidth="3.6"
+        d="M 17 50.8 C 28 51.6 38 55 46 61.5 L 46 66 C 38 60 28 56.8 17 56 Z"
+        fill="#FFFFFF"
+        fillOpacity="0.28"
+      />
+      {/* 3 lignes de notes nettes sur la page dorée */}
+      <path d="M 20.5 56.2 Q 31.5 57.5 42.2 62.2" stroke="#FFFBEB" strokeWidth="2.3" strokeLinecap="round" />
+      <path d="M 20.5 61.6 Q 31.5 62.9 42.2 67.6" stroke="#FFFBEB" strokeWidth="2.3" strokeLinecap="round" />
+      <path d="M 20.5 67.0 Q 31.5 68.3 42.2 73.0" stroke="#FFFBEB" strokeWidth="2.3" strokeLinecap="round" />
+
+      {/* ================================================================ */}
+      {/* 3. BARRES DE PROGRESSION 3D (PRISMES AVEC FACE + TRANCHE LATÉRALE)*/}
+      {/* ================================================================ */}
+      {/* Barre 1 (Cyan 3D) */}
+      <polygon points="52,63 57.5,63 57.5,81 52,83.5" fill="url(#nfBar1Front)" stroke="#0C4A6E" strokeWidth="0.8" />
+      <polygon points="57.5,63 59.8,61.5 59.8,79.5 57.5,81" fill="#0369A1" />
+
+      {/* Barre 2 (Émeraude 3D) */}
+      <polygon points="61.5,57.5 68,57.5 68,76.8 61.5,79.4" fill="url(#nfBar2Front)" stroke="#064E3B" strokeWidth="0.8" />
+      <polygon points="68,57.5 70.5,55.8 70.5,75.2 68,76.8" fill="#047857" />
+
+      {/* Barre 3 (Bleu Royal 3D) */}
+      <polygon points="72,51 78.5,51 78.5,73.5 72,75.6" fill="url(#nfBar3Front)" stroke="#1E3A8A" strokeWidth="0.8" />
+      <polygon points="78.5,51 81,49.2 81,72 78.5,73.5" fill="#1E40AF" />
+
+      {/* Barre 4 (Violet Indigo 3D — plus haute) */}
+      <polygon points="82.5,43.5 89,43.5 89,71.2 82.5,72.6" fill="url(#nfBar4Front)" stroke="#3B0764" strokeWidth="0.8" />
+      <polygon points="89,43.5 91.5,41.8 91.5,69.8 89,71.2" fill="#4C1D95" />
+
+      {/* ================================================================ */}
+      {/* 4. FLÈCHE DE CROISSANCE 3D DORÉE + ÉTINCELLE                     */}
+      {/* ================================================================ */}
+      {/* Ombre/épaisseur 3D sous la flèche */}
+      <path
+        d="M 48.5 57.5 L 60.5 47.2 L 65.2 51.5 L 82.8 34.5"
+        stroke="#92400E"
+        strokeWidth="5.4"
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-      <polygon points="71.5,34.5 81.2,32.2 78.8,41.8" fill="url(#nfGoldGrad)" />
+      {/* Corps brillant 3D de la flèche */}
+      <path
+        d="M 48.5 56 L 60.5 45.7 L 65.2 50 L 82.8 33"
+        stroke="url(#nfGoldBright3D)"
+        strokeWidth="4.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      {/* Pointe 3D de la flèche */}
+      <polygon
+        points="76,30.2 89.2,26.8 85.8,40"
+        fill="url(#nfGoldBright3D)"
+        stroke="#92400E"
+        strokeWidth="1.1"
+        strokeLinejoin="round"
+      />
+      {/* Éclat d'étoile dorée en haut à droite */}
+      <path
+        d="M 88 12 C 88 15.2 89.8 17 93 17 C 89.8 17 88 18.8 88 22 C 88 18.8 86.2 17 83 17 C 86.2 17 88 15.2 88 12 Z"
+        fill="#FEF08A"
+      />
     </svg>
   </div>
 );
