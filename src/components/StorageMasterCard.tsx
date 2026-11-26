@@ -6,10 +6,8 @@ import {
   RefreshCw,
   CalendarClock,
   Receipt,
-  Sparkles,
   Lock,
   ArrowUpRight,
-  CheckCircle2,
   AlertTriangle,
 } from 'lucide-react';
 import {
@@ -44,6 +42,11 @@ function formatDateFr(iso?: string | null): string {
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' });
 }
+
+const CAPSULE_CTA_STYLE: React.CSSProperties = {
+  background:
+    'linear-gradient(90deg, #1E1110 0%, #5A2413 38%, #C74919 72%, #FF6D29 90%, #FFA366 100%)',
+};
 
 export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
   config,
@@ -124,28 +127,6 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
     paymentConfig.paystackEnabled && paymentConfig.mode !== 'unconfigured';
   const showManualUnderneath = shouldShowManualReceiptButton(paymentConfig, true);
 
-  const statusBadge = useMemo(() => {
-    if (userState.isInfinite) {
-      return { text: 'À vie', cls: 'bg-amber-500/20 text-amber-200 border-amber-400/40' };
-    }
-    if (userState.hasActiveSubscription) {
-      if (userState.daysRemaining <= 5) {
-        return {
-          text: `Expire dans ${userState.daysRemaining}j`,
-          cls: 'bg-amber-500/20 text-amber-200 border-amber-400/40',
-        };
-      }
-      return { text: 'Actif', cls: 'bg-emerald-500/20 text-emerald-200 border-emerald-400/40' };
-    }
-    if (userState.inGrace) {
-      return { text: 'Période de grâce', cls: 'bg-orange-500/20 text-orange-200 border-orange-400/40' };
-    }
-    if (userState.isExpired && currentPaidMb > 0) {
-      return { text: 'Expiré', cls: 'bg-rose-500/20 text-rose-200 border-rose-400/40' };
-    }
-    return { text: 'Carte Maîtresse', cls: 'bg-blue-500/20 text-blue-200 border-blue-400/40' };
-  }, [currentPaidMb, userState]);
-
   const buildPaymentPayload = (action: 'upgrade' | 'renew'): {
     target: StudyCloudPaymentTarget;
     manualPlan: SelectedPlan;
@@ -225,48 +206,45 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
   return (
     <div
       id="storage-master-card"
-      className="rounded-2xl p-5 sm:p-6 flex flex-col justify-between relative max-w-[390px] w-full mx-auto bg-gradient-to-b from-slate-900 via-[#0f1c36] to-[#0b1326] border-2 border-blue-500/60 text-white shadow-xl shadow-blue-950/35 ring-1 ring-blue-400/25 transition-all duration-300"
+      style={{
+        background:
+          'linear-gradient(180deg, rgba(255, 114, 41, 0.94) 0%, rgba(196, 68, 19, 0.72) 18%, rgba(84, 30, 14, 0.52) 36%, rgba(20, 15, 15, 0.97) 56%, #121012 100%)',
+      }}
+      className="rounded-[24px] p-5 sm:p-6 flex flex-col justify-between relative w-full border border-[#FF8E53]/45 text-white shadow-[0_24px_60px_-14px_rgba(0,0,0,0.82),0_0_36px_-10px_rgba(255,109,41,0.34)] transition-all duration-300"
     >
       <div className="space-y-4">
         {/* En-tête Carte Maîtresse */}
-        <div className="flex items-start justify-between gap-2">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-9 h-9 rounded-xl bg-blue-500/20 border border-blue-400/35 flex items-center justify-center shrink-0">
-              <HardDrive className="w-5 h-5 text-blue-300" />
-            </div>
-            <div className="min-w-0">
-              <h3 className="text-base sm:text-lg font-extrabold tracking-tight text-white leading-tight truncate">
-                {config.title}
-              </h3>
-              <p className="text-[11px] text-slate-300/90 leading-snug line-clamp-2">
-                {config.subtitle}
-              </p>
-            </div>
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-[#161316]/45 border border-white/25 flex items-center justify-center shrink-0 shadow-inner">
+            <HardDrive className="w-5 h-5 text-white" />
           </div>
-          <span
-            className={`shrink-0 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${statusBadge.cls}`}
-          >
-            {statusBadge.text}
-          </span>
+          <div className="min-w-0">
+            <h3 className="text-lg sm:text-[19px] font-extrabold tracking-tight text-white leading-tight truncate">
+              {config.title}
+            </h3>
+            <p className="text-[11px] sm:text-xs text-[#FFF1E8]/85 leading-snug line-clamp-2 mt-0.5">
+              {config.subtitle}
+            </p>
+          </div>
         </div>
 
         {/* Résumé en direct depuis D1 : Stockage actuel + Utilisation + Renouvellement */}
-        <div className="rounded-xl bg-white/[0.06] border border-white/10 p-3.5 space-y-2.5">
+        <div className="rounded-2xl bg-[#161316]/75 backdrop-blur-md border border-white/15 p-3.5 sm:p-4 space-y-2.5">
           <div className="flex items-baseline justify-between gap-2">
             <div>
-              <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+              <p className="text-[10px] uppercase tracking-wider font-bold text-[#BABABA]">
                 Votre stockage actuel
               </p>
-              <div className="flex items-baseline gap-2 mt-0.5">
+              <div className="flex items-baseline gap-2 mt-0.5 flex-wrap">
                 <span className="text-2xl sm:text-3xl font-black text-white tabular-nums">
                   {formatStorageMb(userState.totalAllowedMb)}
                 </span>
                 {currentPaidMb > 0 ? (
-                  <span className="text-[11px] font-bold text-blue-300">
+                  <span className="text-[11px] font-bold text-[#FF9B66]">
                     ({formatStorageMb(currentPaidMb)} payant)
                   </span>
                 ) : (
-                  <span className="text-[11px] font-semibold text-slate-400">
+                  <span className="text-[11px] font-semibold text-[#BABABA]">
                     (Bienvenue offert)
                   </span>
                 )}
@@ -275,12 +253,12 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
 
             {currentPaidMb > 0 && (
               <div className="text-right shrink-0">
-                <p className="text-[10px] uppercase tracking-wider font-bold text-slate-400">
+                <p className="text-[10px] uppercase tracking-wider font-bold text-[#BABABA]">
                   Forfait actuel
                 </p>
-                <p className="text-sm font-extrabold text-emerald-300 tabular-nums">
+                <p className="text-sm font-extrabold text-[#FFB085] tabular-nums">
                   {userState.monthlyPriceFcfa.toLocaleString('fr-FR')} FCFA
-                  <span className="text-[10px] font-medium text-slate-400"> {periodLabel}</span>
+                  <span className="text-[10px] font-medium text-[#BABABA]"> {periodLabel}</span>
                 </p>
               </div>
             )}
@@ -288,18 +266,18 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
 
           {/* Barre de progression espace utilisé */}
           <div>
-            <div className="flex items-center justify-between text-[10px] font-semibold text-slate-300 mb-1">
+            <div className="flex items-center justify-between text-[10px] font-semibold text-[#BABABA] mb-1.5">
               <span>Utilisé : {formatStorageMb(userState.usedMb)}</span>
-              <span>{userState.usagePercent}%</span>
+              <span className="text-white font-bold">{userState.usagePercent}%</span>
             </div>
-            <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
+            <div className="w-full h-1.5 rounded-full bg-white/10 overflow-hidden">
               <div
                 className={`h-full rounded-full transition-all duration-500 ${
                   userState.usagePercent >= 90
                     ? 'bg-rose-500'
                     : userState.usagePercent >= 70
                     ? 'bg-amber-400'
-                    : 'bg-blue-400'
+                    : 'bg-gradient-to-r from-[#FF6D29] to-[#FFA46E]'
                 }`}
                 style={{ width: `${Math.min(100, Math.max(2, userState.usagePercent))}%` }}
               />
@@ -308,16 +286,16 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
 
           {/* Date de renouvellement / échéance */}
           {userState.currentPeriodEnd && !userState.isInfinite && (
-            <div className="flex items-center justify-between gap-2 pt-1.5 border-t border-white/10 text-[11px]">
-              <span className="inline-flex items-center gap-1.5 text-slate-300 font-medium">
-                <CalendarClock className="w-3.5 h-3.5 text-blue-300 shrink-0" />
+            <div className="flex items-center justify-between gap-2 pt-2 border-t border-white/10 text-[11px]">
+              <span className="inline-flex items-center gap-1.5 text-[#BABABA] font-medium">
+                <CalendarClock className="w-3.5 h-3.5 text-[#FF8C52] shrink-0" />
                 <span>
                   {userState.isExpired ? 'Expiré le' : 'Renouvellement le'}{' '}
                   <strong className="text-white">{formatDateFr(userState.currentPeriodEnd)}</strong>
                 </span>
               </span>
               {userState.hasActiveSubscription && (
-                <span className="font-bold text-emerald-300 shrink-0">
+                <span className="font-bold text-[#FFB085] shrink-0">
                   {userState.daysRemaining}j restants
                 </span>
               )}
@@ -325,20 +303,19 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
           )}
         </div>
 
-        {/* Petit module central : Sélecteur dynamique d'augmentation (jamais en dessous du quota actuel) */}
-        <div className="rounded-xl bg-slate-950/70 border border-blue-400/30 p-3.5 space-y-3">
+        {/* Module central : Sélecteur dynamique d'augmentation */}
+        <div className="rounded-2xl bg-[#161316]/88 border border-[#FF6D29]/28 p-3.5 sm:p-4 space-y-3">
           <div className="flex items-center justify-between gap-2">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-blue-200 flex items-center gap-1.5">
-              <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#FFA370]">
               Augmenter le stockage
             </span>
-            <span className="text-[10px] font-semibold text-slate-400">
+            <span className="text-[10px] font-semibold text-[#BABABA]">
               Pas : +{stepLabel}
             </span>
           </div>
 
-          {/* Carré de contrôle - / Quota / + */}
-          <div className="flex items-center justify-between gap-2 bg-slate-900/90 border border-slate-700/80 rounded-xl p-2">
+          {/* Contrôle - / Quota / + */}
+          <div className="flex items-center justify-between gap-2 bg-[#0D0B0D]/95 border border-white/12 rounded-xl p-2">
             <button
               type="button"
               disabled={!canDecrement}
@@ -351,8 +328,8 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
               }
               className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all shrink-0 ${
                 canDecrement
-                  ? 'bg-slate-800 hover:bg-slate-700 text-white cursor-pointer active:scale-95 border border-slate-600'
-                  : 'bg-slate-900 text-slate-600 cursor-not-allowed border border-slate-800'
+                  ? 'bg-[#453027]/80 hover:bg-[#5A3E32] text-white cursor-pointer active:scale-95 border border-white/15'
+                  : 'bg-white/[0.04] text-white/25 cursor-not-allowed border border-white/[0.06]'
               }`}
             >
               {canDecrement ? <Minus className="w-4 h-4 stroke-[2.5]" /> : <Lock className="w-3.5 h-3.5" />}
@@ -362,10 +339,10 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
               <div className="text-sm sm:text-base font-black text-white tabular-nums truncate">
                 {addedSteps > 0 ? (
                   <>
-                    <span className="text-slate-400 font-bold text-xs">
+                    <span className="text-[#BABABA] font-bold text-xs">
                       {formatStorageMb(currentPaidMb)} →{' '}
                     </span>
-                    <span className="text-blue-300">{formatStorageMb(targetPaidMb)}</span>
+                    <span className="text-[#FF8D52]">{formatStorageMb(targetPaidMb)}</span>
                   </>
                 ) : (
                   <span>{formatStorageMb(currentPaidMb)}</span>
@@ -373,11 +350,11 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
               </div>
               <div className="text-[10px] font-bold mt-0.5">
                 {addedSteps > 0 ? (
-                  <span className="text-emerald-300">
+                  <span className="text-[#FFB085]">
                     +{formatStorageMb(addedMb)} payant ({formatStorageMb(userState.welcomeMb + targetPaidMb + userState.bonusMb)} au total)
                   </span>
                 ) : (
-                  <span className="text-slate-400">
+                  <span className="text-[#BABABA]">
                     Appuyez sur <strong className="text-white">+</strong> pour augmenter
                   </span>
                 )}
@@ -392,8 +369,8 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
               title={canIncrement ? `Ajouter +${stepLabel}` : 'Plafond maximal atteint'}
               className={`w-10 h-10 rounded-lg flex items-center justify-center transition-all shrink-0 ${
                 canIncrement
-                  ? 'bg-blue-600 hover:bg-blue-500 text-white cursor-pointer active:scale-95 shadow-md shadow-blue-900/50'
-                  : 'bg-slate-800 text-slate-500 cursor-not-allowed'
+                  ? 'bg-gradient-to-br from-[#FF6D29] to-[#D94A12] hover:from-[#FF7F40] hover:to-[#E8571C] text-white cursor-pointer active:scale-95 shadow-lg shadow-[#FF6D29]/30'
+                  : 'bg-white/10 text-white/30 cursor-not-allowed'
               }`}
             >
               <Plus className="w-5 h-5 stroke-[2.5]" />
@@ -403,7 +380,7 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
           {/* Récapitulatif prix dynamique + Prorata transparent */}
           {addedSteps > 0 ? (
             <div className="space-y-1.5 pt-1 text-xs">
-              <div className="flex items-center justify-between text-slate-300">
+              <div className="flex items-center justify-between text-[#BABABA]">
                 <span>Nouveau tarif ({config.durationDays}j)</span>
                 <span className="font-bold text-white tabular-nums">
                   {quote.newMonthlyFcfa.toLocaleString('fr-FR')} FCFA {periodLabel}
@@ -411,14 +388,14 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
               </div>
 
               {quote.prorataApplied && (
-                <div className="rounded-lg bg-emerald-500/10 border border-emerald-400/30 p-2 space-y-1 text-[11px]">
-                  <div className="flex items-center justify-between text-emerald-200">
+                <div className="rounded-xl bg-[#FF6D29]/12 border border-[#FF6D29]/30 p-2.5 space-y-1 text-[11px]">
+                  <div className="flex items-center justify-between text-[#F5D6C6]">
                     <span>Déjà consommé ({userState.daysUsed}j)</span>
                     <span className="tabular-nums font-semibold">
                       {quote.consumedCostFcfa.toLocaleString('fr-FR')} FCFA
                     </span>
                   </div>
-                  <div className="flex items-center justify-between text-emerald-300 font-bold">
+                  <div className="flex items-center justify-between text-[#FFA370] font-bold">
                     <span>Crédit prorata ({userState.daysRemaining}j restants)</span>
                     <span className="tabular-nums">
                       -{quote.unusedCreditFcfa.toLocaleString('fr-FR')} FCFA
@@ -427,59 +404,52 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
                 </div>
               )}
 
-              <div className="flex items-center justify-between pt-1.5 border-t border-white/10">
+              <div className="flex items-center justify-between pt-2 border-t border-white/10">
                 <span className="font-extrabold text-white">Net à payer aujourd'hui</span>
-                <span className="text-lg font-black text-blue-300 tabular-nums">
+                <span className="text-lg font-black text-[#FF8D52] tabular-nums">
                   {quote.amountDueFcfa.toLocaleString('fr-FR')} FCFA
                 </span>
               </div>
             </div>
           ) : (
-            <div className="flex items-center justify-between text-[11px] text-slate-400">
+            <div className="flex items-center justify-between text-[11px] text-[#BABABA]">
               <span>Tarif par palier</span>
-              <span className="font-bold text-slate-200 tabular-nums">
+              <span className="font-bold text-white tabular-nums">
                 +{config.pricePerStepFcfa.toLocaleString('fr-FR')} FCFA / +{stepLabel}
               </span>
             </div>
           )}
         </div>
 
-        {/* Rappel anti-downgrade & synchronisation cartes bonus */}
-        <ul className="space-y-1.5 text-[11px] text-slate-300">
-          <li className="flex items-center gap-2">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>Remplace votre forfait principal sans doublon ni conflit</span>
-          </li>
-          <li className="flex items-center gap-2">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-            <span>Synchronisé automatiquement avec les cartes bonus à côté</span>
-          </li>
-          {userState.isExpired && currentPaidMb > 0 && (
-            <li className="flex items-center gap-2 text-amber-300 font-semibold">
-              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
-              <span>Abonnement expiré : renouvelez ou augmentez maintenant</span>
-            </li>
-          )}
-        </ul>
+        {/* Alerte expiration uniquement si expiré */}
+        {userState.isExpired && currentPaidMb > 0 && (
+          <div className="rounded-xl bg-amber-500/12 border border-amber-400/35 px-3 py-2 flex items-center gap-2 text-[11px] text-amber-200 font-semibold">
+            <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-300" />
+            <span>Abonnement expiré : renouvelez ou augmentez maintenant</span>
+          </div>
+        )}
       </div>
 
-      {/* Boutons d'action principaux : Augmenter OU Renouveler */}
-      <div className="space-y-2 mt-5 pt-3 border-t border-white/10">
+      {/* Boutons d'action principaux : Style capsule professionnelle */}
+      <div className="space-y-2 mt-5 pt-3.5 border-t border-white/10">
         {quote.mode === 'upgrade' ? (
           <>
             {isPaystackAvailable || showManualUnderneath ? (
               <button
                 type="button"
                 onClick={handlePrimaryPayClick}
-                className="w-full py-2.5 sm:py-3 font-extrabold text-xs sm:text-sm rounded-xl bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-950/40 transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2"
+                style={CAPSULE_CTA_STYLE}
+                className="group/cta w-full pl-4 pr-1.5 py-1.5 rounded-full border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-[13px] shadow-[0_10px_26px_-8px_rgba(255,109,41,0.5)] hover:shadow-[0_14px_32px_-8px_rgba(255,109,41,0.72)] transition-all cursor-pointer active:scale-[0.98] flex items-center justify-between gap-2"
               >
-                <ArrowUpRight className="w-4 h-4 shrink-0" />
-                <span>
+                <span className="flex-1 text-center truncate px-1">
                   Augmenter à {formatStorageMb(targetPaidMb)} — {quote.amountDueFcfa.toLocaleString('fr-FR')} FCFA
+                </span>
+                <span className="w-8 h-8 rounded-full bg-[#161316] border-2 border-[#FFF1E6]/90 text-white flex items-center justify-center shrink-0 transition-transform duration-200 group-hover/cta:translate-x-0.5 group-hover/cta:-translate-y-0.5">
+                  <ArrowUpRight className="w-4 h-4 stroke-[2.5]" />
                 </span>
               </button>
             ) : (
-              <div className="w-full py-2.5 px-3 rounded-xl bg-slate-800 text-slate-400 text-xs font-semibold text-center">
+              <div className="w-full py-2.5 px-3 rounded-full bg-white/5 border border-white/10 text-[#BABABA] text-xs font-semibold text-center">
                 Paiement temporairement indisponible
               </div>
             )}
@@ -487,9 +457,9 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
               <button
                 type="button"
                 onClick={handleManualClick}
-                className="w-full py-2 px-3 rounded-xl text-[11px] sm:text-xs font-bold bg-white/5 hover:bg-white/10 text-slate-200 border border-white/15 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                className="w-full py-2 px-3 rounded-full text-[11px] font-semibold bg-white/[0.05] hover:bg-white/[0.1] text-[#BABABA] hover:text-white border border-white/12 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
-                <Receipt className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <Receipt className="w-3.5 h-3.5 text-[#FF8D52] shrink-0" />
                 <span>Payer manuellement (envoyer un reçu)</span>
               </button>
             )}
@@ -500,15 +470,18 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
               <button
                 type="button"
                 onClick={handlePrimaryPayClick}
-                className="w-full py-2.5 sm:py-3 font-extrabold text-xs sm:text-sm rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-md shadow-emerald-950/40 transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2"
+                style={CAPSULE_CTA_STYLE}
+                className="group/cta w-full pl-4 pr-1.5 py-1.5 rounded-full border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-[13px] shadow-[0_10px_26px_-8px_rgba(255,109,41,0.5)] hover:shadow-[0_14px_32px_-8px_rgba(255,109,41,0.72)] transition-all cursor-pointer active:scale-[0.98] flex items-center justify-between gap-2"
               >
-                <RefreshCw className="w-4 h-4 shrink-0" />
-                <span>
+                <span className="flex-1 text-center truncate px-1">
                   Renouveler ({formatStorageMb(currentPaidMb)}) — {quote.amountDueFcfa.toLocaleString('fr-FR')} FCFA
+                </span>
+                <span className="w-8 h-8 rounded-full bg-[#161316] border-2 border-[#FFF1E6]/90 text-white flex items-center justify-center shrink-0 transition-transform duration-300 group-hover/cta:rotate-45">
+                  <RefreshCw className="w-3.5 h-3.5 stroke-[2.5]" />
                 </span>
               </button>
             ) : (
-              <div className="w-full py-2.5 px-3 rounded-xl bg-slate-800 text-slate-400 text-xs font-semibold text-center">
+              <div className="w-full py-2.5 px-3 rounded-full bg-white/5 border border-white/10 text-[#BABABA] text-xs font-semibold text-center">
                 Paiement temporairement indisponible
               </div>
             )}
@@ -516,9 +489,9 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
               <button
                 type="button"
                 onClick={handleManualClick}
-                className="w-full py-2 px-3 rounded-xl text-[11px] sm:text-xs font-bold bg-white/5 hover:bg-white/10 text-slate-200 border border-white/15 transition-all cursor-pointer flex items-center justify-center gap-1.5"
+                className="w-full py-2 px-3 rounded-full text-[11px] font-semibold bg-white/[0.05] hover:bg-white/[0.1] text-[#BABABA] hover:text-white border border-white/12 transition-all cursor-pointer flex items-center justify-center gap-1.5"
               >
-                <Receipt className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <Receipt className="w-3.5 h-3.5 text-[#FF8D52] shrink-0" />
                 <span>Renouveler par reçu manuel</span>
               </button>
             )}
@@ -527,11 +500,14 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
           <button
             type="button"
             onClick={() => canIncrement && setAddedSteps(1)}
-            className="w-full py-2.5 sm:py-3 font-extrabold text-xs sm:text-sm rounded-xl bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-950/40 transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-2"
+            style={CAPSULE_CTA_STYLE}
+            className="group/cta w-full pl-4 pr-1.5 py-1.5 rounded-full border border-white/25 hover:border-white/50 text-white font-bold text-xs sm:text-[13px] shadow-[0_10px_26px_-8px_rgba(255,109,41,0.5)] hover:shadow-[0_14px_32px_-8px_rgba(255,109,41,0.72)] transition-all cursor-pointer active:scale-[0.98] flex items-center justify-between gap-2"
           >
-            <Plus className="w-4 h-4 stroke-[2.5]" />
-            <span>
+            <span className="flex-1 text-center truncate px-1">
               Ajouter +{stepLabel} ({config.pricePerStepFcfa.toLocaleString('fr-FR')} FCFA {periodLabel})
+            </span>
+            <span className="w-8 h-8 rounded-full bg-[#161316] border-2 border-[#FFF1E6]/90 text-white flex items-center justify-center shrink-0 transition-transform duration-200 group-hover/cta:scale-105">
+              <Plus className="w-4 h-4 stroke-[2.5]" />
             </span>
           </button>
         )}
