@@ -126,6 +126,25 @@ function readInitialUserPhoneAndCountry(): { country: CountryPhoneRule; formatte
   return { country: DEFAULT_COUNTRY_RULE, formattedPhone: '' };
 }
 
+const formatPaystackErrorFr = (raw?: string, fallback = "Impossible d'initier le paiement."): string => {
+  const msg = String(raw || '').trim();
+  if (!msg) return fallback;
+  const lower = msg.toLowerCase();
+  if (lower.includes('test mobile money number') || lower.includes('doing a test transaction')) {
+    return 'Mode Test Paystack : utilisez le numéro de test officiel Côte d’Ivoire (07 00 00 00 00) ou cliquez sur « Continuer le paiement » ci-dessous.';
+  }
+  if (lower.includes('insufficient funds') || lower.includes('not sufficient')) {
+    return 'Solde insuffisant sur votre compte ou votre carte.';
+  }
+  if (lower.includes('invalid phone')) {
+    return 'Numéro Mobile Money invalide pour cet opérateur.';
+  }
+  if (lower.includes('declined')) {
+    return 'Paiement refusé par votre banque ou opérateur Mobile Money.';
+  }
+  return msg;
+};
+
 export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
   target,
   onBack,
@@ -316,7 +335,7 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
       });
 
       if (!res.success) {
-        setErrorMsg(res.error || "Impossible d'initier le paiement.");
+        setErrorMsg(formatPaystackErrorFr(res.error, "Impossible d'initier le paiement."));
         if (res.fallbackSuggested) setShowPopupFallback(true);
         setSubmitting(false);
         return;

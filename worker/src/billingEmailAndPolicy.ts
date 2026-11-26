@@ -627,6 +627,111 @@ export async function sendAndLogBillingEmail(params: {
 }
 
 /**
+ * Décode une chaîne Base64 en octets Uint8Array (compatible Cloudflare Workers & Node).
+ */
+function base64ToUint8Array(b64: string): Uint8Array {
+  const clean = String(b64 || '').trim();
+  const binStr = atob(clean);
+  const bytes = new Uint8Array(binStr.length);
+  for (let i = 0; i < binStr.length; i++) {
+    bytes[i] = binStr.charCodeAt(i);
+  }
+  return bytes;
+}
+
+function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) {
+    bin += String.fromCharCode(bytes[i]);
+  }
+  return btoa(bin);
+}
+
+function constantTimeEqualStrings(a: string, b: string): boolean {
+  if (!a || !b || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
+ * Calcule une signature Svix/Resend `v1,<base64>` (utile pour la vérification et les tests).
+ */
+export async function computeResendSvixSignature(
+  rawBody: string,
+  svixId: string,
+  svixTimestamp: string,
+  webhookSecret: string
+): Promise<string> {
+  const stripped = String(webhookSecret || '').trim().replace(/^whsec_/, '');
+  const keyBytes = base64ToUint8Array(stripped);
+  const key = await crypto.subtle.importKey(
+    'raw',
+    keyBytes,
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+  const signedPayload = `${svixId}.${svixTimestamp}.${rawBody}`;
+  const sigBuf = await crypto.subtle.sign('HMAC', key, new TextEncoder().encode(signedPayload));
+  return `v1,${uint8ArrayToBase64(new Uint8Array(sigBuf))}`;
+}
+
+/**
+ * Vérifie cryptographiquement la signature Svix/Resend HMAC-SHA256 (`svix-id`, `svix-timestamp`, `svix-signature`)
+ * avec fenêtre anti-rejeu de 5 minutes.
+ */
+export async function verifyResendSvixSignature(
+  rawBody: string,
+  headers: Headers,
+  webhookSecret: string,
+  nowMs = Date.now()
+): Promise<{ valid: boolean; reason?: string }> {
+  const secret = String(webhookSecret || '').trim();
+  if (!secret) return { valid: false, reason: 'missing_secret' };
+
+  const svixId = String(headers.get('svix-id') || headers.get('webhook-id') || '').trim();
+  const svixTimestamp = String(headers.get('svix-timestamp') || headers.get('webhook-timestamp') || '').trim();
+  const svixSignature = String(headers.get('svix-signature') || headers.get('webhook-signature') || '').trim();
+
+  if (!svixId || !svixTimestamp || !svixSignature) {
+    return { valid: false, reason: 'missing_svix_headers' };
+  }
+
+  const tsSeconds = Number(svixTimestamp);
+  if (!Number.isFinite(tsSeconds)) {
+    return { valid: false, reason: 'invalid_timestamp' };
+  }
+  const nowSeconds = Math.floor(nowMs / 1000);
+  if (Math.abs(nowSeconds - tsSeconds) > 300) {
+    return { valid: false, reason: 'timestamp_out_of_range' };
+  }
+
+  let expectedV1: string;
+  try {
+    expectedV1 = await computeResendSvixSignature(rawBody, svixId, svixTimestamp, secret);
+  } catch {
+    return { valid: false, reason: 'invalid_secret_format' };
+  }
+
+  const expectedB64 = expectedV1.slice(3); // après "v1,"
+  const candidates = svixSignature.split(/\s+/).filter(Boolean);
+  for (const token of candidates) {
+    const commaIdx = token.indexOf(',');
+    if (commaIdx <= 0) continue;
+    const version = token.slice(0, commaIdx).trim();
+    const providedB64 = token.slice(commaIdx + 1).trim();
+    if (version === 'v1' && constantTimeEqualStrings(providedB64, expectedB64)) {
+      return { valid: true };
+    }
+  }
+
+  return { valid: false, reason: 'signature_mismatch' };
+}
+
+/**
  * Traite un webhook Resend (`POST /api/webhooks/resend`) pour suivre en temps réel
  * si l'utilisateur a reçu (`delivered`), ouvert (`opened`) ou rejeté (`bounced`) l'email.
  */

@@ -15,6 +15,8 @@ import {
   normalizePlanBillingFlags,
   executeBillingCronJob,
   tryAutoRechargeDepletedAiCredits,
+  evaluateUserBillingGuard,
+  verifyAdminApiAuth,
 } from './paystackBilling';
 
 interface D1PreparedStatement {
@@ -90,7 +92,9 @@ export interface Env {
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   RESEND_API_KEY?: string;
+  RESEND_WEBHOOK_SECRET?: string;
   STUDYCLOUD_PAYSTACK_SECRET_KEY?: string;
+  ADMIN_API_SECRET?: string;
   [key: string]: any;
 }
 
@@ -124,8 +128,8 @@ const DNA_LOGO_SVG = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none
 function corsHeaders(origin = '*') {
   return {
     'Access-Control-Allow-Origin': origin,
-    'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-user-id, Cache-Control, Pragma, *',
+    'Access-Control-Allow-Methods': 'GET, POST, PUT, PATCH, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-user-id, X-Admin-Key, Cache-Control, Pragma, *',
   };
 }
 
@@ -3787,6 +3791,32 @@ async function checkUserStorageQuota(db: any, userId: string, incomingBytes: num
   try {
     await ensureCloudMediaTables(db);
 
+    // 0. Garde-fou facturation : bloquer tout nouvel import / écriture si le stockage est suspendu ou en lecture seule
+    if (Number(incomingBytes) > 0) {
+      const billingGuard = await evaluateUserBillingGuard(db, userId).catch(() => null);
+      const isStorageBlocked = Boolean(
+        billingGuard &&
+          (billingGuard.fullAccountBlocked ||
+            billingGuard.readOnlyBlocked ||
+            billingGuard.blockedSubscriptions.some((s) => s.productType === 'storage'))
+      );
+      if (isStorageBlocked) {
+        return {
+          allowed: false,
+          totalAllowedBytes: 0,
+          totalUsedBytes: 0,
+          remainingBytes: 0,
+          totalAllowedMb: 0,
+          totalUsedMb: 0,
+          welcomeMb: 0,
+          paidMb: 0,
+          bonusMb: 0,
+          error:
+            'Votre stockage est actuellement en lecture seule suite à un abonnement expiré ou impayé. Vos fichiers existants restent consultables ; régularisez votre abonnement dans « Mes abonnements » pour ajouter de nouveaux fichiers.',
+        };
+      }
+    }
+
     // 1. Lire la configuration globale de bienvenue
     let globalWelcomeMb = 100.0;
     const globalCfg: any = await db.prepare(
@@ -5801,6 +5831,29 @@ a:hover{transform:translateY(-2px)}
                 code: 'ACCOUNT_BLOCKED',
                 error: BLOCKED_ACCOUNT_MESSAGE,
               }, 403, origin);
+            }
+            // Garde-fou facturation global (`full_account`) : laisse uniquement l'accès aux routes auth/paiement/abonnements pour régulariser
+            const isBillingGuardExempt =
+              path.startsWith('/api/auth/') ||
+              path.startsWith('/api/payments/') ||
+              path.startsWith('/api/billing/') ||
+              path === '/api/subscription-plans' ||
+              path.startsWith('/api/monetized-apps') ||
+              path.startsWith('/api/apps/access/') ||
+              path === '/api/health';
+            if (!isBillingGuardExempt) {
+              const billingGuard = await evaluateUserBillingGuard(env.DB, String(jwtPayload.userId)).catch(() => null);
+              if (billingGuard?.fullAccountBlocked) {
+                return jsonResponse({
+                  success: false,
+                  billingBlocked: true,
+                  blockScope: 'full_account',
+                  code: 'BILLING_FULL_ACCOUNT_BLOCKED',
+                  blockedSubscriptions: billingGuard.blockedSubscriptions,
+                  error:
+                    'Votre compte est temporairement suspendu suite à un abonnement impayé. Régularisez votre abonnement dans « Mes abonnements » pour réactiver immédiatement votre accès.',
+                }, 403, origin);
+              }
             }
           }
         }
@@ -17102,9 +17155,12 @@ a:hover{transform:translateY(-2px)}
       if (path === '/api/ai/file-perception') {
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+        const authUser = await getAuthUser(request);
+        if (!authUser?.userId) return errorResponse('Authentification requise.', 401, origin);
+        const authUserId = String(authUser.userId);
 
         if (method === 'GET') {
-          const userId = url.searchParams.get('userId') || request.headers.get('x-user-id') || '';
+          const userId = authUserId;
           const fileSignature = url.searchParams.get('fileSignature') || '';
           if (!userId || !fileSignature) {
             return jsonResponse({ success: true, perception: null }, 200, origin);
@@ -17137,8 +17193,17 @@ a:hover{transform:translateY(-2px)}
         }
 
         if (method === 'POST') {
+          const aiGuard = await evaluateUserBillingGuard(targetDb, authUserId).catch(() => null);
+          if (aiGuard && (aiGuard.fullAccountBlocked || aiGuard.blockedSubscriptions.some((s) => s.productType === 'ai'))) {
+            return jsonResponse({
+              success: false,
+              billingBlocked: true,
+              code: 'BILLING_AI_BLOCKED',
+              error: 'Votre accès aux services IA est temporairement suspendu suite à un abonnement expiré ou impayé.',
+            }, 403, origin);
+          }
           const body: any = await request.json().catch(() => ({}));
-          const userId = body.userId || body.user_id || request.headers.get('x-user-id') || '';
+          const userId = authUserId;
           const fileSignature = body.fileSignature || body.file_signature || '';
           const fileName = body.fileName || body.file_name || '';
           const perceptionReport = body.perceptionReport || body.perception_report || '';
@@ -17181,7 +17246,7 @@ a:hover{transform:translateY(-2px)}
         }
 
         if (method === 'DELETE') {
-          const userId = url.searchParams.get('userId') || request.headers.get('x-user-id') || '';
+          const userId = authUserId;
           if (userId) {
             try {
               await targetDb.prepare('DELETE FROM ai_document_perceptions WHERE user_id = ?').bind(userId).run();
@@ -18142,9 +18207,11 @@ a:hover{transform:translateY(-2px)}
       // ==============================================================================
       
       // ==============================================================================
-      // ROUTE POST/GET : /api/subscription-plans/reset-tables
+      // ROUTE POST/GET : /api/subscription-plans/reset-tables (Admin uniquement)
       // ==============================================================================
       if ((path === '/api/subscription-plans/reset-tables') && (method === 'POST' || method === 'GET')) {
+        const adminAuth = verifyAdminApiAuth(request, rawEnv);
+        if (!adminAuth.ok) return errorResponse(adminAuth.error || 'Accès administrateur refusé.', adminAuth.status || 401, origin);
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
 
@@ -18300,9 +18367,11 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ==============================================================================
-      // ROUTE POST : /api/subscription-plans/save
+      // ROUTE POST : /api/subscription-plans/save (Admin uniquement)
       // ==============================================================================
       if (path === '/api/subscription-plans/save' && method === 'POST') {
+        const adminAuth = verifyAdminApiAuth(request, rawEnv);
+        if (!adminAuth.ok) return errorResponse(adminAuth.error || 'Accès administrateur refusé.', adminAuth.status || 401, origin);
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
 
@@ -18415,9 +18484,11 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ==============================================================================
-      // ROUTE POST : /api/subscription-plans/delete
+      // ROUTE POST : /api/subscription-plans/delete (Admin uniquement)
       // ==============================================================================
-            if (path === '/api/subscription-plans/delete' && method === 'POST') {
+      if (path === '/api/subscription-plans/delete' && method === 'POST') {
+        const adminAuth = verifyAdminApiAuth(request, rawEnv);
+        if (!adminAuth.ok) return errorResponse(adminAuth.error || 'Accès administrateur refusé.', adminAuth.status || 401, origin);
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
 
@@ -18438,9 +18509,11 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ==============================================================================
-      // ROUTE POST : /api/subscription-plans/toggle-active
+      // ROUTE POST : /api/subscription-plans/toggle-active (Admin uniquement)
       // ==============================================================================
       if (path === '/api/subscription-plans/toggle-active' && method === 'POST') {
+        const adminAuth = verifyAdminApiAuth(request, rawEnv);
+        if (!adminAuth.ok) return errorResponse(adminAuth.error || 'Accès administrateur refusé.', adminAuth.status || 401, origin);
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
 
@@ -18460,9 +18533,11 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ==============================================================================
-      // ROUTE POST : /api/subscription-plans/toggle-auto-billing
+      // ROUTE POST : /api/subscription-plans/toggle-auto-billing (Admin uniquement)
       // ==============================================================================
       if (path === '/api/subscription-plans/toggle-auto-billing' && method === 'POST') {
+        const adminAuth = verifyAdminApiAuth(request, rawEnv);
+        if (!adminAuth.ok) return errorResponse(adminAuth.error || 'Accès administrateur refusé.', adminAuth.status || 401, origin);
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
         await ensurePaystackBillingTables(targetDb);
@@ -18516,9 +18591,11 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ==============================================================================
-      // ROUTE POST : /api/subscription-plans/update-badge
+      // ROUTE POST : /api/subscription-plans/update-badge (Admin uniquement)
       // ==============================================================================
       if (path === '/api/subscription-plans/update-badge' && method === 'POST') {
+        const adminAuth = verifyAdminApiAuth(request, rawEnv);
+        if (!adminAuth.ok) return errorResponse(adminAuth.error || 'Accès administrateur refusé.', adminAuth.status || 401, origin);
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
 
@@ -18711,13 +18788,19 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ==============================================================================
-      // ROUTE GET : /api/ai/user/credits
+      // ROUTE GET : /api/ai/user/credits (JWT obligatoire — zéro usurpation d'userId)
       // ==============================================================================
       if (path === '/api/ai/user/credits' && method === 'GET') {
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
 
-        const targetUserId = ((await extractRequestUserId()) || url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
+        const authUser = await getAuthUser(request);
+        if (!authUser?.userId) return errorResponse('Authentification requise.', 401, origin);
+        const targetUserId = String(authUser.userId);
+        const aiGuard = await evaluateUserBillingGuard(targetDb, targetUserId).catch(() => null);
+        const isAiBillingBlocked = Boolean(
+          aiGuard && (aiGuard.fullAccountBlocked || aiGuard.blockedSubscriptions.some((s) => s.productType === 'ai'))
+        );
         let cfg: any = null;
         try {
           cfg = await targetDb.prepare("SELECT * FROM ai_billing_config WHERE id = 'default'").first();
@@ -18800,6 +18883,7 @@ a:hover{transform:translateY(-2px)}
 
         return jsonResponse({
           success: true,
+          aiBlocked: isAiBillingBlocked,
           credits: {
             balance: Number(userCredits.credits_balance || 0),
             reference_credits: referenceCredits,
@@ -18821,14 +18905,27 @@ a:hover{transform:translateY(-2px)}
       }
 
       // ==============================================================================
-      // ROUTE POST : /api/ai/user/deduct-credits
+      // ROUTE POST : /api/ai/user/deduct-credits (JWT obligatoire + garde-fou blocage IA)
       // ==============================================================================
       if (path === '/api/ai/user/deduct-credits' && method === 'POST') {
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
 
+        const authUser = await getAuthUser(request);
+        if (!authUser?.userId) return errorResponse('Authentification requise.', 401, origin);
+        const targetUserId = String(authUser.userId);
+
+        const aiGuard = await evaluateUserBillingGuard(targetDb, targetUserId).catch(() => null);
+        if (aiGuard && (aiGuard.fullAccountBlocked || aiGuard.blockedSubscriptions.some((s) => s.productType === 'ai'))) {
+          return jsonResponse({
+            success: false,
+            billingBlocked: true,
+            code: 'BILLING_AI_BLOCKED',
+            error: 'Votre accès aux crédits IA est temporairement suspendu suite à un abonnement expiré ou impayé. Régularisez-le dans « Mes abonnements ».',
+          }, 403, origin);
+        }
+
         const body: any = await request.json().catch(() => ({}));
-        const targetUserId = ((await extractRequestUserId()) || body.userId || body.user_id || request.headers.get('x-user-id') || 'default-user').trim();
         const tokens = Math.max(1, parseInt(body.tokens || 0, 10));
         const model = body.model || 'Delmas IA';
         const actionType = body.actionType || body.action_type || 'chat_deduction';

@@ -14,9 +14,13 @@ import {
   sendAndLogBillingEmail,
   processResendWebhookEvent,
   evaluateUserBillingGuard,
+  verifyResendSvixSignature,
+  computeResendSvixSignature,
   BillingEmailType,
 } from './billingEmailAndPolicy';
 import { runBillingCronCycle, BillingCronSummary } from './billingCron';
+
+export { evaluateUserBillingGuard, verifyResendSvixSignature, computeResendSvixSignature };
 
 export type BillingMode = 'auto' | 'manual' | 'infinite';
 export type RenewalMode = 'auto' | 'manual' | 'infinite';
@@ -689,6 +693,89 @@ export function timingSafeEqualHex(a: string, b: string): boolean {
   return diff === 0;
 }
 
+/**
+ * Comparaison en temps constant sensible à la casse (pour clés API / secrets).
+ */
+export function timingSafeEqualString(a: string, b: string): boolean {
+  const left = String(a || '');
+  const right = String(b || '');
+  if (!left || left.length !== right.length) return false;
+  let diff = 0;
+  for (let i = 0; i < left.length; i++) {
+    diff |= left.charCodeAt(i) ^ right.charCodeAt(i);
+  }
+  return diff === 0;
+}
+
+/**
+ * Vérification stricte de l'authentification serveur-à-serveur des routes Admin.
+ * Refuse systématiquement (fail-closed) si `ADMIN_API_SECRET` est absent ou ne correspond pas.
+ */
+export function verifyAdminApiAuth(
+  request: Request,
+  rawEnv: Record<string, any>
+): { ok: boolean; status?: number; error?: string } {
+  const expectedSecret = String(
+    rawEnv?.ADMIN_API_SECRET || rawEnv?.STUDYCLOUD_ADMIN_SECRET || ''
+  ).trim();
+  if (!expectedSecret) {
+    return {
+      ok: false,
+      status: 503,
+      error: 'Clé administrateur serveur (ADMIN_API_SECRET) non configurée.',
+    };
+  }
+  const providedKey = String(
+    request.headers.get('X-Admin-Key') ||
+      request.headers.get('x-admin-key') ||
+      request.headers.get('X-StudyCloud-Admin-Key') ||
+      ''
+  ).trim();
+  if (!providedKey || !timingSafeEqualString(providedKey, expectedSecret)) {
+    return {
+      ok: false,
+      status: 401,
+      error: 'Accès administrateur refusé (clé manquante ou invalide).',
+    };
+  }
+  return { ok: true };
+}
+
+/**
+ * Traduit les messages d'erreur anglais courants renvoyés par Paystack en français clair.
+ */
+export function translatePaystackErrorFr(rawMsg: unknown, fallback = 'Paiement refusé par la passerelle.'): string {
+  const msg = String(rawMsg || '').trim();
+  if (!msg) return fallback;
+  const lower = msg.toLowerCase();
+
+  if (lower.includes('test mobile money number') || lower.includes('doing a test transaction')) {
+    return 'Mode Test Paystack : utilisez le numéro de test officiel Côte d’Ivoire (07 00 00 00 00) ou cliquez sur « Continuer le paiement » ci-dessous.';
+  }
+  if (lower.includes('insufficient funds') || lower.includes('not sufficient')) {
+    return 'Solde insuffisant sur votre compte ou votre carte.';
+  }
+  if (lower.includes('expired card')) {
+    return 'Votre carte bancaire est expirée.';
+  }
+  if (lower.includes('invalid phone') || lower.includes('phone number is invalid')) {
+    return 'Numéro Mobile Money invalide pour cet opérateur.';
+  }
+  if (lower.includes('timeout') || lower.includes('timed out')) {
+    return 'Délai d’attente dépassé auprès de l’opérateur. Veuillez réessayer.';
+  }
+  if (lower.includes('invalid otp') || lower.includes('incorrect otp') || lower.includes('otp expired')) {
+    return 'Code OTP invalide ou expiré. Veuillez réessayer.';
+  }
+  if (lower.includes('transaction reference not found') || lower.includes('transaction not found')) {
+    return 'Transaction introuvable chez Paystack.';
+  }
+  if (lower.includes('declined') || lower.includes('do not honor')) {
+    return 'Paiement refusé par votre banque ou opérateur Mobile Money.';
+  }
+  return msg;
+}
+
 // ============================================================================
 // SCHÉMA D1 & MIGRATIONS IDEMPOTENTES
 // ============================================================================
@@ -1125,6 +1212,17 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
   await db.prepare(
     'CREATE INDEX IF NOT EXISTS idx_user_pm_uid ON user_payment_methods(user_id, is_active, is_default)'
   ).run().catch(() => {});
+
+  // 8b. Registre anti-rejeu des empreintes de liaison de carte (100 FCFA remboursés 1 seule fois)
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS card_link_verifications (
+      reference TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      payment_method_id TEXT DEFAULT '',
+      refunded INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run().catch(() => {});
 
   // 9. Table maîtresse unifiée de TOUS les abonnements (Stockage, Crédits IA, Moyennes & toutes futures apps)
   await db.prepare(`
@@ -3437,6 +3535,99 @@ export async function handlePaystackBillingRoutes(
       processingNote = `auto_renew_disabled:${subCode}`;
     } else if (eventType === 'invoice.payment_failed' && eventPayload?.data) {
       processingNote = 'invoice_payment_failed_logged';
+    } else if (
+      (eventType === 'charge.dispute.create' ||
+        eventType === 'charge.dispute.remind' ||
+        eventType === 'refund.processed') &&
+      eventPayload?.data
+    ) {
+      const disputeRef = String(
+        eventPayload.data?.transaction?.reference ||
+          eventPayload.data?.transaction_reference ||
+          eventPayload.data?.reference ||
+          ''
+      ).trim();
+
+      // Ne jamais bloquer d'abonnement suite au remboursement automatique de l'empreinte de liaison de carte (100 FCFA)
+      if (!disputeRef || disputeRef.startsWith('SC-CARD-')) {
+        processingNote = disputeRef ? 'ignored_card_verification_refund' : 'dispute_or_refund_missing_ref';
+      } else {
+        const isRefund = eventType.startsWith('refund.');
+        const nowIso = new Date().toISOString();
+        const reasonLabel = isRefund
+          ? 'Remboursement Paystack effectué — accès suspendu'
+          : 'Litige bancaire / Chargeback Paystack détecté';
+
+        const txRow: any = await db
+          .prepare('SELECT * FROM payment_transactions WHERE reference = ? LIMIT 1')
+          .bind(disputeRef)
+          .first()
+          .catch(() => null);
+
+        if (txRow) {
+          await db
+            .prepare(
+              'UPDATE payment_transactions SET status = ?, failure_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE reference = ?'
+            )
+            .bind(isRefund ? 'refunded' : 'disputed', reasonLabel, disputeRef)
+            .run()
+            .catch(() => {});
+
+          const linkedSub: any = await db
+            .prepare(
+              `SELECT * FROM active_subscriptions
+               WHERE (id = ? AND ? != '') OR last_transaction_ref = ?
+               ORDER BY updated_at DESC LIMIT 1`
+            )
+            .bind(String(txRow.subscription_id || ''), String(txRow.subscription_id || ''), disputeRef)
+            .first()
+            .catch(() => null);
+
+          if (linkedSub) {
+            await db
+              .prepare(
+                `UPDATE active_subscriptions
+                 SET status = 'blocked',
+                     blocked_at = COALESCE(blocked_at, ?),
+                     renewal_mode = CASE WHEN renewal_mode = 'auto' THEN 'manual' ELSE renewal_mode END,
+                     last_charge_error = ?,
+                     updated_at = CURRENT_TIMESTAMP
+                 WHERE id = ?`
+              )
+              .bind(nowIso, reasonLabel, linkedSub.id)
+              .run()
+              .catch(() => {});
+
+            if (linkedSub.product_type === 'app' && linkedSub.app_key) {
+              await db
+                .prepare(
+                  "UPDATE user_app_entitlements SET status = 'revoked', auto_renew = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?"
+                )
+                .bind(linkedSub.user_id, linkedSub.app_key)
+                .run()
+                .catch(() => {});
+            }
+
+            await recordSubscriptionEvent(db, {
+              subscriptionId: String(linkedSub.id),
+              userId: String(linkedSub.user_id),
+              eventType: 'chargeback_or_refund_revoked',
+              actor: 'paystack_webhook',
+              details: {
+                webhookEvent: eventType,
+                reference: disputeRef,
+                reason: reasonLabel,
+              },
+            }).catch(() => {});
+
+            processingNote = `revoked_by_${eventType}:${linkedSub.id}`;
+          } else {
+            processingNote = `tx_marked_${isRefund ? 'refunded' : 'disputed'}_no_sub:${disputeRef}`;
+          }
+        } else {
+          processingNote = `dispute_or_refund_unknown_ref:${disputeRef}`;
+        }
+      }
     }
 
     await db
@@ -3452,6 +3643,10 @@ export async function handlePaystackBillingRoutes(
   // 8. POST /api/payments/admin/reverify — Revérification Paystack d'une transaction (appelé depuis le tableau de bord)
   // --------------------------------------------------------------------------
   if (path === '/api/payments/admin/reverify' && method === 'POST') {
+    const adminAuth = verifyAdminApiAuth(request, rawEnv);
+    if (!adminAuth.ok) {
+      return errorResponse(adminAuth.error || 'Accès administrateur refusé.', adminAuth.status || 401, origin);
+    }
     const body: any = await request.json().catch(() => ({}));
     const reference = String(body.reference || '').trim();
     if (!reference) return errorResponse('reference requise.', 400, origin);
@@ -3738,16 +3933,17 @@ export async function handlePaystackBillingRoutes(
     }
 
     if (!psRes.ok || !psJson?.status || !psJson?.data) {
-      const errMsg = String(
+      const rawErrMsg = String(
         psJson?.data?.message ||
           psJson?.message ||
           `Paystack a refusé l'initialisation ${networkLabel}.`
       );
+      const errMsg = translatePaystackErrorFr(rawErrMsg, `Paystack a refusé l'initialisation ${networkLabel}.`);
       await db
         .prepare(
           "UPDATE payment_transactions SET status = 'failed', failure_reason = ?, raw_verify_json = ?, updated_at = CURRENT_TIMESTAMP WHERE reference = ?"
         )
-        .bind(errMsg, JSON.stringify(psJson || {}).slice(0, 16000), reference)
+        .bind(rawErrMsg, JSON.stringify(psJson || {}).slice(0, 16000), reference)
         .run()
         .catch(() => {});
       return jsonResponse(
@@ -3799,12 +3995,12 @@ export async function handlePaystackBillingRoutes(
     }
 
     if (chargeStatus === 'failed') {
-      const reason = displayText || 'Paiement refusé par votre opérateur Mobile Money.';
+      const reason = translatePaystackErrorFr(displayText, 'Paiement refusé par votre opérateur Mobile Money.');
       await db
         .prepare(
           "UPDATE payment_transactions SET status = 'failed', failure_reason = ?, updated_at = CURRENT_TIMESTAMP WHERE reference = ?"
         )
-        .bind(reason, reference)
+        .bind(displayText || reason, reference)
         .run()
         .catch(() => {});
       return jsonResponse(
@@ -4610,20 +4806,48 @@ export async function handlePaystackBillingRoutes(
     const enableAuto = body.enableAuto !== false;
     if (!reference) return errorResponse('reference requise.', 400, origin);
 
+    // Sécurité critique anti-remboursement abusif :
+    // Seule une empreinte de liaison de carte (`SC-CARD-...`), absente de `payment_transactions`,
+    // peut être vérifiée et remboursée ici (interdiction absolue de passer une référence d'achat `SC-PAY-...`).
+    if (!reference.startsWith('SC-CARD-')) {
+      return errorResponse('Référence de vérification de carte invalide.', 400, origin);
+    }
+    const realPurchaseTx: any = await db
+      .prepare('SELECT id FROM payment_transactions WHERE reference = ? LIMIT 1')
+      .bind(reference)
+      .first()
+      .catch(() => null);
+    if (realPurchaseTx) {
+      return errorResponse('Cette référence correspond à un achat existant et ne peut pas être remboursée ici.', 400, origin);
+    }
+
     const psRes = await fetchFn(`${PAYSTACK_API_BASE}/transaction/verify/${encodeURIComponent(reference)}`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${secretKey}` },
     });
     const psJson: any = await psRes.json().catch(() => null);
     if (!psRes.ok || !psJson?.status || !psJson?.data || psJson.data.status !== 'success') {
-      return errorResponse(String(psJson?.data?.gateway_response || psJson?.message || 'Vérification de carte échouée.'), 400, origin);
+      return errorResponse(
+        translatePaystackErrorFr(psJson?.data?.gateway_response || psJson?.message, 'Vérification de carte échouée.'),
+        400,
+        origin
+      );
     }
 
-    // Anti-IDOR : vérifier que la référence appartient bien à cet utilisateur
+    // Anti-IDOR + contrôle strict d'intention, montant (100 FCFA exact) et devise (XOF)
     const meta = psJson.data?.metadata || {};
     const metaUserId = String(meta?.user_id || '').trim();
-    if (metaUserId && metaUserId !== userId) {
+    if (!metaUserId || metaUserId !== userId) {
       return errorResponse('Référence non autorisée pour ce compte.', 403, origin);
+    }
+    if (String(meta?.purpose || '').trim() !== 'card_link') {
+      return errorResponse('Cette transaction n’est pas une empreinte de vérification de carte.', 400, origin);
+    }
+    if (Number(psJson.data?.amount) !== 10000 || String(psJson.data?.currency || '').trim().toUpperCase() !== 'XOF') {
+      return errorResponse('Montant ou devise d’empreinte de vérification invalide.', 400, origin);
+    }
+    if (String(psJson.data?.channel || '').trim().toLowerCase() !== 'card') {
+      return errorResponse('Seule une carte bancaire peut être vérifiée via cette procédure.', 400, origin);
     }
 
     const subIdToLink = targetSubId || String(meta?.subscription_id || '').trim();
@@ -4689,35 +4913,56 @@ export async function handlePaystackBillingRoutes(
       return errorResponse('Cette carte ne permet pas le prélèvement récurrent sécurisé (non réutilisable).', 400, origin);
     }
 
+    // Verrou anti-rejeu atomique : le remboursement automatique de l'empreinte (100 FCFA)
+    // ne peut être déclenché qu'une SEULE fois par référence `SC-CARD-...`
+    const verifLockRes: any = await db
+      .prepare(
+        'INSERT OR IGNORE INTO card_link_verifications (reference, user_id, payment_method_id, refunded) VALUES (?, ?, ?, 0)'
+      )
+      .bind(reference, userId, savedCard.id)
+      .run()
+      .catch(() => ({ meta: { changes: 0 } }));
+    const isFirstCardLinkVerification = Number(verifLockRes?.meta?.changes || 0) === 1;
+
     // REMBOURSEMENT AUTOMATIQUE IMMÉDIAT DE L'EMPREINTE DE 100 FCFA (0 FCFA NET POUR L'UTILISATEUR)
     let refunded = false;
     let refundStatus = 'skipped';
     let refundMessage = '';
-    try {
-      const refundResp = await fetchFn(`${PAYSTACK_API_BASE}/refund`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${secretKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          transaction: reference,
-          customer_note: 'Remboursement automatique empreinte de vérification carte StudyCloud (0 FCFA net)',
-          merchant_note: `Auto-refund card link ${reference} (user ${userId})`,
-        }),
-      });
-      const refundJson: any = await refundResp.json().catch(() => null);
-      if (refundResp.ok && refundJson?.status) {
-        refunded = true;
-        refundStatus = String(refundJson?.data?.status || 'processed');
-        refundMessage = 'Empreinte de vérification de 100 FCFA remboursée automatiquement.';
-      } else {
-        refundStatus = 'pending_bank';
-        refundMessage = String(refundJson?.message || 'Empreinte en cours de libération par la banque.');
+    if (!isFirstCardLinkVerification) {
+      refundStatus = 'already_processed';
+      refundMessage = 'Empreinte de vérification déjà traitée.';
+    } else {
+      try {
+        const refundResp = await fetchFn(`${PAYSTACK_API_BASE}/refund`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${secretKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            transaction: reference,
+            customer_note: 'Remboursement automatique empreinte de vérification carte StudyCloud (0 FCFA net)',
+            merchant_note: `Auto-refund card link ${reference} (user ${userId})`,
+          }),
+        });
+        const refundJson: any = await refundResp.json().catch(() => null);
+        if (refundResp.ok && refundJson?.status) {
+          refunded = true;
+          refundStatus = String(refundJson?.data?.status || 'processed');
+          refundMessage = 'Empreinte de vérification de 100 FCFA remboursée automatiquement.';
+          await db
+            .prepare('UPDATE card_link_verifications SET refunded = 1 WHERE reference = ?')
+            .bind(reference)
+            .run()
+            .catch(() => {});
+        } else {
+          refundStatus = 'pending_bank';
+          refundMessage = String(refundJson?.message || 'Empreinte en cours de libération par la banque.');
+        }
+      } catch (refErr: any) {
+        refundStatus = 'deferred';
+        refundMessage = String(refErr?.message || 'Libération de l’empreinte différée.');
       }
-    } catch (refErr: any) {
-      refundStatus = 'deferred';
-      refundMessage = String(refErr?.message || 'Libération de l’empreinte différée.');
     }
 
     let updatedSub: any = null;
@@ -4837,14 +5082,35 @@ export async function handlePaystackBillingRoutes(
   // 19. POST /api/webhooks/resend — Suivi temps réel des emails (reçu / ouvert / rebondi)
   // --------------------------------------------------------------------------
   if (path === '/api/webhooks/resend' && method === 'POST') {
-    const body: any = await request.json().catch(() => ({}));
+    const rawBody = await request.text();
+    const resendWebhookSecret = String(rawEnv?.RESEND_WEBHOOK_SECRET || '').trim();
+    if (resendWebhookSecret) {
+      const svixCheck = await verifyResendSvixSignature(rawBody, request.headers, resendWebhookSecret);
+      if (!svixCheck.valid) {
+        return errorResponse('Signature webhook Resend invalide ou expirée.', 401, origin);
+      }
+    }
+    let body: any = {};
+    try {
+      body = rawBody ? JSON.parse(rawBody) : {};
+    } catch {
+      body = {};
+    }
     const result = await processResendWebhookEvent(db, body);
     return jsonResponse({ success: true, ...result }, 200, origin);
   }
 
   // --------------------------------------------------------------------------
   // 20. ROUTES ADMIN ABONNEMENTS, EMAILS, POLITIQUES & CRON (/api/admin/billing/*)
+  // Toutes strictement protégées par clé serveur-à-serveur (`ADMIN_API_SECRET`)
   // --------------------------------------------------------------------------
+  if (path.startsWith('/api/admin/')) {
+    const adminAuth = verifyAdminApiAuth(request, rawEnv);
+    if (!adminAuth.ok) {
+      return errorResponse(adminAuth.error || 'Accès administrateur refusé.', adminAuth.status || 401, origin);
+    }
+  }
+
   if (path === '/api/admin/billing/subscriptions' && method === 'GET') {
     const subsRes = await db
       .prepare('SELECT * FROM active_subscriptions ORDER BY updated_at DESC LIMIT 500')

@@ -60,6 +60,53 @@ async function safeFirst(db, sql, params = [], defaultValue = null) {
   }
 }
 
+async function verifyDashboardJwt(request, env = {}) {
+  try {
+    const authHeader = request.headers.get('Authorization') || '';
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : '';
+    if (!token) return null;
+    const parts = token.split('.');
+    if (parts.length !== 3) return null;
+    const [header, body, sig] = parts;
+    if (!header || !body || !sig) return null;
+    const encoder = new TextEncoder();
+    const sigBytes = Uint8Array.from(atob(sig.replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0));
+    const primarySecret = String(env.JWT_SECRET || 'studycloud-jwt-secret-key');
+    const candidateSecrets = [primarySecret];
+    if (primarySecret !== 'studycloud-jwt-secret-key') {
+      candidateSecrets.push('studycloud-jwt-secret-key');
+    }
+    let valid = false;
+    for (const sec of candidateSecrets) {
+      const key = await crypto.subtle.importKey('raw', encoder.encode(sec), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+      if (await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(`${header}.${body}`))) {
+        valid = true;
+        break;
+      }
+    }
+    if (!valid) return null;
+    const b64 = body.replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded));
+    if (payload.exp && payload.exp < Math.floor(Date.now() / 1000)) return null;
+    if (!payload.userId) return null;
+    return payload;
+  } catch (_) {
+    return null;
+  }
+}
+
+async function isUserAiBillingBlocked(db, userId) {
+  if (!db || !userId) return false;
+  const row = await safeFirst(
+    db,
+    "SELECT id FROM active_subscriptions WHERE user_id = ? AND status = 'blocked' AND (block_scope = 'full_account' OR product_type = 'ai') LIMIT 1",
+    [String(userId)],
+    null
+  );
+  return Boolean(row && row.id);
+}
+
 async function safeRun(db, sql, params = []) {
   if (!db) return null;
   try {
@@ -14189,24 +14236,6 @@ function renderDashboardHtml(data) {
         console.warn('[SubPlans API] Local endpoint échoué, essai du fallback:', err);
       }
 
-      // Fallback vers le worker principal API en cas d'erreur ou de page HTML accidentelle
-      try {
-        const fallbackUrl = 'https://api-worker.dkd-technologies.com' + endpoint;
-        const resp2 = await fetch(fallbackUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body)
-        });
-        const text2 = await resp2.text();
-        if (text2 && !text2.trim().startsWith('<')) {
-          const data2 = JSON.parse(text2);
-          if (data2 && data2.success) return data2;
-          if (data2 && data2.error) throw new Error(data2.error);
-        }
-      } catch (err2) {
-        console.error('[SubPlans API] Fallback endpoint échoué:', err2);
-      }
-
       if (text && text.trim().startsWith('<')) {
         throw new Error("Réponse HTML inattendue du serveur. La route API n'a pas répondu en JSON.");
       }
@@ -18406,7 +18435,7 @@ function renderDashboardHtml(data) {
       if (!reference) return;
       showToast('🔍 Vérification en cours sur Paystack...');
       try {
-        const resp = await fetch('https://api-worker.dkd-technologies.com/api/payments/admin/reverify', {
+        const resp = await fetch('/api/payments/admin/reverify', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ reference: reference })
@@ -19029,7 +19058,7 @@ function renderDashboardHtml(data) {
     // =========================================================================
     // ÉTAPE 5 : GESTION LIVE DES ABONNEMENTS EN COURS, POLITIQUES & EMAILS
     // =========================================================================
-    const BILLING_API_ORIGIN = 'https://api-worker.dkd-technologies.com';
+    const BILLING_API_ORIGIN = '';
     let adminActiveSubs = [];
     let adminSavedCards = [];
     let adminBillingPolicies = [];
@@ -19766,7 +19795,7 @@ function renderDashboardHtml(data) {
 // GESTIONNAIRE DÉDIÉ ULTRA-RAPIDE DES ROUTES IA & FACTURATION D1 (/api/ai/*)
 // Exécution directe en < 20ms sans inspecter R2 ni les utilisateurs D1
 // ============================================================================
-async function handleAiBillingRoutes(request, path, url, origin, db) {
+async function handleAiBillingRoutes(request, path, url, origin, db, env = {}) {
   // 1. GET /api/ai/billing/config
   if (request.method === 'GET' && path === '/api/ai/billing/config') {
     const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || {
@@ -19849,9 +19878,17 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
     });
   }
 
-  // 3. GET /api/ai/user/credits
+  // 3. GET /api/ai/user/credits (JWT obligatoire — zéro usurpation d'userId)
   if (request.method === 'GET' && path === '/api/ai/user/credits') {
-    const targetUserId = (url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user').trim();
+    const authPayload = await verifyDashboardJwt(request, env);
+    if (!authPayload?.userId) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentification requise.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+    const targetUserId = String(authPayload.userId).trim();
+    const isAiBlocked = await isUserAiBillingBlocked(db, targetUserId);
     const cfg = await safeFirst(db, "SELECT * FROM ai_billing_config WHERE id = 'default'") || {
       tokens_per_credit: 1000,
       welcome_credits: 50.0,
@@ -20012,6 +20049,7 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
 
     return new Response(JSON.stringify({
       success: true,
+      aiBlocked: isAiBlocked,
       credits: {
         balance: Number(userCredits.credits_balance || 0),
         reference_credits: referenceCredits,
@@ -20035,10 +20073,28 @@ async function handleAiBillingRoutes(request, path, url, origin, db) {
     });
   }
 
-  // 4. POST /api/ai/user/deduct-credits
+  // 4. POST /api/ai/user/deduct-credits (JWT obligatoire + garde-fou blocage IA)
   if (request.method === 'POST' && path === '/api/ai/user/deduct-credits') {
+    const authPayload = await verifyDashboardJwt(request, env);
+    if (!authPayload?.userId) {
+      return new Response(JSON.stringify({ success: false, error: 'Authentification requise.' }), {
+        status: 401,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
+    const targetUserId = String(authPayload.userId).trim();
+    if (await isUserAiBillingBlocked(db, targetUserId)) {
+      return new Response(JSON.stringify({
+        success: false,
+        billingBlocked: true,
+        code: 'BILLING_AI_BLOCKED',
+        error: 'Votre accès aux crédits IA est temporairement suspendu suite à un abonnement expiré ou impayé.'
+      }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+      });
+    }
     const body = await request.json().catch(() => ({}));
-    const targetUserId = (body.userId || body.user_id || request.headers.get('x-user-id') || 'default-user').trim();
     const tokens = Math.max(1, parseInt(body.tokens || 0, 10));
     const model = body.model || 'Delmas IA';
     const actionType = body.actionType || body.action_type || 'chat_deduction';
@@ -21175,11 +21231,51 @@ export default {
 
     try {
       // ----------------------------------------------------------------------
+      // PROXY SÉCURISÉ SERVEUR-À-SERVEUR VERS studycloud-worker
+      // Injecte X-Admin-Key uniquement côté serveur (jamais exposé au navigateur)
+      // et bloque tout appel cross-origin tiers.
+      // ----------------------------------------------------------------------
+      if (path.startsWith('/api/admin/billing/') || path === '/api/payments/admin/reverify') {
+        const reqOrigin = request.headers.get('Origin');
+        if (reqOrigin && reqOrigin !== url.origin) {
+          return new Response(JSON.stringify({ success: false, error: 'Origine non autorisée pour les routes admin.' }), {
+            status: 403,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        const adminSecret = String(env.ADMIN_API_SECRET || env.STUDYCLOUD_ADMIN_SECRET || '').trim();
+        if (!adminSecret) {
+          return new Response(JSON.stringify({ success: false, error: 'ADMIN_API_SECRET non configuré sur le Tableau de Bord.' }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          });
+        }
+        const targetUrl = 'https://api-worker.dkd-technologies.com' + url.pathname + url.search;
+        const proxyHeaders = new Headers();
+        const contentType = request.headers.get('Content-Type');
+        if (contentType) proxyHeaders.set('Content-Type', contentType);
+        proxyHeaders.set('X-Admin-Key', adminSecret);
+
+        const upstreamResp = await fetch(targetUrl, {
+          method: request.method,
+          headers: proxyHeaders,
+          body: (request.method === 'GET' || request.method === 'HEAD') ? undefined : await request.arrayBuffer(),
+        });
+        const respHeaders = new Headers();
+        respHeaders.set('Content-Type', upstreamResp.headers.get('Content-Type') || 'application/json');
+        respHeaders.set('Cache-Control', 'no-store');
+        return new Response(upstreamResp.body, {
+          status: upstreamResp.status,
+          headers: respHeaders,
+        });
+      }
+
+      // ----------------------------------------------------------------------
       // INTERCEPTION ULTRA-RAPIDE : ROUTES IA & CRÉDITS D1 (/api/ai/*)
       // Exécution immédiate en < 20ms sans inspecter R2 ni les utilisateurs
       // ----------------------------------------------------------------------
       if (path.startsWith('/api/ai/')) {
-        return await handleAiBillingRoutes(request, path, url, origin, db);
+        return await handleAiBillingRoutes(request, path, url, origin, db, env);
       }
       if (path.startsWith('/api/dkd-store') || path === '/api/public/dkd-store') {
         return await handleDkdStoreRoutes(request, path, url, origin, db, bucket);
