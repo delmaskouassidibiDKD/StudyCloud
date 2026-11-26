@@ -13,6 +13,21 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
   const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
   const triedUrlsRef = useRef<Set<string>>(new Set());
 
+  const withCacheVersion = (u: string): string => {
+    if (!u || u.startsWith('data:') || u.startsWith('blob:')) return u;
+    const cleaned = u.replace(/%252F/gi, '%2F');
+    if (
+      (cleaned.includes('/api/cloud/file/') ||
+        cleaned.includes('/api/storage/file/') ||
+        cleaned.includes('/api/cloud/thumbnail/') ||
+        cleaned.includes('/api/cloud/stream/')) &&
+      !cleaned.includes('v=2')
+    ) {
+      return cleaned + (cleaned.includes('?') ? '&' : '?') + 'v=2';
+    }
+    return cleaned;
+  };
+
   const getCleanR2Url = () => {
     if (!img.r2Key) return '';
     let cleanKey = String(img.r2Key).trim();
@@ -23,30 +38,57 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
         cleanKey = next;
       }
     } catch { }
-    const cat = img.sourceCategory || img.originalCategory || img.category || 'images';
-    return `${baseUrl}/api/cloud/file/${cat}/${encodeURIComponent(cleanKey)}`;
+    if (cleanKey.startsWith('shared-links/')) {
+      return withCacheVersion(`${baseUrl}/api/storage/file/${encodeURIComponent(cleanKey)}`);
+    }
+    let inferredCat = img.sourceCategory || img.originalCategory || img.category || '';
+    if (!inferredCat) {
+      if (cleanKey.includes('/mes-fichiers/')) inferredCat = 'mes-fichiers';
+      else if (cleanKey.includes('/classeur/')) inferredCat = 'classeur';
+      else if (cleanKey.includes('/secure/')) inferredCat = 'secure';
+      else inferredCat = 'images';
+    }
+    return withCacheVersion(`${baseUrl}/api/cloud/file/${inferredCat}/${encodeURIComponent(cleanKey)}`);
   };
 
   const computeInitialSrc = () => {
-    const directUrl = (img.previewUrl || img.url || '').trim();
-    if (directUrl && directUrl.startsWith('data:')) return directUrl;
+    const rawUrl = (img.url || '').trim();
+    const rawPreview = (img.previewUrl || '').trim();
+
+    if (rawPreview.startsWith('data:image/')) return rawPreview;
+    if (rawUrl.startsWith('data:image/')) return rawUrl;
+
+    // Pour une image, toujours privilégier l'URL directe du fichier image réel (jamais /api/cloud/thumbnail en priorité)
     if (
-      directUrl &&
-      directUrl.startsWith('http') &&
-      !directUrl.includes('localhost') &&
-      !directUrl.startsWith('blob:')
+      rawUrl &&
+      rawUrl.startsWith('http') &&
+      !rawUrl.includes('localhost') &&
+      !rawUrl.startsWith('blob:') &&
+      !rawUrl.includes('/api/cloud/thumbnail/')
     ) {
-      return directUrl.replace(/%252F/gi, '%2F');
+      return withCacheVersion(rawUrl);
     }
     const r2Url = getCleanR2Url();
     if (r2Url) {
       return r2Url;
     }
-    if (img.id) {
-      return `${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}`;
+    if (
+      rawPreview &&
+      rawPreview.startsWith('http') &&
+      !rawPreview.includes('localhost') &&
+      !rawPreview.startsWith('blob:') &&
+      !rawPreview.includes('/api/cloud/thumbnail/')
+    ) {
+      return withCacheVersion(rawPreview);
     }
-    if (directUrl && directUrl.startsWith('blob:')) {
-      return directUrl;
+    if (img.id) {
+      return withCacheVersion(`${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}`);
+    }
+    if (rawPreview.startsWith('blob:')) {
+      return rawPreview;
+    }
+    if (rawUrl.startsWith('blob:')) {
+      return rawUrl;
     }
     return '';
   };
@@ -66,12 +108,13 @@ export const ImageCardPreview: React.FC<ImageCardPreviewProps> = ({ img, classNa
     const r2KeyVal = img.r2Key ? String(img.r2Key).trim() : '';
     const candidates = [
       getCleanR2Url(),
-      img.id ? `${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}` : '',
-      img.id ? `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(img.id)}` : '',
-      r2KeyVal ? `${baseUrl}/api/cloud/file/classeur/${encodeURIComponent(r2KeyVal)}` : '',
-      r2KeyVal ? `${baseUrl}/api/cloud/file/images/${encodeURIComponent(r2KeyVal)}` : '',
-      r2KeyVal ? `${baseUrl}/api/cloud/file/trash/${encodeURIComponent(r2KeyVal)}` : '',
-      r2KeyVal ? `${baseUrl}/api/cloud/file/secure/${encodeURIComponent(r2KeyVal)}` : '',
+      img.id ? withCacheVersion(`${baseUrl}/api/cloud/stream/${encodeURIComponent(img.id)}`) : '',
+      r2KeyVal ? withCacheVersion(`${baseUrl}/api/cloud/file/mes-fichiers/${encodeURIComponent(r2KeyVal)}`) : '',
+      r2KeyVal ? withCacheVersion(`${baseUrl}/api/cloud/file/classeur/${encodeURIComponent(r2KeyVal)}`) : '',
+      r2KeyVal ? withCacheVersion(`${baseUrl}/api/cloud/file/images/${encodeURIComponent(r2KeyVal)}`) : '',
+      r2KeyVal ? withCacheVersion(`${baseUrl}/api/cloud/file/trash/${encodeURIComponent(r2KeyVal)}`) : '',
+      r2KeyVal ? withCacheVersion(`${baseUrl}/api/cloud/file/secure/${encodeURIComponent(r2KeyVal)}`) : '',
+      img.id ? withCacheVersion(`${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(img.id)}`) : '',
     ].filter(Boolean);
 
     for (const candidate of candidates) {

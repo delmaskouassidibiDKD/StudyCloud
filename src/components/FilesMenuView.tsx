@@ -2023,7 +2023,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         };
         newItems.push(item);
 
-        // 2. Enregistrement D1 immédiat (sans attendre R2)
+        // 2. Enregistrement D1 immédiat (sans jamais persister d'URL blob: locale éphémère en base)
         const userId = getCurrentUserId() || localStorage.getItem('unifolder_user_id') || '';
         if (userId && userId !== 'default-user') {
           StudyCloudAPI.registerFileMetadata({
@@ -2035,8 +2035,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
             type: f.type || 'application/octet-stream',
             extension: extVal,
             r2Key: null,
-            fileUrl: localUrl,
-            thumbnailUrl: localUrl,
+            fileUrl: '',
+            thumbnailUrl: null,
             isFavorite: false,
             isImported: true,
             lastImported: now + i

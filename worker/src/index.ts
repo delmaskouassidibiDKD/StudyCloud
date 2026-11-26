@@ -2671,9 +2671,10 @@ async function getObjectFromAnyBucket(rawEnv: any, category: string, key: string
     decodedKey.replace(/%20/g, '_'),
   ].filter(Boolean)));
 
-  // 1a. Recherche rapide O(1) dans le bucket de la catégorie et le bucket principal
-  const fastBuckets = [categoryBucket, mainBucket].filter(Boolean);
-  for (const b of fastBuckets) {
+  // 1a. Recherche stricte par clé exacte dans tous les buckets configurés (bucket catégorie -> principal -> autres)
+  // Sécurité intégrité : on ne renvoie JAMAIS un autre fichier par correspondance partielle d'UUID ou de préfixe.
+  for (const b of bucketsToTry) {
+    if (!b || typeof b.get !== 'function') continue;
     for (const k of primaryKeys) {
       try {
         if (rangeOptions) {
@@ -2688,98 +2689,43 @@ async function getObjectFromAnyBucket(rawEnv: any, category: string, key: string
     }
   }
 
-  // 1b. Recherche ciblée par échange de catégorie (1 appel par bucket dédié au lieu d'un produit cartésien)
-  const catBucketPairs: Array<{ cat: string; bucket: any }> = [
-    { cat: 'images', bucket: rawEnv.BUCKET_IMAGES || rawEnv.MON_R2_IMAGES || mainBucket },
-    { cat: 'videos', bucket: rawEnv.BUCKET_VIDEOS || rawEnv.MON_R2_VIDEOS || mainBucket },
-    { cat: 'audio', bucket: rawEnv.BUCKET_AUDIO || rawEnv.MON_R2_AUDIO || mainBucket },
-    { cat: 'documents', bucket: rawEnv.BUCKET_DOCUMENTS || rawEnv.MON_R2_DOCUMENTS || mainBucket },
-    { cat: 'mes-fichiers', bucket: rawEnv.BUCKET_MES_FICHIERS || rawEnv.MON_R2_MES_FICHIERS || mainBucket },
-    { cat: 'classeur', bucket: rawEnv.BUCKET_CLASSEUR || rawEnv.MON_R2_CLASSEUR || mainBucket },
-    { cat: 'secure', bucket: rawEnv.BUCKET_SECURE || mainBucket },
-    { cat: 'study', bucket: rawEnv.BUCKET_STUDY || rawEnv.BUCKET_DOCUMENTS || mainBucket },
-  ];
+  // 1b. Recherche exacte par échange de catégorie UNIQUEMENT pour les clés média standards (jamais thumbnails ni shared-links)
+  const isSharedOrThumbKey = decodedKey.startsWith('shared-links/') || decodedKey.includes('/thumbnails/');
+  if (!isSharedOrThumbKey) {
+    const catBucketPairs: Array<{ cat: string; bucket: any }> = [
+      { cat: 'images', bucket: rawEnv.BUCKET_IMAGES || rawEnv.MON_R2_IMAGES || mainBucket },
+      { cat: 'videos', bucket: rawEnv.BUCKET_VIDEOS || rawEnv.MON_R2_VIDEOS || mainBucket },
+      { cat: 'audio', bucket: rawEnv.BUCKET_AUDIO || rawEnv.MON_R2_AUDIO || mainBucket },
+      { cat: 'documents', bucket: rawEnv.BUCKET_DOCUMENTS || rawEnv.MON_R2_DOCUMENTS || mainBucket },
+      { cat: 'mes-fichiers', bucket: rawEnv.BUCKET_MES_FICHIERS || rawEnv.MON_R2_MES_FICHIERS || mainBucket },
+      { cat: 'classeur', bucket: rawEnv.BUCKET_CLASSEUR || rawEnv.MON_R2_CLASSEUR || mainBucket },
+      { cat: 'secure', bucket: rawEnv.BUCKET_SECURE || mainBucket },
+      { cat: 'study', bucket: rawEnv.BUCKET_STUDY || rawEnv.BUCKET_DOCUMENTS || mainBucket },
+    ];
 
-  const knownCats = ['study', 'documents', 'mes-fichiers', 'classeur', 'images', 'videos', 'audio', 'secure'];
-  const matchedCatInKey = knownCats.find(c => decodedKey.includes(`/${c}/`));
+    const knownCats = ['study', 'documents', 'mes-fichiers', 'classeur', 'images', 'videos', 'audio', 'secure'];
+    const matchedCatInKey = knownCats.find(c => decodedKey.includes(`/${c}/`));
 
-  for (const { cat: targetCat, bucket } of catBucketPairs) {
-    if (!bucket || typeof bucket.get !== 'function') continue;
-    const candidateKey = matchedCatInKey
-      ? decodedKey.replace(`/${matchedCatInKey}/`, `/${targetCat}/`)
-      : decodedKey;
-    try {
-      const obj = await bucket.get(candidateKey);
-      if (obj) return { object: obj, bucket };
-      const underKey = candidateKey.replace(/ /g, '_');
-      if (underKey !== candidateKey) {
-        const obj2 = await bucket.get(underKey);
-        if (obj2) return { object: obj2, bucket };
-      }
-    } catch {}
-  }
-
-  // 2. Recherche assistée par la base D1 si le fichier a été enregistré sous une autre clé
-  const rawCandidate = decodedKey.match(/(cf-[a-zA-Z0-9_-]+|sec-[a-zA-Z0-9_-]+|f_[a-zA-Z0-9_-]+|img_[a-zA-Z0-9_-]+|vid_[a-zA-Z0-9_-]+|aud_[a-zA-Z0-9_-]+|doc-[a-zA-Z0-9_-]+|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i)?.[1];
-  // Exclure formellement les préfixes de dossiers (cf-folder-) et de notes (note-) pour éviter qu'un fichier vole le fichier d'un dossier
-  const isExcludedCandidate = !rawCandidate || rawCandidate.startsWith('cf-folder-') || rawCandidate.startsWith('folder-') || rawCandidate.startsWith('note-');
-  const fileIdCandidate = isExcludedCandidate
-    ? (decodedKey.includes('/') ? decodedKey.split('/').pop()?.split('_')[0] : '')
-    : rawCandidate;
-  const cleanFileName = decodedKey.split('/').pop() || '';
-
-  if (rawEnv.DB && (fileIdCandidate || cleanFileName)) {
-    try {
-      const qTerm = fileIdCandidate || cleanFileName;
-      const row: any = await rawEnv.DB.prepare(`
-        SELECT r2_key FROM image_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
-        UNION ALL SELECT r2_key FROM video_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
-        UNION ALL SELECT r2_key FROM audio_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
-        UNION ALL SELECT r2_key FROM document_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
-        UNION ALL SELECT r2_key FROM files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
-        UNION ALL SELECT r2_key FROM classeur_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
-        UNION ALL SELECT r2_key FROM secure_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
-        UNION ALL SELECT r2_key FROM trash_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
-        UNION ALL SELECT r2_key FROM study_imported_files WHERE (id = ? OR name = ? OR r2_key LIKE ?) AND r2_key IS NOT NULL AND r2_key != ''
-        LIMIT 1
-      `).bind(
-        qTerm, qTerm, `%${qTerm}%`,
-        qTerm, qTerm, `%${qTerm}%`,
-        qTerm, qTerm, `%${qTerm}%`,
-        qTerm, qTerm, `%${qTerm}%`,
-        qTerm, qTerm, `%${qTerm}%`,
-        qTerm, qTerm, `%${qTerm}%`,
-        qTerm, qTerm, `%${qTerm}%`,
-        qTerm, qTerm, `%${qTerm}%`,
-        qTerm, qTerm, `%${qTerm}%`
-      ).first();
-
-      if (row && row.r2_key) {
-        for (const bucket of bucketsToTry) {
-          if (!bucket || typeof bucket.get !== 'function') continue;
-          try {
-            const obj = await bucket.get(row.r2_key);
-            if (obj) return { object: obj, bucket };
-          } catch {}
-        }
-      }
-    } catch {}
-  }
-
-  // 3. Recherche de secours par préfixe utilisateur dans les buckets
-  const userPrefix = decodedKey.includes('/') ? `${decodedKey.split('/')[0]}/` : undefined;
-  if (fileIdCandidate && fileIdCandidate.length >= 5) {
-    for (const bucket of bucketsToTry) {
-      if (!bucket || typeof bucket.list !== 'function') continue;
-      try {
-        const listed = await bucket.list(userPrefix ? { prefix: userPrefix, limit: 250 } : { limit: 150 });
-        for (const o of (listed?.objects || [])) {
-          if (o.key && o.key.includes(fileIdCandidate)) {
-            const obj = await bucket.get(o.key);
-            if (obj) return { object: obj, bucket };
+    if (matchedCatInKey) {
+      for (const { cat: targetCat, bucket } of catBucketPairs) {
+        if (targetCat === matchedCatInKey || !bucket || typeof bucket.get !== 'function') continue;
+        const candidateKey = decodedKey.replace(`/${matchedCatInKey}/`, `/${targetCat}/`);
+        try {
+          if (rangeOptions) {
+            try {
+              const objR = await bucket.get(candidateKey, rangeOptions);
+              if (objR) return { object: objR, bucket };
+            } catch {}
           }
-        }
-      } catch {}
+          const obj = await bucket.get(candidateKey);
+          if (obj) return { object: obj, bucket };
+          const underKey = candidateKey.replace(/ /g, '_');
+          if (underKey !== candidateKey) {
+            const obj2 = await bucket.get(underKey);
+            if (obj2) return { object: obj2, bucket };
+          }
+        } catch {}
+      }
     }
   }
 
@@ -2990,7 +2936,7 @@ async function purgeUserOrphanedR2Files(env: any, rawEnv: any, reqUserId: string
   };
 
   try {
-    const [f, a, img, v, doc, cl, dl, tr, th, sec, tSchools, tStudents] = await Promise.all([
+    const [f, a, img, v, doc, cl, dl, tr, th, sec, tSchools, tStudents, sharedFiles] = await Promise.all([
       env.DB.prepare('SELECT id, r2_key, file_url FROM files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
       env.DB.prepare('SELECT id, r2_key, audio_url, cover_url FROM audio_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
       env.DB.prepare('SELECT id, r2_key, image_url, thumbnail_url FROM image_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
@@ -3003,6 +2949,7 @@ async function purgeUserOrphanedR2Files(env: any, rawEnv: any, reqUserId: string
       env.DB.prepare('SELECT id, r2_key, file_url FROM secure_files WHERE user_id = ?').bind(reqUserId).all().catch(() => ({ results: [] })),
       env.DB.prepare('SELECT id, logo_r2_key FROM teacher_schools WHERE user_id = ? AND logo_r2_key IS NOT NULL').bind(reqUserId).all().catch(() => ({ results: [] })),
       env.DB.prepare('SELECT id, photo_r2_key FROM teacher_gradebook_students WHERE user_id = ? AND photo_r2_key IS NOT NULL').bind(reqUserId).all().catch(() => ({ results: [] })),
+      env.DB.prepare('SELECT id, r2_key, file_url FROM shared_folder_files WHERE shared_folder_id = ? OR shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)').bind(`staging_${reqUserId}`, reqUserId).all().catch(() => ({ results: [] })),
     ]);
 
     addKeys(f?.results);
@@ -3017,6 +2964,7 @@ async function purgeUserOrphanedR2Files(env: any, rawEnv: any, reqUserId: string
     addKeys(sec?.results);
     addKeys(tSchools?.results);
     addKeys(tStudents?.results);
+    addKeys(sharedFiles?.results);
   } catch (e) {
     console.warn('[purgeUserOrphanedR2Files] Error collecting active keys:', e);
     return 0;
@@ -7744,19 +7692,39 @@ a:hover{transform:translateY(-2px)}
 
           const { results } = await env.DB.prepare(query).bind(...params).all();
           const formatted = (results || []).map((row: any) => {
-            let finalUrl = row.file_url || '';
+            const isImgRow = Boolean(
+              (row.type && String(row.type).toLowerCase().startsWith('image/')) ||
+              /\.(jpe?g|png|webp|gif|svg|avif|bmp)$/i.test(String(row.name || ''))
+            );
+            let finalUrl = String(row.file_url || '').trim();
             if (!finalUrl || finalUrl.startsWith('blob:')) {
-              finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(row.id)}`;
+              if (row.r2_key) {
+                finalUrl = `${url.origin}/api/cloud/file/mes-fichiers/${encodeURIComponent(row.r2_key)}`;
+              } else {
+                finalUrl = `${url.origin}/api/cloud/stream/${encodeURIComponent(row.id)}`;
+              }
             }
-            let thumbUrl = row.thumbnail_url || '';
-            if (!thumbUrl && row.id) {
-              thumbUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(row.id)}?userId=${encodeURIComponent(userId)}`;
+            if (finalUrl && (finalUrl.includes('/api/cloud/file/') || finalUrl.includes('/api/storage/file/')) && !finalUrl.includes('v=2')) {
+              finalUrl += (finalUrl.includes('?') ? '&' : '?') + 'v=2';
+            }
+
+            let thumbUrl = String(row.thumbnail_url || '').trim();
+            if (thumbUrl.startsWith('blob:')) {
+              thumbUrl = '';
+            }
+            if (isImgRow) {
+              // Pour une image dans "Mes fichiers", son propre fichier R2 est toujours son aperçu
+              thumbUrl = finalUrl;
+            } else if (!thumbUrl && row.id) {
+              thumbUrl = `${url.origin}/api/cloud/thumbnail/${encodeURIComponent(row.id)}?userId=${encodeURIComponent(userId)}&v=2`;
+            } else if (thumbUrl && thumbUrl.includes('/api/cloud/thumbnail/') && !thumbUrl.includes('v=2')) {
+              thumbUrl += (thumbUrl.includes('?') ? '&' : '?') + 'v=2';
             }
             return {
               ...row,
               file_url: finalUrl,
               thumbnail_url: thumbUrl,
-              preview_url: thumbUrl || finalUrl
+              preview_url: isImgRow ? finalUrl : (thumbUrl || finalUrl)
             };
           });
           return jsonResponse({ success: true, data: formatted }, 200, origin);
@@ -8049,19 +8017,7 @@ a:hover{transform:translateY(-2px)}
       if (path.startsWith('/api/storage/file/') && method === 'GET') {
         const key = decodeURIComponent(path.replace('/api/storage/file/', ''));
         if (!key || key.includes('..')) return errorResponse('Clé invalide', 400, origin);
-        let found = await getObjectFromAnyBucket(rawEnv, 'documents', key);
-        if (!found || !found.object) {
-          found = await getObjectFromAnyBucket(rawEnv, 'images', key);
-        }
-        if (!found || !found.object) {
-          found = await getObjectFromAnyBucket(rawEnv, 'videos', key);
-        }
-        if (!found || !found.object) {
-          found = await getObjectFromAnyBucket(rawEnv, 'audio', key);
-        }
-        if (!found || !found.object) {
-          found = await getObjectFromAnyBucket(rawEnv, 'classeur', key);
-        }
+        const found = await getObjectFromAnyBucket(rawEnv, 'documents', key);
         const object = found?.object || (env.BUCKET ? await env.BUCKET.get(key) : null);
         if (!object) return errorResponse('Fichier introuvable dans R2', 404, origin);
 
@@ -8241,33 +8197,33 @@ a:hover{transform:translateY(-2px)}
         try { fileId = decodeURIComponent(rawFileId); } catch {}
         if (!fileId || !env.DB) return errorResponse('ID de fichier manquant ou DB inaccessible', 400, origin);
 
-        let foundRecord: any = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "study" as category FROM study_imported_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        let foundRecord: any = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "study" as category FROM study_imported_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "documents" as category FROM document_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "documents" as category FROM document_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, video_url as file_url, "videos" as category FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, video_url as file_url, "videos" as category FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, audio_url as file_url, "audio" as category FROM audio_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, "" as extension, name, audio_url as file_url, "audio" as category FROM audio_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, image_url as file_url, "images" as category FROM image_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, image_url as file_url, "images" as category FROM image_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "classeur" as category FROM classeur_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "classeur" as category FROM classeur_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "mes-fichiers" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, "mes-fichiers" as category FROM files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, file_type as extension, title as name, file_url, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, file_type as extension, title as name, file_url, "documents" as category FROM published_documents WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(source_category, category, "audio") as category, 1 as is_private_record FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(source_category, category, "audio") as category, 1 as is_private_record FROM trash_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
         }
         if (!foundRecord) {
-          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(original_category, category, "audio") as category, 1 as is_private_record FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first();
+          foundRecord = await env.DB.prepare('SELECT id, user_id, r2_key, extension, name, file_url, COALESCE(original_category, category, "audio") as category, 1 as is_private_record FROM secure_files WHERE id = ? LIMIT 1').bind(fileId).first().catch(() => null);
         }
 
         // Sécurité H-6 : Vérifier que les fichiers privés (dossier sécurisé / corbeille) appartiennent bien à l'utilisateur
@@ -8277,7 +8233,7 @@ a:hover{transform:translateY(-2px)}
         }
 
         if (!foundRecord || !foundRecord.r2_key) {
-          // Auto-guérison : récupérer la r2_key depuis d'autres tables du MÊME utilisateur ou extraire depuis l'URL
+          // Auto-guérison stricte par ID exact uniquement (jamais par nom de fichier pour éviter tout vol d'aperçu)
           let recoveredKey = '';
           if (foundRecord) {
             const urlKeys = extractR2Keys('', (foundRecord as any).file_url || (foundRecord as any).image_url || (foundRecord as any).video_url || '');
@@ -8286,31 +8242,31 @@ a:hover{transform:translateY(-2px)}
             if (!recoveredKey && foundRecord.user_id) {
               const ownerId = foundRecord.user_id;
               const rowsToCheck: any = await env.DB.prepare(`
-                SELECT r2_key FROM files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM files WHERE user_id = ? AND id = ? AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM image_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM image_files WHERE user_id = ? AND id = ? AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM video_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM video_files WHERE user_id = ? AND id = ? AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM audio_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM audio_files WHERE user_id = ? AND id = ? AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM document_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM document_files WHERE user_id = ? AND id = ? AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM classeur_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM classeur_files WHERE user_id = ? AND id = ? AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM secure_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM secure_files WHERE user_id = ? AND id = ? AND r2_key IS NOT NULL AND r2_key != ''
                 UNION ALL
-                SELECT r2_key FROM trash_files WHERE user_id = ? AND (id = ? OR name = ?) AND r2_key IS NOT NULL AND r2_key != ''
+                SELECT r2_key FROM trash_files WHERE user_id = ? AND id = ? AND r2_key IS NOT NULL AND r2_key != ''
                 LIMIT 1
               `).bind(
-                ownerId, fileId, foundRecord.name,
-                ownerId, fileId, foundRecord.name,
-                ownerId, fileId, foundRecord.name,
-                ownerId, fileId, foundRecord.name,
-                ownerId, fileId, foundRecord.name,
-                ownerId, fileId, foundRecord.name,
-                ownerId, fileId, foundRecord.name,
-                ownerId, fileId, foundRecord.name
+                ownerId, fileId,
+                ownerId, fileId,
+                ownerId, fileId,
+                ownerId, fileId,
+                ownerId, fileId,
+                ownerId, fileId,
+                ownerId, fileId,
+                ownerId, fileId
               ).first<any>().catch(() => null);
               if (rowsToCheck?.r2_key) recoveredKey = rowsToCheck.r2_key;
             }
@@ -8343,14 +8299,18 @@ a:hover{transform:translateY(-2px)}
               }
             }
 
-            // Sécurité H-6 : Recherche R2 strictement confinée au préfixe de l'utilisateur propriétaire (jamais de scan global inter-utilisateurs)
-            if (!recoveredKey && recordUserId) {
+            // Sécurité H-6 : Recherche R2 strictement confinée au préfixe de l'utilisateur propriétaire et au préfixe exact du fileId
+            if (!recoveredKey && recordUserId && fileId.length >= 6) {
               const allBuckets = getAllBuckets(rawEnv);
               for (const b of allBuckets) {
                 try {
-                  const listRes = await b.list({ prefix: `${recordUserId}/`, limit: 150 });
+                  const listRes = await b.list({ prefix: `${recordUserId}/`, limit: 250 });
                   if (listRes && Array.isArray(listRes.objects)) {
-                    const matched = listRes.objects.find((o: any) => o.key.includes(fileId));
+                    const matched = listRes.objects.find((o: any) => {
+                      if (!o?.key || o.key.includes('/thumbnails/')) return false;
+                      const base = o.key.split('/').pop() || '';
+                      return base === fileId || base.startsWith(`${fileId}_`) || base.startsWith(`${fileId}-`);
+                    });
                     if (matched) {
                       recoveredKey = matched.key;
                       if (!foundRecord) {
@@ -8392,19 +8352,18 @@ a:hover{transform:translateY(-2px)}
         const rangeOptions = (rangeHeader && !isDocStream) ? { range: request.headers } : undefined;
         let found = await getObjectFromAnyBucket(rawEnv, foundRecord.category || 'documents', foundRecord.r2_key, rangeOptions);
 
-        if (!found || !found.object) {
-          // Recherche dynamique dans tous les buckets R2 par listing d'objets (tolérance absolue)
+        if ((!found || !found.object) && foundRecord.user_id && fileId.length >= 6) {
+          // Secours strictement isolé au propriétaire et au préfixe exact du fileId (jamais par nom commun)
           const allBuckets = getAllBuckets(rawEnv);
           for (const b of allBuckets) {
             try {
-              const listRes = await b.list({ limit: 500 });
+              const listRes = await b.list({ prefix: `${foundRecord.user_id}/`, limit: 250 });
               if (listRes && Array.isArray(listRes.objects)) {
-                const cleanName = (foundRecord.name || '').replace(/[^a-zA-Z0-9._-]/g, '_');
-                const matched = listRes.objects.find((o: any) =>
-                  o.key.includes(fileId) ||
-                  (cleanName && o.key.includes(cleanName)) ||
-                  (foundRecord.r2_key && o.key.includes(foundRecord.r2_key.split('/').pop() || '____none____'))
-                );
+                const matched = listRes.objects.find((o: any) => {
+                  if (!o?.key || o.key.includes('/thumbnails/')) return false;
+                  const base = o.key.split('/').pop() || '';
+                  return base === fileId || base.startsWith(`${fileId}_`) || base.startsWith(`${fileId}-`);
+                });
                 if (matched) {
                   let obj = null;
                   if (rangeOptions) {
@@ -8651,19 +8610,28 @@ a:hover{transform:translateY(-2px)}
 
               let fRow: any = null;
               if (reqUserId && reqUserId !== 'default-user') {
-                fRow = await env.DB.prepare('SELECT thumbnail_url, r2_key, user_id FROM files WHERE id = ? AND user_id = ? LIMIT 1').bind(fileId, reqUserId).first();
+                fRow = await env.DB.prepare('SELECT thumbnail_url, r2_key, user_id, type, name, extension FROM files WHERE id = ? AND user_id = ? LIMIT 1').bind(fileId, reqUserId).first();
               }
               if (!fRow) {
-                fRow = await env.DB.prepare('SELECT thumbnail_url, r2_key, user_id FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
+                fRow = await env.DB.prepare('SELECT thumbnail_url, r2_key, user_id, type, name, extension FROM files WHERE id = ? LIMIT 1').bind(fileId).first();
               }
               if (fRow) {
                 targetCategory = 'mes-fichiers';
-                if (fRow.thumbnail_url && !fRow.thumbnail_url.includes('/api/cloud/thumbnail/')) {
+                const fIsImage = Boolean(
+                  (fRow.type && String(fRow.type).toLowerCase().startsWith('image/')) ||
+                  /\.(jpe?g|png|webp|gif|svg|avif|bmp)$/i.test(String(fRow.name || fRow.r2_key || ''))
+                );
+                if (fRow.thumbnail_url && !fRow.thumbnail_url.startsWith('blob:') && !fRow.thumbnail_url.includes('/api/cloud/thumbnail/')) {
                   fallbackDataUrl = fRow.thumbnail_url;
                 }
                 if (!targetR2Key && fRow.r2_key) {
-                  const owner = fRow.user_id || (reqUserId !== 'default-user' ? reqUserId : '');
-                  if (owner) targetR2Key = `${owner}/mes-fichiers/thumbnails/${fileId}_thumb.jpg`;
+                  if (fIsImage) {
+                    // Pour une image dans "Mes fichiers", servir directement le fichier image R2
+                    targetR2Key = fRow.r2_key;
+                  } else {
+                    const owner = fRow.user_id || (reqUserId !== 'default-user' ? reqUserId : '');
+                    if (owner) targetR2Key = `${owner}/mes-fichiers/thumbnails/${fileId}_thumb.jpg`;
+                  }
                 }
               }
             }
@@ -8680,7 +8648,7 @@ a:hover{transform:translateY(-2px)}
         if (targetR2Key) {
           try {
             let found = await getObjectFromAnyBucket(rawEnv, targetCategory || 'audio', targetR2Key);
-            if (!found?.object && !targetR2Key.endsWith('.png')) {
+            if (!found?.object && targetR2Key.endsWith('.jpg')) {
               found = await getObjectFromAnyBucket(rawEnv, targetCategory || 'audio', targetR2Key.replace(/\.jpg$/, '.png'));
             }
             if (!found?.object && reqUserId) {
@@ -8692,7 +8660,13 @@ a:hover{transform:translateY(-2px)}
               }
             }
             if (found?.object) {
-              object = found.object;
+              const objCt = String(found.object.httpMetadata?.contentType || '').toLowerCase();
+              const objIsImage =
+                objCt.startsWith('image/') ||
+                (!objCt && /\.(jpe?g|png|webp|gif|svg|avif|bmp)$/i.test(targetR2Key));
+              if (objIsImage) {
+                object = found.object;
+              }
             }
           } catch (e) {}
         }
@@ -8701,7 +8675,7 @@ a:hover{transform:translateY(-2px)}
           const headers = new Headers();
           headers.set('Access-Control-Allow-Origin', origin || '*');
           headers.set('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
-          headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+          headers.set('Cache-Control', 'public, max-age=86400');
           headers.set('Content-Type', object.httpMetadata?.contentType || 'image/jpeg');
           headers.set('Content-Length', String(object.size));
           return new Response(object.body, { status: 200, headers });
@@ -9347,8 +9321,8 @@ a:hover{transform:translateY(-2px)}
         let finalThumbnailUrl = '';
         let thumbR2Key = '';
 
-        if (finalCategory === 'images') {
-          // Pour les images, l'aperçu est directement le fichier image lui-même
+        if (finalCategory === 'images' || (finalCategory === 'mes-fichiers' && detectedNature === 'images')) {
+          // Pour les images (Images et Mes fichiers), l'aperçu est directement le fichier image lui-même
           finalThumbnailUrl = fileUrl;
         } else if (thumbnailToSave && thumbnailToSave.startsWith('data:image')) {
           try {
@@ -13914,6 +13888,9 @@ a:hover{transform:translateY(-2px)}
             if ((!fileUrl || fileUrl.includes('localhost') || fileUrl.startsWith('blob:')) && f.r2_key) {
               fileUrl = `${originUrl}/api/storage/file/${encodeURIComponent(f.r2_key)}`;
             }
+            if (fileUrl && fileUrl.includes('/api/storage/file/') && !fileUrl.includes('v=2')) {
+              fileUrl += (fileUrl.includes('?') ? '&' : '?') + 'v=2';
+            }
             return {
               ...f,
               file_url: fileUrl,
@@ -14353,18 +14330,33 @@ a:hover{transform:translateY(-2px)}
           if (env.BUCKET && filesToDelete && filesToDelete.length > 0) {
             for (const f of filesToDelete) {
               if (f.r2_key) {
-                await env.BUCKET.delete(f.r2_key).catch(() => {});
+                // Vérifier qu'aucun autre partage actif, staging ou fichier perso n'utilise encore cette clé R2
+                const otherShareRef = await env.DB.prepare(
+                  'SELECT COUNT(*) as count FROM shared_folder_files WHERE shared_folder_id != ? AND r2_key = ?'
+                ).bind(shareId, f.r2_key).first<any>().catch(() => null);
+                const userFileRef = await env.DB.prepare(
+                  'SELECT COUNT(*) as count FROM files WHERE r2_key = ?'
+                ).bind(f.r2_key).first<any>().catch(() => null);
+                const refTotal = (otherShareRef?.count || 0) + (userFileRef?.count || 0);
+                if (refTotal === 0) {
+                  await env.BUCKET.delete(f.r2_key).catch(() => {});
+                }
               }
             }
           }
-          if (env.BUCKET && shareId) {
-            const prefixes = [`shared-links/files/${shareId}`, `shares/${shareId}`];
+          if (env.BUCKET && shareId && !shareId.startsWith('staging_')) {
+            const prefixes = [`shared-links/files/${shareId}/`, `shares/${shareId}/`];
             for (const pfx of prefixes) {
               try {
                 const listed = await env.BUCKET.list({ prefix: pfx });
                 if (listed && listed.objects) {
                   for (const obj of listed.objects) {
-                    await env.BUCKET.delete(obj.key).catch(() => {});
+                    const otherRef = await env.DB.prepare(
+                      'SELECT COUNT(*) as count FROM shared_folder_files WHERE shared_folder_id != ? AND r2_key = ?'
+                    ).bind(shareId, obj.key).first<any>().catch(() => null);
+                    if ((otherRef?.count || 0) === 0) {
+                      await env.BUCKET.delete(obj.key).catch(() => {});
+                    }
                   }
                 }
               } catch (listErr) {}

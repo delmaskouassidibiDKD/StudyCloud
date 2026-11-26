@@ -26,16 +26,24 @@ export const DocumentCardPreview: React.FC<DocumentCardPreviewProps> = ({ doc })
     (doc.id && (String(doc.id).startsWith('note-') || String(doc.id).includes('note-')))
   );
 
+  const withThumbVersion = (u: string): string => {
+    if (!u || u.startsWith('data:') || u.startsWith('blob:')) return u;
+    if ((u.includes('/api/cloud/thumbnail/') || u.includes('/api/cloud/file/')) && !u.includes('v=2')) {
+      return u + (u.includes('?') ? '&' : '?') + 'v=2';
+    }
+    return u;
+  };
+
   const resolveThumb = () => {
     // Les notes texte ne doivent JAMAIS charger de miniature image (évite le vol d'aperçu d'autres fichiers)
     if (isTxtNote) return null;
     if (doc.id && (String(doc.id).startsWith('note-') || String(doc.id).includes('note-'))) return null;
-    if (isImageThumbnailUrl(doc.thumbnailUrl)) return doc.thumbnailUrl!;
-    if (isImageThumbnailUrl(doc.previewUrl)) return doc.previewUrl!;
+    if (isImageThumbnailUrl(doc.thumbnailUrl)) return withThumbVersion(doc.thumbnailUrl!);
+    if (isImageThumbnailUrl(doc.previewUrl)) return withThumbVersion(doc.previewUrl!);
     if (doc.id) {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const uid = (doc as any).userId || (typeof localStorage !== 'undefined' ? localStorage.getItem('unifolder_user_id') : '') || 'default-user';
-      return `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(doc.id)}?userId=${encodeURIComponent(uid)}`;
+      return `${baseUrl}/api/cloud/thumbnail/${encodeURIComponent(doc.id)}?userId=${encodeURIComponent(uid)}&v=2`;
     }
     return null;
   };

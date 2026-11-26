@@ -215,16 +215,22 @@ export function useFilesMenuList(userId?: string) {
           const matName = matchedMat ? matchedMat.name : (mId || '');
           const matUniqueId = matchedMat ? matchedMat.id : (mId || undefined);
 
-          const thumbUrl = row.thumbnail_url || row.preview_url || '';
-          const previewUrl = row.preview_url || row.thumbnail_url || row.file_url || '';
+          const isImg = Boolean(row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif|avif|bmp)$/i.test(row.name || ''));
+          const cleanFileUrl = (row.file_url && !String(row.file_url).startsWith('blob:')) ? String(row.file_url) : '';
+          const cleanRawThumb = (row.thumbnail_url && !String(row.thumbnail_url).startsWith('blob:')) ? String(row.thumbnail_url) : '';
+          const cleanRawPreview = (row.preview_url && !String(row.preview_url).startsWith('blob:')) ? String(row.preview_url) : '';
+
+          const thumbUrl = isImg ? cleanFileUrl : (cleanRawThumb || cleanRawPreview);
+          const previewUrl = isImg ? cleanFileUrl : (cleanRawPreview || cleanRawThumb || cleanFileUrl);
 
           return {
             id: row.id,
             name: row.name,
             size: row.size || 0,
             type: row.type || 'Fichier',
+            category: 'mes-fichiers',
             extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-            url: row.file_url || '',
+            url: cleanFileUrl,
             thumbnailUrl: thumbUrl,
             previewUrl: previewUrl,
             r2Key: row.r2_key,
@@ -235,8 +241,8 @@ export function useFilesMenuList(userId?: string) {
             importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
             createdAt: row.created_at,
             timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
-            isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
-          };
+            isImage: isImg,
+          } as ImportedItem;
         });
         return filesWithUrls;
       }
@@ -522,14 +528,20 @@ export function useUserShares(userId?: string) {
           country: row.country || "Côte d'Ivoire",
           createdAt: row.created_at || new Date().toISOString(),
           files: Array.isArray(row.files)
-            ? row.files.map((f: any) => ({
-                id: f.id || f.file_id || crypto.randomUUID(),
-                name: f.name || f.fileName || f.title || 'Fichier',
-                size: Number(f.size) || Number(f.sizeBytes) || 0,
-                type: f.type || 'file',
-                url: f.file_url || f.url || (f.r2_key ? `${baseUrl}/api/storage/file/${encodeURIComponent(f.r2_key)}` : ''),
-                r2Key: f.r2_key || f.r2Key || undefined,
-              }))
+            ? row.files.map((f: any) => {
+                let u = f.file_url || f.url || (f.r2_key ? `${baseUrl}/api/storage/file/${encodeURIComponent(f.r2_key)}` : '');
+                if (u && u.includes('/api/storage/file/') && !u.includes('v=2')) {
+                  u += (u.includes('?') ? '&' : '?') + 'v=2';
+                }
+                return {
+                  id: f.id || f.file_id || crypto.randomUUID(),
+                  name: f.name || f.fileName || f.title || 'Fichier',
+                  size: Number(f.size) || Number(f.sizeBytes) || 0,
+                  type: f.type || 'file',
+                  url: u,
+                  r2Key: f.r2_key || f.r2Key || undefined,
+                };
+              })
             : [],
           totalSize: Number(row.total_size) || 0,
           downloadsCount: Number(row.downloads_count) || 0,
@@ -669,6 +681,9 @@ export function useStagingShareFiles(userId?: string) {
           let fileUrl = row.file_url || row.url;
           if ((!fileUrl || fileUrl.includes('localhost') || fileUrl.startsWith('blob:')) && r2Key) {
             fileUrl = `${originUrl}/api/storage/file/${encodeURIComponent(r2Key)}`;
+          }
+          if (fileUrl && fileUrl.includes('/api/storage/file/') && !fileUrl.includes('v=2')) {
+            fileUrl += (fileUrl.includes('?') ? '&' : '?') + 'v=2';
           }
           const isImg = row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(row.name || '');
           return {

@@ -58,6 +58,16 @@ export const UploadView: React.FC<UploadViewProps> = ({
   isLoading,
 }) => {
   const [isDragging, setIsDragging] = React.useState(false);
+  const [failedImageIds, setFailedImageIds] = React.useState<Record<string, boolean>>({});
+
+  const resolvePreviewUrl = (rawUrl?: string) => {
+    if (!rawUrl) return '';
+    if (rawUrl.startsWith('data:') || rawUrl.startsWith('blob:')) return rawUrl;
+    if (rawUrl.includes('/api/storage/file/') && !rawUrl.includes('v=2')) {
+      return rawUrl + (rawUrl.includes('?') ? '&' : '?') + 'v=2';
+    }
+    return rawUrl;
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -250,8 +260,16 @@ export const UploadView: React.FC<UploadViewProps> = ({
                       ✓
                     </div>
                   )}
-                  {item.isImage && item.url ? (
-                    <img src={item.url} alt={item.name} className="w-full h-full object-cover" />
+                  {item.isImage && item.url && !failedImageIds[`${item.id}:${item.url}`] ? (
+                    <img
+                      src={resolvePreviewUrl(item.url)}
+                      alt={item.name}
+                      className="w-full h-full object-cover"
+                      onError={() => {
+                        const failKey = `${item.id}:${item.url}`;
+                        setFailedImageIds((prev) => (prev[failKey] ? prev : { ...prev, [failKey]: true }));
+                      }}
+                    />
                   ) : (
                     <div className="flex flex-col items-center justify-center text-stone-300">
                       <FileIconBadge fileName={item.name} size={36} />

@@ -572,6 +572,14 @@ class UploadQueueManager {
           (task.folderId && task.folderId !== 'root' && task.folderId !== 'mes-fichiers' ? task.folderId : null) ||
           ((task.fileItem as any)?.matiere && (task.fileItem as any).matiere !== 'Mes fichiers' ? (task.fileItem as any).matiere : null);
 
+        const isImgFile = Boolean(file.type?.startsWith('image/') || /\.(jpe?g|png|webp|gif|svg|avif|bmp)$/i.test(fileName));
+        const cleanCandidateThumb = [
+          previewDataUrl,
+          task.fileItem?.thumbnailUrl,
+          (task.fileItem as any)?.coverUrl,
+          (task.fileItem as any)?.previewUrl,
+        ].find((u) => typeof u === 'string' && u.trim() && !u.startsWith('blob:'));
+
         StudyCloudAPI.registerFileMetadata({
           id: serverFileId || id,
           userId: currentUserId,
@@ -582,7 +590,7 @@ class UploadQueueManager {
           extension: extVal,
           r2Key: r2Key,
           fileUrl: uploadUrl,
-          thumbnailUrl: previewDataUrl || task.fileItem?.thumbnailUrl || (task.fileItem as any)?.coverUrl || (task.fileItem as any)?.previewUrl || undefined,
+          thumbnailUrl: isImgFile ? uploadUrl : (cleanCandidateThumb || undefined),
           isFavorite: !!task.fileItem?.isFavorite,
           isImported: true,
           isStudySession: false,
