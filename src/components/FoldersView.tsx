@@ -28,6 +28,12 @@ import { TeacherClassesView } from './teacher/TeacherClassesView';
 import { AppAccessGate } from './AppAccessGate';
 import { DkdStoreView } from './DkdStoreView';
 import { DkdStore3DIcon } from './DkdStore3DIcon';
+import {
+  AiCredits3DIcon,
+  MySubscriptions3DIcon,
+  Subscriptions3DIcon,
+  NoteFlow3DIcon,
+} from './HomeApp3DIcons';
 import { NavigationTab } from '../types';
 import { triggerDebouncedCloudBackup, getCurrentUserId } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
@@ -1191,44 +1197,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         break;
 
       case 'teacher-classes':
-        label = 'Classes';
+        label = 'NoteFlow';
         defaultAction = () => {
           setViewMode('teacher-classes-menu');
         };
-        iconContent = (
-          <div className="w-full h-full flex items-center justify-center">
-            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="p2TeacherGrad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#002f3a" />
-                  <stop offset="50%" stopColor="#004758" />
-                  <stop offset="100%" stopColor="#0369a1" />
-                </linearGradient>
-                <linearGradient id="p2ScreenGrad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#E0F2FE" />
-                  <stop offset="100%" stopColor="#BAE6FD" />
-                </linearGradient>
-              </defs>
-              {/* Fond circulaire pétrole sombre */}
-              <circle cx="50" cy="50" r="38" fill="url(#p2TeacherGrad)" stroke="#18181B" strokeWidth="1.3" />
-              {/* Tableau / Écran de classe givré */}
-              <rect x="22" y="24" width="56" height="42" rx="7" fill="url(#p2ScreenGrad)" stroke="#38BDF8" strokeWidth="1.4" />
-              {/* En-tête de carte avec pastilles */}
-              <rect x="26" y="28" width="22" height="15" rx="3.5" fill="#EC4899" />
-              <rect x="52" y="28" width="22" height="15" rx="3.5" fill="#10B981" />
-              {/* Mini cartes de classe en bas de l'écran */}
-              <rect x="26" y="47" width="14" height="12" rx="2.5" fill="#F97316" />
-              <rect x="43" y="47" width="14" height="12" rx="2.5" fill="#3B82F6" />
-              <rect x="60" y="47" width="14" height="12" rx="2.5" fill="#8B5CF6" />
-              {/* Chapeau de diplômé / Professeur doré en haut à droite */}
-              <path d="M 68 18 L 86 24 L 68 30 L 50 24 Z" fill="#FACC15" stroke="#18181B" strokeWidth="1" />
-              <path d="M 58 27.5 v 6 c 0 3 5 5 10 5 s 10 -2 10 -5 v -6" fill="#EAB308" stroke="#18181B" strokeWidth="1" />
-              {/* Cartouche PRO / CLASSES au bas */}
-              <rect x="25" y="71" width="50" height="16" rx="5" fill="#001d24" stroke="#38BDF8" strokeWidth="1.2" />
-              <text x="50" y="82.5" fill="#38BDF8" fontSize="8.5" fontWeight="900" textAnchor="middle" letterSpacing="0.8">CLASSES</text>
-            </svg>
-          </div>
-        );
+        iconContent = <NoteFlow3DIcon />;
         break;
 
       case 'ai-subscriptions':
@@ -1236,16 +1209,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         defaultAction = () => {
           setTab('ai-subscriptions');
         };
-        iconContent = (
-          <div className="w-[78%] h-[78%] rounded-[22%] overflow-hidden border border-white/25 dark:border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.45)]">
-            <img
-              src="/icons/app-ai-credits-3d.jpg"
-              alt="Crédits IA"
-              className="w-full h-full object-cover"
-              draggable={false}
-            />
-          </div>
-        );
+        iconContent = <AiCredits3DIcon />;
         break;
 
       case 'subscriptions':
@@ -1255,16 +1219,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           setPreviousViewMode(viewMode === 'abondamment' ? 'home' : viewMode);
           setViewMode('abondamment');
         };
-        iconContent = (
-          <div className="w-[78%] h-[78%] rounded-[22%] overflow-hidden border border-white/25 dark:border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.45)]">
-            <img
-              src="/icons/app-subscriptions-3d.svg"
-              alt="Abonnements"
-              className="w-full h-full object-cover"
-              draggable={false}
-            />
-          </div>
-        );
+        iconContent = <Subscriptions3DIcon />;
         break;
 
       case 'my-subscriptions':
@@ -1272,16 +1227,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         defaultAction = () => {
           setTab('my-subscriptions');
         };
-        iconContent = (
-          <div className="w-[78%] h-[78%] rounded-[22%] overflow-hidden border border-white/25 dark:border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.45)]">
-            <img
-              src="/icons/app-my-subscriptions-3d.jpg"
-              alt="Mes abonnements"
-              className="w-full h-full object-cover"
-              draggable={false}
-            />
-          </div>
-        );
+        iconContent = <MySubscriptions3DIcon />;
         break;
 
       default:
@@ -2298,7 +2244,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         <div className={`fixed inset-x-0 ${viewerExpandLevel >= 2 ? 'md:left-0 md:w-full z-[60]' : viewerExpandLevel >= 1 ? 'md:left-64 md:w-[calc(100%-16rem)] z-50' : 'md:left-64 md:w-[calc(100%-16rem)] z-30'} md:right-0 bottom-0 ${viewerExpandLevel >= 1 ? 'top-0' : 'top-[64px] md:top-[68px]'} overflow-hidden transition-all duration-300`}>
           <AppAccessGate
             appKey="moyennes"
-            fallbackTitle="Moyennes (Espace Enseignant)"
+            fallbackTitle="NoteFlow"
             onBack={() => {
               resetViewerExpand();
               setViewMode('home');
@@ -2639,17 +2585,43 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       DKD store
                     </span>
                   </div>
+
+                  {/* Application NoteFlow (Gestion des classes, notes et moyennes — déplacée en Page 1) */}
+                  <div
+                    onClick={(e) => {
+                      if (hasMovedRef.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                      }
+                      setActivePageIndex(espaceLibreIndex);
+                      setViewMode('teacher-classes-menu');
+                    }}
+                    className="group flex flex-col items-center cursor-pointer select-none transition-transform duration-200 hover:scale-105 active:scale-[0.98] w-full max-w-[76px] sm:max-w-[84px] md:max-w-none md:w-full"
+                    title="Ouvrir NoteFlow"
+                  >
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 md:w-18 md:h-18 lg:w-20 lg:h-20 flex items-center justify-center overflow-visible filter drop-shadow-[0_8px_16px_rgba(16,52,71,0.3)] dark:drop-shadow-[0_10px_24px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_14px_28px_rgba(16,52,71,0.45)] group-hover:scale-110 active:scale-95 transition-all duration-300">
+                      <NoteFlow3DIcon />
+                    </div>
+
+                    <span className={`text-[8.5px] sm:text-[9.5px] md:text-[10.5px] font-bold mt-1 md:mt-1.5 text-center tracking-tight transition-colors line-clamp-2 leading-tight w-full ${dashboardWallpaper
+                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-1 md:px-1.5 py-0.5 rounded-full border border-white/10'
+                        : 'text-stone-900 dark:text-stone-100'
+                      }`}>
+                      NoteFlow
+                    </span>
+                  </div>
                 </div>
               </div>
 
-              {/* ÉCRAN D'ACCUEIL PRINCIPAL (12 APPLICATIONS PAR DÉFAUT) */}
+              {/* ÉCRAN D'ACCUEIL PRINCIPAL (APPLICATIONS PAR DÉFAUT) */}
               <div
                 style={{ width: `${100 / totalPages}%` }}
                 className="shrink-0 px-1 sm:px-4 py-1 sm:py-2 h-full flex flex-col justify-start"
               >
-                {/* Sur mobile : 4 blocs par ligne (Crédits IA + Abonnements sur la 3e ligne) | Sur desktop : 10 colonnes avec Crédits IA et Abonnements sur la 2e ligne */}
+                {/* Sur mobile : 4 blocs par ligne | Sur desktop : 10 colonnes */}
                 <div className="grid grid-cols-4 md:grid md:grid-cols-10 md:w-full items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-x-2.5 lg:gap-x-4 md:gap-y-4 gap-x-1.5 sm:gap-x-3">
-                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'teacher-classes', 'ai-subscriptions', 'subscriptions', 'my-subscriptions'].map((id, index) => renderBlock(id, index))}
+                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'ai-subscriptions', 'subscriptions', 'my-subscriptions'].map((id, index) => renderBlock(id, index))}
                 </div>
               </div>
             </div>
