@@ -4,7 +4,8 @@ import { PricingView } from './PricingView';
 interface SettingsPricingViewProps {
   onBack: () => void;
   onSelectPlan: (planName: string) => void;
-  initialTab?: 'storage' | 'ai';
+  initialTab?: 'storage' | 'ai' | 'apps';
+  initialAppKey?: string;
 }
 
 /**

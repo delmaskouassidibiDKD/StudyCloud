@@ -1,20 +1,44 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Check, HardDrive, Bot, Receipt } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import {
+  ArrowLeft,
+  Check,
+  HardDrive,
+  Bot,
+  Receipt,
+  AppWindow,
+  Menu,
+  X,
+  RefreshCw,
+  CheckCircle2,
+  Sparkles,
+  Loader2,
+  Clock,
+  Infinity as InfinityIcon,
+} from 'lucide-react';
 import { SubscriptionFormView, SelectedPlan } from './SubscriptionFormView';
 import { StudyCloudPaymentView, StudyCloudPaymentTarget } from './StudyCloudPaymentView';
 import { getSubscriptionPlans, SubscriptionPlan } from '../services/api';
 import {
+  AppAccessResponse,
+  AppSubscriptionPlanRecord,
+  checkAppAccess,
   DEFAULT_PAYMENT_GATEWAY_CONFIG,
+  getMonetizedApps,
   getPaymentGatewayConfig,
+  MonetizedAppRecord,
   normalizeClientBillingMode,
   PaymentGatewayConfig,
   shouldShowManualReceiptButton,
+  startAppFreeTrial,
 } from '../services/paystackBillingApi';
+
+type MonetizedAppWithPlans = MonetizedAppRecord & { plans: AppSubscriptionPlanRecord[] };
 
 interface PricingViewProps {
   onBack: () => void;
   onSelectPlan: (planName: string) => void;
-  initialTab?: 'storage' | 'ai';
+  initialTab?: 'storage' | 'ai' | 'apps';
+  initialAppKey?: string;
   isEmbeddedInSettings?: boolean;
 }
 
@@ -70,7 +94,13 @@ function calculateConversions(price: number, primaryCurr: string) {
   return { USD: usd, XOF: xof, EUR: eur };
 }
 
-function getCardPricingAndConversions(plan: SubscriptionPlan) {
+function getCardPricingAndConversions(plan: {
+  price?: number;
+  primary_currency?: string;
+  currencies_enabled?: string | string[];
+  currency_conversions?: string | Record<string, number>;
+  pricing_model?: string;
+}) {
   const isOneTime = plan.pricing_model === 'one_time' || plan.pricing_model === 'pack';
   const primaryCurr = plan.primary_currency || 'USD';
   const activePrice = Number(plan.price) || 0;
@@ -132,12 +162,15 @@ export const PricingView: React.FC<PricingViewProps> = ({
   onBack, 
   onSelectPlan, 
   initialTab = 'storage',
+  initialAppKey,
   isEmbeddedInSettings = false 
 }) => {
-  const [activeTab, setActiveTab] = useState<'storage' | 'ai'>(initialTab === 'ai' ? 'ai' : 'storage');
+  const [activeTab, setActiveTab] = useState<'storage' | 'ai' | 'apps'>(
+    initialTab === 'ai' ? 'ai' : initialTab === 'apps' ? 'apps' : 'storage'
+  );
 
   useEffect(() => {
-    if (initialTab === 'storage' || initialTab === 'ai') {
+    if (initialTab === 'storage' || initialTab === 'ai' || initialTab === 'apps') {
       setActiveTab(initialTab);
     }
   }, [initialTab]);
@@ -145,6 +178,85 @@ export const PricingView: React.FC<PricingViewProps> = ({
   const [dbStoragePlans, setDbStoragePlans] = useState<SubscriptionPlan[]>([]);
   const [dbAiPlans, setDbAiPlans] = useState<SubscriptionPlan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState<boolean>(true);
+
+  // Catalogue dynamique des applications monétisées (créées dans le tableau de bord)
+  const [monetizedApps, setMonetizedApps] = useState<MonetizedAppWithPlans[]>([]);
+  const [loadingApps, setLoadingApps] = useState<boolean>(false);
+  const [selectedAppKey, setSelectedAppKey] = useState<string>(initialAppKey || '');
+  const [isMobileAppsSidebarOpen, setIsMobileAppsSidebarOpen] = useState<boolean>(false);
+  const [selectedAppAccess, setSelectedAppAccess] = useState<AppAccessResponse | null>(null);
+  const [loadingAppAccess, setLoadingAppAccess] = useState<boolean>(false);
+  const [startingTrial, setStartingTrial] = useState<boolean>(false);
+  const [trialFeedback, setTrialFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
+
+  useEffect(() => {
+    if (initialAppKey) {
+      setSelectedAppKey(initialAppKey);
+    }
+  }, [initialAppKey]);
+
+  const loadMonetizedAppsCatalog = useCallback(async () => {
+    setLoadingApps(true);
+    try {
+      const apps = await getMonetizedApps();
+      setMonetizedApps(apps);
+      setSelectedAppKey((prev) => {
+        if (prev && apps.some((a) => a.app_key === prev)) return prev;
+        if (initialAppKey && apps.some((a) => a.app_key === initialAppKey)) return initialAppKey;
+        return apps[0]?.app_key || '';
+      });
+    } catch (err) {
+      console.warn('[PricingView] Erreur chargement catalogue applications:', err);
+    } finally {
+      setLoadingApps(false);
+    }
+  }, [initialAppKey]);
+
+  // Charger le catalogue des applications quand on ouvre l'onglet Applications
+  useEffect(() => {
+    if (activeTab === 'apps') {
+      loadMonetizedAppsCatalog();
+    }
+  }, [activeTab, loadMonetizedAppsCatalog]);
+
+  // Vérifier l'état d'accès / essai gratuit de l'application sélectionnée
+  useEffect(() => {
+    if (activeTab !== 'apps' || !selectedAppKey) {
+      setSelectedAppAccess(null);
+      return;
+    }
+    let mounted = true;
+    setLoadingAppAccess(true);
+    setTrialFeedback(null);
+    checkAppAccess(selectedAppKey)
+      .then((res) => {
+        if (mounted) setSelectedAppAccess(res);
+      })
+      .catch(() => {
+        if (mounted) setSelectedAppAccess(null);
+      })
+      .finally(() => {
+        if (mounted) setLoadingAppAccess(false);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, [activeTab, selectedAppKey]);
+
+  const handleStartSelectedAppTrial = async (appKey: string) => {
+    if (startingTrial) return;
+    setStartingTrial(true);
+    setTrialFeedback(null);
+    try {
+      const res = await startAppFreeTrial(appKey);
+      setSelectedAppAccess(res);
+      setTrialFeedback({ type: 'ok', text: 'Essai gratuit activé avec succès !' });
+    } catch (err: any) {
+      setTrialFeedback({ type: 'err', text: err?.message || "Impossible d'activer l'essai gratuit." });
+    } finally {
+      setStartingTrial(false);
+    }
+  };
 
   // État du plan sélectionné pour afficher le menu de souscription (reçu manuel)
   const [selectedPlanForSubscription, setSelectedPlanForSubscription] = useState<SelectedPlan | null>(null);
@@ -166,6 +278,14 @@ export const PricingView: React.FC<PricingViewProps> = ({
         if (isMounted) setPaymentConfig(cfg);
       })
       .catch(() => {});
+
+    if (activeTab === 'apps') {
+      // Pour l'onglet Applications, charger uniquement la config passerelle (les apps sont chargées par loadMonetizedAppsCatalog)
+      setLoadingPlans(false);
+      return () => {
+        isMounted = false;
+      };
+    }
 
     getSubscriptionPlans()
       .then((res) => {
@@ -208,7 +328,13 @@ export const PricingView: React.FC<PricingViewProps> = ({
           onBack={() => setActiveCustomPayment(null)}
           onSuccess={() => {
             const name = activeCustomPayment.target.productName;
+            const wasApp = activeCustomPayment.target.productType === 'app';
             setActiveCustomPayment(null);
+            if (wasApp && selectedAppKey) {
+              checkAppAccess(selectedAppKey)
+                .then((res) => setSelectedAppAccess(res))
+                .catch(() => {});
+            }
             onSelectPlan(name);
           }}
           onFallbackManual={() => {
@@ -527,11 +653,362 @@ export const PricingView: React.FC<PricingViewProps> = ({
     );
   };
 
+  // Rendu d'une carte d'abonnement / achat d'Application (style identique aux cartes Assistante IA & Stockage)
+  const renderAppPlanCard = (plan: AppSubscriptionPlanRecord, app: MonetizedAppWithPlans) => {
+    const isPopular = !!(plan.badge && plan.badge.trim());
+    const pricing = getCardPricingAndConversions(plan);
+    const billingMode = normalizeClientBillingMode(plan.billing_mode, plan.is_auto_billing);
+    const isInfinite = billingMode === 'infinite' || Number(plan.is_infinite) === 1;
+    const isAuto = billingMode === 'auto' || Number(plan.allow_auto) === 1;
+    const durationDays = isInfinite ? 0 : Math.max(1, Number(plan.duration_days || 30));
+
+    const durationSummary = isInfinite
+      ? `Accès à vie à ${app.name}`
+      : durationDays === 30
+      ? `Accès complet à ${app.name} (30 jours)`
+      : `Accès complet à ${app.name} (${durationDays} jours)`;
+
+    const allFeatures = parsePlanFeatures(plan.features);
+    const activeFeatures = allFeatures.filter((f) => f && f.enabled !== false && String(f.text || '').trim().length > 0);
+
+    const formattedPrimary = `${getCurrencySymbol(pricing.primaryCurr)} ${
+      pricing.primaryCurr === 'XOF'
+        ? pricing.activePrice.toLocaleString('fr-FR')
+        : pricing.activePrice
+    }`;
+
+    const manualPlanObj: SelectedPlan = {
+      name: `${app.name} — ${plan.name}`,
+      type: 'storage',
+      storageDisplay: durationSummary,
+      priceDisplay: isInfinite
+        ? `${formattedPrimary} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`
+        : `${formattedPrimary} / ${durationDays === 30 ? 'mois' : `${durationDays} jours`} ${
+            pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''
+          }`,
+      price: pricing.activePrice,
+      priceFcfa: pricing.priceFcfa,
+      currency: getCurrencySymbol(pricing.primaryCurr),
+      billingCycle: isInfinite ? 'one_time' : 'monthly',
+    };
+
+    const isPaystackAvailable =
+      paymentConfig.paystackEnabled && paymentConfig.mode !== 'unconfigured';
+    const showManualUnderneath = shouldShowManualReceiptButton(paymentConfig, true);
+    const resolvedCycle: 'monthly' | 'one_time' | 'infinite' = isInfinite ? 'infinite' : 'monthly';
+
+    return (
+      <div
+        key={plan.id}
+        className={`rounded-2xl p-5 sm:p-7 flex flex-col justify-between relative max-w-[380px] w-full mx-auto transition-all duration-300 hover:-translate-y-0.5 animate-in fade-in zoom-in-95 duration-200 ${
+          isPopular
+            ? 'bg-gradient-to-b from-slate-900 to-[#0f172a] dark:from-[#162036] dark:to-[#0f172a] border border-slate-800 dark:border-blue-500/40 text-white shadow-lg ring-1 ring-blue-500/20'
+            : 'bg-white dark:bg-[#111827] border border-slate-200/90 dark:border-slate-800 text-slate-900 dark:text-slate-100 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700'
+        }`}
+      >
+        <div>
+          {/* En-tête : Titre & Badge */}
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <h3 className={`text-lg sm:text-xl font-extrabold tracking-tight uppercase ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+              {plan.name}
+            </h3>
+            {isPopular && (
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                <span className="bg-blue-500/20 text-blue-200 border border-blue-400/30 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase tracking-wider">
+                  {plan.badge}
+                </span>
+              </div>
+            )}
+          </div>
+
+          {/* Description */}
+          {plan.description && (
+            <p className={`text-xs sm:text-sm mb-4 sm:mb-5 leading-relaxed ${isPopular ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>
+              {plan.description}
+            </p>
+          )}
+
+          {/* Bloc Prix Principal & Conversions secondaires */}
+          <div className="mb-4 sm:mb-5">
+            <div className={`flex items-baseline flex-wrap gap-x-2 gap-y-1 ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+              <span className="text-3xl sm:text-4xl font-extrabold tracking-tight tabular-nums">
+                {getCurrencySymbol(pricing.primaryCurr)} {pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice}
+              </span>
+              {!isInfinite && (
+                <span className={`text-sm sm:text-base font-medium ${isPopular ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>
+                  {durationDays === 30 ? '/mois' : `/ ${durationDays}j`}
+                </span>
+              )}
+            </div>
+
+            {pricing.secondaryParts && pricing.secondaryParts.length > 0 && (
+              <div className={`text-xs font-medium mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 ${isPopular ? 'text-slate-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                {pricing.secondaryParts.map((sec, idx) => (
+                  <span key={sec.curr} className="inline-flex items-center gap-1">
+                    {idx > 0 && <span className="opacity-40">•</span>}
+                    <span>= {sec.formatted}</span>
+                  </span>
+                ))}
+              </div>
+            )}
+
+            {isInfinite ? (
+              <div className={`text-[11px] font-semibold mt-2 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md ${isPopular ? 'bg-amber-500/15 text-amber-200 border border-amber-400/30' : 'bg-amber-50 text-amber-800 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/40'}`}>
+                <InfinityIcon className="w-3 h-3" />
+                <span>Paiement unique • Accès à vie</span>
+              </div>
+            ) : isAuto ? (
+              <div className={`text-[11px] font-semibold mt-2 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md ${isPopular ? 'bg-blue-500/15 text-blue-200 border border-blue-400/30' : 'bg-blue-50 text-blue-800 dark:bg-blue-950/40 dark:text-blue-300 border border-blue-200 dark:border-blue-800/40'}`}>
+                <span>Automatique ou Manuel ({durationDays} jours)</span>
+              </div>
+            ) : (
+              <div className={`text-[11px] font-semibold mt-2 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md ${isPopular ? 'bg-white/10 text-slate-200 border border-white/15' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700'}`}>
+                <Clock className="w-3 h-3" />
+                <span>Pass {durationDays} jours • Sans engagement</span>
+              </div>
+            )}
+          </div>
+
+          <div className={`h-px w-full mb-4 sm:mb-5 ${isPopular ? 'bg-slate-800' : 'bg-slate-200/80 dark:bg-slate-800'}`}></div>
+
+          {/* Avantages inclus */}
+          <p className={`text-xs font-semibold uppercase tracking-wider mb-3 ${isPopular ? 'text-slate-300' : 'text-slate-500 dark:text-slate-400'}`}>
+            Ce qui est inclus
+          </p>
+
+          <ul className="space-y-2.5 mb-6">
+            <li className="flex items-start gap-2.5">
+              <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                isPopular ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600 dark:bg-blue-950/70 dark:text-blue-400'
+              }`}>
+                <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[2.5]" />
+              </div>
+              <span className={`text-xs sm:text-sm font-bold ${isPopular ? 'text-white' : 'text-slate-900 dark:text-white'}`}>
+                {durationSummary}
+              </span>
+            </li>
+
+            {activeFeatures.map((feature, i) => (
+              <li key={i} className="flex items-start gap-2.5">
+                <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                  isPopular ? 'bg-blue-500/20 text-blue-300' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'
+                }`}>
+                  <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3 stroke-[2.5]" />
+                </div>
+                <span className={`text-xs sm:text-sm ${isPopular ? 'text-slate-200' : 'text-slate-600 dark:text-slate-300'}`}>
+                  {feature.text}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Boutons de paiement */}
+        <div className="space-y-2">
+          {isPaystackAvailable ? (
+            <button
+              type="button"
+              onClick={() =>
+                setActiveCustomPayment({
+                  target: {
+                    productType: 'app',
+                    productId: plan.id,
+                    productName: plan.name,
+                    appName: app.name,
+                    subtitle: durationSummary,
+                    description: plan.description || app.description || undefined,
+                    features: activeFeatures.map((f) => f.text).filter(Boolean),
+                    periodLabel: isInfinite ? undefined : durationDays === 30 ? '/ mois' : `/ ${durationDays} jours`,
+                    amountFcfa: Math.round(pricing.priceFcfa),
+                    secondaryPriceDisplay:
+                      pricing.primaryCurr !== 'XOF'
+                        ? formattedPrimary
+                        : pricing.secondaryString || undefined,
+                    billingCycle: resolvedCycle,
+                    billingMode,
+                    durationDays,
+                  },
+                  manualPlan: manualPlanObj,
+                })
+              }
+              className={`w-full py-2.5 sm:py-3 font-semibold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shadow-xs text-center active:scale-[0.98] flex items-center justify-center gap-2 ${
+                isPopular
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-950/30'
+                  : 'bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white'
+              }`}
+            >
+              <span>
+                {isInfinite ? 'Obtenir à vie' : isAuto ? "S'abonner" : 'Choisir cette offre'}
+              </span>
+            </button>
+          ) : showManualUnderneath ? (
+            <button
+              type="button"
+              onClick={() => setSelectedPlanForSubscription(manualPlanObj)}
+              className={`w-full py-2.5 sm:py-3 font-semibold text-xs sm:text-sm rounded-xl transition-all cursor-pointer shadow-xs text-center active:scale-[0.98] flex items-center justify-center gap-2 ${
+                isPopular
+                  ? 'bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-950/30'
+                  : 'bg-slate-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white'
+              }`}
+            >
+              <Receipt className="w-4 h-4" />
+              <span>Payer manuellement (reçu)</span>
+            </button>
+          ) : (
+            <div className="w-full py-2.5 px-3 rounded-xl bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 text-xs font-semibold text-center">
+              Paiement temporairement indisponible
+            </div>
+          )}
+
+          {isPaystackAvailable && showManualUnderneath && (
+            <button
+              type="button"
+              onClick={() => setSelectedPlanForSubscription(manualPlanObj)}
+              className={`w-full py-2 px-3 rounded-xl text-[11px] sm:text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 border ${
+                isPopular
+                  ? 'bg-white/5 hover:bg-white/10 text-slate-200 border-white/15'
+                  : 'bg-slate-100 hover:bg-slate-200 dark:bg-slate-800/80 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700'
+              }`}
+            >
+              <Receipt className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span>Payer manuellement (envoyer un reçu)</span>
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
+
+  const selectedApp: MonetizedAppWithPlans | null =
+    monetizedApps.find((a) => a.app_key === selectedAppKey) || monetizedApps[0] || null;
+  const selectedAppActivePlans: AppSubscriptionPlanRecord[] = selectedApp
+    ? (selectedApp.plans || []).filter((p) => p.is_active !== 0)
+    : [];
+
+  const renderAppsSidebarContent = () => (
+    <div className="flex flex-col h-full min-h-0 bg-white dark:bg-[#111827] select-none">
+      {/* En-tête de la barre latérale */}
+      <div className="px-3 pt-3 pb-2.5 border-b border-slate-200 dark:border-slate-800 shrink-0">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="w-7 h-7 rounded-md bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800/60 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+              <AppWindow className="w-3.5 h-3.5" />
+            </div>
+            <div className="min-w-0">
+              <h2 className="text-xs font-bold text-slate-900 dark:text-white truncate leading-tight">
+                Applications
+              </h2>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate leading-tight">
+                Offres &amp; achats par app
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              onClick={() => loadMonetizedAppsCatalog()}
+              disabled={loadingApps}
+              title="Actualiser la liste des applications"
+              className="w-7 h-7 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loadingApps ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setIsMobileAppsSidebarOpen(false)}
+              className="md:hidden w-7 h-7 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 flex items-center justify-center text-slate-600 dark:text-slate-300 cursor-pointer"
+              aria-label="Fermer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Liste des applications créées dans le tableau de bord */}
+      <div className="flex-1 overflow-y-auto px-2.5 py-3 space-y-1.5 min-h-0">
+        <div className="px-1 pb-1 flex items-center justify-between">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+            APPLICATIONS ({monetizedApps.length})
+          </span>
+        </div>
+
+        {loadingApps && monetizedApps.length === 0 ? (
+          <div className="space-y-1.5 pt-1">
+            {[1, 2, 3].map((n) => (
+              <div key={n} className="h-9 rounded-md bg-slate-100 dark:bg-slate-800/70 animate-pulse" />
+            ))}
+          </div>
+        ) : monetizedApps.length === 0 ? (
+          <div className="px-2.5 py-4 text-center rounded-md border border-dashed border-slate-200 dark:border-slate-700 text-[11px] text-slate-500 dark:text-slate-400">
+            Aucune application enregistrée.
+          </div>
+        ) : (
+          monetizedApps.map((app) => {
+            const isSelected = selectedApp?.app_key === app.app_key;
+            const activeOffersCount = (app.plans || []).filter((p) => p.is_active !== 0).length;
+            const hasPaidOffers = activeOffersCount > 0 || Number(app.is_paid) === 1;
+
+            return (
+              <button
+                key={app.app_key}
+                type="button"
+                onClick={() => {
+                  setSelectedAppKey(app.app_key);
+                  setIsMobileAppsSidebarOpen(false);
+                }}
+                className={`w-full group relative overflow-hidden flex items-center justify-between gap-2 px-2.5 h-9 rounded-md border text-xs transition cursor-pointer text-left ${
+                  isSelected
+                    ? 'bg-[#2563eb] border-[#1d4ed8] text-white font-semibold shadow-xs'
+                    : 'bg-white dark:bg-[#161f33]/70 border-slate-200 dark:border-slate-700/90 hover:border-slate-400 dark:hover:border-slate-500 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 font-medium'
+                }`}
+              >
+                {!isSelected && (
+                  <span
+                    className={`absolute left-0 top-0 bottom-0 w-[3.5px] ${
+                      hasPaidOffers ? 'bg-blue-600' : 'bg-emerald-500'
+                    }`}
+                  />
+                )}
+                <div className={`flex items-center gap-2 min-w-0 flex-1 ${!isSelected ? 'pl-1' : ''}`}>
+                  <span className="text-sm leading-none shrink-0">{app.icon || '📱'}</span>
+                  <span className="truncate">{app.name}</span>
+                </div>
+                {activeOffersCount > 0 ? (
+                  <span
+                    className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : 'bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300'
+                    }`}
+                  >
+                    {activeOffersCount}
+                  </span>
+                ) : Number(app.is_paid) === 0 ? (
+                  <span
+                    className={`shrink-0 text-[9px] font-semibold px-1.5 py-0.5 rounded ${
+                      isSelected
+                        ? 'bg-white/20 text-white'
+                        : 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300'
+                    }`}
+                  >
+                    Gratuit
+                  </span>
+                ) : null}
+              </button>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className={`fixed inset-x-0 bottom-0 ${isEmbeddedInSettings ? 'top-0 md:top-0' : 'top-[64px] md:top-[68px]'} left-0 md:left-64 z-40 w-full md:w-[calc(100%-16rem)] ${isEmbeddedInSettings ? 'h-screen' : 'h-[calc(100dvh-64px)] md:h-[calc(100dvh-68px)]'} flex flex-col bg-slate-50 dark:bg-[#0b0f19] text-slate-900 dark:text-slate-100 overflow-hidden select-none transition-colors duration-300`}>
       
       {/* ========================================================================= */}
-      {/* 1. BARRE FIXE IMMOBILE (Responsive : 2 rangées propres sur mobile)        */}
+      {/* 1. BARRE FIXE IMMOBILE (Responsive : 3 onglets propres Stockage / IA / Apps) */}
       {/* ========================================================================= */}
       <div className="flex-shrink-0 z-50 sticky top-0 bg-white/95 dark:bg-[#0f172a]/95 backdrop-blur-md px-3 sm:px-6 py-2 md:py-2.5 flex flex-wrap md:flex-nowrap items-center justify-between gap-2 md:gap-4 border-b border-slate-200/80 dark:border-slate-800 shadow-xs">
         
@@ -544,8 +1021,8 @@ export const PricingView: React.FC<PricingViewProps> = ({
           <span className="hidden sm:inline">Retour</span>
         </button>
 
-        {/* Boutons pour changer de menu (Sur mobile : rangée pleine largeur sans coupure ; sur PC : au centre) */}
-        <div className="order-3 md:order-2 w-full md:w-auto bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200/80 dark:border-slate-800 grid grid-cols-2 md:flex md:items-center gap-1 shadow-xs">
+        {/* Boutons pour changer de menu (Stockage | Assistante StudyCloud | Applications) */}
+        <div className="order-3 md:order-2 w-full md:w-auto bg-slate-100 dark:bg-slate-900 p-1 rounded-xl border border-slate-200/80 dark:border-slate-800 grid grid-cols-3 md:flex md:items-center gap-1 shadow-xs">
           <button
             onClick={() => setActiveTab('storage')}
             className={`flex items-center justify-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-w-0 ${
@@ -571,6 +1048,19 @@ export const PricingView: React.FC<PricingViewProps> = ({
             <span className="hidden md:inline">Abonnement assistante StudyCloud</span>
             <span className="md:hidden truncate">Assistante IA</span>
           </button>
+
+          <button
+            onClick={() => setActiveTab('apps')}
+            className={`flex items-center justify-center gap-1 sm:gap-1.5 px-1.5 sm:px-3 py-1 sm:py-1.5 rounded-lg text-[11px] sm:text-xs font-semibold transition-all cursor-pointer whitespace-nowrap min-w-0 ${
+              activeTab === 'apps'
+                ? 'bg-slate-900 text-white dark:bg-blue-600 dark:text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/70 dark:hover:bg-slate-800/70'
+            }`}
+          >
+            <AppWindow className="w-3 h-3 sm:w-3.5 sm:h-3.5 shrink-0" />
+            <span className="hidden md:inline">Abonnements applications</span>
+            <span className="md:hidden truncate">Applications</span>
+          </button>
         </div>
 
         {/* Espace symétrique à droite sur desktop */}
@@ -578,58 +1068,222 @@ export const PricingView: React.FC<PricingViewProps> = ({
       </div>
 
       {/* ========================================================================= */}
-      {/* 2. ZONE DE CONTENU QUI DÉFILE (Seule cette partie scroll)                 */}
+      {/* 2. ZONE DE CONTENU : LAYOUT BARRE LATÉRALE POUR APPLICATIONS OU GRILLE    */}
       {/* ========================================================================= */}
-      <div className="flex-1 overflow-y-auto px-3 sm:px-4 pt-5 sm:pt-8 pb-32">
-        <div className="w-full max-w-[1250px] mx-auto">
-          {/* Header Section */}
-          <div className="text-center pb-6 sm:pb-8 max-w-5xl mx-auto">
-            <h1 className="text-2xl sm:text-4xl md:text-5xl font-sans font-extrabold tracking-tight text-slate-900 dark:text-white mb-2 leading-tight">
-              Choisissez votre formule
-            </h1>
-            <p className="text-xs sm:text-base font-sans text-slate-500 dark:text-slate-400 max-w-xl mx-auto leading-relaxed px-2">
-              Des tarifs simples, transparents et adaptés à vos objectifs.
-            </p>
-          </div>
+      {activeTab === 'apps' ? (
+        <div className="flex-1 flex min-h-0 overflow-hidden bg-[#eef2f6] dark:bg-[#0b1120]">
+          {/* BARRE LATÉRALE DESKTOP (identique au menu Mes abonnements) */}
+          <aside className="hidden md:flex w-[232px] lg:w-[252px] shrink-0 flex-col border-r border-slate-300 dark:border-slate-700 bg-white dark:bg-[#111827] h-full min-h-0 z-20">
+            {renderAppsSidebarContent()}
+          </aside>
 
-          {/* Animation de chargement squelette ou affichage des cartes */}
-          {loadingPlans ? (
-            renderSkeletonCards()
-          ) : (
-            <>
-              {/* 1. SECTION : ABONNEMENTS STOCKAGE (DYNAMIQUES DEPUIS LA BASE DE DONNÉES)  */}
-              {activeTab === 'storage' && (
-                dbStoragePlans.filter(plan => plan.is_active !== 0).length > 0 ? (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-1 sm:px-2">
-                    {dbStoragePlans.filter(plan => plan.is_active !== 0).map(plan => renderCard(plan, 'storage'))}
-                  </div>
-                ) : (
-                  <div className="col-span-full py-14 text-center bg-white dark:bg-[#111827] rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-6 sm:p-8 max-w-xl mx-auto mb-20 shadow-xs">
-                    <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4 text-2xl">💾</div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Aucune offre de stockage pour le moment</h3>
-                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Les cartes d'abonnement de stockage créées dans le tableau de bord administrateur s'afficheront ici automatiquement.</p>
-                  </div>
-                )
-              )}
-
-              {/* 2. SECTION : ASSISTANTE STUDYCLOUD (DYNAMIQUES DEPUIS LA BASE DE DONNÉES) */}
-              {activeTab === 'ai' && (
-                dbAiPlans.filter(plan => plan.is_active !== 0).length > 0 ? (
-                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-1 sm:px-2">
-                    {dbAiPlans.filter(plan => plan.is_active !== 0).map(plan => renderCard(plan, 'ai'))}
-                  </div>
-                ) : (
-                  <div className="col-span-full py-14 text-center bg-white dark:bg-[#111827] rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-6 sm:p-8 max-w-xl mx-auto mb-20 shadow-xs">
-                    <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4 text-2xl">🤖</div>
-                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Aucune offre IA pour le moment</h3>
-                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Les forfaits et packs de crédits IA créés dans le tableau de bord administrateur s'afficheront ici automatiquement.</p>
-                  </div>
-                )
-              )}
-            </>
+          {/* TIROIR LATÉRAL MOBILE */}
+          {isMobileAppsSidebarOpen && (
+            <div
+              className="md:hidden fixed inset-0 z-50 flex bg-slate-900/50 backdrop-blur-[1px]"
+              onClick={() => setIsMobileAppsSidebarOpen(false)}
+            >
+              <div
+                className="w-[264px] max-w-[82vw] h-full bg-white dark:bg-[#111827] shadow-xl border-r border-slate-300 dark:border-slate-700"
+                onClick={(e) => e.stopPropagation()}
+              >
+                {renderAppsSidebarContent()}
+              </div>
+            </div>
           )}
+
+          {/* ZONE PRINCIPALE À DROITE : DÉTAILS + CARTES D'ACHAT DE L'APPLICATION SÉLECTIONNÉE */}
+          <div className="flex-1 flex flex-col min-w-0 h-full min-h-0 overflow-hidden">
+            {/* Barre mobile compacte pour choisir une application */}
+            <div className="md:hidden px-3 py-2 bg-white dark:bg-[#111827] border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setIsMobileAppsSidebarOpen(true)}
+                className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-xs font-semibold text-slate-800 dark:text-slate-100 cursor-pointer min-w-0"
+              >
+                <Menu className="w-3.5 h-3.5 shrink-0" />
+                <span className="truncate">
+                  {selectedApp ? `${selectedApp.icon || '📱'} ${selectedApp.name}` : 'Choisir une application'}
+                </span>
+              </button>
+              <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 shrink-0">
+                {monetizedApps.length} app{monetizedApps.length > 1 ? 's' : ''}
+              </span>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-3 sm:px-6 pt-5 sm:pt-7 pb-32">
+              <div className="w-full max-w-[1160px] mx-auto">
+                {loadingApps && monetizedApps.length === 0 ? (
+                  renderSkeletonCards()
+                ) : !selectedApp ? (
+                  <div className="py-14 text-center bg-white dark:bg-[#111827] rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-6 sm:p-8 max-w-xl mx-auto shadow-xs">
+                    <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4 text-2xl">
+                      📱
+                    </div>
+                    <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+                      Aucune application configurée pour le moment
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                      Les applications créées dans le tableau de bord administrateur apparaîtront automatiquement dans la barre latérale.
+                    </p>
+                  </div>
+                ) : (
+                  <>
+                    {/* En-tête de l'application sélectionnée */}
+                    <div className="bg-white dark:bg-[#111827] rounded-2xl border border-slate-200/90 dark:border-slate-800 p-4 sm:p-6 mb-6 shadow-xs">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+                        <div className="flex items-start gap-3.5 min-w-0">
+                          <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 flex items-center justify-center text-2xl shrink-0">
+                            {selectedApp.icon || '📱'}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center flex-wrap gap-2">
+                              <h1 className="text-xl sm:text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">
+                                {selectedApp.name}
+                              </h1>
+                              {loadingAppAccess ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-500">
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  Vérification…
+                                </span>
+                              ) : selectedAppAccess?.allowed && selectedAppAccess.status !== 'free' ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  {selectedAppAccess.status === 'trial'
+                                    ? `Essai actif${selectedAppAccess.daysRemaining ? ` (${selectedAppAccess.daysRemaining}j)` : ''}`
+                                    : selectedAppAccess.entitlement?.access_type === 'infinite'
+                                    ? 'Accès à vie actif'
+                                    : `Abonnement actif${selectedAppAccess.daysRemaining !== null ? ` (${selectedAppAccess.daysRemaining}j)` : ''}`}
+                                </span>
+                              ) : selectedAppActivePlans.length > 0 || Number(selectedApp.is_paid) === 1 ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                                  {selectedAppActivePlans.length} offre{selectedAppActivePlans.length > 1 ? 's' : ''} disponible{selectedAppActivePlans.length > 1 ? 's' : ''}
+                                </span>
+                              ) : (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                                  Gratuit
+                                </span>
+                              )}
+                            </div>
+                            {selectedApp.description && (
+                              <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 mt-1 leading-relaxed max-w-2xl">
+                                {selectedApp.description}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Bouton Essai gratuit si disponible */}
+                        {selectedAppAccess?.canStartTrial && Number(selectedApp.trial_days) > 0 && (
+                          <button
+                            type="button"
+                            disabled={startingTrial}
+                            onClick={() => handleStartSelectedAppTrial(selectedApp.app_key)}
+                            className="shrink-0 inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-xs transition cursor-pointer disabled:opacity-60"
+                          >
+                            {startingTrial ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Sparkles className="w-3.5 h-3.5" />
+                            )}
+                            <span>Essai gratuit ({selectedApp.trial_days} jours)</span>
+                          </button>
+                        )}
+                      </div>
+
+                      {trialFeedback && (
+                        <div
+                          className={`mt-3 px-3 py-2 rounded-lg text-xs font-semibold ${
+                            trialFeedback.type === 'ok'
+                              ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                              : 'bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                          }`}
+                        >
+                          {trialFeedback.text}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Cartes d'abonnement / achat créées dans le tableau de bord pour cette application */}
+                    {selectedAppActivePlans.length > 0 ? (
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6 items-stretch pb-20 w-full">
+                        {selectedAppActivePlans.map((plan) => renderAppPlanCard(plan, selectedApp))}
+                      </div>
+                    ) : (
+                      <div className="py-14 text-center bg-white dark:bg-[#111827] rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-6 sm:p-8 max-w-xl mx-auto mb-20 shadow-xs">
+                        <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4 text-2xl">
+                          {selectedApp.icon || '📱'}
+                        </div>
+                        <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">
+                          {Number(selectedApp.is_paid) === 0
+                            ? `${selectedApp.name} est actuellement gratuite`
+                            : `Aucune offre d’achat disponible pour ${selectedApp.name}`}
+                        </h3>
+                        <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">
+                          {Number(selectedApp.is_paid) === 0
+                            ? "Aucun achat n'est nécessaire pour utiliser cette application pour le moment. Les futures cartes d'abonnement créées dans le tableau de bord apparaîtront ici."
+                            : "Les cartes d'abonnement créées dans le tableau de bord administrateur pour cette application s'afficheront ici automatiquement."}
+                        </p>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto px-3 sm:px-4 pt-5 sm:pt-8 pb-32">
+          <div className="w-full max-w-[1250px] mx-auto">
+            {/* Header Section */}
+            <div className="text-center pb-6 sm:pb-8 max-w-5xl mx-auto">
+              <h1 className="text-2xl sm:text-4xl md:text-5xl font-sans font-extrabold tracking-tight text-slate-900 dark:text-white mb-2 leading-tight">
+                Choisissez votre formule
+              </h1>
+              <p className="text-xs sm:text-base font-sans text-slate-500 dark:text-slate-400 max-w-xl mx-auto leading-relaxed px-2">
+                Des tarifs simples, transparents et adaptés à vos objectifs.
+              </p>
+            </div>
+
+            {/* Animation de chargement squelette ou affichage des cartes */}
+            {loadingPlans ? (
+              renderSkeletonCards()
+            ) : (
+              <>
+                {/* 1. SECTION : ABONNEMENTS STOCKAGE (DYNAMIQUES DEPUIS LA BASE DE DONNÉES)  */}
+                {activeTab === 'storage' && (
+                  dbStoragePlans.filter(plan => plan.is_active !== 0).length > 0 ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-1 sm:px-2">
+                      {dbStoragePlans.filter(plan => plan.is_active !== 0).map(plan => renderCard(plan, 'storage'))}
+                    </div>
+                  ) : (
+                    <div className="col-span-full py-14 text-center bg-white dark:bg-[#111827] rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-6 sm:p-8 max-w-xl mx-auto mb-20 shadow-xs">
+                      <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4 text-2xl">💾</div>
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Aucune offre de stockage pour le moment</h3>
+                      <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Les cartes d'abonnement de stockage créées dans le tableau de bord administrateur s'afficheront ici automatiquement.</p>
+                    </div>
+                  )
+                )}
+
+                {/* 2. SECTION : ASSISTANTE STUDYCLOUD (DYNAMIQUES DEPUIS LA BASE DE DONNÉES) */}
+                {activeTab === 'ai' && (
+                  dbAiPlans.filter(plan => plan.is_active !== 0).length > 0 ? (
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-1 sm:px-2">
+                      {dbAiPlans.filter(plan => plan.is_active !== 0).map(plan => renderCard(plan, 'ai'))}
+                    </div>
+                  ) : (
+                    <div className="col-span-full py-14 text-center bg-white dark:bg-[#111827] rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-6 sm:p-8 max-w-xl mx-auto mb-20 shadow-xs">
+                      <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4 text-2xl">🤖</div>
+                      <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Aucune offre IA pour le moment</h3>
+                      <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Les forfaits et packs de crédits IA créés dans le tableau de bord administrateur s'afficheront ici automatiquement.</p>
+                    </div>
+                  )
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -105,13 +105,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   }, [isDarkMode]);
 
   const [activeNotification, setActiveNotification] = useState<string | null>(null);
-  const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai'>(() => {
+  const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai' | 'apps'>(() => {
     try {
       const saved = localStorage.getItem('studycloud_pricing_initial_tab');
-      if (saved === 'storage' || saved === 'ai') return saved;
+      if (saved === 'storage' || saved === 'ai' || saved === 'apps') return saved;
     } catch { }
     return 'storage';
   });
+  const [pricingInitialAppKey, setPricingInitialAppKey] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     try {
@@ -142,8 +143,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   useEffect(() => {
     const handleOpenPricingEvent = (e: any) => {
       const rawTab = e?.detail?.tab;
-      const tab: 'storage' | 'ai' = rawTab === 'ai' ? 'ai' : 'storage';
+      const tab: 'storage' | 'ai' | 'apps' =
+        rawTab === 'ai' ? 'ai' : rawTab === 'apps' || rawTab === 'app' ? 'apps' : 'storage';
       setPricingInitialTab(tab);
+      setPricingInitialAppKey(e?.detail?.appKey ? String(e.detail.appKey) : undefined);
       setPreviousViewMode('home');
       setViewMode('abondamment');
     };
@@ -2271,6 +2274,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'abondamment' && (
         <PricingView
           initialTab={pricingInitialTab}
+          initialAppKey={pricingInitialAppKey}
           onBack={() => setViewMode(previousViewMode || 'home')}
           onSelectPlan={(plan) => notify(`Plan ${plan} sélectionné`)}
         />
