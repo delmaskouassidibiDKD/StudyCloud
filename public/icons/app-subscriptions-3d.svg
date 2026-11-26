@@ -1,0 +1,171 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" fill="none">
+  <defs>
+    <!-- Studio Radial Backdrop (Deep Emerald-Teal Spotlight to Obsidian) -->
+    <radialGradient id="bgSpot" cx="28%" cy="22%" r="85%" fx="24%" fy="18%">
+      <stop offset="0%" stop-color="#147a6c" />
+      <stop offset="38%" stop-color="#0b4642" />
+      <stop offset="76%" stop-color="#062226" />
+      <stop offset="100%" stop-color="#031217" />
+    </radialGradient>
+
+    <!-- Soft ambient golden aura behind the 3D crown -->
+    <radialGradient id="goldAura" cx="50%" cy="48%" r="36%">
+      <stop offset="0%" stop-color="#fde68a" stop-opacity="0.34" />
+      <stop offset="55%" stop-color="#f59e0b" stop-opacity="0.10" />
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- Floor contact shadow -->
+    <radialGradient id="floorShadow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#000000" stop-opacity="0.62" />
+      <stop offset="65%" stop-color="#000000" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#000000" stop-opacity="0" />
+    </radialGradient>
+
+    <!-- 3D Brushed Gold Facets (Lit vs Shaded) -->
+    <linearGradient id="goldLit" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fffbeb" />
+      <stop offset="22%" stop-color="#fde68a" />
+      <stop offset="58%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#b45309" />
+    </linearGradient>
+
+    <linearGradient id="goldShade" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#fbbf24" />
+      <stop offset="45%" stop-color="#d97706" />
+      <stop offset="100%" stop-color="#78350f" />
+    </linearGradient>
+
+    <linearGradient id="goldDeep" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#b45309" />
+      <stop offset="100%" stop-color="#451a03" />
+    </linearGradient>
+
+    <linearGradient id="goldBand" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#92400e" />
+      <stop offset="18%" stop-color="#f59e0b" />
+      <stop offset="42%" stop-color="#fef3c7" />
+      <stop offset="65%" stop-color="#fbbf24" />
+      <stop offset="86%" stop-color="#b45309" />
+      <stop offset="100%" stop-color="#78350f" />
+    </linearGradient>
+
+    <linearGradient id="goldRimTop" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#fef3c7" stop-opacity="0.25" />
+      <stop offset="35%" stop-color="#ffffff" stop-opacity="0.9" />
+      <stop offset="70%" stop-color="#fde68a" stop-opacity="0.65" />
+      <stop offset="100%" stop-color="#f59e0b" stop-opacity="0.15" />
+    </linearGradient>
+
+    <!-- Frosted Emerald-Glass Pedestal Ring -->
+    <linearGradient id="glassRing" x1="15%" y1="0%" x2="85%" y2="100%">
+      <stop offset="0%" stop-color="#a7f3d0" stop-opacity="0.55" />
+      <stop offset="45%" stop-color="#2dd4bf" stop-opacity="0.22" />
+      <stop offset="100%" stop-color="#0f766e" stop-opacity="0.45" />
+    </linearGradient>
+
+    <!-- Central Faceted Emerald-Cyan Jewel -->
+    <linearGradient id="gemLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#ecfeff" />
+      <stop offset="35%" stop-color="#5eead4" />
+      <stop offset="100%" stop-color="#0d9488" />
+    </linearGradient>
+    <linearGradient id="gemDark" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#14b8a6" />
+      <stop offset="100%" stop-color="#115e59" />
+    </linearGradient>
+
+    <!-- Pearl Orb Sphere Highlight -->
+    <radialGradient id="orbGold" cx="34%" cy="30%" r="68%">
+      <stop offset="0%" stop-color="#ffffff" />
+      <stop offset="28%" stop-color="#fef08a" />
+      <stop offset="68%" stop-color="#f59e0b" />
+      <stop offset="100%" stop-color="#92400e" />
+    </radialGradient>
+
+    <!-- Soft Glow Filter -->
+    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feMerge>
+        <feMergeNode in="blur" />
+        <feMergeNode in="SourceGraphic" />
+      </feMerge>
+    </filter>
+    <filter id="drop3d" x="-25%" y="-25%" width="150%" height="150%">
+      <feDropShadow dx="0" dy="14" stdDeviation="12" flood-color="#020a0d" flood-opacity="0.55" />
+    </filter>
+  </defs>
+
+  <!-- Full-bleed Studio Background -->
+  <rect width="512" height="512" fill="url(#bgSpot)" />
+  <circle cx="256" cy="248" r="185" fill="url(#goldAura)" />
+
+  <!-- Ground Contact Shadow -->
+  <ellipse cx="256" cy="404" rx="134" ry="26" fill="url(#floorShadow)" />
+
+  <!-- Subtle Frosted Glass Halo Ring Under Crown -->
+  <g opacity="0.92">
+    <ellipse cx="256" cy="370" rx="146" ry="30" fill="url(#glassRing)" stroke="#99f6e4" stroke-opacity="0.38" stroke-width="2.5" />
+    <ellipse cx="256" cy="368" rx="116" ry="18" fill="#041b1b" fill-opacity="0.58" />
+  </g>
+
+  <!-- 3D Sculpted Brushed-Gold Crown -->
+  <g filter="url(#drop3d)">
+    <!-- Back Interior Crown Peaks (Depth Layer) -->
+    <polygon points="154,312 184,188 232,268" fill="url(#goldDeep)" />
+    <polygon points="358,312 328,188 280,268" fill="url(#goldDeep)" />
+
+    <!-- Left Wing — Lit Half & Shaded Half -->
+    <polygon points="116,320 96,178 164,250 156,320" fill="url(#goldLit)" />
+    <polygon points="164,250 192,262 178,320 156,320" fill="url(#goldShade)" />
+
+    <!-- Right Wing — Lit Half & Shaded Half -->
+    <polygon points="396,320 416,178 348,250 356,320" fill="url(#goldShade)" />
+    <polygon points="348,250 320,262 334,320 356,320" fill="url(#goldLit)" />
+
+    <!-- Center Main Peak — Crisp 3D Ridge Split Down the Middle -->
+    <polygon points="154,322 256,134 256,322" fill="url(#goldLit)" />
+    <polygon points="256,134 358,322 256,322" fill="url(#goldShade)" />
+
+    <!-- Specular Ridge Highlight on Center Peak -->
+    <polygon points="256,134 242,322 256,322" fill="#ffffff" fill-opacity="0.22" />
+    <line x1="256" y1="138" x2="256" y2="316" stroke="#fffbeb" stroke-opacity="0.6" stroke-width="2.2" />
+
+    <!-- Beveled Edge Highlights on Left & Right Outer Slopes -->
+    <line x1="99" y1="181" x2="119" y2="318" stroke="#fef9c3" stroke-opacity="0.65" stroke-width="2.5" stroke-linecap="round" />
+    <line x1="254" y1="138" x2="164" y2="250" stroke="#ffffff" stroke-opacity="0.55" stroke-width="2" stroke-linecap="round" />
+
+    <!-- 3D Cylindrical Crown Base Band -->
+    <rect x="114" y="314" width="284" height="44" rx="22" fill="url(#goldBand)" />
+    <!-- Top Specular Rim of Base Band -->
+    <rect x="122" y="317" width="268" height="8" rx="4" fill="url(#goldRimTop)" />
+    <!-- Bottom Ambient Occlusion Rim -->
+    <path d="M 134 355 H 378 C 386 355 393 350 396 344 C 392 353 384 358 374 358 H 138 C 128 358 120 353 116 344 C 119 350 126 355 134 355 Z" fill="#451a03" fill-opacity="0.55" />
+
+    <!-- Subtle Decorative Metallic Studs on Base Band -->
+    <circle cx="176" cy="336" r="7.5" fill="url(#orbGold)" />
+    <circle cx="256" cy="336" r="9.5" fill="url(#gemLight)" stroke="#fef3c7" stroke-width="2" />
+    <circle cx="336" cy="336" r="7.5" fill="url(#orbGold)" />
+
+    <!-- Central Faceted Emerald-Cyan Crystal Diamond on Crown Chest -->
+    <g filter="url(#softGlow)">
+      <polygon points="256,214 282,256 256,296 230,256" fill="#0d9488" />
+      <polygon points="256,214 256,256 230,256" fill="url(#gemLight)" />
+      <polygon points="256,214 282,256 256,256" fill="#99f6e4" />
+      <polygon points="256,256 282,256 256,296" fill="url(#gemDark)" />
+      <polygon points="230,256 256,256 256,296" fill="#14b8a6" />
+      <polygon points="256,222 269,254 256,254" fill="#ffffff" fill-opacity="0.55" />
+    </g>
+
+    <!-- 3D Golden Spheres on Crown Tips -->
+    <circle cx="256" cy="126" r="19" fill="url(#orbGold)" />
+    <circle cx="96" cy="168" r="15" fill="url(#orbGold)" />
+    <circle cx="416" cy="168" r="15" fill="url(#orbGold)" />
+  </g>
+
+  <!-- Floating 3D Golden Sparkles (matching Crédits IA style) -->
+  <g filter="url(#softGlow)">
+    <path d="M 398 92 L 405 111 L 424 118 L 405 125 L 398 144 L 391 125 L 372 118 L 391 111 Z" fill="url(#goldLit)" />
+    <path d="M 102 384 L 107 397 L 120 402 L 107 407 L 102 420 L 97 407 L 84 402 L 97 397 Z" fill="url(#goldLit)" opacity="0.9" />
+  </g>
+</svg>

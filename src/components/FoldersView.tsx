@@ -1237,27 +1237,13 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           setTab('ai-subscriptions');
         };
         iconContent = (
-          <div className="w-full h-full flex items-center justify-center">
-            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="p2AiCoreGrad" x1="0" y1="0" x2="1" y2="1">
-                  <stop offset="0%" stopColor="#818CF8" />
-                  <stop offset="50%" stopColor="#A855F7" />
-                  <stop offset="100%" stopColor="#EC4899" />
-                </linearGradient>
-              </defs>
-              <circle cx="50" cy="50" r="38" fill="url(#p2AiCoreGrad)" stroke="#18181B" strokeWidth="1.3" />
-              <path
-                d="M 50 16 L 55 38 L 76 43 L 55 48 L 50 70 L 45 48 L 24 43 L 45 38 Z"
-                fill="#FFFFFF"
-              />
-              <path
-                d="M 74 24 L 76 30 L 82 32 L 76 34 L 74 40 L 72 34 L 66 32 L 72 30 Z"
-                fill="#FDE047"
-              />
-              <rect x="28" y="70" width="44" height="16" rx="5" fill="#0F172A" stroke="#FDE047" strokeWidth="1.2" />
-              <text x="50" y="82" fill="#FDE047" fontSize="9" fontWeight="900" textAnchor="middle" letterSpacing="1">IA PRO</text>
-            </svg>
+          <div className="w-[78%] h-[78%] rounded-[22%] overflow-hidden border border-white/25 dark:border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.45)]">
+            <img
+              src="/icons/app-ai-credits-3d.jpg"
+              alt="Crédits IA"
+              className="w-full h-full object-cover"
+              draggable={false}
+            />
           </div>
         );
         break;
@@ -1270,54 +1256,30 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           setViewMode('abondamment');
         };
         iconContent = (
-          <div className="w-full h-full flex items-center justify-center">
-            <svg className="w-full h-full" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <defs>
-                <linearGradient id="p2SubCardBackGrad" x1="12" y1="14" x2="88" y2="86" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#065F46" />
-                  <stop offset="100%" stopColor="#0F172A" />
-                </linearGradient>
-                <linearGradient id="p2SubCardFrontGrad" x1="14" y1="12" x2="86" y2="84" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#10B981" />
-                  <stop offset="48%" stopColor="#0D9488" />
-                  <stop offset="100%" stopColor="#1E293B" />
-                </linearGradient>
-                <linearGradient id="p2SubGoldGrad" x1="25" y1="22" x2="75" y2="68" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#FEF08A" />
-                  <stop offset="45%" stopColor="#FBBF24" />
-                  <stop offset="100%" stopColor="#D97706" />
-                </linearGradient>
-                <linearGradient id="p2SubGlossGrad" x1="20" y1="14" x2="65" y2="55" gradientUnits="userSpaceOnUse">
-                  <stop offset="0%" stopColor="#FFFFFF" stopOpacity="0.45" />
-                  <stop offset="100%" stopColor="#FFFFFF" stopOpacity="0" />
-                </linearGradient>
-              </defs>
-              {/* Base 3D épaisseur sombre */}
-              <rect x="13" y="19" width="74" height="68" rx="19" fill="url(#p2SubCardBackGrad)" stroke="#18181B" strokeWidth="1.4" />
-              {/* Carte principale 3D */}
-              <rect x="13" y="13" width="74" height="68" rx="19" fill="url(#p2SubCardFrontGrad)" stroke="#18181B" strokeWidth="1.4" />
-              {/* Reflet vitré supérieur */}
-              <path d="M 30 14 H 70 C 79 14 85 20 85 29 V 38 C 68 32 38 30 15 44 V 29 C 15 20 21 14 30 14 Z" fill="url(#p2SubGlossGrad)" />
-              {/* Couronne 3D dorée centrale */}
-              <path
-                d="M 27 56 L 24 35 L 39 44 L 50 27 L 61 44 L 76 35 L 73 56 Z"
-                fill="url(#p2SubGoldGrad)"
-                stroke="#78350F"
-                strokeWidth="1.4"
-                strokeLinejoin="round"
-              />
-              {/* Socle de la couronne */}
-              <rect x="27" y="56" width="46" height="6" rx="3" fill="#FDE047" stroke="#78350F" strokeWidth="1.2" />
-              {/* Joyaux sur les pointes */}
-              <circle cx="50" cy="26" r="3" fill="#FEF9C3" stroke="#78350F" strokeWidth="1" />
-              <circle cx="24" cy="34" r="2.5" fill="#FEF08A" stroke="#78350F" strokeWidth="1" />
-              <circle cx="76" cy="34" r="2.5" fill="#FEF08A" stroke="#78350F" strokeWidth="1" />
-              {/* Éclat d'étoile dorée */}
-              <path d="M 73 20 L 74.6 24.4 L 79 26 L 74.6 27.6 L 73 32 L 71.4 27.6 L 67 26 L 71.4 24.4 Z" fill="#FEF08A" />
-              {/* Bandeau VIP doré en bas */}
-              <rect x="27" y="67" width="46" height="15" rx="5" fill="#0F172A" stroke="#FBBF24" strokeWidth="1.2" />
-              <text x="50" y="77.5" fill="#FDE047" fontSize="8.5" fontWeight="900" textAnchor="middle" letterSpacing="1.2">PREMIUM</text>
-            </svg>
+          <div className="w-[78%] h-[78%] rounded-[22%] overflow-hidden border border-white/25 dark:border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.45)]">
+            <img
+              src="/icons/app-subscriptions-3d.svg"
+              alt="Abonnements"
+              className="w-full h-full object-cover"
+              draggable={false}
+            />
+          </div>
+        );
+        break;
+
+      case 'my-subscriptions':
+        label = 'Mes abonnements';
+        defaultAction = () => {
+          setTab('my-subscriptions');
+        };
+        iconContent = (
+          <div className="w-[78%] h-[78%] rounded-[22%] overflow-hidden border border-white/25 dark:border-white/20 shadow-[inset_0_1px_1px_rgba(255,255,255,0.45)]">
+            <img
+              src="/icons/app-my-subscriptions-3d.jpg"
+              alt="Mes abonnements"
+              className="w-full h-full object-cover"
+              draggable={false}
+            />
           </div>
         );
         break;
@@ -2687,7 +2649,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               >
                 {/* Sur mobile : 4 blocs par ligne (Crédits IA + Abonnements sur la 3e ligne) | Sur desktop : 10 colonnes avec Crédits IA et Abonnements sur la 2e ligne */}
                 <div className="grid grid-cols-4 md:grid md:grid-cols-10 md:w-full items-start justify-items-center w-full max-w-sm sm:max-w-md md:max-w-none mx-auto pt-1 gap-y-3.5 sm:gap-y-5 md:gap-x-2.5 lg:gap-x-4 md:gap-y-4 gap-x-1.5 sm:gap-x-3">
-                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'teacher-classes', 'ai-subscriptions', 'subscriptions'].map((id, index) => renderBlock(id, index))}
+                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'teacher-classes', 'ai-subscriptions', 'subscriptions', 'my-subscriptions'].map((id, index) => renderBlock(id, index))}
                 </div>
               </div>
             </div>
