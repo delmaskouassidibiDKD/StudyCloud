@@ -5898,6 +5898,97 @@ function renderDashboardHtml(data) {
               </button>
             </div>
 
+            <!-- Panneau Configuration D1 : Carte Maîtresse de Stockage Évolutif (visible sur l'onglet Stockage) -->
+            <div id="master-storage-card-config-box" class="rounded-2xl bg-gradient-to-br from-slate-900 via-[#101a2f] to-slate-900 border border-blue-500/35 p-4 sm:p-5 shadow-lg space-y-4">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800 pb-3">
+                <div>
+                  <div class="flex items-center gap-2 flex-wrap">
+                    <span class="text-lg">⚡</span>
+                    <h4 class="text-sm sm:text-base font-extrabold text-white">Carte Maîtresse de Stockage Évolutif (1re position)</h4>
+                    <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-400/30">Cloudflare D1</span>
+                  </div>
+                  <p class="text-[11px] text-slate-400 mt-0.5">
+                    Réglez le pas d'avancement du bouton <strong>+</strong> (ex: de 5 en 5, 10 en 10, 100 en 100 Mo ou Go), le prix par palier et le prorata en milieu de mois. Les cartes ci-dessous restent vos offres bonus / promos.
+                  </p>
+                </div>
+                <div class="flex items-center gap-2 shrink-0">
+                  <label class="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-800/90 border border-slate-700 cursor-pointer text-xs font-bold text-slate-200">
+                    <input id="mc-enabled" type="checkbox" checked onchange="updateMasterCardLivePreview()" class="accent-blue-500 w-3.5 h-3.5" />
+                    <span>Carte activée</span>
+                  </label>
+                  <button
+                    type="button"
+                    id="btn-save-master-storage-cfg"
+                    onclick="saveMasterStorageCardConfig()"
+                    class="px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-md shadow-blue-900/40 transition cursor-pointer flex items-center gap-1.5"
+                  >
+                    <span>💾</span>
+                    <span>Enregistrer dans D1</span>
+                  </button>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div>
+                  <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Pas par clic « + » *</label>
+                  <div class="flex gap-1.5">
+                    <input id="mc-step-value" type="number" min="1" step="any" value="100" oninput="updateMasterCardLivePreview()" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:border-blue-500 outline-none" placeholder="ex: 5, 10, 100" />
+                    <select id="mc-step-unit" onchange="updateMasterCardLivePreview()" class="px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:border-blue-500 outline-none">
+                      <option value="MB">Mo</option>
+                      <option value="GB">Go</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Prix par palier / cycle *</label>
+                  <div class="flex gap-1.5">
+                    <input id="mc-price-per-step" type="number" min="1" step="any" value="100" oninput="updateMasterCardLivePreview()" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:border-blue-500 outline-none" placeholder="100" />
+                    <select id="mc-currency" onchange="updateMasterCardLivePreview()" class="px-2.5 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:border-blue-500 outline-none">
+                      <option value="XOF">FCFA</option>
+                      <option value="USD">USD</option>
+                      <option value="EUR">EUR</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Durée du cycle (jours)</label>
+                  <input id="mc-duration-days" type="number" min="1" max="3650" value="30" oninput="updateMasterCardLivePreview()" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:border-blue-500 outline-none" />
+                </div>
+
+                <div>
+                  <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Plafond max (Mo, 0 = illimité)</label>
+                  <input id="mc-max-mb" type="number" min="0" step="any" value="0" oninput="updateMasterCardLivePreview()" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:border-blue-500 outline-none" />
+                </div>
+
+                <div class="sm:col-span-2">
+                  <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Titre de la Carte Maîtresse</label>
+                  <input id="mc-title" type="text" value="Mon Stockage Évolutif" oninput="updateMasterCardLivePreview()" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-semibold focus:border-blue-500 outline-none" />
+                </div>
+
+                <div>
+                  <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Mode de renouvellement</label>
+                  <select id="mc-billing-mode" onchange="updateMasterCardLivePreview()" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-white text-xs font-bold focus:border-blue-500 outline-none">
+                    <option value="manual">Manuel (Mobile Money + Carte)</option>
+                    <option value="auto">Automatique (Carte + Manuel)</option>
+                  </select>
+                </div>
+
+                <div class="flex items-end">
+                  <label class="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-emerald-950/50 border border-emerald-500/35 cursor-pointer text-xs font-bold text-emerald-200">
+                    <input id="mc-prorata" type="checkbox" checked onchange="updateMasterCardLivePreview()" class="accent-emerald-500 w-3.5 h-3.5" />
+                    <span>Prorata auto (milieu de mois)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div id="mc-live-preview" class="rounded-xl bg-slate-950/80 border border-slate-800 px-3.5 py-2.5 text-[11px] text-slate-300 flex flex-wrap items-center justify-between gap-2">
+                <span>Aperçu : chaque clic <strong>+</strong> ajoute <strong>+100 Mo</strong> (+100 FCFA / 30j) • Suite : <strong>100 → 200 → 300 Mo</strong></span>
+                <span class="text-emerald-400 font-bold">✓ Prorata actif</span>
+              </div>
+            </div>
+
             <!-- Grille des cartes d'abonnements générées dynamiquement -->
             <div id="sub-plans-cards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
               <!-- Injecté en JS par renderSubscriptionPlansCards() -->
@@ -13283,11 +13374,111 @@ function renderDashboardHtml(data) {
           btnStorage.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer text-slate-400 hover:text-white';
         }
       }
+      const masterBox = document.getElementById('master-storage-card-config-box');
+      if (masterBox) {
+        masterBox.style.display = currentSubPlanTab === 'storage' ? '' : 'none';
+      }
       renderSubscriptionPlansCards(currentSubPlanTab);
-    setTimeout(refreshSubscriptionPlansFromD1, 100);
+      if (currentSubPlanTab === 'storage') {
+        loadMasterStorageCardConfig();
+      }
+      setTimeout(refreshSubscriptionPlansFromD1, 100);
       refreshSubscriptionPlansFromD1();
     }
     window.switchSubscriptionTab = switchSubscriptionTab;
+
+    function updateMasterCardLivePreview() {
+      const stepVal = Math.max(0.1, Number(document.getElementById('mc-step-value')?.value || 100));
+      const unit = (document.getElementById('mc-step-unit')?.value || 'MB') === 'GB' ? 'Go' : 'Mo';
+      const price = Math.max(1, Number(document.getElementById('mc-price-per-step')?.value || 100));
+      const curr = document.getElementById('mc-currency')?.value || 'XOF';
+      const days = Math.max(1, Number(document.getElementById('mc-duration-days')?.value || 30));
+      const maxMb = Math.max(0, Number(document.getElementById('mc-max-mb')?.value || 0));
+      const enabled = Boolean(document.getElementById('mc-enabled')?.checked);
+      const prorata = Boolean(document.getElementById('mc-prorata')?.checked);
+      const sym = curr === 'USD' ? '$' : curr === 'EUR' ? '€' : 'FCFA';
+      const p1 = stepVal;
+      const p2 = +(stepVal * 2).toFixed(2);
+      const p3 = +(stepVal * 3).toFixed(2);
+      const el = document.getElementById('mc-live-preview');
+      if (!el) return;
+      el.innerHTML =
+        '<span>' +
+        (enabled ? '✅ ' : '⏸️ Désactivée • ') +
+        'Chaque clic <strong>+</strong> ajoute <strong>+' + stepVal + ' ' + unit + '</strong> (+' +
+        price.toLocaleString('fr-FR') + ' ' + sym + ' / ' + days + 'j) • Suite : <strong>' +
+        p1 + ' → ' + p2 + ' → ' + p3 + ' ' + unit + '</strong>' +
+        (maxMb > 0 ? ' • Plafond : <strong>' + maxMb + ' Mo</strong>' : '') +
+        '</span>' +
+        '<span class="' + (prorata ? 'text-emerald-400' : 'text-amber-400') + ' font-bold">' +
+        (prorata ? '✓ Prorata auto actif' : '⚠ Prorata désactivé') +
+        '</span>';
+    }
+    window.updateMasterCardLivePreview = updateMasterCardLivePreview;
+
+    async function loadMasterStorageCardConfig() {
+      try {
+        const resp = await fetch('/api/admin/storage-master-config?_t=' + Date.now(), {
+          headers: { 'Cache-Control': 'no-cache' }
+        });
+        if (!resp.ok) return;
+        const data = await resp.json().catch(() => null);
+        if (!data || !data.success || !data.config) return;
+        const c = data.config;
+        const setVal = (id, v) => { const el = document.getElementById(id); if (el) el.value = String(v); };
+        const setChk = (id, v) => { const el = document.getElementById(id); if (el) el.checked = Boolean(v); };
+        setChk('mc-enabled', c.enabled !== false && c.enabled !== 0);
+        setVal('mc-title', c.title || 'Mon Stockage Évolutif');
+        setVal('mc-step-value', c.stepValue ?? c.step_value ?? 100);
+        setVal('mc-step-unit', (c.stepUnit || c.step_unit || 'MB') === 'GB' ? 'GB' : 'MB');
+        setVal('mc-price-per-step', c.pricePerStep ?? c.price_per_step ?? 100);
+        setVal('mc-currency', c.primaryCurrency || c.primary_currency || 'XOF');
+        setVal('mc-duration-days', c.durationDays ?? c.duration_days ?? 30);
+        setVal('mc-max-mb', c.maxStorageMb ?? c.max_storage_mb ?? 0);
+        setVal('mc-billing-mode', (c.billingMode || c.billing_mode || 'manual') === 'auto' ? 'auto' : 'manual');
+        setChk('mc-prorata', c.prorataEnabled !== false && c.prorata_enabled !== 0);
+        updateMasterCardLivePreview();
+      } catch (e) {
+        console.warn('[MasterStorageConfig] Erreur chargement D1:', e);
+      }
+    }
+    window.loadMasterStorageCardConfig = loadMasterStorageCardConfig;
+
+    async function saveMasterStorageCardConfig() {
+      const btn = document.getElementById('btn-save-master-storage-cfg');
+      if (btn) { btn.disabled = true; btn.innerHTML = '<span>⏳</span><span>Enregistrement...</span>'; }
+      try {
+        const payload = {
+          enabled: Boolean(document.getElementById('mc-enabled')?.checked),
+          title: String(document.getElementById('mc-title')?.value || 'Mon Stockage Évolutif').trim(),
+          stepValue: Number(document.getElementById('mc-step-value')?.value || 100),
+          stepUnit: document.getElementById('mc-step-unit')?.value === 'GB' ? 'GB' : 'MB',
+          pricePerStep: Number(document.getElementById('mc-price-per-step')?.value || 100),
+          primaryCurrency: document.getElementById('mc-currency')?.value || 'XOF',
+          durationDays: Number(document.getElementById('mc-duration-days')?.value || 30),
+          maxStorageMb: Number(document.getElementById('mc-max-mb')?.value || 0),
+          billingMode: document.getElementById('mc-billing-mode')?.value === 'auto' ? 'auto' : 'manual',
+          prorataEnabled: Boolean(document.getElementById('mc-prorata')?.checked),
+        };
+        const resp = await fetch('/api/admin/storage-master-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json().catch(() => null);
+        if (!resp.ok || !data?.success) {
+          throw new Error(data?.error || 'Impossible de sauvegarder la configuration D1.');
+        }
+        updateMasterCardLivePreview();
+        showToast('✅ Carte Maîtresse Stockage enregistrée dans Cloudflare D1 !');
+      } catch (err) {
+        alert('❌ ' + (err?.message || 'Erreur lors de la sauvegarde.'));
+      } finally {
+        if (btn) { btn.disabled = false; btn.innerHTML = '<span>💾</span><span>Enregistrer dans D1</span>'; }
+      }
+    }
+    window.saveMasterStorageCardConfig = saveMasterStorageCardConfig;
+    setTimeout(loadMasterStorageCardConfig, 400);
 
     function getCurrencySymbol(curr) {
       if (curr === 'USD') return '$';
@@ -23015,6 +23206,107 @@ export default {
           storagePlans: (storageRes && storageRes.results) ? storageRes.results : [],
           aiPlans: (aiRes && aiRes.results) ? aiRes.results : []
         }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTES GET/POST : /api/admin/storage-master-config (Carte Maîtresse D1)
+      // ----------------------------------------------------------------------
+      if (path === '/api/admin/storage-master-config' && (request.method === 'GET' || request.method === 'POST')) {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await db.prepare(`
+          CREATE TABLE IF NOT EXISTS storage_master_card_config (
+            id TEXT PRIMARY KEY DEFAULT 'default',
+            enabled INTEGER DEFAULT 1,
+            title TEXT DEFAULT 'Mon Stockage Évolutif',
+            subtitle TEXT DEFAULT 'Augmentez votre espace à tout moment selon vos besoins',
+            step_value REAL DEFAULT 100,
+            step_unit TEXT DEFAULT 'MB',
+            price_per_step REAL DEFAULT 100,
+            primary_currency TEXT DEFAULT 'XOF',
+            duration_days INTEGER DEFAULT 30,
+            max_storage_mb REAL DEFAULT 0,
+            billing_mode TEXT DEFAULT 'manual',
+            prorata_enabled INTEGER DEFAULT 1,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `).run().catch(() => {});
+        await db.prepare("INSERT OR IGNORE INTO storage_master_card_config (id) VALUES ('default')").run().catch(() => {});
+
+        if (request.method === 'POST') {
+          const body = await request.json().catch(() => ({}));
+          const enabled = body.enabled === false || body.enabled === 0 ? 0 : 1;
+          const title = String(body.title || 'Mon Stockage Évolutif').trim().slice(0, 80) || 'Mon Stockage Évolutif';
+          const subtitle = String(body.subtitle || 'Augmentez votre espace à tout moment selon vos besoins').trim().slice(0, 180) || 'Augmentez votre espace à tout moment selon vos besoins';
+          const stepValue = Number(body.stepValue ?? body.step_value ?? 100);
+          if (!Number.isFinite(stepValue) || stepValue <= 0 || stepValue > 1000000) {
+            return new Response(JSON.stringify({ success: false, error: "Pas d'incrémentation invalide (doit être > 0)." }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+            });
+          }
+          const stepUnit = String(body.stepUnit ?? body.step_unit ?? 'MB').toUpperCase() === 'GB' ? 'GB' : 'MB';
+          const pricePerStep = Number(body.pricePerStep ?? body.price_per_step ?? 100);
+          if (!Number.isFinite(pricePerStep) || pricePerStep <= 0) {
+            return new Response(JSON.stringify({ success: false, error: 'Prix par palier invalide (doit être > 0).' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+            });
+          }
+          const rawCurr = String(body.primaryCurrency ?? body.primary_currency ?? 'XOF').toUpperCase();
+          const primaryCurrency = rawCurr === 'USD' ? 'USD' : rawCurr === 'EUR' ? 'EUR' : 'XOF';
+          const durationDays = Math.max(1, Math.min(3650, Math.round(Number(body.durationDays ?? body.duration_days ?? 30) || 30)));
+          const maxStorageMb = Math.max(0, Number(body.maxStorageMb ?? body.max_storage_mb ?? 0) || 0);
+          const billingMode = String(body.billingMode ?? body.billing_mode ?? 'manual').toLowerCase() === 'auto' ? 'auto' : 'manual';
+          const prorataEnabled = body.prorataEnabled === false || body.prorataEnabled === 0 || body.prorata_enabled === 0 ? 0 : 1;
+
+          await db.prepare(`
+            INSERT INTO storage_master_card_config (
+              id, enabled, title, subtitle, step_value, step_unit, price_per_step,
+              primary_currency, duration_days, max_storage_mb, billing_mode, prorata_enabled, updated_at
+            ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              enabled = excluded.enabled,
+              title = excluded.title,
+              subtitle = excluded.subtitle,
+              step_value = excluded.step_value,
+              step_unit = excluded.step_unit,
+              price_per_step = excluded.price_per_step,
+              primary_currency = excluded.primary_currency,
+              duration_days = excluded.duration_days,
+              max_storage_mb = excluded.max_storage_mb,
+              billing_mode = excluded.billing_mode,
+              prorata_enabled = excluded.prorata_enabled,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(enabled, title, subtitle, stepValue, stepUnit, pricePerStep, primaryCurrency, durationDays, maxStorageMb, billingMode, prorataEnabled).run();
+        }
+
+        const row = await db.prepare("SELECT * FROM storage_master_card_config WHERE id = 'default' LIMIT 1").first().catch(() => null);
+        const stepUnit = String(row?.step_unit || 'MB').toUpperCase() === 'GB' ? 'GB' : 'MB';
+        const stepValue = Number(row?.step_value ?? 100) || 100;
+        const config = {
+          enabled: row ? Number(row.enabled ?? 1) !== 0 : true,
+          title: String(row?.title || 'Mon Stockage Évolutif'),
+          subtitle: String(row?.subtitle || 'Augmentez votre espace à tout moment selon vos besoins'),
+          stepValue,
+          stepUnit,
+          stepMb: stepUnit === 'GB' ? stepValue * 1024 : stepValue,
+          pricePerStep: Number(row?.price_per_step ?? 100) || 100,
+          primaryCurrency: String(row?.primary_currency || 'XOF').toUpperCase(),
+          durationDays: Number(row?.duration_days ?? 30) || 30,
+          maxStorageMb: Number(row?.max_storage_mb ?? 0) || 0,
+          billingMode: String(row?.billing_mode || 'manual') === 'auto' ? 'auto' : 'manual',
+          prorataEnabled: row ? Number(row.prorata_enabled ?? 1) !== 0 : true,
+          updatedAt: row?.updated_at || null
+        };
+        return new Response(JSON.stringify({ success: true, config }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });

@@ -512,10 +512,10 @@ test('Charge API Mobile Money (Orange OTP + Wave open_url) + Anti-IDOR + channel
     .first();
   assert.equal(Number(quotaRow.paid_total_mb), 10240);
 
-  // 4. Charge Wave -> renvoie open_url (lien app Wave)
+  // 4. Charge Wave (Bob, nouvel acheteur) -> renvoie open_url (lien app Wave)
   const waveRes = await callApi('/api/payments/paystack/charge-mobile', {
     method: 'POST',
-    token: 'token-alice',
+    token: 'token-bob',
     body: {
       productType: 'storage',
       productId: 'stor_basic',
@@ -528,13 +528,13 @@ test('Charge API Mobile Money (Orange OTP + Wave open_url) + Anti-IDOR + channel
   assert.equal(waveJson.chargeStatus, 'open_url');
   assert.equal(waveJson.openUrl, 'https://pay.wave.com/c/test-session');
 
-  // 5. Initialize Carte uniquement (channelOnly: 'card') pour InlineJS V2
+  // 5. Initialize Carte uniquement (channelOnly: 'card') pour InlineJS V2 (renouvellement Carte Maîtresse d'Alice)
   const cardRes = await callApi('/api/payments/paystack/initialize', {
     method: 'POST',
     token: 'token-alice',
     body: {
       productType: 'storage',
-      productId: 'stor_basic',
+      productId: 'storage_master_renew',
       channelOnly: 'card',
     },
   });
@@ -1696,4 +1696,237 @@ test('Audit de sécurité — Anti-remboursement abusif link-verify, Auth Admin 
     'Declined. Please use the test mobile money number since you are doing a test transaction.'
   );
   assert.ok(frMsg.includes('Mode Test Paystack') && frMsg.includes('07 00 00 00 00'));
+});
+
+test('Carte Maîtresse Stockage D1 : config pas admin, refus downgrade, prorata milieu de mois, renouvellement sans doublon et synchro booster', async () => {
+  const { db } = createMockD1();
+  await ensurePaystackBillingTables(db);
+  await db.prepare('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT, phone TEXT)').run();
+
+  await db
+    .prepare(
+      `INSERT INTO users (id, name, email, phone) VALUES ('u-master', 'Koffi Kouame', 'koffi@studycloud.ci', '0707070707')`
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO storage_subscription_plans (id, name, storage_amount, storage_mb, price, primary_currency, billing_mode, duration_days, is_active)
+       VALUES ('stor_base_500', 'PACK 500 MO', '500 Mo', 500, 500, 'XOF', 'manual', 30, 1)`
+    )
+    .run();
+  await db
+    .prepare(
+      `INSERT INTO storage_subscription_plans (id, name, storage_amount, storage_mb, price, primary_currency, billing_mode, duration_days, is_active)
+       VALUES ('stor_boost_200', 'BOOSTER +200 MO PROMO', '200 Mo', 200, 150, 'XOF', 'manual', 30, 1)`
+    )
+    .run();
+
+  const initAmounts: Record<string, number> = {};
+  const mockFetch: typeof fetch = async (input, init) => {
+    const urlStr = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    if (urlStr.endsWith('/transaction/initialize')) {
+      initAmounts[body.reference] = Number(body.amount);
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            authorization_url: `https://checkout.paystack.com/${body.reference}`,
+            access_code: `AC_${body.reference}`,
+            reference: body.reference,
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    if (urlStr.includes('/transaction/verify/')) {
+      const ref = urlStr.split('/transaction/verify/')[1];
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            id: 777001,
+            reference: ref,
+            status: 'success',
+            amount: initAmounts[ref] || 0,
+            currency: 'XOF',
+            channel: 'mobile_money',
+            customer: { email: 'koffi@studycloud.ci' },
+            metadata: { user_id: 'u-master' },
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response(JSON.stringify({ status: false }), { status: 404 });
+  };
+
+  const rawEnv = {
+    PAYSTACK_SECRET_KEY: 'sk_test_master_card',
+    ADMIN_API_SECRET: 'test_admin_master_secret',
+  };
+
+  const callApi = async (path: string, opts: { method?: string; token?: string; body?: any } = {}) => {
+    const req = new Request(`https://api-worker.dkd-technologies.com${path}`, {
+      method: opts.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
+        ...(path.startsWith('/api/admin/') ? { 'X-Admin-Key': rawEnv.ADMIN_API_SECRET } : {}),
+      },
+      body: opts.body ? JSON.stringify(opts.body) : undefined,
+    });
+    const res = await handlePaystackBillingRoutes(req, new URL(req.url), new URL(req.url).pathname, req.method, {
+      db,
+      rawEnv,
+      origin: '*',
+      fetchFn: mockFetch,
+      getAuthUser: async (r) =>
+        r.headers.get('Authorization') === 'Bearer token-koffi'
+          ? { userId: 'u-master', email: 'koffi@studycloud.ci', name: 'Koffi Kouame' }
+          : null,
+      jsonResponse: (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'Content-Type': 'application/json' } }),
+      errorResponse: (m, s = 400) => new Response(JSON.stringify({ success: false, error: m }), { status: s, headers: { 'Content-Type': 'application/json' } }),
+    });
+    assert.ok(res);
+    return res!;
+  };
+
+  // 1. Admin configure le pas = 100 Mo à 100 FCFA / 30 jours + prorata actif dans D1
+  const saveCfgRes = await (
+    await callApi('/api/admin/billing/storage-master-config', {
+      method: 'POST',
+      body: {
+        enabled: true,
+        stepValue: 100,
+        stepUnit: 'MB',
+        pricePerStep: 100,
+        primaryCurrency: 'XOF',
+        durationDays: 30,
+        maxStorageMb: 2048,
+        prorataEnabled: true,
+      },
+    })
+  ).json();
+  assert.equal(saveCfgRes.success, true);
+  assert.equal(saveCfgRes.config.stepMb, 100);
+  assert.equal(saveCfgRes.config.pricePerStepFcfa, 100);
+
+  // 2. Koffi s'abonne au forfait initial 500 Mo (500 FCFA) via la carte secondaire
+  const initBase = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'token-koffi',
+      body: { productType: 'storage', productId: 'stor_base_500' },
+    })
+  ).json();
+  assert.equal(initBase.success, true);
+  const verBase = await (
+    await callApi(`/api/payments/paystack/verify?reference=${initBase.reference}`, { token: 'token-koffi' })
+  ).json();
+  assert.equal(verBase.verified, true);
+
+  // 3. Anti-doublon : tenter de racheter le MÊME forfait actif `stor_base_500` est refusé (409)
+  const dupRes = await callApi('/api/payments/paystack/initialize', {
+    method: 'POST',
+    token: 'token-koffi',
+    body: { productType: 'storage', productId: 'stor_base_500' },
+  });
+  assert.equal(dupRes.status, 409);
+
+  // 4. Refus strict de diminution (500 Mo -> 400 Mo) sur la Carte Maîtresse
+  const downRes = await callApi('/api/payments/paystack/initialize', {
+    method: 'POST',
+    token: 'token-koffi',
+    body: { productType: 'storage', productId: 'storage_master_upgrade', targetPaidMb: 400 },
+  });
+  assert.equal(downRes.status, 400);
+
+  // 5. Simulation milieu de mois (15 jours écoulés, 15 jours restants sur 30j) -> Prorata exact !
+  const nowMs = Date.now();
+  const startIso = new Date(nowMs - 15 * 24 * 60 * 60 * 1000).toISOString();
+  const endIso = new Date(nowMs + 15 * 24 * 60 * 60 * 1000).toISOString();
+  await db
+    .prepare(
+      `UPDATE active_subscriptions SET current_period_start = ?, current_period_end = ?, next_billing_at = ? WHERE user_id = 'u-master' AND product_type = 'storage'`
+    )
+    .bind(startIso, endIso, endIso)
+    .run();
+
+  // Montée en gamme 500 Mo -> 800 Mo (+300 Mo, nouveau tarif mensuel = 800 FCFA, crédit non consommé ~250 FCFA => net ~550 FCFA)
+  const quoteRes = await (
+    await callApi('/api/billing/storage-master-card/quote', {
+      method: 'POST',
+      token: 'token-koffi',
+      body: { action: 'upgrade', targetPaidMb: 800 },
+    })
+  ).json();
+  assert.equal(quoteRes.success, true);
+  assert.equal(quoteRes.quote.prorataApplied, true);
+  assert.equal(quoteRes.quote.newMonthlyPriceFcfa, 800);
+  assert.ok(quoteRes.quote.unusedCreditFcfa >= 245 && quoteRes.quote.unusedCreditFcfa <= 255);
+  assert.ok(quoteRes.quote.amountDueFcfa >= 545 && quoteRes.quote.amountDueFcfa <= 555);
+
+  const initUp = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'token-koffi',
+      body: { productType: 'storage', productId: 'storage_master_upgrade', targetPaidMb: 800 },
+    })
+  ).json();
+  assert.equal(initUp.success, true);
+  assert.equal(initUp.amount, quoteRes.quote.amountDueFcfa);
+
+  const verUp = await (
+    await callApi(`/api/payments/paystack/verify?reference=${initUp.reference}`, { token: 'token-koffi' })
+  ).json();
+  assert.equal(verUp.verified, true);
+
+  // Vérifier D1 : quota payant = 800 Mo (pas 1300 Mo !), tarif récurrent = 800 FCFA (pas le prorata 550 !), 1 seul abonnement actif !
+  const statusAfterUp = await (
+    await callApi('/api/billing/storage-master-card/status', { token: 'token-koffi' })
+  ).json();
+  assert.equal(statusAfterUp.userState.paidMb, 800);
+  assert.equal(statusAfterUp.userState.monthlyPriceFcfa, 800);
+
+  // 6. Renouvellement pur via Carte Maîtresse : paie 800 FCFA et GARDE 800 Mo (ne double PAS en 1600 Mo !)
+  const initRenew = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'token-koffi',
+      body: { productType: 'storage', productId: 'storage_master_renew' },
+    })
+  ).json();
+  assert.equal(initRenew.success, true);
+  assert.equal(initRenew.amount, 800);
+  const verRenew = await (
+    await callApi(`/api/payments/paystack/verify?reference=${initRenew.reference}`, { token: 'token-koffi' })
+  ).json();
+  assert.equal(verRenew.verified, true);
+
+  const statusAfterRenew = await (
+    await callApi('/api/billing/storage-master-card/status', { token: 'token-koffi' })
+  ).json();
+  assert.equal(statusAfterRenew.userState.paidMb, 800);
+
+  // 7. Carte secondaire booster promo (+200 Mo à 150 FCFA) -> synchronisée aussitôt dans la Carte Maîtresse (800 + 200 = 1000 Mo, 950 FCFA/mois) !
+  const initBoost = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'token-koffi',
+      body: { productType: 'storage', productId: 'stor_boost_200' },
+    })
+  ).json();
+  assert.equal(initBoost.success, true);
+  assert.equal(initBoost.amount, 150);
+  const verBoost = await (
+    await callApi(`/api/payments/paystack/verify?reference=${initBoost.reference}`, { token: 'token-koffi' })
+  ).json();
+  assert.equal(verBoost.verified, true);
+
+  const statusAfterBoost = await (
+    await callApi('/api/billing/storage-master-card/status', { token: 'token-koffi' })
+  ).json();
+  assert.equal(statusAfterBoost.userState.paidMb, 1000);
+  assert.equal(statusAfterBoost.userState.monthlyPriceFcfa, 950);
 });

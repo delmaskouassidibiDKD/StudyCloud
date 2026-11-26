@@ -189,6 +189,7 @@ export interface InitializePaystackPayload {
   channelOnly?: 'card' | 'mobile_money';
   phone?: string;
   returnOrigin?: string;
+  targetPaidMb?: number;
 }
 
 export interface ChargeMobilePayload {
@@ -198,6 +199,59 @@ export interface ChargeMobilePayload {
   provider: MobileMoneyProvider;
   phone: string;
   countryIso?: string;
+  targetPaidMb?: number;
+}
+
+export interface StorageMasterCardConfig {
+  enabled: boolean;
+  title: string;
+  subtitle: string;
+  stepValue: number;
+  stepUnit: 'MB' | 'GB';
+  stepMb: number;
+  pricePerStep: number;
+  pricePerStepFcfa: number;
+  primaryCurrency: 'XOF' | 'USD' | 'EUR';
+  durationDays: number;
+  maxStorageMb: number;
+  billingMode: 'manual' | 'auto';
+  prorataEnabled: boolean;
+  updatedAt?: string | null;
+}
+
+export interface StorageMasterUserState {
+  welcomeMb: number;
+  paidMb: number;
+  bonusMb: number;
+  totalAllowedMb: number;
+  usedBytes: number;
+  usedMb: number;
+  usagePercent: number;
+  hasActiveSubscription: boolean;
+  isExpired: boolean;
+  inGrace: boolean;
+  isInfinite: boolean;
+  subscriptionId: string | null;
+  planId: string;
+  planName: string;
+  monthlyPriceFcfa: number;
+  currency: string;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  graceUntil: string | null;
+  durationDays: number;
+  daysUsed: number;
+  daysRemaining: number;
+  remainingFraction: number;
+  consumedCostFcfa: number;
+  unusedCreditFcfa: number;
+  renewalMode: 'manual' | 'auto' | 'infinite';
+}
+
+export interface StorageMasterStatusResponse {
+  success: boolean;
+  config: StorageMasterCardConfig;
+  userState: StorageMasterUserState;
 }
 
 export interface ChargeMobileResponse {
@@ -573,6 +627,21 @@ export async function getMyPaymentTransactions(): Promise<any[]> {
   const json = await resp.json().catch(() => null);
   if (!resp.ok || !json?.success) return [];
   return Array.isArray(json.transactions) ? json.transactions : [];
+}
+
+export async function getStorageMasterCardStatus(): Promise<StorageMasterStatusResponse | null> {
+  try {
+    const resp = await fetch(`${getBaseApi()}/api/billing/storage-master-card/status?_t=${Date.now()}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    const json = await resp.json().catch(() => null);
+    if (!resp.ok || !json?.success || !json?.config || !json?.userState) return null;
+    return json as StorageMasterStatusResponse;
+  } catch (err) {
+    console.warn('[PaystackBillingApi] Erreur chargement Carte Maîtresse Stockage:', err);
+    return null;
+  }
 }
 
 /**

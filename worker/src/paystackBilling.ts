@@ -1046,6 +1046,39 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
     'CREATE INDEX IF NOT EXISTS idx_pay_tx_status ON payment_transactions(status, created_at)'
   ).run().catch(() => {});
 
+  for (const sql of [
+    'ALTER TABLE payment_transactions ADD COLUMN target_storage_mb REAL DEFAULT 0',
+    'ALTER TABLE payment_transactions ADD COLUMN recurring_price_amount REAL DEFAULT 0',
+    "ALTER TABLE payment_transactions ADD COLUMN master_action TEXT DEFAULT ''",
+    'ALTER TABLE payment_transactions ADD COLUMN prorata_credit_amount REAL DEFAULT 0',
+  ]) {
+    try {
+      await db.prepare(sql).run();
+    } catch {}
+  }
+
+  // 6b. Configuration D1 de la Carte Maîtresse de Stockage Évolutif (`storage_master_card_config`)
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS storage_master_card_config (
+      id TEXT PRIMARY KEY DEFAULT 'default',
+      enabled INTEGER DEFAULT 1,
+      title TEXT DEFAULT 'Mon Stockage Évolutif',
+      subtitle TEXT DEFAULT 'Augmentez votre espace à tout moment selon vos besoins',
+      step_value REAL DEFAULT 100,
+      step_unit TEXT DEFAULT 'MB',
+      price_per_step REAL DEFAULT 100,
+      primary_currency TEXT DEFAULT 'XOF',
+      duration_days INTEGER DEFAULT 30,
+      max_storage_mb REAL DEFAULT 0,
+      billing_mode TEXT DEFAULT 'manual',
+      prorata_enabled INTEGER DEFAULT 1,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run().catch(() => {});
+  await db.prepare(
+    `INSERT OR IGNORE INTO storage_master_card_config (id) VALUES ('default')`
+  ).run().catch(() => {});
+
   // 7. Journal d'audit des webhooks Paystack (`payment_webhook_events`)
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS payment_webhook_events (
@@ -1870,6 +1903,472 @@ export async function checkUserAppAccess(
 }
 
 // ============================================================================
+// CARTE MAÎTRESSE DE STOCKAGE ÉVOLUTIF & CALCUL AU PRORATA (100 % D1)
+// ============================================================================
+
+export interface StorageMasterCardConfig {
+  enabled: boolean;
+  title: string;
+  subtitle: string;
+  stepValue: number;
+  stepUnit: 'MB' | 'GB';
+  stepMb: number;
+  pricePerStep: number;
+  pricePerStepFcfa: number;
+  primaryCurrency: 'XOF' | 'USD' | 'EUR';
+  durationDays: number;
+  maxStorageMb: number;
+  billingMode: 'manual' | 'auto';
+  prorataEnabled: boolean;
+  updatedAt?: string | null;
+}
+
+export interface StorageMasterUserState {
+  welcomeMb: number;
+  paidMb: number;
+  bonusMb: number;
+  totalAllowedMb: number;
+  usedBytes: number;
+  usedMb: number;
+  usagePercent: number;
+  hasActiveSubscription: boolean;
+  isExpired: boolean;
+  inGrace: boolean;
+  isInfinite: boolean;
+  subscriptionId: string | null;
+  planId: string;
+  planName: string;
+  monthlyPriceFcfa: number;
+  currency: string;
+  currentPeriodStart: string | null;
+  currentPeriodEnd: string | null;
+  graceUntil: string | null;
+  durationDays: number;
+  daysUsed: number;
+  daysRemaining: number;
+  remainingFraction: number;
+  consumedCostFcfa: number;
+  unusedCreditFcfa: number;
+  renewalMode: 'manual' | 'auto' | 'infinite';
+}
+
+export interface StorageMasterQuote {
+  ok: boolean;
+  error?: string;
+  action: 'upgrade' | 'renew';
+  currentPaidMb: number;
+  targetPaidMb: number;
+  addedMb: number;
+  addedSteps: number;
+  oldMonthlyPriceFcfa: number;
+  newMonthlyPriceFcfa: number;
+  prorataApplied: boolean;
+  daysUsed: number;
+  daysRemaining: number;
+  consumedCostFcfa: number;
+  unusedCreditFcfa: number;
+  amountDueFcfa: number;
+  durationDays: number;
+  billingMode: 'manual' | 'auto';
+}
+
+export function formatStorageMbFr(mb: number): string {
+  const val = Math.max(0, Number(mb) || 0);
+  if (val >= 1024) {
+    const gb = val / 1024;
+    return `${Number.isInteger(gb) ? gb : gb.toFixed(1).replace(/\.0$/, '')} Go`;
+  }
+  return `${Math.round(val * 10) / 10} Mo`;
+}
+
+function convertPriceToFcfa(price: number, currency: string): number {
+  const p = Math.max(0, Number(price) || 0);
+  const c = String(currency || 'XOF').toUpperCase();
+  if (c === 'USD') return Math.round(p * 650);
+  if (c === 'EUR') return Math.round(p * 655.957);
+  return Math.round(p);
+}
+
+export async function readStorageMasterCardConfig(db: any): Promise<StorageMasterCardConfig> {
+  const row: any = await db
+    .prepare("SELECT * FROM storage_master_card_config WHERE id = 'default' LIMIT 1")
+    .first()
+    .catch(() => null);
+
+  const stepUnit: 'MB' | 'GB' = String(row?.step_unit || 'MB').toUpperCase() === 'GB' ? 'GB' : 'MB';
+  const rawStep = Number(row?.step_value ?? 100);
+  const stepValue = Number.isFinite(rawStep) && rawStep > 0 ? rawStep : 100;
+  const stepMb = stepUnit === 'GB' ? stepValue * 1024 : stepValue;
+  const rawCurr = String(row?.primary_currency || 'XOF').toUpperCase();
+  const primaryCurrency: 'XOF' | 'USD' | 'EUR' =
+    rawCurr === 'USD' ? 'USD' : rawCurr === 'EUR' ? 'EUR' : 'XOF';
+  const rawPrice = Number(row?.price_per_step ?? 100);
+  const pricePerStep = Number.isFinite(rawPrice) && rawPrice > 0 ? rawPrice : 100;
+  const pricePerStepFcfa = Math.max(1, convertPriceToFcfa(pricePerStep, primaryCurrency));
+  const durationDays = Math.max(1, Math.min(3650, Math.round(Number(row?.duration_days ?? 30) || 30)));
+  const maxStorageMb = Math.max(0, Number(row?.max_storage_mb ?? 0) || 0);
+  const billingMode: 'manual' | 'auto' =
+    String(row?.billing_mode || 'manual').toLowerCase() === 'auto' ? 'auto' : 'manual';
+
+  return {
+    enabled: row ? Number(row.enabled ?? 1) !== 0 : true,
+    title: String(row?.title || 'Mon Stockage Évolutif').trim() || 'Mon Stockage Évolutif',
+    subtitle:
+      String(row?.subtitle || 'Augmentez votre espace à tout moment selon vos besoins').trim() ||
+      'Augmentez votre espace à tout moment selon vos besoins',
+    stepValue,
+    stepUnit,
+    stepMb,
+    pricePerStep,
+    pricePerStepFcfa,
+    primaryCurrency,
+    durationDays,
+    maxStorageMb,
+    billingMode,
+    prorataEnabled: row ? Number(row.prorata_enabled ?? 1) !== 0 : true,
+    updatedAt: row?.updated_at || null,
+  };
+}
+
+export async function readStorageMasterUserState(
+  db: any,
+  userId: string,
+  config: StorageMasterCardConfig
+): Promise<StorageMasterUserState> {
+  let welcomeMb = 100;
+  const globalCfg: any = await db
+    .prepare(
+      "SELECT default_welcome_total_mb, welcome_storage_mb FROM storage_global_config WHERE id IN ('global', 'default') ORDER BY updated_at DESC LIMIT 1"
+    )
+    .first()
+    .catch(() => null);
+  if (globalCfg) {
+    welcomeMb = Number(globalCfg.default_welcome_total_mb ?? globalCfg.welcome_storage_mb ?? 100);
+  }
+
+  let paidMb = 0;
+  let bonusMb = 0;
+  let usedBytes = 0;
+  let quotaPlanName = '';
+
+  if (userId && userId !== 'default-user') {
+    const quotaRow: any = await db
+      .prepare('SELECT * FROM user_storage_quotas WHERE user_id = ? LIMIT 1')
+      .bind(userId)
+      .first()
+      .catch(() => null);
+    if (quotaRow) {
+      if (quotaRow.welcome_total_mb !== null && quotaRow.welcome_total_mb !== undefined) {
+        welcomeMb = Number(quotaRow.welcome_total_mb);
+      }
+      paidMb = Math.max(0, Number(quotaRow.paid_total_mb || 0));
+      bonusMb = Math.max(0, Number(quotaRow.bonus_total_mb || 0));
+      quotaPlanName = String(quotaRow.plan_name || '');
+    }
+
+    const usageRow: any = await db
+      .prepare('SELECT total_bytes_used, r2_bytes_used, d1_bytes_used FROM user_storage_usage WHERE user_id = ? LIMIT 1')
+      .bind(userId)
+      .first()
+      .catch(() => null);
+    if (usageRow) {
+      usedBytes = Math.max(
+        0,
+        Number(usageRow.total_bytes_used ?? (Number(usageRow.r2_bytes_used || 0) + Number(usageRow.d1_bytes_used || 0)))
+      );
+    } else {
+      const fStat: any = await db
+        .prepare('SELECT COALESCE(SUM(size), 0) AS totalBytes FROM files WHERE user_id = ?')
+        .bind(userId)
+        .first()
+        .catch(() => null);
+      usedBytes = Math.max(0, Number(fStat?.totalBytes || 0));
+    }
+  }
+
+  const activeSub: any =
+    userId && userId !== 'default-user'
+      ? await db
+          .prepare(
+            `SELECT * FROM active_subscriptions
+             WHERE user_id = ? AND product_type = 'storage'
+             ORDER BY updated_at DESC LIMIT 1`
+          )
+          .bind(userId)
+          .first()
+          .catch(() => null)
+      : null;
+
+  const nowMs = Date.now();
+  const isInfinite = Boolean(
+    activeSub && (Number(activeSub.is_infinite) === 1 || activeSub.renewal_mode === 'infinite')
+  );
+  const endMs = activeSub?.current_period_end ? Date.parse(activeSub.current_period_end) : NaN;
+  const graceMs = activeSub?.grace_until ? Date.parse(activeSub.grace_until) : NaN;
+  const subDurationDays = Math.max(1, Number(activeSub?.duration_days || config.durationDays || 30));
+  const rawStartMs = activeSub?.current_period_start
+    ? Date.parse(activeSub.current_period_start)
+    : activeSub?.started_at
+    ? Date.parse(activeSub.started_at)
+    : NaN;
+
+  const isActiveStatus = Boolean(activeSub && ['active', 'trial'].includes(String(activeSub.status || '')));
+  const isNotExpiredByTime = isInfinite || (Number.isFinite(endMs) && endMs > nowMs);
+  const hasActiveSubscription = Boolean(isActiveStatus && isNotExpiredByTime);
+  const inGrace = Boolean(
+    activeSub &&
+      !hasActiveSubscription &&
+      !isInfinite &&
+      ((Number.isFinite(graceMs) && graceMs > nowMs) || String(activeSub.status) === 'grace')
+  );
+  const isExpired = Boolean(
+    activeSub && !hasActiveSubscription && !isInfinite && (!Number.isFinite(endMs) || endMs <= nowMs)
+  );
+
+  if (paidMb === 0 && activeSub && Number(activeSub.granted_storage_mb || 0) > 0 && (hasActiveSubscription || inGrace)) {
+    paidMb = Number(activeSub.granted_storage_mb || 0);
+  }
+
+  const fallbackMonthlyFcfa =
+    paidMb > 0 ? Math.max(1, Math.round((paidMb / config.stepMb) * config.pricePerStepFcfa)) : 0;
+  const subPriceFcfa = activeSub ? convertPriceToFcfa(Number(activeSub.price_amount || 0), activeSub.currency || 'XOF') : 0;
+  const monthlyPriceFcfa = paidMb > 0 ? (subPriceFcfa > 0 ? subPriceFcfa : fallbackMonthlyFcfa) : 0;
+
+  let daysRemaining = 0;
+  let daysUsed = 0;
+  let remainingFraction = 0;
+  let consumedCostFcfa = 0;
+  let unusedCreditFcfa = 0;
+
+  if (hasActiveSubscription && !isInfinite && Number.isFinite(endMs) && endMs > nowMs) {
+    const cycleMs = subDurationDays * 24 * 60 * 60 * 1000;
+    const effectiveStartMs =
+      Number.isFinite(rawStartMs) && rawStartMs < endMs && endMs - rawStartMs >= 60_000
+        ? rawStartMs
+        : endMs - cycleMs;
+    const totalMs = Math.max(60_000, endMs - effectiveStartMs);
+    const remainingMs = Math.max(0, endMs - nowMs);
+    remainingFraction = Math.min(1, Math.max(0, remainingMs / totalMs));
+    daysRemaining = Math.max(0, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)));
+    daysUsed = Math.max(0, subDurationDays - daysRemaining);
+    consumedCostFcfa = Math.round(monthlyPriceFcfa * (1 - remainingFraction));
+    unusedCreditFcfa = Math.max(0, monthlyPriceFcfa - consumedCostFcfa);
+  }
+
+  const totalAllowedMb = Math.max(0, welcomeMb + paidMb + bonusMb);
+  const usedMb = Math.round((usedBytes / (1024 * 1024)) * 100) / 100;
+  const usagePercent =
+    totalAllowedMb > 0 ? Math.min(100, Math.round((usedMb / totalAllowedMb) * 1000) / 10) : 0;
+
+  return {
+    welcomeMb,
+    paidMb,
+    bonusMb,
+    totalAllowedMb,
+    usedBytes,
+    usedMb,
+    usagePercent,
+    hasActiveSubscription,
+    isExpired,
+    inGrace,
+    isInfinite,
+    subscriptionId: activeSub?.id || null,
+    planId: String(activeSub?.plan_id || ''),
+    planName:
+      String(activeSub?.plan_name || '').trim() ||
+      (paidMb > 0 ? `Stockage ${formatStorageMbFr(paidMb)}` : quotaPlanName || 'Plan Étudiant Gratuit'),
+    monthlyPriceFcfa,
+    currency: String(activeSub?.currency || config.primaryCurrency || 'XOF'),
+    currentPeriodStart: activeSub?.current_period_start || activeSub?.started_at || null,
+    currentPeriodEnd: activeSub?.current_period_end || null,
+    graceUntil: activeSub?.grace_until || null,
+    durationDays: subDurationDays,
+    daysUsed,
+    daysRemaining,
+    remainingFraction,
+    consumedCostFcfa,
+    unusedCreditFcfa,
+    renewalMode: isInfinite
+      ? 'infinite'
+      : String(activeSub?.renewal_mode || config.billingMode) === 'auto'
+      ? 'auto'
+      : 'manual',
+  };
+}
+
+export function computeStorageMasterQuote(
+  config: StorageMasterCardConfig,
+  userState: StorageMasterUserState,
+  action: 'upgrade' | 'renew',
+  targetPaidMbInput?: number
+): StorageMasterQuote {
+  const currentPaidMb = Math.max(0, Number(userState.paidMb || 0));
+
+  if (action === 'renew') {
+    if (currentPaidMb <= 0) {
+      return {
+        ok: false,
+        error: "Vous n'avez pas encore d'abonnement stockage actif à renouveler. Ajoutez du stockage avec le bouton +.",
+        action: 'renew',
+        currentPaidMb,
+        targetPaidMb: currentPaidMb,
+        addedMb: 0,
+        addedSteps: 0,
+        oldMonthlyPriceFcfa: 0,
+        newMonthlyPriceFcfa: 0,
+        prorataApplied: false,
+        daysUsed: 0,
+        daysRemaining: 0,
+        consumedCostFcfa: 0,
+        unusedCreditFcfa: 0,
+        amountDueFcfa: 0,
+        durationDays: config.durationDays,
+        billingMode: config.billingMode,
+      };
+    }
+
+    const renewAmount =
+      userState.monthlyPriceFcfa > 0
+        ? userState.monthlyPriceFcfa
+        : Math.max(1, Math.round((currentPaidMb / config.stepMb) * config.pricePerStepFcfa));
+
+    return {
+      ok: true,
+      action: 'renew',
+      currentPaidMb,
+      targetPaidMb: currentPaidMb,
+      addedMb: 0,
+      addedSteps: 0,
+      oldMonthlyPriceFcfa: renewAmount,
+      newMonthlyPriceFcfa: renewAmount,
+      prorataApplied: false,
+      daysUsed: userState.daysUsed,
+      daysRemaining: userState.daysRemaining,
+      consumedCostFcfa: 0,
+      unusedCreditFcfa: 0,
+      amountDueFcfa: renewAmount,
+      durationDays: config.durationDays,
+      billingMode: config.billingMode,
+    };
+  }
+
+  const targetPaidMb = Number(targetPaidMbInput || 0);
+  if (!Number.isFinite(targetPaidMb) || targetPaidMb <= currentPaidMb) {
+    return {
+      ok: false,
+      error: 'Impossible de diminuer le stockage : sélectionnez un quota supérieur à votre stockage actuel.',
+      action: 'upgrade',
+      currentPaidMb,
+      targetPaidMb: currentPaidMb,
+      addedMb: 0,
+      addedSteps: 0,
+      oldMonthlyPriceFcfa: userState.monthlyPriceFcfa,
+      newMonthlyPriceFcfa: userState.monthlyPriceFcfa,
+      prorataApplied: false,
+      daysUsed: userState.daysUsed,
+      daysRemaining: userState.daysRemaining,
+      consumedCostFcfa: 0,
+      unusedCreditFcfa: 0,
+      amountDueFcfa: 0,
+      durationDays: config.durationDays,
+      billingMode: config.billingMode,
+    };
+  }
+
+  const addedMb = Math.round((targetPaidMb - currentPaidMb) * 100) / 100;
+  const rawSteps = addedMb / config.stepMb;
+  const addedSteps = Math.round(rawSteps);
+  if (addedSteps < 1 || Math.abs(rawSteps - addedSteps) > 0.02) {
+    return {
+      ok: false,
+      error: `L'augmentation doit avancer par paliers de ${config.stepValue} ${config.stepUnit === 'GB' ? 'Go' : 'Mo'}.`,
+      action: 'upgrade',
+      currentPaidMb,
+      targetPaidMb,
+      addedMb,
+      addedSteps: 0,
+      oldMonthlyPriceFcfa: userState.monthlyPriceFcfa,
+      newMonthlyPriceFcfa: userState.monthlyPriceFcfa,
+      prorataApplied: false,
+      daysUsed: userState.daysUsed,
+      daysRemaining: userState.daysRemaining,
+      consumedCostFcfa: 0,
+      unusedCreditFcfa: 0,
+      amountDueFcfa: 0,
+      durationDays: config.durationDays,
+      billingMode: config.billingMode,
+    };
+  }
+
+  const exactTargetMb = Math.round((currentPaidMb + addedSteps * config.stepMb) * 100) / 100;
+  if (config.maxStorageMb > 0 && exactTargetMb > config.maxStorageMb) {
+    return {
+      ok: false,
+      error: `Le quota maximal autorisé est de ${formatStorageMbFr(config.maxStorageMb)}.`,
+      action: 'upgrade',
+      currentPaidMb,
+      targetPaidMb: exactTargetMb,
+      addedMb: addedSteps * config.stepMb,
+      addedSteps,
+      oldMonthlyPriceFcfa: userState.monthlyPriceFcfa,
+      newMonthlyPriceFcfa: userState.monthlyPriceFcfa,
+      prorataApplied: false,
+      daysUsed: userState.daysUsed,
+      daysRemaining: userState.daysRemaining,
+      consumedCostFcfa: 0,
+      unusedCreditFcfa: 0,
+      amountDueFcfa: 0,
+      durationDays: config.durationDays,
+      billingMode: config.billingMode,
+    };
+  }
+
+  const oldMonthlyPriceFcfa =
+    currentPaidMb > 0
+      ? userState.monthlyPriceFcfa > 0
+        ? userState.monthlyPriceFcfa
+        : Math.round((currentPaidMb / config.stepMb) * config.pricePerStepFcfa)
+      : 0;
+  const addedMonthlyFcfa = Math.round(addedSteps * config.pricePerStepFcfa);
+  const newMonthlyPriceFcfa = oldMonthlyPriceFcfa + addedMonthlyFcfa;
+
+  const canApplyProrata = Boolean(
+    config.prorataEnabled &&
+      currentPaidMb > 0 &&
+      userState.hasActiveSubscription &&
+      !userState.isExpired &&
+      !userState.isInfinite &&
+      userState.unusedCreditFcfa > 0
+  );
+  const unusedCreditFcfa = canApplyProrata
+    ? Math.min(userState.unusedCreditFcfa, oldMonthlyPriceFcfa)
+    : 0;
+  const consumedCostFcfa = canApplyProrata ? userState.consumedCostFcfa : 0;
+  const rawNet = Math.max(0, newMonthlyPriceFcfa - unusedCreditFcfa);
+  const amountDueFcfa =
+    newMonthlyPriceFcfa >= 100 ? Math.max(100, rawNet) : Math.max(1, rawNet);
+
+  return {
+    ok: true,
+    action: 'upgrade',
+    currentPaidMb,
+    targetPaidMb: exactTargetMb,
+    addedMb: Math.round(addedSteps * config.stepMb * 100) / 100,
+    addedSteps,
+    oldMonthlyPriceFcfa,
+    newMonthlyPriceFcfa,
+    prorataApplied: canApplyProrata && unusedCreditFcfa > 0,
+    daysUsed: canApplyProrata ? userState.daysUsed : 0,
+    daysRemaining: canApplyProrata ? userState.daysRemaining : 0,
+    consumedCostFcfa,
+    unusedCreditFcfa,
+    amountDueFcfa,
+    durationDays: config.durationDays,
+    billingMode: config.billingMode,
+  };
+}
+
+// ============================================================================
 // LIVRAISON ATOMIQUE ANTI-DOUBLE CRÉDIT (STORAGE / AI / APPS)
 // ============================================================================
 
@@ -2021,25 +2520,113 @@ async function fulfillPaidTransaction(
   let resolvedAppKey = sanitizeAppKey(txRow.app_key || txRow.product_type || '');
   let resolvedAppName = String(txRow.app_name || '');
 
+  let masterRecurringPriceOverride: number | null = null;
+  let masterGrantedStorageOverride: number | null = null;
+  let masterPlanNameOverride: string | null = null;
+
   if (txRow.product_type === 'storage') {
-    const plan: any = await db
-      .prepare('SELECT * FROM storage_subscription_plans WHERE id = ? LIMIT 1')
-      .bind(txRow.product_id)
-      .first()
-      .catch(() => null);
+    const masterAction = String(txRow.master_action || '').trim();
+    const isMasterTx =
+      txRow.product_id === 'storage_master_upgrade' ||
+      txRow.product_id === 'storage_master_renew' ||
+      masterAction === 'upgrade' ||
+      masterAction === 'renew';
+
+    const plan: any = !isMasterTx
+      ? await db
+          .prepare('SELECT * FROM storage_subscription_plans WHERE id = ? LIMIT 1')
+          .bind(txRow.product_id)
+          .first()
+          .catch(() => null)
+      : null;
     loadedPlanRow = plan;
     resolvedAppKey = 'storage';
     resolvedAppName = 'Stockage Cloud';
-    grantedStorageMb = Math.max(0, Number(plan?.storage_mb || txRow.granted_storage_mb || 0));
+
+    const existingStorageSub: any = await db
+      .prepare(
+        `SELECT * FROM active_subscriptions
+         WHERE user_id = ? AND product_type = 'storage'
+         ORDER BY updated_at DESC LIMIT 1`
+      )
+      .bind(userId)
+      .first()
+      .catch(() => null);
 
     const currentQuota: any = await db
       .prepare('SELECT * FROM user_storage_quotas WHERE user_id = ? LIMIT 1')
       .bind(userId)
       .first()
       .catch(() => null);
-    const currentPaid = currentQuota ? Number(currentQuota.paid_total_mb || 0) : 0;
+    const currentPaid = currentQuota ? Math.max(0, Number(currentQuota.paid_total_mb || 0)) : 0;
     const wTotal = currentQuota ? Number(currentQuota.welcome_total_mb || 100) : 100;
-    const newPaid = currentPaid + grantedStorageMb;
+
+    let newPaid = currentPaid;
+    let newRecurringPrice = Number(txRow.recurring_price_amount || 0);
+    const txTargetMb = Math.max(0, Number(txRow.target_storage_mb || 0));
+
+    if (masterAction === 'renew' || txRow.product_id === 'storage_master_renew') {
+      // Renouvellement pur : on conserve le quota actuel SANS le doubler, on prolonge la date d'échéance !
+      grantedStorageMb = 0;
+      newPaid = currentPaid > 0 ? currentPaid : Math.max(0, txTargetMb);
+      if (newRecurringPrice <= 0) newRecurringPrice = paidMajor;
+      const baseEnd =
+        existingStorageSub?.status === 'active' ? existingStorageSub.current_period_end : null;
+      entitlementExpiresAt = computeEntitlementExpiration(billingMode, durationDays, baseEnd);
+      masterPlanNameOverride = `Stockage ${formatStorageMbFr(newPaid)}`;
+      deliverySummary = `Abonnement stockage (${formatStorageMbFr(newPaid)}) renouvelé avec succès.`;
+    } else if (masterAction === 'upgrade' || txRow.product_id === 'storage_master_upgrade') {
+      // Montée en gamme Carte Maîtresse : remplace l'ancien forfait principal (avec prorata déjà déduit au paiement)
+      const addedMb = Math.max(0, Number(txRow.granted_storage_mb || 0));
+      newPaid = txTargetMb > currentPaid ? txTargetMb : currentPaid + addedMb;
+      grantedStorageMb = Math.max(0, newPaid - currentPaid);
+      if (newRecurringPrice <= 0) newRecurringPrice = paidMajor;
+      entitlementExpiresAt = computeEntitlementExpiration(billingMode, durationDays, null);
+      masterPlanNameOverride = `Stockage ${formatStorageMbFr(newPaid)}`;
+      const prorataCred = Math.max(0, Number(txRow.prorata_credit_amount || 0));
+      deliverySummary =
+        prorataCred > 0
+          ? `Stockage augmenté à ${formatStorageMbFr(newPaid)} (prorata -${prorataCred.toLocaleString('fr-FR')} FCFA déduit).`
+          : `Stockage augmenté à ${formatStorageMbFr(newPaid)} avec succès.`;
+    } else {
+      // Carte secondaire D1 (premier abonnement ou booster bonus à prix réduit qui s'additionne dans la Carte Maîtresse)
+      grantedStorageMb = Math.max(0, Number(plan?.storage_mb || txRow.granted_storage_mb || 0));
+      newPaid = currentPaid + grantedStorageMb;
+      const prevRecurring =
+        existingStorageSub && existingStorageSub.status === 'active'
+          ? Math.max(0, Number(existingStorageSub.price_amount || 0))
+          : 0;
+      if (newRecurringPrice <= 0) {
+        newRecurringPrice = currentPaid > 0 ? prevRecurring + paidMajor : paidMajor;
+      }
+      const freshEnd = computeEntitlementExpiration(billingMode, durationDays, null);
+      const existingEndMs = existingStorageSub?.current_period_end
+        ? Date.parse(existingStorageSub.current_period_end)
+        : NaN;
+      const freshEndMs = freshEnd ? Date.parse(freshEnd) : NaN;
+      if (
+        currentPaid > 0 &&
+        Number.isFinite(existingEndMs) &&
+        Number.isFinite(freshEndMs) &&
+        existingEndMs > freshEndMs
+      ) {
+        entitlementExpiresAt = existingStorageSub.current_period_end;
+      } else {
+        entitlementExpiresAt = freshEnd;
+      }
+      masterPlanNameOverride =
+        currentPaid > 0
+          ? `Stockage ${formatStorageMbFr(newPaid)}`
+          : String(txRow.product_name || plan?.name || `Stockage ${formatStorageMbFr(newPaid)}`);
+      const goLabel = formatStorageMbFr(grantedStorageMb);
+      deliverySummary =
+        currentPaid > 0
+          ? `+${goLabel} ajoutés à votre forfait ! Stockage payant total : ${formatStorageMbFr(newPaid)}.`
+          : `+${goLabel} ajoutés à votre stockage Cloud.`;
+    }
+
+    masterRecurringPriceOverride = newRecurringPrice;
+    masterGrantedStorageOverride = newPaid;
     const newTotal = wTotal + newPaid;
 
     await db
@@ -2063,14 +2650,20 @@ async function fulfillPaidTransaction(
         newPaid,
         Math.round(newPaid / 2),
         Math.round(newPaid / 2),
-        txRow.product_name || 'Stockage Payant'
+        masterPlanNameOverride || txRow.product_name || 'Stockage Payant'
       )
       .run()
       .catch(() => {});
 
-    entitlementExpiresAt = computeEntitlementExpiration(billingMode, durationDays, null);
+    // Remplacer proprement tout ancien abonnement stockage dans user_subscriptions (zéro doublon)
+    await db
+      .prepare(
+        "UPDATE user_subscriptions SET status = 'replaced', updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status = 'active'"
+      )
+      .bind(userId)
+      .run()
+      .catch(() => {});
 
-    // Enregistrer l'abonnement actif dans user_subscriptions + historique d'achat
     const subId = `sub_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
     await db
       .prepare(
@@ -2086,9 +2679,9 @@ async function fulfillPaidTransaction(
         txRow.user_name || '',
         txRow.user_phone || '',
         txRow.user_email || '',
-        txRow.product_name || 'Pack Stockage',
+        masterPlanNameOverride || txRow.product_name || 'Pack Stockage',
         newTotal,
-        paidMajor,
+        newRecurringPrice,
         txRow.currency || 'XOF',
         nowIso,
         entitlementExpiresAt || '',
@@ -2113,7 +2706,7 @@ async function fulfillPaidTransaction(
         txRow.user_name || '',
         txRow.user_email || '',
         txRow.user_phone || '',
-        txRow.product_name || 'Pack Stockage',
+        masterPlanNameOverride || txRow.product_name || 'Pack Stockage',
         grantedStorageMb,
         newTotal,
         paidMajor,
@@ -2127,12 +2720,6 @@ async function fulfillPaidTransaction(
       )
       .run()
       .catch(() => {});
-
-    const goLabel =
-      grantedStorageMb >= 1024
-        ? `${(grantedStorageMb / 1024).toFixed(grantedStorageMb % 1024 === 0 ? 0 : 1)} Go`
-        : `${grantedStorageMb} Mo`;
-    deliverySummary = `+${goLabel} ajoutés à votre stockage Cloud.`;
   } else if (txRow.product_type === 'ai') {
     const plan: any = await db
       .prepare('SELECT * FROM ai_subscription_plans WHERE id = ? LIMIT 1')
@@ -2447,6 +3034,14 @@ async function fulfillPaidTransaction(
       ['past_due', 'grace', 'blocked', 'expired'].includes(String(existingMasterSub.status || ''))
   );
 
+  const storedMasterPrice =
+    masterRecurringPriceOverride !== null && masterRecurringPriceOverride > 0
+      ? masterRecurringPriceOverride
+      : paidMajor;
+  const storedMasterStorageMb =
+    masterGrantedStorageOverride !== null ? masterGrantedStorageOverride : grantedStorageMb;
+  const storedMasterPlanName = masterPlanNameOverride || txRow.product_name || 'Forfait StudyCloud';
+
   if (existingMasterSub) {
     await db
       .prepare(
@@ -2489,7 +3084,7 @@ async function fulfillPaidTransaction(
         txRow.user_phone || '',
         resolvedAppName,
         txRow.product_id || '',
-        txRow.product_name || 'Forfait StudyCloud',
+        storedMasterPlanName,
         finalIsInfinite,
         planFlags.allowAuto,
         planFlags.allowManual,
@@ -2498,11 +3093,11 @@ async function fulfillPaidTransaction(
         effectivePaymentMethod?.id || '',
         channel,
         networkLabel,
-        paidMajor,
+        storedMasterPrice,
         txRow.currency || 'XOF',
         txRow.billing_cycle || planFlags.billingMode,
         finalIsInfinite === 1 ? 0 : durationDays,
-        grantedStorageMb,
+        storedMasterStorageMb,
         grantedAiCredits,
         nowIso,
         finalPeriodEnd,
@@ -2538,7 +3133,7 @@ async function fulfillPaidTransaction(
         resolvedAppKey,
         resolvedAppName,
         txRow.product_id || '',
-        txRow.product_name || 'Forfait StudyCloud',
+        storedMasterPlanName,
         finalIsInfinite,
         planFlags.allowAuto,
         planFlags.allowManual,
@@ -2546,11 +3141,11 @@ async function fulfillPaidTransaction(
         effectivePaymentMethod?.id || '',
         channel,
         networkLabel,
-        paidMajor,
+        storedMasterPrice,
         txRow.currency || 'XOF',
         txRow.billing_cycle || planFlags.billingMode,
         finalIsInfinite === 1 ? 0 : durationDays,
-        grantedStorageMb,
+        storedMasterStorageMb,
         grantedAiCredits,
         nowIso,
         nowIso,
@@ -2785,6 +3380,37 @@ export async function handlePaystackBillingRoutes(
   if (path === '/api/payments/config' && method === 'GET') {
     const config = await readPaymentGatewayConfig(db, rawEnv);
     return jsonResponse({ success: true, config }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 1b. GET /api/billing/storage-master-card/status — État D1 en direct de la Carte Maîtresse Stockage
+  // --------------------------------------------------------------------------
+  if (path === '/api/billing/storage-master-card/status' && method === 'GET') {
+    const config = await readStorageMasterCardConfig(db);
+    const authUser = await getAuthUser(request).catch(() => null);
+    const uid = String(authUser?.userId || '').trim();
+    const userState = await readStorageMasterUserState(db, uid, config);
+    return jsonResponse({ success: true, config, userState }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 1c. POST /api/billing/storage-master-card/quote — Devis serveur exact (avec prorata)
+  // --------------------------------------------------------------------------
+  if (path === '/api/billing/storage-master-card/quote' && method === 'POST') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const body: any = await request.json().catch(() => ({}));
+    const action: 'upgrade' | 'renew' = body.action === 'renew' ? 'renew' : 'upgrade';
+    const targetPaidMb = Number(body.targetPaidMb || 0);
+    const config = await readStorageMasterCardConfig(db);
+    const userState = await readStorageMasterUserState(db, String(authUser.userId), config);
+    const quote = computeStorageMasterQuote(config, userState, action, targetPaidMb);
+    if (!quote.ok) {
+      return errorResponse(quote.error || 'Calcul impossible.', 400, origin);
+    }
+    return jsonResponse({ success: true, config, userState, quote }, 200, origin);
   }
 
   // --------------------------------------------------------------------------
@@ -3024,16 +3650,87 @@ export async function handlePaystackBillingRoutes(
     let appName = '';
     let grantedStorageMb = 0;
     let grantedAiCredits = 0;
+    let targetStorageMb = 0;
+    let recurringPriceAmount = 0;
+    let masterAction = '';
+    let prorataCreditAmount = 0;
+    let masterPriceOverrideMajor: number | null = null;
+    let masterDurationOverride: number | null = null;
+    let masterBillingModeOverride: BillingMode | null = null;
 
     if (productType === 'storage') {
       planTable = 'storage_subscription_plans';
-      planRow = await db
-        .prepare('SELECT * FROM storage_subscription_plans WHERE id = ? AND (is_active = 1 OR is_active IS NULL) LIMIT 1')
-        .bind(productId)
-        .first();
       appKey = 'storage';
       appName = 'Stockage Cloud';
-      grantedStorageMb = Math.max(0, Number(planRow?.storage_mb || 0));
+
+      if (productId === 'storage_master_upgrade' || productId === 'storage_master_renew') {
+        const masterCfg = await readStorageMasterCardConfig(db);
+        if (!masterCfg.enabled) {
+          return errorResponse('La Carte Maîtresse de stockage est temporairement désactivée.', 400, origin);
+        }
+        const userState = await readStorageMasterUserState(db, userId, masterCfg);
+        const actionType: 'upgrade' | 'renew' =
+          productId === 'storage_master_renew' ? 'renew' : 'upgrade';
+        const quote = computeStorageMasterQuote(
+          masterCfg,
+          userState,
+          actionType,
+          Number(body.targetPaidMb || 0)
+        );
+        if (!quote.ok) {
+          return errorResponse(quote.error || 'Opération stockage invalide.', 400, origin);
+        }
+        masterAction = actionType;
+        grantedStorageMb = quote.addedMb;
+        targetStorageMb = quote.targetPaidMb;
+        recurringPriceAmount = quote.newMonthlyPriceFcfa;
+        prorataCreditAmount = quote.unusedCreditFcfa;
+        masterPriceOverrideMajor = quote.amountDueFcfa;
+        masterDurationOverride = quote.durationDays;
+        masterBillingModeOverride = quote.billingMode;
+        planRow = {
+          id: productId,
+          name:
+            actionType === 'renew'
+              ? `Renouvellement Stockage ${formatStorageMbFr(quote.targetPaidMb)}`
+              : `Stockage ${formatStorageMbFr(quote.targetPaidMb)}`,
+          storage_mb: quote.addedMb,
+          price: quote.amountDueFcfa,
+          primary_currency: 'XOF',
+          billing_mode: quote.billingMode,
+          duration_days: quote.durationDays,
+          is_auto_billing: quote.billingMode === 'auto' ? 1 : 0,
+        };
+      } else {
+        planRow = await db
+          .prepare('SELECT * FROM storage_subscription_plans WHERE id = ? AND (is_active = 1 OR is_active IS NULL) LIMIT 1')
+          .bind(productId)
+          .first();
+        if (planRow) {
+          grantedStorageMb = Math.max(0, Number(planRow?.storage_mb || 0));
+          const masterCfg = await readStorageMasterCardConfig(db);
+          const userState = await readStorageMasterUserState(db, userId, masterCfg);
+          if (
+            userState.hasActiveSubscription &&
+            !userState.isExpired &&
+            userState.planId === String(planRow.id) &&
+            userState.paidMb >= grantedStorageMb
+          ) {
+            return errorResponse(
+              'Vous êtes déjà abonné à ce forfait de stockage. Utilisez la Carte Maîtresse pour le renouveler ou augmenter votre quota.',
+              409,
+              origin
+            );
+          }
+          if (userState.paidMb > 0) {
+            masterAction = 'booster';
+            targetStorageMb = userState.paidMb + grantedStorageMb;
+          } else {
+            masterAction = 'initial_card';
+            targetStorageMb = grantedStorageMb;
+          }
+        }
+      }
     } else if (productType === 'ai') {
       planTable = 'ai_subscription_plans';
       planRow = await db
@@ -3064,16 +3761,32 @@ export async function handlePaystackBillingRoutes(
       return errorResponse('Forfait introuvable ou désactivé.', 404, origin);
     }
 
-    const billingMode = normalizeBillingMode(
-      planRow.billing_mode,
-      planRow.is_auto_billing,
-      planRow.pricing_model
-    );
-    const { amountMajor, currency, durationDays } = resolvePlanPriceMajor(
+    const billingMode =
+      masterBillingModeOverride ||
+      normalizeBillingMode(
+        planRow.billing_mode,
+        planRow.is_auto_billing,
+        planRow.pricing_model
+      );
+    const resolvedPricing = resolvePlanPriceMajor(
       planRow,
       billingMode === 'infinite' ? 'infinite' : billingCycle,
       requestedCurrency
     );
+    const amountMajor =
+      masterPriceOverrideMajor !== null ? masterPriceOverrideMajor : resolvedPricing.amountMajor;
+    const currency = masterPriceOverrideMajor !== null ? 'XOF' : resolvedPricing.currency;
+    const durationDays =
+      masterDurationOverride !== null ? masterDurationOverride : resolvedPricing.durationDays;
+    if (productType === 'storage' && recurringPriceAmount <= 0) {
+      if (masterAction === 'booster') {
+        const masterCfg = await readStorageMasterCardConfig(db);
+        const uState = await readStorageMasterUserState(db, userId, masterCfg);
+        recurringPriceAmount = (uState.monthlyPriceFcfa || 0) + amountMajor;
+      } else {
+        recurringPriceAmount = amountMajor;
+      }
+    }
     const amountMinor = toPaystackAmountMinor(amountMajor);
 
     if (amountMinor <= 0) {
@@ -3164,8 +3877,9 @@ export async function handlePaystackBillingRoutes(
            billing_mode, billing_cycle, duration_days,
            expected_amount, expected_amount_minor, currency,
            provider, status, granted_storage_mb, granted_ai_credits,
+           target_storage_mb, recurring_price_amount, master_action, prorata_credit_amount,
            created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paystack', 'pending', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paystack', 'pending', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
       )
       .bind(
         txId,
@@ -3186,7 +3900,11 @@ export async function handlePaystackBillingRoutes(
         amountMinor,
         currency,
         grantedStorageMb,
-        grantedAiCredits
+        grantedAiCredits,
+        targetStorageMb,
+        recurringPriceAmount,
+        masterAction,
+        prorataCreditAmount
       )
       .run();
 
@@ -3794,15 +4512,86 @@ export async function handlePaystackBillingRoutes(
     let appName = '';
     let grantedStorageMb = 0;
     let grantedAiCredits = 0;
+    let targetStorageMb = 0;
+    let recurringPriceAmount = 0;
+    let masterAction = '';
+    let prorataCreditAmount = 0;
+    let masterPriceOverrideMajor: number | null = null;
+    let masterDurationOverride: number | null = null;
+    let masterBillingModeOverride: BillingMode | null = null;
 
     if (productType === 'storage') {
-      planRow = await db
-        .prepare('SELECT * FROM storage_subscription_plans WHERE id = ? AND (is_active = 1 OR is_active IS NULL) LIMIT 1')
-        .bind(productId)
-        .first();
       appKey = 'storage';
       appName = 'Stockage Cloud';
-      grantedStorageMb = Math.max(0, Number(planRow?.storage_mb || 0));
+
+      if (productId === 'storage_master_upgrade' || productId === 'storage_master_renew') {
+        const masterCfg = await readStorageMasterCardConfig(db);
+        if (!masterCfg.enabled) {
+          return errorResponse('La Carte Maîtresse de stockage est temporairement désactivée.', 400, origin);
+        }
+        const userState = await readStorageMasterUserState(db, userId, masterCfg);
+        const actionType: 'upgrade' | 'renew' =
+          productId === 'storage_master_renew' ? 'renew' : 'upgrade';
+        const quote = computeStorageMasterQuote(
+          masterCfg,
+          userState,
+          actionType,
+          Number(body.targetPaidMb || 0)
+        );
+        if (!quote.ok) {
+          return errorResponse(quote.error || 'Opération stockage invalide.', 400, origin);
+        }
+        masterAction = actionType;
+        grantedStorageMb = quote.addedMb;
+        targetStorageMb = quote.targetPaidMb;
+        recurringPriceAmount = quote.newMonthlyPriceFcfa;
+        prorataCreditAmount = quote.unusedCreditFcfa;
+        masterPriceOverrideMajor = quote.amountDueFcfa;
+        masterDurationOverride = quote.durationDays;
+        masterBillingModeOverride = quote.billingMode;
+        planRow = {
+          id: productId,
+          name:
+            actionType === 'renew'
+              ? `Renouvellement Stockage ${formatStorageMbFr(quote.targetPaidMb)}`
+              : `Stockage ${formatStorageMbFr(quote.targetPaidMb)}`,
+          storage_mb: quote.addedMb,
+          price: quote.amountDueFcfa,
+          primary_currency: 'XOF',
+          billing_mode: quote.billingMode,
+          duration_days: quote.durationDays,
+          is_auto_billing: quote.billingMode === 'auto' ? 1 : 0,
+        };
+      } else {
+        planRow = await db
+          .prepare('SELECT * FROM storage_subscription_plans WHERE id = ? AND (is_active = 1 OR is_active IS NULL) LIMIT 1')
+          .bind(productId)
+          .first();
+        if (planRow) {
+          grantedStorageMb = Math.max(0, Number(planRow?.storage_mb || 0));
+          const masterCfg = await readStorageMasterCardConfig(db);
+          const userState = await readStorageMasterUserState(db, userId, masterCfg);
+          if (
+            userState.hasActiveSubscription &&
+            !userState.isExpired &&
+            userState.planId === String(planRow.id) &&
+            userState.paidMb >= grantedStorageMb
+          ) {
+            return errorResponse(
+              'Vous êtes déjà abonné à ce forfait de stockage. Utilisez la Carte Maîtresse pour le renouveler ou augmenter votre quota.',
+              409,
+              origin
+            );
+          }
+          if (userState.paidMb > 0) {
+            masterAction = 'booster';
+            targetStorageMb = userState.paidMb + grantedStorageMb;
+          } else {
+            masterAction = 'initial_card';
+            targetStorageMb = grantedStorageMb;
+          }
+        }
+      }
     } else if (productType === 'ai') {
       planRow = await db
         .prepare('SELECT * FROM ai_subscription_plans WHERE id = ? AND (is_active = 1 OR is_active IS NULL) LIMIT 1')
@@ -3831,16 +4620,32 @@ export async function handlePaystackBillingRoutes(
       return errorResponse('Forfait introuvable ou désactivé.', 404, origin);
     }
 
-    const billingMode = normalizeBillingMode(
-      planRow.billing_mode,
-      planRow.is_auto_billing,
-      planRow.pricing_model
-    );
-    const { amountMajor, currency, durationDays } = resolvePlanPriceMajor(
+    const billingMode =
+      masterBillingModeOverride ||
+      normalizeBillingMode(
+        planRow.billing_mode,
+        planRow.is_auto_billing,
+        planRow.pricing_model
+      );
+    const resolvedPricing = resolvePlanPriceMajor(
       planRow,
       billingMode === 'infinite' ? 'infinite' : billingCycle,
       'XOF'
     );
+    const amountMajor =
+      masterPriceOverrideMajor !== null ? masterPriceOverrideMajor : resolvedPricing.amountMajor;
+    const currency = masterPriceOverrideMajor !== null ? 'XOF' : resolvedPricing.currency;
+    const durationDays =
+      masterDurationOverride !== null ? masterDurationOverride : resolvedPricing.durationDays;
+    if (productType === 'storage' && recurringPriceAmount <= 0) {
+      if (masterAction === 'booster') {
+        const masterCfg = await readStorageMasterCardConfig(db);
+        const uState = await readStorageMasterUserState(db, userId, masterCfg);
+        recurringPriceAmount = (uState.monthlyPriceFcfa || 0) + amountMajor;
+      } else {
+        recurringPriceAmount = amountMajor;
+      }
+    }
     const amountMinor = toPaystackAmountMinor(amountMajor);
     if (amountMinor <= 0) {
       return errorResponse('Montant du forfait invalide.', 400, origin);
@@ -3858,8 +4663,9 @@ export async function handlePaystackBillingRoutes(
            billing_mode, billing_cycle, duration_days,
            expected_amount, expected_amount_minor, currency,
            provider, channel, network_label, status, granted_storage_mb, granted_ai_credits,
+           target_storage_mb, recurring_price_amount, master_action, prorata_credit_amount,
            created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paystack', 'mobile_money', ?, 'pending', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paystack', 'mobile_money', ?, 'pending', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
       )
       .bind(
         txId,
@@ -3881,7 +4687,11 @@ export async function handlePaystackBillingRoutes(
         currency,
         networkLabel,
         grantedStorageMb,
-        grantedAiCredits
+        grantedAiCredits,
+        targetStorageMb,
+        recurringPriceAmount,
+        masterAction,
+        prorataCreditAmount
       )
       .run();
 
@@ -5196,6 +6006,77 @@ export async function handlePaystackBillingRoutes(
       200,
       origin
     );
+  }
+
+  // --------------------------------------------------------------------------
+  // 20b. GET/POST /api/admin/billing/storage-master-config — Réglages Carte Maîtresse Stockage D1
+  // --------------------------------------------------------------------------
+  if (path === '/api/admin/billing/storage-master-config' && method === 'GET') {
+    const config = await readStorageMasterCardConfig(db);
+    return jsonResponse({ success: true, config }, 200, origin);
+  }
+
+  if (path === '/api/admin/billing/storage-master-config' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const enabled = body.enabled === false || body.enabled === 0 ? 0 : 1;
+    const title = String(body.title || 'Mon Stockage Évolutif').trim().slice(0, 80) || 'Mon Stockage Évolutif';
+    const subtitle =
+      String(body.subtitle || 'Augmentez votre espace à tout moment selon vos besoins').trim().slice(0, 180) ||
+      'Augmentez votre espace à tout moment selon vos besoins';
+    const stepValue = Number(body.stepValue ?? body.step_value ?? 100);
+    if (!Number.isFinite(stepValue) || stepValue <= 0 || stepValue > 1000000) {
+      return errorResponse('Pas d’incrémentation invalide (doit être supérieur à 0).', 400, origin);
+    }
+    const stepUnit = String(body.stepUnit ?? body.step_unit ?? 'MB').toUpperCase() === 'GB' ? 'GB' : 'MB';
+    const pricePerStep = Number(body.pricePerStep ?? body.price_per_step ?? 100);
+    if (!Number.isFinite(pricePerStep) || pricePerStep <= 0) {
+      return errorResponse('Prix par palier invalide (doit être supérieur à 0).', 400, origin);
+    }
+    const rawCurr = String(body.primaryCurrency ?? body.primary_currency ?? 'XOF').toUpperCase();
+    const primaryCurrency = rawCurr === 'USD' ? 'USD' : rawCurr === 'EUR' ? 'EUR' : 'XOF';
+    const durationDays = Math.max(1, Math.min(3650, Math.round(Number(body.durationDays ?? body.duration_days ?? 30) || 30)));
+    const maxStorageMb = Math.max(0, Number(body.maxStorageMb ?? body.max_storage_mb ?? 0) || 0);
+    const billingMode =
+      String(body.billingMode ?? body.billing_mode ?? 'manual').toLowerCase() === 'auto' ? 'auto' : 'manual';
+    const prorataEnabled = body.prorataEnabled === false || body.prorataEnabled === 0 || body.prorata_enabled === 0 ? 0 : 1;
+
+    await db
+      .prepare(
+        `INSERT INTO storage_master_card_config (
+           id, enabled, title, subtitle, step_value, step_unit, price_per_step,
+           primary_currency, duration_days, max_storage_mb, billing_mode, prorata_enabled, updated_at
+         ) VALUES ('default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(id) DO UPDATE SET
+           enabled = excluded.enabled,
+           title = excluded.title,
+           subtitle = excluded.subtitle,
+           step_value = excluded.step_value,
+           step_unit = excluded.step_unit,
+           price_per_step = excluded.price_per_step,
+           primary_currency = excluded.primary_currency,
+           duration_days = excluded.duration_days,
+           max_storage_mb = excluded.max_storage_mb,
+           billing_mode = excluded.billing_mode,
+           prorata_enabled = excluded.prorata_enabled,
+           updated_at = CURRENT_TIMESTAMP`
+      )
+      .bind(
+        enabled,
+        title,
+        subtitle,
+        stepValue,
+        stepUnit,
+        pricePerStep,
+        primaryCurrency,
+        durationDays,
+        maxStorageMb,
+        billingMode,
+        prorataEnabled
+      )
+      .run();
+
+    const config = await readStorageMasterCardConfig(db);
+    return jsonResponse({ success: true, config }, 200, origin);
   }
 
   const adminSubDetailsMatch = path.match(/^\/api\/admin\/billing\/subscriptions\/([^/]+)\/details$/);

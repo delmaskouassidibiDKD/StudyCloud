@@ -16,6 +16,7 @@ import {
 } from 'lucide-react';
 import { SubscriptionFormView, SelectedPlan } from './SubscriptionFormView';
 import { StudyCloudPaymentView, StudyCloudPaymentTarget } from './StudyCloudPaymentView';
+import { StorageMasterCard } from './StorageMasterCard';
 import { getSubscriptionPlans, SubscriptionPlan } from '../services/api';
 import {
   AppAccessResponse,
@@ -24,11 +25,13 @@ import {
   DEFAULT_PAYMENT_GATEWAY_CONFIG,
   getMonetizedApps,
   getPaymentGatewayConfig,
+  getStorageMasterCardStatus,
   MonetizedAppRecord,
   normalizeClientBillingMode,
   PaymentGatewayConfig,
   shouldShowManualReceiptButton,
   startAppFreeTrial,
+  StorageMasterStatusResponse,
 } from '../services/paystackBillingApi';
 
 type MonetizedAppWithPlans = MonetizedAppRecord & { plans: AppSubscriptionPlanRecord[] };
@@ -177,6 +180,14 @@ export const PricingView: React.FC<PricingViewProps> = ({
   const [dbStoragePlans, setDbStoragePlans] = useState<SubscriptionPlan[]>([]);
   const [dbAiPlans, setDbAiPlans] = useState<SubscriptionPlan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState<boolean>(true);
+  const [masterStorageStatus, setMasterStorageStatus] = useState<StorageMasterStatusResponse | null>(null);
+
+  const refreshMasterStorageStatus = useCallback(async () => {
+    const status = await getStorageMasterCardStatus();
+    if (status) {
+      setMasterStorageStatus(status);
+    }
+  }, []);
 
   // Catalogue dynamique des applications monétisées (créées dans le tableau de bord)
   const [monetizedApps, setMonetizedApps] = useState<MonetizedAppWithPlans[]>([]);
@@ -281,6 +292,14 @@ export const PricingView: React.FC<PricingViewProps> = ({
       };
     }
 
+    if (activeTab === 'storage') {
+      getStorageMasterCardStatus()
+        .then((st) => {
+          if (isMounted && st) setMasterStorageStatus(st);
+        })
+        .catch(() => {});
+    }
+
     getSubscriptionPlans()
       .then((res) => {
         if (isMounted && res && res.success) {
@@ -288,12 +307,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
           const aPlans = Array.isArray(res.aiPlans) ? res.aiPlans : [];
           setDbStoragePlans(sPlans);
           setDbAiPlans(aPlans);
-
-          // Si l'administrateur a créé uniquement des cartes IA et aucun stockage,
-          // basculer intelligemment sur l'onglet 'ai' pour que la carte s'affiche directement
-          if (sPlans.length === 0 && aPlans.length > 0 && activeTab === 'storage') {
-            setActiveTab('ai');
-          }
         }
       })
       .catch((err) => {
@@ -312,6 +325,19 @@ export const PricingView: React.FC<PricingViewProps> = ({
     };
   }, [activeTab]);
 
+  // Resynchronisation instantanée de la Carte Maîtresse après tout paiement ou mise à jour d'abonnement
+  useEffect(() => {
+    const onSubUpdated = () => {
+      refreshMasterStorageStatus();
+    };
+    window.addEventListener('studycloud_payment_verified', onSubUpdated);
+    window.addEventListener('studycloud_subscription_updated', onSubUpdated);
+    return () => {
+      window.removeEventListener('studycloud_payment_verified', onSubUpdated);
+      window.removeEventListener('studycloud_subscription_updated', onSubUpdated);
+    };
+  }, [refreshMasterStorageStatus]);
+
   // Écran de paiement 100 % sur mesure StudyCloud (Option 3 : Wave / Orange / MTN Charge API + Carte sécurisée)
   if (activeCustomPayment) {
     return (
@@ -323,11 +349,15 @@ export const PricingView: React.FC<PricingViewProps> = ({
           onSuccess={() => {
             const name = activeCustomPayment.target.productName;
             const wasApp = activeCustomPayment.target.productType === 'app';
+            const wasStorage = activeCustomPayment.target.productType === 'storage';
             setActiveCustomPayment(null);
             if (wasApp && selectedAppKey) {
               checkAppAccess(selectedAppKey)
                 .then((res) => setSelectedAppAccess(res))
                 .catch(() => {});
+            }
+            if (wasStorage) {
+              refreshMasterStorageStatus();
             }
             onSelectPlan(name);
           }}
@@ -569,8 +599,45 @@ export const PricingView: React.FC<PricingViewProps> = ({
             ? 'one_time'
             : 'monthly';
 
+          const masterUser = type === 'storage' ? masterStorageStatus?.userState : null;
+          const isExactActiveStoragePlan = Boolean(
+            type === 'storage' &&
+              masterUser &&
+              masterUser.hasActiveSubscription &&
+              !masterUser.isExpired &&
+              masterUser.planId === plan.id &&
+              masterUser.paidMb >= Number(plan.storage_mb || 0)
+          );
+          const isStorageBoosterMode = Boolean(
+            type === 'storage' &&
+              masterUser &&
+              masterUser.paidMb > 0 &&
+              !isExactActiveStoragePlan
+          );
+
+          if (isExactActiveStoragePlan) {
+            return (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    document.getElementById('storage-master-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                  }}
+                  className="w-full py-2.5 sm:py-3 px-3 rounded-xl bg-emerald-600/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/35 text-xs sm:text-sm font-extrabold text-center cursor-pointer hover:bg-emerald-600/20 transition-all"
+                >
+                  ✓ Déjà actif — Renouveler / augmenter sur la Carte Maîtresse
+                </button>
+              </div>
+            );
+          }
+
           return (
             <div className="space-y-2">
+              {isStorageBoosterMode && (
+                <div className="text-[11px] font-bold px-2.5 py-1.5 rounded-lg bg-amber-500/15 text-amber-700 dark:text-amber-300 border border-amber-400/30 text-center">
+                  ⚡ Bonus rapide : s'ajoute directement à votre Carte Maîtresse
+                </div>
+              )}
               {isPaystackAvailable ? (
                 <button
                   type="button"
@@ -580,7 +647,9 @@ export const PricingView: React.FC<PricingViewProps> = ({
                         productType: type,
                         productId: plan.id,
                         productName: plan.name,
-                        subtitle: lockedPerkText,
+                        subtitle: isStorageBoosterMode
+                          ? `Booster +${lockedPerkText} ajouté à votre forfait actuel`
+                          : lockedPerkText,
                         description: plan.description || undefined,
                         features: activeFeatures.map((f) => f.text).filter(Boolean),
                         periodLabel: isInfinite || isOneTime ? undefined : durationDays === 30 ? '/ mois' : `/ ${durationDays} jours`,
@@ -603,7 +672,13 @@ export const PricingView: React.FC<PricingViewProps> = ({
                   }`}
                 >
                   <span>
-                    {isInfinite ? 'Obtenir à vie' : isAuto ? "S'abonner" : 'Choisir cette offre'}
+                    {isStorageBoosterMode
+                      ? `Ajouter +${lockedPerkText}`
+                      : isInfinite
+                      ? 'Obtenir à vie'
+                      : isAuto
+                      ? "S'abonner"
+                      : 'Choisir cette offre'}
                   </span>
                 </button>
               ) : showManualUnderneath ? (
@@ -1177,20 +1252,38 @@ export const PricingView: React.FC<PricingViewProps> = ({
               renderSkeletonCards()
             ) : (
               <>
-                {/* 1. SECTION : ABONNEMENTS STOCKAGE (DYNAMIQUES DEPUIS LA BASE DE DONNÉES)  */}
-                {activeTab === 'storage' && (
-                  dbStoragePlans.filter(plan => plan.is_active !== 0).length > 0 ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-1 sm:px-2">
-                      {dbStoragePlans.filter(plan => plan.is_active !== 0).map(plan => renderCard(plan, 'storage'))}
-                    </div>
-                  ) : (
+                {/* 1. SECTION : ABONNEMENTS STOCKAGE (CARTE MAÎTRESSE + CARTES BONUS D1)  */}
+                {activeTab === 'storage' && (() => {
+                  const activeStorageCards = dbStoragePlans.filter(plan => plan.is_active !== 0);
+                  const showMasterCard = Boolean(masterStorageStatus?.config?.enabled);
+                  if (showMasterCard || activeStorageCards.length > 0) {
+                    return (
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 sm:gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-1 sm:px-2">
+                        {showMasterCard && masterStorageStatus && (
+                          <StorageMasterCard
+                            config={masterStorageStatus.config}
+                            userState={masterStorageStatus.userState}
+                            paymentConfig={paymentConfig}
+                            onStartCustomPayment={(target, manualPlan) =>
+                              setActiveCustomPayment({ target, manualPlan })
+                            }
+                            onStartManualPayment={(manualPlan) =>
+                              setSelectedPlanForSubscription(manualPlan)
+                            }
+                          />
+                        )}
+                        {activeStorageCards.map(plan => renderCard(plan, 'storage'))}
+                      </div>
+                    );
+                  }
+                  return (
                     <div className="col-span-full py-14 text-center bg-white dark:bg-[#111827] rounded-2xl border border-dashed border-slate-300 dark:border-slate-700 p-6 sm:p-8 max-w-xl mx-auto mb-20 shadow-xs">
                       <div className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center mx-auto mb-4 text-2xl">💾</div>
                       <h3 className="text-lg font-bold text-slate-900 dark:text-white mb-2">Aucune offre de stockage pour le moment</h3>
                       <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 leading-relaxed">Les cartes d'abonnement de stockage créées dans le tableau de bord administrateur s'afficheront ici automatiquement.</p>
                     </div>
-                  )
-                )}
+                  );
+                })()}
 
                 {/* 2. SECTION : ASSISTANTE STUDYCLOUD (DYNAMIQUES DEPUIS LA BASE DE DONNÉES) */}
                 {activeTab === 'ai' && (

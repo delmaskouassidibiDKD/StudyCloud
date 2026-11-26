@@ -53,6 +53,7 @@ export interface StudyCloudPaymentTarget {
   billingCycle: 'monthly' | 'annual' | 'one_time' | 'infinite';
   billingMode: ClientBillingMode;
   durationDays: number;
+  targetPaidMb?: number;
 }
 
 interface StudyCloudPaymentViewProps {
@@ -332,6 +333,7 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
         provider: method as MobileMoneyProvider,
         phone: validation.paystackPhone,
         countryIso: selectedCountry.iso,
+        targetPaidMb: target.targetPaidMb,
       });
 
       if (!res.success) {
@@ -426,9 +428,8 @@ export const StudyCloudPaymentView: React.FC<StudyCloudPaymentViewProps> = ({
         billingCycle: target.billingCycle,
         currency: 'XOF',
         channelOnly,
-        // StudyCloud pilote le renouvellement via active_subscriptions + charge_authorization (Étape 3/7)
-        // afin que le choix Auto/Manuel sur l'écran vert et le tableau admin gardent 100% le contrôle.
         preferAutoCard: false,
+        targetPaidMb: target.targetPaidMb,
       });
 
       if (!initRes.success || !initRes.accessCode) {
