@@ -316,6 +316,13 @@ export async function sendChatMessageToAi(params: {
   conversation_id?: string;
   raw_response?: string;
   rawResponse?: string;
+  structured_actions?: any[];
+  agent_loop?: {
+    enabled: boolean;
+    mode: string;
+    steps: number;
+    toolCalls: Array<{ step: number; tool: string; status: string; summary: string }>;
+  };
   perceptionReport?: string;
   async?: boolean;
   isBackground?: boolean;
@@ -782,6 +789,8 @@ export async function sendChatMessageToAi(params: {
     conversation_id: data.conversation_id || params.conversationId,
     raw_response: rawFull,
     rawResponse: rawFull,
+    structured_actions: Array.isArray(data.structured_actions) ? data.structured_actions : undefined,
+    agent_loop: data.agent_loop || undefined,
     perceptionReport: data.perceptionReport || undefined,
     async: Boolean(data.async),
     isBackground: Boolean(data.isBackground || isAsyncBackground),

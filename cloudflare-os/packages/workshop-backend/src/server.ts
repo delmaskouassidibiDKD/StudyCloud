@@ -37,7 +37,11 @@ import { retryOnDoReset, wrapDoStubForTelemetry } from "./do-retry";
 
 import { getBasePedagogicalRules, getCreationSpecificRule, getCommonDeepCreationDirective } from "./creations/prompts";
 import { validateAndFormatCreation } from "./creations/validator";
+import type { CreationResult } from "./creations/types";
 import { isChefModel, orchestrateMultiAgentTeam } from "./ai-team/orchestrator";
+import { createCloudflareOpenAiRequester, type AgentToolTraceEntry } from "./agent-loop/toolLoopCore";
+import { runTeacherDelmasAgentLoop, type DelmasActionItem } from "./agent-loop/teacherDelmasAgent";
+import { runCreationStudioAgentLoop } from "./agent-loop/creationStudioAgent";
 
 const logger = createWorkshopLogger("workshop.server");
 
@@ -1781,6 +1785,16 @@ CONSIGNES STRICTES DE CONTINUATION :
           let answerText = "";
           let effectiveModelUsed = friendlyNameMap[targetModel] || targetModel;
           let geminiErrorDetail = "";
+          let structuredDelmasActions: DelmasActionItem[] = [];
+          let verifiedLoopCreation: CreationResult | null = null;
+          let agentLoopMeta:
+            | {
+                enabled: boolean;
+                mode: "delmas" | "creation_studio";
+                steps: number;
+                toolCalls: AgentToolTraceEntry[];
+              }
+            | undefined;
 
           // ══════════════════════════════════════════════════════════════════════════════
           // BRANCHE 1 : AGENT DELMAS (CHEF D'ÉQUIPE MULTI-IA LLAMA 3.3 - CHAT UNIQUEMENT)
@@ -1892,26 +1906,151 @@ CONSIGNES STRICTES DE CONTINUATION :
                     ? [targetModel, "@cf/moonshotai/kimi-k2.5"]
                     : [targetModel];
 
+                // ══════════════════════════════════════════════════════════════════════════
+                // BOUCLE AGENT NATIVE (TOOL CALLING + ZOD + AUTO-CORRECTION MULTI-ÉTAPES)
+                // Active pour : (1) Assistant Delmas (Moyennes) et (2) Menu Création Studio
+                // Avec repli automatique transparent si un modèle ne supporte pas `tools`.
+                // ══════════════════════════════════════════════════════════════════════════
+                const useNativeToolLoop = body.useAgentToolLoop !== false && Boolean(cfToken && accountId);
+                if (useNativeToolLoop && isTeacherGradebook) {
+                  try {
+                    const teacherFilesInput = Array.isArray(body.teacherFiles) && body.teacherFiles.length > 0
+                      ? body.teacherFiles
+                      : [
+                          ...(docContent || extractedVisionReport || audioTranscript
+                            ? [
+                                {
+                                  fileName: docName || "Fichier joint",
+                                  fileType: mediaDesc.label,
+                                  extractedText: [extractedVisionReport, docContent, audioTranscript]
+                                    .filter(Boolean)
+                                    .join("\n\n"),
+                                },
+                              ]
+                            : []),
+                        ];
+                    const delmasLoop = await runTeacherDelmasAgentLoop({
+                      models: candidateWorkerModels,
+                      systemPrompt,
+                      conversationMessages: cfMessages
+                        .filter((m: any) => m.role !== "system")
+                        .map((m: any) => ({
+                          role: m.role === "assistant" ? ("assistant" as const) : ("user" as const),
+                          content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+                        })),
+                      userPrompt: effectivePrompt,
+                      sheetContext: body.teacherSheetContext || null,
+                      attachedFiles: teacherFilesInput,
+                      recentUserMessages: simpleMessages
+                        .filter((m) => m.role === "user")
+                        .slice(-5)
+                        .map((m) => m.content),
+                      allowActions: body.teacherIntent !== "chat" && body.teacherIntent !== "inspect",
+                      db: getD1Database(),
+                      userId: String(body.userId || req.headers.get("x-user-id") || "").trim(),
+                      requester: createCloudflareOpenAiRequester({ accountId, apiToken: cfToken }),
+                      stripReasoning: stripAiReasoningScratchpad,
+                    });
+
+                    if (
+                      delmasLoop.supported &&
+                      (delmasLoop.finalText || delmasLoop.structuredActions.length > 0)
+                    ) {
+                      structuredDelmasActions = delmasLoop.structuredActions;
+                      answerText =
+                        delmasLoop.finalText ||
+                        (delmasLoop.structuredActions.length > 0
+                          ? "Les modifications ont été appliquées dans votre tableau."
+                          : "");
+                      effectiveModelUsed =
+                        friendlyNameMap[delmasLoop.modelUsed || targetModel] ||
+                        friendlyNameMap[targetModel] ||
+                        targetModel;
+                      agentLoopMeta = {
+                        enabled: true,
+                        mode: "delmas",
+                        steps: delmasLoop.stepsUsed,
+                        toolCalls: delmasLoop.toolTrace,
+                      };
+                    }
+                  } catch (delmasLoopErr) {
+                    logger.warn("Teacher Delmas tool-loop exception, falling back to classic call", {
+                      event: "delmas_tool_loop_fallback",
+                      error: delmasLoopErr,
+                    });
+                  }
+                } else if (
+                  useNativeToolLoop &&
+                  !isTeacherGradebook &&
+                  (isAgentCreationTask || !hasMedia)
+                ) {
+                  try {
+                    const creationLoop = await runCreationStudioAgentLoop({
+                      models: candidateWorkerModels,
+                      systemPrompt,
+                      conversationMessages: cfMessages.filter((m: any) => m.role !== "system"),
+                      userPrompt: effectivePrompt,
+                      isAgentCreationTask,
+                      requestedType: body.requested_type || requestedType,
+                      creationTitle,
+                      docName,
+                      docContent: [extractedVisionReport, docContent, audioTranscript]
+                        .filter(Boolean)
+                        .join("\n\n"),
+                      requester: createCloudflareOpenAiRequester({ accountId, apiToken: cfToken }),
+                      stripReasoning: stripAiReasoningScratchpad,
+                    });
+
+                    if (
+                      creationLoop.supported &&
+                      (creationLoop.verifiedCreation || (!isAgentCreationTask && creationLoop.finalText))
+                    ) {
+                      verifiedLoopCreation = creationLoop.verifiedCreation;
+                      answerText =
+                        creationLoop.finalText ||
+                        creationLoop.verifiedCreation?.chat_response ||
+                        "";
+                      effectiveModelUsed =
+                        friendlyNameMap[creationLoop.modelUsed || targetModel] ||
+                        friendlyNameMap[targetModel] ||
+                        targetModel;
+                      agentLoopMeta = {
+                        enabled: true,
+                        mode: "creation_studio",
+                        steps: creationLoop.stepsUsed,
+                        toolCalls: creationLoop.toolTrace,
+                      };
+                    }
+                  } catch (creationLoopErr) {
+                    logger.warn("Creation Studio tool-loop exception, falling back to classic call", {
+                      event: "creation_tool_loop_fallback",
+                      error: creationLoopErr,
+                    });
+                  }
+                }
+
                 let cfRes: Response | null = null;
-                for (const modelCandidate of candidateWorkerModels) {
-                  cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
-                    method: "POST",
-                    headers: {
-                      "Authorization": `Bearer ${cfToken}`,
-                      "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({
-                      model: modelCandidate,
-                      messages: cfMessages,
-                      max_tokens: 8192,
-                    }),
-                  });
-                  if (cfRes.ok) break;
+                if (!answerText) {
+                  for (const modelCandidate of candidateWorkerModels) {
+                    cfRes = await fetch(`https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/v1/chat/completions`, {
+                      method: "POST",
+                      headers: {
+                        "Authorization": `Bearer ${cfToken}`,
+                        "Content-Type": "application/json",
+                      },
+                      body: JSON.stringify({
+                        model: modelCandidate,
+                        messages: cfMessages,
+                        max_tokens: 8192,
+                      }),
+                    });
+                    if (cfRes.ok) break;
+                  }
                 }
 
                 // Si le modèle sélectionné ne supporte pas nativement le format multimodal image_url,
                 // fallback automatique avec Cloudflare Vision (conservé aussi pour le secours Llama 3.3 !)
-                if ((!cfRes || !cfRes.ok) && imageBase64 && imageBase64.length > 50) {
+                if (!answerText && (!cfRes || !cfRes.ok) && imageBase64 && imageBase64.length > 50) {
                   try {
                     if (!extractedVisionReport) {
                       extractedVisionReport = await runCloudflareVisionAnalysis({
@@ -2077,9 +2216,11 @@ CONSIGNES STRICTES DE CONTINUATION :
           }
 
           // ══════════════════════════════════════════════════════════════════════════════
-          // VALIDATION & NORMALISATION DES 12 CRÉATIONS (MODULE DÉDIÉ)
+          // VALIDATION & NORMALISATION DES 12 CRÉATIONS (MODULE DÉDIÉ + BOUCLE AGENT ZOD)
           // ══════════════════════════════════════════════════════════════════════════════
-          const creationRes = isAgentCreationTask
+          const creationRes = verifiedLoopCreation
+            ? verifiedLoopCreation
+            : isAgentCreationTask
             ? validateAndFormatCreation(answerText, body.requested_type, docName)
             : {
               is_creation: false,
@@ -2325,6 +2466,8 @@ CONSIGNES STRICTES DE CONTINUATION :
             effectiveModelUsed,
             audioTranscript,
             perceptionReport: extractedVisionReport || audioTranscript || undefined,
+            structuredDelmasActions,
+            agentLoopMeta,
             calculatedTokens,
             creditsDeducted,
             remainingCredits,
@@ -2381,7 +2524,18 @@ CONSIGNES STRICTES DE CONTINUATION :
         }
 
         // Mode synchrone classique
-        const { creationRes, answerText, effectiveModelUsed, calculatedTokens, creditsDeducted, remainingCredits, geminiErrorDetail, perceptionReport: returnedPerceptionReport } = await executeGenerationAndPersist();
+        const {
+          creationRes,
+          answerText,
+          effectiveModelUsed,
+          calculatedTokens,
+          creditsDeducted,
+          remainingCredits,
+          geminiErrorDetail,
+          perceptionReport: returnedPerceptionReport,
+          structuredDelmasActions: returnedStructuredActions,
+          agentLoopMeta: returnedAgentLoopMeta,
+        } = await executeGenerationAndPersist();
 
         return new Response(JSON.stringify({
           success: true,
@@ -2396,6 +2550,11 @@ CONSIGNES STRICTES DE CONTINUATION :
           response: creationRes.chat_response,
           chat_response: creationRes.chat_response,
           raw_response: answerText,
+          structured_actions:
+            Array.isArray(returnedStructuredActions) && returnedStructuredActions.length > 0
+              ? returnedStructuredActions
+              : undefined,
+          agent_loop: returnedAgentLoopMeta || undefined,
           perceptionReport: returnedPerceptionReport || undefined,
           model: effectiveModelUsed,
           tokens: calculatedTokens,

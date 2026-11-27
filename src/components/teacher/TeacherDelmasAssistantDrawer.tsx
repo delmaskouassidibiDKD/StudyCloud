@@ -2044,6 +2044,41 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       const configuredToken = kimiModel.apiToken || undefined;
       const activeUserId = resolveActiveUserId();
 
+      const teacherFilesForLoop = allConvFiles
+        .filter((f) => !isPlaceholderMediaText(f.extractedText))
+        .map((f) => ({
+          fileName: f.fileName,
+          fileType: f.fileType,
+          extractedText: String(f.extractedText || '').slice(0, 60000),
+        }));
+
+      const teacherSheetContextForLoop = liveContext
+        ? {
+            sheetKind: liveContext.sheetKind,
+            classId: liveContext.classId,
+            className: liveContext.className,
+            termId: liveContext.termId,
+            termName: liveContext.termName,
+            subjectId: liveContext.subjectId,
+            subjectName: liveContext.subjectName,
+            sortMode: liveContext.sortMode,
+            showMatricule: liveContext.showMatricule,
+            averageScale: liveContext.averageScale,
+            zoomPercent: liveContext.zoomPercent,
+            noteColumns: liveContext.noteColumns,
+            students: liveContext.students.slice(0, 200).map((s) => ({
+              rowIndex: s.rowIndex,
+              id: s.id,
+              name: s.name,
+              matricule: s.matricule,
+              notes: s.notes,
+              averageFormatted: s.averageFormatted,
+              rank: s.rank,
+              mention: s.mention,
+            })),
+          }
+        : undefined;
+
       const aiRes = await sendChatMessageToAi({
         messages: historyPayload,
         history: historyPayload,
@@ -2059,6 +2094,10 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         requested_type: undefined,
         skipChatHistory: true,
         assistantContext: 'teacher_gradebook',
+        useAgentToolLoop: true,
+        teacherIntent: intentResult.intent,
+        teacherSheetContext: teacherSheetContextForLoop,
+        teacherFiles: teacherFilesForLoop.length > 0 ? teacherFilesForLoop : undefined,
         attachedFileName: activeAttachedFileName,
         attachedFileContent: combinedDocText || undefined,
         imageBase64: resolvedImageBase64,
@@ -2105,10 +2144,17 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       const rawAiOutput =
         aiRes.raw_response || aiRes.rawResponse || aiRes.response || aiRes.chat_response || '';
 
-      // Extraction propre + pare-feu de sécurité (zéro action en mode chat/inspect + anti-injection + zéro faux matricules 1..10 + zéro faux save_gradebook vide)
+      // Extraction propre + priorité aux actions natives validées par Zod depuis la boucle agent serveur,
+      // avec repli transparent vers le bloc <delmas_actions> si le modèle a utilisé le chemin classique.
       let parsed = parseTeacherDelmasAiResponse(rawAiOutput, {
         allowActions: intentResult.intent === 'action',
       });
+      const nativeStructuredActions =
+        intentResult.intent === 'action' && Array.isArray(aiRes.structured_actions) && aiRes.structured_actions.length > 0
+          ? aiRes.structured_actions
+          : [];
+      const candidateActions =
+        nativeStructuredActions.length > 0 ? nativeStructuredActions : parsed.actions;
       const sourceFileTexts = [
         ...(aiRes.perceptionReport ? [String(aiRes.perceptionReport)] : []),
         ...allConvFiles
@@ -2119,7 +2165,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         .filter((m) => m.sender === 'user')
         .slice(-5)
         .map((m) => m.content);
-      let safeActions = filterSafeTeacherDelmasActions(parsed.actions, rawText, {
+      let safeActions = filterSafeTeacherDelmasActions(candidateActions, rawText, {
         hasAttachedFiles: hasAnyConvFiles && (intentResult.referencesActiveFiles || shouldRunVisionPass),
         sourceFileTexts,
         recentUserMessages,
@@ -2205,19 +2251,28 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
               { role: 'user', content: recoveryPrompt },
             ];
             const recRes = await sendChatMessageToAi({
+              messages: recoveryHistory,
               message: recoveryPrompt,
               history: recoveryHistory,
               model: resolvedKimiModelRef.current.modelId,
               apiKey: resolvedKimiModelRef.current.apiToken || getGeminiApiKey() || undefined,
               userId: resolveActiveUserId(),
               assistantContext: 'teacher_gradebook',
+              useAgentToolLoop: true,
+              teacherIntent: 'action',
+              teacherSheetContext: teacherSheetContextForLoop,
+              teacherFiles: teacherFilesForLoop.length > 0 ? teacherFilesForLoop : undefined,
               signal: controller.signal,
               abortSignal: controller.signal,
             });
             const recRaw =
               recRes.raw_response || recRes.rawResponse || recRes.response || recRes.chat_response || '';
             const recParsed = parseTeacherDelmasAiResponse(recRaw, { allowActions: true });
-            const recSafe = filterSafeTeacherDelmasActions(recParsed.actions, rawText, {
+            const recCandidates =
+              Array.isArray(recRes.structured_actions) && recRes.structured_actions.length > 0
+                ? recRes.structured_actions
+                : recParsed.actions;
+            const recSafe = filterSafeTeacherDelmasActions(recCandidates, rawText, {
               hasAttachedFiles: hasAnyConvFiles,
               sourceFileTexts,
               recentUserMessages,
