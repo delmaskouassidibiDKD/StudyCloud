@@ -208,6 +208,14 @@ export default function App() {
   });
   const [isLoadingShares, setIsLoadingShares] = useState(false);
 
+  const [subscriptionsInitialSection, setSubscriptionsInitialSection] = useState<'all' | 'downgrades' | undefined>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('section') === 'downgrades') return 'downgrades';
+    } catch {}
+    return undefined;
+  });
+
   const [currentTab, setCurrentTab] = useState<NavigationTab>(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
@@ -2073,6 +2081,7 @@ export default function App() {
           ) : currentTab === 'my-subscriptions' ? (
             <MySubscriptionsView
               user={user}
+              initialSection={subscriptionsInitialSection}
               onBack={() => handleSetTab('folders')}
               onOpenRenewTarget={(productType, appKey) => {
                 if (productType === 'storage') {
@@ -2850,10 +2859,13 @@ export default function App() {
       {/* Modal d'alerte et de blocage de saturation de stockage (50%, 75%, 85%, 95%, >=96%) */}
       <StorageAlertNotificationModal />
 
-      {/* Bannière d'alerte abonnements (période de grâce / service suspendu) */}
+      {/* Bannière d'alerte abonnements (période de grâce / service suspendu / réduction stockage / récupération données) */}
       <BillingAlertBanner
         isAuthenticated={isAuthenticated}
-        onOpenSubscriptions={() => handleSetTab('my-subscriptions')}
+        onOpenSubscriptions={(targetSection) => {
+          setSubscriptionsInitialSection(targetSection === 'downgrades' ? 'downgrades' : 'all');
+          handleSetTab('my-subscriptions');
+        }}
       />
 
       {/* Vérification automatique au retour de paiement Paystack (?payment=paystack-return) */}

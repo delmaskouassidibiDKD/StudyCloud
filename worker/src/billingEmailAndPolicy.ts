@@ -16,6 +16,11 @@ export type BillingEmailType =
   | 'overdue_reminder'
   | 'service_blocked'
   | 'service_reactivated'
+  | 'subscription_cancelled'
+  | 'subscription_cancelled_data_warning'
+  | 'data_overflow_purged'
+  | 'storage_downgrade_proposed'
+  | 'storage_downgrade_completed'
   | 'admin_manual_notice';
 
 export type BillingBlockScope = 'service_only' | 'read_only' | 'full_account';
@@ -202,8 +207,9 @@ export function buildBillingEmailContent(params: {
   customMessage?: string;
   graceDaysRemaining?: number | null;
   reference?: string;
+  extraData?: Record<string, any>;
 }): { subject: string; html: string } {
-  const { emailType, sub, customMessage, graceDaysRemaining, reference } = params;
+  const { emailType, sub, customMessage, graceDaysRemaining, reference, extraData = {} } = params;
   const serviceName = describeServiceLabel(sub);
   const planName = sub.plan_name || 'Forfait StudyCloud';
   const userName = sub.user_name ? `Bonjour ${sub.user_name},` : 'Bonjour,';
@@ -392,6 +398,141 @@ export function buildBillingEmailContent(params: {
         }),
       };
 
+    case 'subscription_cancelled':
+      return {
+        subject: `❌ Annulation de votre abonnement — ${planName} (${serviceName})`,
+        html: wrapBrandedEmailLayout({
+          title: 'Votre abonnement a été annulé',
+          badgeText: '❌ Abonnement annulé',
+          badgeBg: '#f1f5f9',
+          badgeColor: '#334155',
+          greeting: userName,
+          introHtml: `Votre abonnement <strong>${escHtml(planName)}</strong> pour <strong>${escHtml(serviceName)}</strong> a été annulé.${extraData.mode === 'end_of_period' ? ` Vous conservez votre accès jusqu'au <strong>${escHtml(endStr)}</strong>, puis le renouvellement automatique ne sera plus effectué.` : ' Votre accès payant a été arrêté immédiatement.'}${extraData.reason ? `<br/><br/><strong>Motif :</strong> ${escHtml(extraData.reason)}` : ''}${customBlock}`,
+          rows: [
+            { label: 'Service / Application', value: serviceName },
+            { label: 'Forfait', value: planName },
+            {
+              label: 'Effet',
+              value: extraData.mode === 'end_of_period' ? `Fin de période (${endStr})` : 'Immédiat',
+            },
+          ],
+          ctaLabel: 'Voir mes abonnements',
+          ctaUrl: manageUrl,
+        }),
+      };
+
+    case 'subscription_cancelled_data_warning': {
+      const retentionDays = Math.max(1, Number(extraData.retentionDays ?? graceDaysRemaining ?? 14));
+      const deadlineStr = formatFrDateTime(extraData.purgeDeadlineIso || null);
+      const usedStr = String(extraData.usedFormatted || '—');
+      const welcomeStr = String(extraData.welcomeFormatted || '30 Mo');
+      const excessStr = String(extraData.excessFormatted || '—');
+      const overflowCount = Number(extraData.overflowFilesCount || 0);
+      return {
+        subject: `⚠️ Action requise (${retentionDays}j) : récupérez vos ${excessStr} dépassant le quota gratuit`,
+        html: wrapBrandedEmailLayout({
+          title: 'Abonnement annulé — Délai pour récupérer vos données',
+          badgeText: `⏳ ${retentionDays} jour${retentionDays > 1 ? 's' : ''} pour récupérer vos fichiers`,
+          badgeBg: '#ffedd5',
+          badgeColor: '#c2410c',
+          greeting: userName,
+          introHtml: `Votre abonnement <strong>${escHtml(planName)}</strong> (${escHtml(serviceName)}) a été annulé.${extraData.reason ? ` <br/><strong>Motif :</strong> ${escHtml(extraData.reason)}` : ''}<br/><br/>Votre espace utilisé actuel est de <strong>${escHtml(usedStr)}</strong>, alors que votre quota gratuit est de <strong>${escHtml(welcomeStr)}</strong> : vous dépassez donc l'espace gratuit de <strong>${escHtml(excessStr)}</strong>${overflowCount > 0 ? ` (${overflowCount} fichier${overflowCount > 1 ? 's' : ''} sur l'espace payant)` : ''}.<br/><br/>Vous disposez de <strong>${retentionDays} jour${retentionDays > 1 ? 's' : ''}</strong> (jusqu'au <strong>${escHtml(deadlineStr)}</strong>) pour télécharger vos fichiers et revenir dans votre zone gratuite (ou renouveler votre stockage).${customBlock}`,
+          rows: [
+            { label: 'Consommation actuelle', value: usedStr },
+            { label: 'Quota gratuit protégé', value: welcomeStr },
+            { label: 'Données dépassant le gratuit', value: `${excessStr}${overflowCount > 0 ? ` (${overflowCount} fichier${overflowCount > 1 ? 's' : ''})` : ''}` },
+            { label: 'Délai accordé', value: `${retentionDays} jour${retentionDays > 1 ? 's' : ''}` },
+            { label: 'Date limite avant suppression', value: deadlineStr },
+          ],
+          noticeBoxHtml: `<div style="margin:0 0 16px 0;padding:14px 16px;border-radius:12px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:13px;line-height:1.55;"><strong>📌 Important — Quels fichiers sont concernés ?</strong><br/>Vos <strong>premiers fichiers situés dans votre espace gratuit (${escHtml(welcomeStr)})</strong> sont <strong>protégés et ne seront PAS supprimés</strong>. Seuls les fichiers enregistrés <strong>après l'espace gratuit (sur l'espace payant)</strong> seront définitivement supprimés après le <strong>${escHtml(deadlineStr)}</strong> si vous n'êtes pas revenu dans la zone gratuite.</div>`,
+          ctaLabel: 'Accéder à mes fichiers & abonnements',
+          ctaUrl: manageUrl,
+        }),
+      };
+    }
+
+    case 'data_overflow_purged': {
+      const purgedStr = String(extraData.purgedFormatted || '—');
+      const purgedCount = Number(extraData.purgedFilesCount || 0);
+      const welcomeStr = String(extraData.welcomeFormatted || '30 Mo');
+      return {
+        subject: `🧹 Nettoyage automatique terminé — Retour dans la zone gratuite StudyCloud`,
+        html: wrapBrandedEmailLayout({
+          title: 'Suppression des fichiers au-delà du quota gratuit',
+          badgeText: '🧹 Retour en zone gratuite',
+          badgeBg: '#f1f5f9',
+          badgeColor: '#334155',
+          greeting: userName,
+          introHtml: `Le délai de récupération accordé suite à l'annulation de votre abonnement <strong>${escHtml(planName)}</strong> étant arrivé à échéance, StudyCloud a supprimé uniquement les fichiers enregistrés sur l'espace payant au-delà de votre quota gratuit (${escHtml(welcomeStr)}). Vos premiers fichiers situés dans l'espace gratuit ont été conservés.${customBlock}`,
+          rows: [
+            { label: 'Fichiers payants supprimés', value: `${purgedCount} fichier${purgedCount > 1 ? 's' : ''}` },
+            { label: 'Volume libéré', value: purgedStr },
+            { label: 'Espace gratuit conservé', value: welcomeStr },
+          ],
+          ctaLabel: 'Ouvrir StudyCloud',
+          ctaUrl: manageUrl,
+        }),
+      };
+    }
+
+    case 'storage_downgrade_proposed': {
+      const curLabel = String(extraData.currentStorageLabel || '—');
+      const targetLabel = String(extraData.targetStorageLabel || '—');
+      const curPriceStr = formatEmailAmount(Number(extraData.currentMonthlyPrice || 0), sub.currency || 'XOF');
+      const targetPriceStr = formatEmailAmount(Number(extraData.targetMonthlyPrice || 0), sub.currency || 'XOF');
+      const prorataDueStr = formatEmailAmount(Number(extraData.consumedProrataAmount || 0), sub.currency || 'XOF');
+      const daysUsed = Number(extraData.daysUsed || 0);
+      const durDays = Number(extraData.durationDays || 30);
+      return {
+        subject: `📉 Réduction de stockage prête : passez de ${curLabel} à ${targetLabel} (${targetPriceStr}/mois)`,
+        html: wrapBrandedEmailLayout({
+          title: 'Votre réduction de stockage est prête !',
+          badgeText: '📉 Réduction de stockage',
+          badgeBg: '#dcfce7',
+          badgeColor: '#15803d',
+          greeting: userName,
+          introHtml: `Suite à votre demande, l'équipe StudyCloud a préparé la réduction de votre abonnement de stockage de <strong>${escHtml(curLabel)}</strong> vers <strong>${escHtml(targetLabel)}</strong> (votre nouveau tarif mensuel passe de <strong>${escHtml(curPriceStr)}</strong> à <strong>${escHtml(targetPriceStr)} / mois</strong>).<br/><br/>Avant que le changement ne s'applique automatiquement, veuillez régler votre consommation déjà écoulée (${daysUsed} jour${daysUsed > 1 ? 's' : ''} sur ${durDays}j) : <strong>${escHtml(prorataDueStr)}</strong> dans <strong>Mes abonnements → Réduction de stockage</strong>.${customBlock}`,
+          rows: [
+            { label: 'Stockage actuel', value: curLabel },
+            { label: 'Nouveau stockage réduit', value: targetLabel },
+            { label: 'Ancien prix mensuel', value: curPriceStr },
+            { label: 'Nouveau prix mensuel', value: targetPriceStr },
+            { label: `Consommation écoulée (${daysUsed}j / ${durDays}j)`, value: prorataDueStr },
+          ],
+          noticeBoxHtml: `<div style="margin:0 0 16px 0;padding:12px 14px;border-radius:12px;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:13px;line-height:1.5;"><strong>⚡ Activation automatique :</strong> Dès réception du règlement de votre consommation prorata (<strong>${escHtml(prorataDueStr)}</strong>), votre abonnement basculera automatiquement sur <strong>${escHtml(targetLabel)}</strong> à <strong>${escHtml(targetPriceStr)}/mois</strong>.</div>`,
+          ctaLabel: 'Régler ma consommation & activer',
+          ctaUrl: `${APP_BASE_URL}/?tab=subscriptions&section=downgrades`,
+        }),
+      };
+    }
+
+    case 'storage_downgrade_completed': {
+      const curLabel = String(extraData.currentStorageLabel || '—');
+      const targetLabel = String(extraData.targetStorageLabel || '—');
+      const targetPriceStr = formatEmailAmount(Number(extraData.targetMonthlyPrice || sub.price_amount || 0), sub.currency || 'XOF');
+      const prorataPaidStr = formatEmailAmount(Number(extraData.consumedProrataAmount || 0), sub.currency || 'XOF');
+      return {
+        subject: `✅ Stockage modifié avec succès — Nouveau forfait ${targetLabel} (${targetPriceStr}/mois)`,
+        html: wrapBrandedEmailLayout({
+          title: 'Votre changement de stockage est confirmé !',
+          badgeText: '✅ Stockage mis à jour',
+          badgeBg: '#dcfce7',
+          badgeColor: '#15803d',
+          greeting: userName,
+          introHtml: `Votre règlement prorata (${escHtml(prorataPaidStr)}) a bien été validé ! Votre abonnement de stockage est désormais passé de <strong>${escHtml(curLabel)}</strong> à <strong>${escHtml(targetLabel)}</strong> au tarif réduit de <strong>${escHtml(targetPriceStr)} / mois</strong>.${customBlock}`,
+          rows: [
+            { label: 'Ancien stockage', value: curLabel },
+            { label: 'Nouveau stockage actif', value: targetLabel },
+            { label: 'Nouveau tarif mensuel', value: targetPriceStr },
+            { label: 'Consommation prorata réglée', value: prorataPaidStr },
+            ...(reference ? [{ label: 'Référence paiement', value: reference }] : []),
+          ],
+          ctaLabel: 'Voir mon nouvel abonnement',
+          ctaUrl: manageUrl,
+        }),
+      };
+    }
+
     case 'admin_manual_notice':
     default:
       return {
@@ -428,6 +569,7 @@ export async function sendAndLogBillingEmail(params: {
   customMessage?: string;
   reference?: string;
   graceDaysRemaining?: number | null;
+  extraData?: Record<string, any>;
   nowIso?: string;
   recordEventFn?: (db: any, args: { subscriptionId: string; userId: string; eventType: string; actor: string; details?: Record<string, any> }) => Promise<void>;
 }): Promise<SendBillingEmailResult> {
@@ -440,6 +582,7 @@ export async function sendAndLogBillingEmail(params: {
     customMessage,
     reference,
     graceDaysRemaining,
+    extraData,
     recordEventFn,
   } = params;
   const fetchFn = params.fetchFn || fetch;
@@ -469,6 +612,7 @@ export async function sendAndLogBillingEmail(params: {
     customMessage,
     graceDaysRemaining,
     reference,
+    extraData,
   });
 
   if (!toEmail || !toEmail.includes('@')) {
@@ -822,9 +966,49 @@ export async function processResendWebhookEvent(
 }
 
 /**
+ * Insère une notification in-app persistante dans la table `notifications` de StudyCloud.
+ */
+export async function insertBillingInAppNotification(
+  db: any,
+  userId: string,
+  title: string,
+  description: string,
+  itemRef?: string,
+  type: string = 'billing'
+): Promise<void> {
+  if (!db || !userId) return;
+  try {
+    await db
+      .prepare(
+        `CREATE TABLE IF NOT EXISTS notifications (
+          id TEXT PRIMARY KEY,
+          user_id TEXT NOT NULL,
+          title TEXT NOT NULL,
+          description TEXT NOT NULL,
+          item_ref TEXT,
+          type TEXT DEFAULT 'general',
+          is_read INTEGER DEFAULT 0,
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )`
+      )
+      .run()
+      .catch(() => {});
+    const id = `notif_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    await db
+      .prepare(
+        `INSERT INTO notifications (id, user_id, title, description, item_ref, type, is_read, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)`
+      )
+      .bind(id, String(userId), String(title).slice(0, 180), String(description).slice(0, 1000), itemRef || null, type)
+      .run()
+      .catch(() => {});
+  } catch {}
+}
+
+/**
  * Calcule l'état global de blocage et d'alerte d'un utilisateur pour
  * les garde-fous backend (`service_only` / `read_only` / `full_account`)
- * et la bannière d'alerte StudyCloud.
+ * et la bannière d'alerte StudyCloud (y compris réductions de stockage en attente et délais de récupération de données).
  */
 export async function evaluateUserBillingGuard(
   db: any,
@@ -855,6 +1039,26 @@ export async function evaluateUserBillingGuard(
     blockScope: BillingBlockScope;
     priceAmount: number;
     currency: string;
+  }>;
+  pendingDowngrades: Array<{
+    id: string;
+    currentPaidMb: number;
+    targetPaidMb: number;
+    currentMonthlyPrice: number;
+    targetMonthlyPrice: number;
+    consumedProrataAmount: number;
+    daysUsed: number;
+    durationDays: number;
+    currency: string;
+    createdAt: string | null;
+  }>;
+  dataPurgeWarnings: Array<{
+    subscriptionId: string;
+    planName: string;
+    excessBytes: number;
+    retentionDays: number;
+    purgeDeadlineAt: string;
+    daysRemaining: number;
   }>;
 }> {
   const res = await db
@@ -911,10 +1115,71 @@ export async function evaluateUserBillingGuard(
     }
   }
 
+  // Demandes de réduction de stockage en attente de règlement prorata
+  const dgRes = await db
+    .prepare(
+      `SELECT id, current_paid_mb, target_paid_mb, current_monthly_price, target_monthly_price,
+              consumed_prorata_amount, days_used, duration_days, currency, created_at
+       FROM storage_downgrade_requests
+       WHERE user_id = ? AND status = 'pending_payment'
+       ORDER BY created_at DESC LIMIT 5`
+    )
+    .bind(userId)
+    .all()
+    .catch(() => ({ results: [] }));
+
+  const pendingDowngrades = (dgRes.results || []).map((d: any) => ({
+    id: String(d.id),
+    currentPaidMb: Number(d.current_paid_mb || 0),
+    targetPaidMb: Number(d.target_paid_mb || 0),
+    currentMonthlyPrice: Number(d.current_monthly_price || 0),
+    targetMonthlyPrice: Number(d.target_monthly_price || 0),
+    consumedProrataAmount: Number(d.consumed_prorata_amount || 0),
+    daysUsed: Number(d.days_used || 0),
+    durationDays: Number(d.duration_days || 30),
+    currency: String(d.currency || 'XOF'),
+    createdAt: d.created_at || null,
+  }));
+
+  // Avertissements de délai de récupération des données payantes après annulation
+  const purgeRes = await db
+    .prepare(
+      `SELECT id, plan_name, excess_bytes_at_cancel, data_retention_days, data_purge_deadline_at
+       FROM active_subscriptions
+       WHERE user_id = ?
+         AND product_type = 'storage'
+         AND status = 'cancelled'
+         AND data_purge_deadline_at IS NOT NULL
+         AND data_purged_at IS NULL
+         AND COALESCE(excess_bytes_at_cancel, 0) > 0
+       ORDER BY updated_at DESC LIMIT 3`
+    )
+    .bind(userId)
+    .all()
+    .catch(() => ({ results: [] }));
+
+  const nowMs = Date.now();
+  const dataPurgeWarnings = (purgeRes.results || []).map((p: any) => {
+    const dlMs = Date.parse(String(p.data_purge_deadline_at || ''));
+    const daysRemaining = Number.isFinite(dlMs)
+      ? Math.max(0, Math.ceil((dlMs - nowMs) / (24 * 60 * 60 * 1000)))
+      : 0;
+    return {
+      subscriptionId: String(p.id),
+      planName: String(p.plan_name || 'Stockage Cloud'),
+      excessBytes: Number(p.excess_bytes_at_cancel || 0),
+      retentionDays: Number(p.data_retention_days || 14),
+      purgeDeadlineAt: String(p.data_purge_deadline_at),
+      daysRemaining,
+    };
+  });
+
   return {
     fullAccountBlocked,
     readOnlyBlocked,
     blockedSubscriptions,
     graceSubscriptions,
+    pendingDowngrades,
+    dataPurgeWarnings,
   };
 }

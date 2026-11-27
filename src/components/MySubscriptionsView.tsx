@@ -30,6 +30,7 @@ import {
   Receipt,
   ShieldCheck,
   Lock,
+  ArrowDownCircle,
 } from 'lucide-react';
 import { ViewerSuperExpandButton } from './ViewerSuperExpandButton';
 import {
@@ -39,17 +40,22 @@ import {
 } from '../utils/viewerExpandManager';
 import {
   ActiveSubscriptionRecord,
+  applyFreeStorageDowngrade,
   cancelMySubscriptionAutoRenew,
   CardServicePermissions,
   deleteMyPaymentMethod,
   formatCurrencyAmount,
   getMyActiveSubscriptions,
+  getMyStorageDowngrades,
+  initializePaystackPayment,
   initLinkBankCard,
   loadPaystackInlinePop,
   MaskedPaymentMethodRecord,
+  StorageDowngradeRequestRecord,
   updatePaymentMethodPermissions,
   updateSubscriptionRenewalMode,
   verifyLinkBankCard,
+  verifyPaystackPayment,
 } from '../services/paystackBillingApi';
 
 interface MySubscriptionsViewProps {
@@ -58,11 +64,26 @@ interface MySubscriptionsViewProps {
     email?: string;
     avatar_url?: string;
   } | null;
+  initialSection?: SubWorkspaceSection;
   onBack: () => void;
   onOpenRenewTarget?: (productType: 'storage' | 'ai' | 'app', appKey?: string) => void;
 }
 
-type SubWorkspaceSection = 'all' | 'storage' | 'ai' | 'app' | 'cards' | 'history';
+export type SubWorkspaceSection = 'all' | 'storage' | 'ai' | 'app' | 'downgrades' | 'cards' | 'history';
+
+function fmtStorageMbFr(mb?: number | null): string {
+  const n = Math.max(0, Number(mb || 0));
+  if (n <= 0) return 'Plan Gratuit';
+  if (n >= 1024) return `${(n / 1024).toFixed(n % 1024 === 0 ? 0 : 2).replace('.', ',')} Go`;
+  return `${Math.round(n)} Mo`;
+}
+
+function fmtBytesFrShort(bytes?: number | null): string {
+  const b = Math.max(0, Number(bytes || 0));
+  if (b < 1024 * 1024) return `${Math.max(1, Math.round(b / 1024))} Ko`;
+  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(2).replace('.', ',')} Mo`;
+  return `${(b / (1024 * 1024 * 1024)).toFixed(2).replace('.', ',')} Go`;
+}
 
 function formatDateTimeFr(iso?: string | null): string {
   if (!iso) return '—';
@@ -142,6 +163,9 @@ const USER_VISIBLE_EVENT_TYPES = new Set<string>([
   'entered_grace',
   'service_blocked',
   'reactivated',
+  'storage_downgraded',
+  'admin_cancelled',
+  'data_overflow_purged',
 ]);
 
 function isUserVisibleActivityEvent(ev: { event_type?: string; actor?: string }): boolean {
@@ -254,17 +278,28 @@ function formatEventLabel(eventType: string): string {
     entered_grace: 'Période de grâce démarrée',
     service_blocked: 'Abonnement suspendu (échéance dépassée)',
     reactivated: 'Abonnement réactivé',
+    storage_downgraded: 'Stockage réduit et tarif mensuel mis à jour',
+    admin_cancelled: 'Abonnement annulé',
+    data_overflow_purged: 'Fichiers payants au-delà du gratuit nettoyés',
   };
   return map[eventType] || eventType;
 }
 
 export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
   user,
+  initialSection,
   onBack,
   onOpenRenewTarget,
 }) => {
   const viewerExpandLevel = useViewerExpandLevel();
-  const [section, setSection] = useState<SubWorkspaceSection>('all');
+  const [section, setSection] = useState<SubWorkspaceSection>(() => {
+    if (initialSection) return initialSection;
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      if (sp.get('section') === 'downgrades') return 'downgrades';
+    } catch {}
+    return 'all';
+  });
   const [selectedSubId, setSelectedSubId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
@@ -272,6 +307,8 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [subscriptions, setSubscriptions] = useState<ActiveSubscriptionRecord[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<MaskedPaymentMethodRecord[]>([]);
+  const [storageDowngrades, setStorageDowngrades] = useState<StorageDowngradeRequestRecord[]>([]);
+  const [payingDowngradeId, setPayingDowngradeId] = useState<string | null>(null);
   const [recentEvents, setRecentEvents] = useState<
     Array<{ id: string; subscription_id: string; event_type: string; actor: string; created_at: string }>
   >([]);
@@ -288,15 +325,28 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
   const [feedback, setFeedback] = useState<{ type: 'ok' | 'err'; text: string } | null>(null);
   const [, setTick] = useState(0);
 
+  useEffect(() => {
+    if (initialSection) {
+      setSelectedSubId(null);
+      setSection(initialSection);
+    }
+  }, [initialSection]);
+
   const loadAll = useCallback(async () => {
     setLoading(true);
-    const res = await getMyActiveSubscriptions();
+    const [res, dgRes] = await Promise.all([
+      getMyActiveSubscriptions(),
+      getMyStorageDowngrades(),
+    ]);
     if (res.success) {
       setSubscriptions(res.subscriptions);
       setPaymentMethods(res.paymentMethods);
       setRecentEvents(res.recentEvents);
     } else if (res.error) {
       setFeedback({ type: 'err', text: res.error });
+    }
+    if (dgRes.success) {
+      setStorageDowngrades(dgRes.requests);
     }
     setLoading(false);
   }, []);
@@ -522,9 +572,116 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
     setBusyId(null);
   };
 
+  const handlePayStorageDowngrade = async (req: StorageDowngradeRequestRecord) => {
+    if (payingDowngradeId) return;
+    setPayingDowngradeId(req.id);
+    setFeedback(null);
+    try {
+      const dueAmount = Math.max(0, Math.round(Number(req.consumed_prorata_amount || 0)));
+      if (dueAmount <= 0) {
+        const freeRes = await applyFreeStorageDowngrade(req.id);
+        if (!freeRes.success) {
+          setFeedback({ type: 'err', text: freeRes.error || "Impossible d'appliquer la réduction." });
+        } else {
+          setFeedback({
+            type: 'ok',
+            text:
+              freeRes.deliverySummary ||
+              `Votre stockage est passé à ${fmtStorageMbFr(req.target_paid_mb)} (${formatCurrencyAmount(req.target_monthly_price, req.currency)}/mois) !`,
+          });
+          notifyBannerSync();
+          await loadAll();
+        }
+        setPayingDowngradeId(null);
+        return;
+      }
+
+      const initRes = await initializePaystackPayment({
+        productType: 'storage',
+        productId: 'storage_master_downgrade',
+        downgradeRequestId: req.id,
+        currency: req.currency || 'XOF',
+      });
+      if (!initRes.success || !initRes.reference) {
+        setFeedback({
+          type: 'err',
+          text: initRes.error || "Impossible d'initialiser le paiement de votre consommation prorata.",
+        });
+        setPayingDowngradeId(null);
+        return;
+      }
+
+      if (initRes.accessCode) {
+        try {
+          const PaystackPop = await loadPaystackInlinePop();
+          const popup = new PaystackPop();
+          popup.resumeTransaction(initRes.accessCode, {
+            onSuccess: async (tx: any) => {
+              const refToVerify = tx?.reference || initRes.reference!;
+              const verRes = await verifyPaystackPayment(refToVerify);
+              if (verRes.success && verRes.verified) {
+                setFeedback({
+                  type: 'ok',
+                  text:
+                    verRes.deliverySummary ||
+                    `Paiement confirmé ! Votre stockage est maintenant passé à ${fmtStorageMbFr(req.target_paid_mb)} (${formatCurrencyAmount(req.target_monthly_price, req.currency)}/mois).`,
+                });
+                notifyBannerSync();
+                try {
+                  window.dispatchEvent(new CustomEvent('studycloud_payment_verified'));
+                } catch {}
+                await loadAll();
+              } else {
+                setFeedback({
+                  type: 'err',
+                  text: verRes.error || 'Vérification du paiement en cours. Actualisez dans quelques secondes.',
+                });
+              }
+              setPayingDowngradeId(null);
+            },
+            onCancel: () => {
+              setPayingDowngradeId(null);
+            },
+          });
+          return;
+        } catch {
+          // Fallback vers redirection sécurisée Paystack si InlineJS indisponible
+        }
+      }
+
+      if (initRes.authorizationUrl) {
+        window.location.href = initRes.authorizationUrl;
+        return;
+      }
+      setFeedback({ type: 'err', text: 'Passerelle Paystack indisponible.' });
+      setPayingDowngradeId(null);
+    } catch (err: any) {
+      setFeedback({ type: 'err', text: err?.message || 'Erreur lors du paiement prorata.' });
+      setPayingDowngradeId(null);
+    }
+  };
+
   const userVisibleEvents = useMemo(
     () => recentEvents.filter((ev) => isUserVisibleActivityEvent(ev)),
     [recentEvents]
+  );
+
+  const pendingDowngrades = useMemo(
+    () => storageDowngrades.filter((d) => d.status === 'pending_payment'),
+    [storageDowngrades]
+  );
+
+  const activeDataPurgeWarnings = useMemo(
+    () =>
+      subscriptions.filter(
+        (s) =>
+          s.product_type === 'storage' &&
+          s.status === 'cancelled' &&
+          s.data_purge_deadline_at &&
+          !s.data_purged_at &&
+          Number(s.excess_bytes_at_cancel || 0) > 0
+      ),
+    [subscriptions]
   );
 
   const counts = useMemo(
@@ -533,10 +690,11 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
       storage: subscriptions.filter((s) => s.product_type === 'storage').length,
       ai: subscriptions.filter((s) => s.product_type === 'ai').length,
       app: subscriptions.filter((s) => s.product_type === 'app').length,
+      downgrades: pendingDowngrades.length,
       cards: paymentMethods.length,
       history: userVisibleEvents.length,
     }),
-    [subscriptions, paymentMethods, userVisibleEvents]
+    [subscriptions, pendingDowngrades, paymentMethods, userVisibleEvents]
   );
 
   const visibleSubscriptions = useMemo(() => {
@@ -579,6 +737,13 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
     app: {
       title: 'Applications',
       subtitle: `${counts.app} abonnement${counts.app > 1 ? 's' : ''} d'application (Moyennes et futures applications StudyCloud).`,
+    },
+    downgrades: {
+      title: 'Réduction de stockage',
+      subtitle:
+        counts.downgrades > 0
+          ? `${counts.downgrades} demande${counts.downgrades > 1 ? 's' : ''} prête${counts.downgrades > 1 ? 's' : ''} — réglez d'abord votre consommation prorata pour changer de stockage automatiquement.`
+          : 'Vos réductions de stockage et changements de forfait mensuel apparaissent ici dès validation par StudyCloud.',
     },
     cards: {
       title: 'Cartes Visa / Mastercard',
@@ -690,11 +855,47 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
           );
         })}
 
-        {/* Sous-section Paiements & Suivi */}
+        {/* Sous-section Réduction & Suivi */}
         <div className="pt-3 px-1.5 pb-1">
           <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400/90">
-            Cartes &amp; Suivi
+            Modifications &amp; Cartes
           </span>
+        </div>
+
+        <div
+          onClick={() => {
+            setSelectedSubId(null);
+            setSection('downgrades');
+            setIsMobileSidebarOpen(false);
+          }}
+          className={`group relative overflow-hidden flex items-center gap-2 px-2.5 h-8 rounded-lg border text-xs transition cursor-pointer ${
+            section === 'downgrades' && !selectedSub
+              ? 'bg-gradient-to-r from-emerald-600 to-teal-500 border-emerald-300/50 text-white font-semibold shadow-md shadow-emerald-500/25'
+              : counts.downgrades > 0
+              ? 'bg-emerald-500/15 border-emerald-400/45 text-emerald-100 hover:bg-emerald-500/25 font-semibold'
+              : 'bg-white/[0.03] border-white/10 hover:border-emerald-400/35 text-slate-300 hover:text-white hover:bg-white/[0.07] font-medium'
+          }`}
+        >
+          {!(section === 'downgrades' && !selectedSub) && (
+            <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-emerald-400" />
+          )}
+          <div className={`flex items-center gap-2 min-w-0 flex-1 ${!(section === 'downgrades' && !selectedSub) ? 'pl-1' : ''}`}>
+            <ArrowDownCircle
+              className={`w-3.5 h-3.5 shrink-0 ${
+                section === 'downgrades' && !selectedSub
+                  ? 'text-white'
+                  : counts.downgrades > 0
+                  ? 'text-emerald-300'
+                  : 'text-slate-400 group-hover:text-emerald-300'
+              }`}
+            />
+            <span className="truncate">Réduction de stockage</span>
+          </div>
+          {counts.downgrades > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-emerald-400 text-slate-950 text-[10px] font-black leading-none shrink-0 animate-pulse">
+              {counts.downgrades}
+            </span>
+          )}
         </div>
 
         <div
@@ -977,7 +1178,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
               </p>
             </div>
 
-            {!selectedSub && section !== 'cards' && section !== 'history' && (
+            {!selectedSub && section !== 'cards' && section !== 'history' && section !== 'downgrades' && (
               <div className="flex items-center gap-2 flex-nowrap">
                 <div className="relative flex-1 sm:w-64">
                   <Search className="w-3.5 h-3.5 text-slate-300 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -1029,6 +1230,64 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
               >
                 <X className="w-3.5 h-3.5" />
               </button>
+            </div>
+          )}
+
+          {pendingDowngrades.length > 0 && !selectedSub && section !== 'downgrades' && (
+            <div className="p-3.5 rounded-xl bg-emerald-500/18 backdrop-blur-md border border-emerald-400/45 flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-start gap-2.5 text-xs">
+                <ArrowDownCircle className="w-4 h-4 text-emerald-300 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-emerald-100">
+                    📉 Votre réduction de stockage est prête ({fmtStorageMbFr(pendingDowngrades[0].current_paid_mb)} → {fmtStorageMbFr(pendingDowngrades[0].target_paid_mb)})
+                  </div>
+                  <div className="text-emerald-200/85 mt-0.5">
+                    Réglez votre consommation prorata ({formatCurrencyAmount(pendingDowngrades[0].consumed_prorata_amount, pendingDowngrades[0].currency)}) pour activer automatiquement votre nouveau tarif mensuel réduit ({formatCurrencyAmount(pendingDowngrades[0].target_monthly_price, pendingDowngrades[0].currency)}/mois).
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSection('downgrades')}
+                className="px-3.5 py-2 rounded-xl bg-emerald-400 hover:bg-emerald-300 text-slate-950 text-xs font-black cursor-pointer shrink-0 transition shadow-sm"
+              >
+                Ouvrir Réduction →
+              </button>
+            </div>
+          )}
+
+          {activeDataPurgeWarnings.length > 0 && (
+            <div className="p-4 rounded-2xl bg-orange-500/18 backdrop-blur-md border border-orange-400/50 space-y-2 text-xs">
+              {activeDataPurgeWarnings.map((w) => {
+                const dlMs = w.data_purge_deadline_at ? Date.parse(w.data_purge_deadline_at) : NaN;
+                const daysLeft = Number.isFinite(dlMs)
+                  ? Math.max(0, Math.ceil((dlMs - Date.now()) / (24 * 60 * 60 * 1000)))
+                  : Number(w.data_retention_days || 14);
+                return (
+                  <div key={w.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="w-4 h-4 text-orange-300 shrink-0 mt-0.5" />
+                      <div className="space-y-1">
+                        <div className="font-black text-orange-100">
+                          ⏳ Abonnement annulé — {daysLeft} jour{daysLeft > 1 ? 's' : ''} restant{daysLeft > 1 ? 's' : ''} pour récupérer vos {fmtBytesFrShort(w.excess_bytes_at_cancel)} au-delà du quota gratuit
+                        </div>
+                        <p className="text-orange-100/85 leading-relaxed">
+                          Date limite : <strong>{formatDateTimeFr(w.data_purge_deadline_at)}</strong>. Vos <strong>premiers fichiers situés dans votre espace gratuit sont protégés</strong> et ne seront pas supprimés ; seuls les fichiers enregistrés <strong>après l&apos;espace gratuit (sur l&apos;espace payant)</strong> seront supprimés définitivement si vous ne revenez pas dans la zone gratuite à temps.
+                        </p>
+                      </div>
+                    </div>
+                    {onOpenRenewTarget && (
+                      <button
+                        type="button"
+                        onClick={() => onOpenRenewTarget('storage')}
+                        className="px-3.5 py-2 rounded-xl bg-white text-slate-950 hover:bg-orange-50 text-xs font-black cursor-pointer shrink-0"
+                      >
+                        Reprendre du stockage
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
 
@@ -1223,6 +1482,171 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                 </div>
               );
             })()
+          ) : section === 'downgrades' ? (
+            /* =============================================================== */
+            /* SECTION RÉDUCTION DE STOCKAGE (PRORATA CONSOMMÉ -> BASCULE AUTO) */
+            /* =============================================================== */
+            storageDowngrades.length === 0 ? (
+              <div className="bg-[#163466]/72 backdrop-blur-xl border border-white/18 rounded-2xl p-6 sm:p-10 text-center space-y-2.5 shadow-[0_18px_40px_-16px_rgba(8,22,52,0.5)]">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-400/35 flex items-center justify-center text-emerald-300 mx-auto">
+                  <ArrowDownCircle className="w-6 h-6" />
+                </div>
+                <div className="text-sm font-bold text-white">
+                  Aucune réduction de stockage en attente
+                </div>
+                <p className="text-xs text-slate-300/85 max-w-md mx-auto leading-relaxed">
+                  Si vous demandez à l&apos;équipe StudyCloud de réduire votre espace de stockage et votre tarif mensuel, la proposition et le montant prorata de votre consommation déjà écoulée apparaîtront ici automatiquement.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {storageDowngrades.map((dg) => {
+                  const isPending = dg.status === 'pending_payment';
+                  const isCompleted = dg.status === 'completed';
+                  const isBusyDg = payingDowngradeId === dg.id;
+                  const monthlySavings = Math.max(
+                    0,
+                    Math.round(Number(dg.current_monthly_price || 0) - Number(dg.target_monthly_price || 0))
+                  );
+                  const dueAmount = Math.max(0, Math.round(Number(dg.consumed_prorata_amount || 0)));
+
+                  return (
+                    <div
+                      key={dg.id}
+                      className={`rounded-2xl backdrop-blur-xl border overflow-hidden shadow-[0_18px_42px_-16px_rgba(8,22,52,0.55)] ${
+                        isPending
+                          ? 'bg-[#123344]/85 border-emerald-400/50'
+                          : 'bg-[#163466]/70 border-white/15'
+                      }`}
+                    >
+                      <div
+                        className={`px-5 py-4 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                          isPending
+                            ? 'bg-gradient-to-r from-emerald-600/30 via-teal-600/25 to-sky-600/20 border-emerald-400/30'
+                            : 'bg-white/[0.04] border-white/10'
+                        }`}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                isPending
+                                  ? 'bg-emerald-400 text-slate-950'
+                                  : isCompleted
+                                  ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/40'
+                                  : 'bg-white/10 text-slate-300'
+                              }`}
+                            >
+                              {isPending
+                                ? '⚡ Action requise — Prêt à activer'
+                                : isCompleted
+                                ? '✅ Payé & Stockage modifié'
+                                : dg.status}
+                            </span>
+                            {monthlySavings > 0 && (
+                              <span className="px-2 py-0.5 rounded-full bg-amber-400/20 text-amber-200 border border-amber-400/35 text-[10px] font-black">
+                                −{formatCurrencyAmount(monthlySavings, dg.currency)} / mois économisés
+                              </span>
+                            )}
+                          </div>
+                          <h3 className="text-base sm:text-lg font-black text-white">
+                            Réduction de stockage : {fmtStorageMbFr(dg.current_paid_mb)} → {fmtStorageMbFr(dg.target_paid_mb)}
+                          </h3>
+                        </div>
+                        <div className="text-[11px] text-slate-300 font-medium">
+                          {formatDateTimeFr(dg.created_at)}
+                        </div>
+                      </div>
+
+                      <div className="p-5 space-y-4 text-xs">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                          <div className="p-3.5 rounded-xl bg-black/25 border border-white/10 space-y-1">
+                            <div className="text-[10px] uppercase font-bold text-slate-400">Stockage payant</div>
+                            <div className="flex items-center gap-2 font-mono font-black text-sm">
+                              <span className="text-slate-400 line-through">{fmtStorageMbFr(dg.current_paid_mb)}</span>
+                              <ArrowRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span className="text-emerald-300">{fmtStorageMbFr(dg.target_paid_mb)}</span>
+                            </div>
+                          </div>
+
+                          <div className="p-3.5 rounded-xl bg-black/25 border border-white/10 space-y-1">
+                            <div className="text-[10px] uppercase font-bold text-slate-400">Nouveau tarif mensuel</div>
+                            <div className="flex items-center gap-2 font-mono font-black text-sm flex-wrap">
+                              <span className="text-slate-400 line-through">
+                                {formatCurrencyAmount(dg.current_monthly_price, dg.currency)}
+                              </span>
+                              <ArrowRight className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                              <span className="text-emerald-300">
+                                {formatCurrencyAmount(dg.target_monthly_price, dg.currency)}/mois
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="p-3.5 rounded-xl bg-amber-500/15 border border-amber-400/40 space-y-1">
+                            <div className="text-[10px] uppercase font-bold text-amber-200">
+                              Consommation prorata ({dg.days_used}j / {dg.duration_days}j)
+                            </div>
+                            <div className="font-mono font-black text-base text-white">
+                              {formatCurrencyAmount(dueAmount, dg.currency)}
+                            </div>
+                            <div className="text-[10px] text-amber-200/85">
+                              {isCompleted ? 'Déjà réglé' : 'À payer d’abord avant changement'}
+                            </div>
+                          </div>
+                        </div>
+
+                        {dg.admin_notes && (
+                          <div className="p-3 rounded-xl bg-sky-500/12 border border-sky-400/30 text-sky-100">
+                            <span className="font-bold">Message StudyCloud :</span> {dg.admin_notes}
+                          </div>
+                        )}
+
+                        {isPending ? (
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/10">
+                            <p className="text-[11px] text-slate-200/85 leading-relaxed max-w-xl">
+                              Réglez uniquement ce que vous avez déjà consommé sur la période en cours ({dg.days_used} jour{dg.days_used > 1 ? 's' : ''}). Dès validation du paiement, votre abonnement et votre stockage basculent <strong>automatiquement</strong> sur <strong>{fmtStorageMbFr(dg.target_paid_mb)}</strong> ({formatCurrencyAmount(dg.target_monthly_price, dg.currency)}/mois).
+                            </p>
+                            <button
+                              type="button"
+                              disabled={isBusyDg}
+                              onClick={() => handlePayStorageDowngrade(dg)}
+                              className="h-10 px-5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs inline-flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60 shadow-lg shadow-emerald-500/25 shrink-0"
+                            >
+                              {isBusyDg ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 animate-spin" />
+                                  <span>Traitement en cours...</span>
+                                </>
+                              ) : dueAmount > 0 ? (
+                                <>
+                                  <CreditCard className="w-4 h-4" />
+                                  <span>Payer {formatCurrencyAmount(dueAmount, dg.currency)} &amp; changer</span>
+                                </>
+                              ) : (
+                                <>
+                                  <CheckCircle2 className="w-4 h-4" />
+                                  <span>Activer mon nouveau stockage</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        ) : isCompleted ? (
+                          <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2 text-[11px] text-emerald-200">
+                            <span className="inline-flex items-center gap-1.5 font-semibold">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                              Changement appliqué le {formatDateTimeFr(dg.applied_at || dg.paid_at)}
+                            </span>
+                            {dg.payment_reference && (
+                              <span className="font-mono text-[10px] text-slate-300">Réf : {dg.payment_reference}</span>
+                            )}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
           ) : section === 'cards' ? (
             /* =============================================================== */
             /* SECTION CARTES VISA / MASTERCARD (UNIQUEMENT CARTES ENREGISTRÉES) */

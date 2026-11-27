@@ -3433,16 +3433,17 @@ function renderDashboardHtml(data) {
     window.toggleSidebar = toggleSidebar;
   </script>
   <style>
-    body { font-family: 'Plus Jakarta Sans', sans-serif; }
+    body { font-family: 'Plus Jakarta Sans', sans-serif; background: radial-gradient(circle at top right, #0f172a 0%, #070b14 55%); }
     .neo-card {
-      background: #111827;
-      border: 2px solid #1f2937;
+      background: linear-gradient(180deg, rgba(17, 24, 39, 0.94), rgba(11, 16, 29, 0.96));
+      border: 1px solid rgba(51, 65, 85, 0.72);
       border-radius: 1rem;
-      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+      box-shadow: 0 12px 30px -10px rgba(0, 0, 0, 0.55);
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
     }
-    ::-webkit-scrollbar { width: 5px; height: 5px; }
-    ::-webkit-scrollbar-track { background: #0b0f19; }
-    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
+    .neo-card:hover {
+      border-color: rgba(71, 85, 105, 0.9);
+    }
     .accordion-content {
       max-height: 0;
       overflow: hidden;
@@ -3453,27 +3454,128 @@ function renderDashboardHtml(data) {
     }
     .sidebar-drawer {
       transform: translateX(-100%);
-      transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+      transition: transform 0.28s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .sidebar-drawer.open {
       transform: translateX(0) !important;
     }
     /* Scrollbars confortables et visibles */
-    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar { width: 7px; height: 7px; }
     ::-webkit-scrollbar-track { background: #070b14; }
-    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: #334155; border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: #f97316; }
-    * { scrollbar-width: thin; scrollbar-color: #374151 #070b14; }
+    * { scrollbar-width: thin; scrollbar-color: #334155 #070b14; }
     html, body {
       height: 100vh;
+      height: 100dvh;
       max-height: 100vh;
+      max-height: 100dvh;
       overflow: hidden !important;
       margin: 0;
       padding: 0;
+      padding-bottom: env(safe-area-inset-bottom, 0px);
+    }
+    /* Barre retour mobile masquée sur desktop */
+    .mobile-back-bar { display: none; }
+
+    /* ===================================================================== */
+    /* VERSION TÉLÉPHONE 100 % RESPONSIVE (< 768px)                           */
+    /* 1) Navigation Master -> Detail sur les vues divisées                  */
+    /* 2) Tableaux transformés automatiquement en cartes lisibles            */
+    /* ===================================================================== */
+    @media (max-width: 767px) {
+      .mobile-split-grid {
+        display: flex !important;
+        flex-direction: column !important;
+      }
+      .mobile-split-grid .mobile-master-pane {
+        display: flex !important;
+        flex: 1 1 0% !important;
+        min-height: 0 !important;
+      }
+      .mobile-split-grid .mobile-detail-pane {
+        display: none !important;
+      }
+      .mobile-split-grid.mobile-show-detail .mobile-master-pane {
+        display: none !important;
+      }
+      .mobile-split-grid.mobile-show-detail .mobile-detail-pane {
+        display: block !important;
+        flex: 1 1 0% !important;
+        min-height: 0 !important;
+      }
+      .mobile-back-bar {
+        display: flex !important;
+        align-items: center;
+        justify-content: space-between;
+        position: sticky;
+        top: -1rem;
+        z-index: 20;
+        margin: -1rem -1rem 0.85rem -1rem;
+        padding: 0.65rem 0.9rem;
+        background: rgba(12, 18, 32, 0.96);
+        backdrop-filter: blur(10px);
+        border-bottom: 1px solid rgba(51, 65, 85, 0.85);
+      }
+      /* Transformation Table -> Cartes modernes sur mobile */
+      table.responsive-admin-table,
+      table.responsive-admin-table tbody,
+      table.responsive-admin-table tr,
+      table.responsive-admin-table td {
+        display: block !important;
+        width: 100% !important;
+      }
+      table.responsive-admin-table thead {
+        display: none !important;
+      }
+      table.responsive-admin-table tbody {
+        padding: 0.5rem;
+      }
+      table.responsive-admin-table tbody tr {
+        background: rgba(15, 23, 42, 0.92);
+        border: 1px solid rgba(51, 65, 85, 0.78);
+        border-radius: 0.9rem;
+        padding: 0.65rem 0.85rem;
+        margin-bottom: 0.65rem;
+        box-shadow: 0 6px 18px -6px rgba(0, 0, 0, 0.5);
+      }
+      table.responsive-admin-table tbody td {
+        display: flex !important;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 0.75rem;
+        padding: 0.35rem 0 !important;
+        border-bottom: 1px solid rgba(30, 41, 59, 0.7);
+        text-align: right !important;
+        white-space: normal !important;
+      }
+      table.responsive-admin-table tbody td:last-child {
+        border-bottom: none;
+        padding-top: 0.55rem !important;
+      }
+      table.responsive-admin-table tbody td[data-label]::before {
+        content: attr(data-label);
+        font-size: 10px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        color: #94a3b8;
+        text-align: left;
+        flex-shrink: 0;
+        padding-top: 2px;
+      }
+      table.responsive-admin-table tbody td[colspan] {
+        display: block !important;
+        text-align: center !important;
+        border-bottom: none !important;
+      }
+      table.responsive-admin-table tbody td[colspan]::before {
+        display: none !important;
+      }
     }
   </style>
 </head>
-<body class="bg-[#070b14] text-slate-100 h-screen max-h-screen overflow-hidden antialiased flex flex-col selection:bg-orange-500 selection:text-white">
+<body class="bg-[#070b14] text-slate-100 h-[100dvh] max-h-[100dvh] overflow-hidden antialiased flex flex-col selection:bg-orange-500 selection:text-white">
 
   <!-- ==================================================================== -->
   <!-- BARRE SUPÉRIEURE DE NAVIGATION (STICKY ET TOUJOURS ACCESSIBLE) -->
@@ -3524,33 +3626,59 @@ function renderDashboardHtml(data) {
   <!-- ==================================================================== -->
   <div id="sidebar-backdrop" onclick="toggleSidebar(false)" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm hidden transition-opacity"></div>
   
-  <aside id="sidebar-drawer" class="sidebar-drawer fixed top-0 left-0 bottom-0 z-50 w-72 sm:w-80 bg-[#0f172a] border-r border-slate-800 flex flex-col shadow-2xl">
-    <div class="p-4 border-b border-slate-800 flex items-center justify-between">
+  <aside id="sidebar-drawer" class="sidebar-drawer fixed top-0 left-0 bottom-0 z-50 w-72 sm:w-80 bg-[#0b1120]/98 backdrop-blur-xl border-r border-slate-800 flex flex-col shadow-2xl">
+    <div class="p-4 border-b border-slate-800/90 flex items-center justify-between">
       <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg bg-orange-600 flex items-center justify-center text-white font-black text-sm">
+        <div class="w-8 h-8 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center text-white font-black text-sm shadow-md shadow-orange-600/30">
           SC
         </div>
-        <span class="font-extrabold text-white text-sm">Menu d'Administration</span>
+        <div>
+          <span class="font-extrabold text-white text-sm block leading-tight">Menu Admin</span>
+          <span class="text-[10px] text-slate-400">StudyCloud Control Center</span>
+        </div>
       </div>
       <button type="button" onclick="toggleSidebar(false)" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer">
         ✕
       </button>
     </div>
 
-    <nav class="p-3 space-y-1.5 flex-1 overflow-y-auto text-xs font-bold">
+    <div class="px-3 pt-3 pb-1.5">
+      <div class="relative">
+        <input
+          type="text"
+          id="sidebar-nav-search"
+          oninput="filterSidebarNav()"
+          placeholder="Rechercher un menu..."
+          class="w-full bg-slate-950/90 text-slate-200 placeholder-slate-500 text-xs rounded-xl pl-8 pr-3 py-2 border border-slate-800 focus:outline-none focus:border-orange-500"
+        />
+        <span class="absolute left-2.5 top-2 text-slate-500 text-xs">🔍</span>
+      </div>
+    </div>
+
+    <nav id="sidebar-nav-list" class="p-3 pt-1.5 space-y-1 flex-1 overflow-y-auto text-xs font-bold">
+      <div class="sidebar-cat-label px-2 pt-1 pb-1 text-[9.5px] font-black uppercase tracking-widest text-slate-500">Pilotage</div>
       <button 
         onclick="switchView('global')" 
         id="nav-btn-global"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20 cursor-pointer"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20 cursor-pointer"
       >
         <span class="text-base">📊</span>
         <span>Vue d'ensemble Globale</span>
       </button>
+      <button 
+        onclick="switchView('statistiques')" 
+        id="nav-btn-statistiques"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+      >
+        <span class="text-base">📈</span>
+        <span>Statistiques &amp; Métriques</span>
+      </button>
 
+      <div class="sidebar-cat-label px-2 pt-3 pb-1 text-[9.5px] font-black uppercase tracking-widest text-slate-500">Utilisateurs &amp; Stockage</div>
       <button 
         onclick="switchView('users')" 
         id="nav-btn-users"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
       >
         <span class="text-base text-orange-400 group-hover:scale-110 transition-transform">👥</span>
         <div class="flex-1 overflow-hidden">
@@ -3558,89 +3686,78 @@ function renderDashboardHtml(data) {
             <span>Consommation Utilisateurs</span>
             <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 font-mono">D1/R2</span>
           </div>
-          <div class="text-[10px] text-slate-400 font-normal truncate">Stockage facturé, réel & tables</div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Stockage facturé, réel &amp; purge compte</div>
         </div>
       </button>
 
       <button 
         onclick="switchView('demandes')" 
         id="nav-btn-demandes"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
       >
         <span class="text-base">📥</span>
         <span>Demande de stockage</span>
       </button>
 
       <button 
-        onclick="switchView('demandes-ia')" 
-        id="nav-btn-demandes-ia"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
-      >
-        <span class="text-base">🤖</span>
-        <span>Demandes de crédits IA</span>
-      </button>
-
-      <button 
-        onclick="switchView('facturation-ia')" 
-        id="nav-btn-facturation-ia"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
-      >
-        <span class="text-base text-amber-400 group-hover:scale-110 transition-transform">🪙</span>
-        <div class="flex-1 overflow-hidden">
-          <div class="text-xs font-bold text-white flex items-center gap-1.5">
-            <span>Facturation & Quotas IA</span>
-            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono">Formule 2</span>
-          </div>
-          <div class="text-[10px] text-slate-400 font-normal truncate">Tokens/Crédit, Bienvenue & Quotidien</div>
-        </div>
-      </button>
-
-      <button 
-        onclick="switchView('robot-rouge')" 
-        id="nav-btn-robot-rouge"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
-      >
-        <span class="text-base text-red-500 group-hover:scale-110 transition-transform">🤖</span>
-        <div class="flex-1 overflow-hidden">
-          <div class="text-xs font-bold text-white flex items-center gap-1.5">
-            <span>Robot Rouge (Studio IA)</span>
-            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-mono">Cloudflare OS</span>
-          </div>
-          <div class="text-[10px] text-slate-400 font-normal truncate">Gestion modèles, clés API & quotas</div>
-        </div>
-      </button>
-
-      <button 
         onclick="switchView('distribution')" 
         id="nav-btn-distribution"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
       >
         <span class="text-base">🎁</span>
         <span>Distribution de stockage</span>
       </button>
 
       <button 
-        onclick="switchView('messages')" 
-        id="nav-btn-messages"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+        onclick="switchView('alertes-stockage')" 
+        id="nav-btn-alertes-stockage"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
       >
-        <span class="text-base">💬</span>
-        <span>Messages des utilisateurs</span>
+        <span class="text-base text-orange-400 group-hover:scale-110 transition-transform">📧</span>
+        <div class="flex-1 overflow-hidden">
+          <div class="text-xs font-bold text-white flex items-center gap-1.5">
+            <span>Alertes Stockage</span>
+            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 font-mono">50-100%</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Seuils, emails ADN &amp; relances</div>
+        </div>
+      </button>
+
+      <div class="sidebar-cat-label px-2 pt-3 pb-1 text-[9.5px] font-black uppercase tracking-widest text-slate-500">Facturation &amp; Apps</div>
+      <button 
+        onclick="switchView('active-subs')" 
+        id="nav-btn-active-subs"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
+      >
+        <span class="text-base text-amber-400 group-hover:scale-110 transition-transform">📋</span>
+        <div class="flex-1 overflow-hidden">
+          <div class="text-xs font-bold text-white flex items-center justify-between gap-1.5">
+            <span class="truncate">Abonnements en cours</span>
+            <span id="sidebar-active-subs-count" class="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">0</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Annulation, réduction prorata &amp; relances</div>
+        </div>
       </button>
 
       <button 
-        onclick="switchView('signalements')" 
-        id="nav-btn-signalements"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+        onclick="switchView('abonnements')" 
+        id="nav-btn-abonnements"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
       >
-        <span class="text-base">🚩</span>
-        <span>Signalements & Retours</span>
+        <span class="text-base text-emerald-400 group-hover:scale-110 transition-transform">💳</span>
+        <div class="flex-1 overflow-hidden">
+          <div class="text-xs font-bold text-white flex items-center gap-1.5">
+            <span>Transactions &amp; Paiements</span>
+            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Live</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Achats, réseaux, Paystack &amp; nettoyage</div>
+        </div>
       </button>
 
       <button 
         onclick="switchView('apps-monetization')" 
         id="nav-btn-apps-monetization"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
       >
         <span class="text-base text-sky-400 group-hover:scale-110 transition-transform">📱</span>
         <div class="flex-1 overflow-hidden">
@@ -3653,72 +3770,67 @@ function renderDashboardHtml(data) {
       </button>
 
       <button 
-        onclick="switchView('active-subs')" 
-        id="nav-btn-active-subs"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
+        onclick="switchView('demandes-ia')" 
+        id="nav-btn-demandes-ia"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
       >
-        <span class="text-base text-amber-400 group-hover:scale-110 transition-transform">📋</span>
-        <div class="flex-1 overflow-hidden">
-          <div class="text-xs font-bold text-white flex items-center justify-between gap-1.5">
-            <span class="truncate">Abonnements en cours</span>
-            <span id="sidebar-active-subs-count" class="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 font-mono">0</span>
-          </div>
-          <div class="text-[10px] text-slate-400 font-normal truncate">Auto/Manuel/Infini, relances &amp; blocage</div>
-        </div>
+        <span class="text-base">🤖</span>
+        <span>Demandes de crédits IA</span>
       </button>
 
       <button 
-        onclick="switchView('abonnements')" 
-        id="nav-btn-abonnements"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
+        onclick="switchView('facturation-ia')" 
+        id="nav-btn-facturation-ia"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
       >
-        <span class="text-base text-emerald-400 group-hover:scale-110 transition-transform">💳</span>
+        <span class="text-base text-amber-400 group-hover:scale-110 transition-transform">🪙</span>
         <div class="flex-1 overflow-hidden">
           <div class="text-xs font-bold text-white flex items-center gap-1.5">
-            <span>Transactions &amp; Paiements</span>
-            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 font-mono">Live</span>
+            <span>Facturation &amp; Quotas IA</span>
+            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-amber-500/20 text-amber-400 border border-amber-500/30 font-mono">Formule 2</span>
           </div>
-          <div class="text-[10px] text-slate-400 font-normal truncate">Achats, réseaux, Paystack &amp; reçu manuel</div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Tokens/Crédit, Bienvenue &amp; Quotidien</div>
         </div>
       </button>
 
       <button 
-        onclick="switchView('statistiques')" 
-        id="nav-btn-statistiques"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+        onclick="switchView('robot-rouge')" 
+        id="nav-btn-robot-rouge"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
       >
-        <span class="text-base">📊</span>
-        <span>Statistiques & Métriques</span>
-      </button>
-
-      <button 
-        onclick="switchView('profil-pro')" 
-        id="nav-btn-profil-pro"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
-      >
-        <span class="text-base">💼</span>
-        <span>Informations professionnelles</span>
-      </button>
-
-      <button 
-        onclick="switchView('alertes-stockage')" 
-        id="nav-btn-alertes-stockage"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
-      >
-        <span class="text-base text-orange-400 group-hover:scale-110 transition-transform">📧</span>
+        <span class="text-base text-red-500 group-hover:scale-110 transition-transform">🤖</span>
         <div class="flex-1 overflow-hidden">
           <div class="text-xs font-bold text-white flex items-center gap-1.5">
-            <span>Alertes Stockage</span>
-            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 font-mono">50-100%</span>
+            <span>Robot Rouge (Studio IA)</span>
+            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-red-500/20 text-red-400 border border-red-500/30 font-mono">Cloudflare OS</span>
           </div>
-          <div class="text-[10px] text-slate-400 font-normal truncate">Seuils, emails ADN & relances</div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Gestion modèles, clés API &amp; quotas</div>
         </div>
+      </button>
+
+      <div class="sidebar-cat-label px-2 pt-3 pb-1 text-[9.5px] font-black uppercase tracking-widest text-slate-500">Modération &amp; Outils</div>
+      <button 
+        onclick="switchView('messages')" 
+        id="nav-btn-messages"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+      >
+        <span class="text-base">💬</span>
+        <span>Messages des utilisateurs</span>
+      </button>
+
+      <button 
+        onclick="switchView('signalements')" 
+        id="nav-btn-signalements"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+      >
+        <span class="text-base">🚩</span>
+        <span>Signalements &amp; Retours</span>
       </button>
 
       <button 
         onclick="switchView('dkd-store')" 
         id="nav-btn-dkd-store"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
       >
         <span class="text-base group-hover:scale-110 transition-transform">🛍️</span>
         <div class="flex-1 overflow-hidden">
@@ -3728,20 +3840,30 @@ function renderDashboardHtml(data) {
             </span>
             <span id="sidebar-dkd-sites-count" class="text-[9px] px-1.5 py-0.2 rounded-full bg-blue-500/20 text-blue-400 border border-blue-500/30 font-mono">0</span>
           </div>
-          <div class="text-[10px] text-slate-400 font-normal truncate">Sites, logos, catégories & ordre</div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Sites, logos, catégories &amp; ordre</div>
         </div>
+      </button>
+
+      <button 
+        onclick="switchView('profil-pro')" 
+        id="nav-btn-profil-pro"
+        class="sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+      >
+        <span class="text-base">💼</span>
+        <span>Informations professionnelles</span>
       </button>
     </nav>
 
-    <div class="p-3.5 border-t border-slate-800 text-[11px] text-slate-500">
-      StudyCloud • DKD Technologies
+    <div class="p-3.5 border-t border-slate-800 text-[11px] text-slate-500 flex items-center justify-between">
+      <span>StudyCloud • DKD</span>
+      <span class="text-[9.5px] px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold">v2 Mobile</span>
     </div>
   </aside>
 
   <!-- ==================================================================== -->
   <!-- ZONE PRINCIPALE DE CONTENU SANS ESPACE VIDE ET PARFAITEMENT SCROLLABLE -->
   <!-- ==================================================================== -->
-  <main class="h-[calc(100vh-60px)] max-h-[calc(100vh-60px)] w-full max-w-[1700px] mx-auto p-2 sm:p-3 flex flex-col min-h-0 overflow-hidden">
+  <main class="h-[calc(100dvh-60px)] max-h-[calc(100dvh-60px)] w-full max-w-[1700px] mx-auto p-2 sm:p-3 flex flex-col min-h-0 overflow-hidden">
 
     <!-- ================================================================== -->
     <!-- VUE 1 : ACCUEIL / VUE D'ENSEMBLE GLOBALE (DÉFILEMENT NATUREL) -->
@@ -3886,10 +4008,10 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <div id="view-users" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
       <!-- DEUX COLONNES SCROLLABLES INDÉPENDANTES (LA PAGE EXTÉRIEURE NE BOUGE PAS) -->
-      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 h-full min-h-0 overflow-hidden">
+      <div id="users-split-grid" class="mobile-split-grid grid grid-cols-1 md:grid-cols-12 gap-3 h-full min-h-0 overflow-hidden">
         
         <!-- COLONNE GAUCHE (4/12) : LISTE DES NOMS SCROLLABLE INDÉPENDANTE -->
-        <div class="md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
+        <div class="mobile-master-pane md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
           <div class="p-2.5 border-b border-slate-800 shrink-0">
             <input 
               type="text" 
@@ -3905,7 +4027,7 @@ function renderDashboardHtml(data) {
 
         <!-- COLONNE DROITE (8/12) : DÉTAILS COMPLETS ET DONNÉES SCROLLABLES INDÉPENDANTS -->
         <!-- ÉLÉMENTS SCROLLABLES DROITE (UNIQUEMENT LE CONTENU QUI DÉFILE) -->
-        <div class="md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="user-details-right-panel"></div>
+        <div class="mobile-detail-pane md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="user-details-right-panel"></div>
 
       </div>
     </div>
@@ -3915,10 +4037,10 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <div id="view-demandes" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
       <!-- DEUX COLONNES SCROLLABLES INDÉPENDANTES (LA PAGE EXTÉRIEURE NE BOUGE PAS) -->
-      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 h-full min-h-0 overflow-hidden">
+      <div id="demandes-split-grid" class="mobile-split-grid grid grid-cols-1 md:grid-cols-12 gap-3 h-full min-h-0 overflow-hidden">
         
         <!-- COLONNE GAUCHE (4/12) : FILTRES, RECHERCHE ET LISTE DÉFILANTE -->
-        <div class="md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
+        <div class="mobile-master-pane md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
           
           <!-- Filtres onglets en haut -->
           <div class="p-2.5 border-b border-slate-800 space-y-2 shrink-0">
@@ -3969,8 +4091,9 @@ function renderDashboardHtml(data) {
               <span class="absolute left-2.5 top-2.5 text-slate-500 text-xs">🔍</span>
             </div>
 
-            <div class="flex items-center justify-between text-[10px] text-slate-400">
-              <span id="demandes-filter-label" class="font-medium text-amber-400">Demandes en attente de validation</span>
+            <div class="flex items-center justify-between gap-2 text-[10px] text-slate-400">
+              <span id="demandes-filter-label" class="font-medium text-amber-400 truncate">Demandes en attente de validation</span>
+              <button type="button" onclick="bulkDeleteRejectedRequests('storage')" class="shrink-0 px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 font-bold cursor-pointer" title="Supprimer les demandes refusées/annulées">🧹 Nettoyer</button>
             </div>
           </div>
 
@@ -3979,7 +4102,7 @@ function renderDashboardHtml(data) {
         </div>
 
         <!-- COLONNE DROITE (8/12) : DÉTAILS DEMANDE, REÇU R2, OPTIONS 3 TRAITS, ACTIONS ADMIN -->
-        <div class="md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="demandes-right-detail-panel">
+        <div class="mobile-detail-pane md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="demandes-right-detail-panel">
           <div class="h-full flex flex-col items-center justify-center text-center text-slate-500 py-20">
             <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">📥</div>
             <h3 class="text-sm font-bold text-slate-300">Aucune demande ou abonnement sélectionné</h3>
@@ -3995,10 +4118,10 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <div id="view-demandes-ia" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
       <!-- DEUX COLONNES SCROLLABLES INDÉPENDANTES (PAGE FIXE) -->
-      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 h-full min-h-0 overflow-hidden">
+      <div id="demandes-ia-split-grid" class="mobile-split-grid grid grid-cols-1 md:grid-cols-12 gap-3 h-full min-h-0 overflow-hidden">
         
         <!-- COLONNE GAUCHE (4/12) : FILTRES ONGLETS, RECHERCHE ET LISTE DÉFILANTE -->
-        <div class="md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
+        <div class="mobile-master-pane md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
           
           <!-- Filtres onglets en haut -->
           <div class="p-2.5 border-b border-slate-800 space-y-2 shrink-0">
@@ -4049,8 +4172,9 @@ function renderDashboardHtml(data) {
               <span class="absolute left-2.5 top-2.5 text-slate-500 text-xs">🔍</span>
             </div>
 
-            <div class="flex items-center justify-between text-[10px] text-slate-400">
-              <span id="demandes-ia-filter-label" class="font-medium text-amber-400">Demandes de crédits IA en attente de validation</span>
+            <div class="flex items-center justify-between gap-2 text-[10px] text-slate-400">
+              <span id="demandes-ia-filter-label" class="font-medium text-amber-400 truncate">Demandes de crédits IA en attente de validation</span>
+              <button type="button" onclick="bulkDeleteRejectedRequests('ai')" class="shrink-0 px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 font-bold cursor-pointer" title="Supprimer les demandes IA refusées">🧹 Nettoyer</button>
             </div>
           </div>
 
@@ -4059,7 +4183,7 @@ function renderDashboardHtml(data) {
         </div>
 
         <!-- COLONNE DROITE (8/12) : DÉTAILS DEMANDE IA, REÇU R2, VALIDATION & ALLOCATION -->
-        <div class="md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="demandes-ia-right-detail-panel">
+        <div class="mobile-detail-pane md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="demandes-ia-right-detail-panel">
           <div class="h-full flex flex-col items-center justify-center text-center text-slate-500 py-20">
             <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">🤖</div>
             <h3 class="text-sm font-bold text-slate-300">Aucune demande de crédits IA sélectionnée</h3>
@@ -4112,9 +4236,9 @@ function renderDashboardHtml(data) {
       </div>
 
       <!-- ÉCRAN DIVISÉ EN 2 POUR LA GESTION DES QUOTAS UTILISATEURS -->
-      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
+      <div id="distribution-split-grid" class="mobile-split-grid grid grid-cols-1 md:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
         <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS SCROLLABLE -->
-        <div class="md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
+        <div class="mobile-master-pane md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
           <div class="p-2.5 border-b border-slate-800 flex items-center justify-between text-xs font-bold text-slate-400 shrink-0">
             <span>Utilisateurs & Quotas</span>
             <span class="text-[10px] font-mono text-orange-400">(${data.users.length})</span>
@@ -4125,7 +4249,7 @@ function renderDashboardHtml(data) {
 
         <!-- COLONNE DROITE (8/12) : FORMULAIRE COMPLET D'AJUSTEMENT DU STOCKAGE SCROLLABLE -->
         <!-- ÉLÉMENTS SCROLLABLES DROITE (UNIQUEMENT LE CONTENU QUI DÉFILE) -->
-        <div class="md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="distribution-right-panel">
+        <div class="mobile-detail-pane md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="distribution-right-panel">
           <div class="py-20 text-center text-slate-500 text-xs">
             Sélectionnez un utilisateur sur la gauche pour afficher et ajuster son stockage de bienvenue ou son stockage payant.
           </div>
@@ -4288,11 +4412,14 @@ function renderDashboardHtml(data) {
                 <option value="failed">❌ Échoué</option>
               </select>
             </div>
-            <div id="tx-table-counter" class="text-[11px] font-bold text-slate-400">0 transaction</div>
+            <div class="flex flex-wrap items-center gap-2">
+              <div id="tx-table-counter" class="text-[11px] font-bold text-slate-400">0 transaction</div>
+              <button type="button" onclick="bulkDeleteFailedAdminTransactions()" class="px-2.5 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-[11px] font-black cursor-pointer" title="Supprimer les transactions échouées, abandonnées ou en attente">🧹 Nettoyer échouées / tests</button>
+            </div>
           </div>
 
           <div class="overflow-x-auto rounded-xl border border-slate-800">
-            <table class="w-full text-left border-collapse text-xs">
+            <table class="responsive-admin-table w-full text-left border-collapse text-xs">
               <thead>
                 <tr class="bg-slate-900/90 text-[10px] uppercase tracking-wider text-slate-400 border-b border-slate-800">
                   <th class="px-3 py-2.5 font-extrabold">Date &amp; Heure</th>
@@ -4544,9 +4671,10 @@ function renderDashboardHtml(data) {
         <!-- Sous-onglets -->
         <div class="flex flex-wrap items-center gap-2">
           <button type="button" id="asub-tab-list" onclick="switchAdminActiveSubsTab('list')" class="px-3.5 py-2 rounded-xl bg-orange-600 text-white text-xs font-black cursor-pointer">📋 Abonnements en cours</button>
+          <button type="button" id="asub-tab-downgrades" onclick="switchAdminActiveSubsTab('downgrades')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-emerald-300 hover:bg-slate-700 border border-emerald-500/30 text-xs font-black cursor-pointer">📉 Réduction de stockage (<span id="asub-tab-downgrades-count">0</span>)</button>
           <button type="button" id="asub-tab-cards" onclick="switchAdminActiveSubsTab('cards')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">💳 Cartes enregistrées (<span id="asub-tab-cards-count">0</span>)</button>
-          <button type="button" id="asub-tab-policies" onclick="switchAdminActiveSubsTab('policies')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">⚙️ Politiques de relance &amp; blocage</button>
-          <button type="button" id="asub-tab-emails" onclick="switchAdminActiveSubsTab('emails')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">📧 Journal des Emails envoyés</button>
+          <button type="button" id="asub-tab-policies" onclick="switchAdminActiveSubsTab('policies')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">⚙️ Politiques &amp; Délais</button>
+          <button type="button" id="asub-tab-emails" onclick="switchAdminActiveSubsTab('emails')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">📧 Journal des Emails</button>
         </div>
 
         <!-- PANEL 1 : TABLEAU LIVE DES ABONNEMENTS -->
@@ -4602,12 +4730,13 @@ function renderDashboardHtml(data) {
               <option value="cancelled">❌ Annulé / Expiré</option>
             </select>
             <span id="asub-table-counter" class="text-[11px] font-bold text-slate-400 px-2">0 abonnement</span>
+            <button type="button" onclick="bulkDeleteCancelledAdminSubs()" class="px-2.5 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-[11px] font-black cursor-pointer" title="Supprimer de l'historique tous les abonnements annulés, expirés ou révoqués">🧹 Nettoyer annulés/expirés</button>
           </div>
 
           <!-- Tableau principal -->
           <div class="neo-card overflow-hidden">
             <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs">
+              <table class="responsive-admin-table w-full text-left text-xs">
                 <thead>
                   <tr class="bg-slate-900/90 text-[10px] uppercase text-slate-400 border-b border-slate-800">
                     <th class="px-3 py-2.5">Utilisateur</th>
@@ -4627,6 +4756,135 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
+        <!-- PANEL 1B : CARTE MAÎTRESSE ADMIN DE RÉDUCTION DE STOCKAGE (DOWNGRADE PRORATA) -->
+        <div id="asub-panel-downgrades" class="hidden space-y-4">
+          <div class="neo-card p-4 sm:p-5 border border-emerald-500/40 bg-gradient-to-br from-slate-900 via-[#0d1d1c] to-slate-950 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="px-2.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black uppercase">Carte Maîtresse Réduction</span>
+                  <span class="text-[10.5px] text-slate-400">Calcul prorata consommation écoulée</span>
+                </div>
+                <h3 class="text-sm sm:text-base font-black text-white mt-1">📉 Réduire le stockage &amp; le tarif mensuel d'un utilisateur</h3>
+                <p class="text-[11px] text-slate-400 mt-0.5">Sélectionnez un abonné stockage ayant demandé une réduction. L'utilisateur recevra une notification dans l'application + un email, réglera d'abord ce qu'il a consommé au prorata, puis son abonnement basculera automatiquement au nouveau tarif réduit.</p>
+              </div>
+              <button type="button" onclick="loadAdminStorageDowngrades()" class="shrink-0 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer">🔄 Actualiser</button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              <!-- Colonne gauche : Sélection abonné + Contrôle stockage réduit -->
+              <div class="lg:col-span-7 space-y-3.5">
+                <div>
+                  <label class="block text-[10.5px] font-black uppercase text-slate-300 mb-1.5">1. Sélectionner l'utilisateur abonné au stockage</label>
+                  <select id="dg-user-select" onchange="onAdminDowngradeUserChange()" class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white outline-none focus:border-emerald-500">
+                    <option value="">Chargement des abonnés stockage actifs...</option>
+                  </select>
+                </div>
+
+                <!-- État actuel de l'utilisateur -->
+                <div id="dg-current-user-stats" class="hidden grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+                  <div class="p-2.5 rounded-xl bg-slate-950/90 border border-slate-800">
+                    <div class="text-[9.5px] uppercase font-bold text-slate-400">Stockage payant actuel</div>
+                    <div id="dg-stat-paid" class="text-sm font-black text-orange-400 mt-0.5">—</div>
+                  </div>
+                  <div class="p-2.5 rounded-xl bg-slate-950/90 border border-slate-800">
+                    <div class="text-[9.5px] uppercase font-bold text-slate-400">Espace utilisé</div>
+                    <div id="dg-stat-used" class="text-sm font-black text-sky-300 mt-0.5">—</div>
+                  </div>
+                  <div class="p-2.5 rounded-xl bg-slate-950/90 border border-slate-800">
+                    <div class="text-[9.5px] uppercase font-bold text-slate-400">Prix actuel / mois</div>
+                    <div id="dg-stat-price" class="text-sm font-black text-white mt-0.5">—</div>
+                  </div>
+                  <div class="p-2.5 rounded-xl bg-slate-950/90 border border-slate-800">
+                    <div class="text-[9.5px] uppercase font-bold text-slate-400">Jours consommés</div>
+                    <div id="dg-stat-days" class="text-sm font-black text-amber-300 mt-0.5">—</div>
+                  </div>
+                </div>
+
+                <!-- Sélecteur visuel Carte Maîtresse de réduction -->
+                <div id="dg-controls-box" class="hidden p-4 rounded-2xl bg-slate-950/85 border border-emerald-500/30 space-y-3">
+                  <div class="flex items-center justify-between gap-2 flex-wrap">
+                    <span class="text-[10.5px] font-black uppercase text-emerald-300">2. Choisir le nouveau stockage payant réduit</span>
+                    <span id="dg-step-hint" class="text-[10px] font-mono text-slate-400">Palier : 100 Mo</span>
+                  </div>
+                  <div class="flex items-center gap-2">
+                    <button type="button" onclick="stepAdminDowngradeStorage(-1)" class="w-11 h-11 rounded-xl bg-rose-500/20 hover:bg-rose-500/35 border border-rose-500/40 text-rose-200 text-lg font-black cursor-pointer shrink-0">−</button>
+                    <div class="flex-1 text-center px-3 py-2 rounded-xl bg-slate-900 border border-slate-700">
+                      <div id="dg-target-display" class="text-lg sm:text-xl font-black text-emerald-300 font-mono">0 Mo</div>
+                      <div id="dg-target-total-display" class="text-[10px] text-slate-400">Total avec gratuit : —</div>
+                    </div>
+                    <button type="button" onclick="stepAdminDowngradeStorage(1)" class="w-11 h-11 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/35 border border-emerald-500/40 text-emerald-200 text-lg font-black cursor-pointer shrink-0">+</button>
+                  </div>
+                  <input id="dg-target-slider" type="range" min="0" max="1000" step="100" value="0" oninput="onAdminDowngradeSliderInput(this.value)" class="w-full accent-emerald-500 cursor-pointer" />
+                  <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 pt-1 text-xs">
+                    <div>
+                      <label class="block text-[9.5px] font-bold text-slate-400 mb-1">Stockage payant cible (Mo)</label>
+                      <input id="dg-target-mb" type="number" min="0" step="any" oninput="recalcAdminDowngradePreview(true)" class="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-slate-700 text-emerald-300 font-mono font-bold outline-none" />
+                    </div>
+                    <div>
+                      <label class="block text-[9.5px] font-bold text-emerald-300 mb-1">Nouveau prix mensuel (FCFA)</label>
+                      <input id="dg-target-price" type="number" min="0" step="1" class="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-emerald-500/40 text-emerald-200 font-mono font-bold outline-none" />
+                    </div>
+                    <div>
+                      <label class="block text-[9.5px] font-bold text-amber-300 mb-1">Prorata consommé à payer (FCFA)</label>
+                      <input id="dg-prorata-due" type="number" min="0" step="1" class="w-full px-2.5 py-2 rounded-lg bg-slate-900 border border-amber-500/40 text-amber-200 font-mono font-bold outline-none" />
+                    </div>
+                  </div>
+                  <div id="dg-overusage-warning" class="hidden p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-[11px] font-semibold"></div>
+                  <div>
+                    <label class="block text-[9.5px] font-bold text-slate-400 mb-1">Message / note pour l'utilisateur (optionnel)</label>
+                    <input id="dg-admin-notes" type="text" placeholder="Ex : Suite à votre demande sur WhatsApp, voici votre réduction de forfait..." class="w-full px-3 py-2 rounded-lg bg-slate-900 border border-slate-700 text-white text-xs outline-none focus:border-emerald-500" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Colonne droite : Aperçu de la Carte envoyée à l'utilisateur -->
+              <div class="lg:col-span-5 flex flex-col justify-between p-4 rounded-2xl bg-slate-950/95 border border-slate-800 space-y-3">
+                <div class="space-y-3">
+                  <div class="text-[10.5px] font-black uppercase text-sky-300 tracking-wider">Aperçu envoyé à l'utilisateur</div>
+                  <div id="dg-summary-box" class="space-y-2 text-xs text-slate-300">
+                    <div class="text-slate-500 py-8 text-center">Sélectionnez un abonné stockage à gauche pour calculer automatiquement son nouveau tarif mensuel et le prorata déjà consommé.</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  id="dg-submit-btn"
+                  disabled
+                  onclick="submitAdminStorageDowngrade()"
+                  class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black shadow-lg shadow-emerald-600/20 cursor-pointer transition"
+                >
+                  📩 Envoyer la réduction (Notification + Email)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Historique des demandes de réduction -->
+          <div class="neo-card overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+              <h4 class="text-xs font-black text-white uppercase tracking-wider">📜 Historique des réductions de stockage envoyées</h4>
+              <span id="dg-history-counter" class="text-[11px] font-bold text-slate-400">0 demande</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="responsive-admin-table w-full text-left text-xs">
+                <thead>
+                  <tr class="bg-slate-900 text-[10px] uppercase text-slate-400 border-b border-slate-800">
+                    <th class="px-3 py-2.5">Utilisateur</th>
+                    <th class="px-3 py-2.5">Stockage (Avant → Après)</th>
+                    <th class="px-3 py-2.5">Prix mensuel</th>
+                    <th class="px-3 py-2.5">Prorata consommé</th>
+                    <th class="px-3 py-2.5">Statut</th>
+                    <th class="px-3 py-2.5 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody id="dg-history-tbody" class="divide-y divide-slate-800/70">
+                  <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Aucune demande de réduction enregistrée.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <!-- PANEL 2 : CARTES BANCAIRES ENREGISTRÉES & PERMISSIONS AUTO -->
         <div id="asub-panel-cards" class="hidden space-y-3">
           <div class="neo-card p-3 flex flex-wrap items-center justify-between gap-2">
@@ -4636,7 +4894,7 @@ function renderDashboardHtml(data) {
           </div>
           <div class="neo-card overflow-hidden">
             <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs">
+              <table class="responsive-admin-table w-full text-left text-xs">
                 <thead>
                   <tr class="bg-slate-900/90 text-[10px] uppercase text-slate-400 border-b border-slate-800">
                     <th class="px-3 py-2.5">Utilisateur</th>
@@ -4678,10 +4936,14 @@ function renderDashboardHtml(data) {
                 <h3 class="text-xs font-black text-white uppercase tracking-wider">📧 Historique complet des emails de facturation (Resend)</h3>
                 <p class="text-[10.5px] text-slate-400">Suivi automatique des statuts Envoyé / Reçu / Ouvert / Rebondi via le webhook <code class="text-sky-300">/api/webhooks/resend</code>.</p>
               </div>
-              <button type="button" onclick="loadAdminBillingEmailLogs()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold cursor-pointer">🔄 Actualiser</button>
+              <div class="flex flex-wrap items-center gap-2">
+                <button type="button" onclick="loadAdminBillingEmailLogs()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-bold cursor-pointer">🔄 Actualiser</button>
+                <button type="button" onclick="clearAdminEmailLogs('failed')" class="px-2.5 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/35 text-amber-300 text-[11px] font-bold cursor-pointer">🧹 Supprimer échecs</button>
+                <button type="button" onclick="clearAdminEmailLogs('all')" class="px-2.5 py-1.5 rounded-lg bg-rose-500/15 hover:bg-rose-500/25 border border-rose-500/35 text-rose-300 text-[11px] font-black cursor-pointer">🗑️ Vider le journal</button>
+              </div>
             </div>
             <div class="overflow-x-auto">
-              <table class="w-full text-left text-xs">
+              <table class="responsive-admin-table w-full text-left text-xs">
                 <thead>
                   <tr class="bg-slate-900 text-[10px] uppercase text-slate-400 border-b border-slate-800">
                     <th class="px-3 py-2">Date</th>
@@ -4690,10 +4952,11 @@ function renderDashboardHtml(data) {
                     <th class="px-3 py-2">Sujet</th>
                     <th class="px-3 py-2">Source</th>
                     <th class="px-3 py-2">Statut Resend</th>
+                    <th class="px-3 py-2 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody id="asub-emails-tbody" class="divide-y divide-slate-800/70">
-                  <tr><td colspan="6" class="px-4 py-8 text-center text-slate-400">Chargement du journal...</td></tr>
+                  <tr><td colspan="7" class="px-4 py-8 text-center text-slate-400">Chargement du journal...</td></tr>
                 </tbody>
               </table>
             </div>
@@ -4910,6 +5173,79 @@ function renderDashboardHtml(data) {
             <button type="submit" id="asc-save-btn" class="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black cursor-pointer">Créer l'abonnement</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- MODALE ADMIN : ANNULATION ABONNEMENT + ANALYSE DONNÉES PAYANTES + DÉLAI RÉCUPÉRATION -->
+    <div id="admin-sub-cancel-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-3" onclick="if(event.target===this) closeAdminSubCancelModal()">
+      <div class="max-w-xl w-full max-h-[92vh] overflow-y-auto bg-[#0f172a] border border-rose-500/40 rounded-2xl shadow-2xl">
+        <div class="px-5 py-3.5 bg-rose-950/40 border-b border-rose-500/30 flex items-center justify-between sticky top-0 z-10">
+          <div>
+            <h3 class="text-sm font-black text-white flex items-center gap-2"><span>❌</span> <span>Annuler cet abonnement</span></h3>
+            <p id="ascan-subtitle" class="text-[11px] text-slate-300 mt-0.5"></p>
+          </div>
+          <button type="button" onclick="closeAdminSubCancelModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer">✕</button>
+        </div>
+        <form onsubmit="confirmAdminSubCancelForm(event)" class="p-5 space-y-4 text-xs">
+          <input type="hidden" id="ascan-sub-id" value="" />
+
+          <!-- Pré-analyse serveur des données au-delà du quota gratuit -->
+          <div id="ascan-overflow-box" class="p-3.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-300">
+            ⏳ Analyse de la consommation par rapport au quota gratuit en cours...
+          </div>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Type d'annulation</label>
+              <select id="ascan-mode" class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-bold outline-none">
+                <option value="immediate">⚡ Annulation immédiate</option>
+                <option value="end_of_period">📅 Annuler à la fin de la période</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase text-amber-300 mb-1">Délai récupération données (jours)</label>
+              <div class="flex items-center gap-1.5">
+                <input id="ascan-retention-days" type="number" min="1" max="365" value="14" class="w-24 px-2.5 py-2 rounded-lg bg-slate-950 border border-amber-500/40 text-amber-200 font-mono font-bold outline-none" />
+                <button type="button" onclick="document.getElementById('ascan-retention-days').value=7" class="px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold cursor-pointer">7j</button>
+                <button type="button" onclick="document.getElementById('ascan-retention-days').value=14" class="px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold cursor-pointer">14j</button>
+                <button type="button" onclick="document.getElementById('ascan-retention-days').value=30" class="px-2 py-1.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-bold cursor-pointer">30j</button>
+              </div>
+              <div class="text-[9.5px] text-slate-400 mt-1">Personnalisable pour cet utilisateur (défaut = règle globale).</div>
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Motif de l'annulation (optionnel)</label>
+            <textarea id="ascan-reason" rows="2" placeholder="Ex : Demande de l'utilisateur / Fin de contrat..." class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white outline-none focus:border-rose-500"></textarea>
+          </div>
+
+          <label class="flex items-center gap-2 cursor-pointer text-sky-300">
+            <input id="ascan-notify-email" type="checkbox" checked class="w-4 h-4 accent-sky-500" />
+            <span>Envoyer automatiquement l'email détaillé + notification in-app (quota gratuit protégé, volume en dépassement et jours restants)</span>
+          </label>
+
+          <div class="pt-3 border-t border-slate-800 flex justify-end gap-2">
+            <button type="button" onclick="closeAdminSubCancelModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold cursor-pointer">Fermer</button>
+            <button type="submit" id="ascan-confirm-btn" class="px-5 py-2 rounded-xl bg-gradient-to-r from-rose-600 to-red-600 hover:from-rose-500 hover:to-red-500 text-white font-black cursor-pointer">❌ Confirmer l'annulation</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- MODALE RÉUTILISABLE DE CONFIRMATION DE SUPPRESSION -->
+    <div id="admin-confirm-modal" class="fixed inset-0 z-[60] bg-black/80 backdrop-blur-md hidden flex items-center justify-center p-3" onclick="if(event.target===this) closeAdminConfirmModal()">
+      <div class="max-w-md w-full bg-[#0f172a] border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+        <div class="px-5 py-3.5 border-b border-slate-800 flex items-center justify-between">
+          <h3 id="acm-title" class="text-sm font-black text-white">Confirmation</h3>
+          <button type="button" onclick="closeAdminConfirmModal()" class="w-7 h-7 rounded-lg bg-slate-800 text-slate-300 hover:text-white cursor-pointer">✕</button>
+        </div>
+        <div class="p-5 space-y-4 text-xs">
+          <p id="acm-message" class="text-slate-300 leading-relaxed"></p>
+          <div class="pt-2 border-t border-slate-800 flex justify-end gap-2">
+            <button type="button" onclick="closeAdminConfirmModal()" class="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold cursor-pointer">Annuler</button>
+            <button type="button" id="acm-confirm-btn" onclick="executeAdminConfirmModal()" class="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black cursor-pointer">Confirmer</button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -8604,8 +8940,44 @@ function renderDashboardHtml(data) {
     }
     window.toggleSidebar = toggleSidebar;
 
+    function filterSidebarNav() {
+      const q = String(document.getElementById('sidebar-nav-search')?.value || '').trim().toLowerCase();
+      document.querySelectorAll('#sidebar-nav-list .sidebar-nav-item').forEach(function(btn) {
+        const txt = String(btn.textContent || '').toLowerCase();
+        btn.style.display = (!q || txt.indexOf(q) !== -1) ? '' : 'none';
+      });
+      document.querySelectorAll('#sidebar-nav-list .sidebar-cat-label').forEach(function(lbl) {
+        lbl.style.display = q ? 'none' : '';
+      });
+    }
+    window.filterSidebarNav = filterSidebarNav;
+
+    function showMobileSplitDetail(gridId) {
+      if (window.innerWidth >= 768) return;
+      const g = document.getElementById(gridId);
+      if (g) g.classList.add('mobile-show-detail');
+    }
+    window.showMobileSplitDetail = showMobileSplitDetail;
+
+    function closeMobileSplitDetail(gridId) {
+      const g = document.getElementById(gridId);
+      if (g) g.classList.remove('mobile-show-detail');
+    }
+    window.closeMobileSplitDetail = closeMobileSplitDetail;
+
+    function buildMobileBackBarHtml(gridId, title) {
+      return '<div class="mobile-back-bar">' +
+        '<button type="button" onclick="closeMobileSplitDetail(&quot;' + gridId + '&quot;)" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-black text-white flex items-center gap-1.5 cursor-pointer"><span>←</span><span>Retour à la liste</span></button>' +
+        '<span class="text-[11px] font-bold text-slate-400 truncate max-w-[160px]">' + escapeHtml(title || '') + '</span>' +
+      '</div>';
+    }
+
     function switchView(viewName) {
       currentView = viewName;
+      ['users-split-grid', 'demandes-split-grid', 'demandes-ia-split-grid', 'distribution-split-grid'].forEach(function(gid) {
+        const elG = document.getElementById(gid);
+        if (elG) elG.classList.remove('mobile-show-detail');
+      });
       const flexViews = ['users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'active-subs', 'abonnements', 'apps-monetization', 'statistiques', 'dkd-store'];
       ['global', 'users', 'demandes', 'demandes-ia', 'robot-rouge', 'distribution', 'messages', 'signalements', 'active-subs', 'abonnements', 'apps-monetization', 'statistiques', 'profil-pro', 'alertes-stockage', 'facturation-ia', 'dkd-store'].forEach(v => {
         const el = document.getElementById('view-' + v);
@@ -8615,13 +8987,13 @@ function renderDashboardHtml(data) {
           el.classList.remove('hidden');
           el.style.display = flexViews.includes(v) ? 'flex' : 'block';
           if (navBtn) {
-            navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20 cursor-pointer";
+            navBtn.className = "sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20 cursor-pointer";
           }
         } else {
           el.classList.add('hidden');
           el.style.display = 'none';
           if (navBtn) {
-            navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer";
+            navBtn.className = "sidebar-nav-item w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer";
           }
         }
       });
@@ -9169,6 +9541,7 @@ function renderDashboardHtml(data) {
       selectedUserId = userId;
       renderUsersLeftList(document.getElementById('users-search-left').value);
       renderUserRightDetails(userId);
+      showMobileSplitDetail('users-split-grid');
     }
 
     function renderUserRightDetails(userId) {
@@ -9203,7 +9576,7 @@ function renderDashboardHtml(data) {
       const totalUserD1RowsCalculated = d1 && d1.tables ? Object.values(d1.tables).reduce((acc, t) => acc + (t?.count || 0), 0) : 0;
       const finalD1Rows = Math.max(displayD1Rows, totalUserD1RowsCalculated);
 
-      panel.innerHTML = \`
+      panel.innerHTML = buildMobileBackBarHtml('users-split-grid', u.name) + \`
         <!-- En-tête profil complet listé verticalement ligne par ligne -->
         <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
           <div class="flex items-start gap-3.5">
@@ -9582,6 +9955,7 @@ function renderDashboardHtml(data) {
       selectedDemandeUserId = userId;
       renderDistributionUsersList();
       renderDistributionRightDetails(userId);
+      showMobileSplitDetail('distribution-split-grid');
     }
     const selectDemandeUser = selectDistributionUser;
     const renderDemandesUsersList = renderDistributionUsersList;
@@ -9596,7 +9970,7 @@ function renderDashboardHtml(data) {
       const q = item.quotaConfig;
       const s = item.storage;
 
-      panel.innerHTML = \`
+      panel.innerHTML = buildMobileBackBarHtml('distribution-split-grid', u.name) + \`
         <!-- En-tête profil complet listé verticalement ligne par ligne -->
         <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
           <div class="flex items-start gap-3.5">
@@ -10241,6 +10615,11 @@ function renderDashboardHtml(data) {
       selectedDemandeType = itemType;
       renderDemandesLeftList();
       renderDemandeDetail(id, itemType);
+      const dPanel = document.getElementById('demandes-right-detail-panel');
+      if (dPanel && !dPanel.querySelector('.mobile-back-bar')) {
+        dPanel.insertAdjacentHTML('afterbegin', buildMobileBackBarHtml('demandes-split-grid', 'Détail demande'));
+      }
+      showMobileSplitDetail('demandes-split-grid');
     }
 
     // ========================================================================
@@ -12229,6 +12608,7 @@ function renderDashboardHtml(data) {
       selectedDemandeIaType = itemType;
       renderDemandesIaLeftList();
       renderDemandeIaDetail(id, itemType);
+      showMobileSplitDetail('demandes-ia-split-grid');
     }
 
     function updateAdminLiveIaPreview(currentTotalWords) {
@@ -12300,7 +12680,7 @@ function renderDashboardHtml(data) {
         const currentTotalWords = Number(req.additional_words || 0);
         const futureTotalWords = currentTotalWords + (item.amountWords || 100000);
 
-        panel.innerHTML = \`
+        panel.innerHTML = buildMobileBackBarHtml('demandes-ia-split-grid', u.name) + \`
           <!-- EN-TÊTE PROFIL ÉTUDIANT & HISTORIQUE -->
           <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
             <div class="flex items-start gap-3.5">
@@ -12339,14 +12719,23 @@ function renderDashboardHtml(data) {
               </div>
             </div>
 
-            <!-- BOUTON HISTORIQUE -->
-            <div class="relative inline-block text-left shrink-0">
+            <!-- BOUTONS HISTORIQUE & SUPPRIMER -->
+            <div class="relative inline-flex items-center gap-2 shrink-0 flex-wrap">
               <button 
                 onclick="openUserHistoryModal('\${u.id}', 'requests')"
                 class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-2 text-xs font-bold transition-all cursor-pointer shadow-md"
               >
                 <span>📜</span>
                 <span>Historique</span>
+              </button>
+              <button 
+                type="button"
+                onclick="deleteAiRequest('\${item.id}')"
+                class="px-3 py-1.5 rounded-xl bg-rose-500/15 hover:bg-rose-500/30 text-rose-300 border border-rose-500/40 flex items-center gap-1.5 text-xs font-bold transition-all cursor-pointer"
+                title="Supprimer définitivement cette demande IA"
+              >
+                <span>🗑️</span>
+                <span>Supprimer</span>
               </button>
             </div>
           </div>
@@ -18588,32 +18977,35 @@ function renderDashboardHtml(data) {
         const canReverify = tx.provider === 'paystack' && !isPaid && safeRef;
 
         rowsHtml += '<tr class="hover:bg-slate-900/60 transition">' +
-          '<td class="px-3 py-2.5 whitespace-nowrap text-[11px] text-slate-300">' +
-            '<div class="font-bold text-white">' + escapeHtml(formatAdminDateTime(tx.paid_at || tx.created_at)) + '</div>' +
-            '<div class="text-[9.5px] font-mono text-slate-500 truncate max-w-[140px]" title="' + safeRef + '">' + safeRef + '</div>' +
+          '<td data-label="Date &amp; Réf" class="px-3 py-2.5 whitespace-nowrap text-[11px] text-slate-300">' +
+            '<div><div class="font-bold text-white">' + escapeHtml(formatAdminDateTime(tx.paid_at || tx.created_at)) + '</div>' +
+            '<div class="text-[9.5px] font-mono text-slate-500 truncate max-w-[140px]" title="' + safeRef + '">' + safeRef + '</div></div>' +
           '</td>' +
-          '<td class="px-3 py-2.5">' +
-            '<div class="font-bold text-white truncate max-w-[170px]">' + escapeHtml(tx.user_name || tx.user_id || 'Utilisateur') + '</div>' +
-            '<div class="text-[10px] text-slate-400 truncate max-w-[170px]">' + escapeHtml(tx.user_email || '') + '</div>' +
+          '<td data-label="Utilisateur" class="px-3 py-2.5">' +
+            '<div><div class="font-bold text-white truncate max-w-[170px]">' + escapeHtml(tx.user_name || tx.user_id || 'Utilisateur') + '</div>' +
+            '<div class="text-[10px] text-slate-400 truncate max-w-[170px]">' + escapeHtml(tx.user_email || '') + '</div></div>' +
           '</td>' +
-          '<td class="px-3 py-2.5">' +
-            '<div class="text-[10px] font-bold text-sky-300">' + catLabel + '</div>' +
-            '<div class="font-bold text-white">' + escapeHtml(tx.plan_name || tx.plan_id || 'Forfait') + '</div>' +
+          '<td data-label="Offre" class="px-3 py-2.5">' +
+            '<div><div class="text-[10px] font-bold text-sky-300">' + catLabel + '</div>' +
+            '<div class="font-bold text-white">' + escapeHtml(tx.plan_name || tx.plan_id || 'Forfait') + '</div></div>' +
           '</td>' +
-          '<td class="px-3 py-2.5 whitespace-nowrap">' +
+          '<td data-label="Mode" class="px-3 py-2.5 whitespace-nowrap">' +
             formatBillingBadgeHtml(tx.billing_mode, tx.duration_days) +
           '</td>' +
-          '<td class="px-3 py-2.5 whitespace-nowrap font-mono font-black text-emerald-300">' +
+          '<td data-label="Prix" class="px-3 py-2.5 whitespace-nowrap font-mono font-black text-emerald-300">' +
             escapeHtml(formatMoneyXof(tx.amount_major, tx.currency)) +
           '</td>' +
-          '<td class="px-3 py-2.5 whitespace-nowrap">' +
+          '<td data-label="Réseau" class="px-3 py-2.5 whitespace-nowrap">' +
             '<span class="px-2 py-0.5 rounded-lg bg-slate-800 border border-slate-700 text-[10.5px] font-bold text-slate-200">' + escapeHtml(networkStr) + '</span>' +
           '</td>' +
-          '<td class="px-3 py-2.5 whitespace-nowrap">' + statusBadge + '</td>' +
-          '<td class="px-3 py-2.5 text-right whitespace-nowrap">' +
+          '<td data-label="Statut" class="px-3 py-2.5 whitespace-nowrap">' + statusBadge + '</td>' +
+          '<td data-label="Actions" class="px-3 py-2.5 text-right whitespace-nowrap">' +
+            '<div class="inline-flex items-center gap-1.5 justify-end flex-wrap">' +
             (canReverify
               ? '<button type="button" onclick="reverifyAdminTransaction(&quot;' + safeRef + '&quot;)" class="px-2.5 py-1 rounded-lg bg-sky-600 hover:bg-sky-500 text-white text-[10px] font-black cursor-pointer">🔍 Revérifier</button>'
               : '<span class="text-[10px] text-slate-500">' + (tx.fulfilled_at ? 'Livré' : '—') + '</span>') +
+            (safeRef ? '<button type="button" onclick="deleteAdminTransaction(&quot;' + safeRef + '&quot;)" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/35 text-rose-300 text-[10px] font-bold cursor-pointer" title="Supprimer cette transaction">🗑️</button>' : '') +
+            '</div>' +
           '</td>' +
         '</tr>';
       });
@@ -19257,16 +19649,19 @@ function renderDashboardHtml(data) {
     let adminActiveSubsTicker = null;
 
     function switchAdminActiveSubsTab(tab) {
-      ['list', 'cards', 'policies', 'emails'].forEach(function(k) {
+      ['list', 'downgrades', 'cards', 'policies', 'emails'].forEach(function(k) {
         const panel = document.getElementById('asub-panel-' + k);
         const btn = document.getElementById('asub-tab-' + k);
         if (panel) panel.classList.toggle('hidden', k !== tab);
         if (btn) {
           btn.className = k === tab
             ? 'px-3.5 py-2 rounded-xl bg-orange-600 text-white text-xs font-black cursor-pointer'
-            : 'px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer';
+            : (k === 'downgrades'
+              ? 'px-3.5 py-2 rounded-xl bg-slate-800 text-emerald-300 hover:bg-slate-700 border border-emerald-500/30 text-xs font-black cursor-pointer'
+              : 'px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer');
         }
       });
+      if (tab === 'downgrades') loadAdminStorageDowngrades();
       if (tab === 'cards') renderAdminSavedCardsTable();
       if (tab === 'policies') loadAdminBillingPolicies();
       if (tab === 'emails') loadAdminBillingEmailLogs();
@@ -19430,39 +19825,51 @@ function renderDashboardHtml(data) {
             ? '<span class="px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 text-[10px] font-black">⚡ Automatique</span>'
             : '<span class="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40 text-[10px] font-black">🔄 Manuel</span>');
 
+        const canCancelSub = s.status !== 'cancelled' && s.status !== 'revoked';
+        let purgeBadge = '';
+        if (s.status === 'cancelled' && s.data_purge_deadline_at && !s.data_purged_at && Number(s.excess_bytes_at_cancel || 0) > 0) {
+          const remDaysPurge = Math.max(0, Math.ceil((Date.parse(s.data_purge_deadline_at) - Date.now()) / 86400000));
+          purgeBadge = '<div class="text-[9.5px] text-amber-300 font-bold mt-1">⏳ Purge payant dans ' + remDaysPurge + 'j (' + formatBytes(Number(s.excess_bytes_at_cancel), 1) + ')</div>';
+        } else if (s.data_purged_at) {
+          purgeBadge = '<div class="text-[9.5px] text-slate-400 mt-1">🧹 Surplus purgé</div>';
+        }
+
         html += '<tr class="hover:bg-slate-900/60 transition">' +
-          '<td class="px-3 py-2.5">' +
-            '<div class="font-bold text-white truncate max-w-[165px]">' + escapeHtml(s.user_name || s.user_id) + '</div>' +
+          '<td data-label="Utilisateur" class="px-3 py-2.5">' +
+            '<div><div class="font-bold text-white truncate max-w-[165px]">' + escapeHtml(s.user_name || s.user_id) + '</div>' +
             '<div class="text-[10px] text-slate-400 truncate max-w-[165px]">' + escapeHtml(s.user_email || '') + '</div>' +
-            (s.user_phone ? '<div class="text-[9.5px] font-mono text-slate-500">' + escapeHtml(s.user_phone) + '</div>' : '') +
+            (s.user_phone ? '<div class="text-[9.5px] font-mono text-slate-500">' + escapeHtml(s.user_phone) + '</div>' : '') + '</div>' +
           '</td>' +
-          '<td class="px-3 py-2.5">' +
-            '<div class="text-[10px] font-bold text-sky-300">' + srvIcon + '</div>' +
+          '<td data-label="Service &amp; Offre" class="px-3 py-2.5">' +
+            '<div><div class="text-[10px] font-bold text-sky-300">' + srvIcon + '</div>' +
             '<div class="font-bold text-white">' + escapeHtml(s.plan_name || 'Forfait') + '</div>' +
-            '<div class="text-[10px] font-mono text-emerald-400">' + escapeHtml(formatMoneyXof(s.price_amount, s.currency)) + '</div>' +
+            '<div class="text-[10px] font-mono text-emerald-400">' + escapeHtml(formatMoneyXof(s.price_amount, s.currency)) + '</div></div>' +
           '</td>' +
-          '<td class="px-3 py-2.5 whitespace-nowrap">' + modeBadge + cardTxt + '</td>' +
-          '<td class="px-3 py-2.5 whitespace-nowrap">' +
-            '<div class="mb-1">' + formatLiveCountdownHtml(s) + '</div>' +
+          '<td data-label="Mode &amp; Carte" class="px-3 py-2.5 whitespace-nowrap"><div>' + modeBadge + cardTxt + '</div></td>' +
+          '<td data-label="Période" class="px-3 py-2.5 whitespace-nowrap">' +
+            '<div><div class="mb-1">' + formatLiveCountdownHtml(s) + '</div>' +
             '<div class="text-[10px] text-slate-400">Début : <span class="text-slate-200">' + escapeHtml(formatAdminDateTime(s.current_period_start)) + '</span></div>' +
-            '<div class="text-[10px] text-slate-400">Fin : <span class="text-amber-300 font-bold">' + (isInf ? '♾️ Jamais' : escapeHtml(formatAdminDateTime(s.current_period_end))) + '</span></div>' +
+            '<div class="text-[10px] text-slate-400">Fin : <span class="text-amber-300 font-bold">' + (isInf ? '♾️ Jamais' : escapeHtml(formatAdminDateTime(s.current_period_end))) + '</span></div></div>' +
           '</td>' +
-          '<td class="px-3 py-2.5 whitespace-nowrap">' +
-            formatSubStatusBadge(s) +
+          '<td data-label="Statut" class="px-3 py-2.5 whitespace-nowrap">' +
+            '<div>' + formatSubStatusBadge(s) +
             (Number(s.cancel_at_period_end) === 1 ? '<div class="text-[9.5px] text-amber-400 font-bold mt-1">Fin programmée</div>' : '') +
-            (s.last_charge_error ? '<div class="text-[9.5px] text-rose-400 truncate max-w-[130px] mt-0.5" title="' + escapeHtml(s.last_charge_error) + '">⚠️ ' + escapeHtml(s.last_charge_error) + '</div>' : '') +
+            purgeBadge +
+            (s.last_charge_error ? '<div class="text-[9.5px] text-rose-400 truncate max-w-[130px] mt-0.5" title="' + escapeHtml(s.last_charge_error) + '">⚠️ ' + escapeHtml(s.last_charge_error) + '</div>' : '') + '</div>' +
           '</td>' +
-          '<td class="px-3 py-2.5 whitespace-nowrap">' +
-            formatResendStatusBadge(s.last_email_status) +
+          '<td data-label="Emails" class="px-3 py-2.5 whitespace-nowrap">' +
+            '<div>' + formatResendStatusBadge(s.last_email_status) +
             (s.last_email_at ? '<div class="text-[9.5px] text-slate-400 mt-0.5">' + escapeHtml(formatAdminDateTime(s.last_email_at)) + '</div>' : '') +
-            (Number(s.reminder_count) > 0 ? '<div class="text-[9.5px] text-amber-300 font-bold">' + Number(s.reminder_count) + ' relance(s)</div>' : '') +
+            (Number(s.reminder_count) > 0 ? '<div class="text-[9.5px] text-amber-300 font-bold">' + Number(s.reminder_count) + ' relance(s)</div>' : '') + '</div>' +
           '</td>' +
-          '<td class="px-3 py-2.5 text-right whitespace-nowrap">' +
+          '<td data-label="Actions" class="px-3 py-2.5 text-right whitespace-nowrap">' +
             '<div class="inline-flex items-center gap-1 flex-wrap justify-end">' +
               '<button type="button" onclick="openAdminSubEditModal(&quot;' + sid + '&quot;)" class="px-2 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-[10px] font-bold cursor-pointer" title="Modifier dates, mode, statut, historique">✏️ Gérer</button>' +
               '<button type="button" onclick="openAdminSubEmailModal(&quot;' + sid + '&quot;)" class="px-2 py-1 rounded-lg bg-sky-600/25 hover:bg-sky-600/40 border border-sky-500/40 text-sky-200 text-[10px] font-bold cursor-pointer" title="Envoyer un email / rappel manuel">📧</button>' +
               (!isInf ? '<button type="button" onclick="quickToggleAdminSubMode(&quot;' + sid + '&quot;)" class="px-2 py-1 rounded-lg bg-cyan-600/20 hover:bg-cyan-600/35 border border-cyan-500/40 text-cyan-200 text-[10px] font-bold cursor-pointer" title="Basculer Auto / Manuel">' + (isAuto ? '🔄' : '⚡') + '</button>' : '') +
-              '<button type="button" onclick="quickToggleAdminSubBlock(&quot;' + sid + '&quot;)" class="px-2 py-1 rounded-lg ' + (isBlocked ? 'bg-emerald-600/25 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-200' : 'bg-rose-600/20 hover:bg-rose-600/35 border border-rose-500/40 text-rose-200') + ' text-[10px] font-bold cursor-pointer" title="' + (isBlocked ? 'Débloquer le service' : 'Bloquer le service') + '">' + (isBlocked ? '🔓' : '🔒') + '</button>' +
+              '<button type="button" onclick="quickToggleAdminSubBlock(&quot;' + sid + '&quot;)" class="px-2 py-1 rounded-lg ' + (isBlocked ? 'bg-emerald-600/25 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-200' : 'bg-amber-600/20 hover:bg-amber-600/35 border border-amber-500/40 text-amber-200') + ' text-[10px] font-bold cursor-pointer" title="' + (isBlocked ? 'Débloquer le service' : 'Bloquer le service') + '">' + (isBlocked ? '🔓' : '🔒') + '</button>' +
+              (canCancelSub ? '<button type="button" onclick="openAdminSubCancelModal(&quot;' + sid + '&quot;)" class="px-2 py-1 rounded-lg bg-rose-600/20 hover:bg-rose-600/35 border border-rose-500/40 text-rose-200 text-[10px] font-bold cursor-pointer" title="Annuler cet abonnement avec analyse des données payantes">❌ Annuler</button>' : '') +
+              '<button type="button" onclick="deleteAdminSubscription(&quot;' + sid + '&quot;)" class="px-2 py-1 rounded-lg bg-rose-950/60 hover:bg-rose-900/70 border border-rose-800/60 text-rose-300 text-[10px] font-bold cursor-pointer" title="Supprimer définitivement cette ligne">🗑️</button>' +
             '</div>' +
           '</td>' +
         '</tr>';
@@ -19501,19 +19908,19 @@ function renderDashboardHtml(data) {
           linkedHtml = '<span class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 border border-slate-700 text-[10px] font-bold">⚪ Aucun abonnement actif</span>';
         }
         html += '<tr class="hover:bg-slate-900/60 transition">' +
-          '<td class="px-3 py-2.5">' +
-            '<div class="font-bold text-white truncate max-w-[170px]">' + escapeHtml(pm.userName || pm.userId || 'Utilisateur') + '</div>' +
+          '<td data-label="Utilisateur" class="px-3 py-2.5">' +
+            '<div><div class="font-bold text-white truncate max-w-[170px]">' + escapeHtml(pm.userName || pm.userId || 'Utilisateur') + '</div>' +
             '<div class="text-[10px] text-slate-400 truncate max-w-[170px]">' + escapeHtml(pm.userEmail || '') + '</div>' +
-            (pm.userPhone ? '<div class="text-[9.5px] font-mono text-slate-500">' + escapeHtml(pm.userPhone) + '</div>' : '') +
+            (pm.userPhone ? '<div class="text-[9.5px] font-mono text-slate-500">' + escapeHtml(pm.userPhone) + '</div>' : '') + '</div>' +
           '</td>' +
-          '<td class="px-3 py-2.5 whitespace-nowrap">' +
-            '<div class="font-mono font-bold text-emerald-300">💳 ' + escapeHtml(pm.label || ((pm.cardBrand || 'Carte') + ' •••• ' + (pm.last4 || '••••'))) + '</div>' +
+          '<td data-label="Carte" class="px-3 py-2.5 whitespace-nowrap">' +
+            '<div><div class="font-mono font-bold text-emerald-300">💳 ' + escapeHtml(pm.label || ((pm.cardBrand || 'Carte') + ' •••• ' + (pm.last4 || '••••'))) + '</div>' +
             '<div class="text-[10px] text-slate-400 mt-0.5">Exp. ' + escapeHtml((pm.expMonth || '--') + '/' + (pm.expYear || '----')) + (pm.bank ? ' · ' + escapeHtml(pm.bank) : '') + '</div>' +
-            (pm.isDefault ? '<span class="inline-block mt-1 px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[9px] font-bold">Carte principale</span>' : '') +
+            (pm.isDefault ? '<span class="inline-block mt-1 px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 text-[9px] font-bold">Carte principale</span>' : '') + '</div>' +
           '</td>' +
-          '<td class="px-3 py-2.5">' + formatAdminCardPermBadges(pm) + '</td>' +
-          '<td class="px-3 py-2.5">' + linkedHtml + '</td>' +
-          '<td class="px-3 py-2.5 whitespace-nowrap text-[10.5px] text-slate-400">' + escapeHtml(formatAdminDateTime(pm.createdAt)) + '</td>' +
+          '<td data-label="Auto autorisés" class="px-3 py-2.5">' + formatAdminCardPermBadges(pm) + '</td>' +
+          '<td data-label="Abonnements liés" class="px-3 py-2.5"><div>' + linkedHtml + '</div></td>' +
+          '<td data-label="Ajoutée le" class="px-3 py-2.5 whitespace-nowrap text-[10.5px] text-slate-400">' + escapeHtml(formatAdminDateTime(pm.createdAt)) + '</td>' +
         '</tr>';
       });
       tbody.innerHTML = html;
@@ -19808,6 +20215,7 @@ function renderDashboardHtml(data) {
                 '<option value="read_only"' + (p.block_scope === 'read_only' ? ' selected' : '') + '>👁️ Lecture seule</option>' +
                 '<option value="full_account"' + (p.block_scope === 'full_account' ? ' selected' : '') + '>🚫 Tout le compte</option>' +
               '</select></div>' +
+              '<div class="col-span-2 sm:col-span-3 pt-1"><label class="block text-[9.5px] text-orange-300 font-bold mb-0.5">⏳ Délai global récupération données payantes après annulation (jours)</label><input id="pol-retention-' + idx + '" type="number" min="1" max="365" value="' + Number(p.data_retention_grace_days ?? 14) + '" class="w-full sm:w-44 px-2.5 py-1.5 rounded-lg bg-slate-950 border border-orange-500/40 text-orange-200 font-mono font-bold" /></div>' +
             '</div>' +
             '<div class="flex flex-wrap items-center gap-3 pt-1 text-[10.5px] text-slate-300">' +
               '<label class="flex items-center gap-1.5 cursor-pointer"><input id="pol-mpur-' + idx + '" type="checkbox"' + (Number(p.email_on_purchase) !== 0 ? ' checked' : '') + ' class="accent-emerald-500" /> Email achat</label>' +
@@ -19832,6 +20240,7 @@ function renderDashboardHtml(data) {
         label: p.label,
         auto_notice_days: Number(document.getElementById('pol-notice-' + idx)?.value || 3),
         grace_period_days: Number(document.getElementById('pol-grace-' + idx)?.value || 5),
+        data_retention_grace_days: Number(document.getElementById('pol-retention-' + idx)?.value || 14),
         overdue_interval_hours: Number(document.getElementById('pol-interval-' + idx)?.value || 48),
         overdue_max_reminders: Number(document.getElementById('pol-maxrem-' + idx)?.value || 5),
         retry_schedule_hours: document.getElementById('pol-retries-' + idx)?.value || '24,72',
@@ -19891,21 +20300,23 @@ function renderDashboardHtml(data) {
         const data = await resp.json();
         adminBillingEmailLogs = (data && data.emails) ? data.emails : [];
         if (adminBillingEmailLogs.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Aucun email de facturation envoyé pour le moment.</td></tr>';
+          tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-slate-500">Aucun email de facturation envoyé pour le moment.</td></tr>';
           return;
         }
         tbody.innerHTML = adminBillingEmailLogs.map(function(m) {
+          const mid = escapeHtml(m.id || '');
           return '<tr class="hover:bg-slate-900/50">' +
-            '<td class="px-3 py-2 whitespace-nowrap text-[11px] text-slate-300">' + escapeHtml(formatAdminDateTime(m.sent_at)) + '</td>' +
-            '<td class="px-3 py-2 font-bold text-white">' + escapeHtml(m.email_to || '') + '</td>' +
-            '<td class="px-3 py-2"><span class="px-2 py-0.5 rounded bg-slate-800 text-sky-300 text-[10px] font-mono">' + escapeHtml(m.email_type || '') + '</span></td>' +
-            '<td class="px-3 py-2 text-slate-200 max-w-[260px] truncate" title="' + escapeHtml(m.subject || '') + '">' + escapeHtml(m.subject || '') + '</td>' +
-            '<td class="px-3 py-2 text-[10.5px] text-slate-400 uppercase font-bold">' + escapeHtml(m.trigger_source || 'auto') + '</td>' +
-            '<td class="px-3 py-2 whitespace-nowrap">' + formatResendStatusBadge(m.delivery_status) + (m.opened_at ? '<div class="text-[9.5px] text-emerald-400">Lu : ' + escapeHtml(formatAdminDateTime(m.opened_at)) + '</div>' : '') + '</td>' +
+            '<td data-label="Date" class="px-3 py-2 whitespace-nowrap text-[11px] text-slate-300">' + escapeHtml(formatAdminDateTime(m.sent_at)) + '</td>' +
+            '<td data-label="Destinataire" class="px-3 py-2 font-bold text-white">' + escapeHtml(m.email_to || '') + '</td>' +
+            '<td data-label="Type" class="px-3 py-2"><span class="px-2 py-0.5 rounded bg-slate-800 text-sky-300 text-[10px] font-mono">' + escapeHtml(m.email_type || '') + '</span></td>' +
+            '<td data-label="Sujet" class="px-3 py-2 text-slate-200 max-w-[260px] truncate" title="' + escapeHtml(m.subject || '') + '">' + escapeHtml(m.subject || '') + '</td>' +
+            '<td data-label="Source" class="px-3 py-2 text-[10.5px] text-slate-400 uppercase font-bold">' + escapeHtml(m.trigger_source || 'auto') + '</td>' +
+            '<td data-label="Statut" class="px-3 py-2 whitespace-nowrap"><div>' + formatResendStatusBadge(m.delivery_status) + (m.opened_at ? '<div class="text-[9.5px] text-emerald-400">Lu : ' + escapeHtml(formatAdminDateTime(m.opened_at)) + '</div>' : '') + '</div></td>' +
+            '<td data-label="Action" class="px-3 py-2 text-right whitespace-nowrap"><button type="button" onclick="deleteAdminEmailLog(&quot;' + mid + '&quot;)" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/35 text-rose-300 text-[10px] font-bold cursor-pointer" title="Supprimer cette entrée">🗑️</button></td>' +
           '</tr>';
         }).join('');
       } catch (err) {
-        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-rose-400">Erreur : ' + escapeHtml(err.message || err) + '</td></tr>';
+        tbody.innerHTML = '<tr><td colspan="7" class="px-4 py-8 text-center text-rose-400">Erreur : ' + escapeHtml(err.message || err) + '</td></tr>';
       }
     }
     window.loadAdminBillingEmailLogs = loadAdminBillingEmailLogs;
@@ -19922,7 +20333,7 @@ function renderDashboardHtml(data) {
         const data = await resp.json();
         if (!data || !data.success) throw new Error((data && data.error) || 'Erreur Cron');
         const s = data.summary || {};
-        showToast('⚡ Cron exécuté : ' + (s.autoCharged || 0) + ' prélevé(s), ' + (s.remindersSent || 0) + ' relance(s), ' + (s.blocked || 0) + ' bloqué(s).');
+        showToast('⚡ Cron exécuté : ' + (s.autoCharged || 0) + ' prélevé(s), ' + (s.remindersSent || 0) + ' relance(s), ' + (s.blocked || 0) + ' bloqué(s), ' + (s.dataOverflowPurged || 0) + ' purge(s) surplus.');
         await loadAdminActiveSubscriptions();
       } catch (err) {
         showToast('⚠️ ' + (err.message || err));
@@ -19973,6 +20384,578 @@ function renderDashboardHtml(data) {
       }
     }
     window.revokeAppEntitlement = revokeAppEntitlement;
+
+    // =========================================================================
+    // MODALE RÉUTILISABLE DE CONFIRMATION + SUPPRESSIONS + ANNULATION + RÉDUCTION
+    // =========================================================================
+    let adminConfirmModalCallback = null;
+
+    function openAdminConfirmModal(opts) {
+      const modal = document.getElementById('admin-confirm-modal');
+      if (!modal) {
+        if (confirm((opts && opts.message) || 'Confirmer cette action ?')) {
+          if (opts && typeof opts.onConfirm === 'function') opts.onConfirm();
+        }
+        return;
+      }
+      document.getElementById('acm-title').textContent = (opts && opts.title) || 'Confirmation requise';
+      document.getElementById('acm-message').textContent = (opts && opts.message) || '';
+      const btn = document.getElementById('acm-confirm-btn');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = (opts && opts.confirmText) || 'Confirmer';
+      }
+      adminConfirmModalCallback = (opts && typeof opts.onConfirm === 'function') ? opts.onConfirm : null;
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+    }
+    window.openAdminConfirmModal = openAdminConfirmModal;
+
+    function closeAdminConfirmModal() {
+      const modal = document.getElementById('admin-confirm-modal');
+      if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
+      adminConfirmModalCallback = null;
+    }
+    window.closeAdminConfirmModal = closeAdminConfirmModal;
+
+    async function executeAdminConfirmModal() {
+      const fn = adminConfirmModalCallback;
+      const btn = document.getElementById('acm-confirm-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ En cours...'; }
+      try {
+        if (typeof fn === 'function') await fn();
+      } finally {
+        closeAdminConfirmModal();
+      }
+    }
+    window.executeAdminConfirmModal = executeAdminConfirmModal;
+
+    // --- SUPPRESSION ABONNEMENTS ---
+    function deleteAdminSubscription(subId) {
+      openAdminConfirmModal({
+        title: '🗑️ Supprimer cet abonnement',
+        message: 'Voulez-vous supprimer définitivement cet abonnement et son journal d événements de la base D1 ? Cette action est irréversible.',
+        confirmText: '🗑️ Supprimer définitivement',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/' + encodeURIComponent(subId), { method: 'DELETE' });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur suppression');
+            showToast('🗑️ Abonnement supprimé définitivement.');
+            await loadAdminActiveSubscriptions();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.deleteAdminSubscription = deleteAdminSubscription;
+
+    function bulkDeleteCancelledAdminSubs() {
+      openAdminConfirmModal({
+        title: '🧹 Nettoyer les abonnements annulés / expirés',
+        message: 'Supprimer définitivement tous les abonnements dont le statut est Annulé, Expiré ou Révoqué ? Les abonnements actifs, en grâce ou bloqués ne seront pas touchés.',
+        confirmText: '🧹 Nettoyer maintenant',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/bulk-delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ statuses: ['cancelled', 'expired', 'revoked'] })
+            });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur nettoyage');
+            showToast('🧹 ' + (data.deletedCount || 0) + ' abonnement(s) nettoyé(s).');
+            await loadAdminActiveSubscriptions();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.bulkDeleteCancelledAdminSubs = bulkDeleteCancelledAdminSubs;
+
+    // --- SUPPRESSION TRANSACTIONS ---
+    function deleteAdminTransaction(ref) {
+      openAdminConfirmModal({
+        title: '🗑️ Supprimer cette transaction',
+        message: 'Supprimer définitivement la transaction « ' + ref + ' » de la table payment_transactions ?',
+        confirmText: '🗑️ Supprimer',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/transactions/' + encodeURIComponent(ref), { method: 'DELETE' });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur suppression');
+            showToast('🗑️ Transaction supprimée.');
+            await loadAdminPaymentsOverview();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.deleteAdminTransaction = deleteAdminTransaction;
+
+    function bulkDeleteFailedAdminTransactions() {
+      openAdminConfirmModal({
+        title: '🧹 Nettoyer les transactions échouées / en attente',
+        message: 'Supprimer définitivement toutes les transactions échouées, abandonnées ou en attente (tests) ? Toutes les transactions payées sont conservées.',
+        confirmText: '🧹 Nettoyer les échecs',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/transactions/bulk-delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ statuses: ['failed', 'abandoned', 'pending'] })
+            });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur nettoyage');
+            showToast('🧹 ' + (data.deletedCount || 0) + ' transaction(s) supprimée(s).');
+            await loadAdminPaymentsOverview();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.bulkDeleteFailedAdminTransactions = bulkDeleteFailedAdminTransactions;
+
+    // --- SUPPRESSION JOURNAL EMAILS ---
+    function deleteAdminEmailLog(logId) {
+      openAdminConfirmModal({
+        title: '🗑️ Supprimer cette entrée email',
+        message: 'Retirer cet email du journal des envois Resend ?',
+        confirmText: '🗑️ Supprimer',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/email-logs?id=' + encodeURIComponent(logId), { method: 'DELETE' });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+            showToast('🗑️ Entrée email supprimée.');
+            await loadAdminBillingEmailLogs();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.deleteAdminEmailLog = deleteAdminEmailLog;
+
+    function clearAdminEmailLogs(mode) {
+      const isFailedOnly = mode === 'failed';
+      openAdminConfirmModal({
+        title: isFailedOnly ? '🧹 Supprimer les emails en échec' : '🗑️ Vider tout le journal des emails',
+        message: isFailedOnly
+          ? 'Supprimer uniquement les entrées d emails en échec du journal ?'
+          : 'Vider intégralement le journal des emails envoyés (billing_email_logs) ?',
+        confirmText: isFailedOnly ? '🧹 Supprimer les échecs' : '🗑️ Tout vider',
+        onConfirm: async function() {
+          try {
+            const qs = isFailedOnly ? '?status=failed' : '';
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/email-logs' + qs, { method: 'DELETE' });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+            showToast('🧹 ' + (data.deletedCount || 0) + ' entrée(s) supprimée(s).');
+            await loadAdminBillingEmailLogs();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.clearAdminEmailLogs = clearAdminEmailLogs;
+
+    // --- SUPPRESSION DEMANDES IA & NETTOYAGE REFUSÉES ---
+    function deleteAiRequest(requestId) {
+      openAdminConfirmModal({
+        title: '🗑️ Supprimer cette demande IA',
+        message: 'Supprimer définitivement cette demande de crédits IA de la base D1 ?',
+        confirmText: '🗑️ Supprimer',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch('/api/storage-requests/delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ requestId: requestId })
+            });
+            const res = await resp.json();
+            if (!res || !res.success) throw new Error((res && res.error) || 'Erreur suppression');
+            allRequests = allRequests.filter(function(r) { return String(r.id) !== String(requestId); });
+            showToast('🗑️ Demande IA supprimée.');
+            updateDemandesIaTabCounts();
+            renderDemandesIaLeftList();
+            closeMobileSplitDetail('demandes-ia-split-grid');
+            if (typeof autoSelectFirstDemandeIa === 'function') autoSelectFirstDemandeIa();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.deleteAiRequest = deleteAiRequest;
+
+    function bulkDeleteRejectedRequests(scope) {
+      openAdminConfirmModal({
+        title: '🧹 Nettoyer les demandes refusées / annulées',
+        message: 'Supprimer définitivement toutes les demandes ' + (scope === 'ai' ? 'de crédits IA ' : 'de stockage ') + 'refusées ou annulées ?',
+        confirmText: '🧹 Nettoyer',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch('/api/storage-requests/bulk-delete', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ scope: scope })
+            });
+            const res = await resp.json();
+            if (!res || !res.success) throw new Error((res && res.error) || 'Erreur');
+            showToast('🧹 ' + (res.deletedCount || 0) + ' demande(s) nettoyée(s).');
+            if (typeof manualRefreshLiveStats === 'function') manualRefreshLiveStats();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.bulkDeleteRejectedRequests = bulkDeleteRejectedRequests;
+
+    // --- MODALE ANNULATION ABONNEMENT + ANALYSE DONNÉES PAYANTES ---
+    async function openAdminSubCancelModal(subId) {
+      const sub = (adminActiveSubs || []).find(function(s) { return s.id === subId; });
+      const modal = document.getElementById('admin-sub-cancel-modal');
+      if (!sub || !modal) return;
+
+      document.getElementById('ascan-sub-id').value = subId;
+      document.getElementById('ascan-subtitle').textContent = (sub.user_name || sub.user_email || sub.user_id) + ' — ' + (sub.plan_name || 'Abonnement');
+      document.getElementById('ascan-mode').value = 'immediate';
+      document.getElementById('ascan-reason').value = '';
+      document.getElementById('ascan-notify-email').checked = true;
+      const box = document.getElementById('ascan-overflow-box');
+      if (box) {
+        box.className = 'p-3.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-300';
+        box.innerHTML = '⏳ Analyse serveur de la consommation par rapport au quota gratuit...';
+      }
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/' + encodeURIComponent(subId) + '/cancellation-preview');
+        const data = await resp.json();
+        if (data && data.success) {
+          const retInp = document.getElementById('ascan-retention-days');
+          if (retInp && data.defaultRetentionDays) retInp.value = String(data.defaultRetentionDays);
+          if (box) {
+            if (sub.product_type !== 'storage') {
+              box.className = 'p-3.5 rounded-xl bg-slate-900 border border-slate-700 text-slate-300';
+              box.innerHTML = '<div class="font-bold text-white">ℹ️ Abonnement ' + escapeHtml(sub.product_type === 'ai' ? 'Crédits IA' : ('Application ' + (sub.app_name || sub.app_key))) + '</div><div class="mt-1 text-slate-400">Aucune donnée de stockage payante à purger pour ce type de service.</div>';
+            } else if (data.hasOverflow && data.overflow) {
+              const ov = data.overflow;
+              box.className = 'p-3.5 rounded-xl bg-amber-950/50 border border-amber-500/50 text-amber-100 space-y-1.5';
+              box.innerHTML =
+                '<div class="font-black text-amber-300 flex items-center gap-1.5"><span>⚠️</span> <span>Données dépassant le quota gratuit détectées !</span></div>' +
+                '<div class="grid grid-cols-3 gap-2 pt-1 text-[11px]">' +
+                  '<div class="p-2 rounded-lg bg-slate-950/70"><div class="text-[9.5px] text-slate-400">Consommé</div><div class="font-mono font-black text-white">' + escapeHtml(ov.usedFormatted) + '</div></div>' +
+                  '<div class="p-2 rounded-lg bg-slate-950/70"><div class="text-[9.5px] text-emerald-400">Gratuit protégé</div><div class="font-mono font-black text-emerald-300">' + escapeHtml(ov.welcomeFormatted) + '</div></div>' +
+                  '<div class="p-2 rounded-lg bg-slate-950/70"><div class="text-[9.5px] text-rose-400">Sur espace payant</div><div class="font-mono font-black text-rose-300">' + escapeHtml(ov.excessFormatted) + '</div></div>' +
+                '</div>' +
+                '<div class="text-[11px] text-amber-200/90 leading-relaxed pt-1"><strong>' + Number(ov.overflowFilesCount || 0) + ' fichier(s)</strong> enregistrés <strong>après l espace gratuit</strong> seront supprimés définitivement à l issue du délai choisi si l utilisateur ne les récupère pas. Ses <strong>' + Number(ov.protectedFilesCount || 0) + ' premier(s) fichier(s)</strong> situés dans l espace gratuit resteront <strong>protégés</strong>.</div>';
+            } else if (data.overflow) {
+              const ov = data.overflow;
+              box.className = 'p-3.5 rounded-xl bg-emerald-950/40 border border-emerald-500/40 text-emerald-100';
+              box.innerHTML = '<div class="font-black text-emerald-300">✅ Consommation dans la zone gratuite</div><div class="text-[11px] mt-1">Cet utilisateur consomme <strong>' + escapeHtml(ov.usedFormatted) + '</strong> sur son quota gratuit de <strong>' + escapeHtml(ov.welcomeFormatted) + '</strong>. Aucune suppression de fichier ne sera nécessaire.</div>';
+            }
+          }
+        }
+      } catch (err) {
+        if (box) box.innerHTML = '<span class="text-rose-400">Erreur analyse : ' + escapeHtml(err.message || err) + '</span>';
+      }
+    }
+    window.openAdminSubCancelModal = openAdminSubCancelModal;
+
+    function closeAdminSubCancelModal() {
+      const modal = document.getElementById('admin-sub-cancel-modal');
+      if (modal) { modal.classList.add('hidden'); modal.style.display = 'none'; }
+    }
+    window.closeAdminSubCancelModal = closeAdminSubCancelModal;
+
+    async function confirmAdminSubCancelForm(e) {
+      if (e) e.preventDefault();
+      const subId = document.getElementById('ascan-sub-id').value;
+      const mode = document.getElementById('ascan-mode').value;
+      const retentionDays = Math.max(1, parseInt(document.getElementById('ascan-retention-days').value || '14', 10) || 14);
+      const reason = document.getElementById('ascan-reason').value.trim();
+      const notifyByEmail = document.getElementById('ascan-notify-email').checked;
+      const btn = document.getElementById('ascan-confirm-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Annulation en cours...'; }
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/subscriptions/' + encodeURIComponent(subId) + '/cancel', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: mode, retentionDays: retentionDays, reason: reason, notifyByEmail: notifyByEmail })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Échec annulation');
+        closeAdminSubCancelModal();
+        if (data.hasOverflow) {
+          showToast('⚠️ Abonnement annulé ! Délai de ' + data.retentionDays + 'j accordé pour récupérer ' + ((data.overflow && data.overflow.excessFormatted) || '') + ' (email + notif envoyés).');
+        } else {
+          showToast('✅ Abonnement annulé avec succès.');
+        }
+        await loadAdminActiveSubscriptions();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = "❌ Confirmer l'annulation"; }
+      }
+    }
+    window.confirmAdminSubCancelForm = confirmAdminSubCancelForm;
+
+    // --- CARTE MAÎTRESSE ADMIN DE RÉDUCTION DE STOCKAGE (DOWNGRADE PRORATA) ---
+    let adminDowngradeConfig = { stepMb: 100, pricePerStepFcfa: 100, durationDays: 30, primaryCurrency: 'XOF' };
+    let adminDowngradeSubscribers = [];
+    let adminDowngradeRequests = [];
+
+    function fmtMbShortAdmin(mb) {
+      const n = Number(mb || 0);
+      if (n >= 1024) return (n / 1024).toFixed(n % 1024 === 0 ? 0 : 2).replace('.', ',') + ' Go';
+      return Math.round(n) + ' Mo';
+    }
+
+    async function loadAdminStorageDowngrades() {
+      const sel = document.getElementById('dg-user-select');
+      const tbody = document.getElementById('dg-history-tbody');
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/storage-downgrades?_t=' + Date.now());
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur chargement');
+        adminDowngradeConfig = data.config || adminDowngradeConfig;
+        adminDowngradeSubscribers = Array.isArray(data.eligibleSubscribers) ? data.eligibleSubscribers : [];
+        adminDowngradeRequests = Array.isArray(data.requests) ? data.requests : [];
+
+        const pendingCount = adminDowngradeRequests.filter(function(r) { return r.status === 'pending_payment'; }).length;
+        const badgeEl = document.getElementById('asub-tab-downgrades-count');
+        if (badgeEl) badgeEl.textContent = String(pendingCount);
+
+        if (sel) {
+          const prevVal = sel.value;
+          if (adminDowngradeSubscribers.length === 0) {
+            sel.innerHTML = '<option value="">Aucun abonné stockage payant actif pour le moment</option>';
+          } else {
+            sel.innerHTML = '<option value="">-- Choisir un utilisateur abonné (' + adminDowngradeSubscribers.length + ') --</option>' +
+              adminDowngradeSubscribers.map(function(u) {
+                return '<option value="' + escapeHtml(u.userId) + '">' +
+                  escapeHtml((u.userName || u.userEmail || u.userId) + ' — ' + fmtMbShortAdmin(u.paidMb) + ' (' + Math.round(u.monthlyPriceFcfa).toLocaleString('fr-FR') + ' FCFA/mois)') +
+                '</option>';
+              }).join('');
+            if (prevVal && adminDowngradeSubscribers.some(function(u) { return u.userId === prevVal; })) {
+              sel.value = prevVal;
+              onAdminDowngradeUserChange();
+            }
+          }
+        }
+        renderAdminDowngradeHistoryTable();
+      } catch (err) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-rose-400">Erreur : ' + escapeHtml(err.message || err) + '</td></tr>';
+      }
+    }
+    window.loadAdminStorageDowngrades = loadAdminStorageDowngrades;
+
+    function getSelectedDowngradeSubscriber() {
+      const uid = document.getElementById('dg-user-select')?.value || '';
+      return adminDowngradeSubscribers.find(function(u) { return u.userId === uid; }) || null;
+    }
+
+    function onAdminDowngradeUserChange() {
+      const sub = getSelectedDowngradeSubscriber();
+      const statsBox = document.getElementById('dg-current-user-stats');
+      const ctrlBox = document.getElementById('dg-controls-box');
+      const submitBtn = document.getElementById('dg-submit-btn');
+      if (!sub) {
+        if (statsBox) statsBox.classList.add('hidden');
+        if (ctrlBox) ctrlBox.classList.add('hidden');
+        if (submitBtn) submitBtn.disabled = true;
+        const sumBox = document.getElementById('dg-summary-box');
+        if (sumBox) sumBox.innerHTML = '<div class="text-slate-500 py-8 text-center">Sélectionnez un abonné stockage à gauche pour calculer automatiquement son nouveau tarif mensuel et le prorata déjà consommé.</div>';
+        return;
+      }
+
+      if (statsBox) statsBox.classList.remove('hidden');
+      if (ctrlBox) ctrlBox.classList.remove('hidden');
+      if (submitBtn) submitBtn.disabled = false;
+
+      document.getElementById('dg-stat-paid').textContent = fmtMbShortAdmin(sub.paidMb);
+      document.getElementById('dg-stat-used').textContent = fmtMbShortAdmin(sub.usedMb) + ' / ' + fmtMbShortAdmin(sub.welcomeMb + sub.paidMb);
+      document.getElementById('dg-stat-price').textContent = Math.round(sub.monthlyPriceFcfa).toLocaleString('fr-FR') + ' FCFA';
+      document.getElementById('dg-stat-days').textContent = sub.daysUsed + 'j / ' + sub.durationDays + 'j';
+
+      const stepMb = Math.max(1, Number(adminDowngradeConfig.stepMb || 100));
+      document.getElementById('dg-step-hint').textContent = 'Palier : ' + fmtMbShortAdmin(stepMb) + ' (' + Math.round(adminDowngradeConfig.pricePerStepFcfa || 100) + ' FCFA)';
+
+      const maxTarget = Math.max(0, sub.paidMb - stepMb);
+      const defaultTarget = Math.max(0, Math.floor((sub.paidMb / 2) / stepMb) * stepMb);
+      const slider = document.getElementById('dg-target-slider');
+      if (slider) {
+        slider.min = '0';
+        slider.max = String(maxTarget);
+        slider.step = String(stepMb);
+        slider.value = String(Math.min(maxTarget, defaultTarget));
+      }
+      document.getElementById('dg-target-mb').value = String(Math.min(maxTarget, defaultTarget));
+      document.getElementById('dg-prorata-due').value = String(Math.max(0, Math.round(sub.consumedCostFcfa || 0)));
+      recalcAdminDowngradePreview(false);
+    }
+    window.onAdminDowngradeUserChange = onAdminDowngradeUserChange;
+
+    function stepAdminDowngradeStorage(dir) {
+      const sub = getSelectedDowngradeSubscriber();
+      if (!sub) return;
+      const stepMb = Math.max(1, Number(adminDowngradeConfig.stepMb || 100));
+      const cur = Number(document.getElementById('dg-target-mb')?.value || 0);
+      const maxAllowed = Math.max(0, sub.paidMb - 1);
+      const next = Math.max(0, Math.min(maxAllowed, cur + dir * stepMb));
+      document.getElementById('dg-target-mb').value = String(next);
+      const slider = document.getElementById('dg-target-slider');
+      if (slider) slider.value = String(next);
+      recalcAdminDowngradePreview(false);
+    }
+    window.stepAdminDowngradeStorage = stepAdminDowngradeStorage;
+
+    function onAdminDowngradeSliderInput(val) {
+      document.getElementById('dg-target-mb').value = String(val);
+      recalcAdminDowngradePreview(false);
+    }
+    window.onAdminDowngradeSliderInput = onAdminDowngradeSliderInput;
+
+    function recalcAdminDowngradePreview(keepCustomPrice) {
+      const sub = getSelectedDowngradeSubscriber();
+      if (!sub) return;
+      const targetMb = Math.max(0, Number(document.getElementById('dg-target-mb')?.value || 0));
+      const stepMb = Math.max(1, Number(adminDowngradeConfig.stepMb || 100));
+      const pricePerStep = Math.max(1, Number(adminDowngradeConfig.pricePerStepFcfa || 100));
+      const autoPrice = targetMb <= 0 ? 0 : Math.max(1, Math.round((targetMb / stepMb) * pricePerStep));
+      const priceInp = document.getElementById('dg-target-price');
+      if (priceInp && !keepCustomPrice) {
+        priceInp.value = String(autoPrice);
+      }
+      const finalPrice = Math.max(0, Math.round(Number(priceInp?.value ?? autoPrice)));
+      const prorataDue = Math.max(0, Math.round(Number(document.getElementById('dg-prorata-due')?.value ?? sub.consumedCostFcfa ?? 0)));
+
+      document.getElementById('dg-target-display').textContent = targetMb > 0 ? fmtMbShortAdmin(targetMb) : '0 Mo (Gratuit)';
+      document.getElementById('dg-target-total-display').textContent = 'Total avec espace gratuit (' + fmtMbShortAdmin(sub.welcomeMb) + ') : ' + fmtMbShortAdmin(sub.welcomeMb + targetMb);
+
+      const warnEl = document.getElementById('dg-overusage-warning');
+      if (warnEl) {
+        const futureTotal = sub.welcomeMb + targetMb;
+        if (sub.usedMb > futureTotal) {
+          warnEl.classList.remove('hidden');
+          warnEl.innerHTML = '⚠️ Attention : cet utilisateur occupe actuellement <strong>' + fmtMbShortAdmin(sub.usedMb) + '</strong>, soit plus que le futur quota total (<strong>' + fmtMbShortAdmin(futureTotal) + '</strong>). Pensez à lui demander de libérer un peu d espace ou choisir un palier supérieur.';
+        } else {
+          warnEl.classList.add('hidden');
+        }
+      }
+
+      const savings = Math.max(0, Math.round(sub.monthlyPriceFcfa - finalPrice));
+      const sumBox = document.getElementById('dg-summary-box');
+      if (sumBox) {
+        sumBox.innerHTML =
+          '<div class="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-2">' +
+            '<div class="flex justify-between"><span class="text-slate-400">Utilisateur</span><span class="font-bold text-white">' + escapeHtml(sub.userName || sub.userEmail) + '</span></div>' +
+            '<div class="flex justify-between"><span class="text-slate-400">Stockage payant</span><span class="font-mono font-bold"><span class="text-slate-400 line-through">' + fmtMbShortAdmin(sub.paidMb) + '</span> → <span class="text-emerald-300">' + (targetMb > 0 ? fmtMbShortAdmin(targetMb) : 'Gratuit') + '</span></span></div>' +
+            '<div class="flex justify-between"><span class="text-slate-400">Tarif mensuel</span><span class="font-mono font-bold"><span class="text-slate-400 line-through">' + Math.round(sub.monthlyPriceFcfa).toLocaleString('fr-FR') + ' FCFA</span> → <span class="text-emerald-300">' + finalPrice.toLocaleString('fr-FR') + ' FCFA/mois</span></span></div>' +
+            (savings > 0 ? '<div class="flex justify-between"><span class="text-slate-400">Économie mensuelle</span><span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 font-black">−' + savings.toLocaleString('fr-FR') + ' FCFA / mois</span></div>' : '') +
+          '</div>' +
+          '<div class="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/40 space-y-1">' +
+            '<div class="text-[10px] uppercase font-black text-amber-300">À payer d abord avant bascule automatique</div>' +
+            '<div class="text-xl font-black text-white font-mono">' + prorataDue.toLocaleString('fr-FR') + ' FCFA</div>' +
+            '<div class="text-[10.5px] text-amber-200/80">Correspond à sa consommation écoulée (' + sub.daysUsed + ' jour(s) sur ' + sub.durationDays + 'j). Une fois payé dans « Mes abonnements → Réduction de stockage », son stockage change automatiquement.</div>' +
+          '</div>';
+      }
+    }
+    window.recalcAdminDowngradePreview = recalcAdminDowngradePreview;
+
+    async function submitAdminStorageDowngrade() {
+      const sub = getSelectedDowngradeSubscriber();
+      if (!sub) return;
+      const targetPaidMb = Math.max(0, Number(document.getElementById('dg-target-mb')?.value || 0));
+      if (targetPaidMb >= sub.paidMb) {
+        showToast('⚠️ Le nouveau stockage doit être inférieur au stockage actuel (' + fmtMbShortAdmin(sub.paidMb) + ').');
+        return;
+      }
+      const customTargetMonthlyPrice = Number(document.getElementById('dg-target-price')?.value || 0);
+      const customProrataAmount = Number(document.getElementById('dg-prorata-due')?.value || 0);
+      const adminNotes = String(document.getElementById('dg-admin-notes')?.value || '').trim();
+      const btn = document.getElementById('dg-submit-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi notification + email...'; }
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/storage-downgrades/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: sub.userId,
+            targetPaidMb: targetPaidMb,
+            customTargetMonthlyPrice: customTargetMonthlyPrice,
+            customProrataAmount: customProrataAmount,
+            adminNotes: adminNotes
+          })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur création réduction');
+        showToast('✅ Réduction envoyée ! Notification in-app + email envoyés à ' + (sub.userName || sub.userEmail) + '.');
+        document.getElementById('dg-admin-notes').value = '';
+        await loadAdminStorageDowngrades();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '📩 Envoyer la réduction (Notification + Email)'; }
+      }
+    }
+    window.submitAdminStorageDowngrade = submitAdminStorageDowngrade;
+
+    function renderAdminDowngradeHistoryTable() {
+      const tbody = document.getElementById('dg-history-tbody');
+      const counter = document.getElementById('dg-history-counter');
+      if (!tbody) return;
+      if (counter) counter.textContent = adminDowngradeRequests.length + ' demande' + (adminDowngradeRequests.length > 1 ? 's' : '');
+      if (adminDowngradeRequests.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Aucune demande de réduction envoyée pour le moment.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = adminDowngradeRequests.map(function(r) {
+        const rid = escapeHtml(r.id);
+        const stBadge = r.status === 'completed'
+          ? '<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black">✅ Payée &amp; Appliquée</span>'
+          : (r.status === 'pending_payment'
+            ? '<span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black">⏳ En attente paiement</span>'
+            : '<span class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">' + escapeHtml(r.status) + '</span>');
+        return '<tr class="hover:bg-slate-900/50">' +
+          '<td data-label="Utilisateur" class="px-3 py-2.5"><div><div class="font-bold text-white">' + escapeHtml(r.user_name || r.user_id) + '</div><div class="text-[10px] text-slate-400">' + escapeHtml(r.user_email || '') + '</div></div></td>' +
+          '<td data-label="Stockage" class="px-3 py-2.5 font-mono font-bold"><span class="text-slate-400">' + fmtMbShortAdmin(r.current_paid_mb) + '</span> → <span class="text-emerald-300">' + (Number(r.target_paid_mb) > 0 ? fmtMbShortAdmin(r.target_paid_mb) : 'Gratuit') + '</span></td>' +
+          '<td data-label="Prix mensuel" class="px-3 py-2.5 font-mono"><span class="text-slate-400">' + Math.round(Number(r.current_monthly_price || 0)).toLocaleString('fr-FR') + '</span> → <span class="text-emerald-300 font-bold">' + Math.round(Number(r.target_monthly_price || 0)).toLocaleString('fr-FR') + ' FCFA</span></td>' +
+          '<td data-label="Prorata dû" class="px-3 py-2.5 font-mono font-black text-amber-300">' + Math.round(Number(r.consumed_prorata_amount || 0)).toLocaleString('fr-FR') + ' FCFA <span class="text-[9.5px] text-slate-400 font-normal">(' + Number(r.days_used || 0) + 'j/' + Number(r.duration_days || 30) + 'j)</span></td>' +
+          '<td data-label="Statut" class="px-3 py-2.5">' + stBadge + '</td>' +
+          '<td data-label="Action" class="px-3 py-2.5 text-right"><button type="button" onclick="deleteAdminStorageDowngrade(&quot;' + rid + '&quot;)" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/35 text-rose-300 text-[10px] font-bold cursor-pointer" title="Supprimer">🗑️</button></td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    function deleteAdminStorageDowngrade(reqId) {
+      openAdminConfirmModal({
+        title: '🗑️ Supprimer cette demande de réduction',
+        message: 'Retirer définitivement cette proposition de réduction de stockage ?',
+        confirmText: '🗑️ Supprimer',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/storage-downgrades/' + encodeURIComponent(reqId), { method: 'DELETE' });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+            showToast('🗑️ Demande de réduction supprimée.');
+            await loadAdminStorageDowngrades();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.deleteAdminStorageDowngrade = deleteAdminStorageDowngrade;
 
     window.addEventListener('focus', () => {
       smartAutoRefresh();
@@ -22338,6 +23321,26 @@ export default {
 
         await safeRun(db, `DELETE FROM storage_upgrade_requests WHERE id = ?`, [requestId]);
         return new Response(JSON.stringify({ success: true, message: 'Demande supprimée définitivement' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/storage-requests/bulk-delete (NETTOYER REFUSÉES / ANNULÉES)
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/storage-requests/bulk-delete') {
+        const body = await request.json().catch(() => ({}));
+        const scope = String(body.scope || 'all');
+        let res;
+        if (scope === 'ai') {
+          res = await safeRun(db, `DELETE FROM storage_upgrade_requests WHERE status IN ('rejected', 'cancelled') AND (LOWER(COALESCE(pack_name, '')) LIKE '%ia%' OR LOWER(COALESCE(request_type, '')) LIKE '%ai%')`);
+        } else if (scope === 'storage') {
+          res = await safeRun(db, `DELETE FROM storage_upgrade_requests WHERE status IN ('rejected', 'cancelled') AND LOWER(COALESCE(request_type, '')) NOT LIKE '%ai%'`);
+        } else {
+          res = await safeRun(db, `DELETE FROM storage_upgrade_requests WHERE status IN ('rejected', 'cancelled')`);
+        }
+        return new Response(JSON.stringify({ success: true, deletedCount: Number(res?.meta?.changes || 0), message: 'Nettoyage effectué' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });

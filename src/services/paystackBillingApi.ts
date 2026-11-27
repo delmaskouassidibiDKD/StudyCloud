@@ -149,6 +149,11 @@ export interface ActiveSubscriptionRecord {
   next_billing_at?: string | null;
   grace_until?: string | null;
   cancel_at_period_end?: number;
+  data_retention_days?: number | null;
+  data_purge_deadline_at?: string | null;
+  excess_bytes_at_cancel?: number;
+  data_purged_at?: string | null;
+  cancel_reason?: string;
   countdown?: SubscriptionCountdown | null;
 }
 
@@ -190,6 +195,7 @@ export interface InitializePaystackPayload {
   phone?: string;
   returnOrigin?: string;
   targetPaidMb?: number;
+  downgradeRequestId?: string;
 }
 
 export interface ChargeMobilePayload {
@@ -200,6 +206,7 @@ export interface ChargeMobilePayload {
   phone: string;
   countryIso?: string;
   targetPaidMb?: number;
+  downgradeRequestId?: string;
 }
 
 export interface StorageMasterCardConfig {
@@ -868,6 +875,48 @@ export interface MySubscriptionsResponse {
   error?: string;
 }
 
+export interface StorageDowngradeRequestRecord {
+  id: string;
+  user_id: string;
+  subscription_id?: string;
+  current_paid_mb: number;
+  target_paid_mb: number;
+  current_monthly_price: number;
+  target_monthly_price: number;
+  consumed_prorata_amount: number;
+  days_used: number;
+  duration_days: number;
+  currency: string;
+  status: 'pending_payment' | 'completed' | 'superseded' | 'cancelled' | string;
+  payment_reference?: string;
+  admin_notes?: string;
+  paid_at?: string | null;
+  applied_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface PendingDowngradeBannerItem {
+  id: string;
+  currentPaidMb: number;
+  targetPaidMb: number;
+  currentMonthlyPrice: number;
+  targetMonthlyPrice: number;
+  consumedProrataAmount: number;
+  daysUsed: number;
+  durationDays: number;
+  currency: string;
+  createdAt: string | null;
+}
+
+export interface DataPurgeWarningRecord {
+  subscriptionId: string;
+  planName: string;
+  excessBytes: number;
+  retentionDays: number;
+  purgeDeadlineAt: string;
+  daysRemaining: number;
+}
+
 export interface BillingStatusBannerResponse {
   success: boolean;
   fullAccountBlocked: boolean;
@@ -896,6 +945,8 @@ export interface BillingStatusBannerResponse {
     priceAmount: number;
     currency: string;
   }>;
+  pendingDowngrades?: PendingDowngradeBannerItem[];
+  dataPurgeWarnings?: DataPurgeWarningRecord[];
 }
 
 export async function getMyActiveSubscriptions(): Promise<MySubscriptionsResponse> {
@@ -933,6 +984,49 @@ export async function getMyBillingStatusBanner(): Promise<BillingStatusBannerRes
   } catch {
     return null;
   }
+}
+
+export async function getMyStorageDowngrades(): Promise<{
+  success: boolean;
+  requests: StorageDowngradeRequestRecord[];
+  userState?: StorageMasterUserState | null;
+  error?: string;
+}> {
+  try {
+    const resp = await fetch(`${getBaseApi()}/api/billing/storage-downgrades?_t=${Date.now()}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    const json = await resp.json().catch(() => null);
+    if (!resp.ok || !json?.success) {
+      return { success: false, requests: [], error: json?.error || 'Impossible de charger les réductions de stockage.' };
+    }
+    return {
+      success: true,
+      requests: Array.isArray(json.requests) ? json.requests : [],
+      userState: json.userState || null,
+    };
+  } catch {
+    return { success: false, requests: [], error: 'Erreur réseau lors du chargement des réductions de stockage.' };
+  }
+}
+
+export async function applyFreeStorageDowngrade(
+  downgradeRequestId: string
+): Promise<{ success: boolean; deliverySummary?: string; error?: string }> {
+  const resp = await fetch(
+    `${getBaseApi()}/api/billing/storage-downgrades/${encodeURIComponent(downgradeRequestId)}/apply-free`,
+    {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({}),
+    }
+  );
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || !json?.success) {
+    return { success: false, error: json?.error || "Impossible d'appliquer la réduction de stockage." };
+  }
+  return { success: true, deliverySummary: json.deliverySummary };
 }
 
 export async function cancelMySubscriptionAutoRenew(

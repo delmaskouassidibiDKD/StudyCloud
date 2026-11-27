@@ -2074,3 +2074,197 @@ test('Audit paiements — Multi-paiements milieu de mois, anti-abus booster J-29
   const quotaAfterRefund: any = await db.prepare("SELECT paid_total_mb FROM user_storage_quotas WHERE user_id = 'u-audit'").first();
   assert.equal(Number(quotaAfterRefund.paid_total_mb), 600, 'Les 200 Mo remboursés doivent être retirés du quota');
 });
+
+test('Étape 1 — Annulation admin + Purge FIFO surplus payant + Carte Maîtresse Réduction prorata + Suppressions', async () => {
+  const { db } = createMockD1();
+  await ensurePaystackBillingTables(db);
+  await db.prepare(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT, phone TEXT)`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS files (id TEXT PRIMARY KEY, user_id TEXT, size INTEGER, r2_key TEXT, created_at TEXT)`).run();
+  await db.prepare(`CREATE TABLE IF NOT EXISTS user_storage_usage (user_id TEXT PRIMARY KEY, total_bytes_used INTEGER, r2_bytes_used INTEGER, d1_bytes_used INTEGER, updated_at TEXT)`).run();
+
+  await db.prepare(`INSERT INTO users (id, name, email, phone) VALUES ('u-etape1', 'Awa Kone', 'awa@studycloud.ci', '0700112233')`).run();
+  await db.prepare(`INSERT INTO user_storage_quotas (user_id, welcome_total_mb, paid_total_mb, plan_name) VALUES ('u-etape1', 30, 500, 'Stockage 500 Mo')`).run();
+
+  const MB = 1024 * 1024;
+  // 2 anciens fichiers qui tiennent dans le quota gratuit de 30 Mo (20 + 8 = 28 Mo <= 30 Mo) -> PROTÉGÉS
+  await db.prepare(`INSERT INTO files (id, user_id, size, r2_key, created_at) VALUES ('f_free_1', 'u-etape1', ?, 'r2/free1.pdf', '2026-01-01T10:00:00Z')`).bind(20 * MB).run();
+  await db.prepare(`INSERT INTO files (id, user_id, size, r2_key, created_at) VALUES ('f_free_2', 'u-etape1', ?, 'r2/free2.pdf', '2026-01-02T10:00:00Z')`).bind(8 * MB).run();
+  // 1 fichier plus récent enregistré sur l'espace payant (40 Mo) -> SURPLUS PAYANT
+  await db.prepare(`INSERT INTO files (id, user_id, size, r2_key, created_at) VALUES ('f_paid_3', 'u-etape1', ?, 'r2/paid3.mp4', '2026-01-10T10:00:00Z')`).bind(40 * MB).run();
+  await db.prepare(`INSERT INTO user_storage_usage (user_id, total_bytes_used, r2_bytes_used, d1_bytes_used) VALUES ('u-etape1', ?, ?, 0)`).bind(68 * MB, 68 * MB).run();
+
+  const nowMs = Date.now();
+  const start6DaysAgo = new Date(nowMs - 6 * 86400_000).toISOString();
+  const endIn24Days = new Date(nowMs + 24 * 86400_000).toISOString();
+  await db.prepare(
+    `INSERT INTO active_subscriptions (
+       id, user_id, user_name, user_email, product_type, app_key, app_name, plan_id, plan_name,
+       status, is_infinite, plan_allows_auto, plan_allows_manual, renewal_mode,
+       price_amount, currency, billing_cycle, duration_days, granted_storage_mb,
+       started_at, current_period_start, current_period_end, next_billing_at
+     ) VALUES ('sub_etape1', 'u-etape1', 'Awa Kone', 'awa@studycloud.ci', 'storage', 'storage', 'Stockage Cloud', 'storage_master', 'Stockage 500 Mo',
+               'active', 0, 0, 1, 'manual', 500, 'XOF', 'monthly', 30, 500, ?, ?, ?, ?)`
+  ).bind(start6DaysAgo, start6DaysAgo, endIn24Days, endIn24Days).run();
+
+  const sentEmails: Array<{ to: string[]; subject: string; tags?: any[] }> = [];
+  const deletedR2Keys: string[] = [];
+  const mockR2Bucket = {
+    delete: async (key: string) => {
+      deletedR2Keys.push(key);
+    },
+  };
+
+  let initAmountMinor = 0;
+  const mockFetch: typeof fetch = async (input, init) => {
+    const u = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    if (u.includes('api.resend.com/emails')) {
+      sentEmails.push({ to: body.to, subject: body.subject, tags: body.tags });
+      return new Response(JSON.stringify({ id: `re_etape1_${sentEmails.length}` }), { status: 200 });
+    }
+    if (u.endsWith('/transaction/initialize')) {
+      initAmountMinor = Number(body.amount || 0);
+      return new Response(JSON.stringify({
+        status: true,
+        data: { authorization_url: 'https://checkout.paystack.com/dg', access_code: 'AC_DG', reference: body.reference },
+      }), { status: 200 });
+    }
+    if (u.includes('/transaction/verify/')) {
+      const ref = decodeURIComponent(u.split('/transaction/verify/')[1]);
+      return new Response(JSON.stringify({
+        status: true,
+        data: {
+          id: 77001,
+          reference: ref,
+          status: 'success',
+          amount: initAmountMinor,
+          currency: 'XOF',
+          channel: 'mobile_money',
+          customer: { email: 'awa@studycloud.ci' },
+          authorization: { bank: 'Wave', reusable: false },
+        },
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ status: false }), { status: 404 });
+  };
+
+  const adminKey = 'adm_secret_etape1';
+  const rawEnv = {
+    STUDYCLOUD_PAYSTACK_SECRET_KEY: 'sk_test_etape1',
+    ADMIN_API_SECRET: adminKey,
+    RESEND_API_KEY: 're_test_etape1',
+    BUCKET_MES_FICHIERS: mockR2Bucket,
+    BUCKET: mockR2Bucket,
+  };
+
+  const callApi = async (path: string, opts: { method?: string; body?: any; token?: string; admin?: boolean } = {}) => {
+    const req = new Request(`https://api-worker.dkd-technologies.com${path}`, {
+      method: opts.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
+        ...(opts.admin ? { 'X-Admin-Key': adminKey } : {}),
+      },
+      body: opts.body !== undefined ? JSON.stringify(opts.body) : undefined,
+    });
+    const res = await handlePaystackBillingRoutes(req, new URL(req.url), new URL(req.url).pathname, req.method, {
+      db,
+      rawEnv,
+      origin: '*',
+      fetchFn: mockFetch,
+      getAuthUser: async (r) => r.headers.get('Authorization') === 'Bearer tok-awa' ? { userId: 'u-etape1', email: 'awa@studycloud.ci', name: 'Awa Kone' } : null,
+      jsonResponse: (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'Content-Type': 'application/json' } }),
+      errorResponse: (m, s = 400) => new Response(JSON.stringify({ success: false, error: m }), { status: s, headers: { 'Content-Type': 'application/json' } }),
+    });
+    assert.ok(res);
+    return res!;
+  };
+
+  // --- PARTIE A : CARTE MAÎTRESSE ADMIN RÉDUCTION DE STOCKAGE (500 Mo -> 200 Mo, prorata consommé ~100 FCFA) ---
+  const dgListAdmin = await (await callApi('/api/admin/billing/storage-downgrades', { admin: true })).json();
+  assert.equal(dgListAdmin.success, true);
+  assert.equal(dgListAdmin.eligibleSubscribers.length, 1);
+  assert.equal(dgListAdmin.eligibleSubscribers[0].paidMb, 500);
+
+  const dgCreate = await (await callApi('/api/admin/billing/storage-downgrades/create', {
+    method: 'POST',
+    admin: true,
+    body: { userId: 'u-etape1', targetPaidMb: 200, adminNotes: 'Réduction validée suite à votre demande' },
+  })).json();
+  assert.equal(dgCreate.success, true);
+  assert.equal(Number(dgCreate.request.target_paid_mb), 200);
+  assert.equal(Number(dgCreate.request.target_monthly_price), 200);
+  assert.ok(Number(dgCreate.request.consumed_prorata_amount) >= 90 && Number(dgCreate.request.consumed_prorata_amount) <= 115);
+  assert.ok(sentEmails.some((e) => e.tags?.some((t: any) => t.value === 'storage_downgrade_proposed')));
+
+  // La bannière supérieure détecte la réduction en attente
+  const bannerWithDg = await (await callApi('/api/billing/status-banner', { token: 'tok-awa' })).json();
+  assert.equal(bannerWithDg.pendingDowngrades.length, 1);
+
+  // L'utilisateur règle son prorata consommé via Paystack -> stockage + prix mensuel basculent automatiquement !
+  const dgInit = await (await callApi('/api/payments/paystack/initialize', {
+    method: 'POST',
+    token: 'tok-awa',
+    body: { productType: 'storage', productId: 'storage_master_downgrade', downgradeRequestId: dgCreate.request.id },
+  })).json();
+  assert.equal(dgInit.success, true);
+  assert.equal(dgInit.amount, Number(dgCreate.request.consumed_prorata_amount));
+
+  const dgVerify = await (await callApi(`/api/payments/paystack/verify?reference=${dgInit.reference}`, { token: 'tok-awa' })).json();
+  assert.equal(dgVerify.verified, true);
+  const quotaAfterDg: any = await db.prepare("SELECT paid_total_mb FROM user_storage_quotas WHERE user_id = 'u-etape1'").first();
+  assert.equal(Number(quotaAfterDg.paid_total_mb), 200, 'Le stockage payant doit basculer automatiquement à 200 Mo');
+  const subAfterDg: any = await db.prepare("SELECT price_amount, granted_storage_mb FROM active_subscriptions WHERE id = 'sub_etape1'").first();
+  assert.equal(Number(subAfterDg.price_amount), 200, 'Le prix mensuel doit passer à 200 FCFA');
+  assert.ok(sentEmails.some((e) => e.tags?.some((t: any) => t.value === 'storage_downgrade_completed')));
+
+  // --- PARTIE B : ANNULATION ADMIN + ANALYSE DONNÉES PAYANTES + PURGE FIFO ---
+  const prevRes = await (await callApi('/api/admin/billing/subscriptions/sub_etape1/cancellation-preview', { admin: true })).json();
+  assert.equal(prevRes.success, true);
+  assert.equal(prevRes.hasOverflow, true);
+  assert.equal(prevRes.overflow.protectedFilesCount, 2, 'Les 2 premiers fichiers dans les 30 Mo gratuits sont protégés');
+  assert.equal(prevRes.overflow.overflowFilesCount, 1, 'Seul le 3e fichier sur espace payant est ciblé');
+  assert.equal(prevRes.overflow.excessBytes, 38 * MB);
+
+  const cancelRes = await (await callApi('/api/admin/billing/subscriptions/sub_etape1/cancel', {
+    method: 'POST',
+    admin: true,
+    body: { mode: 'immediate', retentionDays: 10, reason: 'Arrêt demandé par client', notifyByEmail: true },
+  })).json();
+  assert.equal(cancelRes.success, true);
+  assert.equal(cancelRes.hasOverflow, true);
+  assert.equal(cancelRes.retentionDays, 10);
+  assert.ok(sentEmails.some((e) => e.tags?.some((t: any) => t.value === 'subscription_cancelled_data_warning')));
+
+  // Bannière in-app avertit l'utilisateur du délai de 10 jours
+  const bannerWarn = await (await callApi('/api/billing/status-banner', { token: 'tok-awa' })).json();
+  assert.equal(bannerWarn.dataPurgeWarnings.length, 1);
+  assert.equal(bannerWarn.dataPurgeWarnings[0].retentionDays, 10);
+
+  // Exécution du Cron APRÈS expiration du délai de 10 jours (+11j) -> Purge FIFO stricte !
+  const future11DaysIso = new Date(Date.now() + 11 * 86400_000).toISOString();
+  const cronPurge = await executeBillingCronJob(db, rawEnv, { fetchFn: mockFetch, nowIso: future11DaysIso });
+  assert.equal(cronPurge.dataOverflowPurged, 1);
+  assert.deepEqual(deletedR2Keys, ['r2/paid3.mp4'], 'Seul le fichier sur espace payant doit être supprimé de R2');
+
+  const remainingFiles = await db.prepare("SELECT id FROM files WHERE user_id = 'u-etape1' ORDER BY id ASC").all();
+  assert.deepEqual(
+    (remainingFiles.results || []).map((r: any) => r.id),
+    ['f_free_1', 'f_free_2'],
+    'Les 2 premiers fichiers dans le quota gratuit DOIVENT rester intacts'
+  );
+  assert.ok(sentEmails.some((e) => e.tags?.some((t: any) => t.value === 'data_overflow_purged')));
+
+  // --- PARTIE C : SUPPRESSIONS DE DONNÉES ADMIN (TRANSACTION, EMAIL LOG, ABONNEMENT) ---
+  const delTx = await (await callApi(`/api/admin/billing/transactions/${encodeURIComponent(dgInit.reference)}`, { method: 'DELETE', admin: true })).json();
+  assert.equal(delTx.success, true);
+  assert.equal(delTx.deletedCount, 1);
+
+  const delLogs = await (await callApi('/api/admin/billing/email-logs', { method: 'DELETE', admin: true })).json();
+  assert.equal(delLogs.success, true);
+  assert.ok(delLogs.deletedCount >= 1);
+
+  const delSub = await (await callApi('/api/admin/billing/subscriptions/sub_etape1', { method: 'DELETE', admin: true })).json();
+  assert.equal(delSub.success, true);
+  assert.equal(delSub.deletedCount, 1);
+});

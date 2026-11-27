@@ -16,6 +16,7 @@ import {
   evaluateUserBillingGuard,
   verifyResendSvixSignature,
   computeResendSvixSignature,
+  insertBillingInAppNotification,
   BillingEmailType,
 } from './billingEmailAndPolicy';
 import { runBillingCronCycle, BillingCronSummary } from './billingCron';
@@ -70,6 +71,7 @@ export interface EffectiveBillingPolicy {
   overdueIntervalHours: number;
   overdueMaxReminders: number;
   gracePeriodDays: number;
+  dataRetentionGraceDays: number;
   blockScope: BlockScope;
   retryIntervalsHours: number[];
   emailOnPurchase: boolean;
@@ -1051,6 +1053,7 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
     'ALTER TABLE payment_transactions ADD COLUMN recurring_price_amount REAL DEFAULT 0',
     "ALTER TABLE payment_transactions ADD COLUMN master_action TEXT DEFAULT ''",
     'ALTER TABLE payment_transactions ADD COLUMN prorata_credit_amount REAL DEFAULT 0',
+    "ALTER TABLE payment_transactions ADD COLUMN downgrade_request_id TEXT DEFAULT ''",
   ]) {
     try {
       await db.prepare(sql).run();
@@ -1312,6 +1315,11 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
     'ALTER TABLE active_subscriptions ADD COLUMN last_email_at TEXT DEFAULT NULL',
     "ALTER TABLE active_subscriptions ADD COLUMN last_email_type TEXT DEFAULT ''",
     "ALTER TABLE active_subscriptions ADD COLUMN last_email_status TEXT DEFAULT ''",
+    'ALTER TABLE active_subscriptions ADD COLUMN data_retention_days INTEGER DEFAULT NULL',
+    'ALTER TABLE active_subscriptions ADD COLUMN data_purge_deadline_at TEXT DEFAULT NULL',
+    'ALTER TABLE active_subscriptions ADD COLUMN excess_bytes_at_cancel INTEGER DEFAULT 0',
+    'ALTER TABLE active_subscriptions ADD COLUMN data_purged_at TEXT DEFAULT NULL',
+    "ALTER TABLE active_subscriptions ADD COLUMN cancel_reason TEXT DEFAULT ''",
   ]) {
     await db.prepare(colSql).run().catch(() => {});
   }
@@ -1413,6 +1421,42 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
     'CREATE INDEX IF NOT EXISTS idx_bill_email_resend ON billing_email_logs(resend_message_id)'
   ).run().catch(() => {});
 
+  // 12b. Délai global de récupération des données payantes après annulation sur billing_policy_rules
+  await db
+    .prepare('ALTER TABLE billing_policy_rules ADD COLUMN data_retention_grace_days INTEGER DEFAULT 14')
+    .run()
+    .catch(() => {});
+
+  // 13. Demandes de réduction de stockage (Carte Maîtresse Admin -> Prorata consommé -> Changement auto)
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS storage_downgrade_requests (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_name TEXT DEFAULT '',
+      user_email TEXT DEFAULT '',
+      user_phone TEXT DEFAULT '',
+      subscription_id TEXT DEFAULT '',
+      current_paid_mb REAL NOT NULL,
+      target_paid_mb REAL NOT NULL,
+      current_monthly_price REAL NOT NULL,
+      target_monthly_price REAL NOT NULL,
+      consumed_prorata_amount REAL NOT NULL,
+      days_used INTEGER DEFAULT 0,
+      duration_days INTEGER DEFAULT 30,
+      currency TEXT DEFAULT 'XOF',
+      status TEXT DEFAULT 'pending_payment',
+      payment_reference TEXT DEFAULT '',
+      admin_notes TEXT DEFAULT '',
+      paid_at TEXT DEFAULT NULL,
+      applied_at TEXT DEFAULT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_storage_downgrade_user ON storage_downgrade_requests(user_id, status, created_at)'
+  ).run().catch(() => {});
+
   ensuredDbSet.add(db);
 }
 
@@ -1478,6 +1522,7 @@ export async function resolveEffectiveBillingPolicy(
     overdueIntervalHours: Math.max(1, Math.min(720, Number(matched?.overdue_interval_hours ?? 48))),
     overdueMaxReminders: Math.max(0, Math.min(30, Number(matched?.overdue_max_reminders ?? 5))),
     gracePeriodDays: Math.max(0, Math.min(90, Number(matched?.grace_period_days ?? 5))),
+    dataRetentionGraceDays: Math.max(1, Math.min(365, Number(matched?.data_retention_grace_days ?? 14))),
     blockScope: normalizeBlockScope(matched?.block_scope),
     retryIntervalsHours: parseIntArrayJson(matched?.retry_intervals_hours_json, [48, 96]),
     emailOnPurchase: matched ? Number(matched.email_on_purchase) !== 0 : true,
@@ -2489,6 +2534,288 @@ export function computeStorageBoosterQuote(
 }
 
 // ============================================================================
+// ANALYSE & PURGE FIFO DES DONNÉES PAYANTES AU-DELÀ DU QUOTA GRATUIT
+// Règle d'or : les plus anciens fichiers situés dans le quota gratuit sont
+// TOUJOURS protégés ; seuls les fichiers enregistrés APRÈS le quota gratuit
+// (sur l'espace payant) sont ciblés si l'abonnement annulé dépasse le délai.
+// ============================================================================
+
+export function formatBytesShortFr(bytes: number): string {
+  const b = Math.max(0, Number(bytes || 0));
+  if (b < 1024) return `${Math.round(b)} o`;
+  if (b < 1024 * 1024) return `${(b / 1024).toFixed(1).replace('.', ',')} Ko`;
+  if (b < 1024 * 1024 * 1024) return `${(b / (1024 * 1024)).toFixed(2).replace('.', ',')} Mo`;
+  return `${(b / (1024 * 1024 * 1024)).toFixed(2).replace('.', ',')} Go`;
+}
+
+export interface UserStorageFileEntry {
+  table: string;
+  id: string;
+  sizeBytes: number;
+  r2Key: string;
+  bucketKeys: string[];
+  createdAt: string;
+  sortMs: number;
+}
+
+export interface UserStorageOverflowAnalysis {
+  welcomeMb: number;
+  bonusMb: number;
+  freeQuotaMb: number;
+  freeQuotaBytes: number;
+  totalUsedBytes: number;
+  totalUsedMb: number;
+  excessBytes: number;
+  excessMb: number;
+  totalFilesCount: number;
+  protectedFilesCount: number;
+  overflowFilesCount: number;
+  overflowFiles: UserStorageFileEntry[];
+  usedFormatted: string;
+  welcomeFormatted: string;
+  excessFormatted: string;
+}
+
+const USER_STORAGE_FILE_SOURCES: Array<{
+  table: string;
+  sizeCol: string;
+  altSizeCol?: string;
+  keyCol: string;
+  bucketKeys: string[];
+}> = [
+  { table: 'files', sizeCol: 'size', keyCol: 'r2_key', bucketKeys: ['BUCKET_MES_FICHIERS', 'BUCKET'] },
+  { table: 'video_files', sizeCol: 'size_bytes', keyCol: 'r2_key', bucketKeys: ['BUCKET_VIDEOS', 'BUCKET'] },
+  { table: 'audio_files', sizeCol: 'size_bytes', keyCol: 'r2_key', bucketKeys: ['BUCKET_AUDIO', 'BUCKET'] },
+  { table: 'image_files', sizeCol: 'size_bytes', keyCol: 'r2_key', bucketKeys: ['BUCKET_IMAGES', 'BUCKET'] },
+  { table: 'document_files', sizeCol: 'size_bytes', keyCol: 'r2_key', bucketKeys: ['BUCKET_DOCUMENTS', 'BUCKET'] },
+  { table: 'classeur_files', sizeCol: 'size_bytes', keyCol: 'r2_key', bucketKeys: ['BUCKET_CLASSEUR', 'BUCKET'] },
+  { table: 'study_files', sizeCol: 'size_bytes', altSizeCol: 'size', keyCol: 'r2_key', bucketKeys: ['BUCKET'] },
+  { table: 'download_files', sizeCol: 'size_bytes', keyCol: 'r2_key', bucketKeys: ['BUCKET_DOWNLOADS', 'BUCKET'] },
+  { table: 'secure_files', sizeCol: 'size_bytes', keyCol: 'r2_key', bucketKeys: ['BUCKET_SECURE', 'BUCKET'] },
+  { table: 'trash_files', sizeCol: 'size_bytes', keyCol: 'r2_key', bucketKeys: ['BUCKET'] },
+];
+
+function parseSqliteDateMs(raw: unknown, fallbackSeq: number): number {
+  const s = String(raw || '').trim();
+  if (!s) return fallbackSeq;
+  const iso = s.includes('T') ? s : s.replace(' ', 'T') + (s.endsWith('Z') ? '' : 'Z');
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : fallbackSeq;
+}
+
+export async function analyzeUserStorageOverflow(
+  db: any,
+  userId: string
+): Promise<UserStorageOverflowAnalysis> {
+  let welcomeMb = 100;
+  let bonusMb = 0;
+
+  const globalCfg: any = await db
+    .prepare(
+      "SELECT default_welcome_total_mb, welcome_storage_mb FROM storage_global_config WHERE id IN ('global', 'default') ORDER BY updated_at DESC LIMIT 1"
+    )
+    .first()
+    .catch(() => null);
+  if (globalCfg) {
+    welcomeMb = Number(globalCfg.default_welcome_total_mb ?? globalCfg.welcome_storage_mb ?? 100);
+  }
+
+  const quotaRow: any = await db
+    .prepare('SELECT welcome_total_mb, bonus_total_mb FROM user_storage_quotas WHERE user_id = ? LIMIT 1')
+    .bind(userId)
+    .first()
+    .catch(() => null);
+  if (quotaRow) {
+    if (quotaRow.welcome_total_mb !== null && quotaRow.welcome_total_mb !== undefined) {
+      welcomeMb = Number(quotaRow.welcome_total_mb);
+    }
+    bonusMb = Math.max(0, Number(quotaRow.bonus_total_mb || 0));
+  }
+
+  const freeQuotaMb = Math.max(0, welcomeMb + bonusMb);
+  const freeQuotaBytes = Math.round(freeQuotaMb * 1024 * 1024);
+
+  const allFiles: UserStorageFileEntry[] = [];
+  let seq = 0;
+  for (const src of USER_STORAGE_FILE_SOURCES) {
+    let rows: any[] = [];
+    try {
+      const res = await db
+        .prepare(
+          `SELECT id, COALESCE(${src.sizeCol}, 0) AS sz, COALESCE(${src.keyCol}, '') AS rk, created_at
+           FROM ${src.table}
+           WHERE user_id = ?
+           ORDER BY created_at ASC`
+        )
+        .bind(userId)
+        .all();
+      rows = res?.results || [];
+    } catch {
+      if (src.altSizeCol) {
+        try {
+          const res2 = await db
+            .prepare(
+              `SELECT id, COALESCE(${src.altSizeCol}, 0) AS sz, COALESCE(${src.keyCol}, '') AS rk, created_at
+               FROM ${src.table}
+               WHERE user_id = ?
+               ORDER BY created_at ASC`
+            )
+            .bind(userId)
+            .all();
+          rows = res2?.results || [];
+        } catch {
+          rows = [];
+        }
+      }
+    }
+    for (const r of rows) {
+      seq++;
+      const sz = Math.max(0, Number(r.sz || 0));
+      allFiles.push({
+        table: src.table,
+        id: String(r.id || ''),
+        sizeBytes: sz,
+        r2Key: String(r.rk || ''),
+        bucketKeys: src.bucketKeys,
+        createdAt: String(r.created_at || ''),
+        sortMs: parseSqliteDateMs(r.created_at, seq),
+      });
+    }
+  }
+
+  // Tri chronologique strict : les plus anciens (dans l'espace gratuit) en premier !
+  allFiles.sort((a, b) => a.sortMs - b.sortMs);
+
+  let runningBytes = 0;
+  let filesSumBytes = 0;
+  let protectedFilesCount = 0;
+  const overflowFiles: UserStorageFileEntry[] = [];
+
+  for (const f of allFiles) {
+    filesSumBytes += f.sizeBytes;
+    if (runningBytes + f.sizeBytes <= freeQuotaBytes) {
+      runningBytes += f.sizeBytes;
+      protectedFilesCount++;
+    } else {
+      overflowFiles.push(f);
+    }
+  }
+
+  let usageTableBytes = 0;
+  const usageRow: any = await db
+    .prepare('SELECT total_bytes_used, r2_bytes_used, d1_bytes_used FROM user_storage_usage WHERE user_id = ? LIMIT 1')
+    .bind(userId)
+    .first()
+    .catch(() => null);
+  if (usageRow) {
+    usageTableBytes = Math.max(
+      0,
+      Number(usageRow.total_bytes_used ?? (Number(usageRow.r2_bytes_used || 0) + Number(usageRow.d1_bytes_used || 0)))
+    );
+  }
+
+  const totalUsedBytes = Math.max(filesSumBytes, usageTableBytes);
+  const excessBytes = Math.max(0, totalUsedBytes - freeQuotaBytes);
+  const totalUsedMb = Math.round((totalUsedBytes / (1024 * 1024)) * 100) / 100;
+  const excessMb = Math.round((excessBytes / (1024 * 1024)) * 100) / 100;
+
+  return {
+    welcomeMb,
+    bonusMb,
+    freeQuotaMb,
+    freeQuotaBytes,
+    totalUsedBytes,
+    totalUsedMb,
+    excessBytes,
+    excessMb,
+    totalFilesCount: allFiles.length,
+    protectedFilesCount,
+    overflowFilesCount: overflowFiles.length,
+    overflowFiles,
+    usedFormatted: formatBytesShortFr(totalUsedBytes),
+    welcomeFormatted: formatStorageMbFr(freeQuotaMb),
+    excessFormatted: formatBytesShortFr(excessBytes),
+  };
+}
+
+/**
+ * Supprime UNIQUEMENT les fichiers enregistrés après l'espace gratuit (espace payant)
+ * en R2 + D1, sans jamais toucher aux premiers fichiers protégés dans le quota gratuit.
+ */
+export async function purgeUserPaidOverflowFiles(
+  db: any,
+  rawEnv: Record<string, any>,
+  userId: string
+): Promise<{
+  purgedCount: number;
+  purgedBytes: number;
+  purgedFormatted: string;
+  remainingBytes: number;
+  welcomeFormatted: string;
+}> {
+  const analysis = await analyzeUserStorageOverflow(db, userId);
+  if (analysis.excessBytes <= 0 || analysis.overflowFiles.length === 0) {
+    return {
+      purgedCount: 0,
+      purgedBytes: 0,
+      purgedFormatted: '0 o',
+      remainingBytes: analysis.totalUsedBytes,
+      welcomeFormatted: analysis.welcomeFormatted,
+    };
+  }
+
+  let purgedCount = 0;
+  let purgedBytes = 0;
+
+  for (const f of analysis.overflowFiles) {
+    // 1. Suppression physique R2 (si clé R2 présente et bucket configuré)
+    if (f.r2Key && rawEnv) {
+      for (const bKey of f.bucketKeys) {
+        const bucket = rawEnv[bKey];
+        if (bucket && typeof bucket.delete === 'function') {
+          try {
+            await bucket.delete(f.r2Key);
+            break;
+          } catch {}
+        }
+      }
+    }
+    // 2. Suppression métadonnées D1
+    try {
+      await db
+        .prepare(`DELETE FROM ${f.table} WHERE id = ? AND user_id = ?`)
+        .bind(f.id, userId)
+        .run();
+      purgedCount++;
+      purgedBytes += f.sizeBytes;
+    } catch {}
+  }
+
+  // 3. Recalculer user_storage_usage pour refléter immédiatement la libération d'espace
+  if (purgedBytes > 0) {
+    await db
+      .prepare(
+        `UPDATE user_storage_usage
+         SET total_bytes_used = MAX(0, COALESCE(total_bytes_used, 0) - ?),
+             r2_bytes_used = MAX(0, COALESCE(r2_bytes_used, 0) - ?),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = ?`
+      )
+      .bind(purgedBytes, purgedBytes, userId)
+      .run()
+      .catch(() => {});
+  }
+
+  return {
+    purgedCount,
+    purgedBytes,
+    purgedFormatted: formatBytesShortFr(purgedBytes),
+    remainingBytes: Math.max(0, analysis.totalUsedBytes - purgedBytes),
+    welcomeFormatted: analysis.welcomeFormatted,
+  };
+}
+
+// ============================================================================
 // LIVRAISON ATOMIQUE ANTI-DOUBLE CRÉDIT (STORAGE / AI / APPS)
 // ============================================================================
 
@@ -2643,14 +2970,17 @@ async function fulfillPaidTransaction(
   let masterRecurringPriceOverride: number | null = null;
   let masterGrantedStorageOverride: number | null = null;
   let masterPlanNameOverride: string | null = null;
+  let downgradeEmailExtraData: Record<string, any> | null = null;
 
   if (txRow.product_type === 'storage') {
     const masterAction = String(txRow.master_action || '').trim();
     const isMasterTx =
       txRow.product_id === 'storage_master_upgrade' ||
       txRow.product_id === 'storage_master_renew' ||
+      txRow.product_id === 'storage_master_downgrade' ||
       masterAction === 'upgrade' ||
-      masterAction === 'renew';
+      masterAction === 'renew' ||
+      masterAction === 'downgrade';
 
     const plan: any = !isMasterTx
       ? await db
@@ -2698,7 +3028,58 @@ async function fulfillPaidTransaction(
             String(existingStorageSub.status) === 'grace'))
     );
 
-    if (masterAction === 'renew' || txRow.product_id === 'storage_master_renew') {
+    if (masterAction === 'downgrade' || txRow.product_id === 'storage_master_downgrade') {
+      // Réduction de stockage (prorata consommé réglé -> bascule automatique vers le nouveau quota et prix mensuel réduit)
+      const dgId = String(txRow.downgrade_request_id || '').trim();
+      const dgRow: any = dgId
+        ? await db
+            .prepare('SELECT * FROM storage_downgrade_requests WHERE id = ? LIMIT 1')
+            .bind(dgId)
+            .first()
+            .catch(() => null)
+        : null;
+      const prevPaidForLabel = dgRow ? Number(dgRow.current_paid_mb || currentPaid) : currentPaid;
+      newPaid = Math.max(0, Number(dgRow?.target_paid_mb ?? txTargetMb));
+      newRecurringPrice = Math.max(0, Number(dgRow?.target_monthly_price ?? newRecurringPrice));
+      grantedStorageMb = 0;
+      entitlementExpiresAt = computeEntitlementExpiration(billingMode, durationDays, null);
+      masterPlanNameOverride =
+        newPaid > 0 ? `Stockage ${formatStorageMbFr(newPaid)}` : 'Plan Étudiant Gratuit';
+      deliverySummary = `Réduction de stockage appliquée : ${formatStorageMbFr(prevPaidForLabel)} → ${formatStorageMbFr(newPaid)} (${newRecurringPrice.toLocaleString('fr-FR')} FCFA/mois).`;
+
+      if (dgId) {
+        await db
+          .prepare(
+            `UPDATE storage_downgrade_requests
+             SET status = 'completed',
+                 payment_reference = ?,
+                 paid_at = ?,
+                 applied_at = ?,
+                 updated_at = CURRENT_TIMESTAMP
+             WHERE id = ?`
+          )
+          .bind(txRow.reference, nowIso, nowIso, dgId)
+          .run()
+          .catch(() => {});
+      }
+
+      downgradeEmailExtraData = {
+        downgradeRequestId: dgId,
+        currentStorageLabel: formatStorageMbFr(prevPaidForLabel),
+        targetStorageLabel: newPaid > 0 ? formatStorageMbFr(newPaid) : 'Plan Gratuit (0 Mo payant)',
+        targetMonthlyPrice: newRecurringPrice,
+        consumedProrataAmount: paidMajor,
+      };
+
+      await insertBillingInAppNotification(
+        db,
+        userId,
+        '✅ Changement de stockage confirmé',
+        `Votre consommation prorata (${Math.round(paidMajor).toLocaleString('fr-FR')} FCFA) a été validée. Votre abonnement est passé de ${formatStorageMbFr(prevPaidForLabel)} à ${formatStorageMbFr(newPaid)} (${Math.round(newRecurringPrice).toLocaleString('fr-FR')} FCFA/mois).`,
+        dgId || txRow.reference,
+        'billing_downgrade_completed'
+      );
+    } else if (masterAction === 'renew' || txRow.product_id === 'storage_master_renew') {
       // Renouvellement pur : on conserve le quota actuel SANS le doubler, on prolonge la date d'échéance !
       grantedStorageMb = 0;
       newPaid = currentPaid > 0 ? currentPaid : Math.max(0, txTargetMb);
@@ -3172,12 +3553,16 @@ async function fulfillPaidTransaction(
   );
 
   const storedMasterPrice =
-    masterRecurringPriceOverride !== null && masterRecurringPriceOverride > 0
+    downgradeEmailExtraData && masterRecurringPriceOverride !== null
+      ? Math.max(0, masterRecurringPriceOverride)
+      : masterRecurringPriceOverride !== null && masterRecurringPriceOverride > 0
       ? masterRecurringPriceOverride
       : paidMajor;
   const storedMasterStorageMb =
     masterGrantedStorageOverride !== null ? masterGrantedStorageOverride : grantedStorageMb;
   const storedMasterPlanName = masterPlanNameOverride || txRow.product_name || 'Forfait StudyCloud';
+  const nextSubStatus =
+    downgradeEmailExtraData && storedMasterStorageMb <= 0 ? 'cancelled' : 'active';
 
   if (existingMasterSub) {
     await db
@@ -3185,7 +3570,7 @@ async function fulfillPaidTransaction(
         `UPDATE active_subscriptions
          SET user_name = ?, user_email = ?, user_phone = ?,
              app_name = ?, plan_id = ?, plan_name = ?,
-             status = 'active',
+             status = ?,
              is_infinite = ?,
              plan_allows_auto = ?,
              plan_allows_manual = ?,
@@ -3208,6 +3593,10 @@ async function fulfillPaidTransaction(
              block_scope = ?,
              cancel_at_period_end = 0,
              cancelled_at = NULL,
+             data_retention_days = NULL,
+             data_purge_deadline_at = NULL,
+             excess_bytes_at_cancel = 0,
+             data_purged_at = NULL,
              retry_count = 0,
              last_charge_error = '',
              reminder_count = 0,
@@ -3222,6 +3611,7 @@ async function fulfillPaidTransaction(
         resolvedAppName,
         txRow.product_id || '',
         storedMasterPlanName,
+        nextSubStatus,
         finalIsInfinite,
         planFlags.allowAuto,
         planFlags.allowManual,
@@ -3359,13 +3749,14 @@ async function fulfillPaidTransaction(
   const bundle = await loadSubscriptionBundleForTx(db, refreshed || { ...txRow, subscription_id: masterSubId });
 
   // ÉTAPE 4 : Envoi automatique d'email de confirmation via Resend (non-bloquant)
-  if (effectivePolicy.emailOnPurchase && runtimeOpts?.rawEnv && bundle.subscription) {
-    const emailType: BillingEmailType =
-      finalIsInfinite === 1
-        ? 'infinite_confirmed'
-        : wasBlockedOrPastDue
-        ? 'service_reactivated'
-        : 'purchase_confirmed';
+  if ((effectivePolicy.emailOnPurchase || downgradeEmailExtraData) && runtimeOpts?.rawEnv && bundle.subscription) {
+    const emailType: BillingEmailType = downgradeEmailExtraData
+      ? 'storage_downgrade_completed'
+      : finalIsInfinite === 1
+      ? 'infinite_confirmed'
+      : wasBlockedOrPastDue
+      ? 'service_reactivated'
+      : 'purchase_confirmed';
     await sendAndLogBillingEmail({
       db,
       rawEnv: runtimeOpts.rawEnv,
@@ -3374,6 +3765,7 @@ async function fulfillPaidTransaction(
       emailType,
       triggeredBy: 'system',
       reference: String(txRow.reference || ''),
+      extraData: downgradeEmailExtraData || undefined,
       recordEventFn: recordSubscriptionEvent,
     }).catch(() => {});
   }
@@ -3791,6 +4183,7 @@ export async function handlePaystackBillingRoutes(
     let recurringPriceAmount = 0;
     let masterAction = '';
     let prorataCreditAmount = 0;
+    let downgradeRequestId = '';
     let masterPriceOverrideMajor: number | null = null;
     let masterDurationOverride: number | null = null;
     let masterBillingModeOverride: BillingMode | null = null;
@@ -3800,7 +4193,45 @@ export async function handlePaystackBillingRoutes(
       appKey = 'storage';
       appName = 'Stockage Cloud';
 
-      if (productId === 'storage_master_upgrade' || productId === 'storage_master_renew') {
+      if (productId === 'storage_master_downgrade') {
+        const reqId = String(body.downgradeRequestId || body.downgrade_request_id || '').trim();
+        if (!reqId) {
+          return errorResponse('Identifiant de demande de réduction requis.', 400, origin);
+        }
+        const dgRow: any = await db
+          .prepare(
+            "SELECT * FROM storage_downgrade_requests WHERE id = ? AND user_id = ? AND status = 'pending_payment' LIMIT 1"
+          )
+          .bind(reqId, userId)
+          .first()
+          .catch(() => null);
+        if (!dgRow) {
+          return errorResponse('Demande de réduction introuvable, expirée ou déjà traitée.', 404, origin);
+        }
+        const dueAmount = Math.max(0, Math.round(Number(dgRow.consumed_prorata_amount || 0)));
+        if (dueAmount <= 0) {
+          return errorResponse('Aucun montant prorata à régler : utilisez le bouton d’activation directe.', 400, origin);
+        }
+        masterAction = 'downgrade';
+        downgradeRequestId = String(dgRow.id);
+        grantedStorageMb = 0;
+        targetStorageMb = Math.max(0, Number(dgRow.target_paid_mb || 0));
+        recurringPriceAmount = Math.max(0, Number(dgRow.target_monthly_price || 0));
+        prorataCreditAmount = 0;
+        masterPriceOverrideMajor = dueAmount;
+        masterDurationOverride = Math.max(1, Number(dgRow.duration_days || 30));
+        masterBillingModeOverride = 'manual';
+        planRow = {
+          id: productId,
+          name: `Réduction Stockage → ${formatStorageMbFr(targetStorageMb)}`,
+          storage_mb: 0,
+          price: dueAmount,
+          primary_currency: String(dgRow.currency || 'XOF').toUpperCase(),
+          billing_mode: 'manual',
+          duration_days: masterDurationOverride,
+          is_auto_billing: 0,
+        };
+      } else if (productId === 'storage_master_upgrade' || productId === 'storage_master_renew') {
         const masterCfg = await readStorageMasterCardConfig(db);
         if (!masterCfg.enabled) {
           return errorResponse('La Carte Maîtresse de stockage est temporairement désactivée.', 400, origin);
@@ -4006,7 +4437,8 @@ export async function handlePaystackBillingRoutes(
       preferAutoCard &&
       prorataCreditAmount <= 0 &&
       masterAction !== 'upgrade' &&
-      masterAction !== 'booster'
+      masterAction !== 'booster' &&
+      masterAction !== 'downgrade'
     ) {
       const planCode = await ensurePaystackNativePlan({
         secretKey,
@@ -4039,9 +4471,9 @@ export async function handlePaystackBillingRoutes(
            billing_mode, billing_cycle, duration_days,
            expected_amount, expected_amount_minor, currency,
            provider, status, granted_storage_mb, granted_ai_credits,
-           target_storage_mb, recurring_price_amount, master_action, prorata_credit_amount,
+           target_storage_mb, recurring_price_amount, master_action, prorata_credit_amount, downgrade_request_id,
            created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paystack', 'pending', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paystack', 'pending', ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
       )
       .bind(
         txId,
@@ -4066,7 +4498,8 @@ export async function handlePaystackBillingRoutes(
         targetStorageMb,
         recurringPriceAmount,
         masterAction,
-        prorataCreditAmount
+        prorataCreditAmount,
+        downgradeRequestId
       )
       .run();
 
@@ -4722,6 +5155,7 @@ export async function handlePaystackBillingRoutes(
     let recurringPriceAmount = 0;
     let masterAction = '';
     let prorataCreditAmount = 0;
+    let downgradeRequestId = '';
     let masterPriceOverrideMajor: number | null = null;
     let masterDurationOverride: number | null = null;
     let masterBillingModeOverride: BillingMode | null = null;
@@ -4730,7 +5164,45 @@ export async function handlePaystackBillingRoutes(
       appKey = 'storage';
       appName = 'Stockage Cloud';
 
-      if (productId === 'storage_master_upgrade' || productId === 'storage_master_renew') {
+      if (productId === 'storage_master_downgrade') {
+        const reqId = String(body.downgradeRequestId || body.downgrade_request_id || '').trim();
+        if (!reqId) {
+          return errorResponse('Identifiant de demande de réduction requis.', 400, origin);
+        }
+        const dgRow: any = await db
+          .prepare(
+            "SELECT * FROM storage_downgrade_requests WHERE id = ? AND user_id = ? AND status = 'pending_payment' LIMIT 1"
+          )
+          .bind(reqId, userId)
+          .first()
+          .catch(() => null);
+        if (!dgRow) {
+          return errorResponse('Demande de réduction introuvable, expirée ou déjà traitée.', 404, origin);
+        }
+        const dueAmount = Math.max(0, Math.round(Number(dgRow.consumed_prorata_amount || 0)));
+        if (dueAmount <= 0) {
+          return errorResponse('Aucun montant prorata à régler : utilisez le bouton d’activation directe.', 400, origin);
+        }
+        masterAction = 'downgrade';
+        downgradeRequestId = String(dgRow.id);
+        grantedStorageMb = 0;
+        targetStorageMb = Math.max(0, Number(dgRow.target_paid_mb || 0));
+        recurringPriceAmount = Math.max(0, Number(dgRow.target_monthly_price || 0));
+        prorataCreditAmount = 0;
+        masterPriceOverrideMajor = dueAmount;
+        masterDurationOverride = Math.max(1, Number(dgRow.duration_days || 30));
+        masterBillingModeOverride = 'manual';
+        planRow = {
+          id: productId,
+          name: `Réduction Stockage → ${formatStorageMbFr(targetStorageMb)}`,
+          storage_mb: 0,
+          price: dueAmount,
+          primary_currency: String(dgRow.currency || 'XOF').toUpperCase(),
+          billing_mode: 'manual',
+          duration_days: masterDurationOverride,
+          is_auto_billing: 0,
+        };
+      } else if (productId === 'storage_master_upgrade' || productId === 'storage_master_renew') {
         const masterCfg = await readStorageMasterCardConfig(db);
         if (!masterCfg.enabled) {
           return errorResponse('La Carte Maîtresse de stockage est temporairement désactivée.', 400, origin);
@@ -4887,9 +5359,9 @@ export async function handlePaystackBillingRoutes(
            billing_mode, billing_cycle, duration_days,
            expected_amount, expected_amount_minor, currency,
            provider, channel, network_label, status, granted_storage_mb, granted_ai_credits,
-           target_storage_mb, recurring_price_amount, master_action, prorata_credit_amount,
+           target_storage_mb, recurring_price_amount, master_action, prorata_credit_amount, downgrade_request_id,
            created_at, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paystack', 'mobile_money', ?, 'pending', ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'paystack', 'mobile_money', ?, 'pending', ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)`
       )
       .bind(
         txId,
@@ -4915,7 +5387,8 @@ export async function handlePaystackBillingRoutes(
         targetStorageMb,
         recurringPriceAmount,
         masterAction,
-        prorataCreditAmount
+        prorataCreditAmount,
+        downgradeRequestId
       )
       .run();
 
@@ -5677,6 +6150,164 @@ export async function handlePaystackBillingRoutes(
     }
     const guard = await evaluateUserBillingGuard(db, String(authUser.userId));
     return jsonResponse({ success: true, ...guard }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 16b. GET /api/billing/storage-downgrades — Demandes de réduction de stockage de l'utilisateur
+  // --------------------------------------------------------------------------
+  if (path === '/api/billing/storage-downgrades' && method === 'GET') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const userId = String(authUser.userId);
+    const config = await readStorageMasterCardConfig(db);
+    const userState = await readStorageMasterUserState(db, userId, config);
+    const reqsRes = await db
+      .prepare('SELECT * FROM storage_downgrade_requests WHERE user_id = ? ORDER BY created_at DESC LIMIT 30')
+      .bind(userId)
+      .all()
+      .catch(() => ({ results: [] }));
+    return jsonResponse(
+      {
+        success: true,
+        requests: reqsRes.results || [],
+        userState,
+        config,
+      },
+      200,
+      origin
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // 16c. POST /api/billing/storage-downgrades/:id/apply-free — Activer directement si prorata = 0 FCFA
+  // --------------------------------------------------------------------------
+  const applyFreeDgMatch = path.match(/^\/api\/billing\/storage-downgrades\/([^/]+)\/apply-free$/);
+  if (applyFreeDgMatch && method === 'POST') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const userId = String(authUser.userId);
+    const dgId = decodeURIComponent(applyFreeDgMatch[1]);
+    const dgRow: any = await db
+      .prepare("SELECT * FROM storage_downgrade_requests WHERE id = ? AND user_id = ? AND status = 'pending_payment' LIMIT 1")
+      .bind(dgId, userId)
+      .first()
+      .catch(() => null);
+    if (!dgRow) {
+      return errorResponse('Demande de réduction introuvable ou déjà appliquée.', 404, origin);
+    }
+    if (Math.round(Number(dgRow.consumed_prorata_amount || 0)) > 0) {
+      return errorResponse('Un règlement prorata est requis avant l’activation de cette réduction.', 400, origin);
+    }
+
+    const nowIso = new Date().toISOString();
+    const newPaid = Math.max(0, Number(dgRow.target_paid_mb || 0));
+    const newPrice = Math.max(0, Number(dgRow.target_monthly_price || 0));
+    const durDays = Math.max(1, Number(dgRow.duration_days || 30));
+    const nextEnd = newPaid > 0 ? new Date(Date.now() + durDays * 86400 * 1000).toISOString() : null;
+    const planName = newPaid > 0 ? `Stockage ${formatStorageMbFr(newPaid)}` : 'Plan Étudiant Gratuit';
+
+    const curQuota: any = await db
+      .prepare('SELECT welcome_total_mb FROM user_storage_quotas WHERE user_id = ? LIMIT 1')
+      .bind(userId)
+      .first()
+      .catch(() => null);
+    const wTotal = curQuota ? Number(curQuota.welcome_total_mb ?? 100) : 100;
+
+    await db
+      .prepare(
+        `INSERT INTO user_storage_quotas (
+           user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb,
+           paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name, updated_at
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON CONFLICT(user_id) DO UPDATE SET
+           paid_total_mb = excluded.paid_total_mb,
+           paid_r2_mb = excluded.paid_r2_mb,
+           paid_d1_mb = excluded.paid_d1_mb,
+           plan_name = excluded.plan_name,
+           updated_at = CURRENT_TIMESTAMP`
+      )
+      .bind(userId, wTotal, Math.round(wTotal / 3), Math.round((wTotal * 2) / 3), newPaid, Math.round(newPaid / 2), Math.round(newPaid / 2), planName)
+      .run()
+      .catch(() => {});
+
+    const subRow: any = await db
+      .prepare("SELECT * FROM active_subscriptions WHERE user_id = ? AND product_type = 'storage' ORDER BY updated_at DESC LIMIT 1")
+      .bind(userId)
+      .first()
+      .catch(() => null);
+    if (subRow) {
+      await db
+        .prepare(
+          `UPDATE active_subscriptions
+           SET plan_name = ?,
+               status = CASE WHEN ? > 0 THEN 'active' ELSE 'cancelled' END,
+               price_amount = ?,
+               granted_storage_mb = ?,
+               current_period_start = ?,
+               current_period_end = ?,
+               next_billing_at = ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`
+        )
+        .bind(planName, newPaid, newPrice, newPaid, nowIso, nextEnd, nextEnd, subRow.id)
+        .run()
+        .catch(() => {});
+    }
+
+    await db
+      .prepare(
+        `UPDATE storage_downgrade_requests
+         SET status = 'completed', paid_at = ?, applied_at = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      )
+      .bind(nowIso, nowIso, dgId)
+      .run();
+
+    const prevLabel = formatStorageMbFr(Number(dgRow.current_paid_mb || 0));
+    const targetLabel = newPaid > 0 ? formatStorageMbFr(newPaid) : 'Plan Gratuit (0 Mo payant)';
+
+    await insertBillingInAppNotification(
+      db,
+      userId,
+      '✅ Changement de stockage confirmé',
+      `Votre abonnement de stockage est passé de ${prevLabel} à ${targetLabel} (${Math.round(newPrice).toLocaleString('fr-FR')} FCFA/mois).`,
+      dgId,
+      'billing_downgrade_completed'
+    );
+
+    const updatedSub = subRow
+      ? await db.prepare('SELECT * FROM active_subscriptions WHERE id = ? LIMIT 1').bind(subRow.id).first().catch(() => subRow)
+      : { id: dgId, user_id: userId, user_email: dgRow.user_email, user_name: dgRow.user_name, product_type: 'storage', plan_name: planName, price_amount: newPrice, currency: dgRow.currency || 'XOF' };
+
+    await sendAndLogBillingEmail({
+      db,
+      rawEnv,
+      fetchFn,
+      subscription: updatedSub,
+      emailType: 'storage_downgrade_completed',
+      triggeredBy: 'system',
+      extraData: {
+        currentStorageLabel: prevLabel,
+        targetStorageLabel: targetLabel,
+        targetMonthlyPrice: newPrice,
+        consumedProrataAmount: 0,
+      },
+      recordEventFn: recordSubscriptionEvent,
+    }).catch(() => {});
+
+    return jsonResponse(
+      {
+        success: true,
+        deliverySummary: `Réduction de stockage appliquée : ${prevLabel} → ${targetLabel}.`,
+        subscription: updatedSub,
+      },
+      200,
+      origin
+    );
   }
 
   // --------------------------------------------------------------------------
@@ -6710,6 +7341,10 @@ export async function handlePaystackBillingRoutes(
         ? body.pre_expiry_days_json.trim()
         : JSON.stringify([autoNoticeDays > 0 ? autoNoticeDays : 3, 1]);
     const gracePeriodDays = Math.max(0, Math.min(90, parseInt(String(body.grace_period_days ?? 5), 10) || 0));
+    const dataRetentionGraceDays = Math.max(
+      1,
+      Math.min(365, parseInt(String(body.data_retention_grace_days ?? 14), 10) || 14)
+    );
     const overdueIntervalHours = Math.max(1, Math.min(720, parseInt(String(body.overdue_interval_hours ?? 48), 10) || 48));
     const overdueMaxReminders = Math.max(
       0,
@@ -6738,10 +7373,10 @@ export async function handlePaystackBillingRoutes(
       .prepare(
         `INSERT INTO billing_policy_rules (
            id, scope_type, scope_key, label, pre_expiry_days_json, auto_notice_days,
-           overdue_interval_hours, overdue_max_reminders, grace_period_days,
+           overdue_interval_hours, overdue_max_reminders, grace_period_days, data_retention_grace_days,
            block_scope, retry_intervals_hours_json, email_on_purchase,
            email_on_fail, email_on_block, is_active, updated_at
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
          ON CONFLICT(scope_type, scope_key) DO UPDATE SET
            label = excluded.label,
            pre_expiry_days_json = excluded.pre_expiry_days_json,
@@ -6749,6 +7384,7 @@ export async function handlePaystackBillingRoutes(
            overdue_interval_hours = excluded.overdue_interval_hours,
            overdue_max_reminders = excluded.overdue_max_reminders,
            grace_period_days = excluded.grace_period_days,
+           data_retention_grace_days = excluded.data_retention_grace_days,
            block_scope = excluded.block_scope,
            retry_intervals_hours_json = excluded.retry_intervals_hours_json,
            email_on_purchase = excluded.email_on_purchase,
@@ -6767,6 +7403,7 @@ export async function handlePaystackBillingRoutes(
         overdueIntervalHours,
         overdueMaxReminders,
         gracePeriodDays,
+        dataRetentionGraceDays,
         blockScope,
         retryIntervalsJson,
         emailOnPurchase,
@@ -6805,6 +7442,615 @@ export async function handlePaystackBillingRoutes(
       nowIso: body?.nowIso ? String(body.nowIso) : undefined,
     });
     return jsonResponse({ success: true, summary }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 20c. ANNULATION ADMIN + ANALYSE DONNÉES PAYANTES + DÉLAI DE RÉCUPÉRATION
+  // --------------------------------------------------------------------------
+  const adminCancelPreviewMatch = path.match(/^\/api\/admin\/billing\/subscriptions\/([^/]+)\/cancellation-preview$/);
+  if (adminCancelPreviewMatch && method === 'GET') {
+    const subId = decodeURIComponent(adminCancelPreviewMatch[1]);
+    const sub: any = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ? LIMIT 1').bind(subId).first();
+    if (!sub) return errorResponse('Abonnement introuvable.', 404, origin);
+
+    const policy = await resolveEffectiveBillingPolicy(db, {
+      productType: sub.product_type,
+      appKey: sub.app_key,
+      subscriptionId: subId,
+    });
+    const overflow =
+      sub.product_type === 'storage'
+        ? await analyzeUserStorageOverflow(db, String(sub.user_id))
+        : null;
+
+    return jsonResponse(
+      {
+        success: true,
+        subscription: sub,
+        defaultRetentionDays: policy.dataRetentionGraceDays,
+        hasOverflow: Boolean(overflow && overflow.excessBytes > 0),
+        overflow: overflow
+          ? {
+              welcomeMb: overflow.welcomeMb,
+              bonusMb: overflow.bonusMb,
+              freeQuotaMb: overflow.freeQuotaMb,
+              totalUsedBytes: overflow.totalUsedBytes,
+              totalUsedMb: overflow.totalUsedMb,
+              excessBytes: overflow.excessBytes,
+              excessMb: overflow.excessMb,
+              totalFilesCount: overflow.totalFilesCount,
+              protectedFilesCount: overflow.protectedFilesCount,
+              overflowFilesCount: overflow.overflowFilesCount,
+              usedFormatted: overflow.usedFormatted,
+              welcomeFormatted: overflow.welcomeFormatted,
+              excessFormatted: overflow.excessFormatted,
+            }
+          : null,
+      },
+      200,
+      origin
+    );
+  }
+
+  const adminCancelSubMatch = path.match(/^\/api\/admin\/billing\/subscriptions\/([^/]+)\/cancel$/);
+  if (adminCancelSubMatch && method === 'POST') {
+    const subId = decodeURIComponent(adminCancelSubMatch[1]);
+    const sub: any = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ? LIMIT 1').bind(subId).first();
+    if (!sub) return errorResponse('Abonnement introuvable.', 404, origin);
+
+    const body: any = await request.json().catch(() => ({}));
+    const mode = body.mode === 'end_of_period' ? 'end_of_period' : 'immediate';
+    const reason = String(body.reason || '').trim().slice(0, 400);
+    const notifyByEmail = body.notifyByEmail !== false;
+    const policy = await resolveEffectiveBillingPolicy(db, {
+      productType: sub.product_type,
+      appKey: sub.app_key,
+      subscriptionId: subId,
+    });
+    const retentionDays = Math.max(
+      1,
+      Math.min(365, parseInt(String(body.retentionDays ?? body.data_retention_days ?? policy.dataRetentionGraceDays ?? 14), 10) || 14)
+    );
+    const nowIso = new Date().toISOString();
+
+    if (mode === 'end_of_period') {
+      await db
+        .prepare(
+          `UPDATE active_subscriptions
+           SET cancel_at_period_end = 1,
+               renewal_mode = 'manual',
+               cancel_reason = ?,
+               data_retention_days = ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`
+        )
+        .bind(reason, retentionDays, subId)
+        .run();
+
+      if (sub.product_type === 'app' && sub.app_key) {
+        await db
+          .prepare('UPDATE user_app_entitlements SET auto_renew = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?')
+          .bind(sub.user_id, sub.app_key)
+          .run()
+          .catch(() => {});
+      }
+
+      await recordSubscriptionEvent(db, {
+        subscriptionId: subId,
+        userId: String(sub.user_id),
+        eventType: 'admin_scheduled_cancel',
+        actor: 'admin',
+        details: { mode, retentionDays, reason, currentPeriodEnd: sub.current_period_end },
+      });
+
+      const refreshed: any = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ?').bind(subId).first();
+      let emailResult: any = null;
+      if (notifyByEmail && refreshed) {
+        emailResult = await sendAndLogBillingEmail({
+          db,
+          rawEnv,
+          fetchFn,
+          subscription: refreshed,
+          emailType: 'subscription_cancelled',
+          triggeredBy: 'admin',
+          customMessage: `L’annulation prendra effet à la fin de la période en cours (${refreshed.current_period_end || 'échéance'}).`,
+          extraData: { reason },
+          recordEventFn: recordSubscriptionEvent,
+        }).catch(() => null);
+      }
+
+      await insertBillingInAppNotification(
+        db,
+        String(sub.user_id),
+        '🚫 Annulation programmée de votre abonnement',
+        `Votre abonnement ${sub.plan_name || ''} ne sera pas renouvelé à la fin de la période en cours.${reason ? ' Motif : ' + reason : ''}`,
+        subId,
+        'billing_cancelled'
+      );
+
+      return jsonResponse({ success: true, mode, subscription: refreshed, emailResult }, 200, origin);
+    }
+
+    // Mode IMMÉDIAT
+    const overflow =
+      sub.product_type === 'storage'
+        ? await analyzeUserStorageOverflow(db, String(sub.user_id))
+        : null;
+    const hasOverflow = Boolean(overflow && overflow.excessBytes > 0);
+    const purgeDeadlineIso = hasOverflow
+      ? new Date(Date.now() + retentionDays * 24 * 60 * 60 * 1000).toISOString()
+      : null;
+
+    await db
+      .prepare(
+        `UPDATE active_subscriptions
+         SET status = 'cancelled',
+             renewal_mode = 'manual',
+             cancel_at_period_end = 0,
+             cancelled_at = ?,
+             cancel_reason = ?,
+             data_retention_days = ?,
+             data_purge_deadline_at = ?,
+             excess_bytes_at_cancel = ?,
+             data_purged_at = NULL,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      )
+      .bind(
+        nowIso,
+        reason,
+        hasOverflow ? retentionDays : null,
+        purgeDeadlineIso,
+        hasOverflow && overflow ? overflow.excessBytes : 0,
+        subId
+      )
+      .run();
+
+    if (sub.product_type === 'storage') {
+      await db
+        .prepare(
+          `UPDATE user_storage_quotas
+           SET paid_total_mb = 0, paid_r2_mb = 0, paid_d1_mb = 0, plan_name = 'gratuit', updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = ?`
+        )
+        .bind(sub.user_id)
+        .run()
+        .catch(() => {});
+      await db
+        .prepare(
+          `UPDATE user_subscriptions
+           SET status = 'cancelled', cancelled_at = ?, cancel_reason = ?, is_blocked = 0, updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = ? AND status = 'active'`
+        )
+        .bind(nowIso, reason, sub.user_id)
+        .run()
+        .catch(() => {});
+    } else if (sub.product_type === 'app' && sub.app_key) {
+      await db
+        .prepare(
+          "UPDATE user_app_entitlements SET status = 'revoked', auto_renew = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?"
+        )
+        .bind(sub.user_id, sub.app_key)
+        .run()
+        .catch(() => {});
+    }
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: subId,
+      userId: String(sub.user_id),
+      eventType: 'admin_cancelled',
+      actor: 'admin',
+      details: {
+        mode: 'immediate',
+        reason,
+        hasOverflow,
+        excessBytes: overflow?.excessBytes || 0,
+        overflowFilesCount: overflow?.overflowFilesCount || 0,
+        retentionDays: hasOverflow ? retentionDays : null,
+        purgeDeadlineIso,
+      },
+    });
+
+    const refreshed: any = await db.prepare('SELECT * FROM active_subscriptions WHERE id = ?').bind(subId).first();
+    let emailResult: any = null;
+
+    if (hasOverflow && overflow) {
+      await insertBillingInAppNotification(
+        db,
+        String(sub.user_id),
+        `⚠️ Abonnement annulé — ${retentionDays}j pour récupérer ${overflow.excessFormatted}`,
+        `Votre consommation actuelle (${overflow.usedFormatted}) dépasse votre quota gratuit (${overflow.welcomeFormatted}) de ${overflow.excessFormatted}. Vous avez ${retentionDays} jour(s) pour récupérer vos fichiers et revenir en zone gratuite. Vos premiers fichiers dans l’espace gratuit sont protégés ; seuls les fichiers enregistrés sur l’espace payant seront supprimés après ce délai.`,
+        subId,
+        'billing_data_purge_warning'
+      );
+      if (notifyByEmail && refreshed) {
+        emailResult = await sendAndLogBillingEmail({
+          db,
+          rawEnv,
+          fetchFn,
+          subscription: refreshed,
+          emailType: 'subscription_cancelled_data_warning',
+          triggeredBy: 'admin',
+          graceDaysRemaining: retentionDays,
+          extraData: {
+            retentionDays,
+            purgeDeadlineIso,
+            usedFormatted: overflow.usedFormatted,
+            welcomeFormatted: overflow.welcomeFormatted,
+            excessFormatted: overflow.excessFormatted,
+            overflowFilesCount: overflow.overflowFilesCount,
+            reason,
+          },
+          recordEventFn: recordSubscriptionEvent,
+        }).catch(() => null);
+      }
+    } else {
+      await insertBillingInAppNotification(
+        db,
+        String(sub.user_id),
+        '🚫 Abonnement annulé',
+        `Votre abonnement ${sub.plan_name || ''} a été annulé.${reason ? ' Motif : ' + reason : ''}`,
+        subId,
+        'billing_cancelled'
+      );
+      if (notifyByEmail && refreshed) {
+        emailResult = await sendAndLogBillingEmail({
+          db,
+          rawEnv,
+          fetchFn,
+          subscription: refreshed,
+          emailType: 'subscription_cancelled',
+          triggeredBy: 'admin',
+          extraData: { reason },
+          recordEventFn: recordSubscriptionEvent,
+        }).catch(() => null);
+      }
+    }
+
+    return jsonResponse(
+      {
+        success: true,
+        mode: 'immediate',
+        subscription: refreshed,
+        hasOverflow,
+        retentionDays: hasOverflow ? retentionDays : null,
+        purgeDeadlineIso,
+        overflow: overflow
+          ? {
+              totalUsedBytes: overflow.totalUsedBytes,
+              freeQuotaMb: overflow.freeQuotaMb,
+              excessBytes: overflow.excessBytes,
+              overflowFilesCount: overflow.overflowFilesCount,
+              usedFormatted: overflow.usedFormatted,
+              welcomeFormatted: overflow.welcomeFormatted,
+              excessFormatted: overflow.excessFormatted,
+            }
+          : null,
+        emailResult,
+      },
+      200,
+      origin
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // 20d. SUPPRESSION DE DONNÉES ADMIN (ABONNEMENTS, TRANSACTIONS, LOGS EMAILS)
+  // --------------------------------------------------------------------------
+  const adminDeleteSubMatch = path.match(/^\/api\/admin\/billing\/subscriptions\/([^/]+)$/);
+  if (adminDeleteSubMatch && method === 'DELETE') {
+    const subId = decodeURIComponent(adminDeleteSubMatch[1]);
+    await db.prepare('DELETE FROM subscription_events WHERE subscription_id = ?').bind(subId).run().catch(() => {});
+    const delRes: any = await db.prepare('DELETE FROM active_subscriptions WHERE id = ?').bind(subId).run();
+    const deletedCount = Number(delRes?.meta?.changes || 0);
+    if (deletedCount === 0) return errorResponse('Abonnement introuvable.', 404, origin);
+    return jsonResponse({ success: true, deletedId: subId, deletedCount }, 200, origin);
+  }
+
+  if (path === '/api/admin/billing/subscriptions/bulk-delete' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const ids: string[] = Array.isArray(body.ids) ? body.ids.map((x: any) => String(x || '').trim()).filter(Boolean) : [];
+    const statuses: string[] = Array.isArray(body.statuses)
+      ? body.statuses
+          .map((x: any) => String(x || '').trim().toLowerCase())
+          .filter((s: string) => ['cancelled', 'expired', 'revoked', 'blocked'].includes(s))
+      : [];
+
+    let deletedCount = 0;
+    if (ids.length > 0) {
+      for (const id of ids.slice(0, 200)) {
+        await db.prepare('DELETE FROM subscription_events WHERE subscription_id = ?').bind(id).run().catch(() => {});
+        const r: any = await db.prepare('DELETE FROM active_subscriptions WHERE id = ?').bind(id).run().catch(() => null);
+        deletedCount += Number(r?.meta?.changes || 0);
+      }
+    } else if (statuses.length > 0) {
+      const ph = statuses.map(() => '?').join(',');
+      const toDel = await db
+        .prepare(`SELECT id FROM active_subscriptions WHERE status IN (${ph})`)
+        .bind(...statuses)
+        .all()
+        .catch(() => ({ results: [] }));
+      for (const row of toDel.results || []) {
+        await db.prepare('DELETE FROM subscription_events WHERE subscription_id = ?').bind(row.id).run().catch(() => {});
+      }
+      const r: any = await db
+        .prepare(`DELETE FROM active_subscriptions WHERE status IN (${ph})`)
+        .bind(...statuses)
+        .run();
+      deletedCount = Number(r?.meta?.changes || 0);
+    } else {
+      return errorResponse('Précisez des IDs ou des statuts à nettoyer (cancelled, expired, revoked).', 400, origin);
+    }
+    return jsonResponse({ success: true, deletedCount }, 200, origin);
+  }
+
+  const adminDeleteTxMatch = path.match(/^\/api\/admin\/billing\/transactions\/([^/]+)$/);
+  if (adminDeleteTxMatch && method === 'DELETE') {
+    const refOrId = decodeURIComponent(adminDeleteTxMatch[1]);
+    const delRes: any = await db
+      .prepare('DELETE FROM payment_transactions WHERE reference = ? OR id = ?')
+      .bind(refOrId, refOrId)
+      .run();
+    const deletedCount = Number(delRes?.meta?.changes || 0);
+    if (deletedCount === 0) return errorResponse('Transaction introuvable.', 404, origin);
+    return jsonResponse({ success: true, deletedRef: refOrId, deletedCount }, 200, origin);
+  }
+
+  if (path === '/api/admin/billing/transactions/bulk-delete' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const refs: string[] = Array.isArray(body.references)
+      ? body.references.map((x: any) => String(x || '').trim()).filter(Boolean)
+      : [];
+    const statuses: string[] = Array.isArray(body.statuses)
+      ? body.statuses
+          .map((x: any) => String(x || '').trim().toLowerCase())
+          .filter((s: string) => ['failed', 'abandoned', 'pending', 'cancelled'].includes(s))
+      : [];
+    let deletedCount = 0;
+    if (refs.length > 0) {
+      for (const ref of refs.slice(0, 200)) {
+        const r: any = await db
+          .prepare('DELETE FROM payment_transactions WHERE reference = ? OR id = ?')
+          .bind(ref, ref)
+          .run()
+          .catch(() => null);
+        deletedCount += Number(r?.meta?.changes || 0);
+      }
+    } else if (statuses.length > 0) {
+      const ph = statuses.map(() => '?').join(',');
+      const r: any = await db
+        .prepare(`DELETE FROM payment_transactions WHERE status IN (${ph})`)
+        .bind(...statuses)
+        .run();
+      deletedCount = Number(r?.meta?.changes || 0);
+    } else {
+      return errorResponse('Précisez des références ou des statuts (failed, abandoned, pending) à nettoyer.', 400, origin);
+    }
+    return jsonResponse({ success: true, deletedCount }, 200, origin);
+  }
+
+  if (path === '/api/admin/billing/email-logs' && method === 'DELETE') {
+    const logId = String(url.searchParams.get('id') || '').trim();
+    const statusFilter = String(url.searchParams.get('status') || '').trim().toLowerCase();
+    let delRes: any;
+    if (logId) {
+      delRes = await db.prepare('DELETE FROM billing_email_logs WHERE id = ?').bind(logId).run();
+    } else if (statusFilter === 'failed' || statusFilter === 'bounced') {
+      delRes = await db
+        .prepare('DELETE FROM billing_email_logs WHERE delivery_status = ?')
+        .bind(statusFilter)
+        .run();
+    } else {
+      delRes = await db.prepare('DELETE FROM billing_email_logs').run();
+    }
+    return jsonResponse({ success: true, deletedCount: Number(delRes?.meta?.changes || 0) }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 20e. CARTE MAÎTRESSE ADMIN DE RÉDUCTION DE STOCKAGE (DOWNGRADE PRORATA)
+  // --------------------------------------------------------------------------
+  if (path === '/api/admin/billing/storage-downgrades' && method === 'GET') {
+    const config = await readStorageMasterCardConfig(db);
+    const reqsRes = await db
+      .prepare('SELECT * FROM storage_downgrade_requests ORDER BY created_at DESC LIMIT 200')
+      .all()
+      .catch(() => ({ results: [] }));
+    const activeStorageSubsRes = await db
+      .prepare(
+        `SELECT * FROM active_subscriptions
+         WHERE product_type = 'storage' AND status IN ('active', 'grace')
+         ORDER BY updated_at DESC LIMIT 200`
+      )
+      .all()
+      .catch(() => ({ results: [] }));
+
+    const eligibleSubscribers: any[] = [];
+    const seenUsers = new Set<string>();
+    for (const s of activeStorageSubsRes.results || []) {
+      const uid = String(s.user_id || '').trim();
+      if (!uid || seenUsers.has(uid)) continue;
+      seenUsers.add(uid);
+      const userState = await readStorageMasterUserState(db, uid, config);
+      if (userState.paidMb <= 0) continue;
+      eligibleSubscribers.push({
+        subscriptionId: String(s.id),
+        userId: uid,
+        userName: String(s.user_name || ''),
+        userEmail: String(s.user_email || ''),
+        userPhone: String(s.user_phone || ''),
+        status: String(s.status || 'active'),
+        planName: userState.planName,
+        paidMb: userState.paidMb,
+        welcomeMb: userState.welcomeMb,
+        usedMb: userState.usedMb,
+        usedBytes: userState.usedBytes,
+        monthlyPriceFcfa: userState.monthlyPriceFcfa,
+        currency: userState.currency,
+        daysUsed: userState.daysUsed,
+        daysRemaining: userState.daysRemaining,
+        durationDays: userState.durationDays,
+        consumedCostFcfa: userState.consumedCostFcfa,
+        currentPeriodStart: userState.currentPeriodStart,
+        currentPeriodEnd: userState.currentPeriodEnd,
+      });
+    }
+
+    return jsonResponse(
+      {
+        success: true,
+        config,
+        requests: reqsRes.results || [],
+        eligibleSubscribers,
+      },
+      200,
+      origin
+    );
+  }
+
+  if (path === '/api/admin/billing/storage-downgrades/create' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const userId = String(body.userId || body.user_id || '').trim();
+    if (!userId) return errorResponse('Utilisateur requis.', 400, origin);
+
+    const config = await readStorageMasterCardConfig(db);
+    const userState = await readStorageMasterUserState(db, userId, config);
+    if (userState.paidMb <= 0) {
+      return errorResponse('Cet utilisateur ne possède aucun stockage payant actif à réduire.', 400, origin);
+    }
+
+    const targetPaidMb = Math.max(0, Math.round(Number(body.targetPaidMb ?? body.target_paid_mb ?? 0) * 100) / 100);
+    if (targetPaidMb >= userState.paidMb) {
+      return errorResponse(
+        `Le nouveau stockage (${formatStorageMbFr(targetPaidMb)}) doit être strictement inférieur au stockage payant actuel (${formatStorageMbFr(userState.paidMb)}).`,
+        400,
+        origin
+      );
+    }
+
+    const userRow: any = await db
+      .prepare('SELECT id, name, email, phone FROM users WHERE id = ? LIMIT 1')
+      .bind(userId)
+      .first()
+      .catch(() => null);
+    const activeSub: any = await db
+      .prepare("SELECT * FROM active_subscriptions WHERE user_id = ? AND product_type = 'storage' ORDER BY updated_at DESC LIMIT 1")
+      .bind(userId)
+      .first()
+      .catch(() => null);
+
+    const userName = String(userRow?.name || activeSub?.user_name || 'Utilisateur').trim();
+    const userEmail = String(userRow?.email || activeSub?.user_email || '').trim();
+    const userPhone = String(userRow?.phone || activeSub?.user_phone || '').trim();
+    const currency = String(userState.currency || config.primaryCurrency || 'XOF').toUpperCase();
+
+    const computedTargetPrice =
+      targetPaidMb <= 0
+        ? 0
+        : Math.max(1, Math.round((targetPaidMb / Math.max(1, config.stepMb)) * config.pricePerStepFcfa));
+    const targetMonthlyPrice =
+      body.customTargetMonthlyPrice !== undefined && body.customTargetMonthlyPrice !== null && body.customTargetMonthlyPrice !== ''
+        ? Math.max(0, Math.round(Number(body.customTargetMonthlyPrice)))
+        : computedTargetPrice;
+
+    const consumedProrataAmount =
+      body.customProrataAmount !== undefined && body.customProrataAmount !== null && body.customProrataAmount !== ''
+        ? Math.max(0, Math.round(Number(body.customProrataAmount)))
+        : Math.max(0, Math.round(Number(userState.consumedCostFcfa || 0)));
+
+    const adminNotes = String(body.adminNotes || body.admin_notes || '').trim().slice(0, 500);
+    const reqId = `sdg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+    // Annuler toute ancienne proposition en attente pour ce même utilisateur afin d'éviter les doublons
+    await db
+      .prepare(
+        "UPDATE storage_downgrade_requests SET status = 'superseded', updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status = 'pending_payment'"
+      )
+      .bind(userId)
+      .run()
+      .catch(() => {});
+
+    await db
+      .prepare(
+        `INSERT INTO storage_downgrade_requests (
+           id, user_id, user_name, user_email, user_phone, subscription_id,
+           current_paid_mb, target_paid_mb, current_monthly_price, target_monthly_price,
+           consumed_prorata_amount, days_used, duration_days, currency, status, admin_notes
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?)`
+      )
+      .bind(
+        reqId,
+        userId,
+        userName,
+        userEmail,
+        userPhone,
+        String(activeSub?.id || userState.subscriptionId || ''),
+        userState.paidMb,
+        targetPaidMb,
+        userState.monthlyPriceFcfa,
+        targetMonthlyPrice,
+        consumedProrataAmount,
+        userState.daysUsed,
+        userState.durationDays,
+        currency,
+        adminNotes
+      )
+      .run();
+
+    const curLabel = formatStorageMbFr(userState.paidMb);
+    const targetLabel = targetPaidMb > 0 ? formatStorageMbFr(targetPaidMb) : 'Plan Gratuit (0 Mo payant)';
+
+    // Notification in-app en haut de l'application StudyCloud
+    await insertBillingInAppNotification(
+      db,
+      userId,
+      `📉 Réduction de stockage prête (${curLabel} → ${targetLabel})`,
+      `Votre nouveau tarif mensuel sera de ${targetMonthlyPrice.toLocaleString('fr-FR')} FCFA/mois (au lieu de ${userState.monthlyPriceFcfa.toLocaleString('fr-FR')} FCFA). Ouvrez « Mes abonnements → Réduction de stockage » pour régler votre consommation écoulée (${consumedProrataAmount.toLocaleString('fr-FR')} FCFA) et activer le changement automatiquement.`,
+      reqId,
+      'billing_downgrade_proposed'
+    );
+
+    const subCtx = activeSub || {
+      id: reqId,
+      user_id: userId,
+      user_name: userName,
+      user_email: userEmail,
+      product_type: 'storage',
+      app_name: 'Stockage Cloud',
+      plan_name: userState.planName,
+      price_amount: userState.monthlyPriceFcfa,
+      currency,
+    };
+
+    const emailResult = await sendAndLogBillingEmail({
+      db,
+      rawEnv,
+      fetchFn,
+      subscription: subCtx,
+      emailType: 'storage_downgrade_proposed',
+      triggeredBy: 'admin',
+      customMessage: adminNotes || undefined,
+      extraData: {
+        currentStorageLabel: curLabel,
+        targetStorageLabel: targetLabel,
+        currentMonthlyPrice: userState.monthlyPriceFcfa,
+        targetMonthlyPrice,
+        consumedProrataAmount,
+        daysUsed: userState.daysUsed,
+        durationDays: userState.durationDays,
+      },
+      recordEventFn: recordSubscriptionEvent,
+    }).catch(() => null);
+
+    const created = await db.prepare('SELECT * FROM storage_downgrade_requests WHERE id = ? LIMIT 1').bind(reqId).first();
+    return jsonResponse({ success: true, request: created, emailResult }, 200, origin);
+  }
+
+  const adminDeleteDgMatch = path.match(/^\/api\/admin\/billing\/storage-downgrades\/([^/]+)$/);
+  if (adminDeleteDgMatch && method === 'DELETE') {
+    const reqId = decodeURIComponent(adminDeleteDgMatch[1]);
+    const delRes: any = await db.prepare('DELETE FROM storage_downgrade_requests WHERE id = ?').bind(reqId).run();
+    const deletedCount = Number(delRes?.meta?.changes || 0);
+    if (deletedCount === 0) return errorResponse('Demande de réduction introuvable.', 404, origin);
+    return jsonResponse({ success: true, deletedId: reqId, deletedCount }, 200, origin);
   }
 
   return null;
@@ -7049,5 +8295,7 @@ export async function executeBillingCronJob(
       fulfillPaidTransaction(d, txRow, psData, { rawEnv, fetchFn: opts?.fetchFn }),
     isCardAuthorizedForSubscription,
     tryAutoRechargeDepletedAiCredits,
+    analyzeUserStorageOverflow,
+    purgeUserPaidOverflowFiles,
   });
 }

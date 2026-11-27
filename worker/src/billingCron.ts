@@ -14,7 +14,7 @@
  *    (`service_only` | `read_only` | `full_account`) + envoi email `service_blocked`.
  */
 
-import { sendAndLogBillingEmail } from './billingEmailAndPolicy';
+import { sendAndLogBillingEmail, insertBillingInAppNotification } from './billingEmailAndPolicy';
 
 export interface BillingCronSummary {
   ranAt: string;
@@ -26,6 +26,7 @@ export interface BillingCronSummary {
   cancelledAtPeriodEnd: number;
   remindersSent: number;
   blocked: number;
+  dataOverflowPurged: number;
   errors: string[];
 }
 
@@ -42,6 +43,7 @@ export interface BillingCronDependencies {
     autoNoticeDays: number;
     preExpiryDays: number[];
     gracePeriodDays: number;
+    dataRetentionGraceDays?: number;
     overdueIntervalHours: number;
     overdueMaxReminders: number;
     retryIntervalsHours: number[];
@@ -62,6 +64,8 @@ export interface BillingCronDependencies {
     userId: string,
     opts?: { fetchFn?: typeof fetch; nowIso?: string }
   ) => Promise<{ triggered: boolean; recharged?: boolean; reason?: string; reference?: string }>;
+  analyzeUserStorageOverflow?: (db: any, userId: string) => Promise<any>;
+  purgeUserPaidOverflowFiles?: (db: any, rawEnv: Record<string, any>, userId: string) => Promise<any>;
 }
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -84,6 +88,8 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
     fulfillAutoRenewalTransaction,
     isCardAuthorizedForSubscription,
     tryAutoRechargeDepletedAiCredits,
+    analyzeUserStorageOverflow,
+    purgeUserPaidOverflowFiles,
   } = deps;
   const fetchFn = deps.fetchFn || fetch;
   const nowMs = deps.nowIso ? Date.parse(deps.nowIso) : Date.now();
@@ -99,6 +105,7 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
     cancelledAtPeriodEnd: 0,
     remindersSent: 0,
     blocked: 0,
+    dataOverflowPurged: 0,
     errors: [],
   };
 
@@ -535,10 +542,65 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
             .catch(() => {});
         } else if (sub.product_type === 'storage') {
           await db
-            .prepare("UPDATE user_subscriptions SET status = 'cancelled', is_blocked = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status = 'active'")
+            .prepare("UPDATE user_storage_quotas SET paid_total_mb = 0, paid_r2_mb = 0, paid_d1_mb = 0, plan_name = 'gratuit', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?")
             .bind(sub.user_id)
             .run()
             .catch(() => {});
+          await db
+            .prepare("UPDATE user_subscriptions SET status = 'cancelled', is_blocked = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status = 'active'")
+            .bind(sub.user_id)
+            .run()
+            .catch(() => {});
+
+          if (analyzeUserStorageOverflow) {
+            const overflow = await analyzeUserStorageOverflow(db, String(sub.user_id)).catch(() => null);
+            if (overflow && overflow.excessBytes > 0) {
+              const retentionDays = Math.max(
+                1,
+                Math.min(365, Number(sub.data_retention_days || policy.dataRetentionGraceDays || 14))
+              );
+              const deadlineIso = new Date(nowMs + retentionDays * DAY_MS).toISOString();
+              await db
+                .prepare(
+                  `UPDATE active_subscriptions
+                   SET data_retention_days = ?,
+                       data_purge_deadline_at = ?,
+                       excess_bytes_at_cancel = ?,
+                       updated_at = CURRENT_TIMESTAMP
+                   WHERE id = ?`
+                )
+                .bind(retentionDays, deadlineIso, overflow.excessBytes, sub.id)
+                .run()
+                .catch(() => {});
+              await insertBillingInAppNotification(
+                db,
+                String(sub.user_id),
+                `⚠️ Abonnement arrivé à terme — ${retentionDays}j pour récupérer ${overflow.excessFormatted}`,
+                `Votre consommation (${overflow.usedFormatted}) dépasse votre espace gratuit (${overflow.welcomeFormatted}) de ${overflow.excessFormatted}. Vos premiers fichiers dans l’espace gratuit sont protégés ; seuls les fichiers sur l’espace payant seront supprimés après ${retentionDays} jour(s).`,
+                String(sub.id),
+                'billing_data_purge_warning'
+              );
+              await sendAndLogBillingEmail({
+                db,
+                rawEnv,
+                fetchFn,
+                subscription: sub,
+                emailType: 'subscription_cancelled_data_warning',
+                triggeredBy: 'cron',
+                graceDaysRemaining: retentionDays,
+                nowIso,
+                extraData: {
+                  retentionDays,
+                  purgeDeadlineIso: deadlineIso,
+                  usedFormatted: overflow.usedFormatted,
+                  welcomeFormatted: overflow.welcomeFormatted,
+                  excessFormatted: overflow.excessFormatted,
+                  overflowFilesCount: overflow.overflowFilesCount,
+                },
+                recordEventFn: recordSubscriptionEvent,
+              }).catch(() => {});
+            }
+          }
         }
         await recordSubscriptionEvent(db, {
           subscriptionId: String(sub.id),
@@ -723,6 +785,106 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
     }
   } catch (err: any) {
     summary.errors.push(`Phase 5 (blocking): ${err?.message || err}`);
+  }
+
+  // ==========================================================================
+  // PHASE 6 : PURGE FIFO DES DONNÉES PAYANTES APRÈS DÉLAI DE RÉCUPÉRATION
+  // (Préserve STRICTEMENT les plus anciens fichiers dans le quota gratuit !)
+  // ==========================================================================
+  if (purgeUserPaidOverflowFiles) {
+    try {
+      const duePurgeSubs = await db
+        .prepare(
+          `SELECT * FROM active_subscriptions
+           WHERE product_type = 'storage'
+             AND status = 'cancelled'
+             AND data_purge_deadline_at IS NOT NULL
+             AND data_purge_deadline_at <= ?
+             AND data_purged_at IS NULL
+           LIMIT 50`
+        )
+        .bind(nowIso)
+        .all()
+        .catch(() => ({ results: [] }));
+
+      for (const sub of duePurgeSubs.results || []) {
+        const uid = String(sub.user_id || '').trim();
+        if (!uid) continue;
+
+        // Vérifier si l'utilisateur a entre-temps repris un abonnement stockage payant actif
+        const renewedSub: any = await db
+          .prepare(
+            `SELECT id FROM active_subscriptions
+             WHERE user_id = ? AND product_type = 'storage' AND status IN ('active', 'trial')
+               AND COALESCE(granted_storage_mb, 0) > 0
+             LIMIT 1`
+          )
+          .bind(uid)
+          .first()
+          .catch(() => null);
+
+        if (renewedSub) {
+          await db
+            .prepare(
+              'UPDATE active_subscriptions SET data_purge_deadline_at = NULL, excess_bytes_at_cancel = 0, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+            )
+            .bind(sub.id)
+            .run()
+            .catch(() => {});
+          continue;
+        }
+
+        const purgeRes = await purgeUserPaidOverflowFiles(db, rawEnv, uid);
+        await db
+          .prepare(
+            'UPDATE active_subscriptions SET data_purged_at = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?'
+          )
+          .bind(nowIso, sub.id)
+          .run()
+          .catch(() => {});
+
+        await recordSubscriptionEvent(db, {
+          subscriptionId: String(sub.id),
+          userId: uid,
+          eventType: 'data_overflow_purged',
+          actor: 'cron',
+          details: {
+            purgedCount: purgeRes?.purgedCount || 0,
+            purgedBytes: purgeRes?.purgedBytes || 0,
+            purgedFormatted: purgeRes?.purgedFormatted || '0 o',
+          },
+        });
+
+        if (Number(purgeRes?.purgedCount || 0) > 0) {
+          summary.dataOverflowPurged++;
+          await insertBillingInAppNotification(
+            db,
+            uid,
+            '🧹 Retour automatique en zone gratuite',
+            `${purgeRes.purgedCount} fichier(s) (${purgeRes.purgedFormatted}) situés sur l’espace payant au-delà du quota gratuit ont été supprimés après expiration du délai de récupération. Vos premiers fichiers dans l’espace gratuit ont été conservés.`,
+            String(sub.id),
+            'billing_data_purged'
+          );
+          await sendAndLogBillingEmail({
+            db,
+            rawEnv,
+            fetchFn,
+            subscription: sub,
+            emailType: 'data_overflow_purged',
+            triggeredBy: 'cron',
+            nowIso,
+            extraData: {
+              purgedFilesCount: purgeRes.purgedCount,
+              purgedFormatted: purgeRes.purgedFormatted,
+              welcomeFormatted: purgeRes.welcomeFormatted,
+            },
+            recordEventFn: recordSubscriptionEvent,
+          }).catch(() => {});
+        }
+      }
+    } catch (err: any) {
+      summary.errors.push(`Phase 6 (overflow purge): ${err?.message || err}`);
+    }
   }
 
   return summary;
