@@ -2296,7 +2296,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       {/* Fond discret sur mobile uniquement pour fermer au toucher extérieur */}
       <div
         onClick={onClose}
-        className={`sm:hidden fixed inset-0 z-[80] bg-black/45 backdrop-blur-[1px] transition-opacity duration-300 ${
+        className={`sm:hidden fixed inset-0 z-[100010] bg-black/45 backdrop-blur-[1px] transition-opacity duration-300 ${
           isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
       />
@@ -2324,7 +2324,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
               ? `${drawerWidth}px`
               : undefined,
         }}
-        className={`fixed inset-0 sm:absolute sm:inset-auto sm:top-0 sm:right-0 sm:bottom-0 z-[85] w-full sm:max-w-[92vw] h-full flex flex-col bg-[#1e2024] text-white font-nunito overflow-hidden border-l border-zinc-700/80 shadow-[-14px_0_38px_rgba(0,0,0,0.55)] select-none transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`fixed inset-0 sm:absolute sm:inset-auto sm:top-0 sm:right-0 sm:bottom-0 z-[100015] w-full sm:max-w-[92vw] h-full flex flex-col bg-[#1e2024] text-white font-nunito overflow-hidden border-l border-zinc-700/80 shadow-[-14px_0_38px_rgba(0,0,0,0.55)] select-none transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
           isOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
         }`}
         aria-hidden={!isOpen}

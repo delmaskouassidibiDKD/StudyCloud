@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   ArrowRight,
@@ -748,7 +749,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
       </div>
 
       {/* Bas fixe de la barre latérale : Ajouter une carte Visa / Mastercard */}
-      <div className="px-2.5 py-2.5 border-t border-white/10 shrink-0">
+      <div className="px-2.5 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] border-t border-white/10 shrink-0">
         <button
           type="button"
           disabled={linkingCard}
@@ -798,46 +799,84 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
         {renderSidebarContent()}
       </aside>
 
-      {/* TIROIR LATÉRAL MOBILE (< md) */}
-      {isMobileSidebarOpen && (
-        <div
-          className="md:hidden fixed inset-0 z-50 flex bg-black/65 backdrop-blur-[2px]"
-          onClick={() => setIsMobileSidebarOpen(false)}
-        >
+      {/* TIROIR LATÉRAL MOBILE (< md) — portail au-dessus de la barre basse + glissement fluide */}
+      {typeof document !== 'undefined' &&
+        createPortal(
           <div
-            className="w-[264px] max-w-[82vw] h-full shadow-2xl border-r border-white/12"
-            onClick={(e) => e.stopPropagation()}
+            className={`md:hidden fixed inset-0 z-[100010] flex transition-opacity duration-300 ease-out ${
+              isMobileSidebarOpen
+                ? 'opacity-100 pointer-events-auto bg-black/65 backdrop-blur-[2px]'
+                : 'opacity-0 pointer-events-none bg-black/0'
+            }`}
+            onClick={() => setIsMobileSidebarOpen(false)}
+            aria-hidden={!isMobileSidebarOpen}
           >
-            {renderSidebarContent()}
-          </div>
-        </div>
-      )}
+            <div
+              className={`w-[268px] max-w-[82vw] h-full shadow-2xl border-r border-white/15 bg-[#122952] transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
+                isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+              }`}
+              onClick={(e) => e.stopPropagation()}
+              onTouchStart={(e) => {
+                const t = e.touches[0];
+                if (t) e.currentTarget.dataset.touchStartX = String(t.clientX);
+              }}
+              onTouchEnd={(e) => {
+                const startX = Number(e.currentTarget.dataset.touchStartX || NaN);
+                delete e.currentTarget.dataset.touchStartX;
+                const t = e.changedTouches[0];
+                if (t && Number.isFinite(startX) && t.clientX - startX < -48) {
+                  setIsMobileSidebarOpen(false);
+                }
+              }}
+            >
+              {renderSidebarContent()}
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* ===================================================================== */}
       {/* ZONE PRINCIPALE À DROITE — PLEIN ÉCRAN SAPHIR & AURORA MODERNE        */}
       {/* ===================================================================== */}
       <div className="flex-1 flex flex-col min-w-0 h-full min-h-0 overflow-hidden">
-        {/* BARRE SUPÉRIEURE UNIFIÉE : MENU MOBILE + FIL D'ARIANE + USER + EXPAND */}
-        <header className="h-12 bg-[#152E59]/58 backdrop-blur-xl border-b border-white/15 px-3 sm:px-6 flex items-center justify-between gap-2 shrink-0 z-10">
-          <div className="flex items-center gap-2 min-w-0">
+        {/* BARRE SUPÉRIEURE UNIFIÉE : MENU MOBILE + BOUTON RETOUR + FIL D'ARIANE + USER + EXPAND */}
+        <header className="h-11 sm:h-12 bg-[#152E59]/58 backdrop-blur-xl border-b border-white/15 px-2.5 sm:px-6 flex items-center justify-between gap-1.5 sm:gap-2 shrink-0 z-10">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <button
               type="button"
               onClick={() => setIsMobileSidebarOpen(true)}
-              className="md:hidden w-8 h-8 rounded-lg border border-white/15 bg-white/[0.06] hover:bg-white/[0.12] flex items-center justify-center text-white cursor-pointer shrink-0"
+              className="md:hidden w-7 h-7 sm:w-8 sm:h-8 rounded-lg border border-white/15 bg-white/[0.06] hover:bg-white/[0.12] flex items-center justify-center text-white cursor-pointer active:scale-95 transition shrink-0"
               aria-label="Ouvrir le menu latéral"
             >
-              <Menu className="w-4 h-4" />
+              <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
-            <nav className="flex items-center gap-1.5 text-xs min-w-0 overflow-hidden" aria-label="Fil d'Ariane">
+            <button
+              type="button"
+              onClick={() => {
+                if (selectedSub) {
+                  setSelectedSubId(null);
+                } else {
+                  onBack();
+                }
+              }}
+              className="md:hidden h-7 px-2 rounded-lg border border-white/15 bg-white/[0.08] hover:bg-white/[0.16] flex items-center gap-1 text-[11px] font-semibold text-white cursor-pointer active:scale-95 transition shrink-0"
+              title={selectedSub ? 'Retour à mes abonnements' : 'Retour au tableau de bord'}
+              aria-label={selectedSub ? 'Retour à mes abonnements' : 'Retour au tableau de bord'}
+            >
+              <ArrowLeft className="w-3.5 h-3.5 text-sky-300 shrink-0" />
+              <span>Retour</span>
+            </button>
+
+            <nav className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs min-w-0 overflow-hidden" aria-label="Fil d'Ariane">
               <button
                 type="button"
                 onClick={onBack}
-                className="text-slate-400 hover:text-white font-medium truncate cursor-pointer transition"
+                className="hidden sm:inline text-slate-400 hover:text-white font-medium truncate cursor-pointer transition"
               >
                 StudyCloud
               </button>
-              <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <ChevronRight className="hidden sm:inline w-3.5 h-3.5 text-slate-500 shrink-0" />
               <button
                 type="button"
                 onClick={() => {
@@ -847,21 +886,21 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                 className={`truncate cursor-pointer transition ${
                   section === 'all' && !selectedSub
                     ? 'text-white font-bold'
-                    : 'text-slate-400 hover:text-white font-medium'
+                    : 'text-slate-300 hover:text-white font-medium'
                 }`}
               >
                 Mes abonnements
               </button>
               {section !== 'all' && (
                 <>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                  <ChevronRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 shrink-0" />
                   <button
                     type="button"
                     onClick={() => setSelectedSubId(null)}
                     className={`truncate cursor-pointer transition ${
                       !selectedSub
                         ? 'text-white font-bold'
-                        : 'text-slate-400 hover:text-white font-medium'
+                        : 'text-slate-300 hover:text-white font-medium'
                     }`}
                   >
                     {sectionMeta[section].title}
@@ -870,8 +909,8 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
               )}
               {selectedSub && (
                 <>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                  <span className="text-sky-300 font-bold truncate max-w-[160px]">
+                  <ChevronRight className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 shrink-0" />
+                  <span className="text-sky-300 font-bold truncate max-w-[100px] sm:max-w-[160px]">
                     {selectedSub.plan_name}
                   </span>
                 </>
@@ -915,45 +954,45 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
         </header>
 
         {/* SOUS-EN-TÊTE FIXE : TITRE + RECHERCHE */}
-        <div className="shrink-0 bg-white/[0.06] backdrop-blur-md border-b border-white/14 px-4 sm:px-8 py-4">
-          <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="shrink-0 bg-white/[0.06] backdrop-blur-md border-b border-white/14 px-3 sm:px-8 py-2.5 sm:py-4">
+          <div className="w-full flex flex-col sm:flex-row sm:items-center justify-between gap-2 sm:gap-3">
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 {selectedSub && (
                   <button
                     type="button"
                     onClick={() => setSelectedSubId(null)}
-                    className="w-7 h-7 rounded-lg border border-white/15 bg-white/[0.07] hover:bg-white/[0.14] text-white flex items-center justify-center cursor-pointer shrink-0 transition"
+                    className="hidden md:flex w-7 h-7 rounded-lg border border-white/15 bg-white/[0.07] hover:bg-white/[0.14] text-white items-center justify-center cursor-pointer shrink-0 transition"
                     title="Retour à la liste"
                   >
                     <ArrowLeft className="w-3.5 h-3.5" />
                   </button>
                 )}
-                <h1 className="text-base sm:text-xl font-extrabold text-white tracking-tight truncate">
+                <h1 className="text-sm sm:text-xl font-extrabold text-white tracking-tight truncate">
                   {activeTitle}
                 </h1>
               </div>
-              <p className="text-xs text-slate-300/85 mt-0.5 truncate">
+              <p className="text-[11px] sm:text-xs text-slate-200/80 mt-0.5 truncate">
                 {activeSubtitle}
               </p>
             </div>
 
             {!selectedSub && section !== 'cards' && section !== 'history' && (
-              <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
+              <div className="flex items-center gap-2 flex-nowrap">
                 <div className="relative flex-1 sm:w-64">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <Search className="w-3.5 h-3.5 text-slate-300 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Rechercher un abonnement..."
-                    className="w-full h-9 pl-9 pr-8 rounded-xl bg-white/[0.07] focus:bg-[#0B1528]/90 border border-white/15 focus:border-sky-400/70 text-xs text-white placeholder:text-slate-400 outline-none transition"
+                    className="w-full h-8 sm:h-9 pl-8 sm:pl-9 pr-7 sm:pr-8 rounded-xl bg-white/[0.08] focus:bg-[#0B1528]/90 border border-white/15 focus:border-sky-400/70 text-[11px] sm:text-xs text-white placeholder:text-slate-300/75 outline-none transition"
                   />
                   {searchQuery && (
                     <button
                       type="button"
                       onClick={() => setSearchQuery('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white cursor-pointer"
+                      className="absolute right-2 sm:right-2.5 top-1/2 -translate-y-1/2 text-slate-300 hover:text-white cursor-pointer"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -965,7 +1004,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
         </div>
 
         {/* ZONE DE CONTENU PLEINE LARGEUR DÉFILABLE */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-8 py-6 space-y-5">
+        <div className="flex-1 min-h-0 overflow-y-auto px-2.5 sm:px-8 py-3.5 sm:py-6 pb-28 md:pb-8 space-y-3.5 sm:space-y-5">
           {/* Retours / Alertes */}
           {feedback && (
             <div
@@ -1189,20 +1228,31 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             /* SECTION CARTES VISA / MASTERCARD (UNIQUEMENT CARTES ENREGISTRÉES) */
             /* =============================================================== */
             paymentMethods.length === 0 ? (
-              <div className="bg-[#163466]/72 backdrop-blur-xl border border-white/18 rounded-2xl p-10 text-center space-y-2.5 shadow-[0_18px_40px_-16px_rgba(8,22,52,0.5)]">
+              <div className="bg-[#163466]/72 backdrop-blur-xl border border-white/18 rounded-2xl p-6 sm:p-10 text-center space-y-2.5 shadow-[0_18px_40px_-16px_rgba(8,22,52,0.5)]">
                 <div className="inline-flex items-center justify-center rounded-lg bg-white border border-white/30 px-3 py-1.5 shadow-sm mb-1">
                   <img
                     src="/payment-logos/visa-mastercard.png"
                     alt="Visa et Mastercard"
-                    className="h-8 w-auto object-contain"
+                    className="h-7 sm:h-8 w-auto object-contain"
                   />
                 </div>
                 <div className="text-sm font-bold text-white">
                   Aucune carte bancaire enregistrée
                 </div>
                 <p className="text-xs text-slate-300/85 max-w-sm mx-auto">
-                  Cliquez sur « Ajouter une carte » dans la barre latérale gauche pour associer une carte Visa ou Mastercard.
+                  Associez une carte Visa ou Mastercard sécurisée pour activer le renouvellement automatique.
                 </p>
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    disabled={linkingCard}
+                    onClick={() => openAddCardModal()}
+                    className="h-9 px-4 rounded-full bg-gradient-to-r from-[#2563EB] to-[#0EA5E9] hover:from-[#3B82F6] hover:to-[#38BDF8] text-white text-xs font-bold inline-flex items-center gap-2 transition cursor-pointer disabled:opacity-60 shadow-md shadow-sky-500/25"
+                  >
+                    <CreditCard className="w-3.5 h-3.5" />
+                    <span>Ajouter une carte</span>
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1496,7 +1546,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
             /* =============================================================== */
             /* GRILLE DES ABONNEMENTS ACTIFS — MODÈLE SUPERPOSÉ STYLE IMAGE 3  */
             /* =============================================================== */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+            <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2.5 sm:gap-5">
               {visibleSubscriptions.map((sub) => {
                 const isInf = Number(sub.is_infinite) === 1 || sub.renewal_mode === 'infinite';
                 const isAuto = !isInf && sub.renewal_mode === 'auto';
@@ -1511,79 +1561,92 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                   : sub.status === 'grace'
                   ? 'Grâce'
                   : sub.status;
-                const priceLine = `${formatCurrencyAmount(
+                const priceAmountFormatted = formatCurrencyAmount(
                   sub.price_amount || 0,
                   sub.currency || 'XOF'
-                )} · ${isInf ? 'Accès à vie' : isAuto ? 'Paiement automatique' : 'Paiement manuel'}`;
+                );
+                const priceLine = `${priceAmountFormatted} · ${isInf ? 'Accès à vie' : isAuto ? 'Paiement automatique' : 'Paiement manuel'}`;
+                const priceLineShort = `${priceAmountFormatted} · ${isInf ? 'À vie' : isAuto ? 'Auto' : 'Manuel'}`;
+                const expiryDateOnly = sub.current_period_end
+                  ? formatDateTimeFr(sub.current_period_end).split(' à ')[0]
+                  : '';
                 const expiryLine = isInf
                   ? 'Sans date d’expiration'
-                  : sub.current_period_end
-                  ? `Échéance : ${formatDateTimeFr(sub.current_period_end).split(' à ')[0]}`
+                  : expiryDateOnly
+                  ? `Échéance : ${expiryDateOnly}`
                   : `Moyen : ${sub.last_network_label || 'Paystack'}`;
+                const expiryLineShort = isInf
+                  ? 'Sans expiration'
+                  : expiryDateOnly
+                  ? `Fin : ${expiryDateOnly}`
+                  : sub.last_network_label || 'Paystack';
 
                 return (
                   <div
                     key={sub.id}
                     onClick={() => setSelectedSubId(sub.id)}
                     style={{ boxShadow: palette.glow }}
-                    className="group relative rounded-[26px] bg-[#FFFDF9] border border-white/40 overflow-hidden flex flex-col cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_52px_-12px_rgba(8,22,52,0.58)]"
+                    className="group relative rounded-[18px] sm:rounded-[26px] bg-[#FFFDF9] border border-white/40 overflow-hidden flex flex-col cursor-pointer transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_24px_52px_-12px_rgba(8,22,52,0.58)]"
                   >
                     {/* Bandeau supérieur coloré façon Image 3 (Catégorie + Temps + Pilule statut) */}
                     <div
                       style={{ background: palette.headerGradient }}
-                      className="px-5 pt-4 pb-8 flex items-start justify-between gap-2 relative"
+                      className="px-2.5 sm:px-5 pt-2.5 sm:pt-4 pb-5 sm:pb-8 flex items-start justify-between gap-1.5 sm:gap-2 relative"
                     >
                       <div className="min-w-0">
-                        <div className={`text-[13px] font-extrabold tracking-tight truncate ${palette.headerTextCls}`}>
+                        <div className={`text-[11px] sm:text-[13px] font-extrabold tracking-tight truncate ${palette.headerTextCls}`}>
                           {palette.categoryTitle}
                         </div>
-                        <div className={`text-[11px] font-semibold mt-0.5 tabular-nums truncate ${palette.headerSubCls}`}>
+                        <div className={`text-[9.5px] sm:text-[11px] font-semibold mt-0.5 tabular-nums truncate ${palette.headerSubCls}`}>
                           {cd.short}
                         </div>
                       </div>
                       <span
-                        className={`shrink-0 px-3 py-1 rounded-full text-[11px] font-bold backdrop-blur-sm ${palette.pillCls}`}
+                        className={`shrink-0 px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[9px] sm:text-[11px] font-bold backdrop-blur-sm ${palette.pillCls}`}
                       >
                         {statusPillLabel}
                       </span>
                     </div>
 
                     {/* Corps arrondi ivoire superposé par-dessus le bandeau coloré */}
-                    <div className="-mt-4 rounded-[24px] bg-[#FFFDF9] px-5 pt-4 pb-4 flex-1 flex flex-col justify-between relative">
+                    <div className="-mt-3 sm:-mt-4 rounded-[16px] sm:rounded-[24px] bg-[#FFFDF9] px-2.5 sm:px-5 pt-2.5 sm:pt-4 pb-2.5 sm:pb-4 flex-1 flex flex-col justify-between relative">
                       <div>
-                        <h3 className="text-[18px] font-extrabold tracking-tight text-[#1A1614] truncate leading-snug uppercase">
+                        <h3 className="text-[13px] sm:text-[18px] font-extrabold tracking-tight text-[#1A1614] truncate leading-snug uppercase">
                           {sub.plan_name}
                         </h3>
 
-                        <ul className="mt-3 space-y-2">
-                          <li className="flex items-center gap-2.5">
-                            <span className="w-[17px] h-[17px] rounded-full bg-[#1C1917] text-white flex items-center justify-center shrink-0">
-                              <Check className="w-2.5 h-2.5 stroke-[3]" />
+                        <ul className="mt-2 sm:mt-3 space-y-1.5 sm:space-y-2">
+                          <li className="flex items-center gap-1.5 sm:gap-2.5">
+                            <span className="w-3.5 h-3.5 sm:w-[17px] sm:h-[17px] rounded-full bg-[#1C1917] text-white flex items-center justify-center shrink-0">
+                              <Check className="w-2 h-2 sm:w-2.5 sm:h-2.5 stroke-[3]" />
                             </span>
-                            <span className="text-[12.5px] font-semibold text-[#292524] truncate">
-                              {priceLine}
-                            </span>
-                          </li>
-                          <li className="flex items-center gap-2.5">
-                            <span className="w-[17px] h-[17px] rounded-full bg-[#1C1917] text-white flex items-center justify-center shrink-0">
-                              <Check className="w-2.5 h-2.5 stroke-[3]" />
-                            </span>
-                            <span className="text-[12.5px] font-medium text-[#44403C] truncate">
-                              {cd.text}
+                            <span className="text-[10px] sm:text-[12.5px] font-semibold text-[#292524] truncate">
+                              <span className="sm:hidden">{priceLineShort}</span>
+                              <span className="hidden sm:inline">{priceLine}</span>
                             </span>
                           </li>
-                          <li className="flex items-center gap-2.5">
-                            <span className="w-[17px] h-[17px] rounded-full border border-[#D6CFC5] bg-transparent shrink-0" />
-                            <span className="text-[12px] font-medium text-[#78716C] truncate">
-                              {expiryLine}
+                          <li className="flex items-center gap-1.5 sm:gap-2.5">
+                            <span className="w-3.5 h-3.5 sm:w-[17px] sm:h-[17px] rounded-full bg-[#1C1917] text-white flex items-center justify-center shrink-0">
+                              <Check className="w-2 h-2 sm:w-2.5 sm:h-2.5 stroke-[3]" />
+                            </span>
+                            <span className="text-[10px] sm:text-[12.5px] font-medium text-[#44403C] truncate">
+                              <span className="sm:hidden">{cd.short} restants</span>
+                              <span className="hidden sm:inline">{cd.text}</span>
+                            </span>
+                          </li>
+                          <li className="flex items-center gap-1.5 sm:gap-2.5">
+                            <span className="w-3.5 h-3.5 sm:w-[17px] sm:h-[17px] rounded-full border border-[#D6CFC5] bg-transparent shrink-0" />
+                            <span className="text-[9.5px] sm:text-[12px] font-medium text-[#78716C] truncate">
+                              <span className="sm:hidden">{expiryLineShort}</span>
+                              <span className="hidden sm:inline">{expiryLine}</span>
                             </span>
                           </li>
                         </ul>
                       </div>
 
                       {/* Bouton circulaire flottant en bas à droite (modèle Image 3) */}
-                      <div className="mt-4 flex items-center justify-between gap-2">
-                        <span className="text-[11px] font-semibold text-[#A8A29E] truncate">
+                      <div className="mt-2.5 sm:mt-4 flex items-center justify-between gap-1.5 sm:gap-2">
+                        <span className="text-[9.5px] sm:text-[11px] font-semibold text-[#A8A29E] truncate">
                           {sub.last_network_label || 'StudyCloud'}
                         </span>
                         <button
@@ -1593,9 +1656,9 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                             setSelectedSubId(sub.id);
                           }}
                           title="Gérer cet abonnement"
-                          className="w-9 h-9 rounded-full border border-[#E7DFD5] bg-white group-hover:bg-[#1C1917] group-hover:border-[#1C1917] text-[#1C1917] group-hover:text-white shadow-xs flex items-center justify-center transition-all duration-200 cursor-pointer shrink-0"
+                          className="w-7 h-7 sm:w-9 sm:h-9 rounded-full border border-[#E7DFD5] bg-white group-hover:bg-[#1C1917] group-hover:border-[#1C1917] text-[#1C1917] group-hover:text-white shadow-xs flex items-center justify-center transition-all duration-200 cursor-pointer shrink-0"
                         >
-                          <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
+                          <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 transition-transform group-hover:translate-x-0.5" />
                         </button>
                       </div>
                     </div>
@@ -1608,27 +1671,29 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
       </div>
 
       {/* ===================================================================== */}
-      {/* MODALE STUDYCLOUD : ASSOCIER UNE CARTE — MISE EN PAGE CARRÉE PRO      */}
+      {/* MODALE STUDYCLOUD : ASSOCIER UNE CARTE — PORTAIL AU-DESSUS BARRE BASSE */}
       {/* ===================================================================== */}
       {showAddCardModal &&
-        (() => {
-          const selectedServicesCount =
-            (addCardPerms.autoStorage ? 1 : 0) +
-            (addCardPerms.autoAi ? 1 : 0) +
-            (addCardPerms.autoApps.length > 0 ? 1 : 0);
-          const allSelected = selectedServicesCount === 3;
+        typeof document !== 'undefined' &&
+        createPortal(
+          (() => {
+            const selectedServicesCount =
+              (addCardPerms.autoStorage ? 1 : 0) +
+              (addCardPerms.autoAi ? 1 : 0) +
+              (addCardPerms.autoApps.length > 0 ? 1 : 0);
+            const allSelected = selectedServicesCount === 3;
 
-          return (
-            <div
-              className="fixed inset-0 z-[70] bg-black/70 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6"
-              onClick={() => !linkingCard && setShowAddCardModal(false)}
-            >
+            return (
               <div
-                className="w-full max-w-3xl max-h-[92vh] flex flex-col rounded-2xl bg-[#163466] border border-white/20 text-white shadow-[0_28px_70px_-14px_rgba(8,22,52,0.75)] overflow-hidden"
-                onClick={(e) => e.stopPropagation()}
+                className="fixed inset-0 z-[100020] bg-black/70 backdrop-blur-sm flex items-center justify-center p-2.5 sm:p-6"
+                onClick={() => !linkingCard && setShowAddCardModal(false)}
               >
-                {/* BARRE D'EN-TÊTE STRUCTURÉE AVEC LE VRAI LOGO VISA / MASTERCARD */}
-                <div className="px-5 py-3.5 bg-[#122B56] border-b border-white/14 flex items-center justify-between gap-4 shrink-0">
+                <div
+                  className="w-full max-w-3xl max-h-[92vh] flex flex-col rounded-2xl bg-[#163466] border border-white/20 text-white shadow-[0_28px_70px_-14px_rgba(8,22,52,0.75)] overflow-hidden"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {/* BARRE D'EN-TÊTE STRUCTURÉE AVEC LE VRAI LOGO VISA / MASTERCARD */}
+                  <div className="px-3.5 sm:px-5 py-3 sm:py-3.5 bg-[#122B56] border-b border-white/14 flex items-center justify-between gap-2.5 sm:gap-4 shrink-0">
                   <div className="flex items-center gap-3.5 min-w-0">
                     <div className="h-10 px-2.5 rounded-lg bg-white border border-white/30 flex items-center justify-center shrink-0 shadow-xs">
                       <img
@@ -1951,21 +2016,24 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                       type="button"
                       disabled={linkingCard}
                       onClick={() => handleLinkCard(addCardTargetSubId, addCardPerms)}
-                      className="h-9 px-5 rounded-full bg-gradient-to-r from-[#2563EB] to-[#0EA5E9] hover:from-[#3B82F6] hover:to-[#38BDF8] text-white text-xs font-bold inline-flex items-center gap-2 transition cursor-pointer disabled:opacity-60 shadow-md shadow-sky-500/25"
+                      className="h-9 px-4 sm:px-5 rounded-full bg-gradient-to-r from-[#2563EB] to-[#0EA5E9] hover:from-[#3B82F6] hover:to-[#38BDF8] text-white text-[11px] sm:text-xs font-bold inline-flex items-center gap-1.5 sm:gap-2 transition cursor-pointer disabled:opacity-60 shadow-md shadow-sky-500/25"
                     >
                       {linkingCard ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
                         <ArrowRight className="w-3.5 h-3.5" />
                       )}
-                      <span>Continuer vers la saisie sécurisée (0 FCFA net)</span>
+                      <span className="sm:hidden">Continuer (0 FCFA)</span>
+                      <span className="hidden sm:inline">Continuer vers la saisie sécurisée (0 FCFA net)</span>
                     </button>
                   </div>
                 </div>
               </div>
             </div>
           );
-        })()}
+        })(),
+        document.body
+      )}
     </div>
   );
 };

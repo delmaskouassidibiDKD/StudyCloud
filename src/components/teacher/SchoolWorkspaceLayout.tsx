@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   ArrowLeft,
   ArrowRight,
@@ -516,7 +517,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
       {/* ===================================================================== */}
       {/* BAS FIXE DE LA BARRE LATÉRALE (TOUJOURS VISIBLE, NE DÉFILE JAMAIS)    */}
       {/* ===================================================================== */}
-      <div className="shrink-0 border-t border-slate-300 dark:border-slate-700 bg-[#f8fafc] dark:bg-[#0d1424] px-2.5 py-2.5 space-y-2">
+      <div className="shrink-0 border-t border-slate-300 dark:border-slate-700 bg-[#f8fafc] dark:bg-[#0d1424] px-2.5 pt-2.5 pb-[max(0.75rem,env(safe-area-inset-bottom))] space-y-2">
         {!enteredClass ? (
           <button
             ref={schoolAvgBtnRef}
@@ -623,43 +624,47 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
         {renderSidebarContent()}
       </aside>
 
-      {/* TIROIR LATÉRAL MOBILE (< md) — glissement fluide + fermeture au balayage gauche */}
-      <div
-        className={`md:hidden fixed inset-0 z-[75] flex transition-opacity duration-300 ease-out ${
-          isMobileSidebarOpen
-            ? 'opacity-100 pointer-events-auto bg-slate-900/50 backdrop-blur-[1.5px]'
-            : 'opacity-0 pointer-events-none bg-slate-900/0'
-        }`}
-        onClick={() => setIsMobileSidebarOpen(false)}
-        aria-hidden={!isMobileSidebarOpen}
-      >
-        <div
-          className={`w-[268px] max-w-[82vw] h-full bg-white dark:bg-[#111827] shadow-2xl border-r border-slate-300 dark:border-slate-700 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
-            isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
-          }`}
-          onClick={(e) => e.stopPropagation()}
-          onTouchStart={(e) => {
-            const t = e.touches[0];
-            if (t) e.currentTarget.dataset.touchStartX = String(t.clientX);
-          }}
-          onTouchEnd={(e) => {
-            const startX = Number(e.currentTarget.dataset.touchStartX || NaN);
-            delete e.currentTarget.dataset.touchStartX;
-            const t = e.changedTouches[0];
-            if (t && Number.isFinite(startX) && t.clientX - startX < -48) {
-              setIsMobileSidebarOpen(false);
-            }
-          }}
-        >
-          {renderSidebarContent()}
-        </div>
-      </div>
+      {/* TIROIR LATÉRAL MOBILE (< md) — portail au-dessus de la barre basse + glissement fluide */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <div
+            className={`md:hidden fixed inset-0 z-[100010] flex transition-opacity duration-300 ease-out ${
+              isMobileSidebarOpen
+                ? 'opacity-100 pointer-events-auto bg-slate-900/50 backdrop-blur-[1.5px]'
+                : 'opacity-0 pointer-events-none bg-slate-900/0'
+            }`}
+            onClick={() => setIsMobileSidebarOpen(false)}
+            aria-hidden={!isMobileSidebarOpen}
+          >
+            <div
+              className={`w-[268px] max-w-[82vw] h-full bg-white dark:bg-[#111827] shadow-2xl border-r border-slate-300 dark:border-slate-700 transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] will-change-transform ${
+                isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full'
+              }`}
+              onClick={(e) => e.stopPropagation()}
+              onTouchStart={(e) => {
+                const t = e.touches[0];
+                if (t) e.currentTarget.dataset.touchStartX = String(t.clientX);
+              }}
+              onTouchEnd={(e) => {
+                const startX = Number(e.currentTarget.dataset.touchStartX || NaN);
+                delete e.currentTarget.dataset.touchStartX;
+                const t = e.changedTouches[0];
+                if (t && Number.isFinite(startX) && t.clientX - startX < -48) {
+                  setIsMobileSidebarOpen(false);
+                }
+              }}
+            >
+              {renderSidebarContent()}
+            </div>
+          </div>,
+          document.body
+        )}
 
       {/* ===================================================================== */}
       {/* ZONE PRINCIPALE À DROITE (CLAIRE EN JOUR, SOMBRE EN NUIT, LIGNES NETTES) */}
       {/* ===================================================================== */}
       <div className="flex-1 flex flex-col min-w-0 h-full min-h-0 overflow-hidden bg-[#eef2f6] dark:bg-[#0b1120]">
-        {/* BARRE SUPÉRIEURE UNIFIÉE : MENU MOBILE + FIL D'ARIANE + STATUT + EXPAND */}
+        {/* BARRE SUPÉRIEURE UNIFIÉE : MENU MOBILE + BOUTON RETOUR + FIL D'ARIANE + STATUT + EXPAND */}
         <header className="h-10 sm:h-12 bg-white dark:bg-[#111827] border-b border-slate-300 dark:border-slate-700 px-2.5 sm:px-6 flex items-center justify-between gap-1.5 sm:gap-2 shrink-0 z-10">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <button
@@ -671,8 +676,33 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
               <Menu className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>
 
+            <button
+              type="button"
+              onClick={() => {
+                if (isTransferViewOpen) {
+                  onCloseTransfer();
+                } else if (enteredClass) {
+                  onExitClass();
+                } else {
+                  onExitSchool();
+                }
+              }}
+              className="md:hidden h-7 px-2 rounded-md border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-[#1e293b] hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center gap-1 text-[11px] font-semibold text-slate-700 dark:text-slate-200 cursor-pointer active:scale-95 transition shrink-0"
+              title={
+                isTransferViewOpen
+                  ? 'Retour à la vue'
+                  : enteredClass
+                  ? `Retour à ${activeLevel?.name || 'la liste des classes'}`
+                  : 'Retour aux écoles'
+              }
+              aria-label="Retour"
+            >
+              <ArrowLeft className="w-3.5 h-3.5 shrink-0" />
+              <span>Retour</span>
+            </button>
+
             <nav
-              className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs min-w-0 overflow-hidden"
+              className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs min-w-0 overflow-hidden pl-0.5"
               aria-label="Fil d'Ariane"
             >
               <button
@@ -1369,6 +1399,7 @@ export const SchoolWorkspaceLayout: React.FC<SchoolWorkspaceLayoutProps> = ({
         preferredSide={typeof window !== 'undefined' && window.innerWidth < 768 ? 'top' : 'right'}
         preferredAlign={typeof window !== 'undefined' && window.innerWidth < 768 ? 'start' : 'end'}
         gap={8}
+        zIndex={100025}
         onClose={() => setIsSchoolAvgMenuOpen(false)}
         dataPopoverId="school-sidebar-averages-popover"
         className="w-[248px] sm:w-72 max-w-[calc(100vw-24px)] rounded-xl"
