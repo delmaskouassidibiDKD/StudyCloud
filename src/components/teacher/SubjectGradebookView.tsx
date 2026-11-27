@@ -3050,13 +3050,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     else if (colId === 'col-mention') setColWidthMention(Math.max(88, w));
   };
 
-  // Références pour le mode tactile des traits (appui long ~1,5 s pour sélectionner sans gêner le défilement)
+  // Références pour le mode tactile fluide des traits (appui court 500 ms + large tolérance tactile, zéro désélection accidentelle)
   const lastTouchHandleTsRef = useRef<number>(0);
   const touchHoldTimerRef = useRef<number | null>(null);
   const selectedLineRef = useRef<{ type: 'col' | 'row'; id: string } | null>(null);
   selectedLineRef.current = selectedLine;
   const zoomPercentRef = useRef<number>(zoomPercent);
   zoomPercentRef.current = zoomPercent;
+  const activeTouchLineSessionCleanupRef = useRef<(() => void) | null>(null);
 
   const cancelPendingTouchLineHold = () => {
     if (touchHoldTimerRef.current !== null) {
@@ -3066,14 +3067,23 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   };
 
   useEffect(() => {
-    return () => cancelPendingTouchLineHold();
+    return () => {
+      cancelPendingTouchLineHold();
+      activeTouchLineSessionCleanupRef.current?.();
+      activeTouchLineSessionCleanupRef.current = null;
+    };
   }, []);
 
   // Zoom tactile fluide à deux doigts (pinch-to-zoom) sur tout le tableur
   useTablePinchZoom(gridContainerRef, zoomPercent, setZoomPercent, {
     min: 30,
     max: 200,
-    onPinchStart: cancelPendingTouchLineHold,
+    onPinchStart: () => {
+      cancelPendingTouchLineHold();
+      activeTouchLineSessionCleanupRef.current?.();
+      activeTouchLineSessionCleanupRef.current = null;
+      setResizingLine(null);
+    },
   });
 
   // Vérification stricte si un séparateur vertical est sélectionné ou en cours de glissement
@@ -3184,19 +3194,73 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     window.addEventListener('mouseup', handleMouseUp);
   };
 
-  // Mode TACTILE (téléphone / tablette) pour sélectionner & déplacer une ligne :
-  // - Toucher/glisser normal = défilement normal du tableau (aucun redimensionnement involontaire)
-  // - Maintenir la ligne ~1,5 s = sélectionne la ligne (change de couleur, reste sélectionnée même main levée)
-  // - Une fois sélectionnée : glisser déplace la ligne ; taper dessus ou ailleurs désélectionne ; maintenir une autre ligne bascule dessus
-  const handleTouchLineInteraction = (
-    e: React.TouchEvent,
-    lineType: 'col' | 'row',
-    lineId: string,
-    rowIndex?: number
-  ) => {
-    lastTouchHandleTsRef.current = Date.now();
+  // Recherche en pixels réels d'écran (indépendamment du zoom 50 % / 70 %...) de la bordure la plus proche du doigt
+  const findNearestTouchResizeTarget = (
+    clientX: number,
+    clientY: number,
+    maxScreenDistPx: number,
+    onlyTarget?: { type: 'col' | 'row'; id: string } | null
+  ): { type: 'col' | 'row'; id: string; rowIndex?: number; dist: number } | null => {
+    const container = gridContainerRef.current;
+    if (!container) return null;
+    const handles = container.querySelectorAll<HTMLElement>('[data-resize-handle="true"]');
+    let best: { type: 'col' | 'row'; id: string; rowIndex?: number; dist: number } | null = null;
+
+    handles.forEach((el) => {
+      const hType = el.dataset.resizeType as 'col' | 'row' | undefined;
+      const hId = el.dataset.resizeId;
+      if (!hType || !hId) return;
+      if (onlyTarget && (onlyTarget.type !== hType || onlyTarget.id !== hId)) return;
+
+      const rect = el.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) return;
+
+      let dist = Infinity;
+      if (hType === 'col') {
+        const padY = 14;
+        if (clientY >= rect.top - padY && clientY <= rect.bottom + padY) {
+          const centerX = (rect.left + rect.right) / 2;
+          dist = Math.abs(clientX - centerX);
+        }
+      } else {
+        const padX = 14;
+        if (clientX >= rect.left - padX && clientX <= rect.right + padX) {
+          const centerY = (rect.top + rect.bottom) / 2;
+          dist = Math.abs(clientY - centerY);
+        }
+      }
+
+      if (dist <= maxScreenDistPx && (!best || dist < best.dist)) {
+        const rawRowIdx = el.dataset.resizeRowIndex;
+        const parsedRowIdx = rawRowIdx !== undefined ? parseInt(rawRowIdx, 10) : undefined;
+        best = {
+          type: hType,
+          id: hId,
+          rowIndex: parsedRowIdx !== undefined && !Number.isNaN(parsedRowIdx) ? parsedRowIdx : undefined,
+          dist,
+        };
+      }
+    });
+
+    return best;
+  };
+
+  // Mode TACTILE unifié (téléphone / tablette) sur toute la grille :
+  // - Zone tactile généreuse en vrais pixels d'écran (24 px pour accrocher une ligne, 38 px autour d'une ligne déjà sélectionnée — fonctionne parfaitement même à zoom 50 % !)
+  // - Maintien rapide 500 ms (0,5 s) avec tolérance de micro-tremblement 22 px → sélectionne la ligne (bleue, reste sélectionnée même main levée)
+  // - Une fois sélectionnée : toucher près de la ligne et glisser déplace sans JAMAIS se désélectionner ;
+  //   un simple glissement ailleurs ne la désélectionne pas par erreur ; seul un tap net (ou le bouton OK, ou maintenir une autre ligne) la désélectionne / bascule.
+  const handleGridTouchStartForResize = (e: React.TouchEvent<HTMLDivElement>) => {
+    if (isAnyMenuOpen) return;
     if (e.touches.length !== 1) {
       cancelPendingTouchLineHold();
+      activeTouchLineSessionCleanupRef.current?.();
+      activeTouchLineSessionCleanupRef.current = null;
+      return;
+    }
+
+    const targetEl = e.target as HTMLElement | null;
+    if (targetEl?.closest('[data-resize-pill="true"]')) {
       return;
     }
 
@@ -3205,109 +3269,172 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     const startY = touch.clientY;
     const touchStartTs = Date.now();
     const zoomScale = Math.max(0.3, zoomPercentRef.current / 100);
-    const alreadySelected =
-      selectedLineRef.current?.type === lineType && selectedLineRef.current.id === lineId;
-    const hadOtherSelection =
-      Boolean(selectedLineRef.current) && !alreadySelected;
+    const currentSelected = selectedLineRef.current;
 
-    let isArmed = alreadySelected;
+    // 1. Si une ligne est déjà sélectionnée, vérifier d'abord si le doigt touche à proximité généreuse (±38 px réels) de CETTE ligne
+    const hitSelected = currentSelected
+      ? findNearestTouchResizeTarget(startX, startY, 38, currentSelected)
+      : null;
+
+    // 2. Sinon, vérifier si le doigt touche à proximité (±24 px réels) d'une ligne quelconque (colonne ou rangée)
+    const hitCandidate = hitSelected || findNearestTouchResizeTarget(startX, startY, 24, null);
+
+    // Si aucune ligne sélectionnée ET le doigt n'est près d'aucune ligne → laisser le navigateur gérer le tap/scroll normalement
+    if (!currentSelected && !hitCandidate) {
+      return;
+    }
+
+    activeTouchLineSessionCleanupRef.current?.();
+    cancelPendingTouchLineHold();
+
+    let activeTarget: { type: 'col' | 'row'; id: string; rowIndex?: number } | null = hitSelected
+      ? { type: hitSelected.type, id: hitSelected.id, rowIndex: hitSelected.rowIndex }
+      : null;
+    let isArmed = Boolean(hitSelected);
     let activatedDuringThisTouch = false;
     let hasDragged = false;
+    let maxMoveDist = 0;
     let dragOriginX = startX;
     let dragOriginY = startY;
+    let latestTouchX = startX;
+    let latestTouchY = startY;
 
-    const initialColWidth = lineType === 'col' ? getColWidth(lineId) : 0;
-    const minColWidth = lineType === 'col' ? getColMinWidth(lineId) : 0;
-    const minRowHeight =
-      lineType === 'row' && rowIndex !== undefined
-        ? getRowMinHeightForContent(studentsWithStats[rowIndex])
+    let initialColWidth = activeTarget?.type === 'col' ? getColWidth(activeTarget.id) : 0;
+    let minColWidth = activeTarget?.type === 'col' ? getColMinWidth(activeTarget.id) : 0;
+    let minRowHeight =
+      activeTarget?.type === 'row' && activeTarget.rowIndex !== undefined
+        ? getRowMinHeightForContent(studentsWithStats[activeTarget.rowIndex])
         : 44;
-    const initialRowHeight =
-      lineType === 'row' && rowIndex !== undefined
-        ? Math.max(customRowHeights[rowIndex] || 44, minRowHeight)
+    let initialRowHeight =
+      activeTarget?.type === 'row' && activeTarget.rowIndex !== undefined
+        ? Math.max(customRowHeights[activeTarget.rowIndex] || 44, minRowHeight)
         : 44;
 
-    if (alreadySelected) {
-      e.stopPropagation();
-    } else {
-      cancelPendingTouchLineHold();
+    if (hitSelected) {
+      lastTouchHandleTsRef.current = Date.now();
+    } else if (hitCandidate) {
+      // Démarrer un maintien rapide de 500 ms (0,5 s) pour sélectionner (ou basculer vers) cette ligne
+      const cand = {
+        type: hitCandidate.type,
+        id: hitCandidate.id,
+        rowIndex: hitCandidate.rowIndex,
+      };
       touchHoldTimerRef.current = window.setTimeout(() => {
         touchHoldTimerRef.current = null;
+        activeTarget = cand;
         isArmed = true;
         activatedDuringThisTouch = true;
-        dragOriginX = startX;
-        dragOriginY = startY;
-        setSelectedLine({ type: lineType, id: lineId });
+        dragOriginX = latestTouchX;
+        dragOriginY = latestTouchY;
+        initialColWidth = cand.type === 'col' ? getColWidth(cand.id) : 0;
+        minColWidth = cand.type === 'col' ? getColMinWidth(cand.id) : 0;
+        minRowHeight =
+          cand.type === 'row' && cand.rowIndex !== undefined
+            ? getRowMinHeightForContent(studentsWithStats[cand.rowIndex])
+            : 44;
+        initialRowHeight =
+          cand.type === 'row' && cand.rowIndex !== undefined
+            ? Math.max(customRowHeights[cand.rowIndex] || 44, minRowHeight)
+            : 44;
+        lastTouchHandleTsRef.current = Date.now();
+        setSelectedLine({ type: cand.type, id: cand.id });
         if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
           try {
-            navigator.vibrate(35);
+            navigator.vibrate(28);
           } catch {
             // Ignore vibration restriction
           }
         }
-      }, 1500);
+      }, 500);
     }
+
+    const handleTouchCancel = () => {
+      cancelPendingTouchLineHold();
+      setResizingLine(null);
+      cleanup();
+    };
+
+    const cleanup = () => {
+      cancelPendingTouchLineHold();
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchcancel', handleTouchCancel);
+      if (activeTouchLineSessionCleanupRef.current === cleanup) {
+        activeTouchLineSessionCleanupRef.current = null;
+      }
+    };
+    activeTouchLineSessionCleanupRef.current = cleanup;
 
     const handleTouchMove = (moveEvent: TouchEvent) => {
       if (moveEvent.touches.length !== 1) {
-        cancelPendingTouchLineHold();
         cleanup();
+        setResizingLine(null);
         return;
       }
       const cur = moveEvent.touches[0];
-      const dxFromStart = cur.clientX - startX;
-      const dyFromStart = cur.clientY - startY;
+      latestTouchX = cur.clientX;
+      latestTouchY = cur.clientY;
+      const distFromStart = Math.hypot(cur.clientX - startX, cur.clientY - startY);
+      if (distFromStart > maxMoveDist) maxMoveDist = distFromStart;
 
-      if (!isArmed) {
-        // Si l'utilisateur fait défiler le tableau avant les 1,5 s : annuler immédiatement l'appui long
-        if (Math.hypot(dxFromStart, dyFromStart) > 10) {
+      if (!isArmed || !activeTarget) {
+        // Tolérance confortable de 22 px pour le tremblement naturel du doigt pendant les 500 ms :
+        // au-delà de 22 px, c'est un vrai défilement du tableau → on annule le maintien SANS désélectionner une ligne existante
+        if (distFromStart > 22) {
           cancelPendingTouchLineHold();
-          cleanup();
         }
         return;
       }
 
       const axisDelta =
-        lineType === 'col' ? cur.clientX - dragOriginX : cur.clientY - dragOriginY;
-      if (!hasDragged && Math.abs(axisDelta) > 4) {
+        activeTarget.type === 'col'
+          ? cur.clientX - dragOriginX
+          : cur.clientY - dragOriginY;
+      const perpDelta =
+        activeTarget.type === 'col'
+          ? cur.clientY - dragOriginY
+          : cur.clientX - dragOriginX;
+
+      // Dès qu'on est armé sur la ligne sélectionnée, bloquer le scroll navigateur et redimensionner fluidement
+      if (!hasDragged && (Math.abs(axisDelta) > 3 || Math.abs(perpDelta) > 8)) {
         hasDragged = true;
-        setResizingLine({ type: lineType, id: lineId });
+        setResizingLine({ type: activeTarget.type, id: activeTarget.id });
       }
       if (hasDragged) {
         moveEvent.preventDefault();
         moveEvent.stopPropagation();
-        if (lineType === 'col') {
+        lastTouchHandleTsRef.current = Date.now();
+        if (activeTarget.type === 'col') {
           const nextW = Math.max(minColWidth, Math.round(initialColWidth + axisDelta / zoomScale));
-          setColWidth(lineId, nextW);
-        } else if (rowIndex !== undefined) {
+          setColWidth(activeTarget.id, nextW);
+        } else if (activeTarget.rowIndex !== undefined) {
           const nextH = Math.max(minRowHeight, Math.round(initialRowHeight + axisDelta / zoomScale));
           setCustomRowHeights((prev) => ({
             ...prev,
-            [rowIndex]: nextH,
+            [activeTarget!.rowIndex!]: nextH,
           }));
         }
       }
     };
 
-    const cleanup = () => {
-      window.removeEventListener('touchmove', handleTouchMove);
-      window.removeEventListener('touchend', handleTouchEnd);
-      window.removeEventListener('touchcancel', handleTouchEnd);
-    };
-
     const handleTouchEnd = () => {
       cancelPendingTouchLineHold();
-      lastTouchHandleTsRef.current = Date.now();
       const elapsed = Date.now() - touchStartTs;
 
       if (hasDragged) {
-        // Après avoir déplacé la ligne, elle RESTE sélectionnée sur téléphone jusqu'à ce qu'on tape ailleurs ou dessus
+        // Fin du déplacement : la ligne RESTE sélectionnée sur téléphone jusqu'à un tap net ou le bouton OK
+        lastTouchHandleTsRef.current = Date.now();
         setResizingLine(null);
-      } else if (alreadySelected && !activatedDuringThisTouch && elapsed < 450) {
-        // Taper sur la ligne déjà sélectionnée la désélectionne
+      } else if (activatedDuringThisTouch) {
+        // Vient tout juste d'être sélectionnée par appui 500 ms : rester sélectionnée même main levée !
+        lastTouchHandleTsRef.current = Date.now();
+      } else if (hitSelected && maxMoveDist < 12 && elapsed < 350) {
+        // Tap bref direct sur la ligne déjà sélectionnée → désélectionner proprement
+        lastTouchHandleTsRef.current = Date.now();
         setSelectedLine(null);
-      } else if (!isArmed && hadOtherSelection && elapsed < 350) {
-        // Taper brièvement ailleurs (même sur un autre trait) désélectionne la ligne précédente
+      } else if (!hitSelected && currentSelected && maxMoveDist < 14 && elapsed < 350) {
+        // Tap bref net ailleurs sur l'écran → désélectionner la ligne (un mouvement/glissement ne désélectionne PLUS !)
+        lastTouchHandleTsRef.current = Date.now();
         setSelectedLine(null);
       }
 
@@ -3316,39 +3443,44 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
     window.addEventListener('touchmove', handleTouchMove, { passive: false });
     window.addEventListener('touchend', handleTouchEnd);
-    window.addEventListener('touchcancel', handleTouchEnd);
+    window.addEventListener('touchcancel', handleTouchCancel);
   };
 
   // Poignée interactive discrète superposée sur la bordure droite de chaque colonne
   // AUCUNE COULEUR N'APPARAÎT AU SIMPLE SURVOL OU TOUCHER TANT QUE CE N'EST PAS SÉLECTIONNÉ !
   const renderColHandle = (colId: string) => {
     const active = isColActive(colId);
+    const inverseThumbScale = Math.min(2.1, Math.max(1, 100 / Math.max(30, zoomPercent)));
     return (
       <div
         data-interactive="true"
         data-resize-handle="true"
+        data-resize-type="col"
+        data-resize-id={colId}
         onClick={(e) => {
           e.stopPropagation();
-          if (Date.now() - lastTouchHandleTsRef.current < 650) return;
+          if (Date.now() - lastTouchHandleTsRef.current < 700) return;
           if (justFinishedLineDragRef.current) return;
           setSelectedLine(prev => (prev?.type === 'col' && prev.id === colId) ? null : { type: 'col', id: colId });
         }}
         onMouseDown={(e) => {
-          if (Date.now() - lastTouchHandleTsRef.current < 650) return;
+          if (Date.now() - lastTouchHandleTsRef.current < 700) return;
           handleStartColResize(e, colId);
         }}
-        onTouchStart={(e) => handleTouchLineInteraction(e, 'col', colId)}
         className={`absolute top-0 h-full cursor-col-resize z-30 select-none flex items-center justify-center bg-transparent ${
-          active ? '-right-3 w-6 sm:-right-1.5 sm:w-3 touch-none' : '-right-1.5 w-3'
+          active ? '-right-4 w-8 sm:-right-1.5 sm:w-3 touch-none' : '-right-2 w-4 sm:-right-1.5 sm:w-3'
         } ${
           isAnyMenuOpen ? 'pointer-events-none' : 'pointer-events-auto'
         }`}
-        title={isAnyMenuOpen ? undefined : "Glisser pour agrandir/réduire (sur téléphone : maintenir 1,5 s pour sélectionner)"}
+        title={isAnyMenuOpen ? undefined : "Glisser pour agrandir/réduire (sur téléphone : maintenir 0,5 s pour sélectionner)"}
       >
         {active && (
           <>
-            <div className="w-[2.5px] sm:w-[1.5px] h-full bg-blue-500 sm:bg-sky-400 shadow-[0_0_8px_rgba(37,99,235,0.85)] sm:shadow-none pointer-events-none" />
-            <div className="sm:hidden absolute top-1/2 -translate-y-1/2 w-3 h-7 rounded-full bg-blue-600 border border-white shadow-md pointer-events-none" />
+            <div className="w-[3px] sm:w-[1.5px] h-full bg-blue-500 sm:bg-sky-400 shadow-[0_0_10px_rgba(37,99,235,0.9)] sm:shadow-none pointer-events-none" />
+            <div
+              style={{ transform: `translateY(-50%) scale(${inverseThumbScale})` }}
+              className="sm:hidden absolute top-1/2 w-3.5 h-8 rounded-full bg-blue-600 border-2 border-white shadow-lg pointer-events-none"
+            />
           </>
         )}
       </div>
@@ -3360,32 +3492,38 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
   const renderRowHandle = (rowIndex: number) => {
     const rowKey = `row-${rowIndex}`;
     const active = isRowActive(rowIndex);
+    const inverseThumbScale = Math.min(2.1, Math.max(1, 100 / Math.max(30, zoomPercent)));
     return (
       <div
         data-interactive="true"
         data-resize-handle="true"
+        data-resize-type="row"
+        data-resize-id={rowKey}
+        data-resize-row-index={rowIndex}
         onClick={(e) => {
           e.stopPropagation();
-          if (Date.now() - lastTouchHandleTsRef.current < 650) return;
+          if (Date.now() - lastTouchHandleTsRef.current < 700) return;
           if (justFinishedLineDragRef.current) return;
           setSelectedLine(prev => (prev?.type === 'row' && prev.id === rowKey) ? null : { type: 'row', id: rowKey });
         }}
         onMouseDown={(e) => {
-          if (Date.now() - lastTouchHandleTsRef.current < 650) return;
+          if (Date.now() - lastTouchHandleTsRef.current < 700) return;
           handleStartRowResize(e, rowIndex);
         }}
-        onTouchStart={(e) => handleTouchLineInteraction(e, 'row', rowKey, rowIndex)}
         className={`absolute left-0 w-full cursor-row-resize z-30 select-none flex items-center justify-center bg-transparent ${
-          active ? '-bottom-3 h-6 sm:-bottom-1.5 sm:h-3 touch-none' : '-bottom-1.5 h-3'
+          active ? '-bottom-4 h-8 sm:-bottom-1.5 sm:h-3 touch-none' : '-bottom-2 h-4 sm:-bottom-1.5 sm:h-3'
         } ${
           isAnyMenuOpen ? 'pointer-events-none' : 'pointer-events-auto'
         }`}
-        title={isAnyMenuOpen ? undefined : "Glisser pour agrandir/réduire (sur téléphone : maintenir 1,5 s pour sélectionner)"}
+        title={isAnyMenuOpen ? undefined : "Glisser pour agrandir/réduire (sur téléphone : maintenir 0,5 s pour sélectionner)"}
       >
         {active && (
           <>
-            <div className="h-[2.5px] sm:h-[1.5px] w-full bg-blue-500 sm:bg-sky-400 shadow-[0_0_8px_rgba(37,99,235,0.85)] sm:shadow-none pointer-events-none" />
-            <div className="sm:hidden absolute left-1/2 -translate-x-1/2 h-3 w-8 rounded-full bg-blue-600 border border-white shadow-md pointer-events-none" />
+            <div className="h-[3px] sm:h-[1.5px] w-full bg-blue-500 sm:bg-sky-400 shadow-[0_0_10px_rgba(37,99,235,0.9)] sm:shadow-none pointer-events-none" />
+            <div
+              style={{ transform: `translateX(-50%) scale(${inverseThumbScale})` }}
+              className="sm:hidden absolute left-1/2 h-3.5 w-9 rounded-full bg-blue-600 border-2 border-white shadow-lg pointer-events-none"
+            />
           </>
         )}
       </div>
@@ -7133,18 +7271,14 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       {/* ========================================================================= */}
       <div 
         ref={gridContainerRef}
-        onTouchStart={(e) => {
-          if (
-            selectedLine &&
-            e.touches.length === 1 &&
-            !(e.target as HTMLElement)?.closest('[data-resize-handle="true"]')
-          ) {
-            setSelectedLine(null);
-          }
-        }}
+        onTouchStart={handleGridTouchStartForResize}
         onClick={(e) => {
           const targetEl = e.target as HTMLElement;
-          if (selectedLine && !targetEl?.closest('[data-resize-handle="true"]')) {
+          // Ignorer les clics synthétiques déclenchés par le navigateur juste après un geste tactile sur une ligne
+          if (Date.now() - lastTouchHandleTsRef.current < 700) {
+            return;
+          }
+          if (selectedLine && !targetEl?.closest('[data-resize-handle="true"], [data-resize-pill="true"]')) {
             setSelectedLine(null);
           }
           if (targetEl?.closest('button, input, select, textarea, [data-interactive="true"], [data-cell-key]')) {
@@ -7158,15 +7292,24 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         className="flex-1 overflow-auto bg-[#fafbfc] relative p-0 touch-pan-x touch-pan-y"
       >
         {selectedLine && (
-          <div className="sm:hidden sticky top-1.5 left-1/2 -translate-x-1/2 w-fit mx-auto z-50 px-2.5 py-1 rounded-full bg-blue-600/95 text-white text-[10px] font-bold shadow-lg flex items-center gap-1.5 pointer-events-auto">
+          <div
+            data-resize-pill="true"
+            className="sm:hidden sticky top-1.5 left-1/2 -translate-x-1/2 w-fit mx-auto z-50 px-3 py-1 rounded-full bg-blue-600/95 text-white text-[11px] font-bold shadow-lg flex items-center gap-2 pointer-events-auto"
+          >
             <span>Ligne sélectionnée · glissez pour ajuster</span>
             <button
               type="button"
+              onTouchEnd={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                lastTouchHandleTsRef.current = Date.now();
+                setSelectedLine(null);
+              }}
               onClick={(e) => {
                 e.stopPropagation();
                 setSelectedLine(null);
               }}
-              className="px-1.5 py-0.2 rounded-full bg-white/20 text-[9.5px] font-extrabold"
+              className="px-2 py-0.5 rounded-full bg-white/25 text-[10px] font-extrabold"
             >
               OK
             </button>
