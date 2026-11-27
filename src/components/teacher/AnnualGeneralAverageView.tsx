@@ -1940,6 +1940,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
   const sortLabelMap: Record<TermAverageSortMode, string> = {
     merit: 'Ordre de mérite',
     alpha: 'Alphabétique (A→Z)',
+    alpha_desc: 'Alphabétique inversé (Z→A)',
     order: 'Ordre initial',
   };
 
@@ -2027,9 +2028,19 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
         customSubjectWeightedWidths: { ...(layout.customSubjectWeightedWidths || {}) },
         customRowHeights: { ...(layout.customRowHeights || {}) },
       };
+      const workingOverrides: TermAverageOverrides = {
+        ...overrides,
+        subjectOverrides: { ...(overrides.subjectOverrides || {}) },
+        matriculeOverrides: { ...(overrides.matriculeOverrides || {}) },
+        mergedLinks: Array.isArray(overrides.mergedLinks) ? [...overrides.mergedLinks] : [],
+        distinctPairs: Array.isArray(overrides.distinctPairs) ? [...overrides.distinctPairs] : [],
+      };
       let workingZoom = zoomPercent;
+      let workingSortMode: TermAverageSortMode = sortMode;
       let stylesMutated = false;
       let layoutMutated = false;
+      let overridesMutated = false;
+      let sortMutated = false;
       let zoomMutated = false;
       let undoPushed = false;
       const ensureUndoSnapshot = () => {
@@ -2037,6 +2048,31 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
           pushUndoState();
           undoPushed = true;
         }
+      };
+
+      const resolveAnnualStudent = (rawName?: unknown, rowIndex?: unknown) => {
+        const rankedByAvg = [...computed.students]
+          .filter((s) => s.annualAverage !== null)
+          .sort((a, b) => (b.annualAverage ?? -Infinity) - (a.annualAverage ?? -Infinity));
+        const rankedList = rankedByAvg.length > 0 ? rankedByAvg : computed.students;
+        const clean = normKey(String(rawName || '').replace(/\([^)]*\)/g, ' '));
+        if (clean) {
+          if (/^(?:le\s+|la\s+)?(?:1er|1ere|premier|premiere|major)$/.test(clean)) return rankedList[0] || null;
+          if (/^(?:le\s+|la\s+)?(?:2e|2eme|deuxieme)$/.test(clean)) return rankedList[1] || null;
+          if (/^(?:le\s+|la\s+)?(?:3e|3eme|troisieme)$/.test(clean)) return rankedList[2] || null;
+          if (/^(?:le\s+|la\s+)?(?:dernier|derniere)$/.test(clean)) return rankedList[rankedList.length - 1] || null;
+          const exact = computed.students.find((s) => normKey(s.name) === clean);
+          if (exact) return exact;
+          const partial = computed.students.find((s) => {
+            const sn = normKey(s.name);
+            return Boolean(sn) && (sn.includes(clean) || clean.includes(sn));
+          });
+          if (partial) return partial;
+        }
+        if (typeof rowIndex === 'number' && rowIndex >= 1) {
+          return computed.students[Math.round(rowIndex) - 1] || null;
+        }
+        return null;
       };
 
       const findMatchingTermIds = (rawName?: unknown): string[] => {
@@ -2079,13 +2115,79 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             }
             break;
           }
+          case 'set_general_average_override': {
+            const op = String(action.operation || 'set_cell');
+            const targetStudent = resolveAnnualStudent(action.studentName, action.rowIndex);
+            if (!targetStudent) break;
+            ensureUndoSnapshot();
+
+            if (op === 'set_matricule') {
+              const cleanMat = String(action.matricule ?? '').trim().slice(0, 48);
+              const nextMap = { ...(workingOverrides.matriculeOverrides || {}) };
+              if (!cleanMat) delete nextMap[targetStudent.key];
+              else nextMap[targetStudent.key] = cleanMat;
+              workingOverrides.matriculeOverrides = nextMap;
+              overridesMutated = true;
+              summaries.push(
+                cleanMat
+                  ? `✓ Matricule de ${targetStudent.name} mis à jour (${cleanMat})`
+                  : `✓ Matricule de ${targetStudent.name} effacé`
+              );
+              break;
+            }
+
+            if (op === 'merge_students') {
+              const secStudent = resolveAnnualStudent(action.secondaryStudentName);
+              if (secStudent && secStudent.key !== targetStudent.key) {
+                handleMergeStudents(targetStudent.key, secStudent.key);
+                summaries.push(`✓ Lignes « ${targetStudent.name} » et « ${secStudent.name} » fusionnées`);
+              }
+              break;
+            }
+
+            const matchedTerms = findMatchingTermIds(action.termName || action.subjectName);
+            const termId = action.termId || matchedTerms[0];
+            if (!termId) break;
+            const cell = targetStudent.cellsByTerm[termId];
+            const termObj = computed.terms.find((t) => t.id === termId);
+            if (cell && cell.source === 'gradebook') {
+              break;
+            }
+            const nextSubjOverrides = { ...(workingOverrides.subjectOverrides || {}) };
+            const studentMap = { ...(nextSubjOverrides[targetStudent.key] || {}) };
+            if (op === 'clear_cell' || action.value === null || action.value === '') {
+              delete studentMap[termId];
+              if (Object.keys(studentMap).length === 0) delete nextSubjOverrides[targetStudent.key];
+              else nextSubjOverrides[targetStudent.key] = studentMap;
+              workingOverrides.subjectOverrides = nextSubjOverrides;
+              overridesMutated = true;
+              summaries.push(
+                `✓ Moyenne manuelle effacée pour ${targetStudent.name} (${termObj?.name || 'Trimestre'})`
+              );
+            } else if (typeof action.value === 'number' && Number.isFinite(action.value)) {
+              const clamped = Math.max(0, Math.min(effectiveAverageScale, action.value));
+              studentMap[termId] = (clamped / effectiveAverageScale) * 20;
+              nextSubjOverrides[targetStudent.key] = studentMap;
+              workingOverrides.subjectOverrides = nextSubjOverrides;
+              overridesMutated = true;
+              summaries.push(
+                `✓ Moyenne manuelle de ${targetStudent.name} pour ${termObj?.name || 'Trimestre'} fixée à ${clamped.toFixed(2).replace('.', ',')}/${effectiveScaleLabel}`
+              );
+            }
+            break;
+          }
           case 'set_sort_mode': {
+            const rawMode = String(action.sortMode || action.mode || 'order');
             const mode: TermAverageSortMode =
-              action.sortMode === 'merit' || action.mode === 'merit'
+              rawMode === 'merit'
                 ? 'merit'
-                : action.sortMode === 'alpha' || action.mode === 'alpha'
+                : rawMode === 'alpha'
                 ? 'alpha'
+                : rawMode === 'alpha_desc'
+                ? 'alpha_desc'
                 : 'order';
+            workingSortMode = mode;
+            sortMutated = true;
             setSortMode(mode);
             setIsDirty(true);
             summaries.push(`✓ Classement : ${sortLabelMap[mode]}`);
@@ -2593,6 +2695,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       const explicitSaveRequested = actions.some((a) => a?.type === 'save_gradebook');
       if (stylesMutated) setStyles(workingStyles);
       if (layoutMutated) setLayout(workingLayout);
+      if (overridesMutated) setOverrides(workingOverrides);
       if (zoomMutated) setZoomPercent(workingZoom);
 
       await new Promise<void>((resolve) => {
@@ -2606,12 +2709,12 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       let dbStatus: TeacherDelmasExecutionReport['dbStatus'] = 'not_needed';
       let dbError: string | undefined;
 
-      if (stylesMutated || layoutMutated || zoomMutated) {
+      if (stylesMutated || layoutMutated || overridesMutated || sortMutated || zoomMutated) {
         latestPayloadRef.current = {
           layout: { ...workingLayout, zoomPercent: workingZoom },
           styles: workingStyles,
-          overrides,
-          sortMode,
+          overrides: overridesMutated ? workingOverrides : overrides,
+          sortMode: sortMutated ? workingSortMode : sortMode,
         };
         setIsDirty(true);
         const saveRes = await saveToCloud({ force: true });

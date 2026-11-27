@@ -1388,3 +1388,64 @@ Rang,Nom & Prénom,NOTE 1 (/20),NOTE 2 (/20),Moyenne (/20),Mention
   );
   assert.equal(allowedNaturalClear.length, 1);
 });
+
+test('Nouvelles capacités complètes : modification de moyenne ciblée, note précise du 1er, repêchage, arrondi, doublons, casse et honnêteté sur les limites', () => {
+  // 1. Toutes les formulations naturelles (y compris avec fautes comme "orgmenter", "ajouter un plus") routent en 'action'
+  for (const msg of [
+    'orgmenter de 1 la moyenne du premier étudiant',
+    'ajouter un plus sur la moyenne du 1er',
+    'diminuer de 1,5 la note 3 du premier étudiant',
+    'mets la moyenne de DKD à 16',
+    'repêche à 10 tous les élèves entre 9,5 et 9,99',
+    'arrondis toutes les notes au demi-point supérieur',
+    'supprime les doublons dans ce tableau',
+    'mets tous les noms en majuscules',
+    'ajoute 10 lignes vides',
+    'passe le coefficient de cette matière à 3',
+  ]) {
+    const res = classifyTeacherDelmasIntent({
+      message: msg,
+      activeContext: sampleContext,
+    });
+    assert.equal(res.intent, 'action', `Attendu 'action' pour "${msg}" (obtenu ${res.intent} / ${res.reason})`);
+  }
+
+  // 2. Pare-feu valide et assainit correctement toutes les nouvelles actions
+  const safeAvgActions = filterSafeTeacherDelmasActions(
+    [
+      { type: 'adjust_student_average', studentName: '1er', deltaAverage: '1,5', viaColNumber: 3 },
+      { type: 'adjust_grades', studentName: '1er', mode: 'specific', colNumber: 3, delta: '-2', roundStep: '0,5', roundMode: 'up' },
+      { type: 'add_empty_rows', count: 150 },
+      { type: 'format_student_names', mode: 'majuscules' },
+      { type: 'set_general_average_override', operation: 'set_cell', studentName: 'DKD', subjectName: 'Math', value: '14,5' },
+    ],
+    'augmente la moyenne du 1er et arrondis la note 3'
+  );
+  assert.equal(safeAvgActions.length, 5);
+  assert.equal(safeAvgActions[0].deltaAverage, 1.5);
+  assert.equal(safeAvgActions[1].delta, -2);
+  assert.equal(safeAvgActions[1].roundStep, 0.5);
+  assert.equal(safeAvgActions[2].count, 100, 'add_empty_rows doit être plafonné à 100');
+  assert.equal(safeAvgActions[3].mode, 'uppercase');
+  assert.equal(safeAvgActions[4].value, 14.5);
+
+  // 3. deduplicate_students : bloqué sans demande de doublons, autorisé dès que l'utilisateur parle de doublons/fusion
+  assert.equal(
+    filterSafeTeacherDelmasActions([{ type: 'deduplicate_students' }], 'ajoute KOUASSI').length,
+    0
+  );
+  assert.equal(
+    filterSafeTeacherDelmasActions([{ type: 'deduplicate_students' }], 'supprime les doublons').length,
+    1
+  );
+
+  // 4. Vérifier que le prompt système inclut explicitement les nouvelles capacités ET les limites réelles (zéro mensonge)
+  const actionPrompt = buildTeacherDelmasSystemPrompt({
+    languageCode: 'fr',
+    activeContext: sampleContext,
+    intent: 'action',
+  });
+  assert.ok(actionPrompt.includes('adjust_student_average'));
+  assert.ok(actionPrompt.includes('LIMITES RÉELLES'));
+  assert.ok(actionPrompt.includes('WhatsApp'));
+});

@@ -4059,6 +4059,39 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         baseNotes: string[]
       ): string[] => {
         const out = Array.from({ length: workingColCount }, (_, i) => baseNotes[i] || '');
+        const applySingleNoteInput = (colIdx: number, val: any) => {
+          const maxS = workingColMetas[colIdx]?.maxScore || 20;
+          const rawStr = val !== undefined && val !== null ? String(val).trim() : '';
+          if (!rawStr || rawStr === '-') {
+            out[colIdx] = '';
+            return;
+          }
+          // Support des ajustements relatifs explicites ("+1", "-0.5", "+2,5")
+          const relMatch = rawStr.match(/^([+-])\s*(\d+(?:[.,]\d+)?)$/);
+          if (relMatch) {
+            const deltaVal = (relMatch[1] === '-' ? -1 : 1) * Number(relMatch[2].replace(',', '.'));
+            if (Number.isFinite(deltaVal)) {
+              const prevParsed = parseStudentNote(out[colIdx] || '', maxS);
+              const baseVal = prevParsed.scoreNum !== null ? prevParsed.scoreNum : 0;
+              const effectiveMax = prevParsed.maxScore || maxS;
+              const nextVal = Math.max(
+                0,
+                Math.min(effectiveMax, Math.round((baseVal + deltaVal) * 100) / 100)
+              );
+              out[colIdx] = formatStudentNote(String(nextVal), effectiveMax);
+              return;
+            }
+          }
+          if (rawStr.includes('/')) {
+            const [sc, mx] = rawStr.split('/');
+            const cleanSc = sanitizeDecimalInput(sc);
+            const cleanMx = Number(mx) > 0 ? Number(mx) : maxS;
+            out[colIdx] = formatStudentNote(cleanSc, cleanMx);
+          } else {
+            out[colIdx] = formatStudentNote(sanitizeDecimalInput(rawStr), maxS);
+          }
+        };
+
         if (Array.isArray(rawNotes)) {
           rawNotes.forEach((val, idx) => {
             if (idx >= workingColCount) {
@@ -4066,16 +4099,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               colsMutated = true;
             }
             if (val !== undefined && val !== null && String(val).trim() !== '' && String(val).trim() !== '-') {
-              const maxS = workingColMetas[idx]?.maxScore || 20;
-              const rawStr = String(val).trim();
-              if (rawStr.includes('/')) {
-                const [sc, mx] = rawStr.split('/');
-                const cleanSc = sanitizeDecimalInput(sc);
-                const cleanMx = Number(mx) > 0 ? Number(mx) : maxS;
-                out[idx] = formatStudentNote(cleanSc, cleanMx);
-              } else {
-                out[idx] = formatStudentNote(sanitizeDecimalInput(rawStr), maxS);
-              }
+              applySingleNoteInput(idx, val);
             }
           });
         } else if (rawNotes && typeof rawNotes === 'object') {
@@ -4087,24 +4111,434 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 workingColCount = colIdx + 1;
                 colsMutated = true;
               }
-              const maxS = workingColMetas[colIdx]?.maxScore || 20;
-              const rawStr = val !== undefined && val !== null ? String(val).trim() : '';
-              if (!rawStr || rawStr === '-') {
-                out[colIdx] = '';
-              } else if (rawStr.includes('/')) {
-                const [sc, mx] = rawStr.split('/');
-                out[colIdx] = formatStudentNote(
-                  sanitizeDecimalInput(sc),
-                  Number(mx) > 0 ? Number(mx) : maxS
-                );
-              } else {
-                out[colIdx] = formatStudentNote(sanitizeDecimalInput(rawStr), maxS);
-              }
+              applySingleNoteInput(colIdx, val);
             }
           }
         }
         while (out.length < workingColCount) out.push('');
         return out;
+      };
+
+      const computeWorkingStudentAverage = (st: StudentGradeRow) => {
+        const evalInputs: EvaluationInput[] = [];
+        const filledDetails: Array<{
+          colIdx: number;
+          scoreNum: number;
+          maxScore: number;
+          coeffEval: number;
+        }> = [];
+        for (let c = 0; c < workingColCount; c++) {
+          const meta = workingColMetas[c] || { maxScore: 20, coeffEval: 1 };
+          const parsed = parseStudentNote(st.notes[c] || '', meta.maxScore || 20);
+          const coeffEval = meta.coeffEval !== undefined && meta.coeffEval > 0 ? meta.coeffEval : 1;
+          evalInputs.push({
+            valeur: parsed.scoreNum,
+            max: parsed.maxScore,
+            coeffEval,
+          });
+          if (parsed.scoreNum !== null && parsed.scoreStr !== '' && parsed.maxScore > 0) {
+            filledDetails.push({
+              colIdx: c,
+              scoreNum: parsed.scoreNum,
+              maxScore: parsed.maxScore,
+              coeffEval,
+            });
+          }
+        }
+        const avgRes = calculateSubjectAverage(evalInputs, {
+          rejectExceedingMax: false,
+          targetScale: workingAverageScale,
+        });
+        return {
+          average: avgRes.moyenneMatiere,
+          filledDetails,
+        };
+      };
+
+      const getWorkingDisplayOrder = (): StudentGradeRow[] => {
+        if (studentsMutated) return workingStudents;
+        const byId = new Map(workingStudents.map((s) => [s.id, s]));
+        const ordered: StudentGradeRow[] = [];
+        for (const s of studentsWithStats) {
+          const w = byId.get(s.id);
+          if (w) ordered.push(w);
+        }
+        for (const w of workingStudents) {
+          if (!ordered.some((o) => o.id === w.id)) ordered.push(w);
+        }
+        return ordered;
+      };
+
+      const getWorkingRankedList = () => {
+        const displayList = getWorkingDisplayOrder();
+        const namedOrGraded = displayList.filter((s) => !isRowEmpty(s));
+        const withAvg = namedOrGraded.map((s) => ({
+          student: s,
+          ...computeWorkingStudentAverage(s),
+        }));
+        const withValidAvg = withAvg
+          .filter((x) => x.average !== null)
+          .sort((a, b) => (b.average ?? -Infinity) - (a.average ?? -Infinity));
+        return {
+          displayList,
+          namedOrGraded,
+          rankedWithAvg: withValidAvg.length > 0 ? withValidAvg : withAvg,
+          avgById: new Map(withAvg.map((x) => [x.student.id, x.average])),
+        };
+      };
+
+      const resolveOrdinalOrNamedStudentId = (rawToken: string): string | null => {
+        const clean = normalizeStudentNameKey(rawToken.replace(/\([^)]*\)/g, ' ').trim());
+        if (!clean) return null;
+        const { displayList, rankedWithAvg } = getWorkingRankedList();
+
+        // 1. Ordinaux de rang / classement ("1er", "premier", "major", "2e", "3e", "dernier", "avant-dernier", "ligne N")
+        if (
+          /^(?:le\s+|la\s+|l['’]\s*)?(?:1er|1ere|premier|premiere|major|meilleur|meilleure)(?:\s+(?:eleve|etudiant|etudiante|apprenant|de\s+la\s+classe))?$/.test(
+            clean
+          )
+        ) {
+          return rankedWithAvg[0]?.student.id ?? null;
+        }
+        if (
+          /^(?:le\s+|la\s+|l['’]\s*)?(?:2e|2eme|deuxieme|second|seconde)(?:\s+(?:eleve|etudiant|etudiante|apprenant))?$/.test(
+            clean
+          )
+        ) {
+          return rankedWithAvg[1]?.student.id ?? null;
+        }
+        if (
+          /^(?:le\s+|la\s+|l['’]\s*)?(?:3e|3eme|troisieme)(?:\s+(?:eleve|etudiant|etudiante|apprenant))?$/.test(
+            clean
+          )
+        ) {
+          return rankedWithAvg[2]?.student.id ?? null;
+        }
+        if (
+          /^(?:le\s+|la\s+|l['’]\s*)?(?:dernier|derniere)(?:\s+(?:eleve|etudiant|etudiante|apprenant|de\s+la\s+classe))?$/.test(
+            clean
+          )
+        ) {
+          return rankedWithAvg[rankedWithAvg.length - 1]?.student.id ?? null;
+        }
+        if (
+          /^(?:le\s+|la\s+|l['’]\s*)?avant[- ]?dernier(?:e)?(?:\s+(?:eleve|etudiant|etudiante))?$/.test(
+            clean
+          )
+        ) {
+          return rankedWithAvg.length >= 2
+            ? rankedWithAvg[rankedWithAvg.length - 2].student.id
+            : null;
+        }
+        const ordRankMatch = clean.match(
+          /^(?:le\s+|la\s+|l['’]\s*)?(\d{1,3})(?:er|ere|e|eme)(?:\s+(?:eleve|etudiant|etudiante))?$/
+        );
+        if (ordRankMatch) {
+          const rIdx = parseInt(ordRankMatch[1], 10) - 1;
+          if (rIdx >= 0 && rIdx < rankedWithAvg.length) {
+            return rankedWithAvg[rIdx].student.id;
+          }
+        }
+        const rowLineMatch = clean.match(/^(?:ligne|row|eleve|etudiant)\s*#?\s*(\d{1,3})$/);
+        if (rowLineMatch) {
+          const rIdx = parseInt(rowLineMatch[1], 10) - 1;
+          if (rIdx >= 0 && rIdx < displayList.length) {
+            return displayList[rIdx].id;
+          }
+        }
+
+        // 2. Correspondance par nom exact / word-bag / partiel
+        const bag = canonicalWordBagKey(clean);
+        const exact = workingStudents.find((s) => {
+          const sn = normalizeStudentNameKey(s.name || '');
+          return Boolean(sn) && (sn === clean || (bag && canonicalWordBagKey(sn) === bag));
+        });
+        if (exact) return exact.id;
+        const partial = workingStudents.find((s) => {
+          const sn = normalizeStudentNameKey(s.name || '');
+          return Boolean(sn) && (sn.includes(clean) || clean.includes(sn));
+        });
+        return partial?.id ?? null;
+      };
+
+      const resolveTargetStudentIdsForAction = (
+        actionObj: Record<string, any>
+      ): { hasFilter: boolean; ids: Set<string> } => {
+        const ids = new Set<string>();
+        const { displayList, rankedWithAvg, avgById } = getWorkingRankedList();
+
+        const rawNames: string[] = [];
+        if (typeof actionObj.studentName === 'string' && actionObj.studentName.trim()) {
+          rawNames.push(actionObj.studentName.trim());
+        }
+        if (typeof actionObj.matchName === 'string' && actionObj.matchName.trim()) {
+          rawNames.push(actionObj.matchName.trim());
+        }
+        if (Array.isArray(actionObj.studentNames)) {
+          actionObj.studentNames.forEach((n: unknown) => {
+            if (typeof n === 'string' && n.trim()) rawNames.push(n.trim());
+          });
+        }
+        if (Array.isArray(actionObj.names)) {
+          actionObj.names.forEach((n: unknown) => {
+            if (typeof n === 'string' && n.trim()) rawNames.push(n.trim());
+          });
+        }
+
+        const hasExplicitFilter = Boolean(
+          actionObj.studentId ||
+            rawNames.length > 0 ||
+            actionObj.rowIndex !== undefined ||
+            (Array.isArray(actionObj.rowIndices) && actionObj.rowIndices.length > 0) ||
+            Boolean(actionObj.condition)
+        );
+
+        if (!hasExplicitFilter) {
+          return { hasFilter: false, ids };
+        }
+
+        if (actionObj.studentId) {
+          const byId = workingStudents.find((s) => s.id === String(actionObj.studentId));
+          if (byId) ids.add(byId.id);
+        }
+
+        for (const nm of rawNames) {
+          const resolvedId = resolveOrdinalOrNamedStudentId(nm);
+          if (resolvedId) ids.add(resolvedId);
+        }
+
+        const rowIndicesToResolve: number[] = [];
+        if (typeof actionObj.rowIndex === 'number' && actionObj.rowIndex >= 1) {
+          rowIndicesToResolve.push(Math.round(actionObj.rowIndex));
+        }
+        if (Array.isArray(actionObj.rowIndices)) {
+          actionObj.rowIndices.forEach((r: unknown) => {
+            if (Number(r) >= 1) rowIndicesToResolve.push(Math.round(Number(r)));
+          });
+        }
+        for (const rNum of rowIndicesToResolve) {
+          const row = displayList[rNum - 1];
+          if (row) ids.add(row.id);
+        }
+
+        if (actionObj.condition) {
+          const cond = String(actionObj.condition);
+          const thresh =
+            actionObj.threshold !== undefined
+              ? Number(actionObj.threshold)
+              : workingAverageScale / 2;
+          const minT =
+            actionObj.minThreshold !== undefined ? Number(actionObj.minThreshold) : 0;
+          const maxT =
+            actionObj.maxThreshold !== undefined
+              ? Number(actionObj.maxThreshold)
+              : workingAverageScale;
+          const topCount = Math.max(1, Math.round(Number(actionObj.threshold) || 3));
+          const topSet = new Set(rankedWithAvg.slice(0, topCount).map((x) => x.student.id));
+          const bottomSet = new Set(rankedWithAvg.slice(-topCount).map((x) => x.student.id));
+          const mentionNeedle = normalizeStudentNameKey(String(actionObj.mentionLabel || ''));
+          const condColIdx =
+            actionObj.colNumber !== undefined ? Number(actionObj.colNumber) - 1 : -1;
+
+          for (const st of workingStudents) {
+            if (isRowEmpty(st)) continue;
+            const avg = avgById.get(st.id) ?? null;
+            if (cond === 'average_below' && avg !== null && avg < thresh) {
+              ids.add(st.id);
+            } else if (cond === 'average_above' && avg !== null && avg >= thresh) {
+              ids.add(st.id);
+            } else if (
+              cond === 'average_between' &&
+              avg !== null &&
+              avg >= minT &&
+              avg <= maxT
+            ) {
+              ids.add(st.id);
+            } else if (cond === 'rank_top' && topSet.has(st.id)) {
+              ids.add(st.id);
+            } else if (cond === 'rank_bottom' && bottomSet.has(st.id)) {
+              ids.add(st.id);
+            } else if (cond === 'mention_equals' && avg !== null && mentionNeedle) {
+              const mLabel = resolveMentionWithRules(
+                avg,
+                effectiveMentionRules,
+                workingAverageScale
+              ).label;
+              if (normalizeStudentNameKey(mLabel).includes(mentionNeedle)) {
+                ids.add(st.id);
+              }
+            } else if (cond === 'note_below' || cond === 'note_above') {
+              const colsToCheck =
+                condColIdx >= 0 && condColIdx < workingColCount
+                  ? [condColIdx]
+                  : Array.from({ length: workingColCount }, (_, i) => i);
+              const hit = colsToCheck.some((ci) => {
+                const parsed = parseStudentNote(
+                  st.notes[ci] || '',
+                  workingColMetas[ci]?.maxScore || 20
+                );
+                if (parsed.scoreNum === null || parsed.scoreStr === '') return false;
+                return cond === 'note_below'
+                  ? parsed.scoreNum < thresh
+                  : parsed.scoreNum >= thresh;
+              });
+              if (hit) ids.add(st.id);
+            } else if (cond === 'empty_notes') {
+              if (avg === null) ids.add(st.id);
+            }
+          }
+        }
+
+        return { hasFilter: true, ids };
+      };
+
+      const applyAverageAdjustmentToStudent = (
+        st: StudentGradeRow,
+        opts: {
+          deltaAverage?: number;
+          targetAverage?: number;
+          percent?: number;
+          viaColIdx?: number;
+        }
+      ): {
+        changed: boolean;
+        notes: string[];
+        beforeAvg: number | null;
+        afterAvg: number | null;
+        capped?: boolean;
+        touchedCols: number;
+      } => {
+        const copyNotes = [...st.notes];
+        while (copyNotes.length < workingColCount) copyNotes.push('');
+        const { average: beforeAvg, filledDetails } = computeWorkingStudentAverage(st);
+
+        let targetAvg: number | null = null;
+        if (typeof opts.targetAverage === 'number' && Number.isFinite(opts.targetAverage)) {
+          targetAvg = Math.max(0, Math.min(workingAverageScale, opts.targetAverage));
+        } else if (
+          typeof opts.deltaAverage === 'number' &&
+          Number.isFinite(opts.deltaAverage) &&
+          beforeAvg !== null
+        ) {
+          targetAvg = Math.max(0, Math.min(workingAverageScale, beforeAvg + opts.deltaAverage));
+        } else if (
+          typeof opts.percent === 'number' &&
+          Number.isFinite(opts.percent) &&
+          beforeAvg !== null
+        ) {
+          targetAvg = Math.max(
+            0,
+            Math.min(workingAverageScale, beforeAvg * (1 + opts.percent / 100))
+          );
+        }
+
+        if (targetAvg === null) {
+          return { changed: false, notes: copyNotes, beforeAvg, afterAvg: beforeAvg, touchedCols: 0 };
+        }
+
+        // Cas 1 : ajustement ciblé via une colonne de note précise (ex: viaColNumber=3)
+        if (
+          opts.viaColIdx !== undefined &&
+          opts.viaColIdx >= 0 &&
+          opts.viaColIdx < 30
+        ) {
+          if (opts.viaColIdx >= workingColCount) {
+            workingColCount = opts.viaColIdx + 1;
+            colsMutated = true;
+            while (copyNotes.length < workingColCount) copyNotes.push('');
+          }
+          const colMeta = workingColMetas[opts.viaColIdx] || { maxScore: 20, coeffEval: 1 };
+          const existingParsed = parseStudentNote(copyNotes[opts.viaColIdx] || '', colMeta.maxScore || 20);
+          const Mk = existingParsed.maxScore || colMeta.maxScore || 20;
+          const wk = colMeta.coeffEval !== undefined && colMeta.coeffEval > 0 ? colMeta.coeffEval : 1;
+
+          let otherWeight = 0;
+          let otherWeightedPoints = 0;
+          for (const d of filledDetails) {
+            if (d.colIdx === opts.viaColIdx) continue;
+            otherWeight += d.coeffEval;
+            otherWeightedPoints += (d.scoreNum / d.maxScore) * workingAverageScale * d.coeffEval;
+          }
+          const totalWeight = otherWeight + wk;
+          const neededScore =
+            ((targetAvg * totalWeight - otherWeightedPoints) * Mk) /
+            (workingAverageScale * wk);
+          const clampedScore = Math.max(
+            0,
+            Math.min(Mk, Math.round(neededScore * 100) / 100)
+          );
+          copyNotes[opts.viaColIdx] = formatStudentNote(String(clampedScore), Mk);
+          const afterAvg = computeWorkingStudentAverage({ ...st, notes: copyNotes }).average;
+          return {
+            changed: true,
+            notes: copyNotes,
+            beforeAvg,
+            afterAvg,
+            capped: Math.abs(neededScore - clampedScore) > 0.02,
+            touchedCols: 1,
+          };
+        }
+
+        // Cas 2 : l'élève n'a aucune note mais une moyenne cible exacte est demandée -> renseigner en NOTE 1
+        if (filledDetails.length === 0) {
+          const m0 = workingColMetas[0]?.maxScore || 20;
+          const exactScore = Math.max(
+            0,
+            Math.min(m0, Math.round(((targetAvg / workingAverageScale) * m0) * 100) / 100)
+          );
+          copyNotes[0] = formatStudentNote(String(exactScore), m0);
+          const afterAvg = computeWorkingStudentAverage({ ...st, notes: copyNotes }).average;
+          return {
+            changed: true,
+            notes: copyNotes,
+            beforeAvg,
+            afterAvg,
+            touchedCols: 1,
+          };
+        }
+
+        // Cas 3 : répartition linéaire exacte avec redistribution si une note atteint 0 ou son barème max
+        const workingVals = filledDetails.map((d) => ({ ...d, val: d.scoreNum }));
+        const totalW = workingVals.reduce((acc, v) => acc + v.coeffEval, 0);
+        const calcCurAvg = () => {
+          if (totalW <= 0) return 0;
+          const pts = workingVals.reduce(
+            (acc, v) => acc + (v.val / v.maxScore) * workingAverageScale * v.coeffEval,
+            0
+          );
+          return pts / totalW;
+        };
+
+        for (let pass = 0; pass < 6; pass++) {
+          const rem = targetAvg - calcCurAvg();
+          if (Math.abs(rem) < 1e-4) break;
+          const unlocked =
+            rem > 0
+              ? workingVals.filter((v) => v.val < v.maxScore - 1e-6)
+              : workingVals.filter((v) => v.val > 1e-6);
+          if (unlocked.length === 0) break;
+          const unlockedW = unlocked.reduce((acc, v) => acc + v.coeffEval, 0);
+          if (unlockedW <= 0) break;
+          const stepScale = rem * (totalW / unlockedW);
+          for (const u of unlocked) {
+            const deltaForNote = stepScale * (u.maxScore / workingAverageScale);
+            u.val = Math.max(0, Math.min(u.maxScore, u.val + deltaForNote));
+          }
+        }
+
+        for (const v of workingVals) {
+          const rounded = Math.max(0, Math.min(v.maxScore, Math.round(v.val * 100) / 100));
+          copyNotes[v.colIdx] = formatStudentNote(String(rounded), v.maxScore);
+        }
+        const afterAvg = computeWorkingStudentAverage({ ...st, notes: copyNotes }).average;
+        return {
+          changed: true,
+          notes: copyNotes,
+          beforeAvg,
+          afterAvg,
+          capped: afterAvg !== null && Math.abs(afterAvg - targetAvg) > 0.05,
+          touchedCols: workingVals.length,
+        };
       };
 
       let pendingAutoShowMatricule = false;
@@ -4168,6 +4602,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             let updatedCount = 0;
             const collectedMats: string[] = [];
             const displayedOrderIds = studentsWithStats.map((s) => s.id);
+            const isOrdinalQuery = (s: string) =>
+              /^(?:le\s+|la\s+|l['’]\s*)?(?:1er|1ere|premier|premiere|major|meilleur|meilleure|2e|2eme|deuxieme|second|seconde|3e|3eme|troisieme|dernier|derniere|avant[- ]?dernier(?:e)?|\d{1,3}(?:er|ere|e|eme)|(?:ligne|row|eleve|etudiant)\s*#?\s*\d{1,3})(?:\s+(?:eleve|etudiant|etudiante|apprenant|de\s+la\s+classe))?$/i.test(
+                normalizeStudentNameKey(s.replace(/\([^)]*\)/g, ' ').trim())
+              );
 
             for (const u of updates) {
               if (!u || typeof u !== 'object') continue;
@@ -4177,24 +4615,16 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               if (u.studentId) {
                 targetIdx = workingStudents.findIndex((s) => s.id === String(u.studentId));
               }
-              // 2. Correspondance par nom (prioritaire sur rowIndex pour éviter tout décalage)
-              const searchName = String(u.matchName || u.name || '').trim();
+              // 2. Correspondance par nom ou ordinal ("1er", "premier", "2e", "dernier", "ligne 3")
+              const searchName = String(u.matchName || u.studentName || u.name || '').trim();
               if (targetIdx === -1 && searchName) {
-                const normSearch = normalizeStudentNameKey(searchName);
-                const bagSearch = canonicalWordBagKey(normSearch);
-                targetIdx = workingStudents.findIndex((s) => {
-                  const sn = normalizeStudentNameKey(s.name || '');
-                  return Boolean(sn) && (sn === normSearch || (bagSearch && canonicalWordBagKey(sn) === bagSearch));
-                });
-                if (targetIdx === -1) {
-                  targetIdx = workingStudents.findIndex((s) => {
-                    const sn = normalizeStudentNameKey(s.name || '');
-                    return Boolean(sn) && (sn.includes(normSearch) || normSearch.includes(sn));
-                  });
+                const resolvedId = resolveOrdinalOrNamedStudentId(searchName);
+                if (resolvedId) {
+                  targetIdx = workingStudents.findIndex((s) => s.id === resolvedId);
                 }
               }
-              // 3. Repli par numéro de ligne uniquement si aucun nom n'a été fourni ou trouvé
-              if (targetIdx === -1 && !searchName && typeof u.rowIndex === 'number' && u.rowIndex >= 1) {
+              // 3. Repli par numéro de ligne
+              if (targetIdx === -1 && typeof u.rowIndex === 'number' && u.rowIndex >= 1) {
                 const dispId = displayedOrderIds[u.rowIndex - 1];
                 if (dispId) {
                   targetIdx = workingStudents.findIndex((s) => s.id === dispId);
@@ -4203,7 +4633,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 }
               }
 
-              if (targetIdx === -1 && (u.newName || searchName)) {
+              // Ne JAMAIS créer un faux élève nommé "1er" ou "premier" si l'ordinal n'a rien trouvé !
+              if (targetIdx === -1 && (u.newName || (searchName && !isOrdinalQuery(searchName)))) {
                 const emptyIdx = workingStudents.findIndex(isRowEmpty);
                 const cleanMat = String(u.matricule || '').trim().slice(0, 48);
                 if (cleanMat) collectedMats.push(cleanMat);
@@ -4235,18 +4666,31 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 if (typeof u.matricule === 'string' && u.matricule.trim()) {
                   collectedMats.push(u.matricule.trim());
                 }
-                workingStudents[targetIdx] = {
+                let nextNotes =
+                  u.notes !== undefined
+                    ? normalizeIncomingNotes(u.notes, cur.notes)
+                    : [...cur.notes];
+                const nextStudent: StudentGradeRow = {
                   ...cur,
                   name:
                     typeof u.newName === 'string' && u.newName.trim()
                       ? u.newName.trim()
                       : cur.name,
                   matricule: cleanMat,
-                  notes:
-                    u.notes !== undefined
-                      ? normalizeIncomingNotes(u.notes, cur.notes)
-                      : cur.notes,
+                  notes: nextNotes,
                 };
+                if (u.deltaAverage !== undefined || u.targetAverage !== undefined) {
+                  const avgRes = applyAverageAdjustmentToStudent(nextStudent, {
+                    deltaAverage: u.deltaAverage !== undefined ? Number(u.deltaAverage) : undefined,
+                    targetAverage: u.targetAverage !== undefined ? Number(u.targetAverage) : undefined,
+                    viaColIdx:
+                      u.viaColNumber !== undefined ? Math.max(0, Number(u.viaColNumber) - 1) : undefined,
+                  });
+                  if (avgRes.changed) {
+                    nextStudent.notes = avgRes.notes;
+                  }
+                }
+                workingStudents[targetIdx] = nextStudent;
                 updatedCount++;
               }
             }
@@ -4289,32 +4733,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           }
 
           case 'remove_students': {
-            const namesToRemove = Array.isArray(action.names)
-              ? action.names.map((n: any) => normalizeStudentNameKey(String(n)))
-              : [];
-            const rowsToRemove = new Set<number>(
-              Array.isArray(action.rowIndices)
-                ? action.rowIndices.map((r: any) => Number(r))
-                : []
-            );
-            const displayedIds = studentsWithStats.map((s) => s.id);
-            const idsFromRowIndices = new Set<string>();
-            rowsToRemove.forEach((rNum) => {
-              if (rNum >= 1 && displayedIds[rNum - 1]) {
-                idsFromRowIndices.add(displayedIds[rNum - 1]);
-              }
-            });
-
+            const { ids: targetIdsToRemove } = resolveTargetStudentIdsForAction(action);
             const beforeLen = workingStudents.length;
             workingStudents = workingStudents.filter((s) => {
               if (action.removeEmpty && isRowEmpty(s)) return false;
-              if (idsFromRowIndices.has(s.id)) return false;
-              if (namesToRemove.length > 0) {
-                const sn = normalizeStudentNameKey(s.name || '');
-                if (sn && namesToRemove.some((target: string) => target && (sn === target || sn.includes(target)))) {
-                  return false;
-                }
-              }
+              if (targetIdsToRemove.has(s.id)) return false;
               return true;
             });
 
@@ -4333,6 +4756,131 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               summaries.push(
                 `✓ ${Math.max(1, beforeLen - workingStudents.length)} ligne(s) supprimée(s)`
               );
+            }
+            break;
+          }
+
+          case 'add_empty_rows': {
+            const count = Math.min(100, Math.max(1, Math.round(Number(action.count) || 1)));
+            for (let i = 0; i < count; i++) {
+              workingStudents.push({
+                id: generateTeacherEntityId('std'),
+                name: '',
+                matricule: '',
+                notes: Array(workingColCount).fill(''),
+              });
+            }
+            studentsMutated = true;
+            summaries.push(`✓ ${count} ligne(s) vide(s) ajoutée(s)`);
+            break;
+          }
+
+          case 'deduplicate_students': {
+            const kept: StudentGradeRow[] = [];
+            const keyToIdx = new Map<string, number>();
+            let mergedDupCount = 0;
+
+            for (const row of workingStudents) {
+              const normN = normalizeStudentNameKey(row.name || '');
+              if (!normN) {
+                kept.push(row);
+                continue;
+              }
+              const bagN = canonicalWordBagKey(normN) || normN;
+              const existingIdx = keyToIdx.has(normN)
+                ? keyToIdx.get(normN)!
+                : keyToIdx.has(bagN)
+                ? keyToIdx.get(bagN)!
+                : -1;
+              if (existingIdx >= 0) {
+                const primary = kept[existingIdx];
+                const mergedNotes = Array.from({ length: workingColCount }, (_, c) => {
+                  const pNote = primary.notes[c] || '';
+                  const dNote = row.notes[c] || '';
+                  return parseStudentNote(pNote, 20).scoreStr ? pNote : dNote;
+                });
+                kept[existingIdx] = {
+                  ...primary,
+                  matricule: primary.matricule || row.matricule || '',
+                  photoUrl: primary.photoUrl || row.photoUrl,
+                  photoR2Key: primary.photoR2Key || row.photoR2Key,
+                  photoSizeBytes: primary.photoSizeBytes || row.photoSizeBytes,
+                  notes: mergedNotes,
+                };
+                mergedDupCount++;
+              } else {
+                const newIdx = kept.length;
+                kept.push(row);
+                keyToIdx.set(normN, newIdx);
+                if (bagN) keyToIdx.set(bagN, newIdx);
+              }
+            }
+
+            if (mergedDupCount > 0) {
+              workingStudents = kept;
+              studentsMutated = true;
+              summaries.push(
+                `✓ ${mergedDupCount} doublon(s) fusionné(s) et supprimé(s) dans ${subject.name}`
+              );
+            }
+            break;
+          }
+
+          case 'format_student_names': {
+            const fmtMode = String(action.mode || 'uppercase');
+            const { hasFilter, ids: fmtIds } = resolveTargetStudentIdsForAction(action);
+            const toTitleCase = (s: string) =>
+              s
+                .toLowerCase()
+                .replace(/(^|[\s\-'])([a-zà-öø-ÿ])/gi, (_m, sep, ch) => `${sep}${ch.toUpperCase()}`);
+            let changedNames = 0;
+            workingStudents = workingStudents.map((s) => {
+              if (hasFilter && !fmtIds.has(s.id)) return s;
+              const rawName = String(s.name || '');
+              const trimmed = rawName.replace(/\s+/g, ' ').trim();
+              if (!trimmed) return s;
+              const nextName =
+                fmtMode === 'lowercase'
+                  ? trimmed.toLowerCase()
+                  : fmtMode === 'titlecase'
+                  ? toTitleCase(trimmed)
+                  : fmtMode === 'trim'
+                  ? trimmed
+                  : trimmed.toUpperCase();
+              if (nextName !== rawName) {
+                changedNames++;
+                return { ...s, name: nextName };
+              }
+              return s;
+            });
+            if (changedNames > 0) {
+              studentsMutated = true;
+              const modeLabel =
+                fmtMode === 'lowercase'
+                  ? 'en minuscules'
+                  : fmtMode === 'titlecase'
+                  ? 'avec majuscule initiale'
+                  : fmtMode === 'trim'
+                  ? '(espaces nettoyés)'
+                  : 'en MAJUSCULES';
+              summaries.push(`✓ ${changedNames} nom(s) formaté(s) ${modeLabel}`);
+            }
+            break;
+          }
+
+          case 'set_subject_coefficient': {
+            const coeffNum = Number(String(action.coefficient ?? '').replace(',', '.'));
+            if (
+              Number.isFinite(coeffNum) &&
+              coeffNum >= 0.25 &&
+              coeffNum <= 100 &&
+              !disableCloudPersistence &&
+              getTeacherAuthToken()
+            ) {
+              await TeacherGradebookAPI.updateSubject(subject.id, { coefficient: coeffNum });
+              settingsOrUiMutated = true;
+              onGradebookSynced?.();
+              summaries.push(`✓ Coefficient de ${subject.name} passé à ${coeffNum}`);
             }
             break;
           }
@@ -4383,53 +4931,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           case 'clear_names':
           case 'clear_matricules':
           case 'clear_photos': {
-            const hasTargetedStudent = Boolean(
-              (typeof action.studentName === 'string' && action.studentName.trim()) ||
-                (Array.isArray(action.studentNames) && action.studentNames.length > 0) ||
-                action.rowIndex !== undefined ||
-                (Array.isArray(action.rowIndices) && action.rowIndices.length > 0)
-            );
-            const displayList = studentsMutated ? workingStudents : studentsWithStats;
-            const targetIds = new Set<string>();
-            if (hasTargetedStudent) {
-              const nameTargets: string[] = [];
-              if (typeof action.studentName === 'string' && action.studentName.trim()) {
-                nameTargets.push(
-                  normalizeStudentNameKey(action.studentName.replace(/\([^)]*\)/g, ' ').trim())
-                );
-              }
-              if (Array.isArray(action.studentNames)) {
-                action.studentNames.forEach((n: unknown) => {
-                  const clean = normalizeStudentNameKey(String(n || '').replace(/\([^)]*\)/g, ' ').trim());
-                  if (clean) nameTargets.push(clean);
-                });
-              }
-              const rowTargets = new Set<number>();
-              if (typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
-                rowTargets.add(Math.round(action.rowIndex) - 1);
-              }
-              if (Array.isArray(action.rowIndices)) {
-                action.rowIndices.forEach((r: unknown) => {
-                  if (Number(r) >= 1) rowTargets.add(Math.round(Number(r)) - 1);
-                });
-              }
-              displayList.forEach((s, idx) => {
-                const sn = normalizeStudentNameKey(s.name || '');
-                const matchName =
-                  nameTargets.length > 0 &&
-                  Boolean(sn) &&
-                  nameTargets.some(
-                    (t) =>
-                      sn === t ||
-                      sn.includes(t) ||
-                      t.includes(sn) ||
-                      (/^(?:le\s+|la\s+)?(?:1er|1ere|premier|premiere|major)$/.test(t) && idx === 0)
-                  );
-                if (matchName || rowTargets.has(idx)) {
-                  targetIds.add(s.id);
-                }
-              });
-            }
+            const { hasFilter: hasTargetedStudent, ids: targetIds } =
+              resolveTargetStudentIdsForAction(action);
 
             let touched = 0;
             workingStudents = workingStudents.map((s) => {
@@ -4487,60 +4990,15 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
           case 'clear_notes': {
             const isSpec =
-              action.mode === 'specific' &&
+              (action.mode === 'specific' || action.colNumber !== undefined || action.colIndex !== undefined) &&
               (action.colNumber !== undefined || action.colIndex !== undefined);
             const specIdx =
               action.colNumber !== undefined
                 ? Number(action.colNumber) - 1
                 : Number(action.colIndex);
 
-            const hasTargetedStudent = Boolean(
-              (typeof action.studentName === 'string' && action.studentName.trim()) ||
-                (Array.isArray(action.studentNames) && action.studentNames.length > 0) ||
-                action.rowIndex !== undefined ||
-                (Array.isArray(action.rowIndices) && action.rowIndices.length > 0)
-            );
-            const targetIds = new Set<string>();
-            if (hasTargetedStudent) {
-              const displayList = studentsMutated ? workingStudents : studentsWithStats;
-              const nameTargets: string[] = [];
-              if (typeof action.studentName === 'string' && action.studentName.trim()) {
-                nameTargets.push(
-                  normalizeStudentNameKey(action.studentName.replace(/\([^)]*\)/g, ' ').trim())
-                );
-              }
-              if (Array.isArray(action.studentNames)) {
-                action.studentNames.forEach((n: unknown) => {
-                  const clean = normalizeStudentNameKey(String(n || '').replace(/\([^)]*\)/g, ' ').trim());
-                  if (clean) nameTargets.push(clean);
-                });
-              }
-              const rowTargets = new Set<number>();
-              if (typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
-                rowTargets.add(Math.round(action.rowIndex) - 1);
-              }
-              if (Array.isArray(action.rowIndices)) {
-                action.rowIndices.forEach((r: unknown) => {
-                  if (Number(r) >= 1) rowTargets.add(Math.round(Number(r)) - 1);
-                });
-              }
-              displayList.forEach((s, idx) => {
-                const sn = normalizeStudentNameKey(s.name || '');
-                const matchName =
-                  nameTargets.length > 0 &&
-                  Boolean(sn) &&
-                  nameTargets.some(
-                    (t) =>
-                      sn === t ||
-                      sn.includes(t) ||
-                      t.includes(sn) ||
-                      (/^(?:le\s+|la\s+)?(?:1er|1ere|premier|premiere|major)$/.test(t) && idx === 0)
-                  );
-                if (matchName || rowTargets.has(idx)) {
-                  targetIds.add(s.id);
-                }
-              });
-            }
+            const { hasFilter: hasTargetedStudent, ids: targetIds } =
+              resolveTargetStudentIdsForAction(action);
 
             workingStudents = workingStudents.map((s) => {
               if (hasTargetedStudent && !targetIds.has(s.id)) return s;
@@ -4726,38 +5184,69 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 : action.colIndex !== undefined
                 ? Number(action.colIndex)
                 : 0;
-            if (colIdx >= 0 && colIdx < workingColCount) {
+            if (colIdx >= 0 && colIdx < 30) {
+              if (colIdx >= workingColCount) {
+                const toAddCols = colIdx + 1 - workingColCount;
+                for (let c = 0; c < toAddCols; c++) {
+                  workingColMetas[workingColCount] = { title: 'NOTE', maxScore: 20, coeffEval: 1 };
+                  workingColCount += 1;
+                }
+                colsMutated = true;
+              }
+              const { hasFilter, ids: fillTargetIds } = resolveTargetStudentIdsForAction(action);
               const rawVal = String(action.value ?? '').trim();
               const onlyEmpty = Boolean(action.onlyEmpty);
+              const copyFromIdx =
+                action.copyFromColNumber !== undefined ? Number(action.copyFromColNumber) - 1 : -1;
+              const fromAverage = Boolean(action.fromAverage);
               const maxS = workingColMetas[colIdx]?.maxScore || 20;
-              let formatted = '';
+              let formattedFixed = '';
               if (rawVal && rawVal !== '-') {
                 if (rawVal.includes('/')) {
                   const [sc, mx] = rawVal.split('/');
-                  formatted = formatStudentNote(
+                  formattedFixed = formatStudentNote(
                     sanitizeDecimalInput(sc),
                     Number(mx) > 0 ? Number(mx) : maxS
                   );
                 } else {
-                  formatted = formatStudentNote(sanitizeDecimalInput(rawVal), maxS);
+                  formattedFixed = formatStudentNote(sanitizeDecimalInput(rawVal), maxS);
                 }
               }
               let filledCount = 0;
               workingStudents = workingStudents.map((s) => {
                 if (!(s.name || '').trim()) return s;
+                if (hasFilter && !fillTargetIds.has(s.id)) return s;
                 const copyNotes = [...s.notes];
                 while (copyNotes.length < workingColCount) copyNotes.push('');
                 if (onlyEmpty && parseStudentNote(copyNotes[colIdx] || '', maxS).scoreStr.length > 0) {
                   return s;
                 }
-                copyNotes[colIdx] = formatted;
+                let nextCellVal = formattedFixed;
+                if (copyFromIdx >= 0 && copyFromIdx < workingColCount) {
+                  nextCellVal = copyNotes[copyFromIdx] || '';
+                } else if (fromAverage) {
+                  const { average } = computeWorkingStudentAverage(s);
+                  if (average === null) return s;
+                  const scaledScore = Math.max(
+                    0,
+                    Math.min(maxS, Math.round(((average / workingAverageScale) * maxS) * 100) / 100)
+                  );
+                  nextCellVal = formatStudentNote(String(scaledScore), maxS);
+                }
+                copyNotes[colIdx] = nextCellVal;
                 filledCount++;
                 return { ...s, notes: copyNotes };
               });
               if (filledCount > 0) {
                 studentsMutated = true;
+                const detailLabel =
+                  copyFromIdx >= 0
+                    ? `copiée depuis Note ${copyFromIdx + 1}`
+                    : fromAverage
+                    ? 'remplie avec la moyenne'
+                    : formattedFixed || 'vidée';
                 summaries.push(
-                  `✓ Colonne ${colIdx + 1} remplie (${formatted || 'vidée'}) pour ${filledCount} élève(s)`
+                  `✓ Colonne ${colIdx + 1} (${detailLabel}) appliquée à ${filledCount} élève(s)`
                 );
               }
             }
@@ -4769,17 +5258,9 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             let srcIdx = -1;
             const searchName = String(action.studentName || action.name || '').trim();
             if (searchName) {
-              const normSearch = normalizeStudentNameKey(searchName);
-              const bagSearch = canonicalWordBagKey(normSearch);
-              srcIdx = workingStudents.findIndex((s) => {
-                const sn = normalizeStudentNameKey(s.name || '');
-                return Boolean(sn) && (sn === normSearch || (bagSearch && canonicalWordBagKey(sn) === bagSearch));
-              });
-              if (srcIdx === -1) {
-                srcIdx = workingStudents.findIndex((s) => {
-                  const sn = normalizeStudentNameKey(s.name || '');
-                  return Boolean(sn) && (sn.includes(normSearch) || normSearch.includes(sn));
-                });
+              const resolvedId = resolveOrdinalOrNamedStudentId(searchName);
+              if (resolvedId) {
+                srcIdx = workingStudents.findIndex((s) => s.id === resolvedId);
               }
             }
             if (srcIdx === -1 && typeof action.rowIndex === 'number' && action.rowIndex >= 1) {
@@ -4816,50 +5297,209 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             const rawDelta =
               action.delta !== undefined
                 ? Number(action.delta)
-                : action.sign === 'sub'
-                ? -Math.abs(Number(action.amount) || 0)
-                : Math.abs(Number(action.amount) || 0);
-            if (!Number.isFinite(rawDelta) || rawDelta === 0) break;
+                : action.amount !== undefined
+                ? action.sign === 'sub'
+                  ? -Math.abs(Number(action.amount) || 0)
+                  : Math.abs(Number(action.amount) || 0)
+                : 0;
+            const rawPercent =
+              action.percent !== undefined && Number.isFinite(Number(action.percent))
+                ? Number(action.percent)
+                : undefined;
+            const rawFactor =
+              action.factor !== undefined && Number.isFinite(Number(action.factor)) && Number(action.factor) > 0
+                ? Number(action.factor)
+                : undefined;
+            const roundStep =
+              action.roundStep !== undefined && Number.isFinite(Number(action.roundStep)) && Number(action.roundStep) > 0
+                ? Number(action.roundStep)
+                : undefined;
+            const roundMode: 'nearest' | 'up' | 'down' =
+              action.roundMode === 'up'
+                ? 'up'
+                : action.roundMode === 'down'
+                ? 'down'
+                : 'nearest';
+            const minClamp =
+              action.minClamp !== undefined && Number.isFinite(Number(action.minClamp))
+                ? Number(action.minClamp)
+                : undefined;
+            const maxClamp =
+              action.maxClamp !== undefined && Number.isFinite(Number(action.maxClamp))
+                ? Number(action.maxClamp)
+                : undefined;
 
-            const isSpec =
-              action.mode === 'specific' &&
-              (action.colNumber !== undefined || action.colIndex !== undefined);
-            const specIdx =
-              action.colNumber !== undefined
-                ? Number(action.colNumber) - 1
-                : Number(action.colIndex) || 0;
+            const hasAnyOperation =
+              (Number.isFinite(rawDelta) && rawDelta !== 0) ||
+              (rawPercent !== undefined && rawPercent !== 0) ||
+              (rawFactor !== undefined && rawFactor !== 1) ||
+              roundStep !== undefined ||
+              minClamp !== undefined ||
+              maxClamp !== undefined;
+            if (!hasAnyOperation) break;
 
-            const targetCols = isSpec
-              ? [specIdx]
-              : Array.from({ length: workingColCount }, (_, i) => i);
+            const { hasFilter, ids: targetStudentIds } = resolveTargetStudentIdsForAction(action);
+
+            const targetCols: number[] = [];
+            if (Array.isArray(action.colNumbers) && action.colNumbers.length > 0) {
+              for (const cn of action.colNumbers) {
+                const idx = Number(cn) - 1;
+                if (idx >= 0 && idx < workingColCount && !targetCols.includes(idx)) {
+                  targetCols.push(idx);
+                }
+              }
+            } else if (action.colNumber !== undefined || action.colIndex !== undefined) {
+              const idx =
+                action.colNumber !== undefined
+                  ? Number(action.colNumber) - 1
+                  : Number(action.colIndex);
+              if (idx >= 0 && idx < workingColCount) {
+                targetCols.push(idx);
+              }
+            } else {
+              for (let i = 0; i < workingColCount; i++) targetCols.push(i);
+            }
 
             let touchedCells = 0;
+            const touchedStudentNames: string[] = [];
             workingStudents = workingStudents.map((s) => {
+              if (hasFilter && !targetStudentIds.has(s.id)) return s;
               const copyNotes = [...s.notes];
+              let studentChanged = false;
               for (const cIdx of targetCols) {
                 if (cIdx < 0 || cIdx >= workingColCount) continue;
                 const colMeta = workingColMetas[cIdx] || { maxScore: 20 };
                 const parsed = parseStudentNote(copyNotes[cIdx] || '', colMeta.maxScore);
                 if (parsed.scoreNum === null || parsed.scoreStr === '') continue;
+                let val = parsed.scoreNum;
+                if (rawPercent !== undefined && rawPercent !== 0) {
+                  val = val * (1 + rawPercent / 100);
+                } else if (rawFactor !== undefined && rawFactor !== 1) {
+                  val = val * rawFactor;
+                }
+                if (Number.isFinite(rawDelta) && rawDelta !== 0) {
+                  val = val + rawDelta;
+                }
+                if (roundStep !== undefined) {
+                  const inv = 1 / roundStep;
+                  val =
+                    roundMode === 'up'
+                      ? Math.ceil(val * inv - 1e-9) / inv
+                      : roundMode === 'down'
+                      ? Math.floor(val * inv + 1e-9) / inv
+                      : Math.round(val * inv) / inv;
+                }
+                if (minClamp !== undefined) val = Math.max(minClamp, val);
+                if (maxClamp !== undefined) val = Math.min(maxClamp, val);
                 const nextVal = Math.max(
                   0,
-                  Math.min(
-                    parsed.maxScore,
-                    Math.round((parsed.scoreNum + rawDelta) * 100) / 100
-                  )
+                  Math.min(parsed.maxScore, Math.round(val * 100) / 100)
                 );
-                copyNotes[cIdx] = formatStudentNote(String(nextVal), parsed.maxScore);
-                touchedCells++;
+                if (Math.abs(nextVal - parsed.scoreNum) > 1e-6) {
+                  copyNotes[cIdx] = formatStudentNote(String(nextVal), parsed.maxScore);
+                  touchedCells++;
+                  studentChanged = true;
+                }
               }
-              return { ...s, notes: copyNotes };
+              if (studentChanged && s.name.trim()) touchedStudentNames.push(s.name.trim());
+              return studentChanged ? { ...s, notes: copyNotes } : s;
             });
 
             if (touchedCells > 0) {
               studentsMutated = true;
-              const signStr = rawDelta > 0 ? `+${rawDelta}` : `${rawDelta}`;
+              const descParts: string[] = [];
+              if (Number.isFinite(rawDelta) && rawDelta !== 0) {
+                descParts.push(`${rawDelta > 0 ? `+${rawDelta}` : `${rawDelta}`} pt`);
+              }
+              if (rawPercent !== undefined && rawPercent !== 0) {
+                descParts.push(`${rawPercent > 0 ? `+${rawPercent}` : `${rawPercent}`}%`);
+              }
+              if (roundStep !== undefined) {
+                descParts.push(`arrondi à ${roundStep}`);
+              }
+              if (minClamp !== undefined) descParts.push(`min ${minClamp}`);
+              if (maxClamp !== undefined) descParts.push(`max ${maxClamp}`);
+              const targetWho =
+                touchedStudentNames.length === 1
+                  ? ` pour ${touchedStudentNames[0]}`
+                  : hasFilter
+                  ? ` sur ${touchedStudentNames.length} élève(s)`
+                  : '';
+              const colLabel =
+                targetCols.length === 1 ? ` (Note ${targetCols[0] + 1})` : '';
               summaries.push(
-                `✓ Ajustement ${signStr} pt appliqué sur ${touchedCells} note(s)`
+                `✓ Ajustement (${descParts.join(', ')}) appliqué sur ${touchedCells} note(s)${colLabel}${targetWho}`
               );
+            }
+            break;
+          }
+
+          case 'adjust_student_average': {
+            const deltaAvg =
+              action.deltaAverage !== undefined && Number.isFinite(Number(action.deltaAverage))
+                ? Number(action.deltaAverage)
+                : action.delta !== undefined && Number.isFinite(Number(action.delta))
+                ? Number(action.delta)
+                : undefined;
+            const targetAvg =
+              action.targetAverage !== undefined && Number.isFinite(Number(action.targetAverage))
+                ? Number(action.targetAverage)
+                : undefined;
+            const pctAvg =
+              action.percent !== undefined && Number.isFinite(Number(action.percent))
+                ? Number(action.percent)
+                : undefined;
+            const viaColIdx =
+              action.viaColNumber !== undefined && Number(action.viaColNumber) >= 1
+                ? Math.round(Number(action.viaColNumber)) - 1
+                : undefined;
+
+            if (deltaAvg === undefined && targetAvg === undefined && pctAvg === undefined) {
+              break;
+            }
+
+            const { hasFilter, ids: targetStudentIds } = resolveTargetStudentIdsForAction(action);
+            let adjustedStudents = 0;
+            const singleStudentDetails: string[] = [];
+
+            workingStudents = workingStudents.map((s) => {
+              if (isRowEmpty(s)) return s;
+              if (hasFilter && !targetStudentIds.has(s.id)) return s;
+              const res = applyAverageAdjustmentToStudent(s, {
+                deltaAverage: deltaAvg,
+                targetAverage: targetAvg,
+                percent: pctAvg,
+                viaColIdx,
+              });
+              if (!res.changed) return s;
+              adjustedStudents++;
+              if (adjustedStudents <= 3 && s.name.trim()) {
+                const bStr =
+                  res.beforeAvg !== null
+                    ? res.beforeAvg.toFixed(2).replace('.', ',')
+                    : '—';
+                const aStr =
+                  res.afterAvg !== null
+                    ? res.afterAvg.toFixed(2).replace('.', ',')
+                    : '—';
+                singleStudentDetails.push(
+                  `${s.name.trim()} : ${bStr} → ${aStr}/${workingAverageScale}${
+                    res.capped ? ' (plafonné au barème max)' : ''
+                  }`
+                );
+              }
+              return { ...s, notes: res.notes };
+            });
+
+            if (adjustedStudents > 0) {
+              studentsMutated = true;
+              if (adjustedStudents <= 2 && singleStudentDetails.length > 0) {
+                summaries.push(`✓ Moyenne ajustée (${singleStudentDetails.join(' ; ')})`);
+              } else {
+                summaries.push(
+                  `✓ Moyenne ajustée pour ${adjustedStudents} élève(s) dans ${subject.name}`
+                );
+              }
             }
             break;
           }

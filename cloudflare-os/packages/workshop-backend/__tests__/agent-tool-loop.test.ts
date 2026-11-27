@@ -350,4 +350,145 @@ Rang,Nom & Prénom,NOTE 1 (/20),NOTE 2 (/20),Moyenne (/20),Mention
     expect(res.supported).toBe(false);
     expect(auditCreationQuality({ mode: "chat", decision: "chat", creation_type: null, creation_title: null, creation_data: null, chat_response: "" }, null).errors.length).toBeGreaterThan(0);
   });
+
+  it("Assistant Delmas : ajuste la moyenne du 1er étudiant (+1) et la Note 3 du 1er (-1.5) via adjust_grades_or_average", async () => {
+    let callCount = 0;
+    const mockRequester: ChatCompletionRequester = async () => {
+      callCount++;
+      if (callCount === 1) {
+        return {
+          ok: true,
+          status: 200,
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_avg_1",
+                type: "function",
+                function: {
+                  name: "adjust_grades_or_average",
+                  arguments: JSON.stringify({
+                    operation: "adjust_student_average",
+                    studentName: "1er",
+                    deltaAverage: 1,
+                  }),
+                },
+              },
+              {
+                id: "call_note_3",
+                type: "function",
+                function: {
+                  name: "adjust_grades_or_average",
+                  arguments: JSON.stringify({
+                    operation: "adjust_grades",
+                    studentName: "1er",
+                    mode: "specific",
+                    colNumber: 3,
+                    delta: -1.5,
+                  }),
+                },
+              },
+            ],
+          },
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        message: {
+          role: "assistant",
+          content: "J'ai augmenté la moyenne du 1er étudiant de +1 pt et diminué sa Note 3 de 1,5 pt.",
+        },
+      };
+    };
+
+    const res = await runTeacherDelmasAgentLoop({
+      models: ["@cf/moonshotai/kimi-k2.7-code"],
+      systemPrompt: "Tu es Assistant Delmas.",
+      conversationMessages: [
+        { role: "user", content: "Augmente la moyenne du premier étudiant de +1 et diminue sa note 3 de 1,5" },
+      ],
+      userPrompt: "Augmente la moyenne du premier étudiant de +1 et diminue sa note 3 de 1,5",
+      sheetContext: {
+        sheetKind: "subject",
+        subjectName: "Mathématiques",
+        students: [
+          { rowIndex: 1, id: "s1", name: "KOUASSI Jean", notes: ["14/20", "15/20", "16/20"], averageFormatted: "15,00", rank: "1er" },
+        ],
+      },
+      allowActions: true,
+      requester: mockRequester,
+    });
+
+    expect(res.supported).toBe(true);
+    expect(res.structuredActions.length).toBe(2);
+    expect(res.structuredActions[0]).toMatchObject({
+      type: "adjust_student_average",
+      studentName: "1er",
+      deltaAverage: 1,
+    });
+    expect(res.structuredActions[1]).toMatchObject({
+      type: "adjust_grades",
+      studentName: "1er",
+      colNumber: 3,
+      delta: -1.5,
+    });
+  });
+
+  it("Assistant Delmas : refuse honnêtement via report_unsupported_request sans jamais mentir ni émettre de fausse action", async () => {
+    let callCount = 0;
+    const mockRequester: ChatCompletionRequester = async () => {
+      callCount++;
+      if (callCount === 1) {
+        return {
+          ok: true,
+          status: 200,
+          message: {
+            role: "assistant",
+            content: null,
+            tool_calls: [
+              {
+                id: "call_unsup",
+                type: "function",
+                function: {
+                  name: "report_unsupported_request",
+                  arguments: JSON.stringify({
+                    capability: "Envoyer un message WhatsApp aux parents",
+                    reason: "Assistant Delmas agit uniquement sur le tableau ouvert et n'est connecté à aucun service WhatsApp/SMS/e-mail.",
+                    manualAlternative: "Je peux vous rédiger le texte du message à copier-coller directement dans WhatsApp.",
+                  }),
+                },
+              },
+            ],
+          },
+        };
+      }
+      return {
+        ok: true,
+        status: 200,
+        message: {
+          role: "assistant",
+          content: "Je ne peux pas envoyer de message WhatsApp directement aux parents depuis ce tableau, mais je peux vous rédiger le message à copier.",
+        },
+      };
+    };
+
+    const res = await runTeacherDelmasAgentLoop({
+      models: ["@cf/moonshotai/kimi-k2.7-code"],
+      systemPrompt: "Tu es Assistant Delmas.",
+      conversationMessages: [
+        { role: "user", content: "Envoie un message WhatsApp aux parents avec leurs moyennes" },
+      ],
+      userPrompt: "Envoie un message WhatsApp aux parents avec leurs moyennes",
+      sheetContext: { sheetKind: "subject", subjectName: "Mathématiques", students: [] },
+      allowActions: true,
+      requester: mockRequester,
+    });
+
+    expect(res.supported).toBe(true);
+    expect(res.structuredActions.length).toBe(0);
+    expect(res.toolTrace.some((t) => t.tool === "report_unsupported_request" && t.status === "ok")).toBe(true);
+    expect(res.finalText).toContain("ne peux pas envoyer");
+  });
 });

@@ -231,8 +231,52 @@ export async function runTeacherDelmasAgentLoop(
   const userAuthorizedDestructive =
     DESTRUCTIVE_INTENT_REGEX.test(normUserPrompt) ||
     recentUserMessages.some((m) => DESTRUCTIVE_INTENT_REGEX.test(normalizeStr(m)));
+  const userAuthorizedDedup =
+    userAuthorizedDestructive ||
+    /\b(doublon\w*|double\w*|dedoubl\w*|fusionn\w*|merge|dedup\w*)\b/i.test(normUserPrompt);
+  let unsupportedReported = false;
 
   const tools: RegisteredAgentTool[] = [];
+
+  // 0. Outil d'honnêteté absolue : signaler clairement une demande impossible sans jamais mentir
+  tools.push({
+    name: "report_unsupported_request",
+    description:
+      "À appeler IMMÉDIATEMENT lorsqu'une demande de l'utilisateur est réellement IMPOSSIBLE depuis ce tableau (ex: créer/supprimer une école/classe/trimestre/autre matière, modifier une autre matière non ouverte, modifier une moyenne auto-calculée dans Moyenne Générale, prendre/générer/ajouter une vraie photo de profil élève, envoyer un email/SMS/WhatsApp, modifier un fichier sur le disque de l'utilisateur). Garantit une réponse 100 % honnête sans jamais mentir.",
+    parameters: {
+      type: "object",
+      properties: {
+        capability: {
+          type: "string",
+          description: "Action demandée qui est hors de portée de ce menu.",
+        },
+        reason: {
+          type: "string",
+          description: "Raison technique ou fonctionnelle précise.",
+        },
+        manualAlternative: {
+          type: "string",
+          description: "Étape manuelle exacte ou alternative la plus proche que l'utilisateur peut faire.",
+        },
+      },
+      required: ["capability", "reason", "manualAlternative"],
+    },
+    schema: z.object({
+      capability: z.string().min(1),
+      reason: z.string().min(1),
+      manualAlternative: z.string().min(1),
+    }),
+    execute: ({ capability, reason, manualAlternative }) => {
+      unsupportedReported = true;
+      return {
+        ok: true,
+        summary: `Limite honnête signalée (${capability})`,
+        data: { capability, reason, manualAlternative },
+        instruction:
+          "Explique directement et honnêtement à l'utilisateur en 1 à 2 phrases pourquoi tu ne peux pas faire cette action ici, et donne-lui l'alternative manuelle exacte. Ne prétends JAMAIS l'avoir faite.",
+      };
+    },
+  });
 
   // 1. Outil de lecture : inspecter le tableau actif + fichiers joints
   tools.push({
@@ -362,6 +406,9 @@ export async function runTeacherDelmasAgentLoop(
       studentId: z.string().optional(),
       rowIndex: z.number().int().positive().optional(),
       matricule: z.string().max(48).optional(),
+      deltaAverage: z.number().min(-1000).max(1000).optional(),
+      targetAverage: z.number().min(0).max(1000).optional(),
+      viaColNumber: z.number().int().min(1).max(30).optional(),
       notes: z
         .union([
           z.array(z.union([z.string(), z.number(), z.null()])),
@@ -374,7 +421,7 @@ export async function runTeacherDelmasAgentLoop(
     tools.push({
       name: "add_or_update_students",
       description:
-        "Ajoute, met à jour ou remplace des élèves et leurs notes dans le tableau actif. OBLIGATOIRE : lors d'un import depuis un fichier (Excel, CSV, image, PDF), inclure 100 % de TOUS les élèves du fichier sans jamais tronquer ni échantillonner.",
+        "Ajoute, met à jour ou remplace des élèves et leurs notes dans le tableau actif (matchName accepte aussi les ordinaux '1er', '2e', 'dernier' ; les notes acceptent les décalages relatifs '+1', '-0.5'). OBLIGATOIRE : lors d'un import depuis un fichier (Excel, CSV, image, PDF), inclure 100 % de TOUS les élèves du fichier sans jamais tronquer ni échantillonner.",
       parameters: {
         type: "object",
         properties: {
@@ -390,14 +437,17 @@ export async function runTeacherDelmasAgentLoop(
               type: "object",
               properties: {
                 name: { type: "string" },
-                matchName: { type: "string" },
+                matchName: { type: "string", description: "Nom existant ou ordinal ('1er', '2e', 'dernier')." },
                 newName: { type: "string" },
                 studentId: { type: "string" },
                 rowIndex: { type: "number" },
                 matricule: { type: "string" },
+                deltaAverage: { type: "number" },
+                targetAverage: { type: "number" },
+                viaColNumber: { type: "number" },
                 notes: {
                   description:
-                    'Tableau de notes ["15", "14.5"] ou objet indexé par n° de note {"1": "16", "2": "14"}.',
+                    'Tableau de notes ["15", "14.5"] ou objet indexé par n° de note {"1": "16", "3": "+1.5"}.',
                 },
               },
             },
@@ -602,11 +652,251 @@ export async function runTeacherDelmasAgentLoop(
       },
     });
 
-    // 5. Colonnes de notes, barèmes & ajustements (+/- points, remplissage, déplacement)
+    // 4B. Outil dédié ultra-précis : Modifier/Ajuster la MOYENNE ou une/plusieurs NOTES (élève précis, ordinal 1er/dernier, condition, repêchage, %, arrondi, plancher/plafond)
+    tools.push({
+      name: "adjust_grades_or_average",
+      description:
+        "OUTIL PRIORITAIRE pour modifier la MOYENNE d'un ou plusieurs élèves (ex: +1 pt sur la moyenne du 1er, diminuer la moyenne d'un élève, fixer une moyenne cible à 15, repêcher à 10 ceux entre 9.5 et 9.99) OU pour ajuster des NOTES précises ou globales (ex: augmenter/diminuer la note 3 du 1er, +10%, arrondir au demi-point, fixer un plancher/plafond).",
+      parameters: {
+        type: "object",
+        properties: {
+          operation: {
+            type: "string",
+            enum: ["adjust_student_average", "adjust_grades"],
+            description:
+              "adjust_student_average = ajuster/cibler la moyenne d'un ou plusieurs élèves (recalcule les notes sous-jacentes) ; adjust_grades = ajuster directement une ou plusieurs colonnes de notes (± points, %, arrondi, plancher/plafond).",
+          },
+          studentName: {
+            type: "string",
+            description: "Nom d'un élève ou ordinal ('1er', 'premier', '2e', '3e', 'dernier', 'major').",
+          },
+          studentNames: { type: "array", items: { type: "string" } },
+          rowIndex: { type: "number", description: "Numéro de ligne visuel (1-based)." },
+          rowIndices: { type: "array", items: { type: "number" } },
+          condition: {
+            type: "string",
+            enum: [
+              "average_below",
+              "average_above",
+              "average_between",
+              "note_below",
+              "note_above",
+              "rank_top",
+              "rank_bottom",
+              "mention_equals",
+              "empty_notes",
+            ],
+          },
+          threshold: { type: "number" },
+          minThreshold: { type: "number" },
+          maxThreshold: { type: "number" },
+          mentionLabel: { type: "string" },
+          mode: { type: "string", enum: ["all", "specific"] },
+          colNumber: { type: "number", description: "Numéro de colonne de note ciblée (1-based, ex: 3 pour Note 3)." },
+          colNumbers: { type: "array", items: { type: "number" } },
+          viaColNumber: {
+            type: "number",
+            description: "Pour adjust_student_average : colonne précise à modifier pour atteindre la nouvelle moyenne (ex: 3 pour ajuster via Note 3).",
+          },
+          delta: { type: "number", description: "Décalage en points sur les notes (ex: +1, -1.5)." },
+          deltaAverage: { type: "number", description: "Décalage en points sur la moyenne (ex: +1, -0.5)." },
+          targetAverage: { type: "number", description: "Moyenne cible exacte à atteindre (ex: 15 ou 10 pour un repêchage)." },
+          percent: { type: "number", description: "Variation en pourcentage (ex: +10 pour +10%, -5 pour -5%)." },
+          factor: { type: "number", description: "Multiplicateur direct (ex: 1.1)." },
+          roundStep: { type: "number", description: "Pas d'arrondi (ex: 0.5 pour demi-point, 0.25, 1 pour entier)." },
+          roundMode: { type: "string", enum: ["nearest", "up", "down"] },
+          minClamp: { type: "number", description: "Note plancher minimale." },
+          maxClamp: { type: "number", description: "Note plafond maximale." },
+        },
+        required: ["operation"],
+      },
+      schema: z.object({
+        operation: z.enum(["adjust_student_average", "adjust_grades"]),
+        studentName: z.string().optional(),
+        studentNames: z.array(z.string()).optional(),
+        rowIndex: z.number().int().positive().optional(),
+        rowIndices: z.array(z.number().int().positive()).optional(),
+        condition: z
+          .enum([
+            "average_below",
+            "average_above",
+            "average_between",
+            "note_below",
+            "note_above",
+            "rank_top",
+            "rank_bottom",
+            "mention_equals",
+            "empty_notes",
+          ])
+          .optional(),
+        threshold: z.number().optional(),
+        minThreshold: z.number().optional(),
+        maxThreshold: z.number().optional(),
+        mentionLabel: z.string().optional(),
+        mode: z.enum(["all", "specific"]).optional(),
+        colNumber: z.number().int().min(1).max(30).optional(),
+        colNumbers: z.array(z.number().int().min(1).max(30)).optional(),
+        viaColNumber: z.number().int().min(1).max(30).optional(),
+        delta: z.number().min(-1000).max(1000).optional(),
+        deltaAverage: z.number().min(-1000).max(1000).optional(),
+        targetAverage: z.number().min(0).max(1000).optional(),
+        percent: z.number().min(-100).max(500).optional(),
+        factor: z.number().min(0.05).max(10).optional(),
+        roundStep: z.number().positive().max(10).optional(),
+        roundMode: z.enum(["nearest", "up", "down"]).optional(),
+        minClamp: z.number().min(0).max(1000).optional(),
+        maxClamp: z.number().min(0).max(1000).optional(),
+      }),
+      execute: (args) => {
+        if (sheetContext?.sheetKind && sheetContext.sheetKind !== "subject") {
+          return {
+            ok: false,
+            error:
+              "Ce tableau est une Moyenne Générale calculée automatiquement depuis vos matières : pour ajuster des notes ou une moyenne de matière existante, l'utilisateur doit ouvrir la feuille de matière concernée.",
+            instruction:
+              "Appelle report_unsupported_request si la cellule est déjà calculée automatiquement, ou utilise edit_general_average_sheet s'il s'agit d'une case vide.",
+          };
+        }
+        const hasMathOp =
+          args.delta !== undefined ||
+          args.deltaAverage !== undefined ||
+          args.targetAverage !== undefined ||
+          args.percent !== undefined ||
+          args.factor !== undefined ||
+          args.roundStep !== undefined ||
+          args.minClamp !== undefined ||
+          args.maxClamp !== undefined;
+        if (!hasMathOp) {
+          return {
+            ok: false,
+            error:
+              "Précise au moins un paramètre mathématique (deltaAverage, targetAverage, delta, percent, roundStep, minClamp ou maxClamp).",
+          };
+        }
+        const { operation, ...rest } = args;
+        collectedActions.push({ type: operation, ...rest });
+        return {
+          ok: true,
+          summary: `Ajustement validé (${operation})`,
+          data: {
+            operation,
+            target: args.studentName || args.condition || "all",
+            colNumber: args.colNumber ?? args.viaColNumber ?? null,
+          },
+        };
+      },
+    });
+
+    // 4C. Gestion des lignes, doublons et casse des noms (ajouter lignes vides, fusionner doublons, MAJUSCULES/Minuscules/Title Case)
+    tools.push({
+      name: "manage_rows_and_names",
+      description:
+        "Ajoute des lignes vides en bas du tableau, supprime/fusionne automatiquement les élèves en doublon (même nom), ou formate les noms d'élèves (MAJUSCULES, Majuscule Initiale, minuscules, nettoyage des espaces).",
+      parameters: {
+        type: "object",
+        properties: {
+          operation: {
+            type: "string",
+            enum: ["add_empty_rows", "deduplicate_students", "format_student_names"],
+          },
+          count: { type: "number", description: "Nombre de lignes vides à ajouter (1 à 100)." },
+          formatMode: {
+            type: "string",
+            enum: ["uppercase", "titlecase", "lowercase", "trim"],
+            description: "Pour format_student_names.",
+          },
+          studentName: { type: "string" },
+          studentNames: { type: "array", items: { type: "string" } },
+        },
+        required: ["operation"],
+      },
+      schema: z.object({
+        operation: z.enum(["add_empty_rows", "deduplicate_students", "format_student_names"]),
+        count: z.number().int().min(1).max(100).optional(),
+        formatMode: z.enum(["uppercase", "titlecase", "lowercase", "trim"]).optional(),
+        studentName: z.string().optional(),
+        studentNames: z.array(z.string()).optional(),
+      }),
+      execute: (args) => {
+        if (sheetContext?.sheetKind && sheetContext.sheetKind !== "subject") {
+          return {
+            ok: false,
+            error: "Cette opération s'applique uniquement dans un tableau de matière.",
+          };
+        }
+        if (args.operation === "deduplicate_students" && !userAuthorizedDedup) {
+          return {
+            ok: false,
+            error: "Suppression de doublons refusée car l'utilisateur ne l'a pas demandée.",
+          };
+        }
+        if (args.operation === "format_student_names") {
+          collectedActions.push({
+            type: "format_student_names",
+            mode: args.formatMode || "uppercase",
+            ...(args.studentName ? { studentName: args.studentName } : {}),
+            ...(args.studentNames ? { studentNames: args.studentNames } : {}),
+          });
+        } else if (args.operation === "add_empty_rows") {
+          collectedActions.push({ type: "add_empty_rows", count: args.count || 5 });
+        } else {
+          collectedActions.push({ type: "deduplicate_students" });
+        }
+        return {
+          ok: true,
+          summary: `Opération validée (${args.operation})`,
+        };
+      },
+    });
+
+    // 4D. Édition autorisée dans Moyenne Générale (cases vides uniquement, matricules, fusion de deux doublons)
+    if (sheetContext?.sheetKind && sheetContext.sheetKind !== "subject") {
+      tools.push({
+        name: "edit_general_average_sheet",
+        description:
+          "Dans un tableau de Moyenne Générale (trimestrielle ou annuelle) : renseigne ou efface une moyenne manuelle sur une case VIDE, met à jour le matricule d'un élève, ou fusionne deux lignes doublons d'un même élève.",
+        parameters: {
+          type: "object",
+          properties: {
+            operation: {
+              type: "string",
+              enum: ["set_cell", "clear_cell", "set_matricule", "merge_students"],
+            },
+            studentName: { type: "string" },
+            rowIndex: { type: "number" },
+            subjectName: { type: "string" },
+            termName: { type: "string" },
+            value: { type: "number" },
+            matricule: { type: "string" },
+            secondaryStudentName: { type: "string" },
+          },
+          required: ["operation", "studentName"],
+        },
+        schema: z.object({
+          operation: z.enum(["set_cell", "clear_cell", "set_matricule", "merge_students"]),
+          studentName: z.string().min(1),
+          rowIndex: z.number().int().positive().optional(),
+          subjectName: z.string().optional(),
+          termName: z.string().optional(),
+          value: z.number().min(0).max(1000).optional(),
+          matricule: z.string().max(48).optional(),
+          secondaryStudentName: z.string().optional(),
+        }),
+        execute: (args) => {
+          collectedActions.push({ type: "set_general_average_override", ...args });
+          return {
+            ok: true,
+            summary: `Modification Moyenne Générale validée (${args.operation})`,
+          };
+        },
+      });
+    }
+
+    // 5. Colonnes de notes, barèmes & déplacements
     tools.push({
       name: "manage_columns_and_grades",
       description:
-        "Gère les colonnes de notes (ajouter, renommer, supprimer, échanger, déplacer, remplir une colonne), ajuste les notes (± points), change le barème max des notes (/20, /40...) ou copie les élèves d'une autre matière.",
+        "Gère les colonnes de notes (ajouter, renommer, supprimer, échanger, déplacer, remplir une colonne ou copier une colonne/moyenne), change le barème max des notes (/20, /40...), déplace un élève ou copie les élèves d'une autre matière.",
       parameters: {
         type: "object",
         properties: {
@@ -630,17 +920,30 @@ export async function runTeacherDelmasAgentLoop(
           coeffEval: { type: "number" },
           count: { type: "number" },
           colNumber: { type: "number" },
+          colNumbers: { type: "array", items: { type: "number" } },
           colNumber1: { type: "number" },
           colNumber2: { type: "number" },
           fromColNumber: { type: "number" },
           toColNumber: { type: "number" },
+          copyFromColNumber: { type: "number" },
+          fromAverage: { type: "boolean" },
           direction: { type: "string", enum: ["left", "right", "up", "down"] },
           value: { type: "string" },
           onlyEmpty: { type: "boolean" },
           mode: { type: "string", enum: ["all", "specific"] },
           delta: { type: "number" },
+          percent: { type: "number" },
+          roundStep: { type: "number" },
+          roundMode: { type: "string", enum: ["nearest", "up", "down"] },
+          minClamp: { type: "number" },
+          maxClamp: { type: "number" },
           convertExisting: { type: "boolean" },
           studentName: { type: "string" },
+          studentNames: { type: "array", items: { type: "string" } },
+          condition: { type: "string" },
+          threshold: { type: "number" },
+          minThreshold: { type: "number" },
+          maxThreshold: { type: "number" },
           rowIndex: { type: "number" },
           toRowIndex: { type: "number" },
           sourceSubjectName: { type: "string" },
@@ -666,17 +969,30 @@ export async function runTeacherDelmasAgentLoop(
         coeffEval: z.number().positive().max(100).optional(),
         count: z.number().int().min(1).max(15).optional(),
         colNumber: z.number().int().min(1).max(30).optional(),
+        colNumbers: z.array(z.number().int().min(1).max(30)).optional(),
         colNumber1: z.number().int().min(1).max(30).optional(),
         colNumber2: z.number().int().min(1).max(30).optional(),
         fromColNumber: z.number().int().min(1).max(30).optional(),
         toColNumber: z.number().int().min(1).max(30).optional(),
+        copyFromColNumber: z.number().int().min(1).max(30).optional(),
+        fromAverage: z.boolean().optional(),
         direction: z.enum(["left", "right", "up", "down"]).optional(),
         value: z.union([z.string(), z.number()]).optional(),
         onlyEmpty: z.boolean().optional(),
         mode: z.enum(["all", "specific"]).optional(),
-        delta: z.number().min(-100).max(100).optional(),
+        delta: z.number().min(-1000).max(1000).optional(),
+        percent: z.number().min(-100).max(500).optional(),
+        roundStep: z.number().positive().max(10).optional(),
+        roundMode: z.enum(["nearest", "up", "down"]).optional(),
+        minClamp: z.number().min(0).max(1000).optional(),
+        maxClamp: z.number().min(0).max(1000).optional(),
         convertExisting: z.boolean().optional(),
         studentName: z.string().optional(),
+        studentNames: z.array(z.string()).optional(),
+        condition: z.string().optional(),
+        threshold: z.number().optional(),
+        minThreshold: z.number().optional(),
+        maxThreshold: z.number().optional(),
         rowIndex: z.number().int().positive().optional(),
         toRowIndex: z.number().int().positive().optional(),
         sourceSubjectName: z.string().optional(),
@@ -956,6 +1272,12 @@ export async function runTeacherDelmasAgentLoop(
 [MODE AGENT OUTILS NATIFS ACTIF — PRIORITAIRE SUR <delmas_actions>] :
 - Tu disposes de VRAIS outils typés et vérifiés (${tools.map((t) => t.name).join(", ")}).
 - Pour agir sur le tableau, **APPELLE DIRECTEMENT LES OUTILS** (tu n'as PAS besoin d'écrire de balise texte <delmas_actions>).
+- **MODIFIER UNE MOYENNE OU UNE NOTE SPÉCIFIQUE** : utilise \`adjust_grades_or_average\` !
+  * Ex: « augmente de +1 la moyenne du 1er » → \`adjust_grades_or_average({ operation: "adjust_student_average", studentName: "1er", deltaAverage: 1 })\`
+  * Ex: « diminue de 1,5 la note 3 du premier » → \`adjust_grades_or_average({ operation: "adjust_grades", studentName: "1er", mode: "specific", colNumber: 3, delta: -1.5 })\`
+  * Ex: « repêche à 10 tous les élèves entre 9,5 et 9,99 » → \`adjust_grades_or_average({ operation: "adjust_student_average", condition: "average_between", minThreshold: 9.5, maxThreshold: 9.99, targetAverage: 10 })\`
+  * Ex: « arrondis toutes les notes au demi-point supérieur » → \`adjust_grades_or_average({ operation: "adjust_grades", mode: "all", roundStep: 0.5, roundMode: "up" })\`
+- **DEMANDE IMPOSSIBLE = HONNÊTETÉ ABSOLUE** : si l'utilisateur demande quelque chose d'impossible ici (créer/supprimer école/classe/trimestre/matière, modifier une autre matière non ouverte, modifier une moyenne auto-calculée dans Moyenne Générale, téléverser/générer une vraie photo de profil élève, envoyer un email/SMS/WhatsApp, éditer un fichier local sur son appareil), appelle \`report_unsupported_request\` et explique-le honnêtement en 1 à 2 phrases avec l'étape manuelle exacte.
 - Tu peux appeler PLUSIEURS outils en parallèle ou en séquence dans cette boucle (multi-tâches simultanées).
 - Si un outil renvoie \`ok: false\` (ex: import incomplet 2/10 élèves ou champ invalide), CORRIGE immédiatement en rappelant l'outil avec les données complètes avant de répondre !
 - Ne dis JAMAIS « J'ai fait » ou « C'est terminé » sans avoir réellement appelé un outil d'action qui a renvoyé \`ok: true\`.
@@ -977,8 +1299,13 @@ export async function runTeacherDelmasAgentLoop(
     requester,
     stripReasoning,
     onBeforeFinish: ({ finalText }) => {
-      if (allowActions && collectedActions.length === 0 && UNFULFILLED_CLAIM_REGEX.test(normalizeStr(finalText))) {
-        return "ATTENTION : tu viens d'affirmer avoir modifié le tableau mais tu n'as appelé AUCUN outil d'action ! Appelle immédiatement l'outil approprié (avec 100 % des données si c'est un import) puis confirme en 1 phrase courte.";
+      if (
+        allowActions &&
+        !unsupportedReported &&
+        collectedActions.length === 0 &&
+        UNFULFILLED_CLAIM_REGEX.test(normalizeStr(finalText))
+      ) {
+        return "ATTENTION : tu viens d'affirmer avoir modifié le tableau mais tu n'as appelé AUCUN outil d'action ! Appelle immédiatement l'outil approprié (ou report_unsupported_request si l'action est réellement impossible) puis réponds honnêtement en 1 phrase courte.";
       }
       return null;
     },

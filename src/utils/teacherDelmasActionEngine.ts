@@ -316,7 +316,7 @@ export interface TeacherDelmasActiveContext {
   subjectCoefficient?: number | null;
   averageCardId?: string;
   averageCardTitle?: string;
-  sortMode: GradebookSortMode;
+  sortMode: GradebookSortMode | 'alpha_desc';
   showMatricule: boolean;
   averageScale: number;
   mentionRules: CustomMentionRule[];
@@ -356,6 +356,9 @@ export type TeacherDelmasActionType =
   | 'update_students'
   | 'set_students'
   | 'remove_students'
+  | 'add_empty_rows'
+  | 'deduplicate_students'
+  | 'format_student_names'
   | 'clear_all'
   | 'clear_names'
   | 'clear_matricules'
@@ -369,6 +372,8 @@ export type TeacherDelmasActionType =
   | 'fill_note_column'
   | 'move_student'
   | 'adjust_grades'
+  | 'adjust_student_average'
+  | 'set_general_average_override'
   | 'set_sort_mode'
   | 'set_show_matricule'
   | 'set_average_scale'
@@ -398,6 +403,9 @@ export const VALID_TEACHER_DELMAS_ACTION_TYPES: ReadonlySet<string> = new Set<Te
   'update_students',
   'set_students',
   'remove_students',
+  'add_empty_rows',
+  'deduplicate_students',
+  'format_student_names',
   'clear_all',
   'clear_names',
   'clear_matricules',
@@ -411,6 +419,8 @@ export const VALID_TEACHER_DELMAS_ACTION_TYPES: ReadonlySet<string> = new Set<Te
   'fill_note_column',
   'move_student',
   'adjust_grades',
+  'adjust_student_average',
+  'set_general_average_override',
   'set_sort_mode',
   'set_show_matricule',
   'set_average_scale',
@@ -805,7 +815,7 @@ export function classifyTeacherDelmasIntent(params: {
   );
 
   const tableDomainRegex =
-    /\b(tableau|tableaux|tableur|tableurs|feuille|feuilles|cellule|cellules|case|cases|ligne|lignes|colone|colones|colonne|colonnes|disposition|emplacement|reorganise|reorganiser|deplace|deplacer|derriere|devant|eleve|eleves|etudiant|etudiants|apprenant|apprenants|nom|noms|prenom|prenoms|premier|premiere|1er|1ere|deuxieme|2e|2eme|troisieme|3e|3eme|dernier|derniere|meilleur|meilleure|major|note|notes|moyenne|moyennes|bareme|baremes|mention|mentions|rang|rangs|classement|classements|matricule|matricules|coeff|coeffs|coefficient|coefficients|devoir|devoirs|interro|interros|interrogation|interrogations|compo|compos|composition|examen|examens|evaluation|evaluations|point|points|pt|pts|classe|classes|matiere|matieres|trimestre|trimestres|semestre|semestres|annuel|annuelle|ordre de merite|merite|alphabetique|ordre initial|zoom|largeur|largeurs|hauteur|hauteurs|taille|tailles|excel|xlsx|pdf|word|docx|export|exporter|telecharge|telecharger|copier|presse-papiers|annule|annuler|retablis|retablir|undo|redo|gras|italique|souligne|soulignee|barre|barree|couleur|couleurs|couleure|rouge|rouges|vert|verte|verts|vertes|bleu|bleue|bleus|bleues|jaune|jaunes|orange|gris|grise|violet|violette|rose|noir|noire|blanc|blanche|cyan|marron|dore|doree|pastel|fond|arriere-plan|surligne|mise en forme|style|styles|aligne|alignement|centrer|gauche|droite|police|polices|ecriture|ecritures|typographie|caracteres|en-tete|entete|entetes|titre|titres|plein ecran|ecran|affichage|agrandi|agrandis|agrandir|grandis|grandir|elargis|elargir|reduis|reduire|retrecis|retrecir|grossis|grossir|rapetisse|rapetisser|gros|grosse|grand|grande|petit|petite|defaut|transparent|vierge|photo|profil|total|decision|outil|outils|table|tables|sheet|sheets|student|students|grade|grades|score|scores|average|averages|rank|sort|column|columns|row|rows|font|width|height|color|fullscreen)\b/i;
+    /\b(tableau|tableaux|tableur|tableurs|feuille|feuilles|cellule|cellules|case|cases|ligne|lignes|colone|colones|colonne|colonnes|disposition|emplacement|reorganise|reorganiser|deplace|deplacer|derriere|devant|eleve|eleves|etudiant|etudiants|apprenant|apprenants|nom|noms|prenom|prenoms|premier|premiere|1er|1ere|deuxieme|2e|2eme|troisieme|3e|3eme|dernier|derniere|meilleur|meilleure|major|note|notes|moyenne|moyennes|bareme|baremes|mention|mentions|rang|rangs|classement|classements|matricule|matricules|coeff|coeffs|coefficient|coefficients|devoir|devoirs|interro|interros|interrogation|interrogations|compo|compos|composition|examen|examens|evaluation|evaluations|point|points|pt|pts|classe|classes|matiere|matieres|trimestre|trimestres|semestre|semestres|annuel|annuelle|ordre de merite|merite|alphabetique|ordre initial|zoom|largeur|largeurs|hauteur|hauteurs|taille|tailles|excel|xlsx|pdf|word|docx|export|exporter|telecharge|telecharger|copier|presse-papiers|annule|annuler|retablis|retablir|undo|redo|gras|italique|souligne|soulignee|barre|barree|couleur|couleurs|couleure|rouge|rouges|vert|verte|verts|vertes|bleu|bleue|bleus|bleues|jaune|jaunes|orange|gris|grise|violet|violette|rose|noir|noire|blanc|blanche|cyan|marron|dore|doree|pastel|fond|arriere-plan|surligne|mise en forme|style|styles|aligne|alignement|centrer|gauche|droite|police|polices|ecriture|ecritures|typographie|caracteres|en-tete|entete|entetes|titre|titres|plein ecran|ecran|affichage|agrandi|agrandis|agrandir|grandis|grandir|elargis|elargir|reduis|reduire|retrecis|retrecir|grossis|grossir|rapetisse|rapetisser|gros|grosse|grand|grande|petit|petite|defaut|transparent|vierge|photo|profil|total|decision|outil|outils|doublon|doublons|majuscule|majuscules|minuscule|minuscules|repechage|repeche|arrondi|demi-point|table|tables|sheet|sheets|student|students|grade|grades|score|scores|average|averages|rank|sort|column|columns|row|rows|font|width|height|color|fullscreen)\b/i;
 
   const mentionsTableDomain =
     tableDomainRegex.test(norm) ||
@@ -970,13 +980,13 @@ export function classifyTeacherDelmasIntent(params: {
     };
   }
 
-  // Commandes explicites d'action sur le tableau ou les fonctionnalités de l'interface (tolérant aux fautes courantes : metre, enlrver, agrandi...)
+  // Commandes explicites d'action sur le tableau ou les fonctionnalités de l'interface (tolérant aux fautes courantes : metre, orgmenter, ogmenter, enlrver, agrandi...)
   const strongActionVerbRegex =
-    /\b(ajout\w*|rajout\w*|inser\w*|saisi\w*|entre|entrer|renseign\w*|rempli\w*|ecri\w*|mets|met|metr\w*|mettre|remet\w*|restaur\w*|attribu\w*|noter|import\w*|cree\w*|creer|modifi\w*|chang\w*|remplac\w*|corrig\w*|renomm\w*|actualis\w*|passe|passer|ramen\w*|converti\w*|regl\w*|configur\w*|defini\w*|personnalis\w*|ajust\w*|augment\w*|diminu\w*|baiss\w*|agrandi\w*|grandi\w*|elargi\w*|redui\w*|retreci\w*|grossi\w*|rapetiss\w*|allong\w*|rehauss\w*|rends|rendre|retir\w*|enlev\w*|enl[a-z]?v\w*|ote|oter|bonus|malus|supprim\w*|effac\w*|vide|vider|nettoi\w*|nettoyer|trie\w*|trier|classe|classer|ordonn\w*|cach\w*|masqu\w*|activ\w*|desactiv\w*|color\w*|peins|peindre|decolor\w*|surlign\w*|soulign\w*|barr\w*|format\w*|appliqu\w*|utilis\w*|align\w*|centr\w*|deplac\w*|mont\w*|descend\w*|remont\w*|invers\w*|echang\w*|copi\w*|recopi\w*|dupliqu\w*|export\w*|telecharg\w*|imprim\w*|enregistr\w*|sauvegard\w*|save|annul\w*|retabli\w*|undo|redo|zoom\w*|dezoom\w*|reinitialis\w*|quitt\w*|add|insert|fill|write|put|set|update|edit|modify|replace|rename|fix|adjust|increase|decrease|enlarge|widen|shrink|resize|convert|delete|remove|clear|clean|wipe|sort|hide|color|highlight|bold|italic|underline|strike|strikethrough|format|align|center|copy|export|download|reset|restore)\b/i;
+    /\b(ajout\w*|rajout\w*|inser\w*|saisi\w*|entre|entrer|renseign\w*|rempli\w*|ecri\w*|mets|met|metr\w*|mettre|remet\w*|restaur\w*|attribu\w*|noter|import\w*|cree\w*|creer|modifi\w*|chang\w*|remplac\w*|corrig\w*|renomm\w*|actualis\w*|passe|passer|ramen\w*|converti\w*|regl\w*|configur\w*|defini\w*|personnalis\w*|ajust\w*|augment\w*|orgment\w*|ogment\w*|augmant\w*|diminu\w*|baiss\w*|bais\w*|repech\w*|arrondi\w*|plafonn\w*|relev\w*|boost\w*|fusionn\w*|dedoubl\w*|agrandi\w*|grandi\w*|elargi\w*|redui\w*|retreci\w*|grossi\w*|rapetiss\w*|allong\w*|rehauss\w*|rends|rendre|retir\w*|enlev\w*|enl[a-z]?v\w*|ote|oter|bonus|malus|supprim\w*|effac\w*|vide|vider|nettoi\w*|nettoyer|trie\w*|trier|classe|classer|ordonn\w*|cach\w*|masqu\w*|activ\w*|desactiv\w*|color\w*|peins|peindre|decolor\w*|surlign\w*|soulign\w*|barr\w*|format\w*|appliqu\w*|utilis\w*|align\w*|centr\w*|deplac\w*|mont\w*|descend\w*|remont\w*|invers\w*|echang\w*|copi\w*|recopi\w*|dupliqu\w*|export\w*|telecharg\w*|imprim\w*|enregistr\w*|sauvegard\w*|save|annul\w*|retabli\w*|undo|redo|zoom\w*|dezoom\w*|reinitialis\w*|quitt\w*|add|insert|fill|write|put|set|update|edit|modify|replace|rename|fix|adjust|increase|decrease|round|clamp|merge|deduplicate|uppercase|lowercase|enlarge|widen|shrink|resize|convert|delete|remove|clear|clean|wipe|sort|hide|color|highlight|bold|italic|underline|strike|strikethrough|format|align|center|copy|export|download|reset|restore)\b/i;
 
-  // Raccourcis de saisie, de mise en forme ou de directives naturelles (ex: "il faut/faux ...", "couleur verte", "sans couleur", "plus grand", "+1 pt", "moyenne sur 40", "ordre de mérite", "zoom 80%", "en gras", "plein écran", "en pdf", "je dis là y'a son nom", "tout ces information", "sans rien dedans")
+  // Raccourcis de saisie, de mise en forme ou de directives naturelles (ex: "il faut/faux ...", "couleur verte", "sans couleur", "plus grand", "+1 pt", "+10%", "moyenne sur 40", "ordre de mérite", "zoom 80%", "en gras", "en majuscules", "au demi-point", "plein écran", "en pdf", "je dis là y'a son nom", "tout ces information", "sans rien dedans")
   const shorthandActionRegex =
-    /([+-]\s*\d+(?:[.,]\d+)?\s*(?:pt|pts|point|points)\b)|(\b(?:moyenne|notes?|toutes les notes|note\s*\d+)\s+sur\s+\d+\b)|(\b(?:ordre de merite|ordre alphabetique|ordre initial|z\s*(?:a|->|vers)\s*a|a\s*(?:a|->|vers)\s*z)\b)|(\bzoom\s*(?:a\s*)?\d+\s*%?)|(\b\d+(?:[.,]\d+)?\s*\/\s*\d+\b)|(\b(?:il\s+fau[tx]|fau[tx]\s+\w+|tu\s+dois|je\s+veux|je\s+voudrais|j'aimerais|fais\s+\w+)\b)|(\b(?:une\s+)?couleur\s+(?:rouge|vert\w*|bleu\w*|jaune|orange|gris\w*|violet\w*|rose|noir\w*|blanc\w*|cyan|marron|dore\w*)\b)|(\b(?:sans\s+couleur|pas\s+de\s+couleur|aucune\s+couleur|sans\s+fond|pas\s+de\s+fond|sans\s+rien|a\s+blanc|a\s+zero|table\s+rase|place\s+nette|le\s+reste|les\s+autres|en\s+gras|en\s+italique|en\s+rouge|en\s+bleu\w*|en\s+vert\w*|en\s+jaune|en\s+orange|en\s+violet\w*|en\s+rose|en\s+gris\w*|en\s+noir\w*|en\s+blanc\w*|plus\s+grand\w*|plus\s+gros\w*|plus\s+petit\w*|plus\s+large|moins\s+large|taille\s+\d+|en\s+pdf|en\s+word|en\s+excel|plein\s+ecran|une\s+ligne\s+sur\s+deux|tout(?:es?)?\s+(?:ces|les)\s+(?:info\w*|donn\w*|eleve\w*|note\w*))\b)/i;
+    /([+-]\s*\d+(?:[.,]\d+)?\s*(?:pt|pts|point|points|%)\b)|(\b(?:moyenne|notes?|toutes les notes|note\s*\d+)\s+sur\s+\d+\b)|(\b(?:ordre de merite|ordre alphabetique|ordre initial|z\s*(?:a|->|vers)\s*a|a\s*(?:a|->|vers)\s*z)\b)|(\bzoom\s*(?:a\s*)?\d+\s*%?)|(\b\d+(?:[.,]\d+)?\s*\/\s*\d+\b)|(\b(?:il\s+fau[tx]|fau[tx]\s+\w+|tu\s+dois|je\s+veux|je\s+voudrais|j'aimerais|fais\s+\w+)\b)|(\b(?:une\s+)?couleur\s+(?:rouge|vert\w*|bleu\w*|jaune|orange|gris\w*|violet\w*|rose|noir\w*|blanc\w*|cyan|marron|dore\w*)\b)|(\b(?:sans\s+couleur|pas\s+de\s+couleur|aucune\s+couleur|sans\s+fond|pas\s+de\s+fond|sans\s+rien|a\s+blanc|a\s+zero|table\s+rase|place\s+nette|le\s+reste|les\s+autres|en\s+gras|en\s+italique|en\s+majuscules?|en\s+minuscules?|au\s+demi[- ]?point|sans\s+doublons?|un\s+plus|en\s+rouge|en\s+bleu\w*|en\s+vert\w*|en\s+jaune|en\s+orange|en\s+violet\w*|en\s+rose|en\s+gris\w*|en\s+noir\w*|en\s+blanc\w*|plus\s+grand\w*|plus\s+gros\w*|plus\s+petit\w*|plus\s+large|moins\s+large|taille\s+\d+|en\s+pdf|en\s+word|en\s+excel|plein\s+ecran|une\s+ligne\s+sur\s+deux|tout(?:es?)?\s+(?:ces|les)\s+(?:info\w*|donn\w*|eleve\w*|note\w*))\b)/i;
 
   // Questions de pure lecture (qui, combien, quel, dans quelle classe, bilan, résumé, liste, compare...)
   const readOnlyQueryRegex =
@@ -1324,35 +1334,44 @@ function buildActionsCatalogForSheet(sheetKind: TeacherDelmasActiveContext['shee
 
   if (sheetKind === 'term_average') {
     return `[ACTIONS DISPONIBLES SUR CE TABLEAU DE MOYENNE GÉNÉRALE DU TRIMESTRE] :
-- Modifier le coefficient d'une matière : \`{ "type": "set_subject_coefficient", "subjectName": "Mathématiques", "coefficient": 4 }\`${formattingAndTools}`;
+- Modifier le coefficient d'une matière : \`{ "type": "set_subject_coefficient", "subjectName": "Mathématiques", "coefficient": 4 }\`
+- Renseigner/modifier une moyenne manuelle sur une case VIDE d'une matière, mettre à jour le matricule d'un élève ou fusionner deux lignes doublons :
+  \`{ "type": "set_general_average_override", "operation": "set_cell" | "clear_cell" | "set_matricule" | "merge_students", "studentName": "KOUASSI Jean", "subjectName": "Physique", "value": 14.5, "matricule": "24-BTS-001", "secondaryStudentName": "Jean KOUASSI" }\`${formattingAndTools}`;
   }
 
   if (sheetKind === 'annual_average') {
     return `[ACTIONS DISPONIBLES SUR CE TABLEAU DE MOYENNE GÉNÉRALE ANNUELLE] :
-- Modifier le coefficient d'un trimestre : \`{ "type": "set_term_coefficient", "termName": "Trimestre 1", "coefficient": 2 }\`${formattingAndTools}`;
+- Modifier le coefficient d'un trimestre : \`{ "type": "set_term_coefficient", "termName": "Trimestre 1", "coefficient": 2 }\`
+- Renseigner/modifier une moyenne manuelle sur une case VIDE d'un trimestre, mettre à jour le matricule d'un élève ou fusionner deux lignes doublons :
+  \`{ "type": "set_general_average_override", "operation": "set_cell" | "clear_cell" | "set_matricule" | "merge_students", "studentName": "KOUASSI Jean", "termName": "Trimestre 2", "value": 13.5, "matricule": "24-BTS-001", "secondaryStudentName": "Jean KOUASSI" }\`${formattingAndTools}`;
   }
 
   return `[ACTIONS DISPONIBLES SUR CE TABLEAU DE MATIÈRE] :
 - Ajouter de NOUVEAUX élèves (remplit les lignes vides puis en crée si besoin ; n'inclus \`"matricule"\` QUE si l'utilisateur ou le fichier fournit un vrai matricule) :
   \`{ "type": "add_students", "students": [ { "name": "KOUASSI Delmas", "notes": ["15", "14.5"] } ] }\`
-- Modifier un ou plusieurs élèves EXISTANTS (préserve leurs autres notes non mentionnées ; n'inclus \`"matricule"\` QUE si demandé ou présent dans le fichier) :
-  \`{ "type": "update_students", "updates": [ { "studentId": "...", "matchName": "DKD", "newName": "Nouveau Nom", "notes": { "1": "16", "2": "17.5" } } ] }\`
+- Modifier un ou plusieurs élèves EXISTANTS (supporte aussi les ordinaux \`"1er"\`, \`"2e"\`, \`"dernier"\` et les décalages relatifs \`"+1"\`, \`"-0.5"\` sur une note) :
+  \`{ "type": "update_students", "updates": [ { "studentId": "...", "matchName": "DKD", "newName": "Nouveau Nom", "notes": { "1": "16", "3": "+1.5" } } ] }\`
+- **Ajuster / modifier directement la MOYENNE d'un ou plusieurs élèves** (augmenter/diminuer de ± points, fixer une moyenne cible exacte, appliquer un % ou faire un repêchage conditionnel ex: remonter à 10 ceux entre 9,5 et 9,99 — recalcule exactement les notes sous-jacentes ; option \`"viaColNumber"\` pour n'ajuster qu'une note précise) :
+  \`{ "type": "adjust_student_average", "studentName": "1er", "studentNames": ["A", "B"], "rowIndex": 1, "condition": "average_below" | "average_above" | "average_between" | "rank_top" | "rank_bottom" | "mention_equals", "threshold": 10, "minThreshold": 9.5, "maxThreshold": 9.99, "deltaAverage": 1, "targetAverage": 15, "percent": 10, "viaColNumber": 3 }\`
+- **Ajuster des NOTES (± points, pourcentage, arrondi, plancher/plafond)** — sur TOUT le tableau OU sur un élève précis (nom ou ordinal \`"1er"\`, \`"dernier"\`) OU selon condition, sur toutes les colonnes OU une/plusieurs notes précises (\`colNumber\` / \`colNumbers\`) :
+  \`{ "type": "adjust_grades", "studentName": "1er", "studentNames": ["A"], "rowIndex": 1, "condition": "average_below" | "average_above" | "average_between" | "note_below" | "note_above" | "rank_top" | "rank_bottom" | "mention_equals", "threshold": 10, "minThreshold": 8, "maxThreshold": 9.99, "mode": "all" | "specific", "colNumber": 3, "colNumbers": [1, 3], "delta": -1.5, "percent": 10, "roundStep": 0.5, "roundMode": "nearest" | "up" | "down", "minClamp": 5, "maxClamp": 18 }\`
 - Remplacer toute la liste des élèves : \`{ "type": "set_students", "students": [ { "name": "...", "notes": ["12"] } ] }\`
+- Ajouter des lignes vides en bas du tableau : \`{ "type": "add_empty_rows", "count": 10 }\`
+- Supprimer/fusionner automatiquement les élèves en doublon (même nom) en conservant leurs notes : \`{ "type": "deduplicate_students" }\`
+- Formater la casse / nettoyer les noms d'élèves (MAJUSCULES, Majuscule Initiale, minuscules, espaces) : \`{ "type": "format_student_names", "mode": "uppercase" | "titlecase" | "lowercase" | "trim", "studentName": "..." }\`
+- Modifier le coefficient de cette matière directement : \`{ "type": "set_subject_coefficient", "coefficient": 3 }\`
 - Déplacer un élève (monter/descendre ou placer à une ligne précise) : \`{ "type": "move_student", "studentName": "DKD", "rowIndex": 3, "direction": "up" | "down", "toRowIndex": 1 }\`
 - Supprimer des élèves ou les lignes vides : \`{ "type": "remove_students", "names": ["Nom"], "rowIndices": [3], "removeEmpty": false }\`
 - **Vider TOUT le tableau d'un coup** (efface tous les élèves, noms, matricules, photos, notes, moyennes ET couleurs/mise en forme) — à utiliser pour « tout effacer », « vider tout », « remettre tout à zéro » (JAMAIS \`clear_formatting\` seul !) : \`{ "type": "clear_all" }\`
-- **Effacer UNIQUEMENT les noms** (tous ou un élève précis) : \`{ "type": "clear_names", "studentName": "DIALLO" }\` (omettre \`studentName\` pour tous les noms)
-- **Effacer UNIQUEMENT les photos de profil** (toutes ou un élève précis) : \`{ "type": "clear_photos", "studentName": "DIALLO" }\` (omettre \`studentName\` pour toutes les photos)
-- **Effacer UNIQUEMENT les matricules** (tous ou un élève précis) : \`{ "type": "clear_matricules", "studentName": "DIALLO" }\` (omettre \`studentName\` pour tous les matricules)
-- **Effacer les notes ET/OU les moyennes** (comme les moyennes sont calculées à partir des notes, « effacer les moyennes » = effacer les notes !) : \`{ "type": "clear_notes", "mode": "all" | "specific", "colNumber": 1, "studentName": "DIALLO" }\`
-- Remplir toute une colonne de notes d'un coup (ex: recopier une note vers le bas) : \`{ "type": "fill_note_column", "colNumber": 2, "value": "15", "onlyEmpty": false }\`
+- **Effacer UNIQUEMENT les noms / photos / matricules** (tous ou un élève précis) : \`{ "type": "clear_names" | "clear_photos" | "clear_matricules", "studentName": "DIALLO" }\`
+- **Effacer les notes ET/OU les moyennes** : \`{ "type": "clear_notes", "mode": "all" | "specific", "colNumber": 1, "studentName": "DIALLO" }\`
+- Remplir une colonne de notes d'un coup (valeur fixe, recopie depuis une autre colonne \`copyFromColNumber\`, ou recopie de la moyenne \`fromAverage: true\`, ciblable sur des élèves/conditions) : \`{ "type": "fill_note_column", "colNumber": 2, "value": "15", "onlyEmpty": false, "copyFromColNumber": 1, "fromAverage": false, "studentName": "..." }\`
 - Ajouter / modifier / supprimer / échanger / déplacer des colonnes de notes :
   \`{ "type": "add_note_column", "title": "DEVOIR", "maxScore": 20, "coeffEval": 1, "count": 1 }\`
   \`{ "type": "update_note_column", "colNumber": 1, "title": "DEVOIR", "maxScore": 40, "coeffEval": 2 }\`
   \`{ "type": "delete_note_column", "colNumber": 7 }\`
   \`{ "type": "swap_note_columns", "colNumber1": 1, "colNumber2": 2 }\`
   \`{ "type": "move_note_column", "fromColNumber": 3, "toColNumber": 1, "direction": "left" | "right" }\`
-- Ajuster les notes (± points) : \`{ "type": "adjust_grades", "mode": "all" | "specific", "colNumber": 1, "delta": 1.5 }\`
 - Changer d'un coup le max de toutes les notes ou d'une note : \`{ "type": "bulk_update_note_max", "mode": "all" | "specific", "colNumber": 1, "maxScore": 40, "convertExisting": false }\`
 - Copier les élèves d'une autre matière dans ce tableau : \`{ "type": "copy_students_from_subject", "sourceSubjectName": "Physique", "includeNotes": false }\`${formattingAndTools}`;
 }
@@ -1404,23 +1423,33 @@ export function buildTeacherDelmasSystemPrompt(params: {
 
   const realCapabilitiesSummary =
     activeContext.sheetKind === 'subject'
-      ? `• Saisir, ajouter, renommer, déplacer, corriger ou supprimer des élèves, matricules et notes directement dans ce tableau
-• Importer et remplir automatiquement des élèves/notes à partir d'une image/photo, d'un PDF, d'un fichier Excel/CSV, Word ou d'un audio
-• Créer, renommer, supprimer, déplacer ou remplir d'un coup des colonnes de notes, et modifier leur barème (/20, /40...) et coefficient d'évaluation
-• Ajuster les notes d'un coup (± points sur toutes les notes ou sur une colonne précise)
-• Changer le barème de la moyenne (/20, /40, /100...) ou le barème max des notes (sur ce tableau ou toute la classe)
-• Trier le classement (ordre de mérite, alphabétique A→Z ou Z→A, ordre initial), afficher ou masquer Matricule, personnaliser les Mentions, réorganiser la disposition des colonnes (Rang, Profil, Matricule, Nom & Prénom, Moyenne, Mention devant ou derrière les notes)
-• Utiliser TOUS les outils de mise en forme manuels : polices d'écriture (Arial, Times New Roman, Calibri, Georgia, Verdana…), taille de texte (A+/A- ou taille précise), gras, italique, souligné, barré, alignement gauche/centre/droite, couleurs de texte et de fond (en-têtes, colonnes, élèves, Moyenne, Mention, une ligne sur deux ou selon condition)
-• Agrandir ou réduire la largeur des colonnes, la hauteur des lignes, régler le zoom ou passer en plein écran, et réinitialiser les largeurs
-• Copier la liste des élèves depuis une autre matière, annuler/rétablir, télécharger en PDF, Word (.docx), Excel (.xlsx) ou copier le tableau
+      ? `• Saisir, ajouter, renommer, déplacer, corriger, formater (majuscules/casse), dédoublonner ou supprimer des élèves, matricules et notes directement dans ce tableau (y compris par rang : « le 1er », « le 2e », « le dernier »)
+• Importer et remplir automatiquement 100 % des élèves/notes à partir d'une image/photo, d'un PDF, d'un fichier Excel/CSV, Word ou d'un audio
+• Modifier ou ajuster la MOYENNE d'un élève précis, d'un groupe ou sous condition (ex : +1 pt sur la moyenne du 1er, fixer la moyenne d'un élève à 15/20, repêcher à 10 tous les élèves entre 9,5 et 9,99, ou ajuster via une note précise)
+• Ajuster des notes précises ou globales (± points sur la Note 3 du 1er, ±%, arrondir au demi-point/point, fixer un plancher ou un plafond)
+• Créer, renommer, supprimer, permuter, déplacer ou remplir d'un coup des colonnes de notes (valeur fixe, recopie d'une colonne ou de la moyenne), modifier leur barème (/20, /40...) et coefficient d'évaluation, ou ajouter des lignes vides
+• Modifier le coefficient de cette matière, le barème de la moyenne (/20, /40, /100...) ou le barème max des notes (sur ce tableau ou toute la classe)
+• Trier le classement (ordre de mérite, alphabétique A→Z ou Z→A, ordre initial), afficher ou masquer Matricule, personnaliser les Mentions, réorganiser la disposition des colonnes
+• Utiliser TOUS les outils de mise en forme manuels : polices d'écriture, taille de texte (A+/A-), gras, italique, souligné, barré, alignement, couleurs de texte et de fond (en-têtes, colonnes, élèves, Moyenne, Mention, une ligne sur deux ou selon condition)
+• Agrandir ou réduire la largeur des colonnes, la hauteur des lignes, régler le zoom, passer en plein écran, annuler/rétablir, copier la liste d'une autre matière, exporter en PDF, Word (.docx), Excel (.xlsx) ou copier le tableau
 • Analyser et comparer vos résultats (classements, statistiques, moyennes dans les autres matières/trimestres)`
       : `• Modifier les coefficients des ${activeContext.sheetKind === 'annual_average' ? 'trimestres' : 'matières'} directement dans ce tableau
-• Trier le classement (ordre de mérite, alphabétique A→Z, ordre initial)
+• Renseigner ou effacer une moyenne manuelle sur une case vide, compléter le matricule d'un élève ou fusionner deux lignes doublons d'un même élève
+• Trier le classement (ordre de mérite, alphabétique A→Z ou Z→A, ordre initial)
 • Afficher ou masquer Matricule, changer le barème de la moyenne (/20, /40, /100...), personnaliser les Mentions et réorganiser la disposition des colonnes (sur ce tableau ou toute la classe)
 • Utiliser TOUS les outils de mise en forme manuels : polices d'écriture, taille de texte (A+/A-), gras, italique, souligné, barré, alignement, couleurs de texte et de fond (colonnes, lignes, une ligne sur deux, seuils de moyenne ou top/derniers rangs)
 • Agrandir ou réduire la largeur des colonnes et la hauteur des lignes, régler le zoom, passer en plein écran, annuler/rétablir
 • Télécharger en PDF, Word (.docx), Excel (.xlsx) ou copier tout le tableau dans le presse-papiers
 • Analyser et comparer les moyennes, taux de réussite et classements de vos élèves`;
+
+  const realLimitsSummary = `[LIMITES RÉELLES — HONNÊTETÉ ABSOLUE, NE JAMAIS MENTIR NI FAIRE SEMBLANT] :
+Si l'utilisateur demande l'une des choses suivantes (impossible depuis ce menu), **DIS-LE DIRECTEMENT ET HONNÊTEMENT en 1 à 2 phrases** et indique-lui l'étape manuelle exacte, SANS JAMAIS prétendre que c'est fait et SANS émettre de fausse action :
+1. Créer, renommer ou supprimer une école, une classe, une année scolaire, un trimestre ou une autre matière → uniquement depuis le menu principal « Moyennes ».
+2. Modifier les notes d'une AUTRE matière non ouverte (tu peux la lire/comparer en lecture seule, mais pour la modifier l'enseignant doit ouvrir cette autre matière).
+3. Dans un tableau de Moyenne Générale (trimestrielle ou annuelle), modifier une moyenne déjà calculée automatiquement depuis une feuille de matière remplie → l'enseignant doit ouvrir la matière concernée pour modifier les notes (tu ne peux remplir ici que les cases vides, les matricules, les fusions de doublons et les coefficients).
+4. Prendre, générer ou téléverser une vraie photo de profil élève → l'enseignant doit cliquer sur la case Photo/Profil de l'élève (tu peux seulement effacer une photo existante).
+5. Envoyer directement un e-mail, SMS ou message WhatsApp aux parents ou élèves → tu peux rédiger le texte du message à copier, mais tu ne peux pas l'envoyer.
+6. Modifier directement un fichier Excel/PDF/Word enregistré sur le téléphone ou l'ordinateur de l'utilisateur → tu modifies uniquement le tableau StudyCloud, puis tu peux télécharger un nouvel export Excel/PDF/Word.`;
 
   // =========================================================================
   // MODE 1 : DISCUSSION SIMPLE / CONVERSATION NATURELLE (ZÉRO DUMP DU TABLEAU)
@@ -1434,12 +1463,13 @@ CONSIGNES ESSENTIELLES DE COMPORTEMENT :
 1. **Discussion 100 % naturelle, courte et économe en crédits** : Réponds simplement et directement (1 à 3 phrases courtes sauf si une explication détaillée est demandée), sans blabla ni questions inutiles à la fin.
 2. **ZÉRO pression, ZÉRO tâche imposée** : Ne pousse JAMAIS l'utilisateur à te donner une tâche, ne lui sors pas de liste d'actions non demandée, ne sois jamais insistant.
 3. **Discrétion absolue sur les données du tableau** : Tu sais silencieusement que l'utilisateur a ouvert « ${sheetTitle} » (${activeContext.className}), mais **NE le mentionne PAS**, **NE cite AUCUNE donnée du tableau** et **NE recompte RIEN** tant qu'il ne te le demande pas.
-4. **Connaissance exacte de tes vraies capacités (UNIQUEMENT si l'utilisateur te le demande)** :
+4. **Connaissance exacte de tes vraies capacités ET de tes limites (UNIQUEMENT si l'utilisateur te le demande)** :
    - Tu ES réellement connecté en direct au tableau de moyennes et tu PEUX exécuter des actions directes dedans dès que l'utilisateur te le demande.
    - **NE DIS JAMAIS** que tu « ne peux pas agir sur le tableau », que tu « n'as pas accès au tableau » ou que tu « ne peux pas le modifier directement » : c'est FAUX !
    - Si (et SEULEMENT si) l'utilisateur te demande ce que tu peux faire (ex : « Que peux-tu faire ? », « Quelles actions peux-tu mener ? »), présente-lui clairement et sobrement tes vraies capacités :
 ${realCapabilitiesSummary}
    - En dehors de cette question précise (par exemple sur un simple « Bonjour », « Salut », « Ça va ? » ou une discussion générale), NE liste PAS ces capacités et réponds de façon courte, naturelle et accueillante.
+${realLimitsSummary}
 5. **Mémoire permanente des fichiers de la conversation** :
    - S'il y a des fichiers dans le dossier de cette conversation ci-dessous, tu y es connecté en permanence tant qu'ils ne sont pas supprimés. Ne dis JAMAIS que l'utilisateur n'a joint aucun fichier si le dossier ci-dessous contient un ou plusieurs fichiers ! En revanche, ne les cite pas sans raison sur un simple « Bonjour » ou « Merci ».
 6. **Réponse directe et propre** : Rédige directement en Markdown fluide (et LaTeX $...$ / $$...$$ uniquement si la question est mathématique/scientifique). N'affiche JAMAIS de JSON, ni de balise technique, ni de réflexion interne (<think>).${silentFilesMemory}`;
@@ -1462,11 +1492,12 @@ ${realCapabilitiesSummary}
 ${langObj.promptInstruction}
 
 CONSIGNES STRICTES POUR CE TOUR :
-1. **Conscience réelle de tes pouvoirs (NE JAMAIS TE SOUS-ESTIMER)** :
+1. **Conscience réelle de tes pouvoirs ET de tes limites (NE JAMAIS TE SOUS-ESTIMER NI MENTIR)** :
    - Tu ES réellement connecté au tableau ouvert et tu PEUX exécuter toutes ces actions directement dedans dès que l'utilisateur te le demande :
 ${realCapabilitiesSummary}
    - **NE DIS JAMAIS** que tu « n'as pas accès au tableau », que tu « ne peux pas effectuer d'actions directes sur le tableau » ou que tu « ne peux pas le modifier directement » : c'est FAUX !
    - Si l'utilisateur te demande quelles actions tu peux mener dans le tableau (ou si tu peux modifier/écrire dedans), réponds **OUI** clairement et présente proprement ces vraies capacités, sans mettre la pression.
+${realLimitsSummary}
 2. **ÉCONOMIE DE CRÉDITS STRICTE — RÉPONDS UNIQUEMENT À CE QUI EST DEMANDÉ** :
    - Sois concis, direct et exact (1 à 3 phrases courtes).
    - **NE TRACE JAMAIS de tableau Markdown (\`| ... |\`)** et **NE RECOPIE JAMAIS tous les élèves** dans le chat sauf si l'utilisateur demande explicitement la liste complète.
@@ -1523,14 +1554,27 @@ RÈGLES D'OR (IMPÉRATIVES — À RESPECTER À 100 %) :
    - « enlève / retire la couleur » sur une case → \`"format_cells"\` avec \`"bgColor": ""\` (chaîne vide).
    - Tu travailles uniquement dans **${activeContext.className}** → **${sheetTitle}** (sauf si l'utilisateur demande \`"scope": "class"\`).
 4. **EXEMPLES CONCRETS DE \`<delmas_actions>\` (À SUIVRE EXACTEMENT)** :
+   - Augmenter de +1 pt la moyenne du 1er étudiant (ou diminuer de -0,5 la moyenne d'un élève) :
+     \`<delmas_actions>[{"type":"adjust_student_average","studentName":"1er","deltaAverage":1}]</delmas_actions>\`
+   - Mettre exactement 15/20 de moyenne à KOUASSI Jean (ou en ajustant uniquement sa Note 3) :
+     \`<delmas_actions>[{"type":"adjust_student_average","studentName":"KOUASSI Jean","targetAverage":15,"viaColNumber":3}]</delmas_actions>\`
+   - Repêcher à 10/20 tous les élèves entre 9,5 et 9,99 :
+     \`<delmas_actions>[{"type":"adjust_student_average","condition":"average_between","minThreshold":9.5,"maxThreshold":9.99,"targetAverage":10}]</delmas_actions>\`
+   - Augmenter de +2 (ou diminuer de -1,5) la Note 3 du 1er étudiant :
+     \`<delmas_actions>[{"type":"adjust_grades","studentName":"1er","mode":"specific","colNumber":3,"delta":2}]</delmas_actions>\`
+   - Donner +1 pt sur toutes les notes aux élèves qui ont moins de 10 de moyenne :
+     \`<delmas_actions>[{"type":"adjust_grades","condition":"average_below","threshold":10,"mode":"all","delta":1}]</delmas_actions>\`
+   - Arrondir toutes les notes au demi-point supérieur :
+     \`<delmas_actions>[{"type":"adjust_grades","mode":"all","roundStep":0.5,"roundMode":"up"}]</delmas_actions>\`
+   - Mettre tous les noms en MAJUSCULES : \`<delmas_actions>[{"type":"format_student_names","mode":"uppercase"}]</delmas_actions>\`
+   - Supprimer/fusionner les élèves en doublon : \`<delmas_actions>[{"type":"deduplicate_students"}]</delmas_actions>\`
+   - Ajouter 10 lignes vides : \`<delmas_actions>[{"type":"add_empty_rows","count":10}]</delmas_actions>\`
    - Vider tout le tableau : \`<delmas_actions>[{"type":"clear_all"}]</delmas_actions>\`
    - Effacer les moyennes ou toutes les notes : \`<delmas_actions>[{"type":"clear_notes","mode":"all"}]</delmas_actions>\`
-   - Effacer tous les noms : \`<delmas_actions>[{"type":"clear_names"}]</delmas_actions>\`
-   - Effacer toutes les photos/profils : \`<delmas_actions>[{"type":"clear_photos"}]</delmas_actions>\`
-   - Effacer tous les matricules : \`<delmas_actions>[{"type":"clear_matricules"}]</delmas_actions>\`
    - Fond vert sur la case du nom du 1er (ex. DIALLO Fatoumata) :
      \`<delmas_actions>[{"type":"format_cells","target":"student","studentName":"DIALLO Fatoumata","column":"name","style":{"bgColor":"#bbf7d0"}}]</delmas_actions>\`
    - Enlever toutes les couleurs : \`<delmas_actions>[{"type":"clear_formatting"}]</delmas_actions>\`
+${realLimitsSummary}
 5. **ANALYSE INTELLIGENTE DES IMAGES & FICHIERS JOINTS (PERTINENCE & PRÉCISION)** :
    - **Cas A — Le fichier / l'image contient des élèves et/ou des notes** : extrais fidèlement chaque ligne dans l'ordre exact et insère-les avec \`add_students\` (ou \`update_students\` pour les élèves déjà présents) — **JAMAIS** seulement \`save_gradebook\` sans insérer les données ! Confirme ensuite en **1 seule phrase courte** SANS tracer le tableau dans le chat !
    - **Cas B — Le fichier / l'image NE contient PAS de notes ni de liste d'élèves** (\`DOCUMENT_HORS_NOTES\`, photo personnelle, exercice, facture...) : **NE MODIFIE RIEN et N'ÉMÈTS AUCUN \`<delmas_actions>\`**. Signale brièvement que **ce fichier ne comporte pas de notes ni de liste d'élèves**.
@@ -1957,6 +2001,12 @@ export function filterSafeTeacherDelmasActions(
       normUser
     );
 
+  const userExplicitlyRequestedDedup =
+    userExplicitlyRequestedDestructive ||
+    /\b(doublon\w*|double\w*|dedoubl\w*|fusionn\w*|unique\w*|dupliqu\w*|merge|dedup\w*)\b/i.test(
+      normUser
+    );
+
   const userExplicitlyMentionedMatricule =
     /\b(matricule|matricules|numero\s+matricule|n°\s*matricule|colonne\s+matricule|code\s+eleve|codes?\s+eleves?|code\s+etudiant|codes?\s+etudiants?|student\s+id|id\s+eleve)\b/i.test(
       normUser
@@ -2042,6 +2092,8 @@ export function filterSafeTeacherDelmasActions(
 
     if (rawAct.type === 'clear_formatting') {
       if (!userExplicitlyRequestedClearFormatting) continue;
+    } else if (rawAct.type === 'deduplicate_students') {
+      if (!userExplicitlyRequestedDedup) continue;
     } else if (DESTRUCTIVE_ACTION_TYPES.has(rawAct.type) && !userExplicitlyRequestedDestructive) {
       continue;
     }
@@ -2276,6 +2328,89 @@ export function filterSafeTeacherDelmasActions(
     if (act.type === 'set_expand_level') {
       const lvl = Math.round(Number(act.level));
       act.level = lvl >= 2 ? 2 : lvl === 1 ? 1 : 0;
+    }
+
+    if (act.type === 'add_empty_rows') {
+      const cnt = Math.round(Number(act.count ?? 1));
+      act.count = Number.isFinite(cnt) ? Math.min(100, Math.max(1, cnt)) : 1;
+    }
+
+    if (act.type === 'format_student_names') {
+      const rawMode = normalizeForMatch(String(act.mode || 'uppercase'));
+      if (rawMode === 'lowercase' || rawMode === 'minuscule' || rawMode === 'minuscules') {
+        act.mode = 'lowercase';
+      } else if (
+        rawMode === 'titlecase' ||
+        rawMode === 'title' ||
+        rawMode === 'capitalize' ||
+        rawMode === 'capitalise'
+      ) {
+        act.mode = 'titlecase';
+      } else if (rawMode === 'trim' || rawMode === 'clean' || rawMode === 'spaces' || rawMode === 'espaces') {
+        act.mode = 'trim';
+      } else {
+        act.mode = 'uppercase';
+      }
+      if (!act.studentName && (act.student || act.matchName || act.name)) {
+        act.studentName = String(act.student || act.matchName || act.name).trim();
+      }
+    }
+
+    if (act.type === 'adjust_grades' || act.type === 'adjust_student_average') {
+      if (!act.studentName && (act.student || act.matchName || act.name)) {
+        act.studentName = String(act.student || act.matchName || act.name).trim();
+      }
+      if (act.delta !== undefined) {
+        const d = Number(String(act.delta).replace(',', '.'));
+        if (Number.isFinite(d)) act.delta = Math.max(-1000, Math.min(1000, d));
+        else delete act.delta;
+      }
+      if (act.deltaAverage !== undefined) {
+        const da = Number(String(act.deltaAverage).replace(',', '.'));
+        if (Number.isFinite(da)) act.deltaAverage = Math.max(-1000, Math.min(1000, da));
+        else delete act.deltaAverage;
+      }
+      if (act.targetAverage !== undefined) {
+        const ta = Number(String(act.targetAverage).replace(',', '.'));
+        if (Number.isFinite(ta)) act.targetAverage = Math.max(0, Math.min(1000, ta));
+        else delete act.targetAverage;
+      }
+      if (act.percent !== undefined) {
+        const pc = Number(String(act.percent).replace(',', '.').replace('%', ''));
+        if (Number.isFinite(pc)) act.percent = Math.max(-100, Math.min(500, pc));
+        else delete act.percent;
+      }
+      if (act.factor !== undefined) {
+        const fc = Number(String(act.factor).replace(',', '.'));
+        if (Number.isFinite(fc) && fc > 0) act.factor = Math.max(0.05, Math.min(10, fc));
+        else delete act.factor;
+      }
+      if (act.roundStep !== undefined) {
+        const rs = Number(String(act.roundStep).replace(',', '.'));
+        if (Number.isFinite(rs) && rs > 0 && rs <= 10) act.roundStep = rs;
+        else delete act.roundStep;
+      }
+      if (act.minClamp !== undefined) {
+        const mc = Number(String(act.minClamp).replace(',', '.'));
+        if (Number.isFinite(mc)) act.minClamp = Math.max(0, Math.min(1000, mc));
+        else delete act.minClamp;
+      }
+      if (act.maxClamp !== undefined) {
+        const mx = Number(String(act.maxClamp).replace(',', '.'));
+        if (Number.isFinite(mx)) act.maxClamp = Math.max(0, Math.min(1000, mx));
+        else delete act.maxClamp;
+      }
+    }
+
+    if (act.type === 'set_general_average_override') {
+      if (!act.studentName && (act.student || act.matchName || act.name)) {
+        act.studentName = String(act.student || act.matchName || act.name).trim();
+      }
+      if (act.value !== undefined && act.value !== null && act.value !== '') {
+        const v = Number(String(act.value).replace(',', '.'));
+        if (Number.isFinite(v)) act.value = Math.max(0, Math.min(1000, v));
+        else delete act.value;
+      }
     }
 
     provisionalActions.push(act);
@@ -3004,9 +3139,9 @@ function resolveClearCommandLocally(
     );
   if (!hasClearVerb) return null;
 
-  // Ne pas intercepter "supprime les lignes vides", "supprime la colonne 3", ou "supprime l'élève DIALLO" (suppression de ligne entière)
+  // Ne pas intercepter "supprime les lignes vides", "supprime les doublons", "supprime la colonne 3", ou "supprime l'élève DIALLO" (suppression de ligne entière)
   if (
-    /\b(?:lignes?\s+vides?|colonne\s+(?:de\s+)?note|supprim\w*\s+(?:la\s+)?colonne|supprim\w*\s+(?:l['’]?eleve|la\s+ligne))\b/i.test(
+    /\b(?:lignes?\s+vides?|doublons?|doubles?|colonne\s+(?:de\s+)?note|supprim\w*\s+(?:la\s+)?colonne|supprim\w*\s+(?:l['’]?eleve|la\s+ligne))\b/i.test(
       norm
     )
   ) {

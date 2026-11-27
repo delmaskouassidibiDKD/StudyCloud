@@ -9,7 +9,7 @@ import {
 } from './gradebookCalculations';
 import type { GradebookColumnOrder } from './gradebookColumnLayout';
 
-export type TermAverageSortMode = 'merit' | 'alpha' | 'order';
+export type TermAverageSortMode = 'merit' | 'alpha' | 'alpha_desc' | 'order';
 
 export interface TermAverageSubject {
   id: string;
@@ -964,12 +964,15 @@ export function computeTermGeneralAverageTable(
 
   // 6. Tri d'affichage
   const sortedStudents = [...studentsWithRanks].sort((a, b) => {
-    if (sortMode === 'alpha') {
+    if (sortMode === 'alpha' || sortMode === 'alpha_desc') {
       const aName = a.name.trim();
       const bName = b.name.trim();
       if (!aName && bName) return 1;
       if (aName && !bName) return -1;
-      const cmp = aName.localeCompare(bName, 'fr', { sensitivity: 'base' });
+      const cmp =
+        sortMode === 'alpha_desc'
+          ? bName.localeCompare(aName, 'fr', { sensitivity: 'base' })
+          : aName.localeCompare(bName, 'fr', { sensitivity: 'base' });
       return cmp !== 0 ? cmp : a.originalOrder - b.originalOrder;
     }
     if (sortMode === 'order') {
