@@ -2653,23 +2653,23 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       {/* ========================================================================= */}
       {/* 1. EN-TÊTE PRINCIPAL                                                      */}
       {/* ========================================================================= */}
-      <header className="h-11 sm:h-12 bg-white border-b border-slate-300 px-2 sm:px-4 flex items-center justify-between gap-2 shrink-0 z-20 shadow-xs">
-        <div className="flex items-center gap-2 min-w-0">
+      <header className="h-10 sm:h-12 bg-white border-b border-slate-300 px-1.5 sm:px-4 flex items-center justify-between gap-1 sm:gap-2 shrink-0 z-20 shadow-xs">
+        <div className="flex items-center gap-1 sm:gap-2 min-w-0 flex-1">
           <button
             type="button"
             onClick={handleSafeBack}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300/90 shadow-2xs transition active:scale-95 cursor-pointer shrink-0"
+            className="flex items-center justify-center gap-1 sm:gap-1.5 w-7 h-7 sm:w-auto sm:h-auto sm:px-3 sm:py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs border border-slate-300/90 shadow-2xs transition active:scale-95 cursor-pointer shrink-0"
             title="Retour à la classe"
           >
             <ArrowLeft className="w-3.5 h-3.5 stroke-[2.5] text-slate-700" />
-            <span className="leading-none hidden xs:inline">Retour</span>
+            <span className="leading-none hidden sm:inline">Retour</span>
           </button>
 
           <button
             type="button"
             onClick={() => saveToCloud({ force: true })}
             disabled={cloudStatus === 'saving'}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold border shadow-2xs transition active:scale-95 shrink-0 cursor-pointer ${
+            className={`flex items-center justify-center gap-1.5 w-7 h-7 sm:w-auto sm:h-auto sm:px-2.5 sm:py-1 rounded-lg text-xs font-bold border shadow-2xs transition active:scale-95 shrink-0 cursor-pointer ${
               cloudStatus === 'offline' || cloudStatus === 'error'
                 ? 'bg-red-50 hover:bg-red-100 text-red-700 border-red-300'
                 : cloudStatus === 'saving'
@@ -2729,9 +2729,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             )}
           </div>
 
-          <div className="flex items-center gap-2 min-w-0">
-            <Award className="w-4 h-4 text-[#0051c3] dark:text-blue-400 shrink-0" />
-            <div className="flex items-center gap-1.5 text-xs font-black text-slate-800 dark:text-slate-100 truncate">
+          <div className="flex items-center gap-1 sm:gap-2 min-w-0">
+            <Award className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-[#0051c3] dark:text-blue-400 shrink-0" />
+            <div className="flex items-center gap-1 sm:gap-1.5 text-[11px] sm:text-xs font-black text-slate-800 dark:text-slate-100 truncate">
               <span className="truncate">{averageCard.title}</span>
               <span className="text-slate-400 font-normal hidden sm:inline">•</span>
               <span className="text-slate-600 dark:text-slate-300 font-semibold truncate hidden sm:inline">
@@ -2755,12 +2755,12 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
         </div>
 
         {/* Contrôles droite : Actualiser, Zoom, Export .xlsx, SuperExpand */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <button
             type="button"
             onClick={() => loadFromCloud({ showSpinner: true })}
             disabled={isRefreshing}
-            className="flex items-center gap-1 px-2 py-1 text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition active:scale-95 cursor-pointer"
+            className="flex items-center justify-center gap-1 w-7 h-7 sm:w-auto sm:h-auto sm:px-2 sm:py-1 text-[11px] font-bold text-slate-700 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg transition active:scale-95 cursor-pointer shrink-0"
             title="Actualiser les moyennes depuis tous les trimestres de la classe"
           >
             <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-blue-600' : ''}`} />
@@ -2777,17 +2777,17 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                 setZoomPercent((prev) => Math.max(40, prev - 10));
                 setIsDirty(true);
               }}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white text-slate-700 transition active:scale-90 cursor-pointer"
+              className="w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded hover:bg-white text-slate-700 transition active:scale-90 cursor-pointer"
               title="Zoom arrière (-10%)"
             >
-              <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <Minus className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
             </button>
             <span
               onClick={() => {
                 setZoomPercent(80);
                 setIsDirty(true);
               }}
-              className="text-[11px] font-mono font-black text-slate-800 px-1.5 min-w-[36px] text-center cursor-pointer hover:text-blue-600 transition select-none"
+              className="text-[10px] sm:text-[11px] font-mono font-black text-slate-800 px-0.5 sm:px-1.5 min-w-[28px] sm:min-w-[36px] text-center cursor-pointer hover:text-blue-600 transition select-none"
               title="Réinitialiser le zoom à 80%"
             >
               {zoomPercent}%
@@ -2798,10 +2798,10 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                 setZoomPercent((prev) => Math.min(180, prev + 10));
                 setIsDirty(true);
               }}
-              className="w-6 h-6 flex items-center justify-center rounded hover:bg-white text-slate-700 transition active:scale-90 cursor-pointer"
+              className="w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded hover:bg-white text-slate-700 transition active:scale-90 cursor-pointer"
               title="Zoom avant (+10%)"
             >
-              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+              <Plus className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[2.5]" />
             </button>
           </div>
 
@@ -2810,14 +2810,16 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
             onExportExcel={handleExportExcel}
           />
 
-          <div className="hidden md:flex items-center gap-1.5 pl-1 border-l border-slate-300">
-            <ViewerSuperExpandButton
-              expandLevel={viewerExpandLevel}
-              onExpandChange={(lvl) => {
-                setIsViewerMaximized(lvl >= 1);
-                setViewerExpandLevel(lvl);
-              }}
-            />
+          <div className="flex items-center gap-1 sm:gap-1.5 md:pl-1 md:border-l md:border-slate-300 shrink-0">
+            <div className="hidden md:flex items-center">
+              <ViewerSuperExpandButton
+                expandLevel={viewerExpandLevel}
+                onExpandChange={(lvl) => {
+                  setIsViewerMaximized(lvl >= 1);
+                  setViewerExpandLevel(lvl);
+                }}
+              />
+            </div>
             <button
               type="button"
               onClick={() => {
@@ -2829,7 +2831,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
                   setViewerExpandLevel(1);
                 }
               }}
-              className={`w-7 h-7 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 shrink-0 ${
+              className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-xs active:scale-95 shrink-0 ${
                 viewerExpandLevel >= 1 || isViewerMaximized
                   ? 'bg-blue-600 text-white border-blue-500'
                   : 'bg-slate-800 hover:bg-slate-700 text-white border-slate-700'
@@ -2841,9 +2843,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
               }
             >
               {viewerExpandLevel >= 1 || isViewerMaximized ? (
-                <Minimize2 className="w-3.5 h-3.5" />
+                <Minimize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               ) : (
-                <Maximize2 className="w-3.5 h-3.5" />
+                <Maximize2 className="w-3 h-3 sm:w-3.5 sm:h-3.5" />
               )}
             </button>
           </div>
@@ -2853,13 +2855,13 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       {/* ========================================================================= */}
       {/* 2. RUBAN OUTILS EXCEL                                                     */}
       {/* ========================================================================= */}
-      <section className="bg-[#f8fafc] border-b border-slate-300 px-2 sm:px-3 py-1.5 flex items-center gap-2.5 overflow-x-auto scrollbar-none shrink-0 z-20">
+      <section className="bg-[#f8fafc] border-b border-slate-300 px-1.5 sm:px-3 py-1 sm:py-1.5 flex items-center gap-1.5 sm:gap-2.5 overflow-x-auto scrollbar-none shrink-0 z-20">
         {/* Presse-papiers */}
-        <div className="flex flex-col items-center pr-2.5 border-r border-slate-300/80 shrink-0">
+        <div className="flex flex-col items-center pr-2 sm:pr-2.5 border-r border-slate-300/80 shrink-0">
           <button
             type="button"
             onClick={handleCopyEntireTable}
-            className="h-6 px-2 flex items-center gap-1 rounded bg-white hover:bg-slate-100 border border-slate-300 text-[11px] font-bold text-slate-700 transition cursor-pointer"
+            className="h-6 px-1.5 sm:px-2 flex items-center gap-1 rounded bg-white hover:bg-slate-100 border border-slate-300 text-[10.5px] sm:text-[11px] font-bold text-slate-700 transition cursor-pointer"
             title="Copier tout le tableau annuel (compatible Excel / WPS)"
           >
             {copiedTableSuccess ? (
@@ -2874,7 +2876,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
               </>
             )}
           </button>
-          <span className="text-[9px] text-slate-400 font-semibold mt-0.5">
+          <span className="hidden sm:block text-[9px] text-slate-400 font-semibold mt-0.5">
             Presse-papiers
           </span>
         </div>
@@ -3111,7 +3113,7 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
               )}
             </button>
           </div>
-          <span className="text-[9px] text-slate-400 font-semibold mt-0.5">
+          <span className="hidden sm:block text-[9px] text-slate-400 font-semibold mt-0.5">
             Classement & Rapprochements
           </span>
         </div>
@@ -3149,18 +3151,18 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       {/* ========================================================================= */}
       {/* 3. BARRE DE FORMULE EXCEL                                                 */}
       {/* ========================================================================= */}
-      <section className="h-7 sm:h-8 bg-white border-b border-slate-300 px-2 flex items-center gap-2 text-xs shrink-0 select-none relative z-20">
-        <div className="flex items-center justify-between w-20 sm:w-24 h-6 px-1.5 bg-[#f9fafb] border border-slate-300 rounded text-slate-700 font-mono font-bold text-[11px] shrink-0">
+      <section className="h-7 sm:h-8 bg-white border-b border-slate-300 px-1.5 sm:px-2 flex items-center gap-1.5 sm:gap-2 text-xs shrink-0 select-none relative z-20">
+        <div className="flex items-center justify-between w-14 sm:w-24 h-5 sm:h-6 px-1 sm:px-1.5 bg-[#f9fafb] border border-slate-300 rounded text-slate-700 font-mono font-bold text-[10px] sm:text-[11px] shrink-0">
           <span className="truncate">{activeCell.coordDisplay}</span>
-          <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
+          <ChevronDown className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-slate-400 shrink-0" />
         </div>
         <div className="w-[1px] h-4 bg-slate-300 shrink-0" />
-        <div className="flex items-center justify-center w-5 h-5 text-slate-500 font-serif italic font-bold text-xs shrink-0">
+        <div className="flex items-center justify-center w-4 sm:w-5 h-5 text-slate-500 font-serif italic font-bold text-[11px] sm:text-xs shrink-0">
           fx
         </div>
-        <div className="flex-1 h-6 px-2 flex items-center text-slate-700 font-medium text-xs truncate bg-slate-50/60 rounded">
+        <div className="flex-1 min-w-0 h-5 sm:h-6 px-1.5 sm:px-2 flex items-center text-slate-700 font-medium text-[11px] sm:text-xs truncate bg-slate-50/60 rounded">
           {activeCell.formulaText ||
-            'Cliquez sur une case pour voir le détail du calcul annuel (Moy. Trimestre × Coeff = Total Annuel, Moyenne Annuelle)...'}
+            'Cliquez sur une case pour voir le détail du calcul annuel...'}
         </div>
       </section>
 
@@ -4289,9 +4291,9 @@ export const AnnualGeneralAverageView: React.FC<AnnualGeneralAverageViewProps> =
       {/* ========================================================================= */}
       {/* 5. BARRE D'ONGLET DE FEUILLE EN BAS                                       */}
       {/* ========================================================================= */}
-      <footer className="h-8 bg-[#eef2f6] border-t border-slate-300 px-3 flex items-center justify-between text-[11px] shrink-0 select-none z-20">
-        <div className="flex items-center gap-2">
-          <div className="px-3 py-1 bg-white border border-b-0 border-slate-300 rounded-t-md font-extrabold text-[#00313d] shadow-2xs -mt-1">
+      <footer className="h-6 sm:h-8 bg-[#eef2f6] border-t border-slate-300 px-2 sm:px-3 flex items-center justify-between text-[10px] sm:text-[11px] shrink-0 select-none z-20">
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="px-2 sm:px-3 py-0.5 sm:py-1 bg-white border border-b-0 border-slate-300 rounded-t-md font-extrabold text-[#00313d] shadow-2xs -mt-1 truncate max-w-[200px] sm:max-w-none">
             {averageCard.title}
           </div>
           <span className="hidden sm:inline text-[10.5px] text-slate-500">

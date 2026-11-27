@@ -222,7 +222,7 @@ export const GradebookDownloadMenu: React.FC<GradebookDownloadMenuProps> = ({
         ref={triggerRef}
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className={`flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-bold rounded-lg border transition shadow-2xs cursor-pointer active:scale-95 ${
+        className={`flex items-center gap-0.5 sm:gap-1.5 px-1.5 sm:px-2.5 h-7 sm:h-auto sm:py-1 text-[11px] font-bold rounded-lg border transition shadow-2xs cursor-pointer active:scale-95 ${
           open
             ? 'text-blue-900 bg-blue-100 border-blue-400 dark:text-blue-100 dark:bg-blue-900/70 dark:border-blue-500'
             : 'text-slate-800 bg-white hover:bg-blue-50 hover:text-blue-800 border-slate-300 hover:border-blue-300 dark:text-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 dark:border-slate-600'
@@ -234,7 +234,7 @@ export const GradebookDownloadMenu: React.FC<GradebookDownloadMenuProps> = ({
         <Download className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 stroke-[2.4]" />
         <span className="hidden sm:inline">Télécharger</span>
         <ChevronDown
-          className={`w-3 h-3 text-slate-500 dark:text-slate-400 transition-transform duration-150 ${
+          className={`w-2.5 h-2.5 sm:w-3 sm:h-3 text-slate-500 dark:text-slate-400 transition-transform duration-150 ${
             open ? 'rotate-180 text-blue-600 dark:text-blue-300' : ''
           }`}
         />
@@ -243,9 +243,9 @@ export const GradebookDownloadMenu: React.FC<GradebookDownloadMenuProps> = ({
       <SmartFloatingPopover
         open={open}
         anchorEl={triggerRef.current}
-        preferredSide="left"
-        preferredAlign="start"
-        gap={10}
+        preferredSide={typeof window !== 'undefined' && window.innerWidth < 640 ? 'bottom' : 'left'}
+        preferredAlign={typeof window !== 'undefined' && window.innerWidth < 640 ? 'end' : 'start'}
+        gap={8}
         padding={12}
         showCaret={true}
         onClose={() => setOpen(false)}

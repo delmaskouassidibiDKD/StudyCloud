@@ -95,7 +95,7 @@ export const TeacherDelmasAssistantRibbonButton: React.FC<TeacherDelmasAssistant
 }) => {
   return (
     <div
-      className={`ml-auto pl-2.5 pr-1 border-l border-slate-300/80 dark:border-slate-700 flex flex-col items-center justify-between shrink-0 select-none ${className}`}
+      className={`ml-auto pl-2 sm:pl-2.5 pr-1 border-l border-slate-300/80 dark:border-slate-700 flex flex-col items-center justify-center sm:justify-between shrink-0 select-none ${className}`}
     >
       <button
         type="button"
@@ -104,26 +104,27 @@ export const TeacherDelmasAssistantRibbonButton: React.FC<TeacherDelmasAssistant
           e.stopPropagation();
           onToggle();
         }}
-        className="delmas-ribbon-trigger flex flex-col items-center justify-center cursor-pointer group active:scale-95 transition-all select-none shrink-0 outline-none focus:outline-none bg-transparent border-0 p-0"
+        className="delmas-ribbon-trigger flex flex-row sm:flex-col items-center justify-center gap-1 sm:gap-0 cursor-pointer group active:scale-95 transition-all select-none shrink-0 outline-none focus:outline-none bg-transparent border-0 p-0"
         title={isOpen ? 'Fermer Assistant Delmas' : 'Ouvrir Assistant Delmas'}
       >
         <div
-          className={`relative p-0.5 rounded-full transition-all duration-200 ${
+          className={`relative p-0.5 rounded-full transition-all duration-200 scale-90 sm:scale-100 ${
             isOpen
-              ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.75)] scale-105'
+              ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.75)] scale-95 sm:scale-105'
               : 'group-hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]'
           }`}
         >
-          <DelmasRobot size={32} variant="blue" />
+          <DelmasRobot size={28} variant="blue" />
         </div>
         <span
-          className={`text-[9.5px] sm:text-[10px] font-extrabold tracking-tight mt-1 leading-none whitespace-nowrap text-center transition-colors ${
+          className={`text-[10px] font-extrabold tracking-tight sm:mt-0.5 leading-none whitespace-nowrap text-center transition-colors ${
             isOpen
               ? 'text-blue-600 dark:text-blue-300'
               : 'text-blue-600 dark:text-blue-400 group-hover:text-blue-700 dark:group-hover:text-blue-300'
           }`}
         >
-          Assistant Delmas
+          <span className="sm:hidden">Delmas IA</span>
+          <span className="hidden sm:inline">Assistant Delmas</span>
         </span>
       </button>
     </div>
@@ -2323,7 +2324,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
               ? `${drawerWidth}px`
               : undefined,
         }}
-        className={`absolute top-0 right-0 bottom-0 z-[85] w-full sm:max-w-[92vw] h-full flex flex-col bg-[#1e2024] text-white font-nunito overflow-hidden border-l border-zinc-700/80 shadow-[-14px_0_38px_rgba(0,0,0,0.55)] select-none transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`fixed inset-0 sm:absolute sm:inset-auto sm:top-0 sm:right-0 sm:bottom-0 z-[85] w-full sm:max-w-[92vw] h-full flex flex-col bg-[#1e2024] text-white font-nunito overflow-hidden border-l border-zinc-700/80 shadow-[-14px_0_38px_rgba(0,0,0,0.55)] select-none transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
           isOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
         }`}
         aria-hidden={!isOpen}
@@ -2340,9 +2341,9 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         {/* =================================================================== */}
         {/* 1. EN-TÊTE SUPÉRIEUR (Historique | + | FR FR | Fermer — SANS MODÈLE) */}
         {/* =================================================================== */}
-        <div className="flex items-center justify-between px-2.5 sm:px-3.5 py-2 bg-[#23252a] border-b border-zinc-700/60 shrink-0 relative z-30 shadow-sm w-full max-w-full flex-nowrap gap-1.5">
+        <div className="flex items-center justify-between px-2 sm:px-3.5 py-2 bg-[#23252a] border-b border-zinc-700/60 shrink-0 relative z-30 shadow-sm w-full max-w-full flex-nowrap gap-1 sm:gap-1.5">
           {/* Groupe Gauche : Historique, + Nouvelle discussion, Dossier fichiers */}
-          <div className="flex items-center gap-1.5 min-w-0 flex-nowrap shrink">
+          <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-nowrap shrink">
             {/* Bouton Historique (avec indicateur discret des tâches en cours/terminées dans d'autres discussions) */}
             <button
               type="button"
@@ -2350,11 +2351,11 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                 e.stopPropagation();
                 setIsHistoryDrawerOpen(true);
               }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-[11px] sm:text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0 touch-manipulation"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-200 hover:text-white text-[11px] sm:text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0 touch-manipulation"
               title="Historique des discussions"
             >
               <Clock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-              <span>Historique</span>
+              <span className="hidden sm:inline">Historique</span>
               {otherRunningCount > 0 ? (
                 <span
                   className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/45 text-[9.5px] font-extrabold text-orange-300"

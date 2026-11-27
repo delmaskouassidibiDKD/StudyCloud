@@ -3585,15 +3585,15 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         <TeacherAnimatedBackground />
 
         {/* Contenu au-dessus de l'animation continue : les éléments du haut restent fixes sur bureau, seules les écoles défilent horizontalement */}
-        <div className="relative z-10 flex-1 flex flex-col h-full min-h-0 overflow-y-auto md:overflow-hidden overflow-x-hidden px-3.5 sm:px-6 lg:px-8 pt-1.5 sm:pt-2 pb-24 md:pb-4 space-y-1.5">
+        <div className="relative z-10 flex-1 flex flex-col h-full min-h-0 overflow-y-auto md:overflow-hidden overflow-x-hidden px-2.5 sm:px-6 lg:px-8 pt-1.5 sm:pt-2 pb-24 md:pb-4 space-y-1.5">
         
         {/* ----------------------------------------------------------------------- */}
         {/* EN-TÊTE COMPACT EN HAUT :                                               */}
         {/* Retour (gauche) | Titre bien centré (milieu) | Utilitaires & Agrandissement (droite) */}
         {/* ----------------------------------------------------------------------- */}
-        <header className="relative shrink-0 flex items-center justify-between gap-2 flex-wrap">
+        <header className="relative shrink-0 flex items-center justify-between gap-1.5 sm:gap-2 flex-nowrap sm:flex-wrap">
           {/* Groupe haut gauche : Bouton Retour + Statut de synchronisation cloud (le bouton manuel Enregistrer est réservé au tableur de notes) */}
-          <div className="flex items-center gap-2 flex-wrap z-10 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-nowrap sm:flex-wrap z-10 shrink-0">
             <button
               type="button"
               onClick={() => {
@@ -3608,7 +3608,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                   onBack();
                 }
               }}
-              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-white/85 hover:bg-white text-slate-700 hover:text-[#00313d] border border-white/95 shadow-xs transition active:scale-95 font-bold text-xs cursor-pointer shrink-0"
+              className="flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl bg-white/85 hover:bg-white text-slate-700 hover:text-[#00313d] border border-white/95 shadow-xs transition active:scale-95 font-bold text-[11px] sm:text-xs cursor-pointer shrink-0"
               title={
                 isTransferViewOpen
                   ? "Retour à l'établissement"
@@ -3623,7 +3623,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
 
             {/* Statut de chargement et d'enregistrement automatique en direct */}
             <div
-              className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-[11px] font-bold border transition-all select-none ${
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg sm:rounded-xl text-[10px] sm:text-[11px] font-bold border transition-all select-none whitespace-nowrap ${
                 saveUiState === 'saving' || cloudStatus === 'loading'
                   ? 'bg-amber-50/90 text-amber-800 border-amber-200/80'
                   : saveUiState === 'saved'
@@ -3639,64 +3639,70 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
               {saveUiState === 'saving' ? (
                 <>
                   <Loader2 className="w-3 h-3 animate-spin text-amber-700 shrink-0" />
-                  <span>Enregistrement en cours...</span>
+                  <span className="sm:hidden">Synchro...</span>
+                  <span className="hidden sm:inline">Enregistrement en cours...</span>
                 </>
               ) : cloudStatus === 'loading' ? (
                 <>
                   <Loader2 className="w-3 h-3 animate-spin text-amber-700 shrink-0" />
-                  <span>Chargement de vos données...</span>
+                  <span className="sm:hidden">Chargement...</span>
+                  <span className="hidden sm:inline">Chargement de vos données...</span>
                 </>
               ) : saveUiState === 'saved' ? (
                 <>
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>Enregistré avec succès</span>
+                  <CheckCircle2 className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 shrink-0" />
+                  <span className="sm:hidden">Enregistré</span>
+                  <span className="hidden sm:inline">Enregistré avec succès</span>
                 </>
               ) : saveUiState === 'offline' || !isOnline ? (
                 <>
-                  <WifiOff className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                  <span>Hors ligne — Échec</span>
+                  <WifiOff className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-600 shrink-0" />
+                  <span className="sm:hidden">Hors ligne</span>
+                  <span className="hidden sm:inline">Hors ligne — Échec</span>
                 </>
               ) : saveUiState === 'error' || cloudStatus === 'error' ? (
                 <>
-                  <CloudOff className="w-3.5 h-3.5 text-red-600 shrink-0" />
-                  <span>Échec de l&apos;enregistrement</span>
+                  <CloudOff className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-red-600 shrink-0" />
+                  <span className="sm:hidden">Erreur</span>
+                  <span className="hidden sm:inline">Échec de l&apos;enregistrement</span>
                 </>
               ) : (
                 <>
-                  <Cloud className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>Synchronisé au cloud</span>
+                  <Cloud className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-emerald-600 shrink-0" />
+                  <span className="sm:hidden">Synchronisé</span>
+                  <span className="hidden sm:inline">Synchronisé au cloud</span>
                 </>
               )}
             </div>
           </div>
 
-          {/* Titre principal bien centré en haut */}
-          <div className="flex items-center justify-center min-w-0 xl:absolute xl:left-1/2 xl:-translate-x-1/2 flex-1 xl:flex-initial">
+          {/* Titre principal bien centré en haut (masqué sur très petit écran pour éviter la coupure "T...") */}
+          <div className="hidden sm:flex items-center justify-center min-w-0 xl:absolute xl:left-1/2 xl:-translate-x-1/2 flex-1 xl:flex-initial">
             <h1 className="text-lg sm:text-xl lg:text-2xl font-black text-white tracking-tight leading-none text-center truncate drop-shadow-[0_2px_10px_rgba(0,0,0,0.8)]">
               Tableau de bord
             </h1>
           </div>
 
           {/* Zone haute droite : Utilitaires + Profil puis Agrandissement dans le creux tout à droite */}
-          <div className="flex items-center gap-2 ml-auto flex-wrap justify-end z-10">
+          <div className="flex items-center gap-1.5 sm:gap-2 ml-auto flex-nowrap sm:flex-wrap justify-end z-10 min-w-0">
             {/* Profil Enseignant (nom tronqué en "..." si trop long, nom complet affiché à côté au survol) */}
             <div
               tabIndex={0}
-              className="relative group flex items-center bg-white/55 dark:bg-slate-900/75 backdrop-blur-md p-1 rounded-2xl border border-white/80 dark:border-slate-600/80 shadow-2xs outline-none"
+              className="relative group flex items-center bg-white/55 dark:bg-slate-900/75 backdrop-blur-md p-0.5 sm:p-1 rounded-xl sm:rounded-2xl border border-white/80 dark:border-slate-600/80 shadow-2xs outline-none min-w-0"
             >
-              <div className="flex items-center gap-1.5 pl-0.5 pr-2.5 py-0.5 bg-white/95 dark:bg-slate-800/95 rounded-xl shadow-2xs border border-white dark:border-slate-700 cursor-default">
-                <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-cyan-600 to-teal-400 text-white font-bold text-[10px] flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
+              <div className="flex items-center gap-1 sm:gap-1.5 pl-0.5 pr-1.5 sm:pr-2.5 py-0.5 bg-white/95 dark:bg-slate-800/95 rounded-lg sm:rounded-xl shadow-2xs border border-white dark:border-slate-700 cursor-default min-w-0">
+                <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-gradient-to-tr from-cyan-600 to-teal-400 text-white font-bold text-[9.5px] sm:text-[10px] flex items-center justify-center overflow-hidden shrink-0 shadow-inner">
                   {user?.avatar_url ? (
                     <img src={user.avatar_url} alt="Profile" className="w-full h-full object-cover" />
                   ) : (
                     (user?.name ? user.name.charAt(0).toUpperCase() : 'DKD')
                   )}
                 </div>
-                <div className="flex flex-col text-left min-w-0 max-w-[110px] sm:max-w-[130px]">
-                  <span className="block truncate text-[11px] font-bold text-slate-800 dark:text-slate-100 leading-tight">
+                <div className="flex flex-col text-left min-w-0 max-w-[74px] sm:max-w-[130px]">
+                  <span className="block truncate text-[10.5px] sm:text-[11px] font-bold text-slate-800 dark:text-slate-100 leading-tight">
                     {user?.name || 'Professeur'}
                   </span>
-                  <span className="text-[8.5px] text-slate-400 dark:text-slate-400 font-medium leading-tight whitespace-nowrap">
+                  <span className="hidden sm:block text-[8.5px] text-slate-400 dark:text-slate-400 font-medium leading-tight whitespace-nowrap">
                     Enseignant Pro
                   </span>
                 </div>
@@ -3765,27 +3771,29 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
         {/* ----------------------------------------------------------------------- */}
         {!selectedSchoolInside && (
           <section className="shrink-0 space-y-1 animate-fade-in">
-            <div className="flex items-center justify-between gap-2 flex-wrap">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
-                  Rentrées scolaires enregistrées :
+            <div className="flex items-center justify-between gap-2 flex-nowrap">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[10.5px] sm:text-[11px] font-extrabold uppercase tracking-wider text-white/95 drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)] truncate">
+                  <span className="sm:hidden">Rentrées</span>
+                  <span className="hidden sm:inline">Rentrées scolaires enregistrées :</span>
                 </span>
-                <span className="text-[11px] font-black text-cyan-200 drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
+                <span className="text-[10.5px] sm:text-[11px] font-black text-cyan-200 drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)] shrink-0">
                   ({schoolYears.length})
                 </span>
               </div>
 
-              <div className="relative" ref={dropdownRef}>
+              <div className="relative shrink-0" ref={dropdownRef}>
                 <button
                   ref={createYearBtnRef}
                   type="button"
                   onClick={() => setIsCreateMenuOpen(prev => !prev)}
-                  className="create-year-trigger flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 rounded-xl text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
+                  className="create-year-trigger flex items-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-black text-white shadow-md transition-all active:scale-95 shrink-0 cursor-pointer"
                   style={{ backgroundColor: '#00313d' }}
                   title="Créer une rentrée scolaire"
                 >
-                  <Plus className="w-4 h-4 stroke-[3]" />
-                  <span className="tracking-wide text-[11px] sm:text-xs">
+                  <Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[3]" />
+                  <span className="tracking-wide sm:hidden">Rentrée</span>
+                  <span className="tracking-wide hidden sm:inline">
                     Créer une rentrée scolaire
                   </span>
                 </button>
@@ -4065,7 +4073,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
             </div>
 
             {/* Ligne des boutons d'années successifs avec sélection lumineuse (jamais noire) */}
-            <div className="flex items-center gap-2.5 flex-wrap py-1">
+            <div className="flex items-center gap-2 sm:gap-2.5 flex-nowrap sm:flex-wrap overflow-x-auto sm:overflow-visible scrollbar-none py-1 px-0.5">
               {schoolYears.map((year) => {
                 const isSelected = selectedYearId === year.id;
                 const isWhite = !year.color || year.color === '#ffffff' || year.color === 'white';
@@ -4092,9 +4100,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                             borderColor: useLightSurface ? '#cbd5e1' : year.color,
                           }
                     }
-                    className={`group relative overflow-hidden flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-extrabold tracking-wide cursor-pointer transition-all select-none ${
+                    className={`group relative overflow-hidden shrink-0 flex items-center gap-1.5 sm:gap-2 px-2.5 sm:px-3.5 py-1 sm:py-1.5 rounded-lg sm:rounded-xl text-[11px] sm:text-xs font-extrabold tracking-wide cursor-pointer transition-all select-none ${
                       isSelected
-                        ? 'border-2 scale-[1.03]'
+                        ? 'border-2 sm:scale-[1.03]'
                         : 'border shadow-xs hover:scale-102 hover:shadow'
                     }`}
                     title={`Sélectionner l'année scolaire ${year.label}`}
@@ -4207,16 +4215,18 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                 </div>
               ) : (
                 // 2. ÉCOLES CRÉÉES : Carrousel horizontal par pages de 3 lignes x 4 colonnes (12 cases : 1 bouton "+" + 11 écoles)
-                <div className="flex-1 min-h-0 flex flex-col space-y-2 pt-0.5 animate-fade-in">
+                <div className="flex-1 min-h-0 flex flex-col space-y-1.5 sm:space-y-2 pt-0.5 animate-fade-in">
                   {/* Barre fixe en haut des écoles : titre, rentrée, recherche + boutons Gauche / Droite */}
-                  <div className="shrink-0 flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-xs font-black uppercase tracking-wider text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
-                        Établissements scolaires ({currentYearSchools.length})
+                  <div className="shrink-0 flex items-center justify-between gap-1.5 sm:gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0">
+                      <span className="text-[11px] sm:text-xs font-black uppercase tracking-wider text-white drop-shadow-[0_1px_6px_rgba(0,0,0,0.85)]">
+                        <span className="sm:hidden">Écoles ({currentYearSchools.length})</span>
+                        <span className="hidden sm:inline">Établissements scolaires ({currentYearSchools.length})</span>
                       </span>
-                      <span className="text-xs text-cyan-200/75 font-bold">&bull;</span>
-                      <span className="text-xs font-bold text-cyan-900 bg-white/95 px-2 py-0.5 rounded-lg border border-cyan-200/60 shadow-2xs">
-                        Rentrée {currentSelectedYear.label}
+                      <span className="hidden sm:inline text-xs text-cyan-200/75 font-bold">&bull;</span>
+                      <span className="text-[10px] sm:text-xs font-bold text-cyan-900 bg-white/95 px-1.5 sm:px-2 py-0.5 rounded-md sm:rounded-lg border border-cyan-200/60 shadow-2xs">
+                        <span className="sm:hidden">{currentSelectedYear.label}</span>
+                        <span className="hidden sm:inline">Rentrée {currentSelectedYear.label}</span>
                       </span>
                       <InlineSectionSearch
                         isOpen={isSchoolSearchOpen}
@@ -4239,12 +4249,12 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                     </div>
 
                     {/* Boutons Gauche / Droite fixes pour défiler horizontalement entre les pages d'écoles */}
-                    <div className="flex items-center gap-1.5 shrink-0 select-none">
+                    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 select-none">
                       <button
                         type="button"
                         disabled={safeSchoolsPageIndex <= 0}
                         onClick={() => handleGoToSchoolsPage(safeSchoolsPageIndex - 1)}
-                        className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                        className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl border flex items-center justify-center transition-all ${
                           safeSchoolsPageIndex <= 0
                             ? 'bg-white/15 border-white/15 text-white/40 cursor-not-allowed'
                             : 'bg-white/95 hover:bg-cyan-50 border-cyan-200/80 text-[#00313d] shadow-md hover:scale-105 active:scale-95 cursor-pointer'
@@ -4252,21 +4262,21 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         title="Page précédente des écoles (←)"
                         aria-label="Page précédente des écoles"
                       >
-                        <ChevronLeft className="w-4 h-4 stroke-[2.8]" />
+                        <ChevronLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.8]" />
                       </button>
 
                       <span
-                        className="px-2.5 py-1 rounded-xl bg-[#081b33]/85 border border-cyan-300/35 text-[11px] font-extrabold text-white shadow-xs tabular-nums"
+                        className="px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-lg sm:rounded-xl bg-[#081b33]/85 border border-cyan-300/35 text-[10px] sm:text-[11px] font-extrabold text-white shadow-xs tabular-nums"
                         title={`12 cases par page (3 lignes × 4 colonnes : bouton + et jusqu'à ${TEACHER_SCHOOLS_PER_PAGE} écoles)`}
                       >
-                        Page {safeSchoolsPageIndex + 1} / {totalSchoolPages}
+                        <span className="hidden sm:inline">Page </span>{safeSchoolsPageIndex + 1} / {totalSchoolPages}
                       </span>
 
                       <button
                         type="button"
                         disabled={safeSchoolsPageIndex >= totalSchoolPages - 1}
                         onClick={() => handleGoToSchoolsPage(safeSchoolsPageIndex + 1)}
-                        className={`w-8 h-8 rounded-xl border flex items-center justify-center transition-all ${
+                        className={`w-6 h-6 sm:w-8 sm:h-8 rounded-lg sm:rounded-xl border flex items-center justify-center transition-all ${
                           safeSchoolsPageIndex >= totalSchoolPages - 1
                             ? 'bg-white/15 border-white/15 text-white/40 cursor-not-allowed'
                             : 'bg-white/95 hover:bg-cyan-50 border-cyan-200/80 text-[#00313d] shadow-md hover:scale-105 active:scale-95 cursor-pointer'
@@ -4278,7 +4288,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                         }
                         aria-label="Page suivante des écoles"
                       >
-                        <ChevronRight className="w-4 h-4 stroke-[2.8]" />
+                        <ChevronRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.8]" />
                       </button>
                     </div>
                   </div>
@@ -4313,7 +4323,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                       {schoolPages.map((pageSchools, pageIdx) => (
                         <div
                           key={`schools-page-${effectiveSchoolsYearId}-${pageIdx}`}
-                          className="w-full shrink-0 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 sm:gap-3.5 lg:gap-4 items-stretch content-start pt-1.5 pb-2 px-1"
+                          className="w-full shrink-0 grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3.5 lg:gap-4 items-stretch content-start pt-1 sm:pt-1.5 pb-2 px-0.5 sm:px-1"
                         >
                           {/* Bouton carré pointillé fixe en position 1 sur CHAQUE page pour ajouter une autre école */}
                           <button
@@ -4322,21 +4332,22 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                               resetSchoolForm();
                               setIsAddSchoolModalOpen(true);
                             }}
-                            className="min-h-[144px] sm:min-h-[150px] border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white backdrop-blur-md rounded-2xl p-3.5 sm:p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group hover:-translate-y-1 shadow-md hover:shadow-lg"
+                            className="min-h-[112px] sm:min-h-[150px] border-2 border-dashed border-cyan-300/75 hover:border-cyan-200 bg-white/90 hover:bg-white backdrop-blur-md rounded-xl sm:rounded-2xl p-2.5 sm:p-4 flex flex-col items-center justify-center text-center cursor-pointer transition-all duration-200 group hover:-translate-y-1 shadow-md hover:shadow-lg"
                           >
-                            <div className="w-11 h-11 rounded-xl bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-sm transition mb-2">
-                              <Plus className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.5]" />
+                            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-lg sm:rounded-xl bg-[#00313d] text-white flex items-center justify-center group-hover:scale-105 shadow-sm transition mb-1.5 sm:mb-2">
+                              <Plus className="w-4 h-4 sm:w-6 sm:h-6 stroke-[2.5]" />
                             </div>
-                            <span className="text-xs font-black text-slate-700 group-hover:text-[#00313d] transition-colors">
-                              Ajouter une autre école
+                            <span className="text-[11px] sm:text-xs font-black text-slate-700 group-hover:text-[#00313d] transition-colors leading-tight">
+                              <span className="sm:hidden">Ajouter une école</span>
+                              <span className="hidden sm:inline">Ajouter une autre école</span>
                             </span>
-                            <span className="text-[10px] text-slate-400 mt-0.5">
+                            <span className="text-[9.5px] sm:text-[10px] text-slate-400 mt-0.5">
                               Pour {currentSelectedYear.label}
                             </span>
                           </button>
 
                           {pageSchools.length === 0 && isSchoolSearchActive ? (
-                            <div className="min-h-[144px] sm:min-h-[150px] rounded-2xl border border-slate-200/90 bg-white/75 backdrop-blur-md p-4 flex items-center justify-center text-sm font-bold text-slate-500 select-none">
+                            <div className="min-h-[112px] sm:min-h-[150px] rounded-xl sm:rounded-2xl border border-slate-200/90 bg-white/75 backdrop-blur-md p-3 sm:p-4 flex items-center justify-center text-xs sm:text-sm font-bold text-slate-500 select-none">
                               Non trouvé
                             </div>
                           ) : (
@@ -4361,26 +4372,26 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                     borderColor: useLightSurface ? '#cbd5e1' : (school.borderColor || school.color),
                                     borderBottomColor: useLightSurface ? '#94a3b8' : (school.borderDarkColor || '#00141a'),
                                   }}
-                                  className={`group relative overflow-hidden min-h-[144px] sm:min-h-[150px] rounded-2xl border-2 border-b-[5px] p-3 sm:p-3.5 lg:p-4 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
+                                  className={`group relative overflow-hidden min-h-[112px] sm:min-h-[150px] rounded-xl sm:rounded-2xl border-2 border-b-[3px] sm:border-b-[5px] p-2.5 sm:p-3.5 lg:p-4 flex flex-col justify-between cursor-pointer transition-all duration-200 select-none ${
                                     useLightSurface
                                       ? 'shadow-[0_10px_25px_-5px_rgba(0,40,60,0.1),0_4px_6px_-2px_rgba(0,0,0,0.05)] hover:border-b-cyan-600'
                                       : 'shadow-[0_12px_24px_-6px_rgba(0,0,0,0.3)]'
                                   } ${
                                     isSelected
-                                      ? 'ring-2 ring-cyan-500 ring-offset-2 scale-[1.01]'
+                                      ? 'ring-2 ring-cyan-500 ring-offset-1 sm:ring-offset-2 sm:scale-[1.01]'
                                       : 'hover:-translate-y-1'
                                   } active:translate-y-0.5 active:border-b-2`}
                                 >
                                   {isAccentStyle && (
                                     <span
-                                      className="absolute left-0 top-0 bottom-0 w-[5px]"
+                                      className="absolute left-0 top-0 bottom-0 w-[4px] sm:w-[5px]"
                                       style={{ backgroundColor: school.color }}
                                     />
                                   )}
                                   {/* Haut de la carte : Logo ROND à gauche & Badge année / Menu à droite */}
-                                  <div className={`flex items-start justify-between gap-2 ${isAccentStyle ? 'pl-1.5' : ''}`}>
+                                  <div className={`flex items-start justify-between gap-1.5 sm:gap-2 ${isAccentStyle ? 'pl-1.5' : ''}`}>
                                     {/* Logo de l'école (ROND) */}
-                                    <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-full overflow-hidden shadow-md border-2 border-white/90 shrink-0 flex items-center justify-center bg-white/20 backdrop-blur-xs">
+                                    <div className="w-8 h-8 sm:w-12 sm:h-12 rounded-full overflow-hidden shadow-md border-2 border-white/90 shrink-0 flex items-center justify-center bg-white/20 backdrop-blur-xs">
                                       {school.logoUrl ? (
                                         <img
                                           src={school.logoUrl}
@@ -4389,7 +4400,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                         />
                                       ) : (
                                         <div
-                                          className="w-full h-full flex items-center justify-center font-black text-base tracking-wider"
+                                          className="w-full h-full flex items-center justify-center font-black text-xs sm:text-base tracking-wider"
                                           style={{ color: useLightSurface ? '#00313d' : '#ffffff' }}
                                         >
                                           {school.name.slice(0, 2).toUpperCase()}
@@ -4397,9 +4408,9 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                       )}
                                     </div>
 
-                                    {/* Badge année et menu 3 traits */}
+                                    {/* Badge année (bureau) et menu 3 traits */}
                                     <div className="flex items-center gap-1 min-w-0">
-                                      <span className={`text-[9.5px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-lg border whitespace-nowrap ${
+                                      <span className={`hidden sm:inline-block text-[9.5px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-lg border whitespace-nowrap ${
                                         useLightSurface
                                           ? 'bg-slate-100 text-slate-700 border-slate-200'
                                           : 'bg-black/20 text-white/90 border-white/20'
@@ -4417,7 +4428,7 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                         }`}
                                         title="Options de l'établissement"
                                       >
-                                        <div className="w-3.5 h-2.5 flex flex-col justify-between items-center pointer-events-none">
+                                        <div className="w-3 sm:w-3.5 h-2 sm:h-2.5 flex flex-col justify-between items-center pointer-events-none">
                                           <span className="w-full h-[1.8px] bg-current rounded-full"></span>
                                           <span className="w-full h-[1.8px] bg-current rounded-full"></span>
                                           <span className="w-full h-[1.8px] bg-current rounded-full"></span>
@@ -4427,38 +4438,39 @@ export const TeacherClassesView: React.FC<TeacherClassesViewProps> = ({ onBack, 
                                   </div>
 
                                   {/* Milieu de la carte : Nom de l'école & compteurs */}
-                                  <div className={`mt-2.5 space-y-0.5 ${isAccentStyle ? 'pl-1.5' : ''}`}>
+                                  <div className={`mt-1.5 sm:mt-2.5 space-y-0.5 ${isAccentStyle ? 'pl-1.5' : ''}`}>
                                     <h3
-                                      className="font-black text-sm sm:text-[15px] lg:text-base tracking-tight leading-snug line-clamp-1"
+                                      className="font-black text-xs sm:text-[15px] lg:text-base tracking-tight leading-snug line-clamp-1"
                                       title={school.name}
                                     >
                                       {school.name}
                                     </h3>
-                                    <div className="flex items-center gap-1.5 flex-wrap">
-                                      <span className={`text-[10px] font-bold ${
+                                    <div className="flex items-center gap-1 sm:gap-1.5 flex-wrap">
+                                      <span className={`text-[9.5px] sm:text-[10px] font-bold ${
                                         useLightSurface ? 'text-slate-600' : 'text-white/85'
                                       }`}>
-                                        {schoolLevelsCount} niveau{schoolLevelsCount > 1 ? 'x' : ''}
+                                        {schoolLevelsCount} niv<span className="hidden sm:inline">eau{schoolLevelsCount > 1 ? 'x' : ''}</span><span className="sm:hidden">.</span>
                                       </span>
-                                      <span className="text-[10px] opacity-60">&bull;</span>
-                                      <span className={`text-[10px] font-bold ${
+                                      <span className="text-[9.5px] sm:text-[10px] opacity-60">&bull;</span>
+                                      <span className={`text-[9.5px] sm:text-[10px] font-bold ${
                                         useLightSurface ? 'text-cyan-800' : 'text-cyan-200'
                                       }`}>
-                                        {schoolClassesCount} classe{schoolClassesCount > 1 ? 's' : ''}
+                                        {schoolClassesCount} cl<span className="hidden sm:inline">asse{schoolClassesCount > 1 ? 's' : ''}</span><span className="sm:hidden">.</span>
                                       </span>
                                     </div>
                                   </div>
 
                                   {/* Bas de la carte : Bouton d'accès 3D intégré */}
-                                  <div className={`mt-2.5 pt-2 border-t flex items-center justify-between text-[11px] sm:text-xs font-black ${
+                                  <div className={`mt-2 sm:mt-2.5 pt-1.5 sm:pt-2 border-t flex items-center justify-between text-[10px] sm:text-xs font-black ${
                                     isAccentStyle ? 'pl-1.5 ' : ''
                                   }${
                                     useLightSurface
                                       ? 'border-slate-100 text-[#00313d] group-hover:text-cyan-600'
                                       : 'border-white/20 text-white group-hover:text-cyan-200'
                                   } transition-colors`}>
-                                    <span className="truncate">Accéder aux classes</span>
-                                    <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 transform group-hover:translate-x-1 transition-transform" />
+                                    <span className="truncate sm:hidden">Classes</span>
+                                    <span className="truncate hidden sm:inline">Accéder aux classes</span>
+                                    <ArrowRight className="w-3 h-3 sm:w-4 sm:h-4 shrink-0 transform group-hover:translate-x-1 transition-transform" />
                                   </div>
                                 </div>
                               );

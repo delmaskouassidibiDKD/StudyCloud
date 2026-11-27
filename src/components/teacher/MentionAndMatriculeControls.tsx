@@ -605,15 +605,15 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
   const selectedColObj = noteColumns?.find((c) => c.index === selectedNoteColIndex) || noteColumns?.[0];
 
   return (
-    <div className="flex flex-col items-center justify-between pl-2.5 border-l border-slate-300 dark:border-slate-700 shrink-0 relative">
-      <div className="flex items-center gap-1.5 pt-1 relative">
+    <div className="flex flex-col items-center justify-center sm:justify-between pl-2 sm:pl-2.5 border-l border-slate-300 dark:border-slate-700 shrink-0 relative">
+      <div className="flex items-center gap-1 sm:gap-1.5 sm:pt-1 relative">
         {/* 1. BOUTON MENTIONS PERSONNALISÉES */}
         <button
           ref={mentionBtnRef}
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={openMentionsPopover}
-          className={`gb-menu-trigger h-7 px-2.5 rounded-md border flex items-center gap-1.5 text-[11px] font-bold transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none whitespace-nowrap ${
+          className={`gb-menu-trigger h-6 sm:h-7 px-2 sm:px-2.5 rounded-md border flex items-center gap-1 sm:gap-1.5 text-[10.5px] sm:text-[11px] font-bold transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none whitespace-nowrap ${
             openMenu === 'mentions'
               ? 'bg-slate-900 text-white border-slate-900 dark:bg-sky-600 dark:border-sky-500'
               : hasCustomMentionRules
@@ -648,7 +648,7 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
           type="button"
           onMouseDown={(e) => e.preventDefault()}
           onClick={openMatriculePopover}
-          className={`gb-menu-trigger h-7 px-2.5 rounded-md border flex items-center gap-1.5 text-[11px] font-bold transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none whitespace-nowrap ${
+          className={`gb-menu-trigger h-6 sm:h-7 px-2 sm:px-2.5 rounded-md border flex items-center gap-1 sm:gap-1.5 text-[10.5px] sm:text-[11px] font-bold transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none whitespace-nowrap ${
             openMenu === 'matricule'
               ? 'bg-slate-900 text-white border-slate-900 dark:bg-sky-600 dark:border-sky-500'
               : showMatricule
@@ -684,7 +684,7 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={openScalePopover}
-            className={`gb-menu-trigger h-7 px-2.5 rounded-md border flex items-center gap-1.5 text-[11px] font-bold transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none whitespace-nowrap ${
+            className={`gb-menu-trigger h-6 sm:h-7 px-2 sm:px-2.5 rounded-md border flex items-center gap-1 sm:gap-1.5 text-[10.5px] sm:text-[11px] font-bold transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none whitespace-nowrap ${
               openMenu === 'scale'
                 ? 'bg-slate-900 text-white border-slate-900 dark:bg-sky-600 dark:border-sky-500'
                 : hasCustomAverageScale
@@ -725,7 +725,7 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
             type="button"
             onMouseDown={(e) => e.preventDefault()}
             onClick={openLayoutPopover}
-            className={`gb-menu-trigger h-7 px-2.5 rounded-md border flex items-center gap-1.5 text-[11px] font-bold transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none whitespace-nowrap ${
+            className={`gb-menu-trigger h-6 sm:h-7 px-2 sm:px-2.5 rounded-md border flex items-center gap-1 sm:gap-1.5 text-[10.5px] sm:text-[11px] font-bold transition cursor-pointer shadow-2xs active:scale-95 outline-none focus:outline-none whitespace-nowrap ${
               openMenu === 'layout'
                 ? 'bg-slate-900 text-white border-slate-900 dark:bg-sky-600 dark:border-sky-500'
                 : hasCustomColumnOrder
@@ -761,7 +761,7 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
           </div>
         )}
       </div>
-      <span className="text-[9px] text-slate-500 dark:text-slate-400 font-medium leading-none mb-0.5">
+      <span className="hidden sm:block text-[9px] text-slate-500 dark:text-slate-400 font-medium leading-none mb-0.5">
         {onSaveAverageScale && onSaveColumnOrder
           ? 'Mentions · Matricule · Barème · Disposition'
           : onSaveAverageScale
@@ -784,25 +784,25 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
         onClose={() => setOpenMenu(null)}
         ignoreOutsideSelector=".gb-menu-trigger"
         dataPopoverId="gb-mention-rules-menu"
-        className="w-[460px] max-w-[calc(100vw-24px)] rounded-2xl"
+        className="w-[460px] max-w-[calc(100vw-20px)] rounded-2xl"
       >
         <div
-          className="p-4 text-xs select-none space-y-4 bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-700"
+          className="p-3 sm:p-4 text-xs select-none space-y-3 sm:space-y-4 bg-white dark:bg-[#111827] text-slate-800 dark:text-slate-100 rounded-2xl border border-slate-200 dark:border-slate-700"
           onClick={(e) => e.stopPropagation()}
         >
           {/* En-tête */}
-          <div className="flex items-start justify-between gap-3 pb-3 border-b border-slate-200 dark:border-slate-700">
+          <div className="flex items-start justify-between gap-2 sm:gap-3 pb-2.5 sm:pb-3 border-b border-slate-200 dark:border-slate-700">
             <div>
               <div className="flex items-center gap-2">
                 <Award className="w-4 h-4 text-amber-600 shrink-0" />
-                <h3 className="text-[13px] font-black text-slate-900 dark:text-white tracking-tight">
+                <h3 className="text-xs sm:text-[13px] font-black text-slate-900 dark:text-white tracking-tight">
                   Intervalles des mentions
                 </h3>
                 <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] font-bold text-slate-600 dark:text-slate-300">
                   Sur /{activeScaleLabel}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
+              <p className="text-[10.5px] sm:text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">
                 Définissez librement chaque seuil minimal (sur /{activeScaleLabel}) et le texte de la mention affichée.
               </p>
             </div>
@@ -817,11 +817,11 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
           </div>
 
           {/* Tableau aéré des intervalles */}
-          <div className="space-y-2 max-h-[260px] overflow-y-auto pr-1">
-            <div className="grid grid-cols-[96px_1fr_84px_30px] items-center gap-2 px-1 text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+          <div className="space-y-2 max-h-[240px] sm:max-h-[260px] overflow-y-auto pr-0.5 sm:pr-1">
+            <div className="grid grid-cols-[64px_1fr_62px_26px] sm:grid-cols-[96px_1fr_84px_30px] items-center gap-1.5 sm:gap-2 px-1 text-[9.5px] sm:text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">
               <span>À partir de</span>
-              <span>Nom de la mention</span>
-              <span className="text-center">Intervalle</span>
+              <span>Mention</span>
+              <span className="text-center">Plage</span>
               <span />
             </div>
 
@@ -830,7 +830,7 @@ export const MentionAndMatriculeControls: React.FC<MentionAndMatriculeControlsPr
               return (
                 <div
                   key={row.uid}
-                  className="grid grid-cols-[96px_1fr_84px_30px] items-center gap-2 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl px-2 py-1.5"
+                  className="grid grid-cols-[64px_1fr_62px_26px] sm:grid-cols-[96px_1fr_84px_30px] items-center gap-1.5 sm:gap-2 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl px-1.5 sm:px-2 py-1.5"
                 >
                   <div className="flex items-center gap-1 min-w-0">
                     <span className="text-[11px] font-black text-slate-500 dark:text-slate-400 shrink-0">
