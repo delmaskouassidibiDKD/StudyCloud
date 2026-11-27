@@ -60,6 +60,7 @@ import {
   TeacherDelmasAssistantRibbonButton,
   TeacherDelmasAssistantDrawer,
 } from './TeacherDelmasAssistantDrawer';
+import { useTablePinchZoom } from '../../hooks/useTablePinchZoom';
 import { GradebookDownloadMenu } from './GradebookDownloadMenu';
 import {
   exportGradebookToPdf,
@@ -3014,6 +3015,32 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     else if (colId === 'col-mention') setColWidthMention(Math.max(88, w));
   };
 
+  // Références pour le mode tactile des traits (appui long ~1,5 s pour sélectionner sans gêner le défilement)
+  const lastTouchHandleTsRef = useRef<number>(0);
+  const touchHoldTimerRef = useRef<number | null>(null);
+  const selectedLineRef = useRef<{ type: 'col' | 'row'; id: string } | null>(null);
+  selectedLineRef.current = selectedLine;
+  const zoomPercentRef = useRef<number>(zoomPercent);
+  zoomPercentRef.current = zoomPercent;
+
+  const cancelPendingTouchLineHold = () => {
+    if (touchHoldTimerRef.current !== null) {
+      window.clearTimeout(touchHoldTimerRef.current);
+      touchHoldTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => cancelPendingTouchLineHold();
+  }, []);
+
+  // Zoom tactile fluide à deux doigts (pinch-to-zoom) sur tout le tableur
+  useTablePinchZoom(gridContainerRef, zoomPercent, setZoomPercent, {
+    min: 30,
+    max: 200,
+    onPinchStart: cancelPendingTouchLineHold,
+  });
+
   // Vérification stricte si un séparateur vertical est sélectionné ou en cours de glissement
   // LE SIMPLE SURVOL NE SÉLECTIONNE PLUS LA LIGNE !
   const isColActive = (colId: string): boolean => {
@@ -3030,18 +3057,18 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
     return false;
   };
 
-  // Lancement du redimensionnement ou de la sélection d'une colonne verticale spécifique
-  const handleStartColResize = (e: React.MouseEvent | React.TouchEvent, colId: string) => {
+  // Lancement du redimensionnement SOURIS (ordinateur) d'une colonne verticale spécifique
+  const handleStartColResize = (e: React.MouseEvent, colId: string) => {
     e.stopPropagation();
 
-    const startX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+    const startX = e.clientX;
     const initialWidth = getColWidth(colId);
     const minWidth = getColMinWidth(colId);
+    const zoomScale = Math.max(0.3, zoomPercentRef.current / 100);
     let hasMoved = false;
 
-    const handleMouseMove = (moveEvent: MouseEvent | TouchEvent) => {
-      const curX = 'touches' in moveEvent ? moveEvent.touches[0].clientX : moveEvent.clientX;
-      const deltaX = curX - startX;
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaX = (moveEvent.clientX - startX) / zoomScale;
       if (Math.abs(deltaX) > 2) {
         if (!hasMoved) {
           hasMoved = true;
@@ -3055,11 +3082,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       }
     };
 
-    const handleMouseUp = (upEvent: MouseEvent | TouchEvent) => {
+    const handleMouseUp = (upEvent: MouseEvent) => {
       upEvent.stopPropagation();
       if (hasMoved) {
         justFinishedLineDragRef.current = true;
-        // Dès qu'on relâche la ligne après avoir agrandi/réduit, la couleur bleue disparaît immédiatement !
+        // Sur ordinateur, dès qu'on relâche la ligne après avoir agrandi/réduit, la couleur bleue disparaît immédiatement
         setSelectedLine(null);
         setTimeout(() => {
           justFinishedLineDragRef.current = false;
@@ -3068,29 +3095,25 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       setResizingLine(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('touchmove', handleMouseMove);
-      window.removeEventListener('touchend', handleMouseUp);
     };
 
     window.addEventListener('mousemove', handleMouseMove, { passive: false });
     window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('touchmove', handleMouseMove, { passive: false });
-    window.addEventListener('touchend', handleMouseUp);
   };
 
-  // Lancement du redimensionnement ou de la sélection d'une ligne d'élève horizontale spécifique
-  const handleStartRowResize = (e: React.MouseEvent | React.TouchEvent, rowIndex: number) => {
+  // Lancement du redimensionnement SOURIS (ordinateur) d'une ligne d'élève horizontale spécifique
+  const handleStartRowResize = (e: React.MouseEvent, rowIndex: number) => {
     e.stopPropagation();
     const rowKey = `row-${rowIndex}`;
 
-    const startY = 'touches' in e ? e.touches[0].clientY : e.clientY;
+    const startY = e.clientY;
     const minHeight = getRowMinHeightForContent(studentsWithStats[rowIndex]);
     const initialHeight = Math.max(customRowHeights[rowIndex] || 44, minHeight);
+    const zoomScale = Math.max(0.3, zoomPercentRef.current / 100);
     let hasMoved = false;
 
-    const handleMouseMove = (moveEvent: MouseEvent | TouchEvent) => {
-      const curY = 'touches' in moveEvent ? moveEvent.touches[0].clientY : moveEvent.clientY;
-      const deltaY = curY - startY;
+    const handleMouseMove = (moveEvent: MouseEvent) => {
+      const deltaY = (moveEvent.clientY - startY) / zoomScale;
       if (Math.abs(deltaY) > 2) {
         if (!hasMoved) {
           hasMoved = true;
@@ -3107,11 +3130,11 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       }
     };
 
-    const handleMouseUp = (upEvent: MouseEvent | TouchEvent) => {
+    const handleMouseUp = (upEvent: MouseEvent) => {
       upEvent.stopPropagation();
       if (hasMoved) {
         justFinishedLineDragRef.current = true;
-        // Dès qu'on relâche la ligne après avoir agrandi/réduit, la couleur bleue disparaît immédiatement !
+        // Sur ordinateur, dès qu'on relâche la ligne après avoir agrandi/réduit, la couleur bleue disparaît immédiatement
         setSelectedLine(null);
         setTimeout(() => {
           justFinishedLineDragRef.current = false;
@@ -3120,38 +3143,178 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       setResizingLine(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
-      window.removeEventListener('touchmove', handleMouseMove);
-      window.removeEventListener('touchend', handleMouseUp);
     };
 
     window.addEventListener('mousemove', handleMouseMove, { passive: false });
     window.addEventListener('mouseup', handleMouseUp);
-    window.addEventListener('touchmove', handleMouseMove, { passive: false });
-    window.addEventListener('touchend', handleMouseUp);
+  };
+
+  // Mode TACTILE (téléphone / tablette) pour sélectionner & déplacer une ligne :
+  // - Toucher/glisser normal = défilement normal du tableau (aucun redimensionnement involontaire)
+  // - Maintenir la ligne ~1,5 s = sélectionne la ligne (change de couleur, reste sélectionnée même main levée)
+  // - Une fois sélectionnée : glisser déplace la ligne ; taper dessus ou ailleurs désélectionne ; maintenir une autre ligne bascule dessus
+  const handleTouchLineInteraction = (
+    e: React.TouchEvent,
+    lineType: 'col' | 'row',
+    lineId: string,
+    rowIndex?: number
+  ) => {
+    lastTouchHandleTsRef.current = Date.now();
+    if (e.touches.length !== 1) {
+      cancelPendingTouchLineHold();
+      return;
+    }
+
+    const touch = e.touches[0];
+    const startX = touch.clientX;
+    const startY = touch.clientY;
+    const touchStartTs = Date.now();
+    const zoomScale = Math.max(0.3, zoomPercentRef.current / 100);
+    const alreadySelected =
+      selectedLineRef.current?.type === lineType && selectedLineRef.current.id === lineId;
+    const hadOtherSelection =
+      Boolean(selectedLineRef.current) && !alreadySelected;
+
+    let isArmed = alreadySelected;
+    let activatedDuringThisTouch = false;
+    let hasDragged = false;
+    let dragOriginX = startX;
+    let dragOriginY = startY;
+
+    const initialColWidth = lineType === 'col' ? getColWidth(lineId) : 0;
+    const minColWidth = lineType === 'col' ? getColMinWidth(lineId) : 0;
+    const minRowHeight =
+      lineType === 'row' && rowIndex !== undefined
+        ? getRowMinHeightForContent(studentsWithStats[rowIndex])
+        : 44;
+    const initialRowHeight =
+      lineType === 'row' && rowIndex !== undefined
+        ? Math.max(customRowHeights[rowIndex] || 44, minRowHeight)
+        : 44;
+
+    if (alreadySelected) {
+      e.stopPropagation();
+    } else {
+      cancelPendingTouchLineHold();
+      touchHoldTimerRef.current = window.setTimeout(() => {
+        touchHoldTimerRef.current = null;
+        isArmed = true;
+        activatedDuringThisTouch = true;
+        dragOriginX = startX;
+        dragOriginY = startY;
+        setSelectedLine({ type: lineType, id: lineId });
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+          try {
+            navigator.vibrate(35);
+          } catch {
+            // Ignore vibration restriction
+          }
+        }
+      }, 1500);
+    }
+
+    const handleTouchMove = (moveEvent: TouchEvent) => {
+      if (moveEvent.touches.length !== 1) {
+        cancelPendingTouchLineHold();
+        cleanup();
+        return;
+      }
+      const cur = moveEvent.touches[0];
+      const dxFromStart = cur.clientX - startX;
+      const dyFromStart = cur.clientY - startY;
+
+      if (!isArmed) {
+        // Si l'utilisateur fait défiler le tableau avant les 1,5 s : annuler immédiatement l'appui long
+        if (Math.hypot(dxFromStart, dyFromStart) > 10) {
+          cancelPendingTouchLineHold();
+          cleanup();
+        }
+        return;
+      }
+
+      const axisDelta =
+        lineType === 'col' ? cur.clientX - dragOriginX : cur.clientY - dragOriginY;
+      if (!hasDragged && Math.abs(axisDelta) > 4) {
+        hasDragged = true;
+        setResizingLine({ type: lineType, id: lineId });
+      }
+      if (hasDragged) {
+        moveEvent.preventDefault();
+        moveEvent.stopPropagation();
+        if (lineType === 'col') {
+          const nextW = Math.max(minColWidth, Math.round(initialColWidth + axisDelta / zoomScale));
+          setColWidth(lineId, nextW);
+        } else if (rowIndex !== undefined) {
+          const nextH = Math.max(minRowHeight, Math.round(initialRowHeight + axisDelta / zoomScale));
+          setCustomRowHeights((prev) => ({
+            ...prev,
+            [rowIndex]: nextH,
+          }));
+        }
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('touchmove', handleTouchMove);
+      window.removeEventListener('touchend', handleTouchEnd);
+      window.removeEventListener('touchcancel', handleTouchEnd);
+    };
+
+    const handleTouchEnd = () => {
+      cancelPendingTouchLineHold();
+      lastTouchHandleTsRef.current = Date.now();
+      const elapsed = Date.now() - touchStartTs;
+
+      if (hasDragged) {
+        // Après avoir déplacé la ligne, elle RESTE sélectionnée sur téléphone jusqu'à ce qu'on tape ailleurs ou dessus
+        setResizingLine(null);
+      } else if (alreadySelected && !activatedDuringThisTouch && elapsed < 450) {
+        // Taper sur la ligne déjà sélectionnée la désélectionne
+        setSelectedLine(null);
+      } else if (!isArmed && hadOtherSelection && elapsed < 350) {
+        // Taper brièvement ailleurs (même sur un autre trait) désélectionne la ligne précédente
+        setSelectedLine(null);
+      }
+
+      cleanup();
+    };
+
+    window.addEventListener('touchmove', handleTouchMove, { passive: false });
+    window.addEventListener('touchend', handleTouchEnd);
+    window.addEventListener('touchcancel', handleTouchEnd);
   };
 
   // Poignée interactive discrète superposée sur la bordure droite de chaque colonne
   // AUCUNE COULEUR N'APPARAÎT AU SIMPLE SURVOL OU TOUCHER TANT QUE CE N'EST PAS SÉLECTIONNÉ !
-  // Quand sélectionné : la ligne devient blanche fine juste sur le trait
   const renderColHandle = (colId: string) => {
     const active = isColActive(colId);
     return (
       <div
         data-interactive="true"
+        data-resize-handle="true"
         onClick={(e) => {
           e.stopPropagation();
+          if (Date.now() - lastTouchHandleTsRef.current < 650) return;
           if (justFinishedLineDragRef.current) return;
           setSelectedLine(prev => (prev?.type === 'col' && prev.id === colId) ? null : { type: 'col', id: colId });
         }}
-        onMouseDown={(e) => handleStartColResize(e, colId)}
-        onTouchStart={(e) => handleStartColResize(e, colId)}
-        className={`absolute top-0 -right-1.5 w-3 h-full cursor-col-resize z-30 select-none flex items-center justify-center bg-transparent ${
+        onMouseDown={(e) => {
+          if (Date.now() - lastTouchHandleTsRef.current < 650) return;
+          handleStartColResize(e, colId);
+        }}
+        onTouchStart={(e) => handleTouchLineInteraction(e, 'col', colId)}
+        className={`absolute top-0 h-full cursor-col-resize z-30 select-none flex items-center justify-center bg-transparent ${
+          active ? '-right-3 w-6 sm:-right-1.5 sm:w-3 touch-none' : '-right-1.5 w-3'
+        } ${
           isAnyMenuOpen ? 'pointer-events-none' : 'pointer-events-auto'
         }`}
-        title={isAnyMenuOpen ? undefined : "Cliquer pour sélectionner le trait vertical, glisser pour agrandir/réduire"}
+        title={isAnyMenuOpen ? undefined : "Glisser pour agrandir/réduire (sur téléphone : maintenir 1,5 s pour sélectionner)"}
       >
         {active && (
-          <div className="w-[1.5px] h-full bg-sky-400 pointer-events-none" />
+          <>
+            <div className="w-[2.5px] sm:w-[1.5px] h-full bg-blue-500 sm:bg-sky-400 shadow-[0_0_8px_rgba(37,99,235,0.85)] sm:shadow-none pointer-events-none" />
+            <div className="sm:hidden absolute top-1/2 -translate-y-1/2 w-3 h-7 rounded-full bg-blue-600 border border-white shadow-md pointer-events-none" />
+          </>
         )}
       </div>
     );
@@ -3159,27 +3322,36 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   // Poignée interactive discrète superposée sur la bordure inférieure de chaque ligne d'élève
   // AUCUNE COULEUR N'APPARAÎT AU SIMPLE TOUCHER TANT QUE CE N'EST PAS SÉLECTIONNÉ !
-  // Quand sélectionné : la ligne devient blanche fine juste sur le trait
   const renderRowHandle = (rowIndex: number) => {
     const rowKey = `row-${rowIndex}`;
     const active = isRowActive(rowIndex);
     return (
       <div
         data-interactive="true"
+        data-resize-handle="true"
         onClick={(e) => {
           e.stopPropagation();
+          if (Date.now() - lastTouchHandleTsRef.current < 650) return;
           if (justFinishedLineDragRef.current) return;
           setSelectedLine(prev => (prev?.type === 'row' && prev.id === rowKey) ? null : { type: 'row', id: rowKey });
         }}
-        onMouseDown={(e) => handleStartRowResize(e, rowIndex)}
-        onTouchStart={(e) => handleStartRowResize(e, rowIndex)}
-        className={`absolute -bottom-1.5 left-0 w-full h-3 cursor-row-resize z-30 select-none flex items-center justify-center bg-transparent ${
+        onMouseDown={(e) => {
+          if (Date.now() - lastTouchHandleTsRef.current < 650) return;
+          handleStartRowResize(e, rowIndex);
+        }}
+        onTouchStart={(e) => handleTouchLineInteraction(e, 'row', rowKey, rowIndex)}
+        className={`absolute left-0 w-full cursor-row-resize z-30 select-none flex items-center justify-center bg-transparent ${
+          active ? '-bottom-3 h-6 sm:-bottom-1.5 sm:h-3 touch-none' : '-bottom-1.5 h-3'
+        } ${
           isAnyMenuOpen ? 'pointer-events-none' : 'pointer-events-auto'
         }`}
-        title={isAnyMenuOpen ? undefined : "Cliquer pour sélectionner la ligne, glisser pour agrandir/réduire"}
+        title={isAnyMenuOpen ? undefined : "Glisser pour agrandir/réduire (sur téléphone : maintenir 1,5 s pour sélectionner)"}
       >
         {active && (
-          <div className="h-[1.5px] w-full bg-sky-400 pointer-events-none" />
+          <>
+            <div className="h-[2.5px] sm:h-[1.5px] w-full bg-blue-500 sm:bg-sky-400 shadow-[0_0_8px_rgba(37,99,235,0.85)] sm:shadow-none pointer-events-none" />
+            <div className="sm:hidden absolute left-1/2 -translate-x-1/2 h-3 w-8 rounded-full bg-blue-600 border border-white shadow-md pointer-events-none" />
+          </>
         )}
       </div>
     );
@@ -6758,8 +6930,21 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       {/* ========================================================================= */}
       <div 
         ref={gridContainerRef}
+        onTouchStart={(e) => {
+          if (
+            selectedLine &&
+            e.touches.length === 1 &&
+            !(e.target as HTMLElement)?.closest('[data-resize-handle="true"]')
+          ) {
+            setSelectedLine(null);
+          }
+        }}
         onClick={(e) => {
-          if ((e.target as HTMLElement)?.closest('button, input, select, textarea, [data-interactive="true"], [data-cell-key]')) {
+          const targetEl = e.target as HTMLElement;
+          if (selectedLine && !targetEl?.closest('[data-resize-handle="true"]')) {
+            setSelectedLine(null);
+          }
+          if (targetEl?.closest('button, input, select, textarea, [data-interactive="true"], [data-cell-key]')) {
             return;
           }
           closeAllMenus();
@@ -6769,6 +6954,21 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         }}
         className="flex-1 overflow-auto bg-[#fafbfc] relative p-0 touch-pan-x touch-pan-y"
       >
+        {selectedLine && (
+          <div className="sm:hidden sticky top-1.5 left-1/2 -translate-x-1/2 w-fit mx-auto z-50 px-2.5 py-1 rounded-full bg-blue-600/95 text-white text-[10px] font-bold shadow-lg flex items-center gap-1.5 pointer-events-auto">
+            <span>Ligne sélectionnée · glissez pour ajuster</span>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSelectedLine(null);
+              }}
+              className="px-1.5 py-0.2 rounded-full bg-white/20 text-[9.5px] font-extrabold"
+            >
+              OK
+            </button>
+          </div>
+        )}
         <div
           className="inline-block min-w-full pb-24 sm:pb-20 pr-12 sm:pr-20"
           style={{ zoom: `${zoomPercent}%` }}

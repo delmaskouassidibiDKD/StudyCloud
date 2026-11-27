@@ -59,6 +59,7 @@ import {
   TeacherDelmasAssistantRibbonButton,
   TeacherDelmasAssistantDrawer,
 } from './TeacherDelmasAssistantDrawer';
+import { useTablePinchZoom } from '../../hooks/useTablePinchZoom';
 import { GradebookDownloadMenu } from './GradebookDownloadMenu';
 import {
   exportGradebookToPdf,
@@ -320,6 +321,12 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
   const [zoomPercent, setZoomPercent] = useState<number>(() => {
     const z = initialCachedSheet?.card?.layout?.zoomPercent;
     return typeof z === 'number' && z >= 40 && z <= 180 ? Math.round(z) : 80;
+  });
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+  useTablePinchZoom(gridScrollRef, zoomPercent, setZoomPercent, {
+    min: 40,
+    max: 180,
+    onZoomChange: () => setIsDirty(true),
   });
 
   // Statut de synchronisation cloud
@@ -3306,6 +3313,7 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       {/* 4. GRILLE DE TABLEUR EXCEL AVEC LE TABLEAU DE MOYENNE GÉNÉRALE            */}
       {/* ========================================================================= */}
       <div
+        ref={gridScrollRef}
         className="term-avg-grid-canvas flex-1 min-h-0 overflow-auto bg-[#fafbfc] relative p-0 touch-pan-x touch-pan-y"
         onClick={(e) => {
           if (

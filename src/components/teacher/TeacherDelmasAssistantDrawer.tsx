@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Clock,
   Plus,
@@ -2253,7 +2254,44 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       c.title.toLowerCase().includes(historySearch.toLowerCase())
   );
 
-  return (
+  // Détection mobile (< 640px) + gestion clavier virtuel (identique au menu Création)
+  const [isMobileViewport, setIsMobileViewport] = useState<boolean>(() =>
+    typeof window !== 'undefined' ? window.innerWidth < 640 : false
+  );
+  const [keyboardOffset, setKeyboardOffset] = useState<number>(0);
+  const [isKeyboardOpen, setIsKeyboardOpen] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleResize = () => {
+      setIsMobileViewport(window.innerWidth < 640);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen || !isMobileViewport || typeof window === 'undefined' || !window.visualViewport) {
+      setKeyboardOffset(0);
+      setIsKeyboardOpen(false);
+      return;
+    }
+    const vv = window.visualViewport;
+    const updateKb = () => {
+      const diff = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      setKeyboardOffset(diff > 60 ? diff : 0);
+      setIsKeyboardOpen(diff > 60);
+    };
+    updateKb();
+    vv.addEventListener('resize', updateKb);
+    vv.addEventListener('scroll', updateKb);
+    return () => {
+      vv.removeEventListener('resize', updateKb);
+      vv.removeEventListener('scroll', updateKb);
+    };
+  }, [isOpen, isMobileViewport]);
+
+  const drawerMarkup = (
     <>
       <style>{`
         @keyframes rainbowBorderSpin {
@@ -2301,7 +2339,7 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         }`}
       />
 
-      {/* MENU LATÉRAL DROIT COULISSANT FLUIDE */}
+      {/* MENU LATÉRAL DROIT COULISSANT FLUIDE (portail plein écran au-dessus de la barre basse sur mobile) */}
       <aside
         onClick={(e) => e.stopPropagation()}
         onDragOver={(e) => {
@@ -2319,12 +2357,9 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           }
         }}
         style={{
-          width:
-            typeof window !== 'undefined' && window.innerWidth >= 640
-              ? `${drawerWidth}px`
-              : undefined,
+          width: !isMobileViewport ? `${drawerWidth}px` : undefined,
         }}
-        className={`fixed inset-0 sm:absolute sm:inset-auto sm:top-0 sm:right-0 sm:bottom-0 z-[100015] w-full sm:max-w-[92vw] h-full flex flex-col bg-[#1e2024] text-white font-nunito overflow-hidden border-l border-zinc-700/80 shadow-[-14px_0_38px_rgba(0,0,0,0.55)] select-none transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`fixed inset-0 h-[100dvh] sm:absolute sm:inset-auto sm:top-0 sm:right-0 sm:bottom-0 sm:h-full z-[100015] w-full sm:max-w-[92vw] flex flex-col bg-[#1e2024] text-white font-nunito overflow-hidden border-l border-zinc-700/80 shadow-[-14px_0_38px_rgba(0,0,0,0.55)] select-none transition-transform duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
           isOpen ? 'translate-x-0 pointer-events-auto' : 'translate-x-full pointer-events-none'
         }`}
         aria-hidden={!isOpen}
@@ -3184,7 +3219,17 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         {/* =================================================================== */}
         {/* 4. ZONE BASSE : CHAMP DE SAISIE + BOUTON + D'IMPORTATION FICHIERS   */}
         {/* =================================================================== */}
-        <div className="px-2.5 sm:px-5 pt-1.5 pb-4 sm:pb-6 shrink-0 relative z-30">
+        <div
+          className={`px-2.5 sm:px-5 pt-1.5 shrink-0 relative z-30 transition-all duration-150 ${
+            isKeyboardOpen
+              ? 'pb-2'
+              : 'pb-[max(0.9rem,env(safe-area-inset-bottom))] sm:pb-6'
+          }`}
+          style={{
+            transform: keyboardOffset > 0 ? `translateY(-${keyboardOffset}px)` : undefined,
+            transition: 'transform 0.18s cubic-bezier(0.2, 0, 0, 1), padding-bottom 0.15s ease-out',
+          }}
+        >
           {/* BANDEAU D'ALERTE PLAFONDS D'ENVOI FICHIERS (taille / nombre / format) */}
           {fileUploadWarning && (
             <div className="mx-1 sm:mx-2 mb-2 px-3 py-2 rounded-xl bg-amber-950/85 border border-amber-500/45 text-amber-200 text-[11px] flex items-start justify-between gap-2 animate-fadeIn">
@@ -3378,4 +3423,9 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
       </aside>
     </>
   );
+
+  if (isMobileViewport && typeof document !== 'undefined') {
+    return createPortal(drawerMarkup, document.body);
+  }
+  return drawerMarkup;
 };
