@@ -593,12 +593,6 @@ export const PricingView: React.FC<PricingViewProps> = ({
                 ))}
               </div>
             )}
-
-            {isOneTime && (
-              <div className="text-[11px] font-semibold mt-2 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-[#FF6D29]/15 text-[#FFB085] border border-[#FF6D29]/35">
-                <span>⚡ Paiement unique • Crédits sans expiration</span>
-              </div>
-            )}
           </div>
 
           {/* Ligne de séparation */}
@@ -671,6 +665,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
               : 'monthly';
 
             const masterUser = type === 'storage' ? masterStorageStatus?.userState : null;
+            const masterCfg = type === 'storage' ? masterStorageStatus?.config : null;
             const isExactActiveStoragePlan = Boolean(
               type === 'storage' &&
                 masterUser &&
@@ -683,8 +678,34 @@ export const PricingView: React.FC<PricingViewProps> = ({
               type === 'storage' &&
                 masterUser &&
                 masterUser.paidMb > 0 &&
+                (masterUser.hasActiveSubscription || masterUser.inGrace) &&
+                !masterUser.isExpired &&
                 !isExactActiveStoragePlan
             );
+
+            // Calcul exact du prorata côté aperçu (identique au serveur) si achat d'une carte secondaire en cours de cycle
+            const cardPriceFcfa = Math.max(1, Math.round(pricing.priceFcfa));
+            let boosterAmountDueFcfa = cardPriceFcfa;
+            let boosterUnusedCreditFcfa = 0;
+            let boosterNewMonthlyFcfa = cardPriceFcfa;
+            if (isStorageBoosterMode && masterUser && !isInfinite && !masterUser.isInfinite) {
+              const oldMonthly = Math.max(0, Math.round(masterUser.monthlyPriceFcfa || 0));
+              boosterNewMonthlyFcfa = oldMonthly + cardPriceFcfa;
+              const canProrata = Boolean(
+                (masterCfg ? masterCfg.prorataEnabled : true) &&
+                  masterUser.hasActiveSubscription &&
+                  !masterUser.isExpired &&
+                  masterUser.unusedCreditFcfa > 0
+              );
+              if (canProrata) {
+                const minPay = boosterNewMonthlyFcfa >= 100 ? 100 : 1;
+                const maxDed = Math.max(0, boosterNewMonthlyFcfa - minPay);
+                boosterUnusedCreditFcfa = Math.min(Math.max(0, masterUser.unusedCreditFcfa), maxDed);
+                boosterAmountDueFcfa = Math.max(minPay, boosterNewMonthlyFcfa - boosterUnusedCreditFcfa);
+              } else {
+                boosterAmountDueFcfa = boosterNewMonthlyFcfa;
+              }
+            }
 
             if (isExactActiveStoragePlan) {
               return (
@@ -704,7 +725,9 @@ export const PricingView: React.FC<PricingViewProps> = ({
               <div className="space-y-2">
                 {isStorageBoosterMode && (
                   <div className="text-[11px] font-semibold px-3 py-1.5 rounded-xl bg-[#FF6D29]/12 text-[#FFB085] border border-[#FF6D29]/30 text-center">
-                    ⚡ Bonus rapide : s'ajoute directement à votre Carte Maîtresse
+                    {boosterUnusedCreditFcfa > 0
+                      ? `⚡ S'ajoute à votre Carte Maîtresse • Net aujourd'hui : ${boosterAmountDueFcfa.toLocaleString('fr-FR')} FCFA (prorata -${boosterUnusedCreditFcfa.toLocaleString('fr-FR')} FCFA)`
+                      : `⚡ Bonus rapide : s'ajoute directement à votre Carte Maîtresse`}
                   </div>
                 )}
                 {isPaystackAvailable ? (
@@ -717,21 +740,32 @@ export const PricingView: React.FC<PricingViewProps> = ({
                           productId: plan.id,
                           productName: plan.name,
                           subtitle: isStorageBoosterMode
-                            ? `Booster +${lockedPerkText} ajouté à votre forfait actuel`
+                            ? boosterUnusedCreditFcfa > 0
+                              ? `+${lockedPerkText} ajoutés (prorata -${boosterUnusedCreditFcfa.toLocaleString('fr-FR')} FCFA déduit · Nouveau mensuel : ${boosterNewMonthlyFcfa.toLocaleString('fr-FR')} FCFA)`
+                              : `Booster +${lockedPerkText} ajouté à votre forfait actuel`
                             : lockedPerkText,
                           description: plan.description || undefined,
                           features: activeFeatures.map((f) => f.text).filter(Boolean),
                           periodLabel: isInfinite || isOneTime ? undefined : durationDays === 30 ? '/ mois' : `/ ${durationDays} jours`,
-                          amountFcfa: Math.round(pricing.priceFcfa),
+                          amountFcfa: isStorageBoosterMode ? boosterAmountDueFcfa : cardPriceFcfa,
                           secondaryPriceDisplay:
-                            pricing.primaryCurr !== 'XOF'
+                            !isStorageBoosterMode && pricing.primaryCurr !== 'XOF'
                               ? formattedPrimary
-                              : pricing.secondaryString || undefined,
+                              : !isStorageBoosterMode
+                              ? pricing.secondaryString || undefined
+                              : undefined,
                           billingCycle: resolvedCycle,
                           billingMode,
                           durationDays,
                         },
-                        manualPlan: manualPlanObj,
+                        manualPlan: isStorageBoosterMode
+                          ? {
+                              ...manualPlanObj,
+                              price: boosterAmountDueFcfa,
+                              priceFcfa: boosterAmountDueFcfa,
+                              priceDisplay: `${boosterAmountDueFcfa.toLocaleString('fr-FR')} FCFA (prorata inclus)`,
+                            }
+                          : manualPlanObj,
                       })
                     }
                     style={CAPSULE_CTA_STYLE}

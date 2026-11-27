@@ -102,9 +102,10 @@ export const StorageMasterCard: React.FC<StorageMasterCardProps> = ({
         !userState.isInfinite &&
         userState.unusedCreditFcfa > 0
     );
-    const unusedCreditFcfa = canApplyProrata
-      ? Math.min(userState.unusedCreditFcfa, oldMonthlyFcfa)
-      : 0;
+    const rawUnusedCreditFcfa = canApplyProrata ? Math.max(0, userState.unusedCreditFcfa) : 0;
+    const minPayable = newMonthlyFcfa >= 100 ? 100 : 1;
+    const maxDeductible = Math.max(0, newMonthlyFcfa - minPayable);
+    const unusedCreditFcfa = Math.min(rawUnusedCreditFcfa, maxDeductible);
     const consumedCostFcfa = canApplyProrata ? userState.consumedCostFcfa : 0;
     const rawNet = Math.max(0, newMonthlyFcfa - unusedCreditFcfa);
     const amountDueFcfa =

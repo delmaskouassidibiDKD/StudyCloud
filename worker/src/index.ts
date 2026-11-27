@@ -3806,6 +3806,20 @@ async function checkUserStorageQuota(db: any, userId: string, incomingBytes: num
       }
     } catch (e) {}
 
+    // 3b. Si l'abonnement stockage Paystack est suspendu (impayé après grâce) ou annulé, suspendre le quota payant pour les nouveaux uploads
+    try {
+      const subState: any = await db.prepare(
+        "SELECT status, is_infinite FROM active_subscriptions WHERE user_id = ? AND product_type = 'storage' ORDER BY updated_at DESC LIMIT 1"
+      ).bind(userId).first().catch(() => null);
+      if (
+        subState &&
+        Number(subState.is_infinite || 0) !== 1 &&
+        ['blocked', 'cancelled'].includes(String(subState.status || '').toLowerCase())
+      ) {
+        paidMb = 0;
+      }
+    } catch (e) {}
+
     const totalAllowedMb = welcomeMb + paidMb + bonusMb;
     const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
 
@@ -16990,13 +17004,8 @@ a:hover{transform:translateY(-2px)}
           return jsonResponse({ success: true, data: sub || { plan_name: 'free', status: 'active' } }, 200, origin);
         }
         if (method === 'POST') {
-          const body: any = await request.json();
-          const { id, userId, planName, billingCycle, expiresAt } = body;
-          await env.DB.prepare(`
-            INSERT INTO user_subscriptions (id, user_id, plan_name, billing_cycle, status, expires_at)
-            VALUES (?, ?, ?, ?, 'active', ?)
-          `).bind(id || crypto.randomUUID(), userId, planName, billingCycle || 'monthly', expiresAt || null).run();
-          return jsonResponse({ success: true }, 201, origin);
+          // Sécurité : empêcher la création directe non payée d'un abonnement actif via cette route héritée
+          return errorResponse('Création directe non autorisée. Utilisez le flux de paiement officiel StudyCloud.', 403, origin);
         }
       }
 

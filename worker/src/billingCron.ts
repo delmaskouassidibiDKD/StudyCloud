@@ -291,6 +291,7 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
       const txId = `tx_auto_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
       // Insérer la transaction `pending` AVANT l'appel réseau Paystack (verrou idempotent)
+      const isStorageAutoRenew = String(sub.product_type || '') === 'storage';
       await db
         .prepare(
           `INSERT INTO payment_transactions (
@@ -298,8 +299,9 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
              product_type, product_id, product_name, app_key, app_name,
              billing_mode, billing_cycle, duration_days,
              expected_amount, expected_amount_minor, currency,
-             provider, channel, status, subscription_id
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto', ?, ?, ?, ?, ?, 'paystack', 'card', 'pending', ?)`
+             provider, channel, status, subscription_id,
+             target_storage_mb, recurring_price_amount, master_action
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto', ?, ?, ?, ?, ?, 'paystack', 'card', 'pending', ?, ?, ?, ?)`
         )
         .bind(
           txId,
@@ -318,7 +320,10 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
           amountMajor,
           amountMinor,
           currency,
-          String(sub.id)
+          String(sub.id),
+          isStorageAutoRenew ? Math.max(0, Number(sub.granted_storage_mb || 0)) : 0,
+          isStorageAutoRenew ? amountMajor : 0,
+          isStorageAutoRenew ? 'renew' : ''
         )
         .run();
 
@@ -528,6 +533,12 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
             .bind(sub.user_id, sub.app_key)
             .run()
             .catch(() => {});
+        } else if (sub.product_type === 'storage') {
+          await db
+            .prepare("UPDATE user_subscriptions SET status = 'cancelled', is_blocked = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status = 'active'")
+            .bind(sub.user_id)
+            .run()
+            .catch(() => {});
         }
         await recordSubscriptionEvent(db, {
           subscriptionId: String(sub.id),
@@ -674,6 +685,12 @@ export async function runBillingCronCycle(deps: BillingCronDependencies): Promis
         await db
           .prepare("UPDATE user_app_entitlements SET status = 'expired', auto_renew = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?")
           .bind(sub.user_id, sub.app_key)
+          .run()
+          .catch(() => {});
+      } else if (sub.product_type === 'storage') {
+        await db
+          .prepare("UPDATE user_subscriptions SET status = 'blocked', is_blocked = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status = 'active'")
+          .bind(sub.user_id)
           .run()
           .catch(() => {});
       }

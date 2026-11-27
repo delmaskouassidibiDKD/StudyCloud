@@ -1909,7 +1909,8 @@ test('Carte Maîtresse Stockage D1 : config pas admin, refus downgrade, prorata 
   ).json();
   assert.equal(statusAfterRenew.userState.paidMb, 800);
 
-  // 7. Carte secondaire booster promo (+200 Mo à 150 FCFA) -> synchronisée aussitôt dans la Carte Maîtresse (800 + 200 = 1000 Mo, 950 FCFA/mois) !
+  // 7. Carte secondaire booster promo (+200 Mo à 150 FCFA) après renouvellement anticipé (60j prépayés = 1600 FCFA) :
+  //    prorata unifié appliqué (plancher 100 FCFA + surplus converti en jours supplémentaires), 1000 Mo & 950 FCFA/mois !
   const initBoost = await (
     await callApi('/api/payments/paystack/initialize', {
       method: 'POST',
@@ -1918,7 +1919,8 @@ test('Carte Maîtresse Stockage D1 : config pas admin, refus downgrade, prorata 
     })
   ).json();
   assert.equal(initBoost.success, true);
-  assert.equal(initBoost.amount, 150);
+  assert.equal(initBoost.amount, 100);
+  assert.ok(initBoost.durationDays > 30, 'Les jours prépayés excédentaires doivent être convertis en durée supplémentaire');
   const verBoost = await (
     await callApi(`/api/payments/paystack/verify?reference=${initBoost.reference}`, { token: 'token-koffi' })
   ).json();
@@ -1929,4 +1931,146 @@ test('Carte Maîtresse Stockage D1 : config pas admin, refus downgrade, prorata 
   ).json();
   assert.equal(statusAfterBoost.userState.paidMb, 1000);
   assert.equal(statusAfterBoost.userState.monthlyPriceFcfa, 950);
+  assert.ok(statusAfterBoost.userState.daysRemaining > 45);
+});
+
+test('Audit paiements — Multi-paiements milieu de mois, anti-abus booster J-29, Cron stockage sans doublon et révocation chargeback', async () => {
+  const { db } = createMockD1();
+  await ensurePaystackBillingTables(db);
+  await db.prepare('CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT, phone TEXT)').run();
+  await db.prepare(`INSERT INTO users (id, name, email, phone) VALUES ('u-audit', 'Moussa Traore', 'moussa@studycloud.ci', '+2250709080706')`).run();
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS user_storage_quotas (
+      user_id TEXT PRIMARY KEY,
+      welcome_total_mb REAL DEFAULT 100,
+      welcome_r2_mb REAL DEFAULT 33,
+      welcome_d1_mb REAL DEFAULT 67,
+      paid_total_mb REAL DEFAULT 0,
+      paid_r2_mb REAL DEFAULT 0,
+      paid_d1_mb REAL DEFAULT 0,
+      bonus_total_mb REAL DEFAULT 0,
+      plan_name TEXT DEFAULT '',
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+  await db.prepare(`
+    INSERT INTO storage_subscription_plans (id, name, storage_amount, storage_mb, price, primary_currency, billing_mode, duration_days, is_auto_billing, allow_auto, allow_manual, is_infinite, is_active)
+    VALUES
+      ('stor_100', 'Basique 100 Mo', '100 Mo', 100, 100, 'XOF', 'auto', 30, 1, 1, 1, 0, 1),
+      ('stor_500', 'Pro 500 Mo', '500 Mo', 500, 500, 'XOF', 'auto', 30, 1, 1, 1, 0, 1),
+      ('stor_200', 'Plus 200 Mo', '200 Mo', 200, 200, 'XOF', 'auto', 30, 1, 1, 1, 0, 1)
+  `).run();
+
+  const initializedAmounts = new Map<string, number>();
+  const mockFetch: typeof fetch = async (input: any, init?: any) => {
+    const urlStr = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    if (urlStr.includes('api.resend.com')) return new Response(JSON.stringify({ id: 're_audit' }), { status: 200 });
+    if (urlStr.endsWith('/transaction/initialize')) {
+      initializedAmounts.set(body.reference, Number(body.amount || 0));
+      return new Response(JSON.stringify({ status: true, data: { access_code: 'ac_a', authorization_url: 'https://pay.test/a', reference: body.reference } }), { status: 200 });
+    }
+    if (urlStr.includes('/transaction/verify/')) {
+      const ref = urlStr.split('/transaction/verify/')[1];
+      return new Response(JSON.stringify({
+        status: true,
+        data: {
+          id: 55000 + Math.floor(Math.random() * 1000),
+          reference: ref,
+          status: 'success',
+          amount: initializedAmounts.get(ref) || 10000,
+          currency: 'XOF',
+          channel: 'card',
+          customer: { email: 'moussa@studycloud.ci' },
+          authorization: { authorization_code: 'AUTH_AUDIT_CARD', brand: 'visa', last4: '4242', exp_month: '12', exp_year: '2029', bank: 'SGBCI', signature: 'SIG_AUDIT_4242', reusable: true },
+        },
+      }), { status: 200 });
+    }
+    if (urlStr.endsWith('/transaction/charge_authorization')) {
+      return new Response(JSON.stringify({
+        status: true,
+        data: {
+          id: 66001,
+          reference: body.reference,
+          status: 'success',
+          amount: body.amount,
+          currency: body.currency,
+          channel: 'card',
+          customer: { email: body.email },
+          authorization: { authorization_code: 'AUTH_AUDIT_CARD', brand: 'visa', last4: '4242', reusable: true },
+        },
+      }), { status: 200 });
+    }
+    return new Response(JSON.stringify({ status: false }), { status: 404 });
+  };
+
+  const rawEnv = { STUDYCLOUD_PAYSTACK_SECRET_KEY: 'sk_test_audit', ADMIN_API_SECRET: 'adm_audit' };
+  const callApi = async (path: string, opts: { method?: string; body?: any; token?: string; sig?: string } = {}) => {
+    const rawStr = opts.body ? (typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body)) : undefined;
+    const req = new Request(`https://api-worker.dkd-technologies.com${path}`, {
+      method: opts.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
+        ...(opts.sig ? { 'x-paystack-signature': opts.sig } : {}),
+      },
+      body: rawStr,
+    });
+    const res = await handlePaystackBillingRoutes(req, new URL(req.url), new URL(req.url).pathname, req.method, {
+      db,
+      rawEnv,
+      origin: '*',
+      fetchFn: mockFetch,
+      getAuthUser: async (r) => r.headers.get('Authorization') === 'Bearer token-moussa' ? { userId: 'u-audit', email: 'moussa@studycloud.ci', name: 'Moussa Traore' } : null,
+      jsonResponse: (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'Content-Type': 'application/json' } }),
+      errorResponse: (m, s = 400) => new Response(JSON.stringify({ success: false, error: m }), { status: s, headers: { 'Content-Type': 'application/json' } }),
+    });
+    assert.ok(res);
+    return res!;
+  };
+
+  // 1. Jour 1 : achat initial 100 Mo (100 FCFA)
+  const t1 = await (await callApi('/api/payments/paystack/initialize', { method: 'POST', token: 'token-moussa', body: { productType: 'storage', productId: 'stor_100' } })).json();
+  assert.equal(t1.amount, 100);
+  await callApi(`/api/payments/paystack/verify?reference=${t1.reference}`, { token: 'token-moussa' });
+
+  // 2. Jour 15 : clic carte secondaire PRO (+500 Mo à 500 FCFA) -> nouveau mensuel 600 FCFA, prorata -50 FCFA => net ~550 FCFA
+  const nowMs = Date.now();
+  await db.prepare(`UPDATE active_subscriptions SET current_period_start = ?, current_period_end = ?, next_billing_at = ? WHERE user_id = 'u-audit' AND product_type = 'storage'`)
+    .bind(new Date(nowMs - 15 * 86400_000).toISOString(), new Date(nowMs + 15 * 86400_000).toISOString(), new Date(nowMs + 15 * 86400_000).toISOString()).run();
+
+  const t2 = await (await callApi('/api/payments/paystack/initialize', { method: 'POST', token: 'token-moussa', body: { productType: 'storage', productId: 'stor_500' } })).json();
+  assert.ok(t2.amount >= 548 && t2.amount <= 552, `Net attendu ~550 FCFA, reçu ${t2.amount}`);
+  await callApi(`/api/payments/paystack/verify?reference=${t2.reference}`, { token: 'token-moussa' });
+
+  // 3. Jour 15 + 10 min (2e paiement le MÊME jour !) : clic carte secondaire +200 Mo (200 FCFA) -> 0j consommé => paie exactement 200 FCFA (pas 800 !), total 800 Mo & 800 FCFA/mois
+  const t3 = await (await callApi('/api/payments/paystack/initialize', { method: 'POST', token: 'token-moussa', body: { productType: 'storage', productId: 'stor_200' } })).json();
+  assert.equal(t3.amount, 200);
+  await callApi(`/api/payments/paystack/verify?reference=${t3.reference}`, { token: 'token-moussa' });
+  const st3 = await (await callApi('/api/billing/storage-master-card/status', { token: 'token-moussa' })).json();
+  assert.equal(st3.userState.paidMb, 800);
+  assert.equal(st3.userState.monthlyPriceFcfa, 800);
+
+  // 4. Test anti-abus J-29 (1 jour avant expiration) : 800 Mo (800 FCFA), clique +100 Mo (100 FCFA) -> doit payer ~873 FCFA (pas 100 FCFA pour gagner 1 mois de 800 Mo gratuit !)
+  await db.prepare(`UPDATE active_subscriptions SET current_period_start = ?, current_period_end = ?, next_billing_at = ? WHERE user_id = 'u-audit' AND product_type = 'storage'`)
+    .bind(new Date(nowMs - 29 * 86400_000).toISOString(), new Date(nowMs + 1 * 86400_000).toISOString(), new Date(nowMs + 1 * 86400_000).toISOString()).run();
+  const tAbuse = await (await callApi('/api/payments/paystack/initialize', { method: 'POST', token: 'token-moussa', body: { productType: 'storage', productId: 'stor_100' } })).json();
+  assert.ok(tAbuse.amount >= 865 && tAbuse.amount <= 880, `Anti-abus J-29 attendu ~873 FCFA, reçu ${tAbuse.amount}`);
+
+  // 5. Cron renouvellement automatique stockage : NE DOIT PAS doubler 800 Mo en 1600 Mo ni 800 FCFA en 1600 FCFA !
+  const pastIso = new Date(nowMs - 60_000).toISOString();
+  await db.prepare(`UPDATE active_subscriptions SET renewal_mode = 'auto', current_period_end = ?, next_billing_at = ? WHERE user_id = 'u-audit' AND product_type = 'storage'`)
+    .bind(pastIso, pastIso).run();
+  const cronRes = await executeBillingCronJob(db, rawEnv, { fetchFn: mockFetch, nowIso: new Date(nowMs).toISOString() });
+  assert.equal(cronRes.autoCharged, 1);
+  const stAfterCron = await (await callApi('/api/billing/storage-master-card/status', { token: 'token-moussa' })).json();
+  assert.equal(stAfterCron.userState.paidMb, 800, 'Le Cron ne doit PAS doubler le quota stockage');
+  assert.equal(stAfterCron.userState.monthlyPriceFcfa, 800, 'Le Cron ne doit PAS doubler le prix mensuel');
+
+  // 6. Webhook refund.processed sur la dernière tx payée -> révoque le quota stockage + bloque l'abonnement
+  const refundBody = JSON.stringify({ event: 'refund.processed', data: { transaction_reference: t3.reference } });
+  const sig = await computePaystackHmacSha512Hex(rawEnv.STUDYCLOUD_PAYSTACK_SECRET_KEY, refundBody);
+  await callApi('/api/payments/paystack/webhook', { method: 'POST', body: refundBody, sig });
+  const quotaAfterRefund: any = await db.prepare("SELECT paid_total_mb FROM user_storage_quotas WHERE user_id = 'u-audit'").first();
+  assert.equal(Number(quotaAfterRefund.paid_total_mb), 600, 'Les 200 Mo remboursés doivent être retirés du quota');
 });

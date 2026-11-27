@@ -2142,17 +2142,22 @@ export async function readStorageMasterUserState(
 
   if (hasActiveSubscription && !isInfinite && Number.isFinite(endMs) && endMs > nowMs) {
     const cycleMs = subDurationDays * 24 * 60 * 60 * 1000;
-    const effectiveStartMs =
-      Number.isFinite(rawStartMs) && rawStartMs < endMs && endMs - rawStartMs >= 60_000
-        ? rawStartMs
-        : endMs - cycleMs;
-    const totalMs = Math.max(60_000, endMs - effectiveStartMs);
     const remainingMs = Math.max(0, endMs - nowMs);
-    remainingFraction = Math.min(1, Math.max(0, remainingMs / totalMs));
+    const remainingCyclesExact = remainingMs / cycleMs;
     daysRemaining = Math.max(0, Math.ceil(remainingMs / (24 * 60 * 60 * 1000)));
-    daysUsed = Math.max(0, subDurationDays - daysRemaining);
-    consumedCostFcfa = Math.round(monthlyPriceFcfa * (1 - remainingFraction));
-    unusedCreditFcfa = Math.max(0, monthlyPriceFcfa - consumedCostFcfa);
+    if (remainingCyclesExact <= 1.001) {
+      remainingFraction = Math.min(1, Math.max(0, remainingCyclesExact));
+      daysUsed = Math.max(0, subDurationDays - daysRemaining);
+      consumedCostFcfa = Math.round(monthlyPriceFcfa * (1 - remainingFraction));
+      unusedCreditFcfa = Math.max(0, monthlyPriceFcfa - consumedCostFcfa);
+    } else {
+      // L'utilisateur a renouvelé en avance (plusieurs cycles prépayés restants) :
+      // on conserve 100 % de la valeur monétaire de tous les jours prépayés !
+      remainingFraction = 1;
+      daysUsed = 0;
+      consumedCostFcfa = 0;
+      unusedCreditFcfa = Math.max(0, Math.round(remainingCyclesExact * monthlyPriceFcfa));
+    }
   }
 
   const totalAllowedMb = Math.max(0, welcomeMb + paidMb + bonusMb);
@@ -2340,9 +2345,15 @@ export function computeStorageMasterQuote(
       !userState.isInfinite &&
       userState.unusedCreditFcfa > 0
   );
-  const unusedCreditFcfa = canApplyProrata
-    ? Math.min(userState.unusedCreditFcfa, oldMonthlyPriceFcfa)
-    : 0;
+  const rawUnusedCreditFcfa = canApplyProrata ? Math.max(0, userState.unusedCreditFcfa) : 0;
+  const minPayable = newMonthlyPriceFcfa >= 100 ? 100 : 1;
+  const maxDeductible = Math.max(0, newMonthlyPriceFcfa - minPayable);
+  const unusedCreditFcfa = Math.min(rawUnusedCreditFcfa, maxDeductible);
+  const leftoverPrepaidCreditFcfa = Math.max(0, rawUnusedCreditFcfa - unusedCreditFcfa);
+  const extraCoveredDays =
+    leftoverPrepaidCreditFcfa > 0 && newMonthlyPriceFcfa > 0
+      ? Math.floor((leftoverPrepaidCreditFcfa / newMonthlyPriceFcfa) * config.durationDays)
+      : 0;
   const consumedCostFcfa = canApplyProrata ? userState.consumedCostFcfa : 0;
   const rawNet = Math.max(0, newMonthlyPriceFcfa - unusedCreditFcfa);
   const amountDueFcfa =
@@ -2363,8 +2374,117 @@ export function computeStorageMasterQuote(
     consumedCostFcfa,
     unusedCreditFcfa,
     amountDueFcfa,
-    durationDays: config.durationDays,
+    durationDays: config.durationDays + extraCoveredDays,
     billingMode: config.billingMode,
+  };
+}
+
+/**
+ * Calcule le tarif exact (avec prorata anti-abus) lorsqu'un utilisateur déjà abonné au stockage
+ * clique sur une carte secondaire à côté (mode Booster) en milieu de mois, 1 ou plusieurs fois.
+ * - Si l'utilisateur n'a pas d'abonnement actif (ou expiré / infini) : prix standard de la carte.
+ * - Si la carte est à vie (infinite) : paiement unique sans prorata mensuel.
+ * - Si l'utilisateur a un abonnement actif en cours de cycle :
+ *   nouveau forfait mensuel = ancien mensuel + prix carte secondaire,
+ *   crédit des jours non consommés déduit automatiquement, nouveau cycle complet démarré aujourd'hui.
+ */
+export function computeStorageBoosterQuote(
+  config: StorageMasterCardConfig,
+  userState: StorageMasterUserState,
+  cardPriceFcfa: number,
+  cardStorageMb: number,
+  cardDurationDays: number,
+  cardBillingMode: BillingMode
+): {
+  mode: 'initial_card' | 'booster';
+  currentPaidMb: number;
+  targetPaidMb: number;
+  addedMb: number;
+  oldMonthlyPriceFcfa: number;
+  newMonthlyPriceFcfa: number;
+  prorataApplied: boolean;
+  unusedCreditFcfa: number;
+  consumedCostFcfa: number;
+  amountDueFcfa: number;
+  durationDays: number;
+} {
+  const safeCardPrice = Math.max(1, Math.round(Number(cardPriceFcfa || 0)));
+  const safeCardMb = Math.max(0, Number(cardStorageMb || 0));
+  const safeDur = cardBillingMode === 'infinite' ? 0 : Math.max(1, Number(cardDurationDays || 30));
+
+  const hasLivePaidPlan = Boolean(
+    userState.paidMb > 0 &&
+      (userState.hasActiveSubscription || userState.inGrace) &&
+      !userState.isExpired
+  );
+
+  if (!hasLivePaidPlan) {
+    return {
+      mode: 'initial_card',
+      currentPaidMb: 0,
+      targetPaidMb: safeCardMb,
+      addedMb: safeCardMb,
+      oldMonthlyPriceFcfa: 0,
+      newMonthlyPriceFcfa: safeCardPrice,
+      prorataApplied: false,
+      unusedCreditFcfa: 0,
+      consumedCostFcfa: 0,
+      amountDueFcfa: safeCardPrice,
+      durationDays: safeDur,
+    };
+  }
+
+  // Carte à vie ajoutée par-dessus un stockage actif : paiement unique de la carte, pas de récurrence
+  if (cardBillingMode === 'infinite' || userState.isInfinite) {
+    return {
+      mode: 'booster',
+      currentPaidMb: userState.paidMb,
+      targetPaidMb: Math.round((userState.paidMb + safeCardMb) * 100) / 100,
+      addedMb: safeCardMb,
+      oldMonthlyPriceFcfa: userState.monthlyPriceFcfa,
+      newMonthlyPriceFcfa: safeCardPrice,
+      prorataApplied: false,
+      unusedCreditFcfa: 0,
+      consumedCostFcfa: 0,
+      amountDueFcfa: safeCardPrice,
+      durationDays: 0,
+    };
+  }
+
+  const oldMonthlyPriceFcfa = Math.max(0, Math.round(userState.monthlyPriceFcfa || 0));
+  const newMonthlyPriceFcfa = oldMonthlyPriceFcfa + safeCardPrice;
+  const canApplyProrata = Boolean(
+    config.prorataEnabled &&
+      userState.hasActiveSubscription &&
+      !userState.isExpired &&
+      userState.unusedCreditFcfa > 0
+  );
+  const rawUnusedCreditFcfa = canApplyProrata ? Math.max(0, userState.unusedCreditFcfa) : 0;
+  const minPayable = newMonthlyPriceFcfa >= 100 ? 100 : 1;
+  const maxDeductible = Math.max(0, newMonthlyPriceFcfa - minPayable);
+  const unusedCreditFcfa = Math.min(rawUnusedCreditFcfa, maxDeductible);
+  const leftoverPrepaidCreditFcfa = Math.max(0, rawUnusedCreditFcfa - unusedCreditFcfa);
+  const extraCoveredDays =
+    leftoverPrepaidCreditFcfa > 0 && newMonthlyPriceFcfa > 0
+      ? Math.floor((leftoverPrepaidCreditFcfa / newMonthlyPriceFcfa) * safeDur)
+      : 0;
+  const consumedCostFcfa = canApplyProrata ? userState.consumedCostFcfa : 0;
+  const rawNet = Math.max(0, newMonthlyPriceFcfa - unusedCreditFcfa);
+  const amountDueFcfa =
+    newMonthlyPriceFcfa >= 100 ? Math.max(100, rawNet) : Math.max(1, rawNet);
+
+  return {
+    mode: 'booster',
+    currentPaidMb: userState.paidMb,
+    targetPaidMb: Math.round((userState.paidMb + safeCardMb) * 100) / 100,
+    addedMb: safeCardMb,
+    oldMonthlyPriceFcfa,
+    newMonthlyPriceFcfa,
+    prorataApplied: canApplyProrata && unusedCreditFcfa > 0,
+    unusedCreditFcfa,
+    consumedCostFcfa,
+    amountDueFcfa,
+    durationDays: safeDur + extraCoveredDays,
   };
 }
 
@@ -2565,11 +2685,24 @@ async function fulfillPaidTransaction(
     let newRecurringPrice = Number(txRow.recurring_price_amount || 0);
     const txTargetMb = Math.max(0, Number(txRow.target_storage_mb || 0));
 
+    const prevActiveRecurring =
+      existingStorageSub && ['active', 'grace'].includes(String(existingStorageSub.status || ''))
+        ? Math.max(0, Number(existingStorageSub.price_amount || 0))
+        : 0;
+    const isExistingStorageAlive = Boolean(
+      existingStorageSub &&
+        (['active', 'grace'].includes(String(existingStorageSub.status || '')) &&
+          (Number(existingStorageSub.is_infinite) === 1 ||
+            !existingStorageSub.current_period_end ||
+            Date.parse(String(existingStorageSub.current_period_end)) > Date.now() ||
+            String(existingStorageSub.status) === 'grace'))
+    );
+
     if (masterAction === 'renew' || txRow.product_id === 'storage_master_renew') {
       // Renouvellement pur : on conserve le quota actuel SANS le doubler, on prolonge la date d'échéance !
       grantedStorageMb = 0;
       newPaid = currentPaid > 0 ? currentPaid : Math.max(0, txTargetMb);
-      if (newRecurringPrice <= 0) newRecurringPrice = paidMajor;
+      if (newRecurringPrice <= 0) newRecurringPrice = prevActiveRecurring > 0 ? prevActiveRecurring : paidMajor;
       const baseEnd =
         existingStorageSub?.status === 'active' ? existingStorageSub.current_period_end : null;
       entitlementExpiresAt = computeEntitlementExpiration(billingMode, durationDays, baseEnd);
@@ -2578,9 +2711,17 @@ async function fulfillPaidTransaction(
     } else if (masterAction === 'upgrade' || txRow.product_id === 'storage_master_upgrade') {
       // Montée en gamme Carte Maîtresse : remplace l'ancien forfait principal (avec prorata déjà déduit au paiement)
       const addedMb = Math.max(0, Number(txRow.granted_storage_mb || 0));
-      newPaid = txTargetMb > currentPaid ? txTargetMb : currentPaid + addedMb;
+      if (txTargetMb > currentPaid) {
+        newPaid = txTargetMb;
+      } else {
+        // Réconciliation sûre si 2 onglets d'upgrade ont été payés en parallèle
+        newPaid = currentPaid + addedMb;
+        const masterCfg = await readStorageMasterCardConfig(db);
+        const addedMonthly = Math.round((addedMb / Math.max(1, masterCfg.stepMb)) * masterCfg.pricePerStepFcfa);
+        newRecurringPrice = Math.max(newRecurringPrice, prevActiveRecurring + addedMonthly);
+      }
       grantedStorageMb = Math.max(0, newPaid - currentPaid);
-      if (newRecurringPrice <= 0) newRecurringPrice = paidMajor;
+      if (newRecurringPrice <= 0) newRecurringPrice = Math.max(prevActiveRecurring, paidMajor);
       entitlementExpiresAt = computeEntitlementExpiration(billingMode, durationDays, null);
       masterPlanNameOverride = `Stockage ${formatStorageMbFr(newPaid)}`;
       const prorataCred = Math.max(0, Number(txRow.prorata_credit_amount || 0));
@@ -2589,39 +2730,35 @@ async function fulfillPaidTransaction(
           ? `Stockage augmenté à ${formatStorageMbFr(newPaid)} (prorata -${prorataCred.toLocaleString('fr-FR')} FCFA déduit).`
           : `Stockage augmenté à ${formatStorageMbFr(newPaid)} avec succès.`;
     } else {
-      // Carte secondaire D1 (premier abonnement ou booster bonus à prix réduit qui s'additionne dans la Carte Maîtresse)
+      // Carte secondaire D1 (premier abonnement ou booster synchronisé avec prorata unifié)
       grantedStorageMb = Math.max(0, Number(plan?.storage_mb || txRow.granted_storage_mb || 0));
-      newPaid = currentPaid + grantedStorageMb;
-      const prevRecurring =
-        existingStorageSub && existingStorageSub.status === 'active'
-          ? Math.max(0, Number(existingStorageSub.price_amount || 0))
-          : 0;
-      if (newRecurringPrice <= 0) {
-        newRecurringPrice = currentPaid > 0 ? prevRecurring + paidMajor : paidMajor;
-      }
-      const freshEnd = computeEntitlementExpiration(billingMode, durationDays, null);
-      const existingEndMs = existingStorageSub?.current_period_end
-        ? Date.parse(existingStorageSub.current_period_end)
-        : NaN;
-      const freshEndMs = freshEnd ? Date.parse(freshEnd) : NaN;
-      if (
-        currentPaid > 0 &&
-        Number.isFinite(existingEndMs) &&
-        Number.isFinite(freshEndMs) &&
-        existingEndMs > freshEndMs
-      ) {
-        entitlementExpiresAt = existingStorageSub.current_period_end;
+      const isBoosterActive = Boolean(
+        (masterAction === 'booster' || isExistingStorageAlive) && currentPaid > 0 && isExistingStorageAlive
+      );
+      if (isBoosterActive) {
+        newPaid = currentPaid + grantedStorageMb;
+        const cardStdPrice = plan ? resolvePlanPriceMajor(plan, 'monthly', txRow.currency || 'XOF').amountMajor : paidMajor;
+        newRecurringPrice = Math.max(
+          newRecurringPrice,
+          prevActiveRecurring + cardStdPrice
+        );
       } else {
-        entitlementExpiresAt = freshEnd;
+        // Premier achat OU ancien abonnement expiré/bloqué : remplace proprement sans offrir le quota expiré
+        newPaid = grantedStorageMb;
+        if (newRecurringPrice <= 0) newRecurringPrice = paidMajor;
       }
+      entitlementExpiresAt = computeEntitlementExpiration(billingMode, durationDays, null);
       masterPlanNameOverride =
-        currentPaid > 0
+        isBoosterActive
           ? `Stockage ${formatStorageMbFr(newPaid)}`
           : String(txRow.product_name || plan?.name || `Stockage ${formatStorageMbFr(newPaid)}`);
       const goLabel = formatStorageMbFr(grantedStorageMb);
+      const prorataCred = Math.max(0, Number(txRow.prorata_credit_amount || 0));
       deliverySummary =
-        currentPaid > 0
-          ? `+${goLabel} ajoutés à votre forfait ! Stockage payant total : ${formatStorageMbFr(newPaid)}.`
+        isBoosterActive
+          ? prorataCred > 0
+            ? `+${goLabel} ajoutés à votre forfait (prorata -${prorataCred.toLocaleString('fr-FR')} FCFA déduit) ! Total payant : ${formatStorageMbFr(newPaid)}.`
+            : `+${goLabel} ajoutés à votre forfait ! Stockage payant total : ${formatStorageMbFr(newPaid)}.`
           : `+${goLabel} ajoutés à votre stockage Cloud.`;
     }
 
@@ -3782,12 +3919,30 @@ export async function handlePaystackBillingRoutes(
       if (masterAction === 'booster') {
         const masterCfg = await readStorageMasterCardConfig(db);
         const uState = await readStorageMasterUserState(db, userId, masterCfg);
-        recurringPriceAmount = (uState.monthlyPriceFcfa || 0) + amountMajor;
+        const boosterQuote = computeStorageBoosterQuote(
+          masterCfg,
+          uState,
+          amountMajor,
+          grantedStorageMb,
+          durationDays,
+          billingMode
+        );
+        masterAction = boosterQuote.mode;
+        targetStorageMb = boosterQuote.targetPaidMb;
+        recurringPriceAmount = boosterQuote.newMonthlyPriceFcfa;
+        prorataCreditAmount = boosterQuote.unusedCreditFcfa;
+        masterPriceOverrideMajor = boosterQuote.amountDueFcfa;
+        masterDurationOverride = boosterQuote.durationDays;
       } else {
         recurringPriceAmount = amountMajor;
       }
     }
-    const amountMinor = toPaystackAmountMinor(amountMajor);
+    const finalAmountMajor =
+      masterPriceOverrideMajor !== null ? masterPriceOverrideMajor : amountMajor;
+    const finalCurrency = masterPriceOverrideMajor !== null ? 'XOF' : currency;
+    const finalDurationDays =
+      masterDurationOverride !== null ? masterDurationOverride : durationDays;
+    const amountMinor = toPaystackAmountMinor(finalAmountMajor);
 
     if (amountMinor <= 0) {
       return errorResponse('Montant du forfait invalide.', 400, origin);
@@ -3821,7 +3976,7 @@ export async function handlePaystackBillingRoutes(
     const initPayload: Record<string, any> = {
       email: userEmail,
       amount: amountMinor,
-      currency,
+      currency: finalCurrency,
       reference,
       callback_url: callbackUrl,
       metadata: {
@@ -3834,7 +3989,7 @@ export async function handlePaystackBillingRoutes(
         app_name: appName,
         billing_mode: billingMode,
         billing_cycle: billingMode === 'infinite' ? 'infinite' : billingCycle,
-        duration_days: durationDays,
+        duration_days: finalDurationDays,
       },
     };
 
@@ -3845,7 +4000,14 @@ export async function handlePaystackBillingRoutes(
         ? 'mobile_money'
         : null;
 
-    if (billingMode === 'auto' && preferAutoCard) {
+    // Ne jamais attacher un plan natif Paystack sur un paiement proratisé (sinon Paystack récurerait le montant réduit !)
+    if (
+      billingMode === 'auto' &&
+      preferAutoCard &&
+      prorataCreditAmount <= 0 &&
+      masterAction !== 'upgrade' &&
+      masterAction !== 'booster'
+    ) {
       const planCode = await ensurePaystackNativePlan({
         secretKey,
         fetchFn,
@@ -3853,8 +4015,8 @@ export async function handlePaystackBillingRoutes(
         tableName: planTable,
         planRow,
         amountMinor,
-        currency,
-        durationDays,
+        currency: finalCurrency,
+        durationDays: finalDurationDays,
       });
       if (planCode) {
         initPayload.plan = planCode;
@@ -3895,10 +4057,10 @@ export async function handlePaystackBillingRoutes(
         appName,
         billingMode,
         billingMode === 'infinite' ? 'infinite' : billingCycle,
-        durationDays,
-        amountMajor,
+        finalDurationDays,
+        finalAmountMajor,
         amountMinor,
-        currency,
+        finalCurrency,
         grantedStorageMb,
         grantedAiCredits,
         targetStorageMb,
@@ -3961,11 +4123,11 @@ export async function handlePaystackBillingRoutes(
         reference,
         accessCode,
         authorizationUrl,
-        amount: amountMajor,
+        amount: finalAmountMajor,
         amountMinor,
-        currency,
+        currency: finalCurrency,
         billingMode,
-        durationDays,
+        durationDays: finalDurationDays,
         mode: detectPaystackMode(secretKey),
       },
       200,
@@ -4162,6 +4324,7 @@ export async function handlePaystackBillingRoutes(
           const renewId = `tx_ren_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
           const paidMinor = Number(data.amount || 0);
           const paidMajor = Math.round((paidMinor / 100) * 100) / 100;
+          const isStorageRecurring = String(prevTx.product_type || '') === 'storage';
           await db
             .prepare(
               `INSERT OR IGNORE INTO payment_transactions (
@@ -4170,8 +4333,9 @@ export async function handlePaystackBillingRoutes(
                  billing_mode, billing_cycle, duration_days,
                  expected_amount, expected_amount_minor, currency,
                  provider, paystack_subscription_code, status,
-                 granted_storage_mb, granted_ai_credits
-               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto', ?, ?, ?, ?, ?, 'paystack', ?, 'pending', ?, ?)`
+                 granted_storage_mb, granted_ai_credits,
+                 target_storage_mb, recurring_price_amount, master_action
+               ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'auto', ?, ?, ?, ?, ?, 'paystack', ?, 'pending', ?, ?, ?, ?, ?)`
             )
             .bind(
               renewId,
@@ -4191,8 +4355,11 @@ export async function handlePaystackBillingRoutes(
               paidMinor,
               String(data.currency || prevTx.currency || 'XOF').toUpperCase(),
               subCode || prevTx.paystack_subscription_code || '',
-              prevTx.granted_storage_mb || 0,
-              prevTx.granted_ai_credits || 0
+              isStorageRecurring ? 0 : prevTx.granted_storage_mb || 0,
+              prevTx.granted_ai_credits || 0,
+              isStorageRecurring ? Number(prevTx.target_storage_mb || prevTx.granted_storage_mb || 0) : 0,
+              isStorageRecurring ? paidMajor : 0,
+              isStorageRecurring ? 'renew' : ''
             )
             .run()
             .catch(() => {});
@@ -4324,6 +4491,45 @@ export async function handlePaystackBillingRoutes(
                 .bind(linkedSub.user_id, linkedSub.app_key)
                 .run()
                 .catch(() => {});
+            } else if (linkedSub.product_type === 'storage') {
+              const revokeMb = Math.max(0, Number(txRow.granted_storage_mb || 0));
+              if (revokeMb > 0) {
+                await db
+                  .prepare(
+                    `UPDATE user_storage_quotas
+                     SET paid_total_mb = MAX(0, COALESCE(paid_total_mb, 0) - ?),
+                         paid_r2_mb = MAX(0, ROUND((MAX(0, COALESCE(paid_total_mb, 0) - ?)) / 2)),
+                         paid_d1_mb = MAX(0, ROUND((MAX(0, COALESCE(paid_total_mb, 0) - ?)) / 2)),
+                         updated_at = CURRENT_TIMESTAMP
+                     WHERE user_id = ?`
+                  )
+                  .bind(revokeMb, revokeMb, revokeMb, linkedSub.user_id)
+                  .run()
+                  .catch(() => {});
+              }
+              await db
+                .prepare(
+                  "UPDATE user_subscriptions SET status = 'blocked', is_blocked = 1, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status = 'active'"
+                )
+                .bind(linkedSub.user_id)
+                .run()
+                .catch(() => {});
+            } else if (linkedSub.product_type === 'ai') {
+              const revokeCredits = Math.max(0, Number(txRow.granted_ai_credits || 0));
+              if (revokeCredits > 0) {
+                await db
+                  .prepare(
+                    `UPDATE user_ai_credits
+                     SET purchased_remaining = MAX(0, COALESCE(purchased_remaining, 0) - ?),
+                         credits_balance = MAX(0, COALESCE(gift_remaining, 0) + MAX(0, COALESCE(purchased_remaining, 0) - ?)),
+                         remaining_credits = MAX(0, COALESCE(gift_remaining, 0) + MAX(0, COALESCE(purchased_remaining, 0) - ?)),
+                         updated_at = CURRENT_TIMESTAMP
+                     WHERE user_id = ?`
+                  )
+                  .bind(revokeCredits, revokeCredits, revokeCredits, linkedSub.user_id)
+                  .run()
+                  .catch(() => {});
+              }
             }
 
             await recordSubscriptionEvent(db, {
@@ -4641,12 +4847,30 @@ export async function handlePaystackBillingRoutes(
       if (masterAction === 'booster') {
         const masterCfg = await readStorageMasterCardConfig(db);
         const uState = await readStorageMasterUserState(db, userId, masterCfg);
-        recurringPriceAmount = (uState.monthlyPriceFcfa || 0) + amountMajor;
+        const boosterQuote = computeStorageBoosterQuote(
+          masterCfg,
+          uState,
+          amountMajor,
+          grantedStorageMb,
+          durationDays,
+          billingMode
+        );
+        masterAction = boosterQuote.mode;
+        targetStorageMb = boosterQuote.targetPaidMb;
+        recurringPriceAmount = boosterQuote.newMonthlyPriceFcfa;
+        prorataCreditAmount = boosterQuote.unusedCreditFcfa;
+        masterPriceOverrideMajor = boosterQuote.amountDueFcfa;
+        masterDurationOverride = boosterQuote.durationDays;
       } else {
         recurringPriceAmount = amountMajor;
       }
     }
-    const amountMinor = toPaystackAmountMinor(amountMajor);
+    const finalAmountMajor =
+      masterPriceOverrideMajor !== null ? masterPriceOverrideMajor : amountMajor;
+    const finalCurrency = masterPriceOverrideMajor !== null ? 'XOF' : currency;
+    const finalDurationDays =
+      masterDurationOverride !== null ? masterDurationOverride : durationDays;
+    const amountMinor = toPaystackAmountMinor(finalAmountMajor);
     if (amountMinor <= 0) {
       return errorResponse('Montant du forfait invalide.', 400, origin);
     }
@@ -4681,10 +4905,10 @@ export async function handlePaystackBillingRoutes(
         appName,
         billingMode,
         billingMode === 'infinite' ? 'infinite' : billingCycle,
-        durationDays,
-        amountMajor,
+        finalDurationDays,
+        finalAmountMajor,
         amountMinor,
-        currency,
+        finalCurrency,
         networkLabel,
         grantedStorageMb,
         grantedAiCredits,
@@ -4698,7 +4922,7 @@ export async function handlePaystackBillingRoutes(
     const chargePayload = {
       email: userEmail,
       amount: amountMinor,
-      currency,
+      currency: finalCurrency,
       reference,
       mobile_money: {
         phone: normalizedPhone,
@@ -4714,7 +4938,7 @@ export async function handlePaystackBillingRoutes(
         app_name: appName,
         billing_mode: billingMode,
         billing_cycle: billingMode === 'infinite' ? 'infinite' : billingCycle,
-        duration_days: durationDays,
+        duration_days: finalDurationDays,
         mobile_provider: provider,
       },
     };
