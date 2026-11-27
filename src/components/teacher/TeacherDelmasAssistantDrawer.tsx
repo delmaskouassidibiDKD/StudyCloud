@@ -2602,25 +2602,82 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
   }, []);
 
   useEffect(() => {
-    if (!isOpen || !isMobileViewport || typeof window === 'undefined' || !window.visualViewport) {
+    if (!isOpen || typeof window === 'undefined') {
       setKeyboardOffset(0);
       setIsKeyboardOpen(false);
       return;
     }
-    const vv = window.visualViewport;
-    const updateKb = () => {
-      const diff = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
-      setKeyboardOffset(diff > 60 ? diff : 0);
-      setIsKeyboardOpen(diff > 60);
+
+    const handleScrollLock = () => {
+      if (window.scrollY !== 0) window.scrollTo(0, 0);
+      if (document.body.scrollTop !== 0) document.body.scrollTop = 0;
+      if (document.documentElement.scrollTop !== 0) document.documentElement.scrollTop = 0;
     };
-    updateKb();
-    vv.addEventListener('resize', updateKb);
-    vv.addEventListener('scroll', updateKb);
+
+    const readKeyboardHeight = (): number => {
+      let vkH = 0;
+      if ('virtualKeyboard' in navigator) {
+        try {
+          vkH = Math.round((navigator as any).virtualKeyboard?.boundingRect?.height || 0);
+        } catch {}
+      }
+      let vvDiff = 0;
+      if (window.visualViewport) {
+        const layoutH = window.innerHeight;
+        const visualH = window.visualViewport.height;
+        const offsetTop = window.visualViewport.offsetTop || 0;
+        vvDiff = Math.max(0, Math.round(layoutH - visualH - offsetTop));
+      }
+      return Math.max(vkH, vvDiff);
+    };
+
+    const updateKeyboardMetrics = () => {
+      const h = readKeyboardHeight();
+      if (h > 60) {
+        setKeyboardOffset(h);
+        setIsKeyboardOpen(true);
+      } else {
+        setKeyboardOffset(0);
+        setIsKeyboardOpen(false);
+      }
+      handleScrollLock();
+    };
+
+    const onVirtualKeyboardGeometry = (e: any) => {
+      const h = Math.round(e?.target?.boundingRect?.height || readKeyboardHeight());
+      if (h > 60) {
+        setKeyboardOffset(h);
+        setIsKeyboardOpen(true);
+      } else {
+        setKeyboardOffset(0);
+        setIsKeyboardOpen(false);
+      }
+      handleScrollLock();
+    };
+
+    if ('virtualKeyboard' in navigator) {
+      try {
+        (navigator as any).virtualKeyboard.overlaysContent = true;
+        (navigator as any).virtualKeyboard.addEventListener('geometrychange', onVirtualKeyboardGeometry);
+      } catch {}
+    }
+
+    updateKeyboardMetrics();
+    window.addEventListener('scroll', handleScrollLock, { passive: true });
+    window.visualViewport?.addEventListener('resize', updateKeyboardMetrics);
+    window.visualViewport?.addEventListener('scroll', updateKeyboardMetrics);
+
     return () => {
-      vv.removeEventListener('resize', updateKb);
-      vv.removeEventListener('scroll', updateKb);
+      window.removeEventListener('scroll', handleScrollLock);
+      window.visualViewport?.removeEventListener('resize', updateKeyboardMetrics);
+      window.visualViewport?.removeEventListener('scroll', updateKeyboardMetrics);
+      if ('virtualKeyboard' in navigator) {
+        try {
+          (navigator as any).virtualKeyboard.removeEventListener('geometrychange', onVirtualKeyboardGeometry);
+        } catch {}
+      }
     };
-  }, [isOpen, isMobileViewport]);
+  }, [isOpen]);
 
   const drawerMarkup = (
     <>
@@ -3278,6 +3335,10 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
           ref={messagesScrollRef}
           onScroll={handleMessagesScroll}
           className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-5 flex flex-col select-text"
+          style={{
+            paddingBottom: keyboardOffset > 0 ? `${keyboardOffset + 24}px` : undefined,
+            transition: 'padding-bottom 0.18s ease-out',
+          }}
         >
           {isLoadingConversationMessages && messages.length === 0 ? (
             <div className="flex-1 flex flex-col justify-center gap-4 px-2 py-6" aria-label="Chargement de la conversation">
@@ -3629,6 +3690,60 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
                 ref={textareaRef}
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
+                onFocus={() => {
+                  setIsKeyboardOpen(true);
+                  window.scrollTo(0, 0);
+                  document.body.scrollTop = 0;
+                  document.documentElement.scrollTop = 0;
+                  setTimeout(() => {
+                    window.scrollTo(0, 0);
+                    document.body.scrollTop = 0;
+                    document.documentElement.scrollTop = 0;
+                    let h = 0;
+                    if ('virtualKeyboard' in navigator) {
+                      try {
+                        h = Math.max(h, Math.round((navigator as any).virtualKeyboard?.boundingRect?.height || 0));
+                      } catch {}
+                    }
+                    if (window.visualViewport) {
+                      h = Math.max(
+                        h,
+                        Math.round(window.innerHeight - window.visualViewport.height - (window.visualViewport.offsetTop || 0))
+                      );
+                    }
+                    if (h > 60) {
+                      setKeyboardOffset(h);
+                      setIsKeyboardOpen(true);
+                    }
+                    if (messagesScrollRef.current) {
+                      messagesScrollRef.current.scrollTop = messagesScrollRef.current.scrollHeight;
+                    }
+                  }, 120);
+                }}
+                onBlur={() => {
+                  window.scrollTo(0, 0);
+                  setTimeout(() => {
+                    const activeEl = document.activeElement;
+                    if (activeEl !== textareaRef.current) {
+                      let h = 0;
+                      if ('virtualKeyboard' in navigator) {
+                        try {
+                          h = Math.max(h, Math.round((navigator as any).virtualKeyboard?.boundingRect?.height || 0));
+                        } catch {}
+                      }
+                      if (window.visualViewport) {
+                        h = Math.max(
+                          h,
+                          Math.round(window.innerHeight - window.visualViewport.height - (window.visualViewport.offsetTop || 0))
+                        );
+                      }
+                      if (h <= 60) {
+                        setKeyboardOffset(0);
+                        setIsKeyboardOpen(false);
+                      }
+                    }
+                  }, 120);
+                }}
                 onPaste={handlePasteInTextarea}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
