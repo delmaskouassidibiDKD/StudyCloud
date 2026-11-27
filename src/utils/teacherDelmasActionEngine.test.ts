@@ -1247,3 +1247,144 @@ test('Multi-tâches simultanées : plusieurs tâches combinées dans un seul mes
     ['clear_notes', 'set_sort_mode', 'resize_columns', 'format_cells']
   );
 });
+
+test('Régression photos utilisateur : import Excel complet 10/10 (en-têtes StudyCloud NOTE 1 (/20)), METRE, OUI sans ? et TU NA PAS FAIT sans troncature', () => {
+  const studyCloudExcel10 = `[--- Feuille Excel : "Mathématiques" ---]
+Rang,Nom & Prénom,NOTE 1 (/20),NOTE 2 (/20),Moyenne (/20),Mention
+1er,KOUASSI Jean-Marc,16/20,17/20,"16,50",Très Bien
+2e,DIALLO Fatoumata,15/20,16/20,"15,50",Bien
+3e,TRAORE Ibrahim,14/20,15/20,"14,50",Bien
+4e,BAMBA Aminata,13/20,14/20,"13,50",Assez Bien
+5e,YAO Koffi Serge,12/20,13/20,"12,50",Assez Bien
+6e,KONE Mariam,11/20,12/20,"11,50",Passable
+7e,OUATTARA Lassina,10/20,11/20,"10,50",Passable
+8e,N'GUESSAN Ahou,14.5/20,13.5/20,"14,00",Bien
+9e,SORO Ténin,12.5/20,11.5/20,"12,00",Assez Bien
+10e,COULIBALY Seydou,15.5/20,14.5/20,"15,00",Bien`;
+
+  const excelFileRecord = {
+    id: 'tdfile-studycloud-10',
+    conversationId: 'tdconv-1',
+    fileName: 'Releve_Notes_Math_matiques_BTS_2_GROUPE_2_ELECTROTECHNIQUE_Trimestre_1.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    fileType: 'document',
+    sizeBytes: 18500,
+    compressedSizeBytes: 9200,
+    extractedText: studyCloudExcel10,
+    createdAt: Date.now(),
+  };
+
+  // 1. Parseur StudyCloud Excel : les 10 élèves et leurs 2 colonnes "NOTE 1 (/20)" et "NOTE 2 (/20)" sont 100 % extraits !
+  const parsed10 = parseSpreadsheetStudentsFromText(studyCloudExcel10);
+  assert.equal(parsed10.length, 10, `Attendu 10 élèves, obtenu ${parsed10.length}`);
+  assert.equal(parsed10[0].name, 'KOUASSI Jean-Marc');
+  assert.deepEqual(parsed10[0].notes, ['16/20', '17/20']);
+  assert.equal(parsed10[9].name, 'COULIBALY Seydou');
+  assert.deepEqual(parsed10[9].notes, ['15.5/20', '14.5/20']);
+
+  // 2. Tour 1 exact de la photo : "IL FAUX METRE DANS LE TABLEAUX TOUT CES INFORMATION" -> 'action' + 10/10 élèves !
+  const turn1Intent = classifyTeacherDelmasIntent({
+    message: 'IL FAUX METRE DANS LE TABLEAUX TOUT CES INFORMATION',
+    hasNewAttachments: true,
+    hasConversationFiles: true,
+    activeContext: sampleContext,
+  });
+  assert.equal(turn1Intent.intent, 'action');
+  assert.equal(turn1Intent.referencesActiveFiles, true);
+
+  const turn1Local = resolveDirectLocalDelmasCommand({
+    message: 'IL FAUX METRE DANS LE TABLEAUX TOUT CES INFORMATION',
+    activeContext: sampleContext,
+    hasNewAttachments: true,
+    conversationFiles: [excelFileRecord],
+  });
+  assert.ok(turn1Local, 'Import Excel déterministe attendu dès le Tour 1');
+  assert.equal(turn1Local.actions[0].type, 'add_students');
+  assert.equal(turn1Local.actions[0].students.length, 10);
+
+  // 3. Tour 2 exact de la photo : "OUI" après "Confirmez si vous souhaitez que j'effectue cette importation." (sans "?")
+  const aiProposalNoQuestionMark =
+    "Je vais importer les informations du fichier « Releve_Notes_Math_matiques_BTS_2_GROUPE_2_ELECTROTECHNIQUE_Trimestre_1.xlsx » dans le tableau Mathématiques. Les données incluent les notes de 10 élèves. Confirmez si vous souhaitez que j'effectue cette importation.";
+  const turn2Intent = classifyTeacherDelmasIntent({
+    message: 'OUI',
+    hasNewAttachments: false,
+    hasConversationFiles: true,
+    activeContext: sampleContext,
+    recentMessages: [
+      { sender: 'user', content: 'IL FAUX METRE DANS LE TABLEAUX TOUT CES INFORMATION' },
+      { sender: 'ai', content: aiProposalNoQuestionMark },
+    ],
+  });
+  assert.equal(turn2Intent.intent, 'action');
+  assert.equal(turn2Intent.referencesActiveFiles, true);
+
+  const turn2Local = resolveDirectLocalDelmasCommand({
+    message: 'OUI',
+    activeContext: sampleContext,
+    hasNewAttachments: false,
+    conversationFiles: [excelFileRecord],
+    recentMessages: [
+      { sender: 'user', content: 'IL FAUX METRE DANS LE TABLEAUX TOUT CES INFORMATION' },
+      { sender: 'ai', content: aiProposalNoQuestionMark },
+    ],
+  });
+  assert.ok(turn2Local, 'Confirmation OUI doit déclencher import complet 10/10');
+  assert.equal(turn2Local.actions[0].students.length, 10);
+
+  // 4. Tour 3 exact de la photo : "TU NA PAS FAIT" -> referencesActiveFiles DOIT être true (jamais tronqué à 420 chars !)
+  //    et si 2 élèves étaient déjà présents, met à jour ces 2 + ajoute les 8 manquants (zéro doublon, 10/10 complets)
+  const partialContext: TeacherDelmasActiveContext = {
+    ...sampleContext,
+    students: [
+      { rowIndex: 1, id: 's1', name: 'KOUASSI Jean-Marc', matricule: '', notes: ['16/20', ''], averageFormatted: '16,00', averageNumber: 16, rank: '1er', mention: 'Très Bien' },
+      { rowIndex: 2, id: 's2', name: 'DIALLO Fatoumata', matricule: '', notes: ['15/20', ''], averageFormatted: '15,00', averageNumber: 15, rank: '2e', mention: 'Bien' },
+    ],
+  };
+  const turn3Intent = classifyTeacherDelmasIntent({
+    message: 'TU NA PAS FAIT',
+    hasNewAttachments: false,
+    hasConversationFiles: true,
+    activeContext: partialContext,
+    recentMessages: [
+      { sender: 'user', content: 'IL FAUX METRE DANS LE TABLEAUX TOUT CES INFORMATION' },
+      { sender: 'ai', content: "L'importation des données à partir du fichier Excel est maintenant terminée. Tout semble être à jour." },
+    ],
+  });
+  assert.equal(turn3Intent.intent, 'action');
+  assert.equal(turn3Intent.referencesActiveFiles, true, 'NE DOIT JAMAIS tronquer le fichier Excel sur TU NA PAS FAIT !');
+
+  const turn3Local = resolveDirectLocalDelmasCommand({
+    message: 'TU NA PAS FAIT',
+    activeContext: partialContext,
+    conversationFiles: [excelFileRecord],
+    recentMessages: [
+      { sender: 'user', content: 'IL FAUX METRE DANS LE TABLEAUX TOUT CES INFORMATION' },
+      { sender: 'ai', content: "L'importation des données à partir du fichier Excel est maintenant terminée. Tout semble être à jour." },
+    ],
+  });
+  assert.ok(turn3Local);
+  const updateAct = turn3Local.actions.find((a) => a.type === 'update_students');
+  const addAct = turn3Local.actions.find((a) => a.type === 'add_students');
+  assert.equal(updateAct?.updates?.length, 2, 'Doit mettre à jour les 2 élèves déjà présents sans les dupliquer');
+  assert.equal(addAct?.students?.length, 8, 'Doit ajouter les 8 élèves manquants pour arriver à 10/10');
+
+  // 5. Détection stricte du mensonge exact de la photo 1
+  assert.equal(
+    looksLikeUnfulfilledActionClaim(
+      "L'importation des données à partir du fichier Excel est maintenant terminée. Le tableau Mathématiques contient désormais les informations des élèves, y compris leurs notes et leur moyenne. Tout semble être à jour."
+    ),
+    true
+  );
+
+  // 6. Langage naturel sans mot-clé rigide ("vider") -> classé en action et autorisé par le pare-feu
+  const naturalClean = classifyTeacherDelmasIntent({
+    message: 'Je veux remettre ce tableau à blanc sans rien dedans',
+    activeContext: sampleContext,
+  });
+  assert.equal(naturalClean.intent, 'action');
+  const allowedNaturalClear = filterSafeTeacherDelmasActions(
+    [{ type: 'clear_all' }],
+    'Je veux remettre ce tableau à blanc sans rien dedans'
+  );
+  assert.equal(allowedNaturalClear.length, 1);
+});

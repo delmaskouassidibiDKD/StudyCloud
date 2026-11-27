@@ -72,7 +72,9 @@ import {
   hasRealExplicitMatriculeBatch,
   type TeacherDelmasAction,
   type TeacherDelmasActiveContext,
+  type TeacherDelmasExecutionReport,
   type TeacherDelmasSheetBridge,
+  type TeacherDelmasSheetVerificationSnapshot,
 } from '../../utils/teacherDelmasActionEngine';
 import type { TeacherDelmasWorkspaceSnapshot } from '../../services/teacherGradebookApi';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
@@ -766,38 +768,65 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
   latestPayloadRef.current = currentPayload;
 
-  // Moteur d'envoi cloud D1 sérialisé (file d'attente anti-course + support enregistrement manuel forcé)
-  const flushCloudSave = useCallback(async (opts?: { keepalive?: boolean; force?: boolean }) => {
+  // Moteur d'envoi cloud D1 sérialisé (file d'attente anti-course + support enregistrement manuel forcé + retour vérifiable)
+  const flushCloudSave = useCallback(async (opts?: {
+    keepalive?: boolean;
+    force?: boolean;
+    payloadOverride?: TeacherGradebookPayload;
+  }): Promise<{
+    ok: boolean;
+    status: 'saved' | 'local_only' | 'offline' | 'error';
+    error?: string;
+  }> => {
     if (debounceTimerRef.current !== null) {
       window.clearTimeout(debounceTimerRef.current);
       debounceTimerRef.current = null;
+    }
+    if (opts?.payloadOverride) {
+      latestPayloadRef.current = opts.payloadOverride;
+      hasPendingCloudChangesRef.current = true;
     }
     if (disableCloudPersistence) {
       hasPendingCloudChangesRef.current = false;
       setIsSaved(true);
       setCloudSaveStatus('saved');
-      return;
+      return { ok: true, status: 'local_only' };
     }
-    if (!latestPayloadRef.current) return;
-    if (!opts?.force && !hasPendingCloudChangesRef.current) return;
+    if (!latestPayloadRef.current) {
+      return { ok: true, status: 'local_only' };
+    }
+    if (!opts?.force && !hasPendingCloudChangesRef.current) {
+      return { ok: true, status: 'saved' };
+    }
 
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
       hasPendingCloudChangesRef.current = true;
       setIsSaved(false);
       setCloudSaveStatus('offline');
-      setCloudSaveError("Hors ligne — Échec de l'enregistrement : aucune connexion Internet détectée.");
-      return;
+      const offlineMsg = "Hors ligne — Échec de l'enregistrement : aucune connexion Internet détectée.";
+      setCloudSaveError(offlineMsg);
+      return { ok: false, status: 'offline', error: offlineMsg };
     }
     if (!getTeacherAuthToken()) {
       hasPendingCloudChangesRef.current = false;
       setIsSaved(false);
       setCloudSaveStatus('error');
-      setCloudSaveError('Session non connectée. Veuillez vous reconnecter.');
-      return;
+      const authMsg = 'Session non connectée. Veuillez vous reconnecter.';
+      setCloudSaveError(authMsg);
+      return { ok: false, status: 'local_only', error: authMsg };
     }
     if (isCloudSavingRef.current || isUploadingPhotoRef.current) {
-      needsFollowupSaveRef.current = true;
-      return;
+      if (opts?.force) {
+        // Attendre brièvement la fin de la sauvegarde précédente afin de garantir la persistance D1 du nouvel état
+        for (let waitStep = 0; waitStep < 15; waitStep++) {
+          await new Promise<void>((r) => setTimeout(r, 120));
+          if (!isCloudSavingRef.current && !isUploadingPhotoRef.current) break;
+        }
+      }
+      if (isCloudSavingRef.current || isUploadingPhotoRef.current) {
+        needsFollowupSaveRef.current = true;
+        return { ok: true, status: 'saved' };
+      }
     }
 
     isCloudSavingRef.current = true;
@@ -831,35 +860,41 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         needsFollowupSaveRef.current = false;
         hasPendingCloudChangesRef.current = true;
         isCloudSavingRef.current = false;
-        await flushCloudSave(opts);
-        return;
+        return await flushCloudSave({ ...opts, payloadOverride: undefined });
       }
       setIsSaved(true);
       setHasSavedAtLeastOnce(true);
       setCloudSaveStatus('saved');
       onGradebookSynced?.();
+      return { ok: true, status: 'saved' };
     } catch (err: any) {
       if (err?.isStorageLimitExceeded) {
         // Quota saturé : stopper les réessais automatiques en boucle, la modale d'augmentation s'affiche
         hasPendingCloudChangesRef.current = false;
         setIsSaved(false);
         setCloudSaveStatus('error');
-        setCloudSaveError(err?.message || "Espace de stockage plein. Veuillez augmenter votre stockage.");
+        const msg = err?.message || "Espace de stockage plein. Veuillez augmenter votre stockage.";
+        setCloudSaveError(msg);
+        return { ok: false, status: 'error', error: msg };
       } else {
         hasPendingCloudChangesRef.current = true;
         setIsSaved(false);
         if (isOfflineOrNetworkError(err)) {
           setCloudSaveStatus('offline');
-          setCloudSaveError("Hors ligne — Échec de l'enregistrement. Vérifiez votre connexion Internet.");
+          const msg = "Hors ligne — Échec de l'enregistrement. Vérifiez votre connexion Internet.";
+          setCloudSaveError(msg);
+          return { ok: false, status: 'offline', error: msg };
         } else {
           setCloudSaveStatus('error');
-          setCloudSaveError(err?.message || "Échec de l'enregistrement de vos données.");
+          const msg = err?.message || "Échec de l'enregistrement de vos données.";
+          setCloudSaveError(msg);
+          return { ok: false, status: 'error', error: msg };
         }
       }
     } finally {
       isCloudSavingRef.current = false;
     }
-  }, [subject.id, effectiveTermId, onGradebookSynced]);
+  }, [subject.id, effectiveTermId, disableCloudPersistence, onGradebookSynced]);
 
   const handleManualSaveGradebook = useCallback(() => {
     flushCloudSave({ force: true });
@@ -3723,8 +3758,64 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       actions: TeacherDelmasAction[],
       workspaceSnapshot?: TeacherDelmasWorkspaceSnapshot | null
     ): Promise<string[]> => {
+      const report = await delmasSheetBridge.executeActionsVerified!(actions, workspaceSnapshot);
+      return report.summaries;
+    },
+
+    executeActionsVerified: async (
+      actions: TeacherDelmasAction[],
+      workspaceSnapshot?: TeacherDelmasWorkspaceSnapshot | null
+    ): Promise<TeacherDelmasExecutionReport> => {
+      const countRowSnapshot = (
+        rows: StudentGradeRow[],
+        colCount: number,
+        metaSnap: {
+          sortMode: GradebookSortMode;
+          showMatricule: boolean;
+          averageScale: number;
+          zoomPercent: number;
+        }
+      ): TeacherDelmasSheetVerificationSnapshot => {
+        let namedStudents = 0;
+        let filledNotes = 0;
+        let filledMatricules = 0;
+        for (const r of rows) {
+          if (String(r.name || '').trim().length > 0) namedStudents++;
+          if (String(r.matricule || '').trim().length > 0) filledMatricules++;
+          for (let c = 0; c < colCount; c++) {
+            if (parseStudentNote(r.notes[c] || '', 20).scoreStr.length > 0) filledNotes++;
+          }
+        }
+        return {
+          namedStudents,
+          filledNotes,
+          noteColumns: colCount,
+          filledMatricules,
+          sortMode: metaSnap.sortMode,
+          showMatricule: metaSnap.showMatricule,
+          averageScale: metaSnap.averageScale,
+          zoomPercent: metaSnap.zoomPercent,
+        };
+      };
+
+      const beforeSnapshot = countRowSnapshot(students, noteColumnCount, {
+        sortMode,
+        showMatricule: effectiveShowMatricule,
+        averageScale: effectiveAverageScale,
+        zoomPercent,
+      });
+
       const summaries: string[] = [];
-      if (!Array.isArray(actions) || actions.length === 0) return summaries;
+      if (!Array.isArray(actions) || actions.length === 0) {
+        return {
+          summaries,
+          changed: false,
+          uiVerified: false,
+          dbStatus: 'not_needed',
+          before: beforeSnapshot,
+          after: beforeSnapshot,
+        };
+      }
 
       let workingStudents = [...students.map((s) => ({ ...s, notes: [...s.notes] }))];
       let workingColCount = noteColumnCount;
@@ -3741,12 +3832,19 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       let workingColWidthAverage = colWidthAverage;
       let workingColWidthMention = colWidthMention;
       let workingCustomRowHeights: { [index: number]: number } = { ...customRowHeights };
+      let workingSortMode: GradebookSortMode = sortMode;
+      let workingZoomPercent = zoomPercent;
+      let workingShowMatricule = effectiveShowMatricule;
+      let workingAverageScale = effectiveAverageScale;
       let studentsMutated = false;
       let colsMutated = false;
       let stylesMutated = false;
       let cellColorsMutated = false;
       let rowColorsMutated = false;
       let layoutMutated = false;
+      let sortOrZoomMutated = false;
+      let settingsOrUiMutated = false;
+      let exportOrCopyExecuted = false;
 
       const swapWorkingNoteColumns = (idxA: number, idxB: number) => {
         if (
@@ -4653,6 +4751,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
                 ? 'alpha'
                 : 'order';
             setLockedOrderIds(null);
+            workingSortMode = mode;
+            sortOrZoomMutated = true;
             setSortMode(mode);
             setIsSaved(false);
             summaries.push(
@@ -4672,6 +4772,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             const scope: SheetSettingScope =
               action.scope === 'class' ? 'class' : 'sheet';
             explicitMatriculeToggleSeen = true;
+            workingShowMatricule = show;
+            settingsOrUiMutated = true;
             await handleSaveShowMatricule(show, scope);
             summaries.push(
               `✓ Colonne Matricule ${show ? 'affichée' : 'masquée'} (${
@@ -4686,6 +4788,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             if (cleanScale !== null) {
               const scope: SheetSettingScope =
                 action.scope === 'class' ? 'class' : 'sheet';
+              workingAverageScale = cleanScale;
+              settingsOrUiMutated = true;
               await handleSaveAverageScale(cleanScale, scope);
               summaries.push(
                 `✓ Moyenne ramenée sur /${cleanScale} (${
@@ -4705,6 +4809,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
             if (resolvedOrder !== undefined) {
               const scope: SheetSettingScope =
                 action.scope === 'class' ? 'class' : 'sheet';
+              settingsOrUiMutated = true;
               await handleSaveColumnOrder(resolvedOrder, scope);
               summaries.push(
                 resolvedOrder === null
@@ -4787,6 +4892,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
               if (cleanRules.length > 0) {
                 const scope: SheetSettingScope =
                   action.scope === 'class' ? 'class' : 'sheet';
+                settingsOrUiMutated = true;
                 await handleSaveMentionRules(cleanRules, scope);
                 summaries.push(
                   `✓ Intervalles de mentions personnalisés appliqués (${
@@ -5497,6 +5603,8 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
 
           case 'set_zoom': {
             const z = Math.min(200, Math.max(30, Math.round(Number(action.zoomPercent) || 70)));
+            workingZoomPercent = z;
+            sortOrZoomMutated = true;
             setZoomPercent(z);
             setIsSaved(false);
             summaries.push(`✓ Zoom réglé à ${z}%`);
@@ -5521,6 +5629,7 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           case 'set_expand_level': {
             const lvl: 0 | 1 | 2 =
               Number(action.level) === 2 ? 2 : Number(action.level) === 1 ? 1 : 0;
+            settingsOrUiMutated = true;
             setViewerExpandLevel(lvl);
             setIsViewerMaximized(lvl >= 1);
             summaries.push(
@@ -5534,36 +5643,42 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
           }
 
           case 'undo': {
+            settingsOrUiMutated = true;
             handleUndo();
             summaries.push(`✓ Dernière modification annulée`);
             break;
           }
 
           case 'redo': {
+            settingsOrUiMutated = true;
             handleRedo();
             summaries.push(`✓ Modification rétablie`);
             break;
           }
 
           case 'export_excel': {
+            exportOrCopyExecuted = true;
             handleExportExcel();
             summaries.push(`✓ Export Excel (.xlsx) téléchargé`);
             break;
           }
 
           case 'export_pdf': {
+            exportOrCopyExecuted = true;
             await exportGradebookToPdf(buildSubjectExportDataset());
             summaries.push(`✓ Export PDF téléchargé`);
             break;
           }
 
           case 'export_word': {
+            exportOrCopyExecuted = true;
             await exportGradebookToWord(buildSubjectExportDataset());
             summaries.push(`✓ Export Word (.docx) téléchargé`);
             break;
           }
 
           case 'copy_table': {
+            exportOrCopyExecuted = true;
             await copyGradebookToClipboard(buildSubjectExportDataset());
             setCopiedTableSuccess(true);
             setTimeout(() => setCopiedTableSuccess(false), 2500);
@@ -5579,6 +5694,10 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
       }
 
       const explicitSaveRequested = actions.some((a) => a?.type === 'save_gradebook');
+      const autoShowMatriculeTriggered = pendingAutoShowMatricule && !explicitMatriculeToggleSeen;
+      if (autoShowMatriculeTriggered) {
+        workingShowMatricule = true;
+      }
 
       if (colsMutated) {
         setNoteColumnCount(workingColCount);
@@ -5607,27 +5726,111 @@ export const SubjectGradebookView: React.FC<SubjectGradebookViewProps> = ({
         setColWidthMention(workingColWidthMention);
         setCustomRowHeights(workingCustomRowHeights);
       }
-      if (pendingAutoShowMatricule && !explicitMatriculeToggleSeen) {
+      if (autoShowMatriculeTriggered) {
         setSheetShowMatricule(true);
       }
-      if (
+
+      const needsCloudPersist =
         colsMutated ||
         studentsMutated ||
         stylesMutated ||
         cellColorsMutated ||
         rowColorsMutated ||
         layoutMutated ||
-        (pendingAutoShowMatricule && !explicitMatriculeToggleSeen)
-      ) {
+        sortOrZoomMutated ||
+        autoShowMatriculeTriggered ||
+        explicitSaveRequested;
+
+      const verifiedNextPayload: TeacherGradebookPayload = {
+        noteColumnCount: workingColCount,
+        columnMetas: workingColMetas,
+        layout: {
+          noteColWidth: workingNoteColWidth,
+          colWidthRank: workingColWidthRank,
+          colWidthPhoto: workingColWidthPhoto,
+          colWidthMatricule: workingColWidthMatricule,
+          colWidthName: workingColWidthName,
+          colWidthAverage: workingColWidthAverage,
+          colWidthMention: workingColWidthMention,
+          customNoteWidths: workingCustomNoteWidths,
+          customRowHeights: workingCustomRowHeights,
+          zoomPercent: workingZoomPercent,
+          sortMode: workingSortMode,
+          ...(sheetMentionRules !== undefined ? { mentionRules: sheetMentionRules } : {}),
+          ...(autoShowMatriculeTriggered
+            ? { showMatricule: true }
+            : typeof sheetShowMatricule === 'boolean'
+            ? { showMatricule: sheetShowMatricule }
+            : {}),
+          ...(typeof sheetAverageScale === 'number' ? { averageScale: sheetAverageScale } : {}),
+          ...(sheetColumnOrder !== undefined ? { columnOrder: sheetColumnOrder } : {}),
+        },
+        styles: {
+          cellColors: workingCellColors,
+          rowColors: workingRowColors,
+          cellCustomStyles: workingCellStyles,
+        },
+        students: workingStudents,
+      };
+
+      if (needsCloudPersist) {
+        latestPayloadRef.current = verifiedNextPayload;
         setIsSaved(false);
-        setTimeout(() => {
-          flushCloudSave({ force: true });
-        }, 220);
-      } else if (explicitSaveRequested) {
-        flushCloudSave({ force: true });
       }
 
-      return summaries;
+      // Attendre le prochain cycle de rendu navigateur pour vérifier que l'interface a bien intégré l'état
+      await new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => resolve());
+        } else {
+          setTimeout(resolve, 16);
+        }
+      });
+
+      let dbStatus: TeacherDelmasExecutionReport['dbStatus'] = 'not_needed';
+      let dbError: string | undefined;
+
+      if (needsCloudPersist) {
+        const saveOutcome = await flushCloudSave({
+          force: true,
+          payloadOverride: verifiedNextPayload,
+        });
+        dbStatus = saveOutcome.status;
+        dbError = saveOutcome.error;
+      } else if (settingsOrUiMutated) {
+        dbStatus = disableCloudPersistence || !getTeacherAuthToken() ? 'local_only' : 'saved';
+      }
+
+      const afterSnapshot = countRowSnapshot(workingStudents, workingColCount, {
+        sortMode: workingSortMode,
+        showMatricule: workingShowMatricule,
+        averageScale: workingAverageScale,
+        zoomPercent: workingZoomPercent,
+      });
+
+      const changed =
+        summaries.length > 0 &&
+        (studentsMutated ||
+          colsMutated ||
+          stylesMutated ||
+          cellColorsMutated ||
+          rowColorsMutated ||
+          layoutMutated ||
+          sortOrZoomMutated ||
+          settingsOrUiMutated ||
+          exportOrCopyExecuted ||
+          autoShowMatriculeTriggered ||
+          explicitSaveRequested);
+
+      return {
+        summaries,
+        changed,
+        uiVerified: changed,
+        dbStatus,
+        dbError,
+        before: beforeSnapshot,
+        after: afterSnapshot,
+      };
     },
   };
 

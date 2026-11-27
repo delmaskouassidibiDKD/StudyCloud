@@ -67,15 +67,20 @@ import {
   buildTeacherDelmasSystemPrompt,
   classifyTeacherDelmasIntent,
   compactHistoryMessageForPrompt,
+  computeDelmasVerificationSnapshot,
   filterSafeTeacherDelmasActions,
   looksLikeFalseNoAccessHallucination,
   looksLikeUnfulfilledActionClaim,
+  parseSpreadsheetStudentsFromText,
   parseTeacherDelmasAiResponse,
   pickPreferredKimiModel,
   polishTeacherDelmasReply,
   resolveDirectLocalDelmasCommand,
   validateDelmasFileSelection,
   type ResolvedBackgroundModel,
+  type TeacherDelmasAction,
+  type TeacherDelmasActiveContext,
+  type TeacherDelmasExecutionReport,
   type TeacherDelmasSheetBridge,
 } from '../../utils/teacherDelmasActionEngine';
 
@@ -250,6 +255,179 @@ function isPlaceholderMediaText(text?: string): boolean {
   if (!text) return true;
   const t = text.trim();
   return !t || /^\[(?:Image jointe|Enregistrement audio joint)\s*:/i.test(t);
+}
+
+/**
+ * Exécute un lot d'actions sur le pont actif puis vérifie réellement l'état de l'interface
+ * ET la sauvegarde effective en base de données cloud D1 avant toute confirmation à l'utilisateur.
+ */
+async function executeDelmasActionsWithVerification(
+  bridge: TeacherDelmasSheetBridge,
+  actions: TeacherDelmasAction[],
+  workspaceSnapshot: TeacherDelmasWorkspaceSnapshot | null,
+  languageCode: string
+): Promise<{ report: TeacherDelmasExecutionReport; displaySummaries: string[] }> {
+  const isEn = (languageCode || 'fr').toLowerCase().startsWith('en');
+  let report: TeacherDelmasExecutionReport;
+
+  if (typeof bridge.executeActionsVerified === 'function') {
+    report = await bridge.executeActionsVerified(actions, workspaceSnapshot);
+  } else {
+    const before = computeDelmasVerificationSnapshot(bridge.getContext());
+    const rawSummaries = await bridge.executeActions(actions, workspaceSnapshot);
+    const summaries = Array.isArray(rawSummaries) ? rawSummaries.filter(Boolean) : [];
+    const after = computeDelmasVerificationSnapshot(bridge.getContext());
+    const changed =
+      summaries.length > 0 ||
+      before.namedStudents !== after.namedStudents ||
+      before.filledNotes !== after.filledNotes ||
+      before.noteColumns !== after.noteColumns ||
+      before.sortMode !== after.sortMode ||
+      before.showMatricule !== after.showMatricule ||
+      before.averageScale !== after.averageScale ||
+      before.zoomPercent !== after.zoomPercent;
+    report = {
+      summaries,
+      changed,
+      uiVerified: changed,
+      dbStatus: changed ? 'local_only' : 'not_needed',
+      before,
+      after,
+    };
+  }
+
+  const displaySummaries = [...report.summaries];
+  if (report.changed) {
+    if (report.dbStatus === 'saved') {
+      displaySummaries.push(
+        isEn
+          ? '✓ Verified: table updated & saved to cloud database'
+          : '✓ Vérifié : tableau mis à jour et enregistré en base cloud'
+      );
+    } else if (report.dbStatus === 'offline') {
+      displaySummaries.push(
+        isEn
+          ? '⚠ Table updated (offline: cloud sync pending)'
+          : '⚠ Tableau mis à jour (hors ligne : enregistrement cloud en attente)'
+      );
+    } else if (report.dbStatus === 'error') {
+      displaySummaries.push(
+        isEn
+          ? `⚠ Table updated, cloud save failed (${report.dbError || 'retry'})`
+          : `⚠ Tableau mis à jour, mais erreur de sauvegarde cloud (${report.dbError || 'réessayez'})`
+      );
+    } else if (report.dbStatus === 'local_only') {
+      displaySummaries.push(
+        isEn ? '✓ Verified: table updated' : '✓ Vérifié : tableau mis à jour'
+      );
+    }
+  }
+
+  return { report, displaySummaries };
+}
+
+/**
+ * Garde-fou anti-import incomplet : si le LLM n'a émis qu'un échantillon (ex: 2 élèves sur 10)
+ * d'un fichier Excel/CSV structuré alors que l'utilisateur n'a pas demandé un sous-ensemble,
+ * complète automatiquement le lot avec 100 % des élèves et notes du tableur.
+ */
+function ensureCompleteSpreadsheetImportActions(
+  actions: TeacherDelmasAction[],
+  rawUserText: string,
+  allConvFiles: TeacherDelmasFileRecord[],
+  liveContext: TeacherDelmasActiveContext | null
+): TeacherDelmasAction[] {
+  if (!liveContext || liveContext.sheetKind !== 'subject' || actions.length === 0) return actions;
+  const normUser = String(rawUserText || '')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase();
+
+  // Si l'utilisateur a explicitement demandé un sous-ensemble ("seulement 2", "uniquement les admis", "sauf..."), respecter son choix !
+  if (
+    /\b(seulement|uniquement|sauf|hormis|juste\s+(?:les\s+)?\d+|les\s+\d+\s+premiers?|top\s+\d+|filtre\w*|only\s+\d+|except)\b/i.test(
+      normUser
+    )
+  ) {
+    return actions;
+  }
+
+  const spreadsheetFile = [...allConvFiles]
+    .reverse()
+    .find(
+      (f) =>
+        /\.(xlsx|xls|csv)$/i.test(f.fileName || '') &&
+        typeof f.extractedText === 'string' &&
+        f.extractedText.trim().length > 10
+    );
+  if (!spreadsheetFile) return actions;
+
+  const fullRows = parseSpreadsheetStudentsFromText(spreadsheetFile.extractedText);
+  if (fullRows.length < 2) return actions;
+
+  const hasAddOrSet = actions.some((a) => a.type === 'add_students' || a.type === 'set_students');
+  if (!hasAddOrSet) return actions;
+
+  const llmTotalStudents = actions.reduce((sum, a) => {
+    if ((a.type === 'add_students' || a.type === 'set_students') && Array.isArray(a.students)) {
+      return sum + a.students.length;
+    }
+    return sum;
+  }, 0);
+
+  if (llmTotalStudents >= fullRows.length) return actions;
+
+  // Vérifier qu'au moins un nom émis par le LLM correspond au fichier Excel (pour ne pas écraser une saisie manuelle sans lien avec le fichier)
+  const normName = (v: string) =>
+    String(v || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+  const fileNamesSet = new Set(fullRows.map((r) => normName(r.name)));
+  const llmMatchedFile = actions.some(
+    (a) =>
+      (a.type === 'add_students' || a.type === 'set_students') &&
+      Array.isArray(a.students) &&
+      a.students.some((s: any) => fileNamesSet.has(normName(s?.name || '')))
+  );
+  if (!llmMatchedFile) return actions;
+
+  const existingNames = new Set(
+    (liveContext.students || []).map((s) => normName(s.name || '')).filter(Boolean)
+  );
+  const completed: TeacherDelmasAction[] = [];
+  let replacedOnce = false;
+  for (const act of actions) {
+    if (!replacedOnce && act.type === 'set_students') {
+      completed.push({ type: 'set_students', students: fullRows });
+      replacedOnce = true;
+      continue;
+    }
+    if (!replacedOnce && act.type === 'add_students') {
+      const toUpdate = fullRows
+        .filter((r) => existingNames.has(normName(r.name)))
+        .map((r) => ({
+          matchName: r.name,
+          ...(r.matricule ? { matricule: r.matricule } : {}),
+          notes: r.notes,
+        }));
+      const toAdd = fullRows.filter((r) => !existingNames.has(normName(r.name)));
+      if (toUpdate.length > 0) completed.push({ type: 'update_students', updates: toUpdate });
+      if (toAdd.length > 0) completed.push({ type: 'add_students', students: toAdd });
+      if (toUpdate.length === 0 && toAdd.length === 0) {
+        completed.push({ type: 'add_students', students: fullRows });
+      }
+      replacedOnce = true;
+      continue;
+    }
+    if (act.type === 'add_students' || act.type === 'set_students') {
+      continue;
+    }
+    completed.push(act);
+  }
+  return completed;
 }
 
 function getCachedKimiBackgroundModel(): ResolvedBackgroundModel {
@@ -1563,27 +1741,43 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
     setPendingAttachments([]);
     setFileUploadWarning(null);
 
-    // Exécution déterministe instantanée + facturation réelle en tokens/crédits IA dans D1 (identique au Menu Création)
+    // Exécution déterministe instantanée + vérification réelle UI & base cloud D1 + facturation tokens/crédits IA
     if (localResolution && sheetBridge) {
       let appliedSummaries: string[] = [];
+      let localReport: TeacherDelmasExecutionReport | null = null;
       if (localResolution.actions.length > 0) {
-        const resSummaries = await sheetBridge.executeActions(
+        const verified = await executeDelmasActionsWithVerification(
+          sheetBridge,
           localResolution.actions,
-          workspaceSnapshot
+          workspaceSnapshot,
+          targetLanguage
         );
-        if (Array.isArray(resSummaries)) {
-          appliedSummaries = resSummaries.filter(Boolean);
-        }
+        localReport = verified.report;
+        appliedSummaries = verified.displaySummaries;
       }
 
-      const finalText = polishTeacherDelmasReply(
+      const isEnLocal = (targetLanguage || 'fr').toLowerCase().startsWith('en');
+      let finalText = polishTeacherDelmasReply(
         localResolution.chatResponse,
-        appliedSummaries.length,
+        localReport?.changed ? appliedSummaries.length : 0,
         appliedSummaries
       );
+      if (localResolution.actions.length > 0 && localReport && !localReport.changed) {
+        finalText = isEnLocal
+          ? 'Verification check: no data actually changed in the table.'
+          : "Vérification effectuée : aucune donnée n'a changé dans le tableau.";
+      } else if (localReport?.changed && localReport.dbStatus === 'error') {
+        finalText += isEnLocal
+          ? ` (Visible on screen, but cloud save failed: ${localReport.dbError || 'please retry'}.)`
+          : ` (Visible à l'écran, mais l'enregistrement en base cloud a échoué : ${localReport.dbError || 'veuillez réessayer'}.)`;
+      } else if (localReport?.changed && localReport.dbStatus === 'offline') {
+        finalText += isEnLocal
+          ? ' (Visible on screen; cloud sync will complete once back online.)'
+          : " (Visible à l'écran ; la sauvegarde cloud reprendra dès le retour d'Internet.)";
+      }
       const actionsPayload = localResolution.actions.map((a, idx) => ({
         ...a,
-        summary: appliedSummaries[idx] || undefined,
+        summary: localReport?.summaries[idx] || appliedSummaries[idx] || undefined,
       }));
 
       // Calcul exact des tokens traités (requête + données/actions traitées + réponse concise, sans aucun tableau inutile)
@@ -1931,7 +2125,8 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         recentUserMessages,
       });
 
-      // Auto-récupération silencieuse (1 essai) si l'IA a affirmé avoir fait l'action mais a oublié le bloc <delmas_actions>
+      // Auto-récupération silencieuse si l'IA a affirmé avoir fait l'action (ou nié son accès) sans émettre <delmas_actions>,
+      // Y COMPRIS si le routeur initial avait classé le tour en 'inspect'/'chat' (ex: "OUI" après une proposition d'import) !
       const claimedActionWithoutBlock =
         safeActions.length === 0 &&
         Boolean(sheetBridgeRef.current) &&
@@ -1939,49 +2134,111 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         (looksLikeUnfulfilledActionClaim(parsed.chatResponse) ||
           looksLikeFalseNoAccessHallucination(parsed.chatResponse));
 
-      if (claimedActionWithoutBlock && intentResult.intent === 'action') {
-        try {
-          setConvRunningLabel(targetConversationId, 'Application sur le tableau...');
-          const recoverySystemPrompt = buildTeacherDelmasSystemPrompt({
-            languageCode: targetLanguage,
-            activeContext: liveContext!,
-            workspaceSnapshot,
-            conversationFiles: allConvFiles,
-            intent: 'action',
-            needsWorkspaceDb: intentResult.needsWorkspaceDb,
-            referencesActiveFiles: intentResult.referencesActiveFiles,
-          });
-          const recoveryPrompt = `Demande exacte de l'utilisateur : « ${promptText} »\nRéponse précédente sans exécution réelle : « ${compactHistoryMessageForPrompt(parsed.chatResponse, 'assistant')} »\n\nCONSIGNE STRICTE : Tu ES connecté en direct au tableau. L'action n'a PAS encore été appliquée car le bloc <delmas_actions> manquait. Renvoie UNIQUEMENT le bloc JSON <delmas_actions>[...]</delmas_actions> valide pour exécuter immédiatement cette demande (aucune phrase, aucun tableau Markdown en dehors de la balise).`;
+      if (claimedActionWithoutBlock) {
+        // 1. Récupération déterministe instantanée si l'IA prétend avoir importé un fichier Excel/CSV présent dans la discussion
+        const spreadsheetFileForRecovery =
+          liveContext?.sheetKind === 'subject'
+            ? [...allConvFiles]
+                .reverse()
+                .find(
+                  (f) =>
+                    /\.(xlsx|xls|csv)$/i.test(f.fileName || '') &&
+                    typeof f.extractedText === 'string' &&
+                    f.extractedText.trim().length > 10
+                )
+            : undefined;
+        const claimsSpreadsheetImport =
+          Boolean(spreadsheetFileForRecovery) &&
+          /\b(import\w*|excel|xlsx|csv|fichier|eleve\w*|rempli\w*|renseign\w*|ajoute\w*|insere\w*)\b/i.test(
+            `${parsed.chatResponse} ${rawText}`
+          );
 
-          const recoveryHistory = [
-            { role: 'system', content: recoverySystemPrompt },
-            ...sanitizedTurns.slice(-4),
-            { role: 'user', content: recoveryPrompt },
-          ];
-          const recRes = await sendChatMessageToAi({
-            message: recoveryPrompt,
-            history: recoveryHistory,
-            model: resolvedKimiModelRef.current.modelId,
-            apiKey: resolvedKimiModelRef.current.apiToken || getGeminiApiKey() || undefined,
-            userId: resolveActiveUserId(),
-            assistantContext: 'teacher_gradebook',
-            signal: controller.signal,
-            abortSignal: controller.signal,
-          });
-          const recRaw =
-            recRes.raw_response || recRes.rawResponse || recRes.response || recRes.chat_response || '';
-          const recParsed = parseTeacherDelmasAiResponse(recRaw, { allowActions: true });
-          const recSafe = filterSafeTeacherDelmasActions(recParsed.actions, rawText, {
-            hasAttachedFiles: hasAnyConvFiles && (intentResult.referencesActiveFiles || shouldRunVisionPass),
-            sourceFileTexts,
-            recentUserMessages,
-          });
-          if (recSafe.length > 0) {
-            safeActions = recSafe;
+        if (claimsSpreadsheetImport && spreadsheetFileForRecovery) {
+          const fullRows = parseSpreadsheetStudentsFromText(spreadsheetFileForRecovery.extractedText);
+          if (fullRows.length > 0) {
+            const normName = (v: string) =>
+              String(v || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+            const existingNames = new Set(
+              (liveContext?.students || []).map((s) => normName(s.name || '')).filter(Boolean)
+            );
+            const toUpdate = fullRows
+              .filter((r) => existingNames.has(normName(r.name)))
+              .map((r) => ({
+                matchName: r.name,
+                ...(r.matricule ? { matricule: r.matricule } : {}),
+                notes: r.notes,
+              }));
+            const toAdd = fullRows.filter((r) => !existingNames.has(normName(r.name)));
+            const recoveredActions: TeacherDelmasAction[] = [];
+            if (toUpdate.length > 0) recoveredActions.push({ type: 'update_students', updates: toUpdate });
+            if (toAdd.length > 0) recoveredActions.push({ type: 'add_students', students: toAdd });
+            if (recoveredActions.length === 0) {
+              recoveredActions.push({ type: 'add_students', students: fullRows });
+            }
+            safeActions = recoveredActions;
           }
-        } catch {
-          // Échec silencieux de la tentative de récupération : le garde-fou d'honnêteté ci-dessous empêchera tout faux "C'est fait !"
         }
+
+        // 2. Sinon, tentative de récupération ciblée via Kimi avec fichiers COMPLETS (jamais tronqués !)
+        if (safeActions.length === 0) {
+          try {
+            setConvRunningLabel(targetConversationId, 'Application sur le tableau...');
+            const recoverySystemPrompt = buildTeacherDelmasSystemPrompt({
+              languageCode: targetLanguage,
+              activeContext: liveContext!,
+              workspaceSnapshot,
+              conversationFiles: allConvFiles,
+              intent: 'action',
+              needsWorkspaceDb: intentResult.needsWorkspaceDb,
+              referencesActiveFiles: hasAnyConvFiles,
+            });
+            const recoveryPrompt = `Demande exacte de l'utilisateur : « ${promptText} »\nRéponse précédente sans exécution réelle : « ${compactHistoryMessageForPrompt(parsed.chatResponse, 'assistant')} »\n\nCONSIGNE STRICTE : Tu ES connecté en direct au tableau. L'action n'a PAS encore été appliquée car le bloc <delmas_actions> manquait. Renvoie UNIQUEMENT le bloc JSON <delmas_actions>[...]</delmas_actions> valide et COMPLET (inclus 100 % de TOUS les élèves/lignes/éléments concernés sans JAMAIS tronquer ni échantillonner) pour exécuter immédiatement cette demande.`;
+
+            const recoveryHistory = [
+              { role: 'system', content: recoverySystemPrompt },
+              ...sanitizedTurns.slice(-6),
+              { role: 'user', content: recoveryPrompt },
+            ];
+            const recRes = await sendChatMessageToAi({
+              message: recoveryPrompt,
+              history: recoveryHistory,
+              model: resolvedKimiModelRef.current.modelId,
+              apiKey: resolvedKimiModelRef.current.apiToken || getGeminiApiKey() || undefined,
+              userId: resolveActiveUserId(),
+              assistantContext: 'teacher_gradebook',
+              signal: controller.signal,
+              abortSignal: controller.signal,
+            });
+            const recRaw =
+              recRes.raw_response || recRes.rawResponse || recRes.response || recRes.chat_response || '';
+            const recParsed = parseTeacherDelmasAiResponse(recRaw, { allowActions: true });
+            const recSafe = filterSafeTeacherDelmasActions(recParsed.actions, rawText, {
+              hasAttachedFiles: hasAnyConvFiles,
+              sourceFileTexts,
+              recentUserMessages,
+            });
+            if (recSafe.length > 0) {
+              safeActions = recSafe;
+            }
+          } catch {
+            // Échec silencieux de la tentative de récupération : le garde-fou d'honnêteté ci-dessous empêchera tout faux "C'est fait !"
+          }
+        }
+      }
+
+      // Garde-fou anti-import incomplet : garantit que 100 % des élèves d'un Excel/CSV sont bien traités (jamais seulement 2 sur 10)
+      if (safeActions.length > 0) {
+        safeActions = ensureCompleteSpreadsheetImportActions(
+          safeActions,
+          rawText,
+          allConvFiles,
+          liveContext
+        );
       }
 
       if (controller.signal.aborted) {
@@ -1991,9 +2248,10 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         return;
       }
 
-      // Exécution immédiate des actions demandées sur le tableau cible (y compris si l'utilisateur a ouvert une autre discussion en parallèle !)
+      // Exécution immédiate des actions demandées sur le tableau cible + VÉRIFICATION RÉELLE interface + base cloud D1 !
       // Sécurité anti-croisement : n'applique les actions QUE si le tableau ouvert correspond toujours au même contexte matière/classe.
       let appliedSummaries: string[] = [];
+      let verificationReport: TeacherDelmasExecutionReport | null = null;
       const activeBridge = sheetBridgeRef.current;
       const currentLiveCtx = activeBridge ? activeBridge.getContext() : null;
       const sheetStillMatches =
@@ -2001,13 +2259,15 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         (!targetSheetKey || getSheetContextKey(currentLiveCtx) === targetSheetKey);
 
       if (safeActions.length > 0 && activeBridge && sheetStillMatches) {
-        const resSummaries = await activeBridge.executeActions(
+        setConvRunningLabel(targetConversationId, 'Vérification du tableau et de la base...');
+        const verified = await executeDelmasActionsWithVerification(
+          activeBridge,
           safeActions,
-          workspaceSnapshot
+          workspaceSnapshot,
+          targetLanguage
         );
-        if (Array.isArray(resSummaries)) {
-          appliedSummaries = resSummaries.filter(Boolean);
-        }
+        verificationReport = verified.report;
+        appliedSummaries = verified.displaySummaries;
       }
 
       if (controller.signal.aborted) {
@@ -2017,30 +2277,46 @@ export const TeacherDelmasAssistantDrawer: React.FC<TeacherDelmasAssistantDrawer
         return;
       }
 
-      // Garde-fou d'honnêteté absolue : ne JAMAIS afficher un faux "C'est fait !" ni une hallucination "je n'ai pas accès au tableau" !
+      // Garde-fou d'honnêteté absolue appuyé sur la vérification réelle (interface + base D1) :
+      // Ne JAMAIS afficher un faux "C'est fait !" si aucune modification réelle n'a été vérifiée !
+      const verifiedActionCount = verificationReport?.changed ? appliedSummaries.length : 0;
       let fullResponseText = polishTeacherDelmasReply(
         parsed.chatResponse || 'Je suis à votre écoute.',
-        appliedSummaries.length,
+        verifiedActionCount,
         appliedSummaries
       );
-      if (
-        appliedSummaries.length === 0 &&
+      const l = (targetLanguage || 'fr').toLowerCase();
+      if (safeActions.length > 0 && sheetStillMatches && verificationReport && !verificationReport.changed) {
+        fullResponseText = l.startsWith('en')
+          ? 'Verification check: no value actually changed in the table (the requested entries may already match or were not found).'
+          : "Vérification effectuée : aucune donnée n'a réellement changé dans le tableau (les valeurs demandées étaient peut-être déjà en place ou introuvables).";
+      } else if (
+        verifiedActionCount === 0 &&
         (looksLikeUnfulfilledActionClaim(parsed.chatResponse) ||
           looksLikeFalseNoAccessHallucination(parsed.chatResponse))
       ) {
-        const l = (targetLanguage || 'fr').toLowerCase();
         fullResponseText = !sheetStillMatches && safeActions.length > 0
           ? l.startsWith('en')
             ? 'The response finished after you navigated away from the original sheet, so no change was applied to another sheet.'
             : "La réponse s'est terminée après votre changement de matière ; aucune modification n'a été appliquée sur un autre tableau."
           : l.startsWith('en')
-          ? 'No change was applied to the table yet. Tell me the exact action (for example: "clear all", "clear grades", "clear names", or update a specific student) and I will execute it directly.'
-          : "Aucune modification n'a encore été appliquée sur le tableau. Précisez simplement l'action souhaitée (par exemple : « vider tout », « effacer les notes », « effacer les noms » ou l'élève concerné) et je l'exécute directement.";
+          ? 'Verification check: no change has been applied to the table yet. Tell me naturally what you want updated in this table and I will apply and verify it right away.'
+          : "Vérification effectuée : aucune modification n'a encore été appliquée sur le tableau. Indiquez-moi simplement ce que vous souhaitez changer dans ce tableau et je l'exécute puis je vérifie le résultat.";
+      } else if (verificationReport?.changed) {
+        if (verificationReport.dbStatus === 'error') {
+          fullResponseText += l.startsWith('en')
+            ? ` (Table updated on screen, but cloud database save failed: ${verificationReport.dbError || 'please retry'}.)`
+            : ` (Tableau mis à jour à l'écran, mais la sauvegarde en base cloud a échoué : ${verificationReport.dbError || 'veuillez réessayer'}.)`;
+        } else if (verificationReport.dbStatus === 'offline') {
+          fullResponseText += l.startsWith('en')
+            ? ' (Table updated on screen; cloud database will sync automatically when back online.)'
+            : " (Tableau mis à jour à l'écran ; la sauvegarde cloud se fera dès le retour d'Internet.)";
+        }
       }
 
       const actionsPayload = safeActions.map((a, idx) => ({
         ...a,
-        summary: appliedSummaries[idx] || undefined,
+        summary: verificationReport?.summaries[idx] || appliedSummaries[idx] || undefined,
       }));
 
       // Calcul exact de la consommation en tokens / crédits IA renvoyée par D1 (identique au Menu Création)

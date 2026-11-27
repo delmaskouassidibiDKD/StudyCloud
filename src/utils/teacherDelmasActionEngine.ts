@@ -441,12 +441,72 @@ export interface TeacherDelmasAction {
   [key: string]: any;
 }
 
+export interface TeacherDelmasSheetVerificationSnapshot {
+  namedStudents: number;
+  filledNotes: number;
+  noteColumns: number;
+  filledMatricules: number;
+  sortMode?: string;
+  showMatricule?: boolean;
+  averageScale?: number;
+  zoomPercent?: number;
+}
+
+export interface TeacherDelmasExecutionReport {
+  summaries: string[];
+  changed: boolean;
+  uiVerified: boolean;
+  dbStatus: 'saved' | 'local_only' | 'offline' | 'error' | 'not_needed';
+  dbError?: string;
+  before: TeacherDelmasSheetVerificationSnapshot;
+  after: TeacherDelmasSheetVerificationSnapshot;
+}
+
+export function computeDelmasVerificationSnapshot(
+  ctx?: TeacherDelmasActiveContext | null
+): TeacherDelmasSheetVerificationSnapshot {
+  if (!ctx) {
+    return {
+      namedStudents: 0,
+      filledNotes: 0,
+      noteColumns: 0,
+      filledMatricules: 0,
+    };
+  }
+  let namedStudents = 0;
+  let filledNotes = 0;
+  let filledMatricules = 0;
+  for (const s of ctx.students || []) {
+    if (String(s.name || '').trim().length > 0) namedStudents++;
+    if (String(s.matricule || '').trim().length > 0) filledMatricules++;
+    if (Array.isArray(s.notes)) {
+      for (const n of s.notes) {
+        if (String(n || '').trim().length > 0) filledNotes++;
+      }
+    }
+  }
+  return {
+    namedStudents,
+    filledNotes,
+    noteColumns: Array.isArray(ctx.noteColumns) ? ctx.noteColumns.length : 0,
+    filledMatricules,
+    sortMode: ctx.sortMode,
+    showMatricule: ctx.showMatricule,
+    averageScale: ctx.averageScale,
+    zoomPercent: ctx.zoomPercent,
+  };
+}
+
 export interface TeacherDelmasSheetBridge {
   getContext: () => TeacherDelmasActiveContext;
   executeActions: (
     actions: TeacherDelmasAction[],
     workspaceSnapshot?: TeacherDelmasWorkspaceSnapshot | null
   ) => Promise<string[]> | string[];
+  executeActionsVerified?: (
+    actions: TeacherDelmasAction[],
+    workspaceSnapshot?: TeacherDelmasWorkspaceSnapshot | null
+  ) => Promise<TeacherDelmasExecutionReport>;
 }
 
 export type TeacherDelmasIntent = 'chat' | 'inspect' | 'action';
@@ -577,7 +637,7 @@ export function stripTeacherDelmasReasoning(text: string): string {
  *               → exécution ciblée et précise uniquement sur ce qui est demandé.
  */
 const UNRESOLVED_ACTION_COMPLAINT_REGEX =
-  /(?:\btu\s+(?:n['’]?\s*as?|as)\s+pas\s+(?:fait|effac\w*|vid\w*|supprim\w*|modifi\w*|appliqu\w*|chang\w*|rempli\w*|ajout\w*|inser\w*|mis|enlev\w*|retir\w*|renseign\w*)|\bt['’]as\s+pas\s+(?:fait|effac\w*|vid\w*|supprim\w*|modifi\w*|appliqu\w*|rempli\w*)|\brien\s+n['’]?\s*a\s+(?:chang\w*|ete\s+(?:effac\w*|vid\w*|fait|modifi\w*|supprim\w*)|boug\w*)|\b(?:ca|cela)\s+n['’]?\s*a\s+pas\s+(?:march\w*|effac\w*|chang\w*|vid\w*|supprim\w*|modifi\w*|appliqu\w*)|\bje\s+(?:le\s+|les\s+)?vois\s+toujours\b|\bc['’]?est\s+toujours\s+(?:la|pareil|pareille|rempli\w*|present\w*|affiche\w*)|\b(?:sont|restent|reste|est)\s+toujours\s+(?:la|present\w*|affiche\w*|rempli\w*)|\btoujours\s+(?:les\s+|des\s+)?(?:moyennes?|notes?|noms?|eleves?|matricules?|profils?|photos?|couleurs?|donnees)|\bpas\s+encore\s+(?:effac\w*|vid\w*|fait|modifi\w*|chang\w*|supprim\w*)|\byou\s+(?:didn't|did\s+not)\s+(?:do|clear|delete|remove|update|apply)|\bnothing\s+changed\b|\bi\s+still\s+see\b)/i;
+  /(?:\btu\s+(?:n['’]?\s*as?|nas?|na|as)\s+pas\s+(?:tout\s+)?(?:fait|effac\w*|vid\w*|supprim\w*|modifi\w*|appliqu\w*|chang\w*|rempli\w*|ajout\w*|inser\w*|import\w*|mis|enlev\w*|retir\w*|renseign\w*)|\bt['’]?as\s+pas\s+(?:tout\s+)?(?:fait|effac\w*|vid\w*|supprim\w*|modifi\w*|appliqu\w*|rempli\w*|mis|ajout\w*|import\w*)|\btu\s+(?:n['’]?\s*as?|as)\s+(?:mis|ajoute|importe|insere|rempli|renseigne)\s+(?:que|seulement)\s+\d+|\btu\s+as\s+oublie\b|\bil\s+(?:en\s+)?manque\b|\bmanque\s+(?:des|les|d'autres|\d+)\b|\bpas\s+(?:tout\s+(?:mis|fait|ajoute|importe|rempli|renseigne)|complet\w*)\b|\bincomplet\w*\b|\btu\s+(?:mens|ments|blagues?|racontes?\s+n'importe)\b|\brien\s+n['’]?\s*a\s+(?:chang\w*|ete\s+(?:effac\w*|vid\w*|fait|modifi\w*|supprim\w*|ajoute|importe)|boug\w*)|\b(?:aucun|zero)\s+changement\b|\b(?:ca|cela)\s+n['’]?\s*a\s+pas\s+(?:march\w*|effac\w*|chang\w*|vid\w*|supprim\w*|modifi\w*|appliqu\w*|ajoute|importe)|\bje\s+(?:le\s+|les\s+)?vois\s+toujours\b|\bc['’]?est\s+toujours\s+(?:la|pareil|pareille|rempli\w*|present\w*|affiche\w*|vide)\b|\b(?:sont|restent|reste|est)\s+toujours\s+(?:la|present\w*|affiche\w*|rempli\w*|vide)\b|\btoujours\s+(?:les\s+|des\s+)?(?:moyennes?|notes?|noms?|eleves?|matricules?|profils?|photos?|couleurs?|donnees)|\bpas\s+encore\s+(?:effac\w*|vid\w*|fait|modifi\w*|chang\w*|supprim\w*|ajoute|importe|rempli\w*|renseign\w*)|\byou\s+(?:didn't|did\s+not)\s+(?:do|clear|delete|remove|update|apply|import|add|fill)|\bonly\s+added\s+\d+|\bnothing\s+changed\b|\bi\s+still\s+see\b)/i;
 
 export function classifyTeacherDelmasIntent(params: {
   message: string;
@@ -594,14 +654,15 @@ export function classifyTeacherDelmasIntent(params: {
   const recentMessages = params.recentMessages || [];
 
   const fileReferenceRegex =
-    /(?:\b(?:image|images|limage|limages|photo|photos|laphoto|capture|captures|fichier|fichiers|document|documents|pdf|excel|xlsx|csv|word|docx|audio|vocal|vocaux|releve|releves|feuille|feuilles|liste|listes|ci-dessus|joint|joints|jointe|jointes|piece jointe|scan|copie|picture|file|files|sheet|dedans)\b|l['’]?image|la\s*photo|tu\s+(?:ne\s+)?(?:la|le|les)?\s*vois|tu\s+vois\s+pas|vois[- ]tu|tu\s+(?:ne\s+)?(?:l['’]|les?\s*)?as?\s+(?:pas\s+)?vu|as[- ]tu\s+vu)/i;
+    /(?:\b(?:image|images|limage|limages|photo|photos|laphoto|capture|captures|fichier|fichiers|document|documents|pdf|excel|xlsx|csv|word|docx|audio|vocal|vocaux|releve|releves|feuille|feuilles|liste|listes|ci-dessus|joint|joints|jointe|jointes|piece jointe|scan|copie|picture|file|files|sheet|dedans|infos?|informations?|donnees?|reste|autres)\b|l['’]?image|la\s*photo|tu\s+(?:ne\s+)?(?:la|le|les)?\s*vois|tu\s+vois\s+pas|vois[- ]tu|tu\s+(?:ne\s+)?(?:l['’]|les?\s*)?as?\s+(?:pas\s+)?vu|as[- ]tu\s+vu)/i;
 
   const fileImportActionRegex =
-    /\b(renseign\w*|rempli\w*|remplir|ajoute|ajouter|rajoute|rajouter|saisi|saisis|saisir|importe|importer|insere|inserer|mets|met|mettre|ecris|ecrire|copie|copier|enregistre|enregistrer|sauvegarde|sauvegarder|transfere|transferer|integre|integrer|charge|charger|transcri\w*|report\w*|fill|import|insert|add|put|write|enter|load|copy|save)\b/i;
+    /\b(renseign\w*|rempli\w*|remplir|ajoute\w*|ajouter|rajoute\w*|rajouter|saisi\w*|saisir|import\w*|inser\w*|mets|met|metr\w*|mettre|ecri\w*|copi\w*|enregistr\w*|sauvegard\w*|transfer\w*|integr\w*|charg\w*|transcri\w*|report\w*|plac\w*|rang\w*|coll\w*|utilis\w*|appliqu\w*|complet\w*|remplac\w*|ecras\w*|actualis\w*|fais\s+le|fais-le|fill|import|insert|add|put|write|enter|load|copy|save|apply|complete|update)\b/i;
 
   const lastAiMsg = [...recentMessages].reverse().find((m) => m.sender === 'ai');
   const lastUserMsg = [...recentMessages].reverse().find((m) => m.sender === 'user');
   const lastAiNorm = lastAiMsg ? normalizeForMatch(lastAiMsg.content) : '';
+  const prevUserNorm = lastUserMsg ? normalizeForMatch(lastUserMsg.content) : '';
 
   const referencesActiveFiles =
     hasNewAttachments || (hasConversationFiles && fileReferenceRegex.test(norm));
@@ -618,11 +679,17 @@ export function classifyTeacherDelmasIntent(params: {
       };
     }
     const isPureFileQuestion =
-      /^(que vois-tu|qu'est-ce que tu vois|tu vois|vois-tu|lis|decris|analyse|resume|explique|combien|qui est|quel|quelle|what do you see|read|describe|analyze|summarize)\b/i.test(
+      /^(que vois-tu|qu'est-ce que tu vois|tu vois|vois-tu|lis|decris|analyse|resume|explique|combien|qui est|quel|quelle|est-ce que|y a-t-il|what do you see|read|describe|analyze|summarize)\b/i.test(
         norm
       ) && !fileImportActionRegex.test(norm);
 
-    if (!isPureFileQuestion && fileImportActionRegex.test(norm)) {
+    const hasNaturalImportOrder =
+      fileImportActionRegex.test(norm) ||
+      /\b(dans\s+le\s+tablea\w*|sur\s+le\s+tablea\w*|au\s+tablea\w*|tout(?:es?)?\s+(?:ces|les)\s+(?:info\w*|donn\w*|eleve\w*|note\w*|ligne\w*)|il\s+fau[tx]|fau[tx]\s+\w+|je\s+veux|tu\s+dois)\b/i.test(
+        norm
+      );
+
+    if (!isPureFileQuestion && (hasNaturalImportOrder || !norm.endsWith('?'))) {
       return {
         intent: 'action',
         reason: 'new_attachment_with_import_action',
@@ -638,25 +705,33 @@ export function classifyTeacherDelmasIntent(params: {
     };
   }
 
-  // 2. Confirmation courte qui suit une proposition d'action explicite de l'assistant
+  // 2. Confirmation courte qui suit une proposition d'action explicite de l'assistant (AVEC ou SANS point d'interrogation !)
   const shortAffirmativeRegex =
-    /^(oui|ouais|ok|okay|d'accord|dac|vas-y|vazy|fais-le|fais le|fais ca|applique|applique-le|applique ca|go|yes|yeah|sure|do it|apply|go ahead|lance|valide|c'est bon fais-le|oui vas-y|oui fais-le|oui applique|oui ajoute-les|ajoute-les|mets-les|remplis-le)[\s!.,?]*$/i;
+    /^(oui|ouais|ok|okay|d'accord|dac|vas-y|vas y|vazy|fais-le|fais le|fais ca|fais tout|fais|mets tout|mets-les|mets les|importe|importe tout|applique|applique-le|applique ca|go|yes|yeah|sure|do it|apply|go ahead|lance|lance-le|valide|valider|confirme|je confirme|c'est confirme|execute|executer|continue|termine|finis|bien sur|exact|exactement|c'est bon fais-le|oui vas-y|oui vas y|oui fais-le|oui fais|oui applique|oui ajoute-les|oui importe|oui mets|oui mets tout|oui tout|ok vas-y|ok fais-le|d'accord fais-le|ajoute-les|remplis-le|remplis le)[\s!.,?]*$/i;
 
   const explicitFollowUpActionRegex =
-    /^(vas-y|vazy|fais-le|fais le|fais ca|applique|applique-le|applique ca|ajoute-les|mets-les|remplis-le|remplis le|lance|do it|apply|go ahead|oui vas-y|oui fais-le|oui applique|oui ajoute-les)[\s!.,?]*$/i;
+    /^(vas-y|vas y|vazy|fais-le|fais le|fais ca|fais tout|fais|mets tout|mets-les|mets les|importe|importe tout|applique|applique-le|applique ca|ajoute-les|remplis-le|remplis le|lance|lance-le|confirme|je confirme|execute|executer|continue|termine|finis|do it|apply|go ahead|oui vas-y|oui vas y|oui fais-le|oui fais|oui applique|oui ajoute-les|oui importe|oui mets|oui mets tout|oui tout|ok vas-y|ok fais-le|d'accord fais-le)[\s!.,?]*$/i;
 
   if (shortAffirmativeRegex.test(norm)) {
     const aiOfferedAction =
       Boolean(lastAiNorm) &&
       (lastAiNorm.includes('?') ||
-        /\b(souhaitez-vous|voulez-vous|veux-tu|puis-je|je peux|dois-je|would you like|shall i|want me to)\b/i.test(
+        /\b(souhaitez|voulez|veux|puis-je|je peux|dois-je|confirme\w*|valide\w*|accord|autoris\w*|propose\w*|pret\s+a|je\s+vais\s+(?:importer|ajouter|inserer|remplir|renseigner|mettre|appliquer|modifier|effacer|vider|supprimer|trier|colorer|changer)|would you like|shall i|want me to|confirm|proceed)\b/i.test(
           lastAiNorm
         )) &&
-      /\b(tableau|eleve|eleves|note|notes|ajouter|inserer|remplir|modifier|trier|bareme|matricule|mention|importer|appliquer|supprimer|copier|formater|exporter|coefficient)\b/i.test(
+      /\b(tableau|tableaux|eleve|eleves|note|notes|ajouter|inserer|remplir|renseigner|modifier|trier|bareme|matricule|mention|importer|importation|appliquer|supprimer|effacer|vider|copier|formater|exporter|coefficient|fichier|excel|donnees|informations|liste|colonne|ligne|couleur)\b/i.test(
         lastAiNorm
       );
 
-    if (explicitFollowUpActionRegex.test(norm) || aiOfferedAction) {
+    const prevUserAskedFileImport =
+      hasConversationFiles &&
+      Boolean(prevUserNorm) &&
+      (fileImportActionRegex.test(prevUserNorm) ||
+        /\b(dans\s+le\s+tablea\w*|tout(?:es?)?\s+(?:ces|les)\s+(?:info\w*|donn\w*|eleve\w*|note\w*))\b/i.test(
+          prevUserNorm
+        ));
+
+    if (explicitFollowUpActionRegex.test(norm) || aiOfferedAction || prevUserAskedFileImport) {
       return {
         intent: 'action',
         reason: 'confirmed_follow_up_action',
@@ -752,17 +827,17 @@ export function classifyTeacherDelmasIntent(params: {
   }
 
   // Contexte de suivi conversationnel (ex: l'utilisateur corrige ou précise sa demande précédente : "JE DIS LA YA SON NOM", "non en bleu", "enlève ça")
-  const prevUserNorm = lastUserMsg ? normalizeForMatch(lastUserMsg.content) : '';
   const prevWasAboutTable =
     tableDomainRegex.test(prevUserNorm) || tableDomainRegex.test(lastAiNorm);
   const prevWasActionTurn =
     prevWasAboutTable &&
-    (/\b(c'est fait|j'ai |applique|modifi|colore|couleur|rempli|ajout|supprim|retir|enlev|agrandi|change|trie|export|mise en forme|case|nom|moyenne|note|colonne|ligne|gras|police|taille|metre|metr|mettre|mets|il faut)\b/i.test(
+    (/\b(c'est fait|j'ai |applique|modifi|colore|couleur|rempli|ajout|supprim|retir|enlev|agrandi|change|trie|export|mise en forme|case|nom|moyenne|note|colonne|ligne|gras|police|taille|metre|metr|mettre|mets|il faut|il faux|import\w*)\b/i.test(
       `${prevUserNorm} ${lastAiNorm}`
     ));
 
-  // 4B. Plainte utilisateur signalant qu'une action précédente n'a pas pris effet
-  // (ex: "TU N'as PAS FAIT", "MAIS MOI JE VOIS TOUJOURS LES MOYENNE", "rien n'a changé")
+  // 4B. Plainte utilisateur signalant qu'une action précédente n'a pas pris effet ou est incomplète
+  // (ex: "TU NA PAS FAIT", "TU N'as PAS FAIT", "MAIS MOI JE VOIS TOUJOURS LES MOYENNE", "il manque des élèves")
+  // IMPORTANT : TOUJOURS transmettre les fichiers de la conversation en INTÉGRALITÉ (jamais tronqués à 420 caractères !)
   if (
     UNRESOLVED_ACTION_COMPLAINT_REGEX.test(norm) &&
     (Boolean(params.activeContext) || recentMessages.length > 0)
@@ -770,7 +845,7 @@ export function classifyTeacherDelmasIntent(params: {
     return {
       intent: 'action',
       reason: 'unresolved_action_complaint',
-      referencesActiveFiles: hasConversationFiles && fileReferenceRegex.test(norm),
+      referencesActiveFiles: hasConversationFiles,
       needsWorkspaceDb,
     };
   }
@@ -899,9 +974,9 @@ export function classifyTeacherDelmasIntent(params: {
   const strongActionVerbRegex =
     /\b(ajout\w*|rajout\w*|inser\w*|saisi\w*|entre|entrer|renseign\w*|rempli\w*|ecri\w*|mets|met|metr\w*|mettre|remet\w*|restaur\w*|attribu\w*|noter|import\w*|cree\w*|creer|modifi\w*|chang\w*|remplac\w*|corrig\w*|renomm\w*|actualis\w*|passe|passer|ramen\w*|converti\w*|regl\w*|configur\w*|defini\w*|personnalis\w*|ajust\w*|augment\w*|diminu\w*|baiss\w*|agrandi\w*|grandi\w*|elargi\w*|redui\w*|retreci\w*|grossi\w*|rapetiss\w*|allong\w*|rehauss\w*|rends|rendre|retir\w*|enlev\w*|enl[a-z]?v\w*|ote|oter|bonus|malus|supprim\w*|effac\w*|vide|vider|nettoi\w*|nettoyer|trie\w*|trier|classe|classer|ordonn\w*|cach\w*|masqu\w*|activ\w*|desactiv\w*|color\w*|peins|peindre|decolor\w*|surlign\w*|soulign\w*|barr\w*|format\w*|appliqu\w*|utilis\w*|align\w*|centr\w*|deplac\w*|mont\w*|descend\w*|remont\w*|invers\w*|echang\w*|copi\w*|recopi\w*|dupliqu\w*|export\w*|telecharg\w*|imprim\w*|enregistr\w*|sauvegard\w*|save|annul\w*|retabli\w*|undo|redo|zoom\w*|dezoom\w*|reinitialis\w*|quitt\w*|add|insert|fill|write|put|set|update|edit|modify|replace|rename|fix|adjust|increase|decrease|enlarge|widen|shrink|resize|convert|delete|remove|clear|clean|wipe|sort|hide|color|highlight|bold|italic|underline|strike|strikethrough|format|align|center|copy|export|download|reset|restore)\b/i;
 
-  // Raccourcis de saisie, de mise en forme ou de directives naturelles (ex: "il faut ...", "couleur verte", "sans couleur", "plus grand", "+1 pt", "moyenne sur 40", "ordre de mérite", "zoom 80%", "en gras", "plein écran", "en pdf", "je dis là y'a son nom")
+  // Raccourcis de saisie, de mise en forme ou de directives naturelles (ex: "il faut/faux ...", "couleur verte", "sans couleur", "plus grand", "+1 pt", "moyenne sur 40", "ordre de mérite", "zoom 80%", "en gras", "plein écran", "en pdf", "je dis là y'a son nom", "tout ces information", "sans rien dedans")
   const shorthandActionRegex =
-    /([+-]\s*\d+(?:[.,]\d+)?\s*(?:pt|pts|point|points)\b)|(\b(?:moyenne|notes?|toutes les notes|note\s*\d+)\s+sur\s+\d+\b)|(\b(?:ordre de merite|ordre alphabetique|ordre initial|z\s*(?:a|->|vers)\s*a|a\s*(?:a|->|vers)\s*z)\b)|(\bzoom\s*(?:a\s*)?\d+\s*%?)|(\b\d+(?:[.,]\d+)?\s*\/\s*\d+\b)|(\b(?:il\s+faut|faut\s+\w+|tu\s+dois|je\s+veux|je\s+voudrais|j'aimerais|fais\s+\w+)\b)|(\b(?:une\s+)?couleur\s+(?:rouge|vert\w*|bleu\w*|jaune|orange|gris\w*|violet\w*|rose|noir\w*|blanc\w*|cyan|marron|dore\w*)\b)|(\b(?:sans\s+couleur|pas\s+de\s+couleur|aucune\s+couleur|sans\s+fond|pas\s+de\s+fond|en\s+gras|en\s+italique|en\s+rouge|en\s+bleu\w*|en\s+vert\w*|en\s+jaune|en\s+orange|en\s+violet\w*|en\s+rose|en\s+gris\w*|en\s+noir\w*|en\s+blanc\w*|plus\s+grand\w*|plus\s+gros\w*|plus\s+petit\w*|plus\s+large|moins\s+large|taille\s+\d+|en\s+pdf|en\s+word|en\s+excel|plein\s+ecran|une\s+ligne\s+sur\s+deux)\b)/i;
+    /([+-]\s*\d+(?:[.,]\d+)?\s*(?:pt|pts|point|points)\b)|(\b(?:moyenne|notes?|toutes les notes|note\s*\d+)\s+sur\s+\d+\b)|(\b(?:ordre de merite|ordre alphabetique|ordre initial|z\s*(?:a|->|vers)\s*a|a\s*(?:a|->|vers)\s*z)\b)|(\bzoom\s*(?:a\s*)?\d+\s*%?)|(\b\d+(?:[.,]\d+)?\s*\/\s*\d+\b)|(\b(?:il\s+fau[tx]|fau[tx]\s+\w+|tu\s+dois|je\s+veux|je\s+voudrais|j'aimerais|fais\s+\w+)\b)|(\b(?:une\s+)?couleur\s+(?:rouge|vert\w*|bleu\w*|jaune|orange|gris\w*|violet\w*|rose|noir\w*|blanc\w*|cyan|marron|dore\w*)\b)|(\b(?:sans\s+couleur|pas\s+de\s+couleur|aucune\s+couleur|sans\s+fond|pas\s+de\s+fond|sans\s+rien|a\s+blanc|a\s+zero|table\s+rase|place\s+nette|le\s+reste|les\s+autres|en\s+gras|en\s+italique|en\s+rouge|en\s+bleu\w*|en\s+vert\w*|en\s+jaune|en\s+orange|en\s+violet\w*|en\s+rose|en\s+gris\w*|en\s+noir\w*|en\s+blanc\w*|plus\s+grand\w*|plus\s+gros\w*|plus\s+petit\w*|plus\s+large|moins\s+large|taille\s+\d+|en\s+pdf|en\s+word|en\s+excel|plein\s+ecran|une\s+ligne\s+sur\s+deux|tout(?:es?)?\s+(?:ces|les)\s+(?:info\w*|donn\w*|eleve\w*|note\w*))\b)/i;
 
   // Questions de pure lecture (qui, combien, quel, dans quelle classe, bilan, résumé, liste, compare...)
   const readOnlyQueryRegex =
@@ -974,11 +1049,18 @@ export function classifyTeacherDelmasIntent(params: {
       .replace(/\b(la|les|des|mes|ses|leurs|une|sa|toutes les)\s+notes?\b/gi, '$1 vals')
   );
 
+  const actionNeedsFullFiles =
+    referencesActiveFiles ||
+    (hasConversationFiles &&
+      /\b(renseign\w*|rempli\w*|import\w*|inser\w*|ajout\w*|metr?\w*|mettre|mets|enregistr\w*|sauvegard\w*|info\w*|donn\w*|reste|autres|manqu\w*|complet\w*|eleve\w*|note\w*|tout)\b/i.test(
+        norm
+      ));
+
   if (strongActionWithoutNounClasse || (hasShorthandAction && !norm.endsWith('?'))) {
     return {
       intent: 'action',
       reason: 'explicit_table_or_ui_action',
-      referencesActiveFiles,
+      referencesActiveFiles: actionNeedsFullFiles,
       needsWorkspaceDb,
     };
   }
@@ -988,7 +1070,7 @@ export function classifyTeacherDelmasIntent(params: {
     return {
       intent: 'action',
       reason: 'follow_up_action_clarification',
-      referencesActiveFiles,
+      referencesActiveFiles: hasConversationFiles,
       needsWorkspaceDb,
     };
   }
@@ -999,6 +1081,17 @@ export function classifyTeacherDelmasIntent(params: {
       intent: 'action',
       reason: 'direct_student_grade_entry',
       referencesActiveFiles,
+      needsWorkspaceDb,
+    };
+  }
+
+  // Phrases affirmatives/directives naturelles liées au tableau sans "?" (ex: "laisse tout propre", "je voudrais les autres élèves aussi") :
+  // on laisse l'IA décider intelligemment par analyse d'intention au lieu de bloquer derrière des mots-clés rigides !
+  if (!norm.endsWith('?') && !startsAsReadOnly && norm.length >= 6) {
+    return {
+      intent: 'action',
+      reason: 'natural_table_intent_routing',
+      referencesActiveFiles: actionNeedsFullFiles,
       needsWorkspaceDb,
     };
   }
@@ -1017,17 +1110,18 @@ function buildPersistentConversationFilesBlock(
   options?: { compact?: boolean }
 ): string {
   if (!conversationFiles || conversationFiles.length === 0) return '';
-  const maxCharsPerFile = options?.compact ? 420 : 25000;
+  const maxCharsPerFile = options?.compact ? 420 : 60000;
   const blocks = conversationFiles.map((f, i) => {
     const rawTxt = String(f.extractedText || '').trim();
     const isPlaceholder =
       !rawTxt || /^\[(?:Image jointe|Enregistrement audio joint)\s*:/i.test(rawTxt);
+    const totalLines = rawTxt ? rawTxt.split(/\r?\n/).filter((l) => l.trim().length > 0).length : 0;
     const body = !isPlaceholder
       ? rawTxt.length > maxCharsPerFile
-        ? `${rawTxt.slice(0, maxCharsPerFile)}\n[... contenu tronqué pour économiser les crédits — disponible en intégralité sur demande]`
+        ? `${rawTxt.slice(0, maxCharsPerFile)}\n[... aperçu tronqué (${totalLines} lignes au total dans le fichier complet)]`
         : rawTxt
       : `(Fichier ${f.fileType} lié à cette conversation, analyse visuelle/audio jointe ci-dessous)`;
-    return `--- FICHIER ${i + 1} DU DOSSIER DE LA CONVERSATION : « ${f.fileName} » (${f.fileType}) ---\n${body}`;
+    return `--- FICHIER ${i + 1} DU DOSSIER DE LA CONVERSATION : « ${f.fileName} » (${f.fileType}, ${totalLines} ligne(s)) ---\n${body}`;
   });
   return `\n\n[MÉMOIRE PERMANENTE DES FICHIERS LIÉS À CETTE CONVERSATION (${conversationFiles.length} fichier(s) actif(s), conservés tant qu'ils ne sont pas supprimés)] :\n${blocks.join('\n\n')}`;
 }
@@ -1397,8 +1491,10 @@ ${contextBlock}`;
 ${langObj.promptInstruction}
 
 RÈGLES D'OR (IMPÉRATIVES — À RESPECTER À 100 %) :
-1. **ÉCONOMIE MAXIMALE DE CRÉDITS & TEMPS VERBAL ACCOMPLI OBLIGATOIRE (RÈGLE N°1)** :
-   - Chaque mot inutile dans ta réponse consomme les crédits IA de l'utilisateur. Sois **ULTRA-COURT** !
+1. **ÉCONOMIE MAXIMALE DE CRÉDITS (BAVARDAGE UNIQUEMENT, JAMAIS LES ACTIONS !) & TEMPS VERBAL ACCOMPLI OBLIGATOIRE (RÈGLE N°1)** :
+   - Économiser les crédits concerne **UNIQUEMENT ton texte dans le chat** (pas de blabla, zéro tableau Markdown), **JAMAIS les données ni les actions dans \`<delmas_actions>\`** !
+   - **EXÉCUTION INTÉGRALE 100 % OBLIGATOIRE** : Si l'utilisateur demande d'importer, remplir ou modifier une liste d'élèves (fichier Excel, CSV, PDF, image, Word ou liste), tu DOIS traiter **TOUS LES ÉLÈVES ET TOUTES LEURS NOTES DU PREMIER AU DERNIER SANS EXCEPTION**. Il est **STRICTEMENT INTERDIT** de n'en sélectionner que 2 ou 3 et de laisser les autres !
+   - **COMPRÉHENSION NATURELLE DE L'INTENTION (ZÉRO MOT-CLÉ RIGIDE & EXÉCUTION IMMÉDIATE)** : Analyse l'intention réelle de l'utilisateur même avec des fautes d'orthographe ou du langage familier. Ne lui demande JAMAIS de taper un mot précis (comme « vider ») et ne lui redemande PAS « Confirmez si vous souhaitez… » quand il vient déjà de te donner l'ordre : **exécute directement** ! (À l'inverse, si le message n'exprime aucune demande de modification, réponds sobrement sans \`<delmas_actions>\`.)
    - **INTERDICTION ABSOLUE DE TRACER UN TABLEAU MARKDOWN (\`| ... | ... |\`)** ou de recopier la liste des élèves/notes dans le chat après une action ! L'utilisateur voit déjà le tableau réel en direct à côté.
    - **INTERDICTION ABSOLUE DE POSER DES QUESTIONS INUTILES** en fin de réponse (« Comment puis-je vous aider aujourd'hui ? », « Souhaitez-vous autre chose ? », « N'hésitez pas... » sont STRICTEMENT INTERDITS).
    - Réponds en **1 SEULE PHRASE COURTE au PASSÉ COMPOSÉ** confirmant exactement l'action faite (dans la langue ${langObj.name}) :
@@ -1831,7 +1927,16 @@ export function filterSafeTeacherDelmasActions(
   const rawUserLower = rawUserMsg.toLowerCase();
 
   const destructiveVerbRegex =
-    /\b(supprim\w*|retir\w*|enlev\w*|enl[a-z]?v\w*|ote|oter|effac\w*|vide|vider|nettoi\w*|nettoyer|remplac\w*|ecras\w*|reinitialis\w*|decolor\w*|reset|delete|remove|clear|erase|clean|replace|wipe|quitar|eliminar|borrar|loschen|entfernen)\b/i;
+    /(?:\b(?:supprim\w*|retir\w*|enlev\w*|enl[a-z]?v\w*|ote|oter|effac\w*|vide\w*|vider|nettoi\w*|nettoyer|remplac\w*|ecras\w*|reinitialis\w*|decolor\w*|recommenc\w*|degag\w*|vir\w*|reset|delete|remove|clear|erase|clean|replace|wipe|quitar|eliminar|borrar|loschen|entfernen)\b|\b(?:a\s+zero|a\s+blanc|sans\s+rien|rien\s+laisser|laisser\s+vide|table\s+rase|place\s+nette|repart\w*\s+de\s+zero)\b)/i;
+
+  const isShortConfirmationAfterDestructive =
+    /^(oui|ouais|ok|okay|d'accord|dac|vas-y|vas y|vazy|fais-le|fais le|fais ca|fais tout|confirme|je confirme|valide|go|yes|sure|do it)[\s!.,?]*$/i.test(
+      normUser
+    ) &&
+    Array.isArray(options?.recentUserMessages) &&
+    options.recentUserMessages.some((prevMsg) =>
+      destructiveVerbRegex.test(normalizeForMatch(String(prevMsg || '')))
+    );
 
   const isFollowUpComplaintAfterDestructive =
     UNRESOLVED_ACTION_COMPLAINT_REGEX.test(normUser) &&
@@ -1843,6 +1948,7 @@ export function filterSafeTeacherDelmasActions(
   const userExplicitlyRequestedDestructive =
     destructiveVerbRegex.test(normUser) ||
     isFollowUpComplaintAfterDestructive ||
+    isShortConfirmationAfterDestructive ||
     /[\u0600-\u06FF\u4E00-\u9FFF\u3040-\u30FF\u0400-\u04FF]/.test(rawUserMsg);
 
   const userExplicitlyRequestedClearFormatting =
@@ -2390,7 +2496,7 @@ export function looksLikeUnfulfilledActionClaim(chatResponse: string): boolean {
   const norm = normalizeForMatch(chatResponse);
   if (!norm) return false;
   return (
-    /\b(c'est fait|voila c'est fait|voila qui est fait|done!|j'ai mis|j'ai applique|j'ai colore|j'ai colorie|j'ai retire|j'ai enleve|j'ai supprime|j'ai efface|j'ai vide|j'ai tout efface|j'ai tout vide|j'ai insere|j'ai rempli|j'ai renseigne|j'ai agrandi|j'ai elargi|j'ai reduit|j'ai change|j'ai modifie|j'ai trie|j'ai ajoute|j'ai mis a jour|j'ai reinitialise|j'ai nettoye|j'ai passe|j'ai exporte|j'ai telecharge|j'ai copie|j'ai deplace|je vais maintenant|je vais mettre|je vais appliquer|je vais colorer|je vais retirer|je vais enlever|je vais agrandir|je vais modifier|je vais effacer|je vais vider|je vais supprimer|je vais reinitialiser|je vais inserer|je vais remplir|je vais renseigner|je vais ajouter|je vais tout|voici le tableau vide|voici le tableau mis a jour|est maintenant rempli|est maintenant vide|est desormais vide|est maintenant vert|est maintenant bleu|est maintenant rouge|est maintenant en gras|devrait maintenant etre|a bien ete applique|ont bien ete applique|a ete mis a jour|a ete colore|a ete retire|a ete enleve|a ete agrandi|a ete efface|ont ete efface|a ete vide|ont ete vide|a ete supprime|ont ete supprime)\b/i.test(
+    /\b(c'est fait|voila c'est fait|voila qui est fait|done!|j'ai mis|j'ai applique|j'ai colore|j'ai colorie|j'ai retire|j'ai enleve|j'ai supprime|j'ai efface|j'ai vide|j'ai tout efface|j'ai tout vide|j'ai insere|j'ai importe|j'ai rempli|j'ai renseigne|j'ai agrandi|j'ai elargi|j'ai reduit|j'ai change|j'ai modifie|j'ai trie|j'ai ajoute|j'ai mis a jour|j'ai reinitialise|j'ai nettoye|j'ai passe|j'ai exporte|j'ai telecharge|j'ai copie|j'ai deplace|j'ai termine|j'ai effectue|j'ai complete|j'ai corrige|j'ai renomme|j'ai enregistre|j'ai sauvegarde|je vais maintenant|je vais mettre|je vais appliquer|je vais colorer|je vais retirer|je vais enlever|je vais agrandir|je vais modifier|je vais effacer|je vais vider|je vais supprimer|je vais reinitialiser|je vais inserer|je vais importer|je vais remplir|je vais renseigner|je vais ajouter|je vais tout|voici le tableau vide|voici le tableau mis a jour|est maintenant terminee?|est terminee?|est maintenant rempli\w*|est maintenant vide|est desormais vide|est maintenant a jour|est desormais a jour|tout semble etre a jour|tout est a jour|tout est desormais|contient desormais|contiennent desormais|est maintenant vert|est maintenant bleu|est maintenant rouge|est maintenant en gras|devrait maintenant etre|a bien ete applique\w*|ont bien ete applique\w*|a ete mis a jour|ont ete mis a jour|a ete ajoute\w*|ont ete ajoute\w*|a ete importe\w*|ont ete importe\w*|a ete insere\w*|ont ete insere\w*|a ete rempli\w*|ont ete rempli\w*|a ete renseigne\w*|ont ete renseigne\w*|a ete effectue\w*|ont ete effectue\w*|a ete enregistre\w*|ont ete enregistre\w*|a ete modifie\w*|ont ete modifie\w*|a ete colore\w*|a ete retire\w*|a ete enleve\w*|a ete agrandi\w*|a ete efface\w*|ont ete efface\w*|a ete vide\w*|ont ete vide\w*|a ete supprime\w*|ont ete supprime\w*|import is now complete|is now updated|everything is up to date|have been added|have been imported|has been updated|has been cleared)\b/i.test(
       norm
     )
   );
@@ -2652,7 +2758,7 @@ export function parseSpreadsheetStudentsFromText(
   const delimiter = detectCsvDelimiter(rawLines);
   const rows = rawLines.map((l) => parseCsvLineRFC4180(l, delimiter));
 
-  // Repérer la ligne d'en-tête dans les 12 premières lignes
+  // Repérer la ligne d'en-tête dans les 25 premières lignes (supporte les en-têtes StudyCloud "NOTE 1 (/20)", "Moyenne (/20)", etc.)
   let headerRowIdx = -1;
   let fullNameCol = -1;
   let lastNameCol = -1;
@@ -2661,7 +2767,12 @@ export function parseSpreadsheetStudentsFromText(
   let averageCol = -1;
   let noteCols: number[] = [];
 
-  for (let r = 0; r < Math.min(12, rows.length); r++) {
+  const ignoredHeaderRegex =
+    /^(?:rang|rank|n[°o]?|no\.?|num\.?|#|ordre|mention|appreciation|observation|decision|total|coeff|coefficient|sexe|genre|classe|date|photo|profil|remarque|remarques)$/;
+  const fullNameHeaderRegex =
+    /^(?:nom\s*(?:et\s*)?prenoms?|noms?\s*(?:et\s*)?prenoms?|nom\s+complet|eleves?|etudiants?|apprenants?|full\s*name|student(?:\s*name)?|names?)$/;
+
+  for (let r = 0; r < Math.min(25, rows.length); r++) {
     const cols = rows[r];
     if (cols.length < 2) continue;
 
@@ -2671,16 +2782,18 @@ export function parseSpreadsheetStudentsFromText(
     let candMat = -1;
     let candAvg = -1;
     const candNotes: number[] = [];
+    const unknownCols: number[] = [];
 
     cols.forEach((cell, cIdx) => {
-      const h = normalizeForMatch(cell).replace(/&+/g, ' ').replace(/\s+/g, ' ').trim();
+      // Retirer les parenthèses d'unité/barème comme "(/20)", "(sur 20)", "(coeff 2)" afin de matcher "NOTE 1 (/20)" et "Moyenne (/20)"
+      const h = normalizeForMatch(cell)
+        .replace(/\([^)]*\)/g, ' ')
+        .replace(/&+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
       if (!h) return;
 
-      if (
-        /^(?:nom\s*(?:et\s*)?prenoms?|noms?\s*(?:et\s*)?prenoms?|nom\s+complet|eleves?|etudiants?|apprenants?|full\s*name|student(?:\s*name)?|names?)$/.test(
-          h
-        )
-      ) {
+      if (fullNameHeaderRegex.test(h)) {
         if (candFullName === -1) candFullName = cIdx;
         return;
       }
@@ -2696,27 +2809,44 @@ export function parseSpreadsheetStudentsFromText(
         if (candMat === -1) candMat = cIdx;
         return;
       }
-      if (/^(?:moyenne|moy\.?|average|avg)(?:\s*\/?\s*\d+)?$/.test(h)) {
+      if (/^(?:moyenne|moy\.?|average|avg)(?:\s*(?:\/|sur)?\s*\d+)?$/.test(h)) {
         if (candAvg === -1) candAvg = cIdx;
         return;
       }
-      if (
-        /^(?:rang|rank|n[°o]?|no\.?|num\.?|#|ordre|mention|appreciation|observation|decision|total|coeff|coefficient|sexe|genre|classe|date|photo|profil|remarque|remarques)$/.test(
-          h
-        )
-      ) {
+      if (ignoredHeaderRegex.test(h)) {
         return;
       }
       if (
-        /^(?:note|notes|n|devoir|dev|interro|interrogation|compo|composition|eval|evaluation|tp|td|ds|dm|exam|examen|controle|test|grade|score)\s*#?\s*\d*(?:\s*\/?\s*\d+)?$/.test(
+        /^(?:note|notes|n|devoir|dev|interro|interrogation|compo|composition|eval|evaluation|tp|td|ds|dm|exam|examen|controle|test|grade|score)\s*#?\s*\d*(?:\s*(?:\/|sur)?\s*\d+)?$/.test(
           h
         )
       ) {
         candNotes.push(cIdx);
+        return;
       }
+      unknownCols.push(cIdx);
     });
 
     if (candFullName !== -1 || candLastName !== -1) {
+      // Secours intelligent : si les colonnes d'évaluations portent des noms personnalisés (ex: "Algèbre (/20)", "TP Circuit"),
+      // détecter automatiquement les colonnes inconnues dont les valeurs sont des notes numériques !
+      if (candNotes.length === 0 && unknownCols.length > 0) {
+        const sampleRows = rows.slice(r + 1, Math.min(rows.length, r + 21));
+        for (const uCol of unknownCols) {
+          let nonEmpty = 0;
+          let gradeLike = 0;
+          for (const sr of sampleRows) {
+            const val = String(sr[uCol] || '').trim();
+            if (!val) continue;
+            nonEmpty++;
+            if (parseGradeCellValue(val)) gradeLike++;
+          }
+          if (nonEmpty > 0 && gradeLike / nonEmpty >= 0.4) {
+            candNotes.push(uCol);
+          }
+        }
+      }
+
       headerRowIdx = r;
       fullNameCol = candFullName;
       lastNameCol = candLastName;
@@ -2752,9 +2882,10 @@ export function parseSpreadsheetStudentsFromText(
     }
     name = name.replace(/\s+/g, ' ').trim();
     if (!name || name.length < 2) continue;
-    // Ignorer les lignes purement numériques ou lignes de synthèse en bas de tableau
+    // Ignorer les lignes purement numériques, lignes d'en-tête répétées (multi-feuilles) ou lignes de synthèse en bas de tableau
     if (!/[a-zA-ZÀ-ÿ]/.test(name)) continue;
-    if (summaryRowRegex.test(normalizeForMatch(name))) continue;
+    const normName = normalizeForMatch(name).replace(/&+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (fullNameHeaderRegex.test(normName) || summaryRowRegex.test(normName)) continue;
 
     const rawMat = matriculeCol !== -1 ? String(cols[matriculeCol] || '').trim() : '';
     const notes = noteCols.map((cIdx) => parseGradeCellValue(cols[cIdx] || ''));
@@ -3061,12 +3192,100 @@ export function resolveDirectLocalDelmasCommand(params: {
     if (directClear) return directClear;
   }
 
-  // 2. Plainte utilisateur après une action précédente non effectuée ("TU N'as PAS FAIT", "MAIS MOI JE VOIS TOUJOURS LES MOYENNE")
+  // Helper d'import Excel/CSV complet 100 % déterministe (évite doublons si une partie a déjà été ajoutée)
+  const buildDeterministicSpreadsheetResolution = (
+    wantsReplace: boolean,
+    reasonSuffix: string
+  ): LocalDelmasResolution | null => {
+    if (activeContext.sheetKind !== 'subject' || conversationFiles.length === 0) return null;
+    const spreadsheetFile = [...conversationFiles]
+      .reverse()
+      .find(
+        (f) =>
+          /\.(xlsx|xls|csv)$/i.test(f.fileName || '') &&
+          typeof f.extractedText === 'string' &&
+          f.extractedText.trim().length > 10
+      );
+    if (!spreadsheetFile) return null;
+    const parsedRows = parseSpreadsheetStudentsFromText(spreadsheetFile.extractedText);
+    if (parsedRows.length === 0) return null;
+
+    const sheetName = activeContext.subjectName || 'le tableau';
+    if (wantsReplace) {
+      const chatResponse = isEn
+        ? `I have replaced **${sheetName}** with all **${parsedRows.length}** student(s) from « **${spreadsheetFile.fileName}** ».`
+        : `J'ai remplacé **${sheetName}** avec les **${parsedRows.length}** élève(s) du fichier « **${spreadsheetFile.fileName}** ».`;
+      return {
+        actions: [{ type: 'set_students', students: parsedRows }],
+        chatResponse,
+        reason: `local_spreadsheet_set_students${reasonSuffix}`,
+      };
+    }
+
+    // Anti-doublon intelligent : si certains élèves du fichier sont déjà dans le tableau,
+    // mettre à jour leurs notes manquantes et ajouter UNIQUEMENT les élèves restants !
+    const existingByName = new Map<string, TeacherDelmasActiveContext['students'][number]>();
+    for (const st of activeContext.students || []) {
+      const k = normalizeForMatch(st.name || '');
+      if (k) existingByName.set(k, st);
+    }
+
+    const toAdd: ParsedSpreadsheetStudentRow[] = [];
+    const toUpdate: Array<{ matchName: string; matricule?: string; notes: string[] }> = [];
+
+    for (const row of parsedRows) {
+      const k = normalizeForMatch(row.name);
+      if (k && existingByName.has(k)) {
+        toUpdate.push({
+          matchName: row.name,
+          ...(row.matricule ? { matricule: row.matricule } : {}),
+          notes: row.notes,
+        });
+      } else {
+        toAdd.push(row);
+      }
+    }
+
+    const actions: TeacherDelmasAction[] = [];
+    if (toUpdate.length > 0) {
+      actions.push({ type: 'update_students', updates: toUpdate });
+    }
+    if (toAdd.length > 0) {
+      actions.push({ type: 'add_students', students: toAdd });
+    }
+    if (actions.length === 0) {
+      actions.push({ type: 'add_students', students: parsedRows });
+    }
+
+    const chatResponse =
+      toUpdate.length > 0 && toAdd.length > 0
+        ? isEn
+          ? `I have added the **${toAdd.length}** missing student(s) and updated **${toUpdate.length}** existing student(s) (${parsedRows.length} total from « **${spreadsheetFile.fileName}** ») in **${sheetName}**.`
+          : `J'ai ajouté les **${toAdd.length}** élève(s) manquant(s) et mis à jour **${toUpdate.length}** élève(s) existant(s) (total : **${parsedRows.length}** élèves du fichier « **${spreadsheetFile.fileName}** ») dans **${sheetName}**.`
+        : toAdd.length > 0
+        ? isEn
+          ? `I have imported all **${toAdd.length}** student(s) from « **${spreadsheetFile.fileName}** » into **${sheetName}**.`
+          : `J'ai ajouté les **${toAdd.length}** élève(s) du fichier « **${spreadsheetFile.fileName}** » dans **${sheetName}**.`
+        : isEn
+        ? `I have updated all **${toUpdate.length}** student(s) from « **${spreadsheetFile.fileName}** » in **${sheetName}**.`
+        : `J'ai mis à jour les **${toUpdate.length}** élève(s) du fichier « **${spreadsheetFile.fileName}** » dans **${sheetName}**.`;
+
+    return {
+      actions,
+      chatResponse,
+      reason: `local_spreadsheet_${toAdd.length > 0 ? 'add_students' : 'update_students'}${reasonSuffix}`,
+    };
+  };
+
+  // 2. Plainte utilisateur après une action précédente non effectuée ou incomplète ("TU NA PAS FAIT", "TU N'as PAS FAIT", "MAIS MOI JE VOIS TOUJOURS LES MOYENNE", "il manque des élèves")
   if (!hasNewAttachments && UNRESOLVED_ACTION_COMPLAINT_REGEX.test(norm)) {
     const recentUserMsgs = [...recentMessages]
       .reverse()
       .filter((m) => m.sender === 'user')
       .slice(0, 5);
+    const lastAiMsg = [...recentMessages].reverse().find((m) => m.sender === 'ai');
+    const lastAiNorm = lastAiMsg ? normalizeForMatch(lastAiMsg.content) : '';
+
     for (const prevUser of recentUserMsgs) {
       const retryClear = resolveClearCommandLocally(prevUser.content, languageCode, activeContext);
       if (retryClear) {
@@ -3076,6 +3295,21 @@ export function resolveDirectLocalDelmasCommand(params: {
         };
       }
     }
+
+    // Si un fichier Excel/CSV est dans la conversation et que l'utilisateur a demandé ou que l'IA a prétendu/proposé l'import -> ré-exécuter 100 % des lignes !
+    const recentContextText = `${recentUserMsgs.map((m) => normalizeForMatch(m.content)).join(' ')} ${lastAiNorm}`;
+    const looksLikeSpreadsheetContext =
+      !hasNewMediaAttachments &&
+      conversationFiles.some((f) => /\.(xlsx|xls|csv)$/i.test(f.fileName || '')) &&
+      /\b(import\w*|renseign\w*|rempli\w*|inser\w*|ajout\w*|metr?\w*|mettre|mets|excel|xlsx|csv|fichier|eleve\w*|info\w*|donn\w*)\b/i.test(
+        recentContextText
+      );
+    if (looksLikeSpreadsheetContext) {
+      const wantsReplace = /\b(remplac\w*|ecras\w*|replace|overwrite)\b/i.test(recentContextText);
+      const sheetRecovery = buildDeterministicSpreadsheetResolution(wantsReplace, '_complaint_recovery');
+      if (sheetRecovery) return sheetRecovery;
+    }
+
     // Si la plainte mentionne directement ce qui reste affiché (ex: "je vois toujours les moyennes / notes / noms / photos / matricules")
     if (activeContext.sheetKind === 'subject') {
       if (/\b(?:moyennes?|notes?)\b/i.test(norm)) {
@@ -3117,14 +3351,30 @@ export function resolveDirectLocalDelmasCommand(params: {
     }
   }
 
-  // 3. Import direct d'un fichier Excel / CSV structuré ("renseigne", "remplis le tableau", "importe ce fichier", "insère les élèves") — 0 crédit !
+  // 3. Import direct d'un fichier Excel / CSV structuré (100 % des élèves, tolérant aux fautes "metre", "tableaux", "tout ces information", et sur confirmation "OUI" après proposition IA !)
   if (
     activeContext.sheetKind === 'subject' &&
     !hasNewMediaAttachments &&
     conversationFiles.length > 0
   ) {
+    const lastAiMsg = [...recentMessages].reverse().find((m) => m.sender === 'ai');
+    const lastAiNorm = lastAiMsg ? normalizeForMatch(lastAiMsg.content) : '';
+    const isShortYesForSpreadsheet =
+      !hasNewAttachments &&
+      /^(oui|ouais|ok|okay|d'accord|dac|vas-y|vas y|vazy|fais-le|fais le|fais ca|fais tout|mets tout|importe|importe tout|confirme|je confirme|valide|go|yes|sure|do it|oui vas-y|oui fais-le|oui importe|oui mets tout)[\s!.,?]*$/i.test(
+        norm
+      ) &&
+      /\b(import\w*|ajouter|inserer|remplir|renseigner|fichier|excel|xlsx|csv|tableau|eleves?)\b/i.test(
+        lastAiNorm
+      );
+
+    if (isShortYesForSpreadsheet) {
+      const confirmedImport = buildDeterministicSpreadsheetResolution(false, '_confirmed');
+      if (confirmedImport) return confirmedImport;
+    }
+
     const isDirectSpreadsheetImportOrder =
-      /\b(renseign\w*|rempli\w*|import\w*|inser\w*|ajout\w*|enregistr\w*|remplac\w*|ecras\w*|mets?\s+(?:ces\s+|les\s+)?(?:eleves?|donnees|notes)|fill|import|insert|load)\b/i.test(
+      /\b(renseign\w*|rempli\w*|import\w*|inser\w*|ajout\w*|enregistr\w*|remplac\w*|ecras\w*|charg\w*|transfer\w*|integr\w*|complet\w*|mets?|metr\w*|mettre|fill|import|insert|load|put)\b/i.test(
         norm
       ) &&
       !norm.endsWith('?') &&
@@ -3133,30 +3383,16 @@ export function resolveDirectLocalDelmasCommand(params: {
       );
 
     if (isDirectSpreadsheetImportOrder) {
-      const spreadsheetFile = [...conversationFiles]
-        .reverse()
-        .find(
-          (f) =>
-            /\.(xlsx|xls|csv)$/i.test(f.fileName || '') &&
-            typeof f.extractedText === 'string' &&
-            f.extractedText.trim().length > 10
+      const referencesSpreadsheetOrTable =
+        hasNewAttachments ||
+        /\b(fichier|excel|xlsx|csv|tableau|tableaux|eleves?|liste|info\w*|donn\w*|renseign\w*|rempli\w*|import\w*|dedans|reste|autres)\b/i.test(
+          norm
         );
 
-      if (spreadsheetFile && (hasNewAttachments || /\b(fichier|excel|xlsx|csv|tableau|eleves?|liste|renseign\w*|rempli\w*|import\w*|dedans)\b/i.test(norm))) {
-        const parsedRows = parseSpreadsheetStudentsFromText(spreadsheetFile.extractedText);
-        if (parsedRows.length > 0) {
-          const wantsReplace = /\b(remplac\w*|ecras\w*|replace|overwrite)\b/i.test(norm);
-          const actionType: TeacherDelmasActionType = wantsReplace ? 'set_students' : 'add_students';
-          const sheetName = activeContext.subjectName || 'le tableau';
-          const chatResponse = isEn
-            ? `I have ${wantsReplace ? 'replaced the table with' : 'imported'} **${parsedRows.length}** student(s) from « **${spreadsheetFile.fileName}** » into **${sheetName}**.`
-            : `J'ai ${wantsReplace ? 'remplacé le tableau avec' : 'ajouté'} les **${parsedRows.length}** élève(s) du fichier « **${spreadsheetFile.fileName}** » dans **${sheetName}**.`;
-          return {
-            actions: [{ type: actionType, students: parsedRows }],
-            chatResponse,
-            reason: `local_spreadsheet_${actionType}`,
-          };
-        }
+      if (referencesSpreadsheetOrTable) {
+        const wantsReplace = /\b(remplac\w*|ecras\w*|replace|overwrite)\b/i.test(norm);
+        const directRes = buildDeterministicSpreadsheetResolution(wantsReplace, '');
+        if (directRes) return directRes;
       }
     }
   }

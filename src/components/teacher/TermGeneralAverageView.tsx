@@ -67,10 +67,12 @@ import {
   copyGradebookToClipboard,
   type GradebookExportDataset,
 } from '../../utils/gradebookExportUtils';
-import type {
-  TeacherDelmasAction,
-  TeacherDelmasActiveContext,
-  TeacherDelmasSheetBridge,
+import {
+  computeDelmasVerificationSnapshot,
+  type TeacherDelmasAction,
+  type TeacherDelmasActiveContext,
+  type TeacherDelmasExecutionReport,
+  type TeacherDelmasSheetBridge,
 } from '../../utils/teacherDelmasActionEngine';
 import { ViewerSuperExpandButton } from '../ViewerSuperExpandButton';
 import {
@@ -557,12 +559,20 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     loadFromCloud();
   }, [loadFromCloud]);
 
-  // Sauvegarde vers le serveur (D1)
+  // Sauvegarde vers le serveur (D1) avec retour vérifiable
   const saveToCloud = useCallback(
-    async (opts: { keepalive?: boolean; force?: boolean } = {}) => {
-      if (!hydratedRef.current && !opts.force) return;
+    async (opts: { keepalive?: boolean; force?: boolean } = {}): Promise<{
+      ok: boolean;
+      status: 'saved' | 'local_only' | 'offline' | 'error';
+      error?: string;
+    }> => {
+      if (!hydratedRef.current && !opts.force) {
+        return { ok: true, status: 'local_only' };
+      }
       const token = getTeacherAuthToken();
-      if (!token) return;
+      if (!token) {
+        return { ok: true, status: 'local_only' };
+      }
 
       const payload = latestPayloadRef.current;
       if (!opts.keepalive) {
@@ -577,13 +587,18 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
         setIsDirty(false);
         setHasSavedAtLeastOnce(true);
         setCloudStatus('saved');
+        return { ok: true, status: 'saved' };
       } catch (err: any) {
         if (isOfflineOrNetworkError(err)) {
+          const msg = "Hors ligne — Échec de l'enregistrement.";
           setCloudStatus('offline');
-          setCloudError("Hors ligne — Échec de l'enregistrement.");
+          setCloudError(msg);
+          return { ok: false, status: 'offline', error: msg };
         } else {
+          const msg = err?.message || "Échec de l'enregistrement.";
           setCloudStatus('error');
-          setCloudError(err?.message || "Échec de l'enregistrement.");
+          setCloudError(msg);
+          return { ok: false, status: 'error', error: msg };
         }
       }
     },
@@ -2000,8 +2015,25 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
     }),
 
     executeActions: async (actions: TeacherDelmasAction[]): Promise<string[]> => {
+      const report = await delmasSheetBridge.executeActionsVerified!(actions);
+      return report.summaries;
+    },
+
+    executeActionsVerified: async (
+      actions: TeacherDelmasAction[]
+    ): Promise<TeacherDelmasExecutionReport> => {
+      const beforeSnapshot = computeDelmasVerificationSnapshot(delmasSheetBridge.getContext());
       const summaries: string[] = [];
-      if (!Array.isArray(actions) || actions.length === 0) return summaries;
+      if (!Array.isArray(actions) || actions.length === 0) {
+        return {
+          summaries,
+          changed: false,
+          uiVerified: false,
+          dbStatus: 'not_needed',
+          before: beforeSnapshot,
+          after: beforeSnapshot,
+        };
+      }
 
       const normKey = (v: unknown) =>
         String(v || '')
@@ -2578,6 +2610,17 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
       if (layoutMutated) setLayout(workingLayout);
       if (zoomMutated) setZoomPercent(workingZoom);
 
+      await new Promise<void>((resolve) => {
+        if (typeof requestAnimationFrame === 'function') {
+          requestAnimationFrame(() => resolve());
+        } else {
+          setTimeout(resolve, 16);
+        }
+      });
+
+      let dbStatus: TeacherDelmasExecutionReport['dbStatus'] = 'not_needed';
+      let dbError: string | undefined;
+
       if (stylesMutated || layoutMutated || zoomMutated) {
         latestPayloadRef.current = {
           layout: { ...workingLayout, zoomPercent: workingZoom },
@@ -2586,13 +2629,31 @@ export const TermGeneralAverageView: React.FC<TermGeneralAverageViewProps> = ({
           sortMode,
         };
         setIsDirty(true);
-        setTimeout(() => {
-          saveToCloud({ force: true });
-        }, 220);
+        const saveRes = await saveToCloud({ force: true });
+        dbStatus = saveRes.status;
+        dbError = saveRes.error;
       } else if (explicitSaveRequested) {
-        await saveToCloud({ force: true });
+        const saveRes = await saveToCloud({ force: true });
+        dbStatus = saveRes.status;
+        dbError = saveRes.error;
+      } else if (summaries.length > 0) {
+        dbStatus = getTeacherAuthToken() ? 'saved' : 'local_only';
       }
-      return summaries;
+
+      const afterSnapshot = {
+        ...beforeSnapshot,
+        zoomPercent: workingZoom,
+      };
+      const changed = summaries.length > 0;
+      return {
+        summaries,
+        changed,
+        uiVerified: changed,
+        dbStatus,
+        dbError,
+        before: beforeSnapshot,
+        after: afterSnapshot,
+      };
     },
   };
 
