@@ -208,10 +208,12 @@ export default function App() {
   });
   const [isLoadingShares, setIsLoadingShares] = useState(false);
 
-  const [subscriptionsInitialSection, setSubscriptionsInitialSection] = useState<'all' | 'downgrades' | undefined>(() => {
+  const [subscriptionsInitialSection, setSubscriptionsInitialSection] = useState<'all' | 'downgrades' | 'cancellations' | undefined>(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('section') === 'downgrades') return 'downgrades';
+      const sec = urlParams.get('section');
+      if (sec === 'downgrades') return 'downgrades';
+      if (sec === 'cancellations') return 'cancellations';
     } catch {}
     return undefined;
   });
@@ -2859,11 +2861,17 @@ export default function App() {
       {/* Modal d'alerte et de blocage de saturation de stockage (50%, 75%, 85%, 95%, >=96%) */}
       <StorageAlertNotificationModal />
 
-      {/* Bannière d'alerte abonnements (période de grâce / service suspendu / réduction stockage / récupération données) */}
+      {/* Bannière d'alerte abonnements (période de grâce / service suspendu / réduction stockage / annulation & remboursement / récupération données) */}
       <BillingAlertBanner
         isAuthenticated={isAuthenticated}
         onOpenSubscriptions={(targetSection) => {
-          setSubscriptionsInitialSection(targetSection === 'downgrades' ? 'downgrades' : 'all');
+          setSubscriptionsInitialSection(
+            targetSection === 'downgrades'
+              ? 'downgrades'
+              : targetSection === 'cancellations'
+              ? 'cancellations'
+              : 'all'
+          );
           handleSetTab('my-subscriptions');
         }}
       />

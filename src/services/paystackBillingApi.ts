@@ -917,6 +917,63 @@ export interface DataPurgeWarningRecord {
   daysRemaining: number;
 }
 
+export interface CancellationRefundRecord {
+  id: string;
+  user_id: string;
+  subscription_id: string;
+  product_type: PaymentProductType;
+  app_key?: string;
+  app_name?: string;
+  plan_name: string;
+  cancel_scope: 'full_cancel' | 'revert_upgrade' | string;
+  payment_reference?: string;
+  payment_network_label?: string;
+  payment_channel?: string;
+  paid_amount: number;
+  consumed_deduction_amount: number;
+  gateway_fee_amount: number;
+  gateway_fee_source?: string;
+  net_refund_amount: number;
+  currency: string;
+  days_used: number;
+  duration_days: number;
+  credits_consumed?: number;
+  credits_total?: number;
+  restore_paid_mb?: number;
+  restore_monthly_price?: number;
+  restore_plan_name?: string;
+  retention_days?: number;
+  excess_bytes_preview?: number;
+  status:
+    | 'pending_confirmation'
+    | 'refund_processing'
+    | 'refunded'
+    | 'manual_refund_required'
+    | 'abandoned_by_user'
+    | 'superseded'
+    | string;
+  admin_notes?: string;
+  confirmed_at?: string | null;
+  refunded_at?: string | null;
+  abandoned_at?: string | null;
+  created_at?: string | null;
+}
+
+export interface PendingCancellationRefundBannerItem {
+  id: string;
+  subscriptionId: string;
+  productType: string;
+  planName: string;
+  cancelScope: string;
+  paidAmount: number;
+  consumedDeductionAmount: number;
+  gatewayFeeAmount: number;
+  netRefundAmount: number;
+  restorePlanName: string;
+  currency: string;
+  createdAt: string | null;
+}
+
 export interface BillingStatusBannerResponse {
   success: boolean;
   fullAccountBlocked: boolean;
@@ -947,6 +1004,7 @@ export interface BillingStatusBannerResponse {
   }>;
   pendingDowngrades?: PendingDowngradeBannerItem[];
   dataPurgeWarnings?: DataPurgeWarningRecord[];
+  pendingCancellationRefunds?: PendingCancellationRefundBannerItem[];
 }
 
 export async function getMyActiveSubscriptions(): Promise<MySubscriptionsResponse> {
@@ -1027,6 +1085,80 @@ export async function applyFreeStorageDowngrade(
     return { success: false, error: json?.error || "Impossible d'appliquer la réduction de stockage." };
   }
   return { success: true, deliverySummary: json.deliverySummary };
+}
+
+export async function abandonStorageDowngrade(
+  downgradeRequestId: string
+): Promise<{ success: boolean; error?: string }> {
+  const resp = await fetch(
+    `${getBaseApi()}/api/billing/storage-downgrades/${encodeURIComponent(downgradeRequestId)}/abandon`,
+    {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({}),
+    }
+  );
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || !json?.success) {
+    return { success: false, error: json?.error || "Impossible d'abandonner la demande de réduction." };
+  }
+  return { success: true };
+}
+
+export async function getMyCancellationRefunds(): Promise<{
+  success: boolean;
+  requests: CancellationRefundRecord[];
+  error?: string;
+}> {
+  try {
+    const resp = await fetch(`${getBaseApi()}/api/billing/cancellation-refunds?_t=${Date.now()}`, {
+      method: 'GET',
+      headers: getAuthHeaders(),
+    });
+    const json = await resp.json().catch(() => null);
+    if (!resp.ok || !json?.success) {
+      return { success: false, requests: [], error: json?.error || 'Impossible de charger vos demandes.' };
+    }
+    return { success: true, requests: Array.isArray(json.requests) ? json.requests : [] };
+  } catch {
+    return { success: false, requests: [], error: 'Erreur réseau lors du chargement.' };
+  }
+}
+
+export async function confirmCancellationRefund(
+  cancelRefundId: string
+): Promise<{ success: boolean; message?: string; request?: CancellationRefundRecord; error?: string }> {
+  const resp = await fetch(
+    `${getBaseApi()}/api/billing/cancellation-refunds/${encodeURIComponent(cancelRefundId)}/confirm`,
+    {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({}),
+    }
+  );
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || !json?.success) {
+    return { success: false, error: json?.error || "Impossible de confirmer l'annulation." };
+  }
+  return { success: true, message: json.message, request: json.request };
+}
+
+export async function abandonCancellationRefund(
+  cancelRefundId: string
+): Promise<{ success: boolean; error?: string }> {
+  const resp = await fetch(
+    `${getBaseApi()}/api/billing/cancellation-refunds/${encodeURIComponent(cancelRefundId)}/abandon`,
+    {
+      method: 'POST',
+      headers: getAuthHeaders(),
+      body: JSON.stringify({}),
+    }
+  );
+  const json = await resp.json().catch(() => null);
+  if (!resp.ok || !json?.success) {
+    return { success: false, error: json?.error || "Impossible d'abandonner le processus." };
+  }
+  return { success: true };
 }
 
 export async function cancelMySubscriptionAutoRenew(

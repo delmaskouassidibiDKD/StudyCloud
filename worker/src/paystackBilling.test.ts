@@ -2268,3 +2268,361 @@ test('Étape 1 — Annulation admin + Purge FIFO surplus payant + Carte Maîtres
   assert.equal(delSub.success, true);
   assert.equal(delSub.deletedCount, 1);
 });
+
+test('Étape 1 Finale — Abandon Réduction + Annulation/Remboursement auto net des frais exacts (revert_upgrade, full_cancel IA, abandon, webhook sûr)', async () => {
+  const { db } = createMockD1();
+  await ensurePaystackBillingTables(db);
+  await db.prepare(`CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, name TEXT, email TEXT, phone TEXT)`).run();
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS user_storage_quotas (
+      user_id TEXT PRIMARY KEY,
+      welcome_total_mb REAL DEFAULT 100,
+      welcome_r2_mb REAL DEFAULT 33,
+      welcome_d1_mb REAL DEFAULT 67,
+      paid_total_mb REAL DEFAULT 0,
+      paid_r2_mb REAL DEFAULT 0,
+      paid_d1_mb REAL DEFAULT 0,
+      bonus_total_mb REAL DEFAULT 0,
+      plan_name TEXT DEFAULT '',
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS user_ai_credits (
+      user_id TEXT PRIMARY KEY,
+      credits_balance REAL DEFAULT 50,
+      remaining_credits REAL DEFAULT 50,
+      gift_remaining REAL DEFAULT 50,
+      gift_initial REAL DEFAULT 50,
+      gift_type TEXT DEFAULT 'welcome',
+      purchased_remaining REAL DEFAULT 0,
+      total_credits_purchased REAL DEFAULT 0,
+      plan_tier TEXT DEFAULT 'gratuit',
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run();
+  await db.prepare(`INSERT INTO users (id, name, email, phone) VALUES ('u-ref', 'Jean Kouassi', 'jean@studycloud.ci', '+2250701020304')`).run();
+  await db.prepare(`
+    INSERT INTO storage_subscription_plans (id, name, storage_amount, storage_mb, price, primary_currency, billing_mode, duration_days, is_auto_billing, allow_auto, allow_manual, is_infinite, is_active)
+    VALUES ('stor_ref_1000', 'Stockage 1000 Mo', '1000 Mo', 1000, 1000, 'XOF', 'manual', 30, 0, 0, 1, 0, 1)
+  `).run();
+  await db.prepare(`
+    INSERT INTO ai_subscription_plans (id, name, credits_or_words, credits_count, price, primary_currency, billing_mode, duration_days, is_auto_billing, allow_auto, allow_manual, is_infinite, is_active)
+    VALUES ('ai_ref_1000', 'Pack IA 1000', '1000 crédits', 1000, 2000, 'XOF', 'manual', 30, 0, 0, 1, 0, 1)
+  `).run();
+  await db.prepare(`
+    INSERT INTO app_subscription_plans (id, app_key, name, price, primary_currency, billing_mode, duration_days, is_auto_billing, allow_auto, allow_manual, is_infinite, is_active)
+    VALUES ('moy_ref_m', 'moyennes', 'Moyennes Mensuel', 1500, 'XOF', 'manual', 30, 0, 0, 1, 0, 1)
+  `).run();
+
+  const sentEmails: Array<{ to: string[]; subject: string; html: string; tags?: any[] }> = [];
+  const refundRequests: Array<{ transaction: string; amount: number; currency: string }> = [];
+  const txInitAmounts = new Map<string, number>();
+
+  const mockFetch: typeof fetch = async (input, init) => {
+    const u = String(input);
+    const body = init?.body ? JSON.parse(String(init.body)) : {};
+    if (u.includes('api.resend.com/emails')) {
+      sentEmails.push({ to: body.to || [], subject: String(body.subject || ''), html: String(body.html || ''), tags: body.tags });
+      return new Response(JSON.stringify({ id: `re_ref_${sentEmails.length}` }), { status: 200 });
+    }
+    if (u.endsWith('/transaction/initialize')) {
+      txInitAmounts.set(body.reference, Number(body.amount || 0));
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: { authorization_url: `https://checkout.paystack.com/${body.reference}`, access_code: `AC_${body.reference}`, reference: body.reference },
+        }),
+        { status: 200 }
+      );
+    }
+    if (u.includes('/transaction/verify/')) {
+      const ref = decodeURIComponent(u.split('/transaction/verify/')[1]);
+      const amtMinor = txInitAmounts.get(ref) || 100000;
+      // Exact 2% gateway fee in minor units (ex: 1000 FCFA -> 100000 minor -> 2000 minor = 20 FCFA ; 2000 FCFA -> 4000 minor = 40 FCFA)
+      const exactFeesMinor = Math.round(amtMinor * 0.02);
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: {
+            id: 88000 + Math.floor(Math.random() * 1000),
+            reference: ref,
+            status: 'success',
+            amount: amtMinor,
+            fees: exactFeesMinor,
+            currency: 'XOF',
+            channel: 'mobile_money',
+            customer: { email: 'jean@studycloud.ci' },
+            authorization: { bank: 'Wave', reusable: false },
+          },
+        }),
+        { status: 200 }
+      );
+    }
+    if (u.endsWith('/refund')) {
+      refundRequests.push({ transaction: body.transaction, amount: Number(body.amount), currency: body.currency });
+      return new Response(
+        JSON.stringify({
+          status: true,
+          data: { id: 9000 + refundRequests.length, status: 'pending', amount: Number(body.amount), currency: body.currency },
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response(JSON.stringify({ status: false }), { status: 404 });
+  };
+
+  const adminKey = 'adm_ref_secret';
+  const rawEnv = {
+    STUDYCLOUD_PAYSTACK_SECRET_KEY: 'sk_test_ref',
+    ADMIN_API_SECRET: adminKey,
+    RESEND_API_KEY: 're_test_ref',
+  };
+
+  const callApi = async (path: string, opts: { method?: string; body?: any; token?: string; admin?: boolean; sig?: string } = {}) => {
+    const rawStr = opts.body !== undefined ? (typeof opts.body === 'string' ? opts.body : JSON.stringify(opts.body)) : undefined;
+    const req = new Request(`https://api-worker.dkd-technologies.com${path}`, {
+      method: opts.method || 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(opts.token ? { Authorization: `Bearer ${opts.token}` } : {}),
+        ...(opts.admin ? { 'X-Admin-Key': adminKey } : {}),
+        ...(opts.sig ? { 'x-paystack-signature': opts.sig } : {}),
+      },
+      body: rawStr,
+    });
+    const res = await handlePaystackBillingRoutes(req, new URL(req.url), new URL(req.url).pathname, req.method, {
+      db,
+      rawEnv,
+      origin: '*',
+      fetchFn: mockFetch,
+      getAuthUser: async (r) =>
+        r.headers.get('Authorization') === 'Bearer tok-jean'
+          ? { userId: 'u-ref', email: 'jean@studycloud.ci', name: 'Jean Kouassi' }
+          : null,
+      jsonResponse: (d, s = 200) => new Response(JSON.stringify(d), { status: s, headers: { 'Content-Type': 'application/json' } }),
+      errorResponse: (m, s = 400) => new Response(JSON.stringify({ success: false, error: m }), { status: s, headers: { 'Content-Type': 'application/json' } }),
+    });
+    assert.ok(res);
+    return res!;
+  };
+
+  // --- TEST 1 : Achat initial Stockage 1000 Mo (1000 FCFA) -> Upgrade 2000 Mo (+1000 FCFA) ---
+  await callApi('/api/admin/billing/storage-master-config', {
+    method: 'POST',
+    admin: true,
+    body: {
+      enabled: true,
+      stepValue: 100,
+      stepUnit: 'MB',
+      pricePerStep: 100,
+      primaryCurrency: 'XOF',
+      durationDays: 30,
+      maxStorageMb: 5120,
+      prorataEnabled: true,
+    },
+  });
+
+  const initBase = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'tok-jean',
+      body: { productType: 'storage', productId: 'stor_ref_1000' },
+    })
+  ).json();
+  assert.equal(initBase.success, true);
+  assert.equal(initBase.amount, 1000);
+  const verBase = await (await callApi(`/api/payments/paystack/verify?reference=${initBase.reference}`, { token: 'tok-jean' })).json();
+  assert.equal(verBase.verified, true);
+  const storageSubId = verBase.subscription.id;
+
+  // Upgrade le même jour de 1000 Mo -> 2000 Mo (paie 1000 FCFA, frais exacts = 20 FCFA)
+  const initUp = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'tok-jean',
+      body: { productType: 'storage', productId: 'storage_master_upgrade', targetPaidMb: 2000 },
+    })
+  ).json();
+  assert.equal(initUp.success, true);
+  assert.equal(initUp.amount, 1000);
+  const verUp = await (await callApi(`/api/payments/paystack/verify?reference=${initUp.reference}`, { token: 'tok-jean' })).json();
+  assert.equal(verUp.verified, true);
+
+  // --- TEST 1A : Abandon d'une réduction de stockage par l'utilisateur ---
+  const dgCreate = await (
+    await callApi('/api/admin/billing/storage-downgrades/create', {
+      method: 'POST',
+      admin: true,
+      body: { userId: 'u-ref', targetPaidMb: 1500, adminNotes: 'Proposition réduction' },
+    })
+  ).json();
+  assert.equal(dgCreate.success, true);
+  const bannerDg = await (await callApi('/api/billing/status-banner', { token: 'tok-jean' })).json();
+  assert.equal(bannerDg.pendingDowngrades.length, 1);
+
+  const dgAbandon = await (
+    await callApi(`/api/billing/storage-downgrades/${dgCreate.request.id}/abandon`, {
+      method: 'POST',
+      token: 'tok-jean',
+    })
+  ).json();
+  assert.equal(dgAbandon.success, true);
+  assert.equal(dgAbandon.status, 'abandoned_by_user');
+  const bannerAfterDgAbandon = await (await callApi('/api/billing/status-banner', { token: 'tok-jean' })).json();
+  assert.equal(bannerAfterDgAbandon.pendingDowngrades.length, 0);
+  const quotaStill2000: any = await db.prepare("SELECT paid_total_mb FROM user_storage_quotas WHERE user_id = 'u-ref'").first();
+  assert.equal(Number(quotaStill2000.paid_total_mb), 2000, 'Le stockage ne doit PAS changer après abandon');
+
+  // --- TEST 2 : Annuler UNIQUEMENT l'augmentation (revert_upgrade) -> retour exact à 1000 Mo (1000 FCFA/mois) + remboursement auto net (980 FCFA) ---
+  const prevRevert = await (
+    await callApi('/api/admin/billing/cancellation-refunds/preview', {
+      method: 'POST',
+      admin: true,
+      body: {
+        subscriptionId: storageSubId,
+        cancelScope: 'revert_upgrade',
+        paymentReference: initUp.reference,
+      },
+    })
+  ).json();
+  assert.equal(prevRevert.success, true);
+  assert.equal(prevRevert.preview.paidAmount, 1000);
+  assert.equal(prevRevert.preview.gatewayFeeAmount, 20);
+  assert.equal(prevRevert.preview.gatewayFeeSource, 'exact');
+  assert.equal(prevRevert.preview.consumedDeduction, 0);
+  assert.equal(prevRevert.preview.netRefundAmount, 980);
+  assert.equal(prevRevert.preview.suggestedRestorePaidMb, 1000);
+  assert.equal(prevRevert.preview.suggestedRestoreMonthlyPrice, 1000);
+
+  const emailCountBeforeProp = sentEmails.length;
+  const createRevert = await (
+    await callApi('/api/admin/billing/cancellation-refunds/create', {
+      method: 'POST',
+      admin: true,
+      body: {
+        subscriptionId: storageSubId,
+        cancelScope: 'revert_upgrade',
+        paymentReference: initUp.reference,
+        adminNotes: 'Retour validé à votre forfait initial de 1000 Mo',
+      },
+    })
+  ).json();
+  assert.equal(createRevert.success, true);
+  assert.equal(Number(createRevert.request.net_refund_amount), 980);
+  assert.equal(createRevert.request.status, 'pending_confirmation');
+
+  // Vérifier que l'email envoyé ne mentionne JAMAIS "paystack" ni "agrégateur"
+  const propEmail = sentEmails.slice(emailCountBeforeProp).find((e) => e.tags?.some((t: any) => t.value === 'cancellation_refund_proposed'));
+  assert.ok(propEmail, 'Email cancellation_refund_proposed doit être envoyé');
+  assert.equal(/paystack|agr[ée]gateur/i.test(`${propEmail!.subject} ${propEmail!.html}`), false, 'Aucune mention de Paystack ou agrégateur autorisée');
+
+  // La bannière supérieure remonte la proposition d'annulation/remboursement
+  const bannerCr = await (await callApi('/api/billing/status-banner', { token: 'tok-jean' })).json();
+  assert.equal(bannerCr.pendingCancellationRefunds.length, 1);
+  assert.equal(bannerCr.pendingCancellationRefunds[0].netRefundAmount, 980);
+
+  // L'utilisateur confirme le remboursement et le retour au forfait initial
+  const emailCountBeforeConf = sentEmails.length;
+  const confRevert = await (
+    await callApi(`/api/billing/cancellation-refunds/${createRevert.request.id}/confirm`, {
+      method: 'POST',
+      token: 'tok-jean',
+    })
+  ).json();
+  assert.equal(confRevert.success, true);
+  assert.equal(confRevert.refundOutcome.ok, true);
+  assert.equal(refundRequests.length, 1);
+  assert.equal(refundRequests[0].transaction, initUp.reference);
+  assert.equal(refundRequests[0].amount, 98000, 'Le montant Paystack /refund XOF doit être 980 * 100 = 98000');
+
+  // Vérifier retour EXACT à 1000 Mo et 1000 FCFA/mois (abonnement toujours ACTIF !)
+  const quotaAfterRevert: any = await db.prepare("SELECT paid_total_mb FROM user_storage_quotas WHERE user_id = 'u-ref'").first();
+  assert.equal(Number(quotaAfterRevert.paid_total_mb), 1000);
+  const subAfterRevert: any = await db.prepare('SELECT status, price_amount, granted_storage_mb FROM active_subscriptions WHERE id = ?').bind(storageSubId).first();
+  assert.equal(subAfterRevert.status, 'active');
+  assert.equal(Number(subAfterRevert.price_amount), 1000);
+  assert.equal(Number(subAfterRevert.granted_storage_mb), 1000);
+
+  const confEmail = sentEmails.slice(emailCountBeforeConf).find((e) => e.tags?.some((t: any) => t.value === 'cancellation_refund_confirmed'));
+  assert.ok(confEmail, 'Email cancellation_refund_confirmed doit être envoyé');
+  assert.equal(/paystack|agr[ée]gateur/i.test(`${confEmail!.subject} ${confEmail!.html}`), false, 'Aucune mention de Paystack ou agrégateur autorisée');
+
+  // Webhook Paystack refund.processed pour cette transaction : doit marquer refunded SANS bloquer ni réduire les 1000 Mo !
+  const whBody = JSON.stringify({ event: 'refund.processed', data: { transaction_reference: initUp.reference, status: 'processed' } });
+  const whSig = await computePaystackHmacSha512Hex(rawEnv.STUDYCLOUD_PAYSTACK_SECRET_KEY, whBody);
+  await callApi('/api/payments/paystack/webhook', { method: 'POST', body: whBody, sig: whSig });
+  const crAfterWh: any = await db.prepare('SELECT status FROM subscription_cancellation_refunds WHERE id = ?').bind(createRevert.request.id).first();
+  assert.equal(crAfterWh.status, 'refunded');
+  const subAfterWh: any = await db.prepare('SELECT status, granted_storage_mb FROM active_subscriptions WHERE id = ?').bind(storageSubId).first();
+  assert.equal(subAfterWh.status, 'active', 'Le webhook de remboursement légitime ne doit PAS bloquer le forfait initial restauré');
+  const quotaAfterWh: any = await db.prepare("SELECT paid_total_mb FROM user_storage_quotas WHERE user_id = 'u-ref'").first();
+  assert.equal(Number(quotaAfterWh.paid_total_mb), 1000, 'Le webhook ne doit PAS re-retirer de stockage');
+
+  // --- TEST 3 : Abandon d'annulation sur Application + Annulation totale Crédits IA (déduction crédits consommés + frais exacts) ---
+  const initApp = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'tok-jean',
+      body: { productType: 'app', productId: 'moy_ref_m' },
+    })
+  ).json();
+  const verApp = await (await callApi(`/api/payments/paystack/verify?reference=${initApp.reference}`, { token: 'tok-jean' })).json();
+  const crApp = await (
+    await callApi('/api/admin/billing/cancellation-refunds/create', {
+      method: 'POST',
+      admin: true,
+      body: { subscriptionId: verApp.subscription.id, cancelScope: 'full_cancel' },
+    })
+  ).json();
+  assert.equal(crApp.success, true);
+  const abApp = await (
+    await callApi(`/api/billing/cancellation-refunds/${crApp.request.id}/abandon`, { method: 'POST', token: 'tok-jean' })
+  ).json();
+  assert.equal(abApp.success, true);
+  assert.equal(abApp.status, 'abandoned_by_user');
+  const entStillActive: any = await db.prepare("SELECT status FROM user_app_entitlements WHERE user_id = 'u-ref' AND app_key = 'moyennes'").first();
+  assert.equal(entStillActive.status, 'active');
+
+  // Pack IA 1000 crédits à 2000 FCFA (frais exacts = 40 FCFA). L'utilisateur consomme 200 crédits (20% = 400 FCFA). Net = 2000 - 400 - 40 = 1560 FCFA !
+  const initAi = await (
+    await callApi('/api/payments/paystack/initialize', {
+      method: 'POST',
+      token: 'tok-jean',
+      body: { productType: 'ai', productId: 'ai_ref_1000' },
+    })
+  ).json();
+  const verAi = await (await callApi(`/api/payments/paystack/verify?reference=${initAi.reference}`, { token: 'tok-jean' })).json();
+  assert.equal(verAi.verified, true);
+  // Simuler la consommation de 200 crédits achetés (il reste 800 achetés + 50 cadeau = 850)
+  await db
+    .prepare("UPDATE user_ai_credits SET purchased_remaining = 800, credits_balance = 850, remaining_credits = 850 WHERE user_id = 'u-ref'")
+    .run();
+
+  const crAi = await (
+    await callApi('/api/admin/billing/cancellation-refunds/create', {
+      method: 'POST',
+      admin: true,
+      body: { subscriptionId: verAi.subscription.id, cancelScope: 'full_cancel' },
+    })
+  ).json();
+  assert.equal(crAi.success, true);
+  assert.equal(Number(crAi.request.credits_consumed), 200);
+  assert.equal(Number(crAi.request.consumed_deduction_amount), 400);
+  assert.equal(Number(crAi.request.gateway_fee_amount), 40);
+  assert.equal(Number(crAi.request.net_refund_amount), 1560);
+
+  const confAi = await (
+    await callApi(`/api/billing/cancellation-refunds/${crAi.request.id}/confirm`, { method: 'POST', token: 'tok-jean' })
+  ).json();
+  assert.equal(confAi.success, true);
+  assert.equal(refundRequests.length, 2);
+  assert.equal(refundRequests[1].transaction, initAi.reference);
+  assert.equal(refundRequests[1].amount, 156000);
+  const aiBalAfter: any = await db.prepare("SELECT purchased_remaining, gift_remaining, credits_balance FROM user_ai_credits WHERE user_id = 'u-ref'").first();
+  assert.equal(Number(aiBalAfter.purchased_remaining), 0, 'Les 800 crédits achetés non consommés doivent être retirés');
+  assert.equal(Number(aiBalAfter.gift_remaining), 50, 'Les 50 crédits de bienvenue doivent rester intacts');
+  assert.equal(Number(aiBalAfter.credits_balance), 50);
+  const aiSubAfter: any = await db.prepare('SELECT status FROM active_subscriptions WHERE id = ?').bind(verAi.subscription.id).first();
+  assert.equal(aiSubAfter.status, 'cancelled');
+});

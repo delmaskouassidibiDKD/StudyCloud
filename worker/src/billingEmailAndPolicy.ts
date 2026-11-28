@@ -21,6 +21,8 @@ export type BillingEmailType =
   | 'data_overflow_purged'
   | 'storage_downgrade_proposed'
   | 'storage_downgrade_completed'
+  | 'cancellation_refund_proposed'
+  | 'cancellation_refund_confirmed'
   | 'admin_manual_notice';
 
 export type BillingBlockScope = 'service_only' | 'read_only' | 'full_account';
@@ -529,6 +531,96 @@ export function buildBillingEmailContent(params: {
           ],
           ctaLabel: 'Voir mon nouvel abonnement',
           ctaUrl: manageUrl,
+        }),
+      };
+    }
+
+    case 'cancellation_refund_proposed': {
+      const isRevert = String(extraData.cancelScope || '') === 'revert_upgrade';
+      const paidStr = formatEmailAmount(Number(extraData.paidAmount || 0), sub.currency || 'XOF');
+      const consumedStr = formatEmailAmount(Number(extraData.consumedDeduction || 0), sub.currency || 'XOF');
+      const feeStr = formatEmailAmount(Number(extraData.gatewayFeeAmount || 0), sub.currency || 'XOF');
+      const netStr = formatEmailAmount(Number(extraData.netRefundAmount || 0), sub.currency || 'XOF');
+      const restorePlanLabel = String(extraData.restorePlanLabel || '').trim();
+      const hasOverflow = Boolean(extraData.hasOverflow);
+      const retentionDays = Math.max(1, Number(extraData.retentionDays || 14));
+      const excessStr = String(extraData.excessFormatted || '');
+
+      const title = isRevert
+        ? 'Proposition d’annulation d’augmentation & remboursement prête'
+        : 'Proposition d’annulation d’abonnement & remboursement prête';
+      const subject = isRevert
+        ? `💸 Retour à votre forfait initial & remboursement net de ${netStr} prêt`
+        : `💸 Votre demande d’annulation & remboursement (${netStr}) est prête`;
+
+      const introHtml = isRevert
+        ? `Suite à votre demande, nous avons préparé l’annulation de votre augmentation récente afin de revenir sur votre forfait initial${restorePlanLabel ? ` (<strong>${escHtml(restorePlanLabel)}</strong>)` : ''}, avec un remboursement net automatique de <strong>${escHtml(netStr)}</strong>.<br/><br/>Rendez-vous dans <strong>Mes abonnements → Annulation &amp; Remboursement</strong> pour <strong>confirmer</strong> l’opération ou <strong>abandonner</strong> le processus si vous souhaitez conserver votre offre actuelle.${customBlock}`
+        : `Suite à votre demande, nous avons préparé l’annulation de votre abonnement <strong>${escHtml(planName)}</strong> (${escHtml(serviceName)}) avec un remboursement net automatique de <strong>${escHtml(netStr)}</strong>.<br/><br/>Rendez-vous dans <strong>Mes abonnements → Annulation &amp; Remboursement</strong> pour <strong>confirmer</strong> l’annulation ou <strong>abandonner</strong> le processus si vous souhaitez conserver votre abonnement.${customBlock}`;
+
+      const overflowHtml = hasOverflow
+        ? `<div style="margin:0 0 14px 0;padding:12px 14px;border-radius:12px;background:#fff7ed;border:1px solid #fed7aa;color:#9a3412;font-size:12.5px;line-height:1.5;"><strong>⏳ Données au-delà du quota conservé (${escHtml(excessStr)}) :</strong> si vous confirmez, vous disposerez de <strong>${retentionDays} jour${retentionDays > 1 ? 's' : ''}</strong> pour récupérer ces fichiers. Vos premiers fichiers situés dans votre espace gratuit restent toujours protégés.</div>`
+        : '';
+
+      return {
+        subject,
+        html: wrapBrandedEmailLayout({
+          title,
+          badgeText: isRevert ? '↩️ Retour au forfait précédent' : '💸 Annulation & Remboursement',
+          badgeBg: '#e0f2fe',
+          badgeColor: '#0369a1',
+          greeting: userName,
+          introHtml,
+          rows: [
+            { label: 'Service concerné', value: `${serviceName} — ${planName}` },
+            ...(isRevert && restorePlanLabel ? [{ label: 'Forfait conservé après annulation', value: restorePlanLabel }] : []),
+            { label: 'Montant initial payé', value: paidStr },
+            { label: 'Période / consommation déjà utilisée', value: `− ${consumedStr}` },
+            { label: 'Frais bancaires et de traitement de paiement (non récupérables)', value: `− ${feeStr}` },
+            { label: 'Montant net remboursé', value: netStr },
+          ],
+          noticeBoxHtml: `${overflowHtml}<div style="margin:0 0 16px 0;padding:12px 14px;border-radius:12px;background:#f8fafc;border:1px solid #e2e8f0;color:#334155;font-size:12.5px;line-height:1.55;"><strong>ℹ️ Information sur le calcul :</strong> Le montant remboursé correspond à la valeur non utilisée de votre paiement, déduction faite des frais bancaires et de traitement opérés par les réseaux financiers (banques et opérateurs mobiles) lors de la transaction initiale. Ces frais de réseau sont définitivement acquis à ces opérateurs et ne peuvent être restitués.</div>`,
+          ctaLabel: 'Consulter & Confirmer ou Abandonner',
+          ctaUrl: `${APP_BASE_URL}/?tab=subscriptions&section=cancellations`,
+        }),
+      };
+    }
+
+    case 'cancellation_refund_confirmed': {
+      const isRevert = String(extraData.cancelScope || '') === 'revert_upgrade';
+      const netStr = formatEmailAmount(Number(extraData.netRefundAmount || 0), sub.currency || 'XOF');
+      const restorePlanLabel = String(extraData.restorePlanLabel || '').trim();
+      const refundStatusLabel = String(extraData.refundStatusLabel || 'Remboursement initié automatiquement');
+      const hasOverflow = Boolean(extraData.hasOverflow);
+      const retentionDays = Math.max(1, Number(extraData.retentionDays || 14));
+      const deadlineStr = formatFrDateTime(extraData.purgeDeadlineIso || null);
+      const excessStr = String(extraData.excessFormatted || '');
+
+      return {
+        subject: isRevert
+          ? `✅ Retour au forfait initial confirmé — Remboursement de ${netStr}`
+          : `✅ Annulation confirmée — Remboursement de ${netStr}`,
+        html: wrapBrandedEmailLayout({
+          title: isRevert ? 'Retour au forfait précédent confirmé' : 'Annulation et remboursement confirmés',
+          badgeText: '✅ Confirmation enregistrée',
+          badgeBg: '#dcfce7',
+          badgeColor: '#15803d',
+          greeting: userName,
+          introHtml: isRevert
+            ? `Votre retour sur votre forfait initial${restorePlanLabel ? ` (<strong>${escHtml(restorePlanLabel)}</strong>)` : ''} a bien été appliqué et votre remboursement net de <strong>${escHtml(netStr)}</strong> a été lancé vers votre moyen de paiement d’origine.${customBlock}`
+            : `L’annulation de votre abonnement <strong>${escHtml(planName)}</strong> (${escHtml(serviceName)}) est confirmée et votre remboursement net de <strong>${escHtml(netStr)}</strong> a été lancé vers votre moyen de paiement d’origine.${customBlock}`,
+          rows: [
+            { label: 'Service concerné', value: `${serviceName} — ${planName}` },
+            ...(isRevert && restorePlanLabel ? [{ label: 'Forfait actif conservé', value: restorePlanLabel }] : []),
+            { label: 'Montant net remboursé', value: netStr },
+            { label: 'Statut du remboursement', value: refundStatusLabel },
+            ...(reference ? [{ label: 'Référence transaction', value: reference }] : []),
+            ...(hasOverflow ? [{ label: 'Délai récupération surplus stockage', value: `${retentionDays}j (jusqu’au ${deadlineStr}) — ${excessStr}` }] : []),
+          ],
+          noticeBoxHtml: hasOverflow
+            ? `<div style="margin:0 0 16px 0;padding:12px 14px;border-radius:12px;background:#fef2f2;border:1px solid #fecaca;color:#991b1b;font-size:12.5px;line-height:1.5;"><strong>📌 Protection de vos fichiers :</strong> vos premiers fichiers dans l’espace gratuit sont protégés. Vous avez jusqu’au <strong>${escHtml(deadlineStr)}</strong> pour récupérer les <strong>${escHtml(excessStr)}</strong> enregistrés au-delà de votre quota gratuit.</div>`
+            : `<div style="margin:0 0 16px 0;padding:12px 14px;border-radius:12px;background:#f0fdf4;border:1px solid #bbf7d0;color:#166534;font-size:12.5px;line-height:1.5;"><strong>💳 Délai de réception :</strong> selon votre banque ou votre opérateur Mobile Money, les fonds apparaissent généralement en quelques minutes à 3–5 jours ouvrés.</div>`,
+          ctaLabel: 'Ouvrir Mes abonnements',
+          ctaUrl: `${APP_BASE_URL}/?tab=subscriptions&section=cancellations`,
         }),
       };
     }
@@ -1060,6 +1152,20 @@ export async function evaluateUserBillingGuard(
     purgeDeadlineAt: string;
     daysRemaining: number;
   }>;
+  pendingCancellationRefunds: Array<{
+    id: string;
+    subscriptionId: string;
+    productType: string;
+    planName: string;
+    cancelScope: string;
+    paidAmount: number;
+    consumedDeductionAmount: number;
+    gatewayFeeAmount: number;
+    netRefundAmount: number;
+    restorePlanName: string;
+    currency: string;
+    createdAt: string | null;
+  }>;
 }> {
   const res = await db
     .prepare(
@@ -1174,6 +1280,35 @@ export async function evaluateUserBillingGuard(
     };
   });
 
+  // Propositions d'annulation & remboursement en attente de confirmation utilisateur
+  const crRes = await db
+    .prepare(
+      `SELECT id, subscription_id, product_type, plan_name, cancel_scope,
+              paid_amount, consumed_deduction_amount, gateway_fee_amount, net_refund_amount,
+              restore_plan_name, currency, created_at
+       FROM subscription_cancellation_refunds
+       WHERE user_id = ? AND status = 'pending_confirmation'
+       ORDER BY created_at DESC LIMIT 5`
+    )
+    .bind(userId)
+    .all()
+    .catch(() => ({ results: [] }));
+
+  const pendingCancellationRefunds = (crRes.results || []).map((c: any) => ({
+    id: String(c.id),
+    subscriptionId: String(c.subscription_id || ''),
+    productType: String(c.product_type || 'storage'),
+    planName: String(c.plan_name || 'Abonnement'),
+    cancelScope: String(c.cancel_scope || 'full_cancel'),
+    paidAmount: Number(c.paid_amount || 0),
+    consumedDeductionAmount: Number(c.consumed_deduction_amount || 0),
+    gatewayFeeAmount: Number(c.gateway_fee_amount || 0),
+    netRefundAmount: Number(c.net_refund_amount || 0),
+    restorePlanName: String(c.restore_plan_name || ''),
+    currency: String(c.currency || 'XOF'),
+    createdAt: c.created_at || null,
+  }));
+
   return {
     fullAccountBlocked,
     readOnlyBlocked,
@@ -1181,5 +1316,6 @@ export async function evaluateUserBillingGuard(
     graceSubscriptions,
     pendingDowngrades,
     dataPurgeWarnings,
+    pendingCancellationRefunds,
   };
 }

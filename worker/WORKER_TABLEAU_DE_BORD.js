@@ -4672,6 +4672,7 @@ function renderDashboardHtml(data) {
         <div class="flex flex-wrap items-center gap-2">
           <button type="button" id="asub-tab-list" onclick="switchAdminActiveSubsTab('list')" class="px-3.5 py-2 rounded-xl bg-orange-600 text-white text-xs font-black cursor-pointer">📋 Abonnements en cours</button>
           <button type="button" id="asub-tab-downgrades" onclick="switchAdminActiveSubsTab('downgrades')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-emerald-300 hover:bg-slate-700 border border-emerald-500/30 text-xs font-black cursor-pointer">📉 Réduction de stockage (<span id="asub-tab-downgrades-count">0</span>)</button>
+          <button type="button" id="asub-tab-refunds" onclick="switchAdminActiveSubsTab('refunds')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-sky-300 hover:bg-slate-700 border border-sky-500/30 text-xs font-black cursor-pointer">💸 Annulations &amp; Remboursements (<span id="asub-tab-refunds-count">0</span>)</button>
           <button type="button" id="asub-tab-cards" onclick="switchAdminActiveSubsTab('cards')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">💳 Cartes enregistrées (<span id="asub-tab-cards-count">0</span>)</button>
           <button type="button" id="asub-tab-policies" onclick="switchAdminActiveSubsTab('policies')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">⚙️ Politiques &amp; Délais</button>
           <button type="button" id="asub-tab-emails" onclick="switchAdminActiveSubsTab('emails')" class="px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer">📧 Journal des Emails</button>
@@ -4879,6 +4880,139 @@ function renderDashboardHtml(data) {
                 </thead>
                 <tbody id="dg-history-tbody" class="divide-y divide-slate-800/70">
                   <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Aucune demande de réduction enregistrée.</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- PANEL 1C : ANNULATIONS & REMBOURSEMENTS NETS AUTOMATIQUES (STOCKAGE / IA / APPS) -->
+        <div id="asub-panel-refunds" class="hidden space-y-4">
+          <div class="neo-card p-4 sm:p-5 border border-sky-500/40 bg-gradient-to-br from-slate-900 via-[#0e1b30] to-slate-950 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+              <div>
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="px-2.5 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40 text-[10px] font-black uppercase">Remboursement Net Automatique</span>
+                  <span class="text-[10.5px] text-slate-400">Frais réels déduits automatiquement · Stockage, IA &amp; Apps</span>
+                </div>
+                <h3 class="text-sm sm:text-base font-black text-white mt-1">💸 Préparer une annulation &amp; remboursement (Total ou Retour au forfait initial)</h3>
+                <p class="text-[11px] text-slate-400 mt-0.5">Sélectionnez un abonnement actif (Stockage, Crédits IA ou Application). Choisissez soit une annulation totale, soit l'annulation d'une augmentation récente pour revenir au forfait initial (ex : revenir à 1 000 FCFA/mois). L'utilisateur reçoit une notification + un email professionnel et peut <strong>Confirmer</strong> (remboursement automatique instantané) ou <strong>Abandonner</strong>.</p>
+              </div>
+              <button type="button" onclick="loadAdminCancellationRefunds()" class="shrink-0 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold cursor-pointer">🔄 Actualiser</button>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+              <div class="lg:col-span-7 space-y-3.5 text-xs">
+                <div>
+                  <label class="block text-[10.5px] font-black uppercase text-slate-300 mb-1.5">1. Sélectionner l'abonnement actif (Stockage, Crédits IA ou Application)</label>
+                  <select id="cr-sub-select" onchange="onAdminCancelRefundSubChange()" class="w-full px-3 py-2.5 rounded-xl bg-slate-950 border border-slate-700 text-xs font-bold text-white outline-none focus:border-sky-500">
+                    <option value="">Chargement des abonnements actifs...</option>
+                  </select>
+                </div>
+
+                <div id="cr-controls-box" class="hidden space-y-3">
+                  <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label class="block text-[10px] font-bold uppercase text-sky-300 mb-1">2. Portée de l'annulation</label>
+                      <select id="cr-scope-select" onchange="previewAdminCancelRefund()" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-sky-500/40 text-white font-bold outline-none">
+                        <option value="full_cancel">❌ Annulation totale de l'abonnement</option>
+                        <option value="revert_upgrade">↩️ Annuler uniquement une augmentation (retour forfait initial)</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label class="block text-[10px] font-bold uppercase text-slate-400 mb-1">Transaction payée à rembourser</label>
+                      <select id="cr-tx-select" onchange="previewAdminCancelRefund()" class="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-700 text-slate-200 font-mono text-[11px] outline-none">
+                        <option value="">Dernière transaction payée</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  <!-- Champs spécifiques au retour au forfait initial (revert_upgrade) -->
+                  <div id="cr-revert-box" class="hidden p-3.5 rounded-xl bg-emerald-950/35 border border-emerald-500/40 space-y-2.5">
+                    <div class="text-[10.5px] font-black uppercase text-emerald-300">↩️ Forfait initial à restaurer (l'abonnement reste ACTIF)</div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label class="block text-[9.5px] text-slate-300 mb-1">Stockage payant conservé (Mo)</label>
+                        <input id="cr-restore-mb" type="number" min="0" step="any" oninput="recalcAdminCancelRefundLive()" class="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-emerald-500/40 text-emerald-200 font-mono font-bold outline-none" />
+                      </div>
+                      <div>
+                        <label class="block text-[9.5px] text-slate-300 mb-1">Tarif mensuel conservé (FCFA/mois)</label>
+                        <input id="cr-restore-price" type="number" min="0" step="1" oninput="recalcAdminCancelRefundLive()" class="w-full px-2.5 py-1.5 rounded-lg bg-slate-950 border border-emerald-500/40 text-emerald-200 font-mono font-bold outline-none" />
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Calcul détaillé éditable (Montant payé / Consommation / Frais réels Paystack / Délai) -->
+                  <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                    <div>
+                      <label class="block text-[9.5px] text-slate-400 mb-1">Montant payé (FCFA)</label>
+                      <input id="cr-paid-amount" type="number" min="0" step="1" oninput="recalcAdminCancelRefundLive()" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono font-bold outline-none" />
+                    </div>
+                    <div>
+                      <label id="cr-consumed-label" class="block text-[9.5px] text-amber-300 mb-1">Consommé (−FCFA)</label>
+                      <input id="cr-consumed-amount" type="number" min="0" step="1" oninput="recalcAdminCancelRefundLive()" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-amber-500/40 text-amber-200 font-mono font-bold outline-none" />
+                    </div>
+                    <div>
+                      <label id="cr-fee-label" class="block text-[9.5px] text-rose-300 mb-1">Frais réseau (−FCFA)</label>
+                      <input id="cr-fee-amount" type="number" min="0" step="1" oninput="recalcAdminCancelRefundLive()" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-rose-500/40 text-rose-200 font-mono font-bold outline-none" />
+                    </div>
+                    <div>
+                      <label class="block text-[9.5px] text-orange-300 mb-1">Délai récup. données (j)</label>
+                      <input id="cr-retention-days" type="number" min="1" max="365" value="14" class="w-full px-2.5 py-2 rounded-lg bg-slate-950 border border-orange-500/40 text-orange-200 font-mono font-bold outline-none" />
+                    </div>
+                  </div>
+
+                  <div id="cr-fee-source-hint" class="text-[10.5px] text-slate-400"></div>
+                  <div id="cr-overflow-hint" class="hidden p-2.5 rounded-xl bg-amber-500/15 border border-amber-500/40 text-amber-200 text-[11px]"></div>
+
+                  <div>
+                    <label class="block text-[9.5px] text-slate-400 mb-1">Message / note pour l'utilisateur (optionnel)</label>
+                    <input id="cr-admin-notes" type="text" placeholder="Ex : Suite à votre demande, voici la proposition de retour sur votre forfait initial..." class="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-700 text-white text-xs outline-none focus:border-sky-500" />
+                  </div>
+                </div>
+              </div>
+
+              <!-- Aperçu professionnel affiché côté utilisateur -->
+              <div class="lg:col-span-5 flex flex-col justify-between p-4 rounded-2xl bg-slate-950/95 border border-slate-800 space-y-3">
+                <div class="space-y-3">
+                  <div class="text-[10.5px] font-black uppercase text-sky-300 tracking-wider">Aperçu envoyé à l'utilisateur</div>
+                  <div id="cr-summary-box" class="space-y-2 text-xs text-slate-300">
+                    <div class="text-slate-500 py-8 text-center">Sélectionnez un abonnement actif à gauche pour lire les frais exacts de la transaction et calculer le remboursement net automatique.</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  id="cr-submit-btn"
+                  disabled
+                  onclick="submitAdminCancellationRefund()"
+                  class="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-sky-600 to-blue-600 hover:from-sky-500 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black shadow-lg shadow-sky-600/20 cursor-pointer transition"
+                >
+                  📩 Envoyer la proposition (Notification + Email)
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Historique des annulations & remboursements -->
+          <div class="neo-card overflow-hidden">
+            <div class="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-2 flex-wrap">
+              <h4 class="text-xs font-black text-white uppercase tracking-wider">📜 Suivi des annulations &amp; remboursements</h4>
+              <span id="cr-history-counter" class="text-[11px] font-bold text-slate-400">0 demande</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="responsive-admin-table w-full text-left text-xs">
+                <thead>
+                  <tr class="bg-slate-900 text-[10px] uppercase text-slate-400 border-b border-slate-800">
+                    <th class="px-3 py-2.5">Utilisateur</th>
+                    <th class="px-3 py-2.5">Service &amp; Portée</th>
+                    <th class="px-3 py-2.5">Calcul (Payé / Déduit / Frais)</th>
+                    <th class="px-3 py-2.5">Net remboursé</th>
+                    <th class="px-3 py-2.5">Statut</th>
+                    <th class="px-3 py-2.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="cr-history-tbody" class="divide-y divide-slate-800/70">
+                  <tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Aucune demande d'annulation / remboursement enregistrée.</td></tr>
                 </tbody>
               </table>
             </div>
@@ -19649,7 +19783,7 @@ function renderDashboardHtml(data) {
     let adminActiveSubsTicker = null;
 
     function switchAdminActiveSubsTab(tab) {
-      ['list', 'downgrades', 'cards', 'policies', 'emails'].forEach(function(k) {
+      ['list', 'downgrades', 'refunds', 'cards', 'policies', 'emails'].forEach(function(k) {
         const panel = document.getElementById('asub-panel-' + k);
         const btn = document.getElementById('asub-tab-' + k);
         if (panel) panel.classList.toggle('hidden', k !== tab);
@@ -19658,10 +19792,13 @@ function renderDashboardHtml(data) {
             ? 'px-3.5 py-2 rounded-xl bg-orange-600 text-white text-xs font-black cursor-pointer'
             : (k === 'downgrades'
               ? 'px-3.5 py-2 rounded-xl bg-slate-800 text-emerald-300 hover:bg-slate-700 border border-emerald-500/30 text-xs font-black cursor-pointer'
-              : 'px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer');
+              : (k === 'refunds'
+                ? 'px-3.5 py-2 rounded-xl bg-slate-800 text-sky-300 hover:bg-slate-700 border border-sky-500/30 text-xs font-black cursor-pointer'
+                : 'px-3.5 py-2 rounded-xl bg-slate-800 text-slate-300 hover:bg-slate-700 text-xs font-bold cursor-pointer'));
         }
       });
       if (tab === 'downgrades') loadAdminStorageDowngrades();
+      if (tab === 'refunds') loadAdminCancellationRefunds();
       if (tab === 'cards') renderAdminSavedCardsTable();
       if (tab === 'policies') loadAdminBillingPolicies();
       if (tab === 'emails') loadAdminBillingEmailLogs();
@@ -20925,7 +21062,9 @@ function renderDashboardHtml(data) {
           ? '<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black">✅ Payée &amp; Appliquée</span>'
           : (r.status === 'pending_payment'
             ? '<span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black">⏳ En attente paiement</span>'
-            : '<span class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">' + escapeHtml(r.status) + '</span>');
+            : (r.status === 'abandoned_by_user'
+              ? '<span class="px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 border border-slate-600 text-[10px] font-bold">⚪ Abandonnée par l utilisateur</span>'
+              : '<span class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">' + escapeHtml(r.status) + '</span>'));
         return '<tr class="hover:bg-slate-900/50">' +
           '<td data-label="Utilisateur" class="px-3 py-2.5"><div><div class="font-bold text-white">' + escapeHtml(r.user_name || r.user_id) + '</div><div class="text-[10px] text-slate-400">' + escapeHtml(r.user_email || '') + '</div></div></td>' +
           '<td data-label="Stockage" class="px-3 py-2.5 font-mono font-bold"><span class="text-slate-400">' + fmtMbShortAdmin(r.current_paid_mb) + '</span> → <span class="text-emerald-300">' + (Number(r.target_paid_mb) > 0 ? fmtMbShortAdmin(r.target_paid_mb) : 'Gratuit') + '</span></td>' +
@@ -20956,6 +21095,299 @@ function renderDashboardHtml(data) {
       });
     }
     window.deleteAdminStorageDowngrade = deleteAdminStorageDowngrade;
+
+    // --- ADMIN ANNULATIONS & REMBOURSEMENTS NETS AUTOMATIQUES ---
+    let adminCancelRefundSubs = [];
+    let adminCancelRefundRequests = [];
+    let currentCancelRefundPreview = null;
+
+    async function loadAdminCancellationRefunds() {
+      const sel = document.getElementById('cr-sub-select');
+      const tbody = document.getElementById('cr-history-tbody');
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/cancellation-refunds?_t=' + Date.now());
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur chargement');
+        adminCancelRefundSubs = Array.isArray(data.eligibleSubscriptions) ? data.eligibleSubscriptions : [];
+        adminCancelRefundRequests = Array.isArray(data.requests) ? data.requests : [];
+
+        const pendingCount = adminCancelRefundRequests.filter(function(r) {
+          return r.status === 'pending_confirmation' || r.status === 'manual_refund_required';
+        }).length;
+        const badgeEl = document.getElementById('asub-tab-refunds-count');
+        if (badgeEl) badgeEl.textContent = String(pendingCount);
+
+        if (sel) {
+          const prevVal = sel.value;
+          if (adminCancelRefundSubs.length === 0) {
+            sel.innerHTML = '<option value="">Aucun abonnement actif éligible</option>';
+          } else {
+            sel.innerHTML = '<option value="">-- Choisir un abonnement actif (' + adminCancelRefundSubs.length + ') --</option>' +
+              adminCancelRefundSubs.map(function(s) {
+                const icon = s.productType === 'storage' ? '💾' : (s.productType === 'ai' ? '🤖' : '📱');
+                return '<option value="' + escapeHtml(s.id) + '">' +
+                  escapeHtml(icon + ' ' + (s.userName || s.userEmail || s.userId) + ' — ' + (s.planName || s.productType) + ' (' + Math.round(s.priceAmount || 0).toLocaleString('fr-FR') + ' ' + (s.currency || 'XOF') + ')') +
+                '</option>';
+              }).join('');
+            if (prevVal && adminCancelRefundSubs.some(function(s) { return s.id === prevVal; })) {
+              sel.value = prevVal;
+            }
+          }
+        }
+        renderAdminCancelRefundHistory();
+      } catch (err) {
+        if (tbody) tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-6 text-center text-rose-400">Erreur : ' + escapeHtml(err.message || err) + '</td></tr>';
+      }
+    }
+    window.loadAdminCancellationRefunds = loadAdminCancellationRefunds;
+
+    function onAdminCancelRefundSubChange() {
+      const subId = document.getElementById('cr-sub-select')?.value || '';
+      const ctrlBox = document.getElementById('cr-controls-box');
+      const submitBtn = document.getElementById('cr-submit-btn');
+      if (!subId) {
+        currentCancelRefundPreview = null;
+        if (ctrlBox) ctrlBox.classList.add('hidden');
+        if (submitBtn) submitBtn.disabled = true;
+        const sumBox = document.getElementById('cr-summary-box');
+        if (sumBox) sumBox.innerHTML = '<div class="text-slate-500 py-8 text-center">Sélectionnez un abonnement actif à gauche pour lire les frais exacts de la transaction et calculer le remboursement net automatique.</div>';
+        return;
+      }
+      const subObj = adminCancelRefundSubs.find(function(s) { return s.id === subId; });
+      const scopeSel = document.getElementById('cr-scope-select');
+      if (scopeSel && subObj) {
+        const revertOpt = scopeSel.querySelector('option[value="revert_upgrade"]');
+        if (revertOpt) revertOpt.disabled = subObj.productType !== 'storage';
+        if (subObj.productType !== 'storage') scopeSel.value = 'full_cancel';
+      }
+      const txSel = document.getElementById('cr-tx-select');
+      if (txSel) txSel.value = '';
+      if (ctrlBox) ctrlBox.classList.remove('hidden');
+      previewAdminCancelRefund(true);
+    }
+    window.onAdminCancelRefundSubChange = onAdminCancelRefundSubChange;
+
+    async function previewAdminCancelRefund(resetTxDropdown) {
+      const subId = document.getElementById('cr-sub-select')?.value || '';
+      if (!subId) return;
+      const scope = document.getElementById('cr-scope-select')?.value || 'full_cancel';
+      const txSel = document.getElementById('cr-tx-select');
+      const selectedRef = resetTxDropdown ? '' : (txSel?.value || '');
+      const revBox = document.getElementById('cr-revert-box');
+      if (revBox) revBox.classList.toggle('hidden', scope !== 'revert_upgrade');
+
+      const sumBox = document.getElementById('cr-summary-box');
+      if (sumBox) sumBox.innerHTML = '<div class="text-sky-300 py-6 text-center">⏳ Lecture des frais exacts de la transaction...</div>';
+      const submitBtn = document.getElementById('cr-submit-btn');
+      if (submitBtn) submitBtn.disabled = true;
+
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/cancellation-refunds/preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscriptionId: subId, cancelScope: scope, paymentReference: selectedRef || undefined })
+        });
+        const data = await resp.json();
+        if (!data || !data.success || !data.preview) throw new Error((data && data.error) || 'Erreur calcul');
+        const p = data.preview;
+        currentCancelRefundPreview = p;
+
+        if (txSel && (resetTxDropdown || txSel.options.length <= 1)) {
+          const txs = Array.isArray(p.transactions) ? p.transactions : [];
+          if (txs.length === 0) {
+            txSel.innerHTML = '<option value="">Aucune transaction Paystack trouvée (montant manuel)</option>';
+          } else {
+            txSel.innerHTML = txs.map(function(t) {
+              const lbl = (t.reference || '') + ' · ' + Math.round(t.paidAmount || 0).toLocaleString('fr-FR') + ' ' + (t.currency || 'XOF') + ' · ' + (t.networkLabel || t.channel || '') + (t.masterAction ? ' [' + t.masterAction + ']' : '');
+              return '<option value="' + escapeHtml(t.reference) + '"' + (t.reference === p.paymentReference ? ' selected' : '') + '>' + escapeHtml(lbl) + '</option>';
+            }).join('');
+          }
+        }
+
+        document.getElementById('cr-paid-amount').value = String(Math.round(p.paidAmount || 0));
+        document.getElementById('cr-consumed-amount').value = String(Math.round(p.consumedDeduction || 0));
+        document.getElementById('cr-fee-amount').value = String(Math.round(p.gatewayFeeAmount || 0));
+        document.getElementById('cr-retention-days').value = String(p.defaultRetentionDays || 14);
+        if (scope === 'revert_upgrade') {
+          document.getElementById('cr-restore-mb').value = String(p.suggestedRestorePaidMb || 0);
+          document.getElementById('cr-restore-price').value = String(p.suggestedRestoreMonthlyPrice || 0);
+        }
+
+        const cLbl = document.getElementById('cr-consumed-label');
+        if (cLbl) {
+          cLbl.textContent = p.productType === 'ai'
+            ? 'Crédits utilisés (' + Math.round(p.creditsConsumed || 0) + '/' + Math.round(p.creditsTotal || 0) + ')'
+            : 'Consommé (' + Number(p.daysUsed || 0) + 'j/' + Number(p.durationDays || 30) + 'j)';
+        }
+        const feeHint = document.getElementById('cr-fee-source-hint');
+        if (feeHint) {
+          feeHint.innerHTML = p.gatewayFeeSource === 'exact'
+            ? '<span class="text-emerald-300 font-bold">✅ Frais exacts lus directement sur la transaction (' + escapeHtml(p.paymentNetworkLabel || p.paymentChannel || 'réseau') + ' · ~' + p.gatewayFeeRatePct + '%)</span>'
+            : '<span class="text-amber-300 font-bold">⚙️ Frais estimés automatiquement selon le canal (' + escapeHtml(p.paymentNetworkLabel || p.paymentChannel || 'réseau') + ' · ' + p.gatewayFeeRatePct + '%) — modifiables si besoin.</span>';
+        }
+        const ovHint = document.getElementById('cr-overflow-hint');
+        if (ovHint) {
+          if (p.overflowPreview && p.overflowPreview.hasOverflow) {
+            ovHint.classList.remove('hidden');
+            ovHint.innerHTML = '⚠️ Consommation stockage actuelle : <strong>' + escapeHtml(p.overflowPreview.usedFormatted) + '</strong>. Dépassement du futur quota : <strong>' + escapeHtml(p.overflowPreview.excessFormatted) + '</strong> (l utilisateur sera averti du délai de récupération).';
+          } else {
+            ovHint.classList.add('hidden');
+          }
+        }
+
+        if (submitBtn) submitBtn.disabled = false;
+        recalcAdminCancelRefundLive();
+      } catch (err) {
+        if (sumBox) sumBox.innerHTML = '<div class="text-rose-400 py-4 text-center">⚠️ ' + escapeHtml(err.message || err) + '</div>';
+      }
+    }
+    window.previewAdminCancelRefund = previewAdminCancelRefund;
+
+    function recalcAdminCancelRefundLive() {
+      const p = currentCancelRefundPreview;
+      if (!p) return;
+      const scope = document.getElementById('cr-scope-select')?.value || 'full_cancel';
+      const paid = Math.max(0, Math.round(Number(document.getElementById('cr-paid-amount')?.value || 0)));
+      const consumed = Math.max(0, Math.round(Number(document.getElementById('cr-consumed-amount')?.value || 0)));
+      const fee = Math.max(0, Math.round(Number(document.getElementById('cr-fee-amount')?.value || 0)));
+      const net = Math.max(0, paid - consumed - fee);
+      const restoreMb = Math.max(0, Number(document.getElementById('cr-restore-mb')?.value || 0));
+      const restorePrice = Math.max(0, Math.round(Number(document.getElementById('cr-restore-price')?.value || 0)));
+
+      const sumBox = document.getElementById('cr-summary-box');
+      if (!sumBox) return;
+      sumBox.innerHTML =
+        '<div class="p-3 rounded-xl bg-slate-900 border border-slate-800 space-y-1.5">' +
+          '<div class="flex justify-between"><span class="text-slate-400">Utilisateur</span><span class="font-bold text-white">' + escapeHtml(p.userName || p.userEmail) + '</span></div>' +
+          '<div class="flex justify-between"><span class="text-slate-400">Type</span><span class="font-bold text-sky-300">' + (scope === 'revert_upgrade' ? '↩️ Retour au forfait initial' : '❌ Annulation totale') + '</span></div>' +
+          (scope === 'revert_upgrade' ? '<div class="flex justify-between"><span class="text-slate-400">Forfait conservé</span><span class="font-bold text-emerald-300">' + (restoreMb > 0 ? fmtMbShortAdmin(restoreMb) + ' (' + restorePrice.toLocaleString('fr-FR') + ' FCFA/mois)' : 'Plan Gratuit') + '</span></div>' : '') +
+          '<div class="border-t border-slate-800 pt-1.5 flex justify-between"><span class="text-slate-400">Montant initial payé</span><span class="font-mono font-bold text-white">' + paid.toLocaleString('fr-FR') + ' FCFA</span></div>' +
+          '<div class="flex justify-between"><span class="text-slate-400">Consommation déjà utilisée</span><span class="font-mono text-amber-300">− ' + consumed.toLocaleString('fr-FR') + ' FCFA</span></div>' +
+          '<div class="flex justify-between"><span class="text-slate-400">Frais bancaires &amp; réseau (non récupérables)</span><span class="font-mono text-rose-300">− ' + fee.toLocaleString('fr-FR') + ' FCFA</span></div>' +
+        '</div>' +
+        '<div class="p-3.5 rounded-xl bg-emerald-500/12 border border-emerald-500/40 space-y-1">' +
+          '<div class="text-[10px] uppercase font-black text-emerald-300">Montant net remboursé automatiquement</div>' +
+          '<div class="text-2xl font-black text-white font-mono">' + net.toLocaleString('fr-FR') + ' FCFA</div>' +
+          '<div class="text-[10.5px] text-emerald-200/80">L utilisateur voit l explication professionnelle (sans mentionner Paystack/agrégateur) et peut cliquer « Confirmer » (remboursement auto immédiat) ou « Abandonner ».</div>' +
+        '</div>';
+    }
+    window.recalcAdminCancelRefundLive = recalcAdminCancelRefundLive;
+
+    async function submitAdminCancellationRefund() {
+      const subId = document.getElementById('cr-sub-select')?.value || '';
+      if (!subId) return;
+      const scope = document.getElementById('cr-scope-select')?.value || 'full_cancel';
+      const payload = {
+        subscriptionId: subId,
+        cancelScope: scope,
+        paymentReference: document.getElementById('cr-tx-select')?.value || '',
+        customPaidAmount: Number(document.getElementById('cr-paid-amount')?.value || 0),
+        customConsumedDeduction: Number(document.getElementById('cr-consumed-amount')?.value || 0),
+        customGatewayFee: Number(document.getElementById('cr-fee-amount')?.value || 0),
+        restorePaidMb: scope === 'revert_upgrade' ? Number(document.getElementById('cr-restore-mb')?.value || 0) : 0,
+        restoreMonthlyPrice: scope === 'revert_upgrade' ? Number(document.getElementById('cr-restore-price')?.value || 0) : 0,
+        retentionDays: Number(document.getElementById('cr-retention-days')?.value || 14),
+        adminNotes: String(document.getElementById('cr-admin-notes')?.value || '').trim()
+      };
+      const btn = document.getElementById('cr-submit-btn');
+      if (btn) { btn.disabled = true; btn.textContent = '⏳ Envoi notification + email...'; }
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/cancellation-refunds/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Erreur envoi proposition');
+        showToast('✅ Proposition d annulation & remboursement envoyée ! Notification + email envoyés.');
+        document.getElementById('cr-admin-notes').value = '';
+        await loadAdminCancellationRefunds();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+      } finally {
+        if (btn) { btn.disabled = false; btn.textContent = '📩 Envoyer la proposition (Notification + Email)'; }
+      }
+    }
+    window.submitAdminCancellationRefund = submitAdminCancellationRefund;
+
+    function renderAdminCancelRefundHistory() {
+      const tbody = document.getElementById('cr-history-tbody');
+      const counter = document.getElementById('cr-history-counter');
+      if (!tbody) return;
+      if (counter) counter.textContent = adminCancelRefundRequests.length + ' demande' + (adminCancelRefundRequests.length > 1 ? 's' : '');
+      if (adminCancelRefundRequests.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" class="px-4 py-8 text-center text-slate-500">Aucune demande d annulation / remboursement enregistrée.</td></tr>';
+        return;
+      }
+      tbody.innerHTML = adminCancelRefundRequests.map(function(r) {
+        const rid = escapeHtml(r.id);
+        const isRev = r.cancel_scope === 'revert_upgrade';
+        const stBadge = r.status === 'refunded'
+          ? '<span class="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black">✅ Remboursé</span>'
+          : (r.status === 'refund_processing'
+            ? '<span class="px-2 py-0.5 rounded-full bg-sky-500/20 text-sky-300 border border-sky-500/40 text-[10px] font-black">🔄 Remb. auto en cours</span>'
+            : (r.status === 'pending_confirmation'
+              ? '<span class="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black">⏳ Attente confirmation client</span>'
+              : (r.status === 'manual_refund_required'
+                ? '<span class="px-2 py-0.5 rounded-full bg-rose-500/20 text-rose-300 border border-rose-500/40 text-[10px] font-black">⚠️ Relance / Manuel requis</span>'
+                : (r.status === 'abandoned_by_user'
+                  ? '<span class="px-2 py-0.5 rounded-full bg-slate-700 text-slate-300 text-[10px] font-bold">⚪ Abandonné par client</span>'
+                  : '<span class="px-2 py-0.5 rounded-full bg-slate-800 text-slate-400 text-[10px] font-bold">' + escapeHtml(r.status) + '</span>'))));
+        const srvIcon = r.product_type === 'storage' ? '💾' : (r.product_type === 'ai' ? '🤖' : '📱');
+        const needsRetry = r.status === 'manual_refund_required' || r.status === 'refund_processing';
+
+        return '<tr class="hover:bg-slate-900/50">' +
+          '<td data-label="Utilisateur" class="px-3 py-2.5"><div><div class="font-bold text-white">' + escapeHtml(r.user_name || r.user_id) + '</div><div class="text-[10px] text-slate-400">' + escapeHtml(r.user_email || '') + '</div></div></td>' +
+          '<td data-label="Service" class="px-3 py-2.5"><div><div class="font-bold text-white">' + srvIcon + ' ' + escapeHtml(r.plan_name || r.product_type) + '</div><div class="text-[10px] text-sky-300">' + (isRev ? ('↩️ Retour : ' + escapeHtml(r.restore_plan_name || fmtMbShortAdmin(r.restore_paid_mb))) : '❌ Annulation totale') + '</div></div></td>' +
+          '<td data-label="Détail calcul" class="px-3 py-2.5 font-mono text-[10.5px]"><div>Payé : ' + Math.round(Number(r.paid_amount || 0)).toLocaleString('fr-FR') + ' · Cons. : −' + Math.round(Number(r.consumed_deduction_amount || 0)).toLocaleString('fr-FR') + ' · Frais : −' + Math.round(Number(r.gateway_fee_amount || 0)).toLocaleString('fr-FR') + '</div>' + (r.refund_error ? '<div class="text-rose-400 text-[9.5px] mt-0.5">⚠️ ' + escapeHtml(r.refund_error) + '</div>' : '') + '</td>' +
+          '<td data-label="Net remboursé" class="px-3 py-2.5 font-mono font-black text-emerald-300">' + Math.round(Number(r.net_refund_amount || 0)).toLocaleString('fr-FR') + ' ' + escapeHtml(r.currency || 'XOF') + '</td>' +
+          '<td data-label="Statut" class="px-3 py-2.5">' + stBadge + '</td>' +
+          '<td data-label="Actions" class="px-3 py-2.5 text-right whitespace-nowrap"><div class="inline-flex items-center gap-1 justify-end flex-wrap">' +
+            (needsRetry ? '<button type="button" onclick="retryAdminCancelRefund(&quot;' + rid + '&quot;, &quot;auto&quot;)" class="px-2 py-1 rounded-lg bg-sky-600/25 hover:bg-sky-600/40 border border-sky-500/40 text-sky-200 text-[10px] font-bold cursor-pointer" title="Relancer le remboursement automatique">⚡ Relancer</button>' : '') +
+            (needsRetry ? '<button type="button" onclick="retryAdminCancelRefund(&quot;' + rid + '&quot;, &quot;manual&quot;)" class="px-2 py-1 rounded-lg bg-emerald-600/25 hover:bg-emerald-600/40 border border-emerald-500/40 text-emerald-200 text-[10px] font-bold cursor-pointer" title="Marquer remboursé manuellement">✅ Manuel</button>' : '') +
+            '<button type="button" onclick="deleteAdminCancelRefund(&quot;' + rid + '&quot;)" class="px-2 py-1 rounded-lg bg-rose-500/15 hover:bg-rose-500/30 border border-rose-500/35 text-rose-300 text-[10px] font-bold cursor-pointer" title="Supprimer">🗑️</button>' +
+          '</div></td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    async function retryAdminCancelRefund(reqId, mode) {
+      try {
+        const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/cancellation-refunds/' + encodeURIComponent(reqId) + '/retry-refund', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mode: mode })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) || 'Échec relance remboursement');
+        showToast(mode === 'manual' ? '✅ Remboursement marqué comme effectué manuellement.' : '⚡ Remboursement automatique relancé avec succès !');
+        await loadAdminCancellationRefunds();
+      } catch (err) {
+        showToast('⚠️ ' + (err.message || err));
+        await loadAdminCancellationRefunds();
+      }
+    }
+    window.retryAdminCancelRefund = retryAdminCancelRefund;
+
+    function deleteAdminCancelRefund(reqId) {
+      openAdminConfirmModal({
+        title: '🗑️ Supprimer cette demande de remboursement',
+        message: 'Retirer définitivement cette ligne de suivi des annulations & remboursements ?',
+        confirmText: '🗑️ Supprimer',
+        onConfirm: async function() {
+          try {
+            const resp = await fetch(BILLING_API_ORIGIN + '/api/admin/billing/cancellation-refunds/' + encodeURIComponent(reqId), { method: 'DELETE' });
+            const data = await resp.json();
+            if (!data || !data.success) throw new Error((data && data.error) || 'Erreur');
+            showToast('🗑️ Demande supprimée.');
+            await loadAdminCancellationRefunds();
+          } catch (err) {
+            showToast('⚠️ ' + (err.message || err));
+          }
+        }
+      });
+    }
+    window.deleteAdminCancelRefund = deleteAdminCancelRefund;
 
     window.addEventListener('focus', () => {
       smartAutoRefresh();

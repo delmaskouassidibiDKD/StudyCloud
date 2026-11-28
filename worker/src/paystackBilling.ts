@@ -1054,6 +1054,7 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
     "ALTER TABLE payment_transactions ADD COLUMN master_action TEXT DEFAULT ''",
     'ALTER TABLE payment_transactions ADD COLUMN prorata_credit_amount REAL DEFAULT 0',
     "ALTER TABLE payment_transactions ADD COLUMN downgrade_request_id TEXT DEFAULT ''",
+    'ALTER TABLE payment_transactions ADD COLUMN gateway_fee_amount REAL DEFAULT 0',
   ]) {
     try {
       await db.prepare(sql).run();
@@ -1455,6 +1456,58 @@ export async function ensurePaystackBillingTables(db: any): Promise<void> {
   `).run().catch(() => {});
   await db.prepare(
     'CREATE INDEX IF NOT EXISTS idx_storage_downgrade_user ON storage_downgrade_requests(user_id, status, created_at)'
+  ).run().catch(() => {});
+
+  // 14. Propositions d'annulation & remboursement net automatique (Annulation totale OU retour au forfait précédent)
+  await db.prepare(`
+    CREATE TABLE IF NOT EXISTS subscription_cancellation_refunds (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_name TEXT DEFAULT '',
+      user_email TEXT DEFAULT '',
+      user_phone TEXT DEFAULT '',
+      subscription_id TEXT NOT NULL,
+      product_type TEXT NOT NULL,
+      app_key TEXT DEFAULT '',
+      app_name TEXT DEFAULT '',
+      plan_name TEXT DEFAULT '',
+      cancel_scope TEXT DEFAULT 'full_cancel',
+      payment_reference TEXT DEFAULT '',
+      payment_network_label TEXT DEFAULT '',
+      payment_channel TEXT DEFAULT '',
+      paid_amount REAL NOT NULL DEFAULT 0,
+      consumed_deduction_amount REAL NOT NULL DEFAULT 0,
+      gateway_fee_amount REAL NOT NULL DEFAULT 0,
+      gateway_fee_source TEXT DEFAULT 'exact',
+      net_refund_amount REAL NOT NULL DEFAULT 0,
+      currency TEXT DEFAULT 'XOF',
+      days_used INTEGER DEFAULT 0,
+      duration_days INTEGER DEFAULT 30,
+      credits_consumed REAL DEFAULT 0,
+      credits_total REAL DEFAULT 0,
+      restore_paid_mb REAL DEFAULT 0,
+      restore_monthly_price REAL DEFAULT 0,
+      restore_plan_name TEXT DEFAULT '',
+      retention_days INTEGER DEFAULT 14,
+      excess_bytes_preview INTEGER DEFAULT 0,
+      status TEXT DEFAULT 'pending_confirmation',
+      refund_mode TEXT DEFAULT 'auto_paystack',
+      paystack_refund_id TEXT DEFAULT '',
+      paystack_refund_status TEXT DEFAULT '',
+      refund_error TEXT DEFAULT '',
+      admin_notes TEXT DEFAULT '',
+      confirmed_at TEXT DEFAULT NULL,
+      refunded_at TEXT DEFAULT NULL,
+      abandoned_at TEXT DEFAULT NULL,
+      created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+      updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )
+  `).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_sub_cancel_refund_user ON subscription_cancellation_refunds(user_id, status, created_at)'
+  ).run().catch(() => {});
+  await db.prepare(
+    'CREATE INDEX IF NOT EXISTS idx_sub_cancel_refund_ref ON subscription_cancellation_refunds(payment_reference, status)'
   ).run().catch(() => {});
 
   ensuredDbSet.add(db);
@@ -2816,6 +2869,405 @@ export async function purgeUserPaidOverflowFiles(
 }
 
 // ============================================================================
+// CALCUL EXACT DES FRAIS RÉSEAU/CARTE & REMBOURSEMENT AUTOMATIQUE PARTIEL
+// ============================================================================
+
+export async function extractExactGatewayFeeFromTx(
+  db: any,
+  txRow: any,
+  rawEnv?: Record<string, any>,
+  fetchFn?: typeof fetch
+): Promise<{ feeMajor: number; source: 'exact' | 'estimated'; feeRatePct: number }> {
+  const paidMajor = Math.max(0, Number(txRow?.paid_amount || txRow?.expected_amount || 0));
+  if (paidMajor <= 0) {
+    return { feeMajor: 0, source: 'exact', feeRatePct: 0 };
+  }
+
+  // 1. Déjà indexé dans payment_transactions.gateway_fee_amount
+  const cachedFee = Number(txRow?.gateway_fee_amount || 0);
+  if (Number.isFinite(cachedFee) && cachedFee > 0) {
+    return {
+      feeMajor: Math.ceil(cachedFee),
+      source: 'exact',
+      feeRatePct: Math.round((cachedFee / paidMajor) * 10000) / 100,
+    };
+  }
+
+  // 2. Lire le champ officiel `fees` (en sous-unités ×100) dans `raw_verify_json`
+  if (txRow?.raw_verify_json) {
+    try {
+      const parsed = JSON.parse(String(txRow.raw_verify_json));
+      const feesMinor = Number(parsed?.fees || 0);
+      if (Number.isFinite(feesMinor) && feesMinor > 0) {
+        const feeMajor = Math.ceil(feesMinor / 100);
+        if (db && txRow.reference) {
+          await db
+            .prepare('UPDATE payment_transactions SET gateway_fee_amount = ? WHERE reference = ?')
+            .bind(feeMajor, String(txRow.reference))
+            .run()
+            .catch(() => {});
+        }
+        return {
+          feeMajor,
+          source: 'exact',
+          feeRatePct: Math.round((feeMajor / paidMajor) * 10000) / 100,
+        };
+      }
+    } catch {}
+  }
+
+  // 3. Requête directe Paystack /transaction/verify/:ref si disponible pour obtenir le montant exact au franc près
+  const secretKey = rawEnv ? getPaystackSecretKey(rawEnv) : '';
+  const ref = String(txRow?.reference || '').trim();
+  if (secretKey && ref && String(txRow?.provider || 'paystack') === 'paystack' && fetchFn) {
+    try {
+      const psRes = await fetchFn(`${PAYSTACK_API_BASE}/transaction/verify/${encodeURIComponent(ref)}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${secretKey}` },
+      });
+      const psJson: any = await psRes.json().catch(() => null);
+      const feesMinor = Number(psJson?.data?.fees || 0);
+      if (psRes.ok && psJson?.status && Number.isFinite(feesMinor) && feesMinor > 0) {
+        const feeMajor = Math.ceil(feesMinor / 100);
+        if (db) {
+          await db
+            .prepare('UPDATE payment_transactions SET gateway_fee_amount = ? WHERE reference = ?')
+            .bind(feeMajor, ref)
+            .run()
+            .catch(() => {});
+        }
+        return {
+          feeMajor,
+          source: 'exact',
+          feeRatePct: Math.round((feeMajor / paidMajor) * 10000) / 100,
+        };
+      }
+    } catch {}
+  }
+
+  // 4. Estimation de secours selon le canal (Côte d'Ivoire XOF : ~1.95%-2% Mobile Money, ~3.2%-3.8% Carte)
+  const channel = String(txRow?.channel || '').toLowerCase();
+  const net = String(txRow?.network_label || '').toLowerCase();
+  const isCard = channel === 'card' || net.includes('visa') || net.includes('master') || net.includes('carte');
+  const ratePct = isCard ? 3.5 : 2.0;
+  const est = Math.ceil((paidMajor * ratePct) / 100);
+  return { feeMajor: est, source: 'estimated', feeRatePct: ratePct };
+}
+
+export async function computeCancellationRefundCalculation(params: {
+  db: any;
+  rawEnv: Record<string, any>;
+  fetchFn: typeof fetch;
+  subscriptionId: string;
+  cancelScope?: 'full_cancel' | 'revert_upgrade';
+  paymentReference?: string;
+  restorePaidMb?: number;
+  restoreMonthlyPrice?: number;
+}): Promise<{ ok: true; preview: any } | { ok: false; error: string }> {
+  const { db, rawEnv, fetchFn, subscriptionId } = params;
+  const sub: any = await db
+    .prepare('SELECT * FROM active_subscriptions WHERE id = ? LIMIT 1')
+    .bind(subscriptionId)
+    .first()
+    .catch(() => null);
+  if (!sub) return { ok: false, error: 'Abonnement introuvable.' };
+
+  const userId = String(sub.user_id);
+  const productType = String(sub.product_type || 'storage') as PaymentProductType;
+  const cancelScope: 'full_cancel' | 'revert_upgrade' =
+    params.cancelScope === 'revert_upgrade' && productType === 'storage' ? 'revert_upgrade' : 'full_cancel';
+
+  // Transactions payées récentes de cet utilisateur pour ce service
+  const txListRes = await db
+    .prepare(
+      `SELECT id, reference, product_type, product_id, product_name, app_key, paid_amount, expected_amount,
+              currency, provider, channel, network_label, gateway_fee_amount, raw_verify_json,
+              granted_storage_mb, target_storage_mb, recurring_price_amount, master_action,
+              granted_ai_credits, duration_days, fulfilled_at, created_at
+       FROM payment_transactions
+       WHERE user_id = ? AND product_type = ? AND status = 'paid'
+       ORDER BY COALESCE(fulfilled_at, created_at) DESC
+       LIMIT 15`
+    )
+    .bind(userId, productType)
+    .all()
+    .catch(() => ({ results: [] }));
+
+  const paidTransactions: any[] = txListRes.results || [];
+  let selectedTx: any = null;
+  if (params.paymentReference) {
+    selectedTx =
+      paidTransactions.find((t) => String(t.reference) === String(params.paymentReference)) ||
+      (await db
+        .prepare('SELECT * FROM payment_transactions WHERE reference = ? AND user_id = ? LIMIT 1')
+        .bind(String(params.paymentReference), userId)
+        .first()
+        .catch(() => null));
+  }
+  if (!selectedTx && sub.last_transaction_ref) {
+    selectedTx = paidTransactions.find((t) => String(t.reference) === String(sub.last_transaction_ref)) || null;
+  }
+  if (!selectedTx && paidTransactions.length > 0) {
+    selectedTx = paidTransactions[0];
+  }
+
+  const paidAmount = Math.max(
+    0,
+    Math.round(Number(selectedTx?.paid_amount || selectedTx?.expected_amount || sub.price_amount || 0))
+  );
+  const currency = String(selectedTx?.currency || sub.currency || 'XOF').toUpperCase();
+  const durationDays = Math.max(1, Number(selectedTx?.duration_days || sub.duration_days || 30));
+
+  // Calcul exact des frais bancaires / réseau prélevés sur cette transaction
+  const feeInfo = selectedTx
+    ? await extractExactGatewayFeeFromTx(db, selectedTx, rawEnv, fetchFn)
+    : { feeMajor: Math.ceil((paidAmount * 2.0) / 100), source: 'estimated' as const, feeRatePct: 2.0 };
+
+  const nowMs = Date.now();
+  const baseDateRaw =
+    cancelScope === 'revert_upgrade'
+      ? selectedTx?.fulfilled_at || selectedTx?.created_at || sub.current_period_start
+      : sub.current_period_start || selectedTx?.fulfilled_at || sub.started_at;
+  const startMs = parseSqliteDateMs(baseDateRaw, nowMs);
+  const elapsedMs = Math.max(0, nowMs - startMs);
+  const daysUsed = Math.min(durationDays, Math.floor(elapsedMs / (24 * 60 * 60 * 1000)));
+
+  let consumedDeduction = 0;
+  let creditsTotal = 0;
+  let creditsConsumed = 0;
+
+  if (productType === 'ai') {
+    creditsTotal = Math.max(0, Number(selectedTx?.granted_ai_credits || sub.granted_ai_credits || 0));
+    const aiRow: any = await db
+      .prepare('SELECT purchased_remaining, credits_balance FROM user_ai_credits WHERE user_id = ? LIMIT 1')
+      .bind(userId)
+      .first()
+      .catch(() => null);
+    const purchasedRem = Math.max(0, Number(aiRow?.purchased_remaining ?? aiRow?.credits_balance ?? 0));
+    if (creditsTotal > 0) {
+      const remainingFromPack = Math.min(creditsTotal, purchasedRem);
+      creditsConsumed = Math.max(0, Math.round((creditsTotal - remainingFromPack) * 100) / 100);
+      const ratioConsumed = Math.min(1, creditsConsumed / creditsTotal);
+      consumedDeduction = Math.round(paidAmount * ratioConsumed);
+    } else {
+      consumedDeduction = Math.round((paidAmount * daysUsed) / durationDays);
+    }
+  } else {
+    consumedDeduction =
+      daysUsed <= 0 ? 0 : Math.min(paidAmount, Math.round((paidAmount * daysUsed) / durationDays));
+  }
+
+  const netRefundAmount = Math.max(0, Math.round(paidAmount - consumedDeduction - feeInfo.feeMajor));
+
+  // Pour revert_upgrade sur Stockage : déduire automatiquement le forfait précédent de l'utilisateur
+  let currentPaidMb = Math.max(0, Number(sub.granted_storage_mb || 0));
+  let suggestedRestorePaidMb = 0;
+  let suggestedRestoreMonthlyPrice = 0;
+  let suggestedRestorePlanName = '';
+  let overflowPreview: any = null;
+
+  const masterCfg = await readStorageMasterCardConfig(db);
+  const policy = await resolveEffectiveBillingPolicy(db, {
+    productType,
+    appKey: sub.app_key,
+    subscriptionId,
+  });
+
+  if (productType === 'storage') {
+    const uState = await readStorageMasterUserState(db, userId, masterCfg);
+    currentPaidMb = uState.paidMb;
+
+    if (cancelScope === 'revert_upgrade') {
+      // Chercher la transaction payée juste AVANT la transaction d'augmentation sélectionnée
+      const selIdx = selectedTx
+        ? paidTransactions.findIndex((t) => String(t.reference) === String(selectedTx.reference))
+        : 0;
+      const prevTx = selIdx >= 0 ? paidTransactions[selIdx + 1] : null;
+      const addedByUpgrade = Math.max(0, Number(selectedTx?.granted_storage_mb || 0));
+
+      if (params.restorePaidMb !== undefined && params.restorePaidMb !== null) {
+        suggestedRestorePaidMb = Math.max(0, Number(params.restorePaidMb));
+      } else if (prevTx && Number(prevTx.target_storage_mb || prevTx.granted_storage_mb || 0) > 0) {
+        suggestedRestorePaidMb = Math.max(0, Number(prevTx.target_storage_mb || prevTx.granted_storage_mb || 0));
+      } else if (addedByUpgrade > 0 && currentPaidMb > addedByUpgrade) {
+        suggestedRestorePaidMb = Math.max(0, currentPaidMb - addedByUpgrade);
+      } else {
+        suggestedRestorePaidMb = Math.max(0, Math.floor(currentPaidMb / 2));
+      }
+
+      if (params.restoreMonthlyPrice !== undefined && params.restoreMonthlyPrice !== null) {
+        suggestedRestoreMonthlyPrice = Math.max(0, Math.round(Number(params.restoreMonthlyPrice)));
+      } else if (prevTx && Number(prevTx.recurring_price_amount || prevTx.paid_amount || 0) > 0) {
+        suggestedRestoreMonthlyPrice = Math.round(Number(prevTx.recurring_price_amount || prevTx.paid_amount || 0));
+      } else if (suggestedRestorePaidMb > 0) {
+        suggestedRestoreMonthlyPrice = Math.max(
+          1,
+          Math.round((suggestedRestorePaidMb / Math.max(1, masterCfg.stepMb)) * masterCfg.pricePerStepFcfa)
+        );
+      }
+
+      suggestedRestorePlanName =
+        suggestedRestorePaidMb > 0
+          ? `Stockage ${formatStorageMbFr(suggestedRestorePaidMb)} (${suggestedRestoreMonthlyPrice.toLocaleString('fr-FR')} FCFA/mois)`
+          : 'Plan Étudiant Gratuit';
+    }
+
+    const rawOverflow = await analyzeUserStorageOverflow(db, userId);
+    const futureQuotaBytes =
+      cancelScope === 'revert_upgrade'
+        ? rawOverflow.freeQuotaBytes + Math.round(suggestedRestorePaidMb * 1024 * 1024)
+        : rawOverflow.freeQuotaBytes;
+    const futureExcessBytes = Math.max(0, rawOverflow.totalUsedBytes - futureQuotaBytes);
+    overflowPreview = {
+      usedBytes: rawOverflow.totalUsedBytes,
+      usedFormatted: rawOverflow.usedFormatted,
+      freeQuotaMb: rawOverflow.freeQuotaMb,
+      welcomeFormatted: rawOverflow.welcomeFormatted,
+      futureQuotaMb: Math.round((futureQuotaBytes / (1024 * 1024)) * 100) / 100,
+      excessBytes: futureExcessBytes,
+      excessFormatted: formatBytesShortFr(futureExcessBytes),
+      hasOverflow: futureExcessBytes > 0,
+      protectedFilesCount: rawOverflow.protectedFilesCount,
+      overflowFilesCount: cancelScope === 'full_cancel' ? rawOverflow.overflowFilesCount : 0,
+    };
+  }
+
+  return {
+    ok: true,
+    preview: {
+      subscriptionId: String(sub.id),
+      userId,
+      userName: String(sub.user_name || ''),
+      userEmail: String(sub.user_email || ''),
+      productType,
+      appKey: String(sub.app_key || ''),
+      appName: String(sub.app_name || ''),
+      planName: String(sub.plan_name || ''),
+      cancelScope,
+      paymentReference: String(selectedTx?.reference || ''),
+      paymentNetworkLabel: String(selectedTx?.network_label || sub.last_network_label || ''),
+      paymentChannel: String(selectedTx?.channel || sub.last_channel || ''),
+      paymentProvider: String(selectedTx?.provider || 'paystack'),
+      paidAmount,
+      currency,
+      daysUsed,
+      durationDays,
+      creditsTotal,
+      creditsConsumed,
+      consumedDeduction,
+      gatewayFeeAmount: feeInfo.feeMajor,
+      gatewayFeeSource: feeInfo.source,
+      gatewayFeeRatePct: feeInfo.feeRatePct,
+      netRefundAmount,
+      currentPaidMb,
+      suggestedRestorePaidMb,
+      suggestedRestoreMonthlyPrice,
+      suggestedRestorePlanName,
+      defaultRetentionDays: policy.dataRetentionGraceDays,
+      overflowPreview,
+      transactions: paidTransactions.map((t) => ({
+        reference: String(t.reference || ''),
+        productName: String(t.product_name || ''),
+        masterAction: String(t.master_action || ''),
+        paidAmount: Number(t.paid_amount || t.expected_amount || 0),
+        currency: String(t.currency || 'XOF'),
+        channel: String(t.channel || ''),
+        networkLabel: String(t.network_label || ''),
+        grantedStorageMb: Number(t.granted_storage_mb || 0),
+        targetStorageMb: Number(t.target_storage_mb || 0),
+        recurringPriceAmount: Number(t.recurring_price_amount || 0),
+        grantedAiCredits: Number(t.granted_ai_credits || 0),
+        fulfilledAt: t.fulfilled_at || t.created_at || null,
+      })),
+    },
+  };
+}
+
+async function triggerAutomaticPaystackRefund(params: {
+  rawEnv: Record<string, any>;
+  fetchFn: typeof fetch;
+  reference: string;
+  netRefundAmount: number;
+  currency: string;
+  customerNote: string;
+  merchantNote: string;
+}): Promise<{
+  ok: boolean;
+  status: 'refunded' | 'refund_processing' | 'manual_refund_required';
+  refundId: string;
+  paystackStatus: string;
+  error: string;
+}> {
+  const { rawEnv, fetchFn, reference, netRefundAmount, currency, customerNote, merchantNote } = params;
+  if (netRefundAmount <= 0) {
+    return {
+      ok: true,
+      status: 'refunded',
+      refundId: 'zero_net',
+      paystackStatus: 'processed',
+      error: '',
+    };
+  }
+  const secretKey = getPaystackSecretKey(rawEnv);
+  if (!secretKey || !reference) {
+    return {
+      ok: false,
+      status: 'manual_refund_required',
+      refundId: '',
+      paystackStatus: '',
+      error: !reference
+        ? 'Aucune référence de transaction en ligne associée (remboursement manuel requis).'
+        : 'Clé passerelle de paiement non configurée sur le serveur.',
+    };
+  }
+
+  // Règle officielle Paystack Create Refund : montant toujours en sous-unités (×100 y compris pour XOF)
+  const amountMinor = toPaystackAmountMinor(netRefundAmount);
+  try {
+    const resp = await fetchFn(`${PAYSTACK_API_BASE}/refund`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        transaction: reference,
+        amount: amountMinor,
+        currency: String(currency || 'XOF').toUpperCase(),
+        customer_note: customerNote.slice(0, 240),
+        merchant_note: merchantNote.slice(0, 240),
+      }),
+    });
+    const json: any = await resp.json().catch(() => null);
+    if (resp.ok && json?.status) {
+      const psSt = String(json?.data?.status || 'pending').toLowerCase();
+      return {
+        ok: true,
+        status: psSt === 'processed' ? 'refunded' : 'refund_processing',
+        refundId: String(json?.data?.id || ''),
+        paystackStatus: psSt,
+        error: '',
+      };
+    }
+    return {
+      ok: false,
+      status: 'manual_refund_required',
+      refundId: '',
+      paystackStatus: String(json?.data?.status || 'failed'),
+      error: String(json?.message || `Refus passerelle HTTP ${resp.status}`),
+    };
+  } catch (err: any) {
+    return {
+      ok: false,
+      status: 'manual_refund_required',
+      refundId: '',
+      paystackStatus: 'network_error',
+      error: String(err?.message || 'Erreur réseau lors du remboursement automatique.'),
+    };
+  }
+}
+
+// ============================================================================
 // LIVRAISON ATOMIQUE ANTI-DOUBLE CRÉDIT (STORAGE / AI / APPS)
 // ============================================================================
 
@@ -2907,6 +3359,12 @@ async function fulfillPaidTransaction(
       ''
   );
 
+  const rawGatewayFeesMinor = Number(paystackData?.fees || 0);
+  const gatewayFeeMajor =
+    Number.isFinite(rawGatewayFeesMinor) && rawGatewayFeesMinor > 0
+      ? Math.ceil(rawGatewayFeesMinor / 100)
+      : 0;
+
   // VERROU ATOMIQUE D1 : seul l'appel qui fait passer status de 'pending'/'failed' -> 'paid' livre la marchandise !
   const lockRes = await db
     .prepare(
@@ -2914,6 +3372,7 @@ async function fulfillPaidTransaction(
        SET status = 'paid',
            paid_amount = ?,
            paid_amount_minor = ?,
+           gateway_fee_amount = ?,
            channel = ?,
            network_label = ?,
            paystack_tx_id = ?,
@@ -2928,6 +3387,7 @@ async function fulfillPaidTransaction(
     .bind(
       paidMajor,
       paidMinor,
+      gatewayFeeMajor,
       channel,
       networkLabel,
       paystackTxId,
@@ -4867,11 +5327,41 @@ export async function handlePaystackBillingRoutes(
       ).trim();
 
       // Ne jamais bloquer d'abonnement suite au remboursement automatique de l'empreinte de liaison de carte (100 FCFA)
+      // NI suite à un remboursement légitime initié depuis StudyCloud (`subscription_cancellation_refunds`) !
       if (!disputeRef || disputeRef.startsWith('SC-CARD-')) {
         processingNote = disputeRef ? 'ignored_card_verification_refund' : 'dispute_or_refund_missing_ref';
       } else {
         const isRefund = eventType.startsWith('refund.');
         const nowIso = new Date().toISOString();
+
+        const legitCancelRefund: any = isRefund
+          ? await db
+              .prepare(
+                `SELECT * FROM subscription_cancellation_refunds
+                 WHERE payment_reference = ?
+                   AND status IN ('refund_processing', 'refunded', 'manual_refund_required')
+                 ORDER BY updated_at DESC LIMIT 1`
+              )
+              .bind(disputeRef)
+              .first()
+              .catch(() => null)
+          : null;
+
+        if (legitCancelRefund) {
+          await db
+            .prepare(
+              `UPDATE subscription_cancellation_refunds
+               SET status = 'refunded',
+                   paystack_refund_status = 'processed',
+                   refunded_at = COALESCE(refunded_at, ?),
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE id = ?`
+            )
+            .bind(nowIso, legitCancelRefund.id)
+            .run()
+            .catch(() => {});
+          processingNote = `legit_cancel_refund_processed:${legitCancelRefund.id}`;
+        } else {
         const reasonLabel = isRefund
           ? 'Remboursement Paystack effectué — accès suspendu'
           : 'Litige bancaire / Chargeback Paystack détecté';
@@ -4983,6 +5473,7 @@ export async function handlePaystackBillingRoutes(
           }
         } else {
           processingNote = `dispute_or_refund_unknown_ref:${disputeRef}`;
+        }
         }
       }
     }
@@ -6304,6 +6795,428 @@ export async function handlePaystackBillingRoutes(
         success: true,
         deliverySummary: `Réduction de stockage appliquée : ${prevLabel} → ${targetLabel}.`,
         subscription: updatedSub,
+      },
+      200,
+      origin
+    );
+  }
+
+  // --------------------------------------------------------------------------
+  // 16d. POST /api/billing/storage-downgrades/:id/abandon — L'utilisateur abandonne sa réduction (Anti-IDOR)
+  // --------------------------------------------------------------------------
+  const abandonDgMatch = path.match(/^\/api\/billing\/storage-downgrades\/([^/]+)\/abandon$/);
+  if (abandonDgMatch && method === 'POST') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const userId = String(authUser.userId);
+    const dgId = decodeURIComponent(abandonDgMatch[1]);
+    const dgRow: any = await db
+      .prepare("SELECT * FROM storage_downgrade_requests WHERE id = ? AND user_id = ? AND status = 'pending_payment' LIMIT 1")
+      .bind(dgId, userId)
+      .first()
+      .catch(() => null);
+    if (!dgRow) {
+      return errorResponse('Demande de réduction introuvable ou déjà traitée.', 404, origin);
+    }
+
+    await db
+      .prepare(
+        "UPDATE storage_downgrade_requests SET status = 'abandoned_by_user', updated_at = CURRENT_TIMESTAMP WHERE id = ? AND user_id = ?"
+      )
+      .bind(dgId, userId)
+      .run();
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: String(dgRow.subscription_id || ''),
+      userId,
+      eventType: 'storage_downgrade_abandoned',
+      actor: 'user',
+      details: { downgradeRequestId: dgId, keptPaidMb: dgRow.current_paid_mb },
+    });
+
+    await insertBillingInAppNotification(
+      db,
+      userId,
+      '↩️ Réduction de stockage abandonnée',
+      'Vous avez annulé la demande de réduction de stockage. Votre abonnement actuel reste actif sans aucun changement.',
+      dgId,
+      'billing_downgrade_abandoned'
+    );
+
+    return jsonResponse({ success: true, abandonedId: dgId, status: 'abandoned_by_user' }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 16e. ROUTES UTILISATEUR ANNULATION & REMBOURSEMENT AUTOMATIQUE (Anti-IDOR)
+  // GET /api/billing/cancellation-refunds
+  // POST /api/billing/cancellation-refunds/:id/abandon
+  // POST /api/billing/cancellation-refunds/:id/confirm
+  // --------------------------------------------------------------------------
+  if (path === '/api/billing/cancellation-refunds' && method === 'GET') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const userId = String(authUser.userId);
+    const res = await db
+      .prepare('SELECT * FROM subscription_cancellation_refunds WHERE user_id = ? ORDER BY created_at DESC LIMIT 30')
+      .bind(userId)
+      .all()
+      .catch(() => ({ results: [] }));
+    return jsonResponse({ success: true, requests: res.results || [] }, 200, origin);
+  }
+
+  const abandonCrMatch = path.match(/^\/api\/billing\/cancellation-refunds\/([^/]+)\/abandon$/);
+  if (abandonCrMatch && method === 'POST') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const userId = String(authUser.userId);
+    const crId = decodeURIComponent(abandonCrMatch[1]);
+    const nowIso = new Date().toISOString();
+    const lockRes: any = await db
+      .prepare(
+        `UPDATE subscription_cancellation_refunds
+         SET status = 'abandoned_by_user', abandoned_at = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND user_id = ? AND status = 'pending_confirmation'`
+      )
+      .bind(nowIso, crId, userId)
+      .run();
+    if (Number(lockRes?.meta?.changes || 0) === 0) {
+      return errorResponse('Proposition introuvable ou déjà traitée.', 404, origin);
+    }
+
+    const row: any = await db
+      .prepare('SELECT * FROM subscription_cancellation_refunds WHERE id = ? LIMIT 1')
+      .bind(crId)
+      .first()
+      .catch(() => null);
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: String(row?.subscription_id || ''),
+      userId,
+      eventType: 'cancellation_refund_abandoned',
+      actor: 'user',
+      details: { cancelRefundId: crId },
+    });
+
+    await insertBillingInAppNotification(
+      db,
+      userId,
+      '✅ Processus d’annulation abandonné',
+      'Vous avez choisi d’abandonner la demande d’annulation et de remboursement. Votre abonnement actuel continue normalement sans aucune interruption.',
+      crId,
+      'billing_cancel_abandoned'
+    );
+
+    return jsonResponse({ success: true, abandonedId: crId, status: 'abandoned_by_user' }, 200, origin);
+  }
+
+  const confirmCrMatch = path.match(/^\/api\/billing\/cancellation-refunds\/([^/]+)\/confirm$/);
+  if (confirmCrMatch && method === 'POST') {
+    const authUser = await getAuthUser(request);
+    if (!authUser?.userId) {
+      return errorResponse('Authentification requise.', 401, origin);
+    }
+    const userId = String(authUser.userId);
+    const crId = decodeURIComponent(confirmCrMatch[1]);
+    const nowIso = new Date().toISOString();
+
+    // Verrou atomique anti-double remboursement
+    const lockRes: any = await db
+      .prepare(
+        `UPDATE subscription_cancellation_refunds
+         SET status = 'refund_processing', confirmed_at = ?, updated_at = CURRENT_TIMESTAMP
+         WHERE id = ? AND user_id = ? AND status = 'pending_confirmation'`
+      )
+      .bind(nowIso, crId, userId)
+      .run();
+    if (Number(lockRes?.meta?.changes || 0) === 0) {
+      return errorResponse('Cette proposition d’annulation a déjà été confirmée ou abandonnée.', 409, origin);
+    }
+
+    const cr: any = await db
+      .prepare('SELECT * FROM subscription_cancellation_refunds WHERE id = ? LIMIT 1')
+      .bind(crId)
+      .first();
+    if (!cr) return errorResponse('Proposition introuvable.', 404, origin);
+
+    const subId = String(cr.subscription_id || '');
+    const productType = String(cr.product_type || 'storage');
+    const isRevert = String(cr.cancel_scope || 'full_cancel') === 'revert_upgrade' && productType === 'storage';
+    const retentionDays = Math.max(1, Math.min(365, Number(cr.retention_days || 14)));
+    let hasOverflow = false;
+    let purgeDeadlineIso: string | null = null;
+    let excessFormatted = '0 o';
+    let restorePlanLabel = String(cr.restore_plan_name || '');
+
+    // 1. Appliquer immédiatement la modification d'abonnement / quota
+    if (isRevert) {
+      const restoreMb = Math.max(0, Number(cr.restore_paid_mb || 0));
+      const restorePrice = Math.max(0, Number(cr.restore_monthly_price || 0));
+      const nextPlanName =
+        restoreMb > 0 ? `Stockage ${formatStorageMbFr(restoreMb)}` : 'Plan Étudiant Gratuit';
+      if (!restorePlanLabel) {
+        restorePlanLabel =
+          restoreMb > 0
+            ? `${nextPlanName} (${Math.round(restorePrice).toLocaleString('fr-FR')} FCFA/mois)`
+            : 'Plan Étudiant Gratuit';
+      }
+
+      const curQuota: any = await db
+        .prepare('SELECT welcome_total_mb FROM user_storage_quotas WHERE user_id = ? LIMIT 1')
+        .bind(userId)
+        .first()
+        .catch(() => null);
+      const wTotal = curQuota ? Number(curQuota.welcome_total_mb ?? 100) : 100;
+
+      await db
+        .prepare(
+          `INSERT INTO user_storage_quotas (
+             user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb,
+             paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name, updated_at
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+           ON CONFLICT(user_id) DO UPDATE SET
+             paid_total_mb = excluded.paid_total_mb,
+             paid_r2_mb = excluded.paid_r2_mb,
+             paid_d1_mb = excluded.paid_d1_mb,
+             plan_name = excluded.plan_name,
+             updated_at = CURRENT_TIMESTAMP`
+        )
+        .bind(
+          userId,
+          wTotal,
+          Math.round(wTotal / 3),
+          Math.round((wTotal * 2) / 3),
+          restoreMb,
+          Math.round(restoreMb / 2),
+          Math.round(restoreMb / 2),
+          nextPlanName
+        )
+        .run()
+        .catch(() => {});
+
+      await db
+        .prepare(
+          `UPDATE active_subscriptions
+           SET status = CASE WHEN ? > 0 THEN 'active' ELSE 'cancelled' END,
+               plan_name = ?,
+               price_amount = ?,
+               granted_storage_mb = ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND user_id = ?`
+        )
+        .bind(restoreMb, nextPlanName, restorePrice, restoreMb, subId, userId)
+        .run()
+        .catch(() => {});
+
+      await db
+        .prepare(
+          `UPDATE user_subscriptions
+           SET plan_name = ?, total_storage_mb = ?, monthly_price = ?, updated_at = CURRENT_TIMESTAMP
+           WHERE user_id = ? AND status = 'active'`
+        )
+        .bind(nextPlanName, wTotal + restoreMb, restorePrice, userId)
+        .run()
+        .catch(() => {});
+    } else {
+      // Annulation TOTALE du service (storage / app / ai)
+      let excessBytes = 0;
+      if (productType === 'storage') {
+        const overflow = await analyzeUserStorageOverflow(db, userId);
+        excessBytes = overflow.excessBytes;
+        hasOverflow = excessBytes > 0;
+        excessFormatted = overflow.excessFormatted;
+        if (hasOverflow) {
+          purgeDeadlineIso = new Date(Date.now() + retentionDays * 86400 * 1000).toISOString();
+        }
+        await db
+          .prepare(
+            "UPDATE user_storage_quotas SET paid_total_mb = 0, paid_r2_mb = 0, paid_d1_mb = 0, plan_name = 'gratuit', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?"
+          )
+          .bind(userId)
+          .run()
+          .catch(() => {});
+        await db
+          .prepare(
+            "UPDATE user_subscriptions SET status = 'cancelled', cancelled_at = ?, is_blocked = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND status = 'active'"
+          )
+          .bind(nowIso, userId)
+          .run()
+          .catch(() => {});
+      } else if (productType === 'app' && cr.app_key) {
+        await db
+          .prepare(
+            "UPDATE user_app_entitlements SET status = 'revoked', auto_renew = 0, updated_at = CURRENT_TIMESTAMP WHERE user_id = ? AND app_key = ?"
+          )
+          .bind(userId, cr.app_key)
+          .run()
+          .catch(() => {});
+      } else if (productType === 'ai') {
+        const unconsumedCredits = Math.max(
+          0,
+          Number(cr.credits_total || 0) - Number(cr.credits_consumed || 0)
+        );
+        if (unconsumedCredits > 0) {
+          await db
+            .prepare(
+              `UPDATE user_ai_credits
+               SET purchased_remaining = MAX(0, COALESCE(purchased_remaining, 0) - ?),
+                   credits_balance = MAX(0, COALESCE(gift_remaining, 0) + MAX(0, COALESCE(purchased_remaining, 0) - ?)),
+                   remaining_credits = MAX(0, COALESCE(gift_remaining, 0) + MAX(0, COALESCE(purchased_remaining, 0) - ?)),
+                   updated_at = CURRENT_TIMESTAMP
+               WHERE user_id = ?`
+            )
+            .bind(unconsumedCredits, unconsumedCredits, unconsumedCredits, userId)
+            .run()
+            .catch(() => {});
+        }
+      }
+
+      await db
+        .prepare(
+          `UPDATE active_subscriptions
+           SET status = 'cancelled',
+               renewal_mode = 'manual',
+               cancel_at_period_end = 0,
+               cancelled_at = ?,
+               cancel_reason = 'Annulation avec remboursement confirmée par l’utilisateur',
+               data_retention_days = ?,
+               data_purge_deadline_at = ?,
+               excess_bytes_at_cancel = ?,
+               data_purged_at = NULL,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ? AND user_id = ?`
+        )
+        .bind(nowIso, hasOverflow ? retentionDays : null, purgeDeadlineIso, excessBytes, subId, userId)
+        .run()
+        .catch(() => {});
+    }
+
+    // 2. Déclencher le remboursement PARTIEL AUTOMATIQUE (montant net après déduction consommation + frais bancaires exacts)
+    const netRefund = Math.max(0, Math.round(Number(cr.net_refund_amount || 0)));
+    const refundOutcome = await triggerAutomaticPaystackRefund({
+      rawEnv,
+      fetchFn,
+      reference: String(cr.payment_reference || ''),
+      netRefundAmount: netRefund,
+      currency: String(cr.currency || 'XOF'),
+      customerNote: isRevert
+        ? `Remboursement suite au retour au forfait initial (${restorePlanLabel})`
+        : `Remboursement suite à l'annulation de ${cr.plan_name || 'votre abonnement'}`,
+      merchantNote: `StudyCloud ${isRevert ? 'revert_upgrade' : 'full_cancel'} ${crId} (user ${userId})`,
+    });
+
+    await db
+      .prepare(
+        `UPDATE subscription_cancellation_refunds
+         SET status = ?,
+             paystack_refund_id = ?,
+             paystack_refund_status = ?,
+             refund_error = ?,
+             refunded_at = CASE WHEN ? = 'refunded' THEN ? ELSE refunded_at END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      )
+      .bind(
+        refundOutcome.status,
+        refundOutcome.refundId,
+        refundOutcome.paystackStatus,
+        refundOutcome.error,
+        refundOutcome.status,
+        nowIso,
+        crId
+      )
+      .run();
+
+    await recordSubscriptionEvent(db, {
+      subscriptionId: subId,
+      userId,
+      eventType: isRevert ? 'upgrade_reverted_refunded' : 'cancelled_with_refund',
+      actor: 'user',
+      details: {
+        cancelRefundId: crId,
+        cancelScope: cr.cancel_scope,
+        netRefundAmount: netRefund,
+        refundStatus: refundOutcome.status,
+        paystackRefundId: refundOutcome.refundId || null,
+        restorePlanLabel: isRevert ? restorePlanLabel : null,
+      },
+    });
+
+    const refundStatusLabel =
+      refundOutcome.status === 'refunded'
+        ? 'Remboursement validé automatiquement'
+        : refundOutcome.status === 'refund_processing'
+        ? 'Remboursement automatique en cours de traitement bancaire/mobile'
+        : 'Annulation confirmée — remboursement pris en charge par notre service financier';
+
+    await insertBillingInAppNotification(
+      db,
+      userId,
+      isRevert
+        ? `✅ Retour au forfait initial & remboursement de ${netRefund.toLocaleString('fr-FR')} FCFA`
+        : `✅ Annulation confirmée — Remboursement de ${netRefund.toLocaleString('fr-FR')} FCFA`,
+      `${refundStatusLabel}.${hasOverflow ? ` Vous disposez de ${retentionDays} jour(s) pour récupérer vos ${excessFormatted} dépassant le quota gratuit (vos premiers fichiers gratuits restent protégés).` : ''}`,
+      crId,
+      'billing_cancel_refund_confirmed'
+    );
+
+    const subRow: any = await db
+      .prepare('SELECT * FROM active_subscriptions WHERE id = ? LIMIT 1')
+      .bind(subId)
+      .first()
+      .catch(() => null);
+
+    await sendAndLogBillingEmail({
+      db,
+      rawEnv,
+      fetchFn,
+      subscription: subRow || {
+        id: subId,
+        user_id: userId,
+        user_name: cr.user_name,
+        user_email: cr.user_email,
+        product_type: productType,
+        app_key: cr.app_key,
+        app_name: cr.app_name,
+        plan_name: cr.plan_name,
+        currency: cr.currency || 'XOF',
+      },
+      emailType: 'cancellation_refund_confirmed',
+      triggeredBy: 'system',
+      reference: String(cr.payment_reference || ''),
+      extraData: {
+        cancelScope: cr.cancel_scope,
+        netRefundAmount: netRefund,
+        restorePlanLabel,
+        refundStatusLabel,
+        hasOverflow,
+        retentionDays,
+        purgeDeadlineIso,
+        excessFormatted,
+      },
+      recordEventFn: recordSubscriptionEvent,
+    }).catch(() => {});
+
+    const updatedRow = await db
+      .prepare('SELECT * FROM subscription_cancellation_refunds WHERE id = ? LIMIT 1')
+      .bind(crId)
+      .first();
+
+    return jsonResponse(
+      {
+        success: true,
+        request: updatedRow,
+        refundOutcome,
+        hasOverflow,
+        purgeDeadlineIso,
+        message: isRevert
+          ? `Retour sur ${restorePlanLabel} appliqué ! Remboursement net de ${netRefund.toLocaleString('fr-FR')} FCFA lancé.`
+          : `Abonnement annulé ! Remboursement net de ${netRefund.toLocaleString('fr-FR')} FCFA lancé.`,
       },
       200,
       origin
@@ -8051,6 +8964,325 @@ export async function handlePaystackBillingRoutes(
     const deletedCount = Number(delRes?.meta?.changes || 0);
     if (deletedCount === 0) return errorResponse('Demande de réduction introuvable.', 404, origin);
     return jsonResponse({ success: true, deletedId: reqId, deletedCount }, 200, origin);
+  }
+
+  // --------------------------------------------------------------------------
+  // 20f. ADMIN — ANNULATIONS & REMBOURSEMENTS NETS AUTOMATIQUES (STOCKAGE / IA / APPS)
+  // --------------------------------------------------------------------------
+  if (path === '/api/admin/billing/cancellation-refunds' && method === 'GET') {
+    const [reqsRes, subsRes] = await Promise.all([
+      db
+        .prepare('SELECT * FROM subscription_cancellation_refunds ORDER BY created_at DESC LIMIT 200')
+        .all()
+        .catch(() => ({ results: [] })),
+      db
+        .prepare(
+          `SELECT * FROM active_subscriptions
+           WHERE status IN ('active', 'trial', 'grace', 'past_due')
+           ORDER BY updated_at DESC LIMIT 250`
+        )
+        .all()
+        .catch(() => ({ results: [] })),
+    ]);
+
+    return jsonResponse(
+      {
+        success: true,
+        requests: reqsRes.results || [],
+        eligibleSubscriptions: (subsRes.results || []).map((s: any) => ({
+          id: String(s.id),
+          userId: String(s.user_id || ''),
+          userName: String(s.user_name || ''),
+          userEmail: String(s.user_email || ''),
+          userPhone: String(s.user_phone || ''),
+          productType: String(s.product_type || 'storage'),
+          appKey: String(s.app_key || ''),
+          appName: String(s.app_name || ''),
+          planName: String(s.plan_name || ''),
+          status: String(s.status || 'active'),
+          priceAmount: Number(s.price_amount || 0),
+          currency: String(s.currency || 'XOF'),
+          grantedStorageMb: Number(s.granted_storage_mb || 0),
+          grantedAiCredits: Number(s.granted_ai_credits || 0),
+          lastTransactionRef: String(s.last_transaction_ref || ''),
+        })),
+      },
+      200,
+      origin
+    );
+  }
+
+  if (path === '/api/admin/billing/cancellation-refunds/preview' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const subscriptionId = String(body.subscriptionId || body.subscription_id || '').trim();
+    if (!subscriptionId) return errorResponse('subscriptionId requis.', 400, origin);
+    const calc = await computeCancellationRefundCalculation({
+      db,
+      rawEnv,
+      fetchFn,
+      subscriptionId,
+      cancelScope: body.cancelScope === 'revert_upgrade' ? 'revert_upgrade' : 'full_cancel',
+      paymentReference: body.paymentReference ? String(body.paymentReference).trim() : undefined,
+      restorePaidMb: body.restorePaidMb !== undefined && body.restorePaidMb !== '' ? Number(body.restorePaidMb) : undefined,
+      restoreMonthlyPrice:
+        body.restoreMonthlyPrice !== undefined && body.restoreMonthlyPrice !== ''
+          ? Number(body.restoreMonthlyPrice)
+          : undefined,
+    });
+    if (!calc.ok) return errorResponse(calc.error, 404, origin);
+    return jsonResponse({ success: true, preview: calc.preview }, 200, origin);
+  }
+
+  if (path === '/api/admin/billing/cancellation-refunds/create' && method === 'POST') {
+    const body: any = await request.json().catch(() => ({}));
+    const subscriptionId = String(body.subscriptionId || body.subscription_id || '').trim();
+    if (!subscriptionId) return errorResponse('Abonnement requis.', 400, origin);
+
+    const cancelScope: 'full_cancel' | 'revert_upgrade' =
+      body.cancelScope === 'revert_upgrade' ? 'revert_upgrade' : 'full_cancel';
+
+    const calc = await computeCancellationRefundCalculation({
+      db,
+      rawEnv,
+      fetchFn,
+      subscriptionId,
+      cancelScope,
+      paymentReference: body.paymentReference ? String(body.paymentReference).trim() : undefined,
+      restorePaidMb: body.restorePaidMb !== undefined && body.restorePaidMb !== '' ? Number(body.restorePaidMb) : undefined,
+      restoreMonthlyPrice:
+        body.restoreMonthlyPrice !== undefined && body.restoreMonthlyPrice !== ''
+          ? Number(body.restoreMonthlyPrice)
+          : undefined,
+    });
+    if (!calc.ok) return errorResponse(calc.error, 404, origin);
+    const p = calc.preview;
+
+    const paidAmount =
+      body.customPaidAmount !== undefined && body.customPaidAmount !== ''
+        ? Math.max(0, Math.round(Number(body.customPaidAmount)))
+        : p.paidAmount;
+    const consumedDeduction =
+      body.customConsumedDeduction !== undefined && body.customConsumedDeduction !== ''
+        ? Math.max(0, Math.round(Number(body.customConsumedDeduction)))
+        : p.consumedDeduction;
+    const gatewayFeeAmount =
+      body.customGatewayFee !== undefined && body.customGatewayFee !== ''
+        ? Math.max(0, Math.round(Number(body.customGatewayFee)))
+        : p.gatewayFeeAmount;
+    const gatewayFeeSource =
+      body.customGatewayFee !== undefined && body.customGatewayFee !== '' ? 'custom' : p.gatewayFeeSource;
+    const netRefundAmount = Math.max(0, Math.round(paidAmount - consumedDeduction - gatewayFeeAmount));
+
+    const restorePaidMb =
+      cancelScope === 'revert_upgrade'
+        ? Math.max(0, Number(body.restorePaidMb ?? p.suggestedRestorePaidMb ?? 0))
+        : 0;
+    const restoreMonthlyPrice =
+      cancelScope === 'revert_upgrade'
+        ? Math.max(0, Math.round(Number(body.restoreMonthlyPrice ?? p.suggestedRestoreMonthlyPrice ?? 0)))
+        : 0;
+    const restorePlanName =
+      cancelScope === 'revert_upgrade'
+        ? String(
+            body.restorePlanName ||
+              (restorePaidMb > 0
+                ? `Stockage ${formatStorageMbFr(restorePaidMb)} (${restoreMonthlyPrice.toLocaleString('fr-FR')} FCFA/mois)`
+                : 'Plan Étudiant Gratuit')
+          ).trim()
+        : '';
+    const retentionDays = Math.max(1, Math.min(365, parseInt(String(body.retentionDays ?? p.defaultRetentionDays ?? 14), 10) || 14));
+    const adminNotes = String(body.adminNotes || body.admin_notes || '').trim().slice(0, 500);
+
+    // Remplacer toute ancienne proposition en attente sur ce même abonnement
+    await db
+      .prepare(
+        "UPDATE subscription_cancellation_refunds SET status = 'superseded', updated_at = CURRENT_TIMESTAMP WHERE subscription_id = ? AND status = 'pending_confirmation'"
+      )
+      .bind(subscriptionId)
+      .run()
+      .catch(() => {});
+
+    const crId = `scr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+    await db
+      .prepare(
+        `INSERT INTO subscription_cancellation_refunds (
+           id, user_id, user_name, user_email, user_phone, subscription_id,
+           product_type, app_key, app_name, plan_name, cancel_scope,
+           payment_reference, payment_network_label, payment_channel,
+           paid_amount, consumed_deduction_amount, gateway_fee_amount, gateway_fee_source,
+           net_refund_amount, currency, days_used, duration_days, credits_consumed, credits_total,
+           restore_paid_mb, restore_monthly_price, restore_plan_name,
+           retention_days, excess_bytes_preview, status, refund_mode, admin_notes
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_confirmation', 'auto_paystack', ?)`
+      )
+      .bind(
+        crId,
+        p.userId,
+        p.userName,
+        p.userEmail,
+        '',
+        subscriptionId,
+        p.productType,
+        p.appKey,
+        p.appName,
+        p.planName,
+        cancelScope,
+        p.paymentReference,
+        p.paymentNetworkLabel,
+        p.paymentChannel,
+        paidAmount,
+        consumedDeduction,
+        gatewayFeeAmount,
+        gatewayFeeSource,
+        netRefundAmount,
+        p.currency,
+        p.daysUsed,
+        p.durationDays,
+        p.creditsConsumed,
+        p.creditsTotal,
+        restorePaidMb,
+        restoreMonthlyPrice,
+        restorePlanName,
+        retentionDays,
+        Number(p.overflowPreview?.excessBytes || 0),
+        adminNotes
+      )
+      .run();
+
+    const isRevert = cancelScope === 'revert_upgrade';
+    await insertBillingInAppNotification(
+      db,
+      p.userId,
+      isRevert
+        ? `💸 Retour au forfait initial & remboursement (${netRefundAmount.toLocaleString('fr-FR')} FCFA) prêt`
+        : `💸 Proposition d’annulation & remboursement (${netRefundAmount.toLocaleString('fr-FR')} FCFA) prête`,
+      `Ouvrez « Mes abonnements → Annulation & Remboursement » pour consulter le détail (après déduction de la période utilisée et des frais bancaires non récupérables) et confirmer ou abandonner le processus.`,
+      crId,
+      'billing_cancel_refund_proposed'
+    );
+
+    const subRow: any = await db
+      .prepare('SELECT * FROM active_subscriptions WHERE id = ? LIMIT 1')
+      .bind(subscriptionId)
+      .first()
+      .catch(() => null);
+
+    const emailResult = await sendAndLogBillingEmail({
+      db,
+      rawEnv,
+      fetchFn,
+      subscription: subRow || {
+        id: subscriptionId,
+        user_id: p.userId,
+        user_name: p.userName,
+        user_email: p.userEmail,
+        product_type: p.productType,
+        app_key: p.appKey,
+        app_name: p.appName,
+        plan_name: p.planName,
+        currency: p.currency,
+      },
+      emailType: 'cancellation_refund_proposed',
+      triggeredBy: 'admin',
+      customMessage: adminNotes || undefined,
+      extraData: {
+        cancelScope,
+        paidAmount,
+        consumedDeduction,
+        gatewayFeeAmount,
+        netRefundAmount,
+        restorePlanLabel: restorePlanName,
+        hasOverflow: Boolean(p.overflowPreview?.hasOverflow),
+        retentionDays,
+        excessFormatted: p.overflowPreview?.excessFormatted || '0 o',
+      },
+      recordEventFn: recordSubscriptionEvent,
+    }).catch(() => null);
+
+    const created = await db
+      .prepare('SELECT * FROM subscription_cancellation_refunds WHERE id = ? LIMIT 1')
+      .bind(crId)
+      .first();
+
+    return jsonResponse({ success: true, request: created, emailResult }, 200, origin);
+  }
+
+  const adminRetryRefundMatch = path.match(/^\/api\/admin\/billing\/cancellation-refunds\/([^/]+)\/retry-refund$/);
+  if (adminRetryRefundMatch && method === 'POST') {
+    const crId = decodeURIComponent(adminRetryRefundMatch[1]);
+    const cr: any = await db
+      .prepare('SELECT * FROM subscription_cancellation_refunds WHERE id = ? LIMIT 1')
+      .bind(crId)
+      .first();
+    if (!cr) return errorResponse('Demande de remboursement introuvable.', 404, origin);
+
+    const body: any = await request.json().catch(() => ({}));
+    const nowIso = new Date().toISOString();
+
+    if (body.mode === 'manual') {
+      await db
+        .prepare(
+          `UPDATE subscription_cancellation_refunds
+           SET status = 'refunded',
+               refund_mode = 'manual',
+               paystack_refund_status = 'manual_confirmed',
+               refund_error = '',
+               refunded_at = ?,
+               updated_at = CURRENT_TIMESTAMP
+           WHERE id = ?`
+        )
+        .bind(nowIso, crId)
+        .run();
+      await insertBillingInAppNotification(
+        db,
+        String(cr.user_id),
+        `✅ Remboursement effectué (${Math.round(Number(cr.net_refund_amount || 0)).toLocaleString('fr-FR')} FCFA)`,
+        `Votre remboursement de ${Math.round(Number(cr.net_refund_amount || 0)).toLocaleString('fr-FR')} FCFA a bien été effectué.`,
+        crId,
+        'billing_refund_manual_done'
+      );
+      const updated = await db.prepare('SELECT * FROM subscription_cancellation_refunds WHERE id = ?').bind(crId).first();
+      return jsonResponse({ success: true, request: updated }, 200, origin);
+    }
+
+    const outcome = await triggerAutomaticPaystackRefund({
+      rawEnv,
+      fetchFn,
+      reference: String(cr.payment_reference || ''),
+      netRefundAmount: Math.max(0, Math.round(Number(cr.net_refund_amount || 0))),
+      currency: String(cr.currency || 'XOF'),
+      customerNote: `Remboursement StudyCloud (${cr.plan_name || ''})`,
+      merchantNote: `Admin retry refund ${crId}`,
+    });
+
+    await db
+      .prepare(
+        `UPDATE subscription_cancellation_refunds
+         SET status = ?,
+             paystack_refund_id = CASE WHEN ? != '' THEN ? ELSE paystack_refund_id END,
+             paystack_refund_status = ?,
+             refund_error = ?,
+             refunded_at = CASE WHEN ? = 'refunded' THEN ? ELSE refunded_at END,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = ?`
+      )
+      .bind(outcome.status, outcome.refundId, outcome.refundId, outcome.paystackStatus, outcome.error, outcome.status, nowIso, crId)
+      .run();
+
+    const updated = await db.prepare('SELECT * FROM subscription_cancellation_refunds WHERE id = ?').bind(crId).first();
+    return jsonResponse({ success: outcome.ok, request: updated, refundOutcome: outcome, error: outcome.error || undefined }, 200, origin);
+  }
+
+  const adminDeleteCrMatch = path.match(/^\/api\/admin\/billing\/cancellation-refunds\/([^/]+)$/);
+  if (adminDeleteCrMatch && method === 'DELETE') {
+    const crId = decodeURIComponent(adminDeleteCrMatch[1]);
+    const delRes: any = await db
+      .prepare('DELETE FROM subscription_cancellation_refunds WHERE id = ?')
+      .bind(crId)
+      .run();
+    const deletedCount = Number(delRes?.meta?.changes || 0);
+    if (deletedCount === 0) return errorResponse('Demande introuvable.', 404, origin);
+    return jsonResponse({ success: true, deletedId: crId, deletedCount }, 200, origin);
   }
 
   return null;

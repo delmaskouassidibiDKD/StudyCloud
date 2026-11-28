@@ -8,7 +8,7 @@ import {
 
 interface BillingAlertBannerProps {
   isAuthenticated: boolean;
-  onOpenSubscriptions: (targetSection?: 'all' | 'downgrades') => void;
+  onOpenSubscriptions: (targetSection?: 'all' | 'downgrades' | 'cancellations') => void;
 }
 
 function fmtStorageMbBanner(mb: number): string {
@@ -44,7 +44,8 @@ export const BillingAlertBanner: React.FC<BillingAlertBannerProps> = ({
       (res.blockedSubscriptions.length > 0 ||
         res.graceSubscriptions.length > 0 ||
         (res.pendingDowngrades && res.pendingDowngrades.length > 0) ||
-        (res.dataPurgeWarnings && res.dataPurgeWarnings.length > 0))
+        (res.dataPurgeWarnings && res.dataPurgeWarnings.length > 0) ||
+        (res.pendingCancellationRefunds && res.pendingCancellationRefunds.length > 0))
     ) {
       setDismissed(false);
     }
@@ -65,10 +66,15 @@ export const BillingAlertBanner: React.FC<BillingAlertBannerProps> = ({
 
   const hasBlocked = banner.blockedSubscriptions.length > 0;
   const hasPurgeWarning = Boolean(banner.dataPurgeWarnings && banner.dataPurgeWarnings.length > 0);
+  const hasPendingCancelRefund = Boolean(
+    banner.pendingCancellationRefunds && banner.pendingCancellationRefunds.length > 0
+  );
   const hasPendingDowngrade = Boolean(banner.pendingDowngrades && banner.pendingDowngrades.length > 0);
   const hasGrace = banner.graceSubscriptions.length > 0;
 
-  if (!hasBlocked && !hasPurgeWarning && !hasPendingDowngrade && !hasGrace) return null;
+  if (!hasBlocked && !hasPurgeWarning && !hasPendingCancelRefund && !hasPendingDowngrade && !hasGrace) {
+    return null;
+  }
 
   // Priorité 1 : Blocage impayé
   if (hasBlocked) {
@@ -135,6 +141,46 @@ export const BillingAlertBanner: React.FC<BillingAlertBannerProps> = ({
             className="px-3 py-1.5 rounded-xl bg-white text-slate-950 hover:bg-slate-100 text-[11px] font-black cursor-pointer whitespace-nowrap"
           >
             Détails
+          </button>
+          <button
+            type="button"
+            onClick={() => setDismissed(true)}
+            aria-label="Fermer l'alerte"
+            className="w-7 h-7 rounded-lg bg-white/10 hover:bg-white/20 flex items-center justify-center cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Priorité 2b : Proposition d'annulation & remboursement en attente de confirmation utilisateur
+  if (hasPendingCancelRefund && banner.pendingCancellationRefunds) {
+    const cr = banner.pendingCancellationRefunds[0];
+    const isRev = cr.cancelScope === 'revert_upgrade';
+    return (
+      <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[9500] w-[calc(100%-1.5rem)] max-w-2xl rounded-2xl border shadow-2xl px-4 py-3 flex items-center justify-between gap-3 backdrop-blur-md animate-fadeIn bg-sky-950/94 border-sky-400/60 text-sky-50">
+        <div className="flex items-start gap-2.5 min-w-0">
+          <CreditCard className="w-4 h-4 text-sky-300 shrink-0 mt-0.5" />
+          <div className="text-xs leading-snug min-w-0">
+            <div className="font-black truncate">
+              {isRev
+                ? `↩️ Retour au forfait initial & remboursement (${formatCurrencyAmount(cr.netRefundAmount, cr.currency)}) prêt`
+                : `💸 Annulation & remboursement (${formatCurrencyAmount(cr.netRefundAmount, cr.currency)}) prêt`}
+            </div>
+            <div className="text-[11px] opacity-90 truncate">
+              Consultez le détail dans Mes abonnements pour confirmer le remboursement ou abandonner.
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => onOpenSubscriptions('cancellations')}
+            className="px-3 py-1.5 rounded-xl bg-white text-sky-950 hover:bg-sky-50 text-[11px] font-black cursor-pointer whitespace-nowrap"
+          >
+            Voir &amp; Décider
           </button>
           <button
             type="button"

@@ -40,12 +40,17 @@ import {
 } from '../utils/viewerExpandManager';
 import {
   ActiveSubscriptionRecord,
+  abandonCancellationRefund,
+  abandonStorageDowngrade,
   applyFreeStorageDowngrade,
+  CancellationRefundRecord,
   cancelMySubscriptionAutoRenew,
   CardServicePermissions,
+  confirmCancellationRefund,
   deleteMyPaymentMethod,
   formatCurrencyAmount,
   getMyActiveSubscriptions,
+  getMyCancellationRefunds,
   getMyStorageDowngrades,
   initializePaystackPayment,
   initLinkBankCard,
@@ -69,7 +74,15 @@ interface MySubscriptionsViewProps {
   onOpenRenewTarget?: (productType: 'storage' | 'ai' | 'app', appKey?: string) => void;
 }
 
-export type SubWorkspaceSection = 'all' | 'storage' | 'ai' | 'app' | 'downgrades' | 'cards' | 'history';
+export type SubWorkspaceSection =
+  | 'all'
+  | 'storage'
+  | 'ai'
+  | 'app'
+  | 'downgrades'
+  | 'cancellations'
+  | 'cards'
+  | 'history';
 
 function fmtStorageMbFr(mb?: number | null): string {
   const n = Math.max(0, Number(mb || 0));
@@ -164,6 +177,10 @@ const USER_VISIBLE_EVENT_TYPES = new Set<string>([
   'service_blocked',
   'reactivated',
   'storage_downgraded',
+  'storage_downgrade_abandoned',
+  'cancelled_with_refund',
+  'upgrade_reverted_refunded',
+  'cancellation_refund_abandoned',
   'admin_cancelled',
   'data_overflow_purged',
 ]);
@@ -279,6 +296,10 @@ function formatEventLabel(eventType: string): string {
     service_blocked: 'Abonnement suspendu (échéance dépassée)',
     reactivated: 'Abonnement réactivé',
     storage_downgraded: 'Stockage réduit et tarif mensuel mis à jour',
+    storage_downgrade_abandoned: 'Demande de réduction de stockage abandonnée',
+    cancelled_with_refund: 'Abonnement annulé avec remboursement net',
+    upgrade_reverted_refunded: 'Augmentation annulée — retour au forfait initial & remboursement',
+    cancellation_refund_abandoned: 'Demande d’annulation abandonnée',
     admin_cancelled: 'Abonnement annulé',
     data_overflow_purged: 'Fichiers payants au-delà du gratuit nettoyés',
   };
@@ -296,7 +317,9 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
     if (initialSection) return initialSection;
     try {
       const sp = new URLSearchParams(window.location.search);
-      if (sp.get('section') === 'downgrades') return 'downgrades';
+      const sec = sp.get('section');
+      if (sec === 'downgrades') return 'downgrades';
+      if (sec === 'cancellations') return 'cancellations';
     } catch {}
     return 'all';
   });
@@ -308,7 +331,9 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
   const [subscriptions, setSubscriptions] = useState<ActiveSubscriptionRecord[]>([]);
   const [paymentMethods, setPaymentMethods] = useState<MaskedPaymentMethodRecord[]>([]);
   const [storageDowngrades, setStorageDowngrades] = useState<StorageDowngradeRequestRecord[]>([]);
+  const [cancellationRefunds, setCancellationRefunds] = useState<CancellationRefundRecord[]>([]);
   const [payingDowngradeId, setPayingDowngradeId] = useState<string | null>(null);
+  const [busyCancelRefundId, setBusyCancelRefundId] = useState<string | null>(null);
   const [recentEvents, setRecentEvents] = useState<
     Array<{ id: string; subscription_id: string; event_type: string; actor: string; created_at: string }>
   >([]);
@@ -334,9 +359,10 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
 
   const loadAll = useCallback(async () => {
     setLoading(true);
-    const [res, dgRes] = await Promise.all([
+    const [res, dgRes, crRes] = await Promise.all([
       getMyActiveSubscriptions(),
       getMyStorageDowngrades(),
+      getMyCancellationRefunds(),
     ]);
     if (res.success) {
       setSubscriptions(res.subscriptions);
@@ -347,6 +373,9 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
     }
     if (dgRes.success) {
       setStorageDowngrades(dgRes.requests);
+    }
+    if (crRes.success) {
+      setCancellationRefunds(crRes.requests);
     }
     setLoading(false);
   }, []);
@@ -661,6 +690,80 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
     }
   };
 
+  const handleAbandonStorageDowngrade = async (req: StorageDowngradeRequestRecord) => {
+    if (payingDowngradeId) return;
+    if (
+      !window.confirm(
+        'Abandonner cette demande de réduction de stockage ? Le processus s’arrêtera immédiatement et votre abonnement actuel restera inchangé.'
+      )
+    ) {
+      return;
+    }
+    setPayingDowngradeId(req.id);
+    setFeedback(null);
+    const res = await abandonStorageDowngrade(req.id);
+    if (!res.success) {
+      setFeedback({ type: 'err', text: res.error || "Impossible d'abandonner la réduction." });
+    } else {
+      setFeedback({
+        type: 'ok',
+        text: 'Réduction de stockage abandonnée. Votre abonnement actuel continue sans changement.',
+      });
+      notifyBannerSync();
+      await loadAll();
+    }
+    setPayingDowngradeId(null);
+  };
+
+  const handleConfirmCancellationRefund = async (req: CancellationRefundRecord) => {
+    if (busyCancelRefundId) return;
+    const isRev = req.cancel_scope === 'revert_upgrade';
+    const netStr = formatCurrencyAmount(req.net_refund_amount, req.currency);
+    const msg = isRev
+      ? `Confirmer le retour à votre forfait initial (${req.restore_plan_name || fmtStorageMbFr(req.restore_paid_mb)}) et lancer le remboursement net de ${netStr} ?`
+      : `Confirmer l’annulation définitive de « ${req.plan_name} » et lancer le remboursement net de ${netStr} ?`;
+    if (!window.confirm(msg)) return;
+    setBusyCancelRefundId(req.id);
+    setFeedback(null);
+    const res = await confirmCancellationRefund(req.id);
+    if (!res.success) {
+      setFeedback({ type: 'err', text: res.error || "Échec de la confirmation d'annulation." });
+    } else {
+      setFeedback({
+        type: 'ok',
+        text: res.message || `Confirmation enregistrée ! Remboursement net de ${netStr} lancé.`,
+      });
+      notifyBannerSync();
+      await loadAll();
+    }
+    setBusyCancelRefundId(null);
+  };
+
+  const handleAbandonCancellationRefund = async (req: CancellationRefundRecord) => {
+    if (busyCancelRefundId) return;
+    if (
+      !window.confirm(
+        'Abandonner le processus d’annulation et de remboursement ? Votre abonnement actuel continuera normalement sans aucun changement.'
+      )
+    ) {
+      return;
+    }
+    setBusyCancelRefundId(req.id);
+    setFeedback(null);
+    const res = await abandonCancellationRefund(req.id);
+    if (!res.success) {
+      setFeedback({ type: 'err', text: res.error || "Impossible d'abandonner le processus." });
+    } else {
+      setFeedback({
+        type: 'ok',
+        text: 'Processus abandonné. Votre abonnement actuel est conservé sans aucune interruption.',
+      });
+      notifyBannerSync();
+      await loadAll();
+    }
+    setBusyCancelRefundId(null);
+  };
+
   const userVisibleEvents = useMemo(
     () => recentEvents.filter((ev) => isUserVisibleActivityEvent(ev)),
     [recentEvents]
@@ -669,6 +772,11 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
   const pendingDowngrades = useMemo(
     () => storageDowngrades.filter((d) => d.status === 'pending_payment'),
     [storageDowngrades]
+  );
+
+  const pendingCancellationRefunds = useMemo(
+    () => cancellationRefunds.filter((c) => c.status === 'pending_confirmation'),
+    [cancellationRefunds]
   );
 
   const activeDataPurgeWarnings = useMemo(
@@ -691,10 +799,11 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
       ai: subscriptions.filter((s) => s.product_type === 'ai').length,
       app: subscriptions.filter((s) => s.product_type === 'app').length,
       downgrades: pendingDowngrades.length,
+      cancellations: pendingCancellationRefunds.length,
       cards: paymentMethods.length,
       history: userVisibleEvents.length,
     }),
-    [subscriptions, pendingDowngrades, paymentMethods, userVisibleEvents]
+    [subscriptions, pendingDowngrades, pendingCancellationRefunds, paymentMethods, userVisibleEvents]
   );
 
   const visibleSubscriptions = useMemo(() => {
@@ -742,8 +851,15 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
       title: 'Réduction de stockage',
       subtitle:
         counts.downgrades > 0
-          ? `${counts.downgrades} demande${counts.downgrades > 1 ? 's' : ''} prête${counts.downgrades > 1 ? 's' : ''} — réglez d'abord votre consommation prorata pour changer de stockage automatiquement.`
+          ? `${counts.downgrades} demande${counts.downgrades > 1 ? 's' : ''} prête${counts.downgrades > 1 ? 's' : ''} — réglez votre consommation prorata pour changer automatiquement, ou abandonnez le processus.`
           : 'Vos réductions de stockage et changements de forfait mensuel apparaissent ici dès validation par StudyCloud.',
+    },
+    cancellations: {
+      title: 'Annulation & Remboursement',
+      subtitle:
+        counts.cancellations > 0
+          ? `${counts.cancellations} proposition${counts.cancellations > 1 ? 's' : ''} en attente de votre confirmation — vérifiez le détail du remboursement net puis confirmez ou abandonnez.`
+          : 'Vos demandes d’annulation d’abonnement (totale ou retour au forfait initial) et le suivi de vos remboursements apparaissent ici.',
     },
     cards: {
       title: 'Cartes Visa / Mastercard',
@@ -894,6 +1010,42 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
           {counts.downgrades > 0 && (
             <span className="px-1.5 py-0.5 rounded-full bg-emerald-400 text-slate-950 text-[10px] font-black leading-none shrink-0 animate-pulse">
               {counts.downgrades}
+            </span>
+          )}
+        </div>
+
+        <div
+          onClick={() => {
+            setSelectedSubId(null);
+            setSection('cancellations');
+            setIsMobileSidebarOpen(false);
+          }}
+          className={`group relative overflow-hidden flex items-center gap-2 px-2.5 h-8 rounded-lg border text-xs transition cursor-pointer ${
+            section === 'cancellations' && !selectedSub
+              ? 'bg-gradient-to-r from-sky-600 to-indigo-500 border-sky-300/50 text-white font-semibold shadow-md shadow-sky-500/25'
+              : counts.cancellations > 0
+              ? 'bg-sky-500/18 border-sky-400/50 text-sky-100 hover:bg-sky-500/28 font-semibold'
+              : 'bg-white/[0.03] border-white/10 hover:border-sky-400/35 text-slate-300 hover:text-white hover:bg-white/[0.07] font-medium'
+          }`}
+        >
+          {!(section === 'cancellations' && !selectedSub) && (
+            <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-sky-400" />
+          )}
+          <div className={`flex items-center gap-2 min-w-0 flex-1 ${!(section === 'cancellations' && !selectedSub) ? 'pl-1' : ''}`}>
+            <Ban
+              className={`w-3.5 h-3.5 shrink-0 ${
+                section === 'cancellations' && !selectedSub
+                  ? 'text-white'
+                  : counts.cancellations > 0
+                  ? 'text-sky-300'
+                  : 'text-slate-400 group-hover:text-sky-300'
+              }`}
+            />
+            <span className="truncate">Annulation &amp; Remb.</span>
+          </div>
+          {counts.cancellations > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-sky-400 text-slate-950 text-[10px] font-black leading-none shrink-0 animate-pulse">
+              {counts.cancellations}
             </span>
           )}
         </div>
@@ -1178,7 +1330,7 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
               </p>
             </div>
 
-            {!selectedSub && section !== 'cards' && section !== 'history' && section !== 'downgrades' && (
+            {!selectedSub && section !== 'cards' && section !== 'history' && section !== 'downgrades' && section !== 'cancellations' && (
               <div className="flex items-center gap-2 flex-nowrap">
                 <div className="relative flex-1 sm:w-64">
                   <Search className="w-3.5 h-3.5 text-slate-300 absolute left-2.5 sm:left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
@@ -1229,6 +1381,31 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                 className="p-1 rounded hover:bg-white/10 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {pendingCancellationRefunds.length > 0 && !selectedSub && section !== 'cancellations' && (
+            <div className="p-3.5 rounded-xl bg-sky-500/18 backdrop-blur-md border border-sky-400/50 flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-start gap-2.5 text-xs">
+                <Ban className="w-4 h-4 text-sky-300 shrink-0 mt-0.5" />
+                <div>
+                  <div className="font-bold text-sky-100">
+                    {pendingCancellationRefunds[0].cancel_scope === 'revert_upgrade'
+                      ? `↩️ Retour au forfait initial & remboursement net (${formatCurrencyAmount(pendingCancellationRefunds[0].net_refund_amount, pendingCancellationRefunds[0].currency)}) prêt`
+                      : `💸 Annulation & remboursement net (${formatCurrencyAmount(pendingCancellationRefunds[0].net_refund_amount, pendingCancellationRefunds[0].currency)}) prêt`}
+                  </div>
+                  <div className="text-sky-200/85 mt-0.5">
+                    Consultez le détail transparent dans la section « Annulation &amp; Remboursement » pour confirmer ou abandonner le processus.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSection('cancellations')}
+                className="px-3.5 py-2 rounded-xl bg-sky-400 hover:bg-sky-300 text-slate-950 text-xs font-black cursor-pointer shrink-0 transition shadow-sm"
+              >
+                Consulter &amp; Décider →
               </button>
             </div>
           )}
@@ -1534,6 +1711,8 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                                   ? 'bg-emerald-400 text-slate-950'
                                   : isCompleted
                                   ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/40'
+                                  : dg.status === 'abandoned_by_user'
+                                  ? 'bg-slate-600/40 text-slate-200 border border-white/15'
                                   : 'bg-white/10 text-slate-300'
                               }`}
                             >
@@ -1541,6 +1720,8 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                                 ? '⚡ Action requise — Prêt à activer'
                                 : isCompleted
                                 ? '✅ Payé & Stockage modifié'
+                                : dg.status === 'abandoned_by_user'
+                                ? '⚪ Processus abandonné'
                                 : dg.status}
                             </span>
                             {monthlySavings > 0 && (
@@ -1604,31 +1785,42 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                         {isPending ? (
                           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/10">
                             <p className="text-[11px] text-slate-200/85 leading-relaxed max-w-xl">
-                              Réglez uniquement ce que vous avez déjà consommé sur la période en cours ({dg.days_used} jour{dg.days_used > 1 ? 's' : ''}). Dès validation du paiement, votre abonnement et votre stockage basculent <strong>automatiquement</strong> sur <strong>{fmtStorageMbFr(dg.target_paid_mb)}</strong> ({formatCurrencyAmount(dg.target_monthly_price, dg.currency)}/mois).
+                              Réglez uniquement ce que vous avez déjà consommé sur la période en cours ({dg.days_used} jour{dg.days_used > 1 ? 's' : ''}). Dès validation du paiement, votre abonnement et votre stockage basculent <strong>automatiquement</strong> sur <strong>{fmtStorageMbFr(dg.target_paid_mb)}</strong> ({formatCurrencyAmount(dg.target_monthly_price, dg.currency)}/mois). Vous pouvez aussi abandonner le processus à tout moment.
                             </p>
-                            <button
-                              type="button"
-                              disabled={isBusyDg}
-                              onClick={() => handlePayStorageDowngrade(dg)}
-                              className="h-10 px-5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs inline-flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60 shadow-lg shadow-emerald-500/25 shrink-0"
-                            >
-                              {isBusyDg ? (
-                                <>
-                                  <Loader2 className="w-4 h-4 animate-spin" />
-                                  <span>Traitement en cours...</span>
-                                </>
-                              ) : dueAmount > 0 ? (
-                                <>
-                                  <CreditCard className="w-4 h-4" />
-                                  <span>Payer {formatCurrencyAmount(dueAmount, dg.currency)} &amp; changer</span>
-                                </>
-                              ) : (
-                                <>
-                                  <CheckCircle2 className="w-4 h-4" />
-                                  <span>Activer mon nouveau stockage</span>
-                                </>
-                              )}
-                            </button>
+                            <div className="flex items-center gap-2 flex-wrap shrink-0">
+                              <button
+                                type="button"
+                                disabled={isBusyDg}
+                                onClick={() => handleAbandonStorageDowngrade(dg)}
+                                className="h-10 px-4 rounded-xl border border-white/20 bg-white/[0.07] hover:bg-rose-500/20 hover:border-rose-400/50 text-slate-100 hover:text-rose-100 font-bold text-xs inline-flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-60"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Abandonner</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isBusyDg}
+                                onClick={() => handlePayStorageDowngrade(dg)}
+                                className="h-10 px-5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-400 hover:from-emerald-400 hover:to-teal-300 text-slate-950 font-black text-xs inline-flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60 shadow-lg shadow-emerald-500/25"
+                              >
+                                {isBusyDg ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>Traitement...</span>
+                                  </>
+                                ) : dueAmount > 0 ? (
+                                  <>
+                                    <CreditCard className="w-4 h-4" />
+                                    <span>Payer {formatCurrencyAmount(dueAmount, dg.currency)} &amp; changer</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span>Activer mon nouveau stockage</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
                           </div>
                         ) : isCompleted ? (
                           <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2 text-[11px] text-emerald-200">
@@ -1640,7 +1832,236 @@ export const MySubscriptionsView: React.FC<MySubscriptionsViewProps> = ({
                               <span className="font-mono text-[10px] text-slate-300">Réf : {dg.payment_reference}</span>
                             )}
                           </div>
+                        ) : dg.status === 'abandoned_by_user' ? (
+                          <div className="pt-2 border-t border-white/10 text-[11px] text-slate-300">
+                            Vous avez abandonné cette réduction — votre abonnement précédent est resté actif sans modification.
+                          </div>
                         ) : null}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          ) : section === 'cancellations' ? (
+            /* =============================================================== */
+            /* SECTION ANNULATION & REMBOURSEMENT NET AUTOMATIQUE              */
+            /* (Annulation totale OU retour au forfait initial + Abandonner)   */
+            /* =============================================================== */
+            cancellationRefunds.length === 0 ? (
+              <div className="bg-[#163466]/72 backdrop-blur-xl border border-white/18 rounded-2xl p-6 sm:p-10 text-center space-y-2.5 shadow-[0_18px_40px_-16px_rgba(8,22,52,0.5)]">
+                <div className="w-12 h-12 rounded-2xl bg-sky-500/20 border border-sky-400/35 flex items-center justify-center text-sky-300 mx-auto">
+                  <Ban className="w-6 h-6" />
+                </div>
+                <div className="text-sm font-bold text-white">
+                  Aucune procédure d&apos;annulation ou de remboursement en cours
+                </div>
+                <p className="text-xs text-slate-300/85 max-w-md mx-auto leading-relaxed">
+                  Lorsque vous demandez l&apos;annulation d&apos;un abonnement (Stockage, Crédits IA ou Application) ou le retour à votre forfait précédent suite à une augmentation, le détail complet du remboursement net et les boutons de confirmation apparaissent ici.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {cancellationRefunds.map((cr) => {
+                  const isPending = cr.status === 'pending_confirmation';
+                  const isRefunded = cr.status === 'refunded';
+                  const isProcessing = cr.status === 'refund_processing';
+                  const isManualPending = cr.status === 'manual_refund_required';
+                  const isAbandoned = cr.status === 'abandoned_by_user';
+                  const isRevert = cr.cancel_scope === 'revert_upgrade';
+                  const isBusyCr = busyCancelRefundId === cr.id;
+                  const serviceTitle =
+                    cr.product_type === 'storage'
+                      ? 'Stockage Cloud'
+                      : cr.product_type === 'ai'
+                      ? 'Crédits IA StudyCloud'
+                      : cr.app_name || cr.app_key || 'Application StudyCloud';
+
+                  return (
+                    <div
+                      key={cr.id}
+                      className={`rounded-2xl backdrop-blur-xl border overflow-hidden shadow-[0_18px_42px_-16px_rgba(8,22,52,0.55)] ${
+                        isPending
+                          ? 'bg-[#122d54]/88 border-sky-400/55'
+                          : 'bg-[#163466]/70 border-white/15'
+                      }`}
+                    >
+                      <div
+                        className={`px-5 py-4 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
+                          isPending
+                            ? 'bg-gradient-to-r from-sky-600/30 via-indigo-600/25 to-blue-600/20 border-sky-400/30'
+                            : 'bg-white/[0.04] border-white/10'
+                        }`}
+                      >
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span
+                              className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                                isPending
+                                  ? 'bg-sky-400 text-slate-950'
+                                  : isRefunded
+                                  ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-400/40'
+                                  : isProcessing || isManualPending
+                                  ? 'bg-amber-500/25 text-amber-200 border border-amber-400/40'
+                                  : 'bg-slate-600/40 text-slate-200 border border-white/15'
+                              }`}
+                            >
+                              {isPending
+                                ? '⚡ En attente de votre décision'
+                                : isRefunded
+                                ? '✅ Confirmé & Remboursé'
+                                : isProcessing
+                                ? '🔄 Remboursement en cours de versement'
+                                : isManualPending
+                                ? '⏳ Remboursement pris en charge par notre service financier'
+                                : isAbandoned
+                                ? '⚪ Processus abandonné'
+                                : cr.status}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-full bg-white/10 text-slate-100 text-[10px] font-bold">
+                              {isRevert ? '↩️ Retour au forfait initial' : '❌ Annulation complète'}
+                            </span>
+                          </div>
+                          <h3 className="text-base sm:text-lg font-black text-white">
+                            {serviceTitle} — {cr.plan_name}
+                          </h3>
+                        </div>
+                        <div className="text-[11px] text-slate-300 font-medium">
+                          {formatDateTimeFr(cr.created_at)}
+                        </div>
+                      </div>
+
+                      <div className="p-5 space-y-4 text-xs">
+                        {isRevert && (
+                          <div className="p-3.5 rounded-xl bg-emerald-500/15 border border-emerald-400/40 text-emerald-100 leading-relaxed">
+                            <div className="font-black text-emerald-200 mb-0.5">
+                              ↩️ Vous conservez votre abonnement initial sans coupure
+                            </div>
+                            Seule l&apos;augmentation récente est annulée et remboursée. Votre abonnement revient sur{' '}
+                            <strong>
+                              {cr.restore_plan_name ||
+                                `${fmtStorageMbFr(cr.restore_paid_mb)} (${formatCurrencyAmount(cr.restore_monthly_price || 0, cr.currency)}/mois)`}
+                            </strong>
+                            .
+                          </div>
+                        )}
+
+                        {/* Tableau bancaire transparent du calcul */}
+                        <div className="rounded-xl bg-black/25 border border-white/12 divide-y divide-white/10 overflow-hidden">
+                          <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+                            <span className="text-slate-300">Montant initial réglé</span>
+                            <span className="font-mono font-bold text-white">
+                              {formatCurrencyAmount(cr.paid_amount, cr.currency)}
+                            </span>
+                          </div>
+                          <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+                            <span className="text-slate-300">
+                              {cr.product_type === 'ai'
+                                ? `Crédits IA déjà consommés (${Math.round(cr.credits_consumed || 0)} / ${Math.round(cr.credits_total || 0)})`
+                                : `Période déjà utilisée (${cr.days_used} jour${cr.days_used > 1 ? 's' : ''} / ${cr.duration_days}j)`}
+                            </span>
+                            <span className="font-mono font-bold text-amber-300">
+                              − {formatCurrencyAmount(cr.consumed_deduction_amount, cr.currency)}
+                            </span>
+                          </div>
+                          <div className="px-4 py-2.5 flex items-center justify-between gap-2">
+                            <span className="text-slate-300">
+                              Frais bancaires et de traitement de paiement <span className="text-slate-400">(non récupérables)</span>
+                            </span>
+                            <span className="font-mono font-bold text-rose-300">
+                              − {formatCurrencyAmount(cr.gateway_fee_amount, cr.currency)}
+                            </span>
+                          </div>
+                          <div className="px-4 py-3 bg-emerald-500/15 flex items-center justify-between gap-2">
+                            <span className="font-black text-emerald-100 uppercase tracking-wide text-[11px]">
+                              Montant net qui vous sera remboursé
+                            </span>
+                            <span className="font-mono font-black text-lg text-emerald-300">
+                              {formatCurrencyAmount(cr.net_refund_amount, cr.currency)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Explication professionnelle (sans mentionner d'agrégateur) */}
+                        <div className="p-3.5 rounded-xl bg-white/[0.05] border border-white/12 text-[11.5px] text-slate-200/90 leading-relaxed space-y-1">
+                          <div className="font-bold text-white flex items-center gap-1.5">
+                            <ShieldCheck className="w-4 h-4 text-sky-300 shrink-0" />
+                            <span>Pourquoi le montant remboursé diffère-t-il du montant initial ?</span>
+                          </div>
+                          <p>
+                            Le remboursement correspond exactement à la part non utilisée de votre paiement, déduction faite des <strong>frais bancaires et de traitement de transaction</strong> appliqués par les établissements bancaires et opérateurs Mobile Money lors de l&apos;encaissement initial. Ces frais de réseau sont définitivement acquis à ces opérateurs financiers et ne peuvent pas être restitués.
+                          </p>
+                        </div>
+
+                        {!isRevert && cr.product_type === 'storage' && Number(cr.excess_bytes_preview || 0) > 0 && (
+                          <div className="p-3.5 rounded-xl bg-orange-500/18 border border-orange-400/45 text-orange-100 text-[11.5px] leading-relaxed">
+                            <strong>⏳ Données dépassant l&apos;espace gratuit ({fmtBytesFrShort(cr.excess_bytes_preview)}) :</strong>{' '}
+                            en confirmant l&apos;annulation, vous disposerez de{' '}
+                            <strong>{cr.retention_days || 14} jours</strong> pour récupérer ces fichiers. Vos premiers fichiers situés dans votre espace gratuit restent toujours protégés.
+                          </div>
+                        )}
+
+                        {cr.admin_notes && (
+                          <div className="p-3 rounded-xl bg-sky-500/12 border border-sky-400/30 text-sky-100">
+                            <span className="font-bold">Message StudyCloud :</span> {cr.admin_notes}
+                          </div>
+                        )}
+
+                        {isPending ? (
+                          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2 border-t border-white/10">
+                            <p className="text-[11px] text-slate-300 leading-relaxed max-w-md">
+                              Vous pouvez confirmer pour lancer immédiatement le remboursement vers votre moyen de paiement d&apos;origine, ou abandonner le processus pour conserver votre offre actuelle.
+                            </p>
+                            <div className="flex items-center gap-2 flex-wrap shrink-0">
+                              <button
+                                type="button"
+                                disabled={isBusyCr}
+                                onClick={() => handleAbandonCancellationRefund(cr)}
+                                className="h-10 px-4 rounded-xl border border-white/20 bg-white/[0.07] hover:bg-white/[0.15] text-slate-100 font-bold text-xs inline-flex items-center justify-center gap-1.5 transition cursor-pointer disabled:opacity-60"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                                <span>Abandonner le processus</span>
+                              </button>
+                              <button
+                                type="button"
+                                disabled={isBusyCr}
+                                onClick={() => handleConfirmCancellationRefund(cr)}
+                                className="h-10 px-5 rounded-xl bg-gradient-to-r from-rose-500 to-orange-500 hover:from-rose-400 hover:to-orange-400 text-white font-black text-xs inline-flex items-center justify-center gap-2 transition cursor-pointer disabled:opacity-60 shadow-lg shadow-rose-500/25"
+                              >
+                                {isBusyCr ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>Traitement...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle2 className="w-4 h-4" />
+                                    <span>
+                                      {isRevert
+                                        ? 'Confirmer le remboursement et revenir au forfait initial'
+                                        : 'Confirmer le remboursement et annuler'}
+                                    </span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          </div>
+                        ) : isAbandoned ? (
+                          <div className="pt-2 border-t border-white/10 text-[11px] text-slate-300">
+                            Processus abandonné le {formatDateTimeFr(cr.abandoned_at)} — votre abonnement est resté actif sans changement.
+                          </div>
+                        ) : (
+                          <div className="pt-2 border-t border-white/10 flex items-center justify-between gap-2 flex-wrap text-[11px] text-emerald-200">
+                            <span className="inline-flex items-center gap-1.5 font-semibold">
+                              <CheckCircle2 className="w-4 h-4 text-emerald-300" />
+                              Confirmé le {formatDateTimeFr(cr.confirmed_at)}
+                              {cr.refunded_at ? ` · Remboursé le ${formatDateTimeFr(cr.refunded_at)}` : ''}
+                            </span>
+                            {cr.payment_reference && (
+                              <span className="font-mono text-[10px] text-slate-300">Réf : {cr.payment_reference}</span>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
